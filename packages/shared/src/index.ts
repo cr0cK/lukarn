@@ -133,3 +133,84 @@ export interface ApiError {
   error: string;
   message: string;
 }
+
+/* --------------------------------------------------------------------------
+ * Administration : comptes, albums et réglages
+ *
+ * Ces objets sont administrés depuis l'application et vivent en base. Le
+ * fichier `config/albums.yaml` ne sert plus qu'à amorcer une installation
+ * neuve : une fois la base peuplée, il n'est plus relu.
+ * ------------------------------------------------------------------------ */
+
+/** Le joker `*` donne accès à tous les albums, présents et à venir. */
+export const ALL_ALBUMS = '*';
+
+export interface AdminUser {
+  username: string;
+  admin: boolean;
+  /** Liste d'ids d'albums, ou `['*']`. */
+  albums: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserRequest {
+  username: string;
+  password: string;
+  admin?: boolean;
+  albums?: string[];
+}
+
+/** Champs omis = inchangés. `password` absent laisse le mot de passe en place. */
+export interface UpdateUserRequest {
+  password?: string;
+  admin?: boolean;
+  albums?: string[];
+}
+
+export interface AdminAlbum {
+  id: string;
+  title: string;
+  description: string | null;
+  folderId: string;
+  recursive: boolean;
+  /** Nombre de médias indexés, et état de la dernière synchronisation. */
+  itemCount: number;
+  lastSyncAt: string | null;
+  syncStatus: SyncStatus;
+  syncError: string | null;
+  /** Comptes ayant explicitement accès, hors détenteurs du joker. */
+  members: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAlbumRequest {
+  id: string;
+  title: string;
+  description?: string;
+  folderId: string;
+  recursive?: boolean;
+}
+
+export interface UpdateAlbumRequest {
+  title?: string;
+  description?: string | null;
+  folderId?: string;
+  recursive?: boolean;
+}
+
+export interface AppSettings {
+  /** Minutes entre deux synchronisations automatiques. 0 pour désactiver. */
+  syncIntervalMinutes: number;
+  syncOnStartup: boolean;
+  cacheMaxSizeGB: number;
+}
+
+export type UpdateSettingsRequest = Partial<AppSettings>;
+
+/** Contraintes de saisie, partagées pour valider des deux côtés à l'identique. */
+export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
+export const USERNAME_MAX_LENGTH = 64;
+export const ALBUM_ID_PATTERN = USERNAME_PATTERN;
+export const PASSWORD_MIN_LENGTH = 8;
