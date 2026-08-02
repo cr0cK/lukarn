@@ -3,7 +3,6 @@ import { join, sep } from 'node:path';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
-import type { AppConfig } from './config.js';
 import { AppContext } from './context.js';
 import type { Env } from './env.js';
 import authPlugin from './plugins/auth.js';
@@ -17,7 +16,7 @@ export interface BuiltApp {
   context: AppContext;
 }
 
-export async function buildApp(env: Env, config: AppConfig): Promise<BuiltApp> {
+export async function buildApp(env: Env): Promise<BuiltApp> {
   const server = Fastify({
     logger: {
       level: env.logLevel,
@@ -36,7 +35,7 @@ export async function buildApp(env: Env, config: AppConfig): Promise<BuiltApp> {
     trustProxy: true,
   });
 
-  const context = new AppContext(env, config, server.log);
+  const context = new AppContext(env, server.log);
   await context.cache.load();
 
   await server.register(fastifyCookie, { secret: env.sessionSecret });

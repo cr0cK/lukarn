@@ -1,7 +1,19 @@
 import { randomBytes } from 'node:crypto';
-import type { AdminStatus } from '@gdv/shared';
-import type { FastifyPluginAsync } from 'fastify';
+import {
+  ALBUM_ID_PATTERN,
+  ALL_ALBUMS,
+  PASSWORD_MIN_LENGTH,
+  USERNAME_MAX_LENGTH,
+  USERNAME_PATTERN,
+  type AdminAlbum,
+  type AdminStatus,
+  type AppSettings,
+} from '@gdv/shared';
+import argon2 from 'argon2';
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import type { StoredAlbum } from '../config-repo.js';
+import { toAdminUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
 import { DriveNotConfiguredError } from '../drive/service.js';
 import { requireAdmin } from '../plugins/auth.js';
@@ -12,8 +24,102 @@ const OAUTH_STATE_TTL_S = 600;
 
 const resyncSchema = z.object({ albumId: z.string().min(1).optional() });
 
+const identifier = z
+  .string()
+  .min(1)
+  .max(USERNAME_MAX_LENGTH)
+  .regex(USERNAME_PATTERN, 'lettres, chiffres, point, tiret et underscore uniquement');
+
+const albumId = z
+  .string()
+  .min(1)
+  .max(USERNAME_MAX_LENGTH)
+  .regex(ALBUM_ID_PATTERN, 'lettres, chiffres, point, tiret et underscore uniquement');
+
+const password = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `au moins ${PASSWORD_MIN_LENGTH} caractères`)
+  // Argon2 accepte des mots de passe bien plus longs ; la borne protège
+  // simplement le CPU d'un hachage démesuré demandé par mégarde.
+  .max(512);
+
+/** `['*']` ou une liste d'ids. Le contenu est confronté aux albums existants. */
+const albumList = z.array(z.union([z.literal(ALL_ALBUMS), albumId])).max(500);
+
+const createUserSchema = z.object({
+  username: identifier,
+  password,
+  admin: z.boolean().default(false),
+  albums: albumList.default([]),
+});
+
+const updateUserSchema = z.object({
+  password: password.optional(),
+  admin: z.boolean().optional(),
+  albums: albumList.optional(),
+});
+
+const createAlbumSchema = z.object({
+  id: albumId,
+  title: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  folderId: z.string().min(1).max(256),
+  recursive: z.boolean().default(true),
+});
+
+const updateAlbumSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).nullable().optional(),
+  folderId: z.string().min(1).max(256).optional(),
+  recursive: z.boolean().optional(),
+});
+
+const updateSettingsSchema = z.object({
+  // Une semaine de plafond : au-delà, `setInterval` n'est plus un réglage mais
+  // une désactivation, qui s'écrit `0`.
+  syncIntervalMinutes: z.number().int().min(0).max(10080).optional(),
+  syncOnStartup: z.boolean().optional(),
+  cacheMaxSizeGB: z.number().positive().max(10000).optional(),
+});
+
+/** Message d'erreur lisible : le chemin du champ fautif, puis la raison. */
+function badRequest(reply: FastifyReply, error: z.ZodError): FastifyReply {
+  const details = error.issues
+    .map((issue) => `${issue.path.join('.') || '(racine)'} : ${issue.message}`)
+    .join(' ; ');
+  return reply.code(400).send({ error: 'bad_request', message: `Requête invalide — ${details}` });
+}
+
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   const secureCookies = context.env.publicUrl.startsWith('https://');
+
+  /** Vue album de l'administration : la config, l'index et l'état de sync. */
+  function toAdminAlbum(album: StoredAlbum): AdminAlbum {
+    const state = context.syncState.get(album.id);
+    return {
+      id: album.id,
+      title: album.title,
+      description: album.description,
+      folderId: album.folderId,
+      recursive: album.recursive,
+      itemCount: context.media.stats(album.id).itemCount,
+      lastSyncAt: state.lastSyncAt,
+      syncStatus: state.status,
+      syncError: state.error,
+      members: context.config.members(album.id),
+      createdAt: album.createdAt,
+      updatedAt: album.updatedAt,
+    };
+  }
+
+  /**
+   * Une référence à un album inexistant est presque toujours une faute de
+   * frappe qui priverait silencieusement quelqu'un de son accès — la même
+   * vérification que faisait le chargement du YAML.
+   */
+  function unknownAlbum(albums: string[]): string | null {
+    return albums.find((id) => id !== ALL_ALBUMS && !context.findAlbum(id)) ?? null;
+  }
 
   return async (app) => {
     app.addHook('preHandler', requireAdmin);
@@ -30,6 +136,235 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       };
       return reply.send(status);
     });
+
+    /* ------------------------------------------------------------- comptes */
+
+    app.get('/users', async (_request, reply) =>
+      reply.send(context.config.users().map(toAdminUser)),
+    );
+
+    app.post('/users', async (request, reply) => {
+      const parsed = createUserSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+      const input = parsed.data;
+
+      // Écraser un compte existant reviendrait à changer son mot de passe et
+      // ses droits sans que personne ne l'ait demandé.
+      if (context.config.user(input.username)) {
+        return reply.code(409).send({
+          error: 'conflict',
+          message: `L'identifiant "${input.username}" est déjà pris.`,
+        });
+      }
+
+      const missing = unknownAlbum(input.albums);
+      if (missing) {
+        return reply
+          .code(400)
+          .send({ error: 'unknown_album', message: `Album inconnu : "${missing}"` });
+      }
+
+      const user = context.config.createUser({
+        username: input.username,
+        passwordHash: await argon2.hash(input.password, { type: argon2.argon2id }),
+        admin: input.admin,
+        albums: input.albums,
+      });
+
+      request.log.info(`Compte "${user.username}" créé`);
+      return reply.code(201).send(toAdminUser(user));
+    });
+
+    app.patch('/users/:username', async (request, reply) => {
+      const { username } = request.params as { username: string };
+      const stored = context.config.user(username);
+      if (!stored) {
+        return reply.code(404).send({ error: 'not_found', message: 'Compte introuvable' });
+      }
+
+      const parsed = updateUserSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+      const patch = parsed.data;
+
+      // Retirer le rôle du dernier administrateur rendrait l'instance
+      // inadministrable : plus personne ne pourrait connecter Drive, créer un
+      // compte, ni même rendre le rôle à quiconque.
+      if (patch.admin === false && stored.admin && context.config.adminCount() <= 1) {
+        return reply.code(409).send({
+          error: 'last_admin',
+          message:
+            "Impossible de retirer le rôle du dernier administrateur : l'instance " +
+            "deviendrait inadministrable. Nomme un autre administrateur d'abord.",
+        });
+      }
+
+      if (patch.albums) {
+        const missing = unknownAlbum(patch.albums);
+        if (missing) {
+          return reply
+            .code(400)
+            .send({ error: 'unknown_album', message: `Album inconnu : "${missing}"` });
+        }
+      }
+
+      const user = context.config.updateUser(stored.username, {
+        passwordHash: patch.password
+          ? await argon2.hash(patch.password, { type: argon2.argon2id })
+          : undefined,
+        admin: patch.admin,
+        albums: patch.albums,
+      });
+
+      /**
+       * Changer un mot de passe ferme les sessions ouvertes : sinon le
+       * navigateur déjà connecté continuerait de naviguer avec l'ancien, ce
+       * qui est précisément ce qu'on cherche à couper.
+       *
+       * Retirer le rôle d'administrateur ne déconnecte pas : le compte reste
+       * légitime, et `plugins/auth.ts` relit `admin` à chaque requête, donc
+       * l'accès à /api/admin tombe dès la requête suivante. Modifier la liste
+       * d'albums ne déconnecte pas non plus, pour la même raison.
+       */
+      if (patch.password) {
+        context.sessions.destroyForUser(stored.username);
+        request.log.info(
+          `Sessions de "${stored.username}" fermées après changement de mot de passe`,
+        );
+      }
+
+      return reply.send(toAdminUser(user));
+    });
+
+    app.delete('/users/:username', async (request, reply) => {
+      const { username } = request.params as { username: string };
+      const stored = context.config.user(username);
+      if (!stored) {
+        return reply.code(404).send({ error: 'not_found', message: 'Compte introuvable' });
+      }
+
+      if (stored.admin && context.config.adminCount() <= 1) {
+        return reply.code(409).send({
+          error: 'last_admin',
+          message:
+            "Impossible de supprimer le dernier administrateur : l'instance deviendrait " +
+            'inadministrable.',
+        });
+      }
+
+      context.config.deleteUser(stored.username);
+      // Un compte supprimé ne doit pas continuer à naviguer avec sa session.
+      context.sessions.destroyForUser(stored.username);
+      request.log.info(`Compte "${stored.username}" supprimé, ses sessions sont fermées`);
+
+      return reply.send({ ok: true });
+    });
+
+    /* -------------------------------------------------------------- albums */
+
+    app.get('/albums', async (_request, reply) =>
+      reply.send(context.albums.map((album) => toAdminAlbum(album))),
+    );
+
+    app.post('/albums', async (request, reply) => {
+      const parsed = createAlbumSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+      const input = parsed.data;
+
+      if (context.findAlbum(input.id)) {
+        return reply
+          .code(409)
+          .send({ error: 'conflict', message: `L'album "${input.id}" existe déjà.` });
+      }
+
+      const album = context.config.createAlbum({
+        id: input.id,
+        title: input.title,
+        description: input.description ?? null,
+        folderId: input.folderId,
+        recursive: input.recursive,
+      });
+
+      request.log.info(`Album "${album.id}" créé`);
+      startSync(album, request.log);
+
+      return reply.code(201).send(toAdminAlbum(album));
+    });
+
+    app.patch('/albums/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const stored = context.findAlbum(id);
+      if (!stored) {
+        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+      }
+
+      const parsed = updateAlbumSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+      const patch = parsed.data;
+
+      const album = context.config.updateAlbum(id, patch);
+
+      /**
+       * Changer le dossier Drive change le contenu de l'album : les médias
+       * indexés désignent l'ancien dossier et resteraient visibles — donc
+       * consultables par les comptes qui ont cet album — jusqu'à la prochaine
+       * synchronisation. Purge immédiate plutôt que d'attendre `deleteStale` :
+       * la fenêtre entre les deux est exactement celle où l'album montre ce que
+       * le propriétaire vient de vouloir retirer. La resynchronisation qui suit
+       * le remplit à nouveau, sans qu'il ait à la déclencher lui-même.
+       */
+      if (patch.folderId !== undefined && patch.folderId !== stored.folderId) {
+        const removed = context.media.clearAlbum(id);
+        context.syncState.set(id, { lastSyncAt: null, status: 'never', error: null });
+        request.log.info(
+          `Album "${id}" : dossier Drive changé, ${removed} médias retirés de l'index`,
+        );
+        startSync(album, request.log);
+      }
+
+      return reply.send(toAdminAlbum(album));
+    });
+
+    app.delete('/albums/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!context.findAlbum(id)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+      }
+
+      context.config.deleteAlbum(id);
+
+      /**
+       * L'index suit l'album : `pruneAlbums` retire ses médias et son état de
+       * synchronisation. Un fichier présent dans un autre album y garde sa
+       * ligne — la clé primaire est `(album_id, id)` — donc il reste
+       * consultable par ce chemin-là, ce qui est le comportement voulu.
+       *
+       * Les dérivés en cache disque, eux, sont laissés en place : ils sont
+       * indexés par id de fichier seul et sont donc partagés entre albums ;
+       * les supprimer priverait les autres albums de leurs vignettes. Ceux qui
+       * deviennent orphelins partiront par éviction LRU, ou tout de suite via
+       * « vider le cache ». Ils sont régénérables, contrairement à l'index.
+       */
+      const removed = context.media.pruneAlbums(context.albums.map((album) => album.id));
+      request.log.info(`Album "${id}" supprimé, ${removed} médias retirés de l'index`);
+
+      return reply.send({ ok: true });
+    });
+
+    /* ------------------------------------------------------------ réglages */
+
+    app.get('/settings', async (_request, reply) => reply.send(context.settings));
+
+    app.patch('/settings', async (request, reply) => {
+      const parsed = updateSettingsSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+
+      // `updateSettings` applique aussi : limite du cache disque et
+      // reprogrammation du minuteur de synchronisation, sans redémarrage.
+      const settings: AppSettings = context.updateSettings(parsed.data);
+      return reply.send(settings);
+    });
+
+    /* --------------------------------------------------------------- Drive */
 
     /**
      * Démarre le consentement Google. Le `state` est tiré au hasard, déposé
@@ -94,26 +429,19 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       return reply.code(202).send({ started: targets.map((album) => album.id) });
     });
 
-    app.post('/reload', async (_request, reply) => {
-      try {
-        const config = context.reloadConfig();
-        return reply.send({
-          ok: true,
-          users: config.users.length,
-          albums: config.albums.length,
-        });
-      } catch (error) {
-        // La config précédente reste active : on renvoie l'erreur de parsing
-        // telle quelle, c'est exactement ce qu'il faut corriger dans le YAML.
-        return reply.code(400).send({ error: 'invalid_config', message: (error as Error).message });
-      }
-    });
-
     app.post('/cache/clear', async (_request, reply) => {
       await context.cache.clear();
       return reply.send({ ok: true });
     });
   };
+
+  /** Indexation en tâche de fond, silencieuse tant que Drive n'est pas connecté. */
+  function startSync(album: StoredAlbum, log: FastifyBaseLogger): void {
+    if (!context.drive.connected) return;
+    void context.syncer.syncAll([album]).catch((error: unknown) => {
+      log.error({ err: error }, `Synchronisation de l'album "${album.id}" en échec`);
+    });
+  }
 }
 
 /**

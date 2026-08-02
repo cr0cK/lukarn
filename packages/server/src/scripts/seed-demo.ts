@@ -1,6 +1,6 @@
 import { dirname } from 'node:path';
 import sharp from 'sharp';
-import { loadConfig } from '../config.js';
+import { ConfigRepo } from '../config-repo.js';
 import { openDb } from '../db.js';
 import { loadDotEnv } from '../dotenv.js';
 import { loadEnv } from '../env.js';
@@ -117,17 +117,27 @@ async function main(): Promise<void> {
   }
 
   const env = loadEnv(process.env, envFile ? dirname(envFile) : process.cwd());
-  const config = loadConfig(env.configPath);
   const db = openDb(env.dataDir);
+  const config = new ConfigRepo(db);
   const media = new MediaRepo(db);
   const syncState = new SyncStateRepo(db);
-  const cache = new MediaCache(env.cacheDir, config.cache.maxSizeGB * 1024 ** 3);
+  const cache = new MediaCache(env.cacheDir, config.settings().cacheMaxSizeGB * 1024 ** 3);
   await cache.load();
+
+  // Les albums viennent de la base, seule source de vérité depuis que la
+  // configuration s'administre depuis l'application.
+  const albums = config.albums();
+  if (albums.length === 0) {
+    throw new Error(
+      'Aucun album en base : crée-en un depuis /admin (ou amorce une installation ' +
+        'avec config/albums.yaml) avant de lancer la démo.',
+    );
+  }
 
   const seenAt = new Date().toISOString();
   let created = 0;
 
-  for (const [albumIndex, album] of config.albums.entries()) {
+  for (const [albumIndex, album] of albums.entries()) {
     const items: MediaUpsert[] = [];
     // Chaque album couvre une période distincte, pour que le regroupement par
     // mois de la grille soit visible.

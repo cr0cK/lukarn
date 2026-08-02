@@ -24,10 +24,12 @@ flowchart LR
 
 | Fichier                 | Responsabilité                                                                                      |
 | ----------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/main.ts`           | Point d'entrée : `.env`, env, config, `buildApp`, minuteurs, arrêt gracieux.                        |
+| `src/main.ts`           | Point d'entrée : `.env`, env, `buildApp`, minuteurs reprogrammables, arrêt gracieux.                |
 | `src/app.ts`            | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.         |
 | `src/env.ts`            | Schéma zod des variables d'environnement, résolution des chemins.                                   |
-| `src/config.ts`         | Schéma zod d'`albums.yaml`, helpers d'autorisation (`visibleAlbums`, `canSeeAlbum`, `findUser`).    |
+| `src/config.ts`         | Schéma zod d'`albums.yaml`, lu au seul amorçage d'une base vide.                                    |
+| `src/bootstrap.ts`      | Import unique d'`albums.yaml` en base, tant qu'aucun compte n'existe.                               |
+| `src/config-repo.ts`    | `ConfigRepo` : comptes, albums, droits, réglages. Seul écrivain, instantané mémoire.                |
 | `src/context.ts`        | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.      |
 | `src/db.ts`             | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                    |
 | `src/repo.ts`           | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                   |

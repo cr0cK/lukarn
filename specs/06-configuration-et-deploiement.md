@@ -1,10 +1,11 @@
 # 06 — Configuration et déploiement
 
-Deux fichiers de configuration, deux natures :
+Deux sources de configuration, deux natures :
 
 - **`.env`** — secrets et chemins, lus au démarrage, jamais rechargés à chaud.
-- **`config/albums.yaml`** — utilisateurs et albums, rechargeables sans
-  redémarrer.
+- **La base** — comptes, albums, droits et réglages, administrés depuis
+  `/admin`, appliqués sans redémarrage. `config/albums.yaml` ne sert plus qu'à
+  **amorcer** une installation neuve.
 
 ## Variables d'environnement — `packages/server/src/env.ts`
 
@@ -21,7 +22,7 @@ la variable et le problème.
 | `TOKEN_KEY`            | —                                             | **Obligatoire**, ≥ 32 caractères. Chiffre le refresh token. Le changer rend le jeton stocké illisible : il est supprimé et il faut refaire le consentement.                                                                                                                             |
 | `GOOGLE_CLIENT_ID`     | absent                                        | Optionnel, mais **indissociable** de `GOOGLE_CLIENT_SECRET` : n'en renseigner qu'un fait échouer le démarrage. Sans les deux, l'app tourne et sert l'index existant, `/admin` affiche « non configuré ».                                                                                |
 | `GOOGLE_CLIENT_SECRET` | absent                                        | Idem.                                                                                                                                                                                                                                                                                   |
-| `CONFIG_PATH`          | `./config/albums.yaml`                        | Résolu depuis le répertoire du `.env`, pas depuis le cwd (voir plus bas). Fichier absent ⇒ refus de démarrer avec le conseil de copier l'exemple.                                                                                                                                       |
+| `CONFIG_PATH`          | `./config/albums.yaml`                        | Fichier d'**amorçage**, résolu depuis le répertoire du `.env`, pas depuis le cwd (voir plus bas). Absent ⇒ le serveur démarre quand même ; s'il n'y a aucun compte en base, il dit comment créer le premier administrateur.                                                             |
 | `DATA_DIR`             | `./data`                                      | Contient `gdv.db`. Créé s'il manque. **La seule donnée irremplaçable.**                                                                                                                                                                                                                 |
 | `CACHE_DIR`            | `./cache`                                     | Dérivés WebP. Régénérable — le supprimer ne coûte que du CPU.                                                                                                                                                                                                                           |
 | `WEB_DIR`              | `packages/web/dist`, calculé depuis le module | Front buildé. Absent ⇒ seule l'API est servie, avec un avertissement.                                                                                                                                                                                                                   |
@@ -36,10 +37,27 @@ Conséquence utile : un script lancé depuis `packages/server` vise les mêmes
 fichiers que le serveur lancé depuis la racine. L'absence de `.env` n'est pas une
 erreur — en conteneur, tout vient de l'environnement.
 
-## `config/albums.yaml` — `packages/server/src/config.ts`
+## `config/albums.yaml` — amorçage seulement
 
 Modèle commenté dans `config/albums.example.yaml`. Le fichier n'est pas suivi par
-git.
+git. Il est lu par `packages/server/src/config.ts`, mais **uniquement tant
+qu'aucun compte n'existe en base** (`bootstrap.ts`) :
+
+| Base    | Fichier    | Ce qui se passe                                                                                      |
+| ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
+| vide    | présent    | Comptes, albums, droits et réglages sont importés en une transaction, puis le fichier n'est plus lu. |
+| vide    | absent     | Le serveur démarre et journalise `pnpm create-admin <identifiant>`.                                  |
+| vide    | invalide   | **Refus de démarrer**, avec l'erreur de validation : démarrer sans aucun compte serait inutilisable. |
+| peuplée | quelconque | Le fichier est ignoré. Le modifier ne fait plus rien — c'est `/admin` qui administre.                |
+
+C'est aussi le chemin de mise à jour d'une instance en service : au premier
+démarrage après la migration, sa configuration est reprise telle quelle. Ni
+réindexation, ni nouveau consentement Google, ni perte d'accès —
+`packages/server/test/bootstrap.test.ts` le verrouille.
+
+Le schéma ci-dessous est donc figé sur ce que les installations existantes ont pu
+écrire ; les évolutions de la configuration se font dans `ConfigRepo` et
+l'API d'administration, pas ici.
 
 ### `users[]`
 
@@ -76,29 +94,20 @@ custom vont au-delà du schéma : ids d'albums en double, identifiants en double
 (insensibles à la casse), et référence à un album inexistant — presque toujours
 une faute de frappe qui priverait silencieusement quelqu'un de son accès.
 
-## Rechargement à chaud
+## Administration à chaud
 
-`POST /api/admin/reload` → `AppContext.reloadConfig()` :
+Tout se fait par `/api/admin/*` (voir [05](./05-api.md)), sans redémarrage et
+sans fichier. `POST /api/admin/reload` et `AppContext.reloadConfig()` ont disparu
+avec le fichier qu'ils relisaient.
 
-1. relit et valide le fichier ; **en cas d'échec, rien ne change** et l'erreur
-   remonte en 400 — mieux vaut une app qui tourne sur l'ancienne config qu'une
-   app cassée ;
-2. remplace la config en mémoire ;
-3. `pruneAlbums` supprime de l'index les albums qui ne sont plus déclarés ;
-4. détruit les sessions dont l'identifiant a disparu de la config.
-
-**Ce que le rechargement ne fait pas** — il faut redémarrer pour ces trois-là :
-
-| Changement             | Pourquoi il ne prend pas effet                                                      |
-| ---------------------- | ----------------------------------------------------------------------------------- |
-| `cache.maxSizeGB`      | `MediaCache` reçoit `maxBytes` dans le constructeur d'`AppContext`, une seule fois. |
-| `sync.intervalMinutes` | Le `setInterval` est armé dans `startScheduler` au démarrage.                       |
-| `sync.onStartup`       | N'a de sens qu'au démarrage.                                                        |
-
-Un changement de `folderId` sur un album existant est pris en compte, mais
-l'ancien contenu reste indexé jusqu'à ce que la prochaine synchronisation le
-retire via `deleteStale` (`clearAlbum` existe dans le repo mais n'est appelé nulle
-part).
+| Changement            | Effet immédiat                                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| Compte, droits, rôle  | Relus à chaque requête par `plugins/auth.ts` et `canSee()`.                                          |
+| Album créé/supprimé   | Suppression : ses médias et son `sync_state` partent avec lui.                                       |
+| `folderId` modifié    | L'index de l'album est vidé et une resynchronisation démarre si Drive est connecté.                  |
+| `cacheMaxSizeGB`      | `MediaCache.setMaxBytes()`, avec éviction immédiate si la limite baisse.                             |
+| `syncIntervalMinutes` | `startScheduler` réarme son minuteur ; réarmer à valeur égale est évité, ça repousserait la synchro. |
+| `syncOnStartup`       | N'a de sens qu'au démarrage — mais il est lu en base, donc pris en compte au suivant.                |
 
 ## Dockerfile — trois étapes
 
@@ -132,11 +141,11 @@ VPS. Retirer le préfixe `127.0.0.1:` joint l'app directement, sans HTTPS.
 `${VAR:?message}` : compose refuse de démarrer s'ils manquent, avec le message
 qui dit quoi faire.
 
-| Montage                   | Contenu                                                    | Sauvegarde                                    |
-| ------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
-| `./config:/app/config:ro` | `albums.yaml`. En lecture seule : l'app ne l'écrit jamais. | Dans le dépôt ou ton gestionnaire de secrets  |
-| `gdv-data`                | `gdv.db` — index, sessions, refresh token chiffré          | **Oui. C'est la seule donnée irremplaçable.** |
-| `gdv-cache`               | Dérivés WebP                                               | Non — régénérable à la demande                |
+| Montage                   | Contenu                                                                                                          | Sauvegarde                                    |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `./config:/app/config:ro` | `albums.yaml` d'amorçage. Lecture seule : l'app ne l'écrit jamais, et ne le relit plus une fois la base peuplée. | Inutile après l'amorçage                      |
+| `gdv-data`                | `gdv.db` — **comptes, albums, réglages**, index, sessions, refresh token chiffré                                 | **Oui. C'est la seule donnée irremplaçable.** |
+| `gdv-cache`               | Dérivés WebP                                                                                                     | Non — régénérable à la demande                |
 
 Sauvegarder `gdv-data` ne suffit pas seul : sans `TOKEN_KEY`, le refresh token
 qu'il contient est indéchiffrable. Sauvegarde le `.env` avec.
@@ -174,12 +183,13 @@ applications les mélange dans une même demande d'autorisation.
 
 ## Scripts
 
-| Commande                                       | Effet                                                                                                                                                           |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm hash-password`                           | Demande un mot de passe sans l'afficher et imprime la ligne `passwordHash:` à coller. Un argument est accepté mais laisse une trace dans l'historique du shell. |
-| `pnpm --filter @gdv/server seed-demo [nombre]` | Remplit l'index **et** le cache avec des médias générés localement, pour travailler l'interface sans compte Drive. Défaut : 240 par album.                      |
+| Commande                                         | Effet                                                                                                                                                                                                                                                                |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm create-admin <identifiant> [mot de passe]` | Crée le premier administrateur **en base**, avec le joker sur les albums — `admin` seul n'accorde aucun album, et il faut bien qu'il voie ceux qu'il va créer. Seule porte d'entrée quand il n'y a ni compte ni fichier d'amorçage. Refuse un identifiant déjà pris. |
+| `pnpm hash-password`                             | Demande un mot de passe sans l'afficher et imprime la ligne `passwordHash:` à coller. Ne sert plus qu'à préparer un `albums.yaml` d'amorçage. Un argument est accepté mais laisse une trace dans l'historique du shell.                                              |
+| `pnpm --filter @gdv/server seed-demo [nombre]`   | Remplit l'index **et** le cache avec des médias générés localement, pour travailler l'interface sans compte Drive. Défaut : 240 par album.                                                                                                                           |
 
-`seed-demo` insère dans **tous** les albums déclarés et écrit les cinq variantes
+`seed-demo` insère dans **tous** les albums de la base et écrit les cinq variantes
 en cache (`t320`, `t640`, `t1280`, `full`, `hd`) pour que le pipeline ne cherche
 jamais à joindre Drive. Deux avertissements : il faut **redémarrer le
 serveur** ensuite, puisque le cache n'est inventorié qu'au démarrage ; et il ne

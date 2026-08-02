@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "pnpm -r test",
-    "hash-password": "pnpm --filter @gdv/server hash-password"
+    "hash-password": "pnpm --filter @gdv/server hash-password",
+    "create-admin": "pnpm --filter @gdv/server create-admin"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

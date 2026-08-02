@@ -3,9 +3,13 @@ import yaml from 'js-yaml';
 import { z } from 'zod';
 
 /**
- * Config utilisateur (`config/albums.yaml`) : qui peut se connecter, et quels
- * dossiers Drive sont exposés en albums. C'est le seul point de contrôle des
- * accès — il n'y a pas d'inscription ni d'écran d'administration des comptes.
+ * Lecture de `config/albums.yaml` : comptes, albums, droits et réglages.
+ *
+ * Ce fichier n'est plus la source de vérité — la base l'est, et l'application
+ * s'administre depuis `/admin`. Il ne sert qu'à **amorcer** une installation
+ * neuve (voir `bootstrap.ts`) : dès qu'un compte existe en base, il n'est plus
+ * jamais relu. Le schéma reste donc figé sur ce que les installations
+ * existantes ont pu écrire.
  */
 
 const identifier = z
@@ -128,25 +132,4 @@ export function loadConfig(path: string): AppConfig {
     throw error;
   }
   return parseConfig(raw);
-}
-
-/** Albums visibles par cet utilisateur, dans l'ordre déclaré de la config. */
-export function visibleAlbums(config: AppConfig, username: string): ConfigAlbum[] {
-  const user = findUser(config, username);
-  if (!user) return [];
-  if (user.albums.includes('*')) return config.albums;
-  const allowed = new Set(user.albums);
-  return config.albums.filter((album) => allowed.has(album.id));
-}
-
-export function canSeeAlbum(config: AppConfig, username: string, albumId: string): boolean {
-  const user = findUser(config, username);
-  if (!user) return false;
-  return user.albums.includes('*') || user.albums.includes(albumId);
-}
-
-/** Recherche insensible à la casse : le login ne doit pas dépendre de la frappe. */
-export function findUser(config: AppConfig, username: string): ConfigUser | undefined {
-  const needle = username.toLowerCase();
-  return config.users.find((user) => user.username.toLowerCase() === needle);
 }

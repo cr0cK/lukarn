@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { canSeeAlbum, parseConfig, visibleAlbums } from '../src/config.js';
+import { parseConfig } from '../src/config.js';
+
+/**
+ * `config/albums.yaml` ne sert plus qu'à amorcer une installation neuve, mais
+ * il doit toujours être lu et validé exactement comme avant : les instances en
+ * service repassent par ce parseur au premier démarrage après la mise à jour.
+ */
 
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA';
 
@@ -101,31 +107,14 @@ albums:
   });
 });
 
-describe('scoping des albums', () => {
-  const config = parseConfig(VALID);
-
-  it('donne tous les albums au joker', () => {
+describe('lecture du fichier', () => {
+  it('rend les droits tels quels, joker compris', () => {
+    const config = parseConfig(VALID);
+    assert.deepEqual(config.users[0]!.albums, ['*']);
+    assert.deepEqual(config.users[1]!.albums, ['vacances']);
     assert.deepEqual(
-      visibleAlbums(config, 'alexis').map((album) => album.id),
+      config.albums.map((album) => album.id),
       ['vacances', 'prive'],
     );
-  });
-
-  it('limite un utilisateur à ses albums', () => {
-    assert.deepEqual(
-      visibleAlbums(config, 'famille').map((album) => album.id),
-      ['vacances'],
-    );
-    assert.equal(canSeeAlbum(config, 'famille', 'vacances'), true);
-    assert.equal(canSeeAlbum(config, 'famille', 'prive'), false);
-  });
-
-  it('ne donne rien à un utilisateur inconnu', () => {
-    assert.deepEqual(visibleAlbums(config, 'intrus'), []);
-    assert.equal(canSeeAlbum(config, 'intrus', 'vacances'), false);
-  });
-
-  it('ignore la casse du login', () => {
-    assert.equal(canSeeAlbum(config, 'FaMiLlE', 'vacances'), true);
   });
 });

@@ -1,5 +1,4 @@
 import type { drive_v3 } from '@googleapis/drive';
-import type { ConfigAlbum } from '../config.js';
 import type { MediaRepo, MediaUpsert, SyncStateRepo } from '../repo.js';
 import {
   classify,
@@ -17,6 +16,16 @@ const FIELDS =
 const PAGE_SIZE = 1000;
 /** Garde-fou contre un dossier pointant sur toute une arborescence géante. */
 const MAX_FOLDERS = 5000;
+
+/**
+ * Ce dont la synchronisation a besoin d'un album, et rien de plus : elle ne
+ * dépend ni du fichier de configuration, ni de la forme stockée en base.
+ */
+export interface SyncAlbum {
+  id: string;
+  folderId: string;
+  recursive: boolean;
+}
 
 export interface SyncResult {
   albumId: string;
@@ -55,7 +64,7 @@ export class Syncer {
   }
 
   /** Lance la sync, ou renvoie celle déjà en cours pour cet album. */
-  sync(album: ConfigAlbum): Promise<SyncResult> {
+  sync(album: SyncAlbum): Promise<SyncResult> {
     const existing = this.running.get(album.id);
     if (existing) return existing;
 
@@ -65,7 +74,7 @@ export class Syncer {
   }
 
   /** Sync séquentielle de tous les albums : ménage le quota API de Drive. */
-  async syncAll(albums: ConfigAlbum[]): Promise<SyncResult[]> {
+  async syncAll(albums: SyncAlbum[]): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
     for (const album of albums) {
       try {
@@ -81,7 +90,7 @@ export class Syncer {
     return results;
   }
 
-  private async run(album: ConfigAlbum): Promise<SyncResult> {
+  private async run(album: SyncAlbum): Promise<SyncResult> {
     const startedAt = Date.now();
     // Estampille du passage : tout média non revu avec cette valeur a disparu
     // du dossier et sera retiré de l'index à la fin.

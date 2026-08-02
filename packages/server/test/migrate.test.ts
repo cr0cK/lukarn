@@ -67,6 +67,27 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute les tables de configuration à une base en version 2 sans toucher à l’index', () => {
+    const db = databaseAtVersion(2);
+    db.prepare(
+      `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
+       VALUES ('vacances', 'abc', 'IMG.jpg', 'image/jpeg', 'photo',
+               '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    for (const table of ['users', 'albums', 'user_albums', 'settings']) {
+      assert.ok(columns(db, table).length > 0, `table ${table} manquante`);
+      // Les tables arrivent vides : c'est `bootstrap.ts` qui les remplit, à
+      // partir d'`albums.yaml` quand l'instance en avait un.
+      assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n, 0);
+    }
+
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM media').get() as { n: number }).n, 1);
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

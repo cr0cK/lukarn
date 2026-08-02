@@ -4,12 +4,12 @@ Base unique : `${DATA_DIR}/gdv.db`, ouverte par `packages/server/src/db.ts`.
 
 ## Pragmas
 
-| Pragma                 | Raison                                                                                                    |
-| ---------------------- | --------------------------------------------------------------------------------------------------------- |
-| `journal_mode = WAL`   | Les lectures de la grille ne bloquent pas la sync qui écrit en fond.                                      |
-| `synchronous = NORMAL` | Compromis durabilité/débit acceptable : l'index est reconstructible.                                      |
-| `foreign_keys = ON`    | Aucune clé étrangère n'est déclarée aujourd'hui ; le pragma est là pour ne pas l'oublier si on en ajoute. |
-| `busy_timeout = 5000`  | Une écriture concurrente attend au lieu de renvoyer `SQLITE_BUSY`.                                        |
+| Pragma                 | Raison                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------- |
+| `journal_mode = WAL`   | Les lectures de la grille ne bloquent pas la sync qui écrit en fond.                                     |
+| `synchronous = NORMAL` | Compromis durabilité/débit acceptable : l'index est reconstructible.                                     |
+| `foreign_keys = ON`    | Indispensable depuis la migration 3 : c'est lui qui fait jouer les `ON DELETE CASCADE` de `user_albums`. |
+| `busy_timeout = 5000`  | Une écriture concurrente attend au lieu de renvoyer `SQLITE_BUSY`.                                       |
 
 ## Tables
 
@@ -19,7 +19,7 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 
 | Colonne                                                                                                       | Type    | Note                                                                                                                                  |
 | ------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `album_id`                                                                                                    | TEXT    | Id de l'album tel que déclaré dans `albums.yaml`.                                                                                     |
+| `album_id`                                                                                                    | TEXT    | Id de l'album, tel qu'il figure dans la table `albums`. Pas de clé étrangère : l'index est nettoyé explicitement (voir plus bas).     |
 | `id`                                                                                                          | TEXT    | Id du fichier Drive.                                                                                                                  |
 | `name`                                                                                                        | TEXT    | Nom du fichier ; sert au `Content-Disposition` du téléchargement.                                                                     |
 | `mime_type`                                                                                                   | TEXT    | Renvoyé tel quel sur `/original`.                                                                                                     |
@@ -60,6 +60,48 @@ perdu son autorisation.
 `id` (PK, 32 octets aléatoires en base64url), `username`, `created_at`,
 `expires_at`. TTL de 30 jours (`sessions.ts`).
 
+### `users`, `albums`, `user_albums`, `settings`
+
+La configuration : qui se connecte, quels dossiers Drive sont exposés, et les
+réglages. Écrites **uniquement** par `ConfigRepo` (`config-repo.ts`).
+
+| Table         | Colonnes                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------- |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at` |
+| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `position`, `created_at`, `updated_at`   |
+| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                        |
+| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`           |
+
+Quatre choix à connaître :
+
+- **`COLLATE NOCASE` sur `users.username`.** Le login est insensible à la casse
+  depuis toujours ; l'unicité devait l'être aussi, sinon « Alexis » et « alexis »
+  coexisteraient et la connexion en désignerait un au hasard. La collation donne
+  les deux à la fois : la casse saisie est stockée et affichée telle quelle,
+  l'index qui porte la clé primaire compare sans la casse. Une seconde colonne en
+  minuscules aurait fait le même travail au prix d'un risque de désynchronisation
+  entre les deux. NOCASE ne replie que l'ASCII — ce que `USERNAME_PATTERN` est le
+  seul à accepter.
+- **Le joker `*` est un booléen `all_albums`, pas une ligne de liaison.** Une
+  ligne `album_id = '*'` demanderait un album fictif pour satisfaire la clé
+  étrangère, ou d'y renoncer. Surtout, le joker doit couvrir les albums **créés
+  plus tard** : une liste de liaisons figée ne le ferait pas.
+- **`position`** porte l'ordre d'affichage. `created_at` ne le restituerait pas :
+  l'amorçage crée tous les albums dans la même milliseconde.
+- **`created_at` / `updated_at` sont écrits par l'application**, en ISO 8601 UTC,
+  pas par `CURRENT_TIMESTAMP` qui produirait un format différent du reste de la
+  base.
+
+`settings` porte des valeurs JSON et les défauts vivent dans le code
+(`DEFAULT_SETTINGS`) : une clé absente n'est pas une anomalie, et ajouter un
+réglage ne demande pas de migration.
+
+**Cache mémoire.** `canSee()` est appelé à chaque requête média, donc sur chaque
+vignette d'une grille. `ConfigRepo` tient un instantané en mémoire (albums,
+comptes, droits, réglages), reconstruit à la première lecture qui suit une
+écriture. Étant le seul écrivain de ces quatre tables, il ne peut pas servir un
+instantané périmé.
+
 ## Index
 
 | Index                                                      | Ce qu'il sert                                                                                                                                                    |
@@ -67,6 +109,7 @@ perdu son autorisation.
 | `idx_media_album_taken (album_id, taken_at DESC, id DESC)` | Le tri chronologique de la grille et la reprise par curseur. SQLite parcourt le même index à l'envers pour `order=asc`, donc un seul index couvre les deux sens. |
 | `idx_media_id (id)`                                        | `albumsContaining(mediaId)`, appelé à **chaque** requête média pour le contrôle d'accès. Sans lui, chaque vignette provoquerait un scan complet.                 |
 | `idx_sessions_expires (expires_at)`                        | La purge horaire des sessions expirées.                                                                                                                          |
+| `idx_user_albums_album (album_id)`                         | « Qui a accès à cet album », affiché par `GET /api/admin/albums`. Le sens inverse est déjà couvert par la clé primaire `(username, album_id)`.                   |
 
 ## La clé primaire composite `(album_id, id)`
 
@@ -105,10 +148,18 @@ laisse `user_version` inchangé pour que la reprise reparte de la même étape.
 
 État actuel :
 
-| Version | Contenu                                                                           |
-| ------- | --------------------------------------------------------------------------------- |
-| 1       | Schéma initial : `media`, `sync_state`, `oauth_token`, `sessions` et leurs index. |
-| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                             |
+| Version | Contenu                                                                             |
+| ------- | ----------------------------------------------------------------------------------- |
+| 1       | Schéma initial : `media`, `sync_state`, `oauth_token`, `sessions` et leurs index.   |
+| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                               |
+| 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base. |
+
+La migration 3 crée des tables vides. Ce sont `bootstrap.ts` et `ConfigRepo` qui
+les remplissent au démarrage, à partir de `config/albums.yaml` si l'installation
+en avait un (voir [06](./06-configuration-et-deploiement.md)) —
+`packages/server/test/bootstrap.test.ts` vérifie qu'une instance en service
+retrouve ses comptes, ses droits, ses réglages, son index et son jeton OAuth
+après la mise à jour.
 
 ## Pagination par curseur
 
@@ -148,5 +199,8 @@ curseur ne saurait pas laquelle a déjà été servie.
   mémoire au démarrage.
 - Les compteurs du throttle de connexion : en mémoire, perdus au redémarrage —
   volontairement (voir [08](./08-decisions.md)).
-- Les utilisateurs, mots de passe et albums : dans `config/albums.yaml`. La base
-  ne contient aucun élément de configuration.
+
+En revanche, les comptes, les albums et les réglages **y sont** depuis la
+migration 3. `config/albums.yaml` ne sert plus qu'à amorcer une installation
+neuve. Conséquence d'exploitation : le volume `gdv-data` contient désormais les
+comptes, c'est la seule chose à sauvegarder.

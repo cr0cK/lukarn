@@ -5,13 +5,13 @@
 C'est la confusion la plus coûteuse du projet. Ce sont deux mécanismes sans
 rapport, qui ne partagent ni stockage, ni durée de vie, ni population.
 
-|                 | OAuth Google                           | Identifiant / mot de passe          |
-| --------------- | -------------------------------------- | ----------------------------------- |
-| Qui             | Le propriétaire du Drive, une personne | Chaque visiteur                     |
-| Quand           | Une fois, à l'installation             | À chaque session (30 jours)         |
-| Ce que ça ouvre | La lecture du Drive **par le serveur** | Les albums attribués à ce compte    |
-| Où c'est stocké | `oauth_token`, refresh token chiffré   | `config/albums.yaml`, hash argon2id |
-| Qui déclenche   | `/admin` → « Connecter Google Drive »  | Le formulaire de `/login`           |
+|                 | OAuth Google                           | Identifiant / mot de passe       |
+| --------------- | -------------------------------------- | -------------------------------- |
+| Qui             | Le propriétaire du Drive, une personne | Chaque visiteur                  |
+| Quand           | Une fois, à l'installation             | À chaque session (30 jours)      |
+| Ce que ça ouvre | La lecture du Drive **par le serveur** | Les albums attribués à ce compte |
+| Où c'est stocké | `oauth_token`, refresh token chiffré   | Table `users`, hash argon2id     |
+| Qui déclenche   | `/admin` → « Connecter Google Drive »  | Le formulaire de `/login`        |
 
 Un visiteur ne voit jamais Google, n'a besoin d'aucun compte Google, et ne reçoit
 jamais d'URL `googleapis.com`. L'application détient un seul jeton — celui du
@@ -19,18 +19,27 @@ propriétaire — et sert tout le contenu à travers lui.
 
 ## Mots de passe
 
-Hachés en **argon2id** avec les paramètres par défaut de `argon2.hash()`
-(`packages/server/src/scripts/hash-password.ts`). Le hash est collé dans
-`albums.yaml` ; `config.ts` refuse toute valeur qui ne commence pas par
-`$argon2`, ce qui écarte un mot de passe laissé en clair par mégarde.
+Hachés en **argon2id** avec les paramètres par défaut de `argon2.hash()`. Le mot
+de passe arrive en clair sur `POST`/`PATCH /api/admin/users` et n'est haché que
+côté serveur ; **aucune réponse d'API ne contient jamais d'empreinte**
+(`packages/server/test/admin-config.test.ts` le vérifie sur la création comme sur
+la liste). Longueur minimale : `PASSWORD_MIN_LENGTH` (8), partagée avec le front.
+
+Deux autres chemins produisent une empreinte : `pnpm create-admin` pour le tout
+premier administrateur d'une installation neuve, et `pnpm hash-password` pour un
+`config/albums.yaml` d'amorçage — `config.ts` y refuse toute valeur qui ne
+commence pas par `$argon2`, ce qui écarte un mot de passe laissé en clair par
+mégarde.
 
 `routes/auth.ts` compare **toujours** un hash, même quand l'identifiant est
 inconnu : un `DUMMY_HASH` constant est vérifié dans ce cas. Sans cette
 précaution, un login inexistant répondrait en une fraction du temps d'un mot de
 passe faux, ce qui permettrait d'énumérer les comptes au chronomètre.
 
-La recherche d'utilisateur est **insensible à la casse** (`findUser`), et la
-config rejette deux comptes dont les identifiants ne diffèrent que par la casse.
+La recherche d'utilisateur est **insensible à la casse** (`ConfigRepo.user`), et
+l'unicité l'est aussi — c'est le rôle du `COLLATE NOCASE` de la clé primaire
+(voir [03](./03-modele-de-donnees.md)). Créer « ALEXIS » quand « alexis » existe
+répond **409**, jamais un écrasement silencieux.
 
 ## Throttle des tentatives
 
@@ -78,25 +87,44 @@ base — exactement ce qu'on cherchait à éviter. Ici la session _est_ la ligne
 base, donc :
 
 - `POST /auth/logout` la supprime, l'accès est coupé au tir suivant ;
-- retirer un utilisateur d'`albums.yaml` puis recharger la config détruit ses
-  sessions (`AppContext.reloadConfig`) ;
-- le hook `onRequest` de `plugins/auth.ts` revérifie à **chaque requête** que
-  l'utilisateur de la session existe encore dans la config, et détruit la session
-  sinon. La config fait autorité, pas le cookie.
+- le hook `onRequest` de `plugins/auth.ts` revérifie à **chaque requête** que le
+  compte de la session existe encore en base, et détruit la session sinon. La
+  configuration fait autorité, pas le cookie.
+
+Quelles opérations d'administration ferment une session, et lesquelles ne le
+font pas :
+
+| Opération                  | Sessions    | Pourquoi                                                                                          |
+| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
+| Supprimer un compte        | **fermées** | Le compte n'existe plus ; le hook les tuerait de toute façon, autant le faire tout de suite.      |
+| Changer le mot de passe    | **fermées** | C'est la raison même du changement : le navigateur déjà connecté doit être coupé.                 |
+| Retirer le rôle admin      | conservées  | Le compte reste légitime. `admin` est relu à chaque requête : `/api/admin/*` répond 403 aussitôt. |
+| Modifier la liste d'albums | conservées  | Idem : `canSee()` est réévalué à chaque requête, l'accès retiré tombe au tir suivant.             |
 
 Le coût est une lecture SQLite par requête — négligeable en process.
 
 ## Contrôle d'accès aux albums
 
-Tout part de `config.ts` : `visibleAlbums(config, username)` et
-`canSeeAlbum(config, username, albumId)`. Le champ `albums` d'un utilisateur est
-une liste d'ids, ou `["*"]` pour tous. Le chargement de la config refuse une
-référence à un album inexistant — presque toujours une faute de frappe qui
-priverait silencieusement quelqu'un de son accès.
+Tout part de `ConfigRepo` : `albumsFor(username)` et `canSee(username, albumId)`,
+exposés par `AppContext` sous les mêmes noms. Les droits d'un compte sont soit
+une liste d'ids (table `user_albums`), soit le joker `*` (colonne `all_albums`),
+qui couvre aussi les albums créés ensuite.
+
+Les deux lectures passent par l'instantané mémoire de `ConfigRepo`, pas par
+SQLite : `canSee()` est appelé sur chaque vignette d'une grille, une requête par
+tuile serait un net recul.
+
+Attribuer un album inexistant est refusé (**400 `unknown_album`**) — c'est la
+vérification que faisait le chargement du YAML, presque toujours une faute de
+frappe qui priverait silencieusement quelqu'un de son accès.
 
 `admin: true` donne accès aux routes `/api/admin/*` et au callback OAuth. Ça ne
-donne **pas** automatiquement tous les albums : `albums: ["*"]` est un réglage
-distinct.
+donne **pas** automatiquement tous les albums : le joker est un réglage distinct.
+
+**Le dernier administrateur est protégé.** Le supprimer, ou lui retirer son rôle,
+répond **409 `last_admin`** : sans lui, plus personne ne pourrait connecter
+Drive, créer un compte, ni rendre le rôle à quiconque — l'instance deviendrait
+inadministrable et il faudrait un accès shell pour la réparer.
 
 ## Contrôle d'accès aux médias : 404 et jamais 403
 
@@ -187,12 +215,12 @@ son échec est ignoré).
 
 ## Ce que voit, et ne voit pas, un visiteur
 
-| Voit                                                                                                       | Ne voit pas                                                   |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Les albums qui lui sont attribués, leur titre, description, couverture, nombre d'éléments, bornes de dates | L'existence des autres albums, y compris par sondage d'URL    |
-| Les métadonnées et l'EXIF des médias de ses albums                                                         | Toute URL Google, tout id de dossier Drive, tout `folderId`   |
-| Les originaux de ses albums, en téléchargement                                                             | La liste des utilisateurs, `albums.yaml`, l'état des synchros |
-| Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué       |
+| Voit                                                                                                       | Ne voit pas                                                 |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Les albums qui lui sont attribués, leur titre, description, couverture, nombre d'éléments, bornes de dates | L'existence des autres albums, y compris par sondage d'URL  |
+| Les métadonnées et l'EXIF des médias de ses albums                                                         | Toute URL Google, tout id de dossier Drive, tout `folderId` |
+| Les originaux de ses albums, en téléchargement                                                             | La liste des comptes, les réglages, l'état des synchros     |
+| Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué     |
 
 ## Divers
 

@@ -77,6 +77,64 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT;
   `,
+
+  // 3 — comptes, albums et réglages passent de config/albums.yaml à la base.
+  // Le fichier ne sert plus qu'à amorcer une installation neuve ; une fois ces
+  // tables peuplées, il n'est plus jamais relu.
+  `
+  CREATE TABLE users (
+    -- COLLATE NOCASE sur la clé primaire : le login est déjà insensible à la
+    -- casse, et l'unicité doit l'être aussi — sinon « Alexis » et « alexis »
+    -- coexisteraient et la connexion en désignerait un au hasard. La casse
+    -- saisie reste stockée telle quelle et c'est elle qui est affichée. Une
+    -- seconde colonne en minuscules donnerait le même résultat, au prix d'un
+    -- risque de désynchronisation entre les deux. NOCASE ne replie que
+    -- l'ASCII : c'est exactement ce qu'accepte USERNAME_PATTERN.
+    username       TEXT PRIMARY KEY COLLATE NOCASE,
+    password_hash  TEXT NOT NULL,
+    admin          INTEGER NOT NULL DEFAULT 0,
+    -- Joker « tous les albums ». Un booléen plutôt qu'une ligne '*' dans
+    -- user_albums : cette ligne-là exigerait un album fictif pour satisfaire la
+    -- clé étrangère, ou d'y renoncer. Et le joker doit suivre les albums créés
+    -- plus tard, ce qu'une liste de liaisons figées ne ferait pas.
+    all_albums     INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+  );
+
+  CREATE TABLE albums (
+    id           TEXT PRIMARY KEY,
+    title        TEXT NOT NULL,
+    description  TEXT,
+    folder_id    TEXT NOT NULL,
+    recursive    INTEGER NOT NULL DEFAULT 1,
+    -- Rang d'affichage. Il remplace l'ordre de déclaration du YAML, que
+    -- created_at ne restituerait pas : l'amorçage crée tous les albums dans la
+    -- même milliseconde.
+    position     INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+  );
+
+  -- ON DELETE CASCADE : une liaison orpheline redonnerait l'accès à un compte
+  -- homonyme recréé plus tard, ou à un album recréé sous le même id.
+  CREATE TABLE user_albums (
+    username  TEXT NOT NULL REFERENCES users (username) ON DELETE CASCADE,
+    album_id  TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    PRIMARY KEY (username, album_id)
+  );
+
+  -- Sert « qui a accès à cet album », affiché dans l'écran d'administration.
+  CREATE INDEX idx_user_albums_album ON user_albums (album_id);
+
+  -- Réglages en clé/valeur JSON. Les défauts vivent dans le code : une clé
+  -- absente n'est pas une anomalie, et ajouter un réglage ne demande pas de
+  -- migration.
+  CREATE TABLE settings (
+    key    TEXT PRIMARY KEY,
+    value  TEXT NOT NULL
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

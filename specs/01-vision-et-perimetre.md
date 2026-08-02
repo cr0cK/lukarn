@@ -16,10 +16,10 @@ passe, album par album.
 
 Deux rôles, et seulement deux :
 
-| Rôle            | Combien              | Ce qu'il fait                                                                        |
-| --------------- | -------------------- | ------------------------------------------------------------------------------------ |
-| Le propriétaire | Un seul par instance | Connecte son Drive une fois en OAuth, édite `config/albums.yaml`, surveille `/admin` |
-| Les visiteurs   | Quelques comptes     | Se connectent avec un identifiant/mot de passe et consultent leurs albums            |
+| Rôle            | Combien              | Ce qu'il fait                                                                      |
+| --------------- | -------------------- | ---------------------------------------------------------------------------------- |
+| Le propriétaire | Un seul par instance | Connecte son Drive une fois en OAuth, administre comptes et albums depuis `/admin` |
+| Les visiteurs   | Quelques comptes     | Se connectent avec un identifiant/mot de passe et consultent leurs albums          |
 
 Un visiteur n'a jamais de compte Google et ne voit jamais une URL Google. Tout
 le contenu transite par le serveur, qui l'obtient avec l'unique jeton du
@@ -34,11 +34,11 @@ le projet à sa taille.
 | ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Toute écriture dans Drive                   | Le scope demandé est `drive.readonly` (`packages/server/src/drive/service.ts`). Aucun bug de l'app ne peut détruire les originaux. |
 | Édition, retouche, rotation persistée       | Les originaux appartiennent à Drive ; l'app n'en produit que des dérivés jetables.                                                 |
-| Inscription, écran de gestion des comptes   | Les comptes vivent dans `config/albums.yaml`. Pas de formulaire, pas de mot de passe oublié, pas de courriel à envoyer.            |
+| Inscription, mot de passe oublié            | Les comptes sont créés par le propriétaire depuis `/admin`. Pas de formulaire public, pas de courriel à envoyer.                   |
 | Partage public par lien                     | Toute route média exige une session. Un lien copié à un tiers ne lui donne rien.                                                   |
 | Reconnaissance faciale, recherche, tags     | Demanderait un traitement du contenu — donc de télécharger tous les originaux, ce que l'indexation évite précisément.              |
 | Transcodage vidéo                           | ffmpeg sur un VPS modeste consomme le CPU qu'on n'a pas. Les `Range` sont relayées telles quelles à Drive.                         |
-| Albums construits par requête (dates, tags) | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans le YAML.                                              |
+| Albums construits par requête (dates, tags) | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans `/admin`.                                             |
 | Multi-tenant, plusieurs Drive               | La table `oauth_token` a une contrainte `CHECK (id = 1)` : une instance, un Drive.                                                 |
 
 ## Les contraintes qui ont guidé la conception

@@ -1,6 +1,5 @@
 import { dirname } from 'node:path';
 import { buildApp } from './app.js';
-import { loadConfig } from './config.js';
 import type { AppContext } from './context.js';
 import { loadDotEnv } from './dotenv.js';
 import { loadEnv } from './env.js';
@@ -8,45 +7,69 @@ import { loadEnv } from './env.js';
 /** Purge des sessions expirées et des compteurs de throttle. */
 const HOUSEKEEPING_INTERVAL_MS = 60 * 60 * 1000;
 
-function startScheduler(context: AppContext): NodeJS.Timeout[] {
-  const timers: NodeJS.Timeout[] = [];
-
+/**
+ * Minuteurs de fond. Le minuteur de synchronisation est reprogrammé dès que le
+ * réglage change : armé une fois pour toutes, modifier l'intervalle depuis
+ * l'administration n'aurait d'effet qu'au redémarrage suivant.
+ */
+function startScheduler(context: AppContext): () => void {
   const housekeeping = setInterval(() => {
     const purged = context.sessions.purgeExpired();
     if (purged > 0) context.log.debug(`${purged} sessions expirées purgées`);
   }, HOUSEKEEPING_INTERVAL_MS);
-  timers.push(housekeeping);
+  housekeeping.unref();
 
-  const intervalMinutes = context.config.sync.intervalMinutes;
-  if (intervalMinutes > 0) {
-    const periodic = setInterval(
+  let periodic: NodeJS.Timeout | null = null;
+  let armedMinutes = -1;
+
+  const arm = (minutes: number): void => {
+    // Réarmer à l'identique redémarrerait le compte à rebours : un réglage
+    // enregistré toutes les cinq minutes repousserait la synchronisation
+    // indéfiniment.
+    if (minutes === armedMinutes) return;
+    armedMinutes = minutes;
+
+    if (periodic) {
+      clearInterval(periodic);
+      periodic = null;
+    }
+    if (minutes <= 0) {
+      context.log.info('Synchronisation automatique désactivée');
+      return;
+    }
+
+    periodic = setInterval(
       () => {
         if (!context.drive.connected) return;
         void context.syncer.syncAll(context.albums).catch((error: unknown) => {
           context.log.error({ err: error }, 'Synchronisation périodique en échec');
         });
       },
-      intervalMinutes * 60 * 1000,
+      minutes * 60 * 1000,
     );
-    timers.push(periodic);
-    context.log.info(`Synchronisation automatique toutes les ${intervalMinutes} min`);
-  }
+    // `unref` : ce minuteur ne doit pas maintenir le process en vie à lui seul.
+    periodic.unref();
+    context.log.info(`Synchronisation automatique toutes les ${minutes} min`);
+  };
 
-  // `unref` : ces minuteurs ne doivent pas maintenir le process en vie à eux seuls.
-  timers.forEach((timer) => timer.unref());
-  return timers;
+  arm(context.settings.syncIntervalMinutes);
+  context.onSettingsChanged((settings) => arm(settings.syncIntervalMinutes));
+
+  return () => {
+    clearInterval(housekeeping);
+    if (periodic) clearInterval(periodic);
+  };
 }
 
 async function main(): Promise<void> {
   const envFile = loadDotEnv();
 
   const env = loadEnv(process.env, envFile ? dirname(envFile) : process.cwd());
-  const config = loadConfig(env.configPath);
-  const { server, context } = await buildApp(env, config);
+  const { server, context } = await buildApp(env);
 
-  const timers = startScheduler(context);
+  const stopScheduler = startScheduler(context);
 
-  if (config.sync.onStartup && context.drive.connected) {
+  if (context.settings.syncOnStartup && context.drive.connected) {
     // Sans `await` : le serveur doit accepter des requêtes pendant que l'index
     // se remplit, l'ancien index restant servi entre-temps.
     void context.syncer.syncAll(context.albums).catch((error: unknown) => {
@@ -56,7 +79,7 @@ async function main(): Promise<void> {
 
   const shutdown = async (signal: string): Promise<void> => {
     context.log.info(`${signal} reçu, arrêt en cours`);
-    timers.forEach((timer) => clearInterval(timer));
+    stopScheduler();
     try {
       await server.close();
       context.close();

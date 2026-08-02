@@ -461,3 +461,73 @@ implémentations : cloisonnement des albums, réversibilité des migrations,
 absence de doublon en pagination, ordre LRU, tolérance du parseur de `Range`,
 service du front. Ils documentent le comportement attendu autant qu'ils le
 vérifient.
+
+---
+
+## D24 — La configuration passe en base, le YAML devient un amorçage
+
+**Contexte.** Comptes et albums vivaient dans `config/albums.yaml`, relu au
+démarrage ou par un bouton. Le propriétaire veut administrer son instance depuis
+l'application, sans éditer de fichier sur le VPS ni redémarrer un conteneur.
+
+**Choix.** Quatre tables (`users`, `albums`, `user_albums`, `settings`,
+migration 3), un `ConfigRepo` qui en est le seul écrivain, et une API
+d'administration sous `/api/admin`. `config/albums.yaml` n'est plus lu que tant
+qu'aucun compte n'existe : il **amorce** une installation neuve, et c'est le
+chemin de mise à jour des instances en service.
+
+**Écarté.** Faire écrire le YAML par l'application : il est monté en lecture
+seule dans le conteneur, il faudrait sérialiser en préservant commentaires et
+ordre, et deux écritures concurrentes se perdraient. Écarté aussi : garder le
+fichier comme source de vérité avec une écriture au retour, qui aurait laissé
+deux vérités à réconcilier — et un redémarrage aurait pu écraser une
+modification faite dans l'application.
+
+**Conséquences.** Le volume `gdv-data` contient désormais les comptes : c'est la
+seule chose à sauvegarder, et sa perte fait perdre les accès en plus de l'index.
+`POST /api/admin/reload` et `AppContext.reloadConfig()` disparaissent. Une
+installation neuve sans fichier a besoin de `pnpm create-admin`, sinon personne
+ne peut se connecter.
+
+---
+
+## D25 — Instantané mémoire de la configuration
+
+**Contexte.** `canSee()` est appelé sur chaque requête média, donc sur chaque
+vignette d'une grille de plusieurs centaines de tuiles. La config en mémoire
+qu'on remplaçait ne coûtait rien.
+
+**Choix.** `ConfigRepo` tient un instantané (albums, comptes, droits, réglages),
+reconstruit à la première lecture qui suit une écriture. Étant le seul écrivain
+de ces tables, il ne peut pas servir un état périmé.
+
+**Écarté.** Une requête SQL par appel : indexée et en process, elle serait
+tenable, mais c'est plusieurs centaines de requêtes par ouverture d'album pour
+une donnée qui change quelques fois par mois. Écarté aussi : un cache à
+expiration temporelle, qui ferait survivre un accès retiré quelques secondes —
+inacceptable pour une décision d'autorisation.
+
+**Conséquences.** Toute écriture doit passer par `ConfigRepo`. Un `UPDATE` direct
+sur `users` ou `albums` depuis un autre module servirait un instantané périmé
+jusqu'à la prochaine écriture légitime.
+
+---
+
+## D26 — Changer le `folderId` d'un album purge son index
+
+**Contexte.** Modifier le dossier Drive d'un album existant laisse en base des
+médias qui appartiennent à l'ancien dossier.
+
+**Choix.** Purge immédiate (`clearAlbum`), état de synchro remis à `never`, et
+resynchronisation lancée en fond si Drive est connecté.
+
+**Écarté.** Attendre que la synchronisation suivante fasse le ménage par
+`deleteStale`. La fenêtre entre les deux est exactement celle où l'album montre
+ce que le propriétaire vient de vouloir retirer — et si Drive est déconnecté ou
+révoqué, cette fenêtre est sans fin. Écarté aussi : purger sans resynchroniser,
+qui laisserait un album vide et un clic de plus à faire.
+
+**Conséquences.** Une faute de frappe dans le `folderId` coûte une réindexation
+complète de l'album. C'est le prix de ne jamais servir le contenu d'un dossier
+qu'on vient de retirer. Les dérivés en cache disque, eux, ne sont pas touchés :
+ils sont indexés par id de fichier, donc partagés entre albums, et régénérables.

@@ -64,7 +64,7 @@ d'afficher le formulaire.
 | GET     | `/api/albums/:albumId/items/:mediaId` | session | `MediaDetail` |
 
 **`GET /api/albums`** — uniquement les albums attribués à l'utilisateur, dans
-l'ordre de déclaration d'`albums.yaml`. Tableau nu, non enveloppé.
+leur ordre de création (colonne `position`). Tableau nu, non enveloppé.
 
 **`GET /api/albums/:albumId`** — `404 not_found` si l'album n'existe pas **ou**
 n'est pas attribué (voir [04](./04-securite-et-acces.md)).
@@ -147,14 +147,23 @@ cache disque.
 
 `requireAdmin` en `preHandler` sur tout le préfixe `/api/admin`.
 
-| Méthode | Chemin                        | Réponse                                             |
-| ------- | ----------------------------- | --------------------------------------------------- |
-| GET     | `/api/admin/status`           | `200 AdminStatus`                                   |
-| GET     | `/api/admin/oauth/start`      | `200 { url }` · `400 oauth_not_configured`          |
-| POST    | `/api/admin/drive/disconnect` | `200 { ok: true }`                                  |
-| POST    | `/api/admin/resync`           | `202 { started: string[] }` · `400` · `404` · `503` |
-| POST    | `/api/admin/reload`           | `200 { ok, users, albums }` · `400 invalid_config`  |
-| POST    | `/api/admin/cache/clear`      | `200 { ok: true }`                                  |
+| Méthode | Chemin                        | Réponse                                                        |
+| ------- | ----------------------------- | -------------------------------------------------------------- |
+| GET     | `/api/admin/status`           | `200 AdminStatus`                                              |
+| GET     | `/api/admin/users`            | `200 AdminUser[]`                                              |
+| POST    | `/api/admin/users`            | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
+| PATCH   | `/api/admin/users/:username`  | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
+| DELETE  | `/api/admin/users/:username`  | `200 { ok: true }` · `404` · `409 last_admin`                  |
+| GET     | `/api/admin/albums`           | `200 AdminAlbum[]`                                             |
+| POST    | `/api/admin/albums`           | `201 AdminAlbum` · `400` · `409 conflict`                      |
+| PATCH   | `/api/admin/albums/:id`       | `200 AdminAlbum` · `400` · `404`                               |
+| DELETE  | `/api/admin/albums/:id`       | `200 { ok: true }` · `404`                                     |
+| GET     | `/api/admin/settings`         | `200 AppSettings`                                              |
+| PATCH   | `/api/admin/settings`         | `200 AppSettings` · `400`                                      |
+| GET     | `/api/admin/oauth/start`      | `200 { url }` · `400 oauth_not_configured`                     |
+| POST    | `/api/admin/drive/disconnect` | `200 { ok: true }`                                             |
+| POST    | `/api/admin/resync`           | `202 { started: string[] }` · `400` · `404` · `503`            |
+| POST    | `/api/admin/cache/clear`      | `200 { ok: true }`                                             |
 
 **`status`** — `AdminStatus` : `driveConnected`, `driveAccount`,
 `driveRevokedAt`, `oauthConfigured`, `albums` (**tous** les albums déclarés, pas
@@ -176,12 +185,59 @@ l'`albumId` fourni n'existe pas. Répond **202** immédiatement : la
 synchronisation tourne en tâche de fond, elle dépasserait le timeout d'une
 requête HTTP sur un gros album. L'avancement se suit dans `status`.
 
-**`reload`** — relit `albums.yaml`. En cas d'échec, `400 invalid_config` avec le
-message de parsing tel quel — c'est exactement ce qu'il faut corriger — et **la
-config précédente reste active**.
-
 **`cache/clear`** — supprime le répertoire de cache et le recrée. Les vignettes
 sont régénérées à la demande.
+
+### Comptes
+
+Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums? }`.
+`PATCH` : `UpdateUserRequest` = `{ password?, admin?, albums? }`, champ absent
+valant « inchangé ». La réponse est un `AdminUser` — **jamais d'empreinte de mot
+de passe, sous aucune clé**.
+
+- `username` : `USERNAME_PATTERN`, 64 caractères au plus. `password` :
+  `PASSWORD_MIN_LENGTH` (8) au minimum, 512 au plus.
+- `albums` : liste d'ids, ou `['*']` (`ALL_ALBUMS`) pour le joker. Un id inconnu
+  répond `400 unknown_album` en nommant le fautif. Une liste mêlant `'*'` et des
+  ids vaut joker.
+- `409 conflict` si l'identifiant est pris, **casse comprise**.
+- `409 last_admin` sur la suppression du dernier administrateur ou le retrait de
+  son rôle.
+- Supprimer un compte et changer son mot de passe ferment ses sessions ; changer
+  son rôle ou ses albums non (voir [04](./04-securite-et-acces.md)).
+
+### Albums
+
+`POST` : `CreateAlbumRequest` = `{ id, title, description?, folderId,
+recursive? }` (`recursive` vaut `true` par défaut). `PATCH` :
+`UpdateAlbumRequest`, où `description: null` efface la description. `409
+conflict` sur un id déjà pris.
+
+`AdminAlbum` complète la configuration par l'état réel : `itemCount`,
+`lastSyncAt`, `syncStatus`, `syncError`, et `members` — les comptes ayant un
+accès **explicite**, les détenteurs du joker n'y figurant pas.
+
+Deux effets de bord assumés :
+
+- **Changer `folderId` vide l'index de l'album** et remet son état de synchro à
+  `never` ; une resynchronisation démarre en fond si Drive est connecté. Les
+  médias indexés désignaient l'ancien dossier : les laisser en place les
+  laisserait consultables jusqu'à la prochaine sync.
+- **Supprimer un album retire ses médias de l'index.** Un fichier présent dans un
+  autre album y garde sa ligne (clé primaire `(album_id, id)`). Les dérivés en
+  cache disque sont laissés : ils sont indexés par id de fichier, donc partagés
+  entre albums, et régénérables — `cache/clear` les balaie tous.
+
+### Réglages
+
+`AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB }`. `PATCH`
+accepte un sous-ensemble (`UpdateSettingsRequest`) et renvoie l'état complet.
+Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0.
+
+**Les réglages s'appliquent sans redémarrage** : la limite de `MediaCache` est
+ajustée dans la foulée (avec éviction si elle baisse) et le minuteur de
+synchronisation de `main.ts` est reprogrammé. C'était la limite du rechargement
+de configuration d'avant, qui ne relisait ces valeurs qu'au démarrage.
 
 ## Callback OAuth — `routes/admin.ts`
 

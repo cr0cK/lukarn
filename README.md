@@ -4,9 +4,9 @@ Une galerie auto-hébergée pour parcourir les photos et vidéos d'un compte Goo
 Drive, en remplacement de la prévisualisation native : grille justifiée groupée
 par mois, visionneuse plein écran pilotable au clavier, thème sombre.
 
-L'accès se fait par identifiant et mot de passe. Un fichier YAML déclare quels
-dossiers Drive deviennent des albums et quels utilisateurs y ont accès — de quoi
-partager un album précis sans exposer le reste du Drive.
+L'accès se fait par identifiant et mot de passe. Depuis `/admin`, le
+propriétaire déclare quels dossiers Drive deviennent des albums et qui y a accès
+— de quoi partager un album précis sans exposer le reste du Drive.
 
 ## Deux authentifications à ne pas confondre
 
@@ -23,8 +23,9 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 
 - **Connexion OAuth à Google Drive**, autorisée une fois depuis `/admin`. Le
   refresh token est chiffré au repos et renouvelé automatiquement ensuite.
-- **Albums déclarés en YAML**, avec droits par utilisateur. Aucune inscription,
-  aucun écran de gestion de comptes.
+- **Comptes et albums administrés depuis l'application**, avec droits par
+  utilisateur, sans redémarrage ni fichier à éditer. Aucune inscription : c'est
+  le propriétaire qui crée les comptes.
 - **Photos et vidéos** : JPEG, PNG, WebP, HEIC, MP4, MOV. Vidéos lues en
   streaming avec seek natif, sans transcodage.
 - **EXIF** : date de prise de vue, appareil, objectif, ouverture, vitesse, ISO,
@@ -92,14 +93,20 @@ openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 32   # TOKEN_KEY
 # Renseigner aussi PUBLIC_URL, GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET
 
-cp config/albums.example.yaml config/albums.yaml
 pnpm install
-pnpm hash-password        # à répéter pour chaque utilisateur
+pnpm create-admin alexis  # premier administrateur, mot de passe demandé
 ```
 
-Renseigner `config/albums.yaml` avec les hashs obtenus et les identifiants des
-dossiers Drive. Le `folderId` est le segment après `/folders/` dans l'URL du
-dossier :
+Les comptes, les albums et les réglages s'administrent ensuite **depuis
+`/admin`**, sans éditer de fichier ni redémarrer.
+
+`config/albums.example.yaml` reste utilisable pour **amorcer** une installation
+neuve d'un coup : copié en `config/albums.yaml` (avec des empreintes produites
+par `pnpm hash-password`), il est repris en base au premier démarrage, puis plus
+jamais relu. Inutile si tu passes par `create-admin`.
+
+Chaque album pointe un dossier Drive par son `folderId` : le segment après
+`/folders/` dans l'URL du dossier.
 
 ```
 https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
@@ -131,7 +138,7 @@ photos.exemple.fr {
 
 À faire **une seule fois**, et par le propriétaire du Drive uniquement :
 
-1. Ouvrir `https://photos.exemple.fr` et se connecter avec un compte `admin: true`.
+1. Ouvrir `https://photos.exemple.fr` et se connecter avec un compte administrateur.
 2. Aller sur **/admin** → **Connecter Google Drive**.
 3. Choisir son compte Google et accepter. L'écran « Google n'a pas validé cette
    application » se passe par **Paramètres avancés → Accéder à**.
@@ -144,14 +151,24 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 
 | Action                             | Comment                                                                   |
 | ---------------------------------- | ------------------------------------------------------------------------- |
-| Ajouter un album ou un utilisateur | Éditer `config/albums.yaml`, puis **Recharger albums.yaml** dans `/admin` |
+| Ajouter un album ou un utilisateur | `/admin`, prise en compte immédiate                                       |
+| Changer un intervalle, une limite  | `/admin`, appliqué sans redémarrage                                       |
 | Forcer une synchronisation         | **Resynchroniser** dans `/admin`                                          |
 | Voir l'état des synchronisations   | `/admin`                                                                  |
 | Mettre à jour                      | `git pull && docker compose up -d --build`                                |
-| Sauvegarder                        | Le volume `gdv-data` (index + token). `gdv-cache` est régénérable         |
+| Sauvegarder                        | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable |
 | Consulter les logs                 | `docker compose logs -f`                                                  |
 
-Les albums sont resynchronisés automatiquement selon `sync.intervalMinutes`.
+Mise à jour d'une instance qui tournait sur `config/albums.yaml` : rien à faire.
+Au premier démarrage, ses comptes, albums, droits et réglages sont repris en
+base tels quels, sans réindexation ni nouveau consentement Google. Le fichier
+n'est ensuite plus relu — c'est `/admin` qui fait foi.
+
+**Le volume `gdv-data` contient désormais les comptes** : c'est lui, et lui
+seul, qu'il faut sauvegarder.
+
+Les albums sont resynchronisés automatiquement selon l'intervalle réglé dans
+`/admin`.
 Rien n'est jamais écrit dans Drive : la portée demandée est en lecture seule.
 
 ## Développement

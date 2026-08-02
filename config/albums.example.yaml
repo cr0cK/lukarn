@@ -1,9 +1,14 @@
-# Configuration de la visionneuse.
+# Amorçage d'une installation neuve.
 #
-# Copier ce fichier vers config/albums.yaml, qui n'est pas suivi par git.
-# Après modification : bouton « Recharger albums.yaml » dans /admin, ou
-# redémarrage du conteneur. Une configuration invalide est rejetée sans
-# interrompre l'instance en cours.
+# Les comptes, les albums et les réglages vivent en base et s'administrent
+# depuis /admin. Ce fichier ne sert qu'à peupler une base vide, une seule fois :
+# dès qu'un compte existe, il n'est plus jamais relu et le modifier ne fait plus
+# rien.
+#
+# Copier vers config/albums.yaml (non suivi par git), ou l'ignorer complètement
+# et créer le premier administrateur avec :
+#
+#     pnpm create-admin <identifiant>
 
 users:
   # Génère chaque hash avec : pnpm hash-password

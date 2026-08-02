@@ -57,6 +57,19 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 | `useAlbumItems`  | `['items', id, order]`    | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers. |
 | `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée seulement quand le panneau EXIF est ouvert.                                                                                                           |
 | `useAdminStatus` | `['admin','status']`      | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                        |
+| `useAdminUsers`  | `['admin','users']`       | Liste d'administration des comptes.                                                                                                                                                  |
+| `useAdminAlbums` | `['admin','albums']`      | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                    |
+| `useSettings`    | `['admin','settings']`    |                                                                                                                                                                                      |
+
+Une mutation par opération d'administration — `useCreateUser`, `useUpdateUser`,
+`useDeleteUser`, `useCreateAlbum`, `useUpdateAlbum`, `useDeleteAlbum`,
+`useResync`, `useUpdateSettings` — chacune invalidant ce qu'elle périme. Deux
+règles d'invalidation valent d'être notées : **écrire un compte périme aussi la
+liste des albums**, parce que `AdminAlbum.members` décrit la même attribution
+vue de l'autre côté ; et **écrire un album périme `['albums']`**, la liste que
+la session courante consulte. Supprimer un album retire en plus ses médias du
+cache client (`['album', id]`, `['items', id]`), qui viennent de disparaître de
+l'index.
 
 `api/client.ts` est la seule couche réseau : `credentials: 'same-origin'`, et une
 classe `ApiError` qui porte le statut HTTP pour distinguer un 401 d'une vraie
@@ -231,6 +244,72 @@ le zoom, avec le cadre de la zone visible — sans elle on perd tout sens de
 l'orientation dès qu'on se déplace dans une image agrandie. Le pourcentage
 affiché est relatif à l'échelle native, et signale `chargement HD…` tant que la
 variante `hd` n'est pas prête.
+
+## Administration — `pages/AdminPage.tsx` et `components/admin/`
+
+Les comptes, les albums et les réglages s'administrent depuis `/admin` :
+`config/albums.yaml` ne sert plus qu'à amorcer une installation neuve. Le bouton
+« Recharger albums.yaml » a donc disparu avec la route `POST /api/admin/reload`.
+
+`AdminPage` ne fait qu'assembler cinq sections — Connexion Google Drive,
+Utilisateurs, Albums, Réglages, Maintenance — et porter le bandeau de message,
+collé sous la barre supérieure : la page est longue, un message affiché tout en
+haut passerait inaperçu depuis le bas. Chaque section vit dans
+`components/admin/` avec ses propres mutations ; `ui.tsx` réunit les primitives
+(bouton, champ, case à cocher, encadré de section) pour que les formulaires ne
+réinventent ni les classes ni le lien `label` / `aria-describedby`.
+
+### L'attribution des albums est un choix entre deux régimes
+
+`AlbumAccessPicker` propose deux options exclusives : **tous les albums** — le
+joker `ALL_ALBUMS`, qui suivra les albums créés plus tard — ou **une sélection**
+d'identifiants. Cocher les douze albums existants n'est jamais une manière
+d'exprimer « tous les albums », et la différence n'apparaît qu'au treizième :
+c'est pourquoi le joker n'est pas rendu comme une case « tout cocher », et
+qu'une sélection devenue exhaustive affiche un avertissement. La sélection
+explicite est mémorisée pendant un aller-retour vers le joker, sinon revenir en
+arrière obligerait à tout recocher. Un album supprimé qui subsiste dans la liste
+d'un compte reste affiché, sans quoi il serait impossible de l'en retirer.
+
+`formatAlbumAccess` (`lib/adminForm.ts`) résume l'attribution dans la liste des
+comptes en nommant le joker comme tel, jamais en énumérant les albums qu'il
+couvre aujourd'hui.
+
+### Ce que le formulaire corrige avant d'appeler le serveur
+
+`lib/adminForm.ts` ne contient que des fonctions pures, testées dans
+`test/admin-form.test.ts` — le paquet de tests tourne sans DOM. Elles ne
+remplacent pas la validation du serveur, qui reste seul juge ; elles évitent un
+aller-retour pour dire ce qui cloche, en appliquant les mêmes constantes
+partagées (`USERNAME_PATTERN`, `ALBUM_ID_PATTERN`, `PASSWORD_MIN_LENGTH`,
+`USERNAME_MAX_LENGTH`).
+
+- **`extractFolderId`** accepte l'URL complète d'un dossier Drive, un lien de
+  partage, un vieux lien `open?id=` ou l'identifiant nu. La valeur est
+  normalisée à la sortie du champ, pour que ce qui reste affiché soit exactement
+  ce qui partira. Un chemin lisible (« Mon Drive/Photos ») est refusé : Drive
+  n'expose que l'identifiant opaque, et le serveur répondrait par une erreur bien
+  moins parlante.
+- **`slugifyAlbumId`** propose un identifiant d'après le titre tant que le champ
+  n'a pas été touché — cet identifiant se retrouve dans l'URL de l'album.
+- Les formulaires de modification n'envoient **que les champs modifiés** : un
+  champ absent laisse la valeur en place, donc réémettre tout le formulaire
+  écraserait une modification faite ailleurs entre-temps. Un mot de passe vide
+  signifie « ne pas changer ».
+
+### Suppressions
+
+`ConfirmDialog` remplace `window.confirm` : le texte cite l'objet concerné et
+décrit la conséquence, y compris ce qui n'est **pas** touché — supprimer un album
+retire ses médias de l'index mais ne supprime rien dans Google Drive. Le bouton
+dangereux ne prend pas le focus à l'ouverture, un `Entrée` réflexe suffirait à
+supprimer ; c'est le panneau qui le reçoit, et le focus revient à l'élément
+déclencheur à la fermeture.
+
+Deux garde-fous évitent de se verrouiller dehors : on ne supprime pas son propre
+compte, et on ne retire pas son propre rôle administrateur. Le serveur reste
+libre de les refuser aussi — ces règles ne sont ici que pour ne pas proposer un
+geste qui se retourne contre l'utilisateur.
 
 ## Dates : tout en UTC
 

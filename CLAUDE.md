@@ -21,7 +21,8 @@ Un changement de code sans changement de spec n'est pas terminé.
 | `packages/shared/src/index.ts`                                               | `specs/05-api.md`, et `03` si le modèle bouge                                  |
 | `packages/server/src/db.ts` (`MIGRATIONS`, index, pragmas)                   | `specs/03-modele-de-donnees.md`                                                |
 | `packages/server/src/repo.ts` (curseurs, requêtes)                           | `specs/03-modele-de-donnees.md`                                                |
-| `packages/server/src/env.ts` ou `config.ts`                                  | `specs/06-configuration-et-deploiement.md`                                     |
+| `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                     |
+| `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`               |
 | `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                     |
 | `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, règles d'accès | `specs/04-securite-et-acces.md`                                                |
 | `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                               |
@@ -50,7 +51,8 @@ pnpm lint                          # eslint .
 pnpm format                        # prettier --write .
 pnpm test                          # runner natif de Node, tous les packages
 
-pnpm hash-password                 # hash argon2id à coller dans config/albums.yaml
+pnpm create-admin <identifiant>    # premier administrateur d'une base vide
+pnpm hash-password                 # hash argon2id, pour un config/albums.yaml d'amorçage
 pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compte Drive
 ```
 
@@ -94,8 +96,11 @@ Avant de déclarer un travail terminé : `pnpm typecheck && pnpm lint && pnpm te
   Toute date affichée passe par `packages/web/src/lib/format.ts`, dont tous les
   formateurs sont en `timeZone: 'UTC'`. Réafficher dans le fuseau local
   décalerait la photo et ferait basculer de mois les prises de vue de fin de mois.
-- **`reloadConfig` ne recharge pas tout** : `cache.maxSizeGB`,
-  `sync.intervalMinutes` et `sync.onStartup` ne prennent effet qu'au redémarrage.
+- **La base fait autorité pour les comptes, les albums et les réglages.**
+  `config/albums.yaml` n'est lu que tant qu'aucun compte n'existe (amorçage d'une
+  installation neuve ou mise à jour d'une instance en service) ; ensuite il est
+  ignoré. Toute écriture passe par `ConfigRepo`, qui tient un instantané mémoire
+  — un `UPDATE` direct sur ces tables servirait un état périmé.
 - **Le contrôle d'accès média est un `preHandler` de préfixe** dans
   `routes/media.ts`. Une nouvelle route média en hérite automatiquement — ne la
   monte pas ailleurs.

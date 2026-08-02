@@ -30,8 +30,19 @@ export class MediaCache {
 
   constructor(
     private readonly root: string,
-    private readonly maxBytes: number,
+    private maxBytes: number,
   ) {}
+
+  /**
+   * Nouvelle limite de taille, appliquée à chaud depuis les réglages. Une
+   * limite abaissée déclenche l'éviction tout de suite plutôt qu'à la
+   * prochaine écriture : c'est justement quand on veut récupérer de la place
+   * qu'on abaisse la limite.
+   */
+  setMaxBytes(bytes: number): void {
+    this.maxBytes = bytes;
+    void this.evictIfNeeded();
+  }
 
   /** Reconstruit l'inventaire à partir du disque. À appeler au démarrage. */
   async load(): Promise<void> {

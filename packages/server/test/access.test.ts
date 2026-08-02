@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { ALL_ALBUMS } from '@gdv/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
@@ -65,47 +65,47 @@ async function login(username: string): Promise<string> {
 
 before(async () => {
   const hash = await argon2.hash(PASSWORD, { type: argon2.argon2id });
-  const configPath = join(root, 'albums.yaml');
-
-  writeFileSync(
-    configPath,
-    `
-users:
-  - username: alexis
-    passwordHash: "${hash}"
-    admin: true
-    albums: ["*"]
-  - username: famille
-    passwordHash: "${hash}"
-    albums: ["vacances"]
-albums:
-  - id: vacances
-    title: Vacances
-    folderId: folder-vacances
-  - id: prive
-    title: Privé
-    folderId: folder-prive
-sync:
-  onStartup: false
-  intervalMinutes: 0
-`,
-    'utf8',
-  );
 
   const env = loadEnv({
     NODE_ENV: 'test',
     SESSION_SECRET: 's'.repeat(48),
     TOKEN_KEY: 't'.repeat(48),
-    CONFIG_PATH: configPath,
+    // Aucun fichier ici : les comptes et les albums se créent en base.
+    CONFIG_PATH: join(root, 'albums-absent.yaml'),
     DATA_DIR: join(root, 'data'),
     CACHE_DIR: join(root, 'cache'),
     WEB_DIR: join(root, 'web-absent'),
     LOG_LEVEL: 'fatal',
   } as NodeJS.ProcessEnv);
 
-  const built = await buildApp(env, loadConfig(configPath));
+  const built = await buildApp(env);
   server = built.server;
   context = built.context;
+
+  context.config.createAlbum({
+    id: 'vacances',
+    title: 'Vacances',
+    folderId: 'folder-vacances',
+    recursive: true,
+  });
+  context.config.createAlbum({
+    id: 'prive',
+    title: 'Privé',
+    folderId: 'folder-prive',
+    recursive: true,
+  });
+  context.config.createUser({
+    username: 'alexis',
+    passwordHash: hash,
+    admin: true,
+    albums: [ALL_ALBUMS],
+  });
+  context.config.createUser({
+    username: 'famille',
+    passwordHash: hash,
+    admin: false,
+    albums: ['vacances'],
+  });
 
   context.media.upsertMany(
     [media('vacances', 'photo-publique'), media('prive', 'photo-privee')],

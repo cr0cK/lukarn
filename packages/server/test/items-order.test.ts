@@ -6,7 +6,6 @@ import { after, before, describe, it } from 'node:test';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
-import { loadConfig } from '../src/config.js';
 import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
@@ -95,7 +94,7 @@ sync:
     LOG_LEVEL: 'fatal',
   } as NodeJS.ProcessEnv);
 
-  const built = await buildApp(env, loadConfig(configPath));
+  const built = await buildApp(env);
   server = built.server;
   context = built.context;
 

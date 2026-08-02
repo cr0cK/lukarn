@@ -2,7 +2,6 @@ import argon2 from 'argon2';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { findUser } from '../config.js';
 import { SESSION_COOKIE } from '../sessions.js';
 import { LoginThrottle } from '../throttle.js';
 
@@ -45,12 +44,12 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           });
       }
 
-      const user = findUser(context.config, username);
+      const user = context.config.user(username);
       let valid = false;
       try {
         valid = await argon2.verify(user?.passwordHash ?? DUMMY_HASH, password);
       } catch {
-        // Hash illisible dans la config : traité comme un échec, pas comme un 500.
+        // Empreinte illisible en base : traitée comme un échec, pas comme un 500.
         valid = false;
       }
 

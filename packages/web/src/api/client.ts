@@ -1,12 +1,20 @@
 import {
   DEFAULT_SORT_ORDER,
+  type AdminAlbum,
   type AdminStatus,
+  type AdminUser,
   type Album,
+  type AppSettings,
+  type CreateAlbumRequest,
+  type CreateUserRequest,
   type ItemsPage,
   type MediaDetail,
   type SessionUser,
   type SortOrder,
   type ThumbSize,
+  type UpdateAlbumRequest,
+  type UpdateSettingsRequest,
+  type UpdateUserRequest,
 } from '@gdv/shared';
 
 /** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
@@ -91,11 +99,50 @@ export const api = {
       body: JSON.stringify(albumId ? { albumId } : {}),
     }),
 
-  reloadConfig: () =>
-    request<{ ok: true; users: number; albums: number }>('/admin/reload', { method: 'POST' }),
-
   clearCache: () => request<{ ok: true }>('/admin/cache/clear', { method: 'POST' }),
+
+  adminUsers: () => request<AdminUser[]>('/admin/users'),
+
+  createUser: (body: CreateUserRequest) =>
+    request<AdminUser>('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateUser: (username: string, body: UpdateUserRequest) =>
+    request<AdminUser>(`/admin/users/${encodeURIComponent(username)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteUser: (username: string) =>
+    request<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
+
+  adminAlbums: () => request<AdminAlbum[]>('/admin/albums'),
+
+  createAlbum: (body: CreateAlbumRequest) =>
+    request<AdminAlbum>('/admin/albums', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateAlbum: (albumId: string, body: UpdateAlbumRequest) =>
+    request<AdminAlbum>(`/admin/albums/${encodeURIComponent(albumId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteAlbum: (albumId: string) =>
+    request<{ ok: true }>(`/admin/albums/${encodeURIComponent(albumId)}`, { method: 'DELETE' }),
+
+  settings: () => request<AppSettings>('/admin/settings'),
+
+  updateSettings: (body: UpdateSettingsRequest) =>
+    request<AppSettings>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
 };
+
+/**
+ * Texte à afficher pour une erreur de mutation. Les messages du serveur sont
+ * rédigés pour l'utilisateur : on les préfère toujours au repli générique, qui
+ * ne sert qu'aux pannes réseau, où il n'y a aucun message.
+ */
+export function errorText(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
+}
 
 /**
  * Discriminant de version dans l'URL. Les dérivés sont servis en `immutable` :

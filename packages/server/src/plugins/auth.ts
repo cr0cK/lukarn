@@ -2,7 +2,6 @@ import type { SessionUser } from '@gdv/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import type { AppContext } from '../context.js';
-import { findUser } from '../config.js';
 import { SESSION_COOKIE } from '../sessions.js';
 
 declare module 'fastify' {
@@ -32,9 +31,10 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
     const session = context.sessions.get(unsigned.value);
     if (!session) return;
 
-    // La config fait autorité : un utilisateur retiré d'`albums.yaml` perd
-    // l'accès immédiatement, même si sa session n'a pas expiré.
-    const configured = findUser(context.config, session.username);
+    // La configuration en base fait autorité : un compte supprimé depuis
+    // /admin perd l'accès immédiatement, même si sa session n'a pas expiré.
+    // La lecture passe par le cache mémoire du dépôt, pas par SQLite.
+    const configured = context.config.user(session.username);
     if (!configured) {
       context.sessions.destroy(session.id);
       return;
