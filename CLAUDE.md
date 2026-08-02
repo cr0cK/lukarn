@@ -52,6 +52,7 @@ pnpm format                        # prettier --write .
 pnpm test                          # runner natif de Node, tous les packages
 
 pnpm create-admin <identifiant>    # premier administrateur d'une base vide
+pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
 pnpm hash-password                 # hash argon2id, pour un config/albums.yaml d'amorçage
 pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compte Drive
 ```
@@ -100,7 +101,10 @@ Avant de déclarer un travail terminé : `pnpm typecheck && pnpm lint && pnpm te
   `config/albums.yaml` n'est lu que tant qu'aucun compte n'existe (amorçage d'une
   installation neuve ou mise à jour d'une instance en service) ; ensuite il est
   ignoré. Toute écriture passe par `ConfigRepo`, qui tient un instantané mémoire
-  — un `UPDATE` direct sur ces tables servirait un état périmé.
+  — un `UPDATE` direct sur ces tables, **dans le même processus**, servirait un
+  état périmé. Depuis un autre processus (les commandes en ligne), c'est sans
+  danger : `read()` surveille `PRAGMA data_version`, qui ne bouge que pour les
+  écritures venues d'ailleurs, et reconstruit l'instantané le cas échéant.
 - **Le contrôle d'accès média est un `preHandler` de préfixe** dans
   `routes/media.ts`. Une nouvelle route média en hérite automatiquement — ne la
   monte pas ailleurs.

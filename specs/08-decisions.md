@@ -531,3 +531,122 @@ qui laisserait un album vide et un clic de plus à faire.
 complète de l'album. C'est le prix de ne jamais servir le contenu d'un dossier
 qu'on vient de retirer. Les dérivés en cache disque, eux, ne sont pas touchés :
 ils sont indexés par id de fichier, donc partagés entre albums, et régénérables.
+
+---
+
+## D27 — Une sync interrompue laisse un index mélangé, et c'est assumé
+
+**Contexte.** `Syncer.run()` écrit par lots de 500, chaque lot dans sa propre
+transaction, pour que l'album devienne consultable pendant la synchronisation
+(voir [02](./02-architecture.md)). Si la sync échoue à mi-parcours, les lots déjà
+écrits sont **validés** : l'index mélange l'ancien contenu et le nouveau. Le
+commentaire du bloc `catch` affirmait le contraire — que l'index précédent
+continuait d'être servi.
+
+**Choix.** Corriger le commentaire, pas l'architecture. L'état obtenu est
+cohérent : `deleteStale` n'a pas eu lieu, donc rien n'a été retiré, et tout ce
+qui vient d'être écrit existe bien dans Drive. L'album est simplement incomplet,
+et `sync_state` le dit — statut `error`, message, et `lastSyncAt` qui reste celui
+du dernier passage **réussi**.
+
+**Écarté.** Un index de staging : écrire la sync dans une table parallèle, puis
+basculer en une transaction. Cela doublerait l'espace occupé par l'index, ferait
+perdre la propriété qui justifie les lots — l'album consultable pendant la sync,
+qui compte pour un premier remplissage de plusieurs minutes — et n'apporterait
+qu'une atomicité dont personne n'a besoin ici : un album incomplet pendant une
+heure n'est pas un problème de correction, c'est un retard que la sync suivante
+rattrape. Écarté aussi : une transaction unique pour toute la sync, qui tiendrait
+un verrou d'écriture SQLite pendant tout le parcours Drive.
+
+**Conséquences.** `lastSyncAt` doit se lire comme « date du dernier passage
+complet », jamais comme « date de l'état actuel de l'index ». Un échec répété
+laisse un album qui grossit un peu à chaque tentative sans jamais se nettoyer :
+c'est le `deleteStale` de la première sync réussie qui remet tout d'aplomb.
+
+---
+
+## D28 — Trois colonnes écrites sans être relues sont conservées
+
+**Contexte.** `media.modified_time`, `oauth_token.scope` et
+`sessions.created_at` sont renseignées à l'écriture et n'apparaissent dans
+aucune requête de lecture.
+
+**Choix.** Les garder, et documenter leur raison d'être dans `db.ts` pour qu'on
+ne les prenne pas pour un oubli. `modified_time` est le repère chronologique dont
+`taken_at` dérive quand l'EXIF manque, donc de quoi recalculer sans réindexer ;
+`scope` dira, le jour où `SCOPES` évoluera, si le jeton stocké couvre encore ce
+que l'application demande ; `created_at` est la seule trace de l'ancienneté d'une
+session, la première chose qu'on regarde après un accès suspect.
+
+**Écarté.** Les supprimer. SQLite ne retire une colonne qu'en recréant la table
+et en recopiant les lignes — une migration destructive sur une base en service,
+pour économiser quelques octets par ligne et perdre trois informations qu'on ne
+saurait pas reconstituer. Le rapport bénéfice/risque est franchement mauvais.
+
+**Conséquences.** Un audit « colonnes mortes » les retrouvera. Le commentaire de
+`db.ts` et le tableau de [03](./03-modele-de-donnees.md) sont là pour lui
+répondre.
+
+---
+
+## D29 — Le throttle de connexion porte sur trois axes
+
+**Contexte.** D13 avait retenu une clé unique `<ip>:<username>`, en assumant
+qu'une attaque distribuée ou un balayage d'identifiants ne seraient pas ralentis.
+Cette limite est plus coûteuse qu'estimé : chaque tentative refusée déclenche une
+vérification argon2, volontairement lente. Une adresse qui essaie des milliers
+d'identifiants aléatoires ne crée que des compteurs à une tentative — jamais de
+pénalité, autant de CPU consommé, et une `Map` qui grossit sans borne.
+
+**Choix.** Trois compteurs par échec — couple IP/identifiant (5 essais libres),
+identifiant seul (10), IP seule (20) — le blocage le plus long l'emportant. Même
+barème de doublement au-delà. Table bornée à 20 000 entrées, purgée à l'heure par
+le ménage de `main.ts`.
+
+**Écarté.** Un plafond global de tentatives par minute : il transforme un
+balayage en déni de service contre les visiteurs légitimes. Écarté aussi :
+effacer le compteur d'IP sur une connexion réussie — un attaquant disposant d'un
+compte sur l'instance s'en servirait pour remettre son budget à zéro entre deux
+rafales ; seuls les compteurs `couple` et `identifiant` sont effacés.
+
+**Conséquences.** Une IP partagée (NAT d'entreprise, sortie VPN) peut freiner
+plusieurs visiteurs à la fois — d'où les 20 essais libres sur cet axe, quatre
+fois le quota du couple. `trustProxy: true` devient franchement critique : sans
+lui, `request.ip` vaut l'adresse du reverse-proxy et l'axe IP bloquerait toute
+l'instance. Une attaque où chaque tentative change à la fois d'adresse et
+d'identifiant reste hors de portée des trois axes ; ce n'est pas le modèle de
+menace d'une galerie familiale auto-hébergée.
+
+---
+
+## D30 — Un 401 de Drive renouvelle le jeton et retente une fois
+
+**Contexte.** Le téléchargement d'un fichier passe par `fetch` avec un access
+token porté en en-tête. Quand le propriétaire retire l'accès, Google cesse
+d'accepter cet access token **avant** son expiration : Drive répond 401, mais
+rien ne remonte comme `invalid_grant`, donc `guard()` ne voyait rien. Le jeton en
+cache restait utilisé jusqu'à une heure, /admin affichait « connecté », et chaque
+vignette échouait sur un message technique.
+
+**Choix.** `DriveService.fetchAuthorized()` traite le 401 : il jette le client
+OAuth en cache pour forcer un nouvel échange du refresh token, puis retente
+**une seule fois**. L'échange passe par `guard()`, donc un refresh token refusé
+est reconnu et la révocation enregistrée. Un second 401 reste une erreur — ce
+n'est plus une question de jeton.
+
+**Choix lié.** `guard()` photographie le chiffré du jeton en place au lancement
+de l'appel, et `markRevoked()` n'écrit que si c'est toujours celui qui est
+stocké. Une requête partie avant une reconnexion OAuth, qui échoue après
+l'enregistrement du nouveau jeton, marquait sinon ce jeton tout neuf comme
+révoqué — et /admin réclamait une reconnexion qui venait d'être faite. Chaque
+`completeAuth` produisant un chiffré différent (sel et IV tirés à chaque fois),
+la comparaison suffit à reconnaître qu'une reconnexion est passée entre-temps.
+
+**Écarté.** Retenter en boucle : sur une grille de 200 vignettes, un 401
+persistant ferait tourner le serveur à vide. Écarté aussi : marquer la révocation
+dès le premier 401 — un 401 peut venir d'une permission propre au fichier, et
+imposer un nouveau consentement pour cela serait disproportionné.
+
+**Conséquences.** `accessToken()` est `protected` et non `private` : c'est le
+seul point de contact réseau du service, et les tests s'en servent comme couture
+pour ne pas appeler Google (`packages/server/test/revocation.test.ts`).

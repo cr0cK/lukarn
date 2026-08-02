@@ -165,7 +165,7 @@ export class MediaCache {
    * 90 % de la limite : évincer pile à la limite déclencherait une éviction à
    * chaque écriture suivante.
    */
-  evictIfNeeded(): Promise<void> {
+  private evictIfNeeded(): Promise<void> {
     if (this.bytes <= this.maxBytes) return Promise.resolve();
     // Une seule passe d'éviction à la fois, sinon deux passes concurrentes
     // supprimeraient chacune de quoi revenir sous la limite.

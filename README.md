@@ -155,6 +155,7 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 | Changer un intervalle, une limite  | `/admin`, appliqué sans redémarrage                                       |
 | Forcer une synchronisation         | **Resynchroniser** dans `/admin`                                          |
 | Voir l'état des synchronisations   | `/admin`                                                                  |
+| Mot de passe administrateur perdu  | `pnpm reset-password <identifiant>` sur le serveur                        |
 | Mettre à jour                      | `git pull && docker compose up -d --build`                                |
 | Sauvegarder                        | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable |
 | Consulter les logs                 | `docker compose logs -f`                                                  |

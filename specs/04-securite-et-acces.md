@@ -43,26 +43,43 @@ répond **409**, jamais un écrasement silencieux.
 
 ## Throttle des tentatives
 
-`packages/server/src/throttle.ts`, en mémoire, clé `<ip>:<username en
-minuscules>`.
+`packages/server/src/throttle.ts`, en mémoire. Chaque échec incrémente **trois**
+compteurs, et c'est le plus contraignant des trois qui décide du blocage.
 
-| Paramètre        | Valeur    | Effet                                                        |
-| ---------------- | --------- | ------------------------------------------------------------ |
-| `FREE_ATTEMPTS`  | 5         | Aucune pénalité — une erreur de frappe ne fait pas attendre. |
-| `BASE_DELAY_MS`  | 2 000     | Le 6ᵉ échec impose 2 s, puis doublement : 4, 8, 16 s…        |
-| `MAX_DELAY_MS`   | 900 000   | Plafond à 15 minutes.                                        |
-| `RESET_AFTER_MS` | 3 600 000 | Une heure sans échec efface la série.                        |
+| Axe           | Clé                           | Essais libres | Ce qu'il attrape                                         |
+| ------------- | ----------------------------- | ------------- | -------------------------------------------------------- |
+| `couple`      | `<ip>` + `<identifiant>`      | 5             | Le cas normal : quelqu'un qui se trompe de mot de passe. |
+| `identifiant` | `<identifiant en minuscules>` | 10            | Une attaque distribuée sur un compte précis.             |
+| `ip`          | `<ip>`                        | 20            | Une même source qui fait tourner les identifiants.       |
 
-Une connexion réussie remet le compteur à zéro. Le blocage répond **429** avec un
-en-tête `Retry-After` en secondes.
+Au-delà des essais libres, chaque axe applique le même barème : 2 s, puis
+doublement (4, 8, 16 s…), plafonné à **15 minutes**. Une heure sans échec efface
+la série (`RESET_AFTER_MS`).
+
+L'axe `ip` n'existe pas pour la forme : sans lui, une adresse qui essaie des
+milliers d'identifiants aléatoires ne crée que des compteurs à une tentative,
+n'est jamais freinée, et obtient autant de vérifications argon2 — le calcul le
+plus cher du serveur.
+
+Une connexion réussie efface les compteurs `couple` et `identifiant`, **pas**
+celui de l'IP : disposer d'un compte valide sur l'instance ne doit pas donner de
+quoi remettre à zéro son budget de balayage entre deux rafales. Le blocage
+répond **429** avec un en-tête `Retry-After` en secondes, et il est vérifié
+**avant** toute vérification argon2.
+
+La table est bornée à `MAX_ENTRIES = 20 000` entrées : au-delà, les séries
+expirées puis les plus anciennes sont sacrifiées (retour à 90 % de la borne, pour
+ne pas retrier à chaque tentative suivante). `LoginThrottle.purge()` est appelée
+par le ménage horaire de `main.ts`, avec la purge des sessions expirées : sans
+elle, les compteurs d'une rafale survivraient jusqu'au redémarrage.
 
 `trustProxy: true` est indispensable ici (`app.ts`) : derrière Caddy ou nginx,
-`request.ip` vaudrait sinon l'adresse du proxy et le throttle regrouperait tous
-les visiteurs sous une clé unique.
+`request.ip` vaudrait sinon l'adresse du proxy — tous les visiteurs seraient
+regroupés sous une seule adresse, et l'axe `ip` bloquerait l'instance entière.
 
-Limites assumées : la clé combine IP **et** identifiant, donc une attaque
-distribuée sur un seul compte, ou une attaque locale qui fait tourner les
-identifiants, n'est pas ralentie globalement. Pour une instance à quelques
+Limites assumées : les compteurs sont en mémoire, donc perdus au redémarrage, et
+une attaque vraiment distribuée (une adresse par tentative, un identifiant par
+tentative) n'est freinée par aucun des trois axes. Pour une instance à quelques
 comptes derrière un reverse-proxy, c'est le compromis retenu.
 
 ## Sessions

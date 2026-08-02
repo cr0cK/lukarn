@@ -12,7 +12,8 @@
     "test": "node --import tsx --test \"test/*.test.ts\"",
     "hash-password": "tsx src/scripts/hash-password.ts",
     "create-admin": "tsx src/scripts/create-admin.ts",
-    "seed-demo": "tsx src/scripts/seed-demo.ts"
+    "seed-demo": "tsx src/scripts/seed-demo.ts",
+    "reset-password": "tsx src/scripts/reset-password.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.1",

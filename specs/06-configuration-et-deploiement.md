@@ -46,7 +46,7 @@ qu'aucun compte n'existe en base** (`bootstrap.ts`) :
 | Base    | Fichier    | Ce qui se passe                                                                                      |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
 | vide    | présent    | Comptes, albums, droits et réglages sont importés en une transaction, puis le fichier n'est plus lu. |
-| vide    | absent     | Le serveur démarre et journalise `pnpm create-admin <identifiant>`.                                  |
+| vide    | absent     | Le serveur démarre, journalise `pnpm create-admin <identifiant>`, et l'écran de connexion l'affiche. |
 | vide    | invalide   | **Refus de démarrer**, avec l'erreur de validation : démarrer sans aucun compte serait inutilisable. |
 | peuplée | quelconque | Le fichier est ignoré. Le modifier ne fait plus rien — c'est `/admin` qui administre.                |
 
@@ -54,6 +54,14 @@ C'est aussi le chemin de mise à jour d'une instance en service : au premier
 démarrage après la migration, sa configuration est reprise telle quelle. Ni
 réindexation, ni nouveau consentement Google, ni perte d'accès —
 `packages/server/test/bootstrap.test.ts` le verrouille.
+
+Le cas « base vide, pas de fichier » demande un signal visible : le serveur
+répond normalement mais refuse toute connexion, ce qui se lit comme une panne
+alors qu'il ne manque qu'une commande. `GET /api/auth/setup-state` — publique,
+puisque interrogée avant toute connexion — répond `{ needsSetup }`, et l'écran
+de connexion affiche alors la commande à lancer. Elle ne divulgue rien : sur une
+instance sans compte il n'y a rien à protéger, et elle ne dit jamais **qui**
+existe (`packages/server/test/setup-state.test.ts`).
 
 Le schéma ci-dessous est donc figé sur ce que les installations existantes ont pu
 écrire ; les évolutions de la configuration se font dans `ConfigRepo` et
@@ -183,11 +191,12 @@ applications les mélange dans une même demande d'autorisation.
 
 ## Scripts
 
-| Commande                                         | Effet                                                                                                                                                                                                                                                                |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm create-admin <identifiant> [mot de passe]` | Crée le premier administrateur **en base**, avec le joker sur les albums — `admin` seul n'accorde aucun album, et il faut bien qu'il voie ceux qu'il va créer. Seule porte d'entrée quand il n'y a ni compte ni fichier d'amorçage. Refuse un identifiant déjà pris. |
-| `pnpm hash-password`                             | Demande un mot de passe sans l'afficher et imprime la ligne `passwordHash:` à coller. Ne sert plus qu'à préparer un `albums.yaml` d'amorçage. Un argument est accepté mais laisse une trace dans l'historique du shell.                                              |
-| `pnpm --filter @gdv/server seed-demo [nombre]`   | Remplit l'index **et** le cache avec des médias générés localement, pour travailler l'interface sans compte Drive. Défaut : 240 par album.                                                                                                                           |
+| Commande                                           | Effet                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm create-admin <identifiant> [mot de passe]`   | Crée le premier administrateur **en base**, avec le joker sur les albums — `admin` seul n'accorde aucun album, et il faut bien qu'il voie ceux qu'il va créer. Seule porte d'entrée quand il n'y a ni compte ni fichier d'amorçage. Refuse un identifiant déjà pris.   |
+| `pnpm reset-password <identifiant> [mot de passe]` | Remplace le mot de passe d'un compte existant et ferme ses sessions ouvertes. Traite le seul cas que l'application ne peut pas régler seule : l'unique administrateur a perdu le sien et ne peut plus atteindre `/admin`. Pour tout autre compte, passer par `/admin`. |
+| `pnpm hash-password`                               | Demande un mot de passe sans l'afficher et imprime la ligne `passwordHash:` à coller. Ne sert plus qu'à préparer un `albums.yaml` d'amorçage. Un argument est accepté mais laisse une trace dans l'historique du shell.                                                |
+| `pnpm --filter @gdv/server seed-demo [nombre]`     | Remplit l'index **et** le cache avec des médias générés localement, pour travailler l'interface sans compte Drive. Défaut : 240 par album.                                                                                                                             |
 
 `seed-demo` insère dans **tous** les albums de la base et écrit les cinq variantes
 en cache (`t320`, `t640`, `t1280`, `full`, `hd`) pour que le pipeline ne cherche

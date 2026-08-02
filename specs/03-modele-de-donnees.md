@@ -28,10 +28,10 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 | `width` / `height`                                                                                            | INTEGER | **Déjà corrigées de la rotation EXIF** par `toUpsert`. C'est ce qui permet au front de calculer la mise en page sans charger d'image. |
 | `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Date EXIF si connue, sinon `modifiedTime` de Drive.                                                                     |
 | `taken_at_from_exif`                                                                                          | INTEGER | 0/1. Le front écrit « Prise de vue » ou « Modifié le » selon la valeur.                                                               |
-| `modified_time`                                                                                               | TEXT    | ISO 8601. Écrit à chaque sync ; aucune lecture ne s'en sert aujourd'hui.                                                              |
+| `modified_time`                                                                                               | TEXT    | ISO 8601. Écrit à chaque sync, jamais relu — conservé, voir « Colonnes écrites et jamais relues » plus bas.                           |
 | `duration_ms`                                                                                                 | INTEGER | Vidéos seulement.                                                                                                                     |
 | `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, tous nullables. Servis par `/items/:mediaId`.                                                                                   |
-| `md5`                                                                                                         | TEXT    | Écrit, jamais lu. Réservé à une future détection de doublons.                                                                         |
+| `md5`                                                                                                         | TEXT    | Empreinte du contenu Drive. Porte la version des URL et des ETag, et entre dans la clé du cache disque.                               |
 | `seen_at`                                                                                                     | TEXT    | Estampille de la sync qui a vu cette ligne. Base de `deleteStale`.                                                                    |
 | **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                      |
 
@@ -118,10 +118,17 @@ tous deux déclarés) produit **deux lignes**. Conséquences à connaître :
 
 - Les métadonnées sont dupliquées. C'est assumé : le coût est quelques centaines
   d'octets par doublon, contre une jointure sur chaque lecture de grille.
-- `getDetail(albumId, id)` est scopé à un album ; `getFileMeta(id)` ne l'est pas
-  et prend la première ligne trouvée (`LIMIT 1`). C'est correct puisque les
-  colonnes qu'il lit (`name`, `mime_type`, `kind`, `size`) décrivent le fichier,
-  pas son appartenance.
+- `getDetail(albumId, id)` est scopé à un album ; `getFileMeta(id)` ne l'est pas.
+  Les colonnes qu'il lit (`name`, `mime_type`, `kind`, `size`, `md5`) décrivent
+  le fichier et non son appartenance — mais les deux lignes peuvent **diverger**
+  entre deux synchronisations, l'une ayant déjà vu une nouvelle version du
+  fichier que l'autre ignore encore. La sélection est donc
+  `ORDER BY seen_at DESC, album_id ASC LIMIT 1` : la ligne revue le plus
+  récemment décrit le fichier tel qu'il est aujourd'hui dans Drive. Un `LIMIT 1`
+  sans tri laisserait SQLite rendre l'ancienne, et le cache produirait un dérivé
+  à partir d'une empreinte périmée, servi sous un ETag qui le déclare immuable.
+  `album_id` départage les ex æquo, pour que deux appels consécutifs répondent
+  la même chose.
 - `albumsContaining(id)` rend **tous** les albums porteurs. L'autorisation
   accorde l'accès dès qu'un seul est visible par l'utilisateur — c'est la règle
   correcte : le fichier est déjà légitimement accessible par ce chemin-là.
@@ -198,7 +205,22 @@ curseur ne saurait pas laquelle a déjà été servie.
 - Les dérivés d'images : fichiers sur disque sous `CACHE_DIR`, inventoriés en
   mémoire au démarrage.
 - Les compteurs du throttle de connexion : en mémoire, perdus au redémarrage —
-  volontairement (voir [08](./08-decisions.md)).
+  volontairement (voir [08](./08-decisions.md)). Bornés en nombre et purgés à
+  l'heure, faute de quoi une rafale d'identifiants inventés les ferait croître
+  sans limite.
+
+## Colonnes écrites et jamais relues
+
+Trois colonnes n'apparaissent dans aucune requête de lecture. Elles sont
+**conservées** — SQLite ne retire une colonne qu'en recréant la table, ce qui ne
+vaut pas le gain sur une base en service (voir [08](./08-decisions.md), D28) —
+et `db.ts` dit à quoi elles servent :
+
+| Colonne               | Pourquoi elle reste                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------------------ |
+| `media.modified_time` | Repère chronologique dont `taken_at` dérive quand l'EXIF manque ; permet de recalculer sans réindexer. |
+| `oauth_token.scope`   | Portée consentie : dira, quand `SCOPES` évoluera, si le jeton stocké couvre encore ce qui est demandé. |
+| `sessions.created_at` | Seule trace de l'ancienneté d'une session — la première question posée après un accès suspect.         |
 
 En revanche, les comptes, les albums et les réglages **y sont** depuis la
 migration 3. `config/albums.yaml` ne sert plus qu'à amorcer une installation

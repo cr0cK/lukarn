@@ -44,6 +44,19 @@ export function useMe() {
   });
 }
 
+/**
+ * Signale une installation sans aucun compte. Sans ça, l'écran de connexion
+ * refuserait toutes les tentatives sans jamais dire qu'il n'y a simplement
+ * personne à qui se connecter.
+ */
+export function useSetupState() {
+  return useQuery({
+    queryKey: ['setup-state'],
+    queryFn: api.setupState,
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useLogin() {
   const queryClient = useQueryClient();
   return useMutation({

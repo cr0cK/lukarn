@@ -137,6 +137,8 @@ export function toAdminUser(user: StoredUser): AdminUser {
 
 export class ConfigRepo {
   private snapshot: Snapshot | null = null;
+  /** Dernière valeur observée de `PRAGMA data_version`. Voir `read()`. */
+  private dataVersion = -1;
 
   constructor(private readonly db: Db) {}
 
@@ -379,7 +381,28 @@ export class ConfigRepo {
     this.snapshot = null;
   }
 
+  /**
+   * Rend l'instantané, après s'être assuré qu'aucune autre connexion n'a écrit
+   * dans la base depuis sa construction.
+   *
+   * `PRAGMA data_version` ne bouge pas pour les écritures de *cette* connexion,
+   * mais change dès qu'un autre processus valide une transaction. C'est ce qui
+   * permet à `pnpm reset-password`, lancé pendant que le serveur tourne, de
+   * prendre effet immédiatement : sans cette vérification, le serveur
+   * continuerait d'authentifier avec l'ancienne empreinte jusqu'au redémarrage,
+   * ce qui vide de son sens une commande faite pour reprendre la main en
+   * urgence.
+   *
+   * Le coût est une lecture de compteur en mémoire par appel, là où reconstruire
+   * l'instantané à chaque fois coûterait plusieurs requêtes — y compris sur le
+   * chemin de `canSee()`, appelé pour chaque vignette.
+   */
   private read(): Snapshot {
+    const version = this.db.pragma('data_version', { simple: true }) as number;
+    if (version !== this.dataVersion) {
+      this.dataVersion = version;
+      this.snapshot = null;
+    }
     return (this.snapshot ??= this.build());
   }
 

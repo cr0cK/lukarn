@@ -59,6 +59,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   me: () => request<SessionUser>('/auth/me'),
 
+  /** Publique : dit si l'instance n'a encore aucun compte. */
+  setupState: () => request<{ needsSetup: boolean }>('/auth/setup-state'),
+
   login: (username: string, password: string) =>
     request<SessionUser>('/auth/login', {
       method: 'POST',

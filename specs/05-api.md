@@ -42,7 +42,7 @@ caractères).
 | 200  | `SessionUser` = `{ username, admin }`       | Succès. Pose le cookie `gdv_session`.                                               |
 | 400  | `bad_request`                               | Corps absent ou hors bornes.                                                        |
 | 401  | `invalid_credentials`                       | Identifiant inconnu **ou** mot de passe faux — message identique dans les deux cas. |
-| 429  | `too_many_attempts` + en-tête `Retry-After` | Throttle actif pour ce couple IP/identifiant.                                       |
+| 429  | `too_many_attempts` + en-tête `Retry-After` | Throttle actif sur l'un des trois axes : couple IP/identifiant, identifiant, IP.    |
 
 **`POST /api/auth/logout`** — détruit la session si le cookie en désigne une,
 efface le cookie. Répond toujours `200 { ok: true }`, même sans session.

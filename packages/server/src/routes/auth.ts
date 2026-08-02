@@ -90,5 +90,19 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
       return reply.send(request.user);
     });
+
+    /**
+     * Une installation dont la base ne contient aucun compte accepte les
+     * requêtes mais refuse toute connexion : l'application paraît cassée alors
+     * qu'il manque seulement `pnpm create-admin`. Le seul indice était une
+     * ligne dans les journaux, que personne ne lit avant d'avoir un problème.
+     *
+     * Route publique : sur une instance sans aucun compte, il n'y a rien à
+     * protéger, et l'écran de connexion doit pouvoir le dire avant qu'on ait
+     * saisi quoi que ce soit.
+     */
+    app.get('/setup-state', async (_request, reply) =>
+      reply.send({ needsSetup: context.config.users().length === 0 }),
+    );
   };
 }

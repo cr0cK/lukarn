@@ -1,11 +1,12 @@
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
-import { useLogin, useMe } from '../api/hooks';
+import { useLogin, useMe, useSetupState } from '../api/hooks';
 import { Spinner } from '../components/Spinner';
 
 export default function LoginPage(): ReactElement {
   const { data: user, isPending } = useMe();
+  const { data: setup } = useSetupState();
   const login = useLogin();
   const navigate = useNavigate();
   const location = useLocation();
@@ -44,6 +45,21 @@ export default function LoginPage(): ReactElement {
       <div className="w-full max-w-sm">
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">Photos</h1>
         <p className="mb-8 text-sm text-ink-400">Connecte-toi pour accéder aux albums.</p>
+
+        {/* Installation neuve : aucune saisie ne peut aboutir tant qu'aucun
+            compte n'existe. Le dire ici évite de chercher une panne là où il
+            n'y a qu'une étape d'installation qui reste à faire. */}
+        {setup?.needsSetup && (
+          <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            <p className="font-medium">Aucun compte n'est encore configuré.</p>
+            <p className="mt-1 text-amber-200/80">
+              Crée le premier administrateur sur le serveur :
+            </p>
+            <code className="mt-2 block rounded bg-black/30 px-2 py-1 font-mono text-xs text-amber-100">
+              pnpm create-admin &lt;identifiant&gt;
+            </code>
+          </div>
+        )}
 
         <form onSubmit={submit} className="space-y-4">
           <div>
