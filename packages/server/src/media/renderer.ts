@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import sharp from 'sharp';
 import type { ThumbSize } from '@gdv/shared';
 import type { DriveService } from '../drive/service.js';
@@ -46,6 +47,15 @@ function variantKey(fileId: string, variant: Variant, md5: string | null): strin
   return md5 ? `${fileId}:${md5}:${kind}` : `${fileId}:${kind}`;
 }
 
+async function exists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Côté maximal et qualité WebP de chaque variante. */
 function encodingFor(variant: Variant): { edge: number; quality: number } {
   switch (variant.kind) {
@@ -81,7 +91,12 @@ export class MediaRenderer {
     const key = variantKey(fileId, variant, md5);
 
     const cached = this.cache.hit(key);
-    if (cached) return { path: cached, contentType: 'image/webp' };
+    // L'inventaire peut désigner un fichier qui n'est plus là : « vider le
+    // cache » depuis /admin efface le répertoire pendant qu'une grille se
+    // charge, et rien n'empêche un ménage manuel sur le volume. Sans cette
+    // vérification, `createReadStream` échouerait en ENOENT une fois les
+    // en-têtes déjà envoyés, donc sur une image cassée et non régénérée.
+    if (cached && (await exists(cached))) return { path: cached, contentType: 'image/webp' };
 
     const pending = this.inFlight.get(key);
     if (pending) return pending;
@@ -158,10 +173,10 @@ export class MediaRenderer {
     // obtenir directement la résolution voulue plutôt qu'un timbre-poste.
     const url = data.thumbnailLink.replace(/=s\d+(-[a-z]+)?$/i, `=s${encodingFor(variant).edge}`);
 
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Vignette Drive indisponible (${response.status}) pour ${fileId}`);
-    }
+    // Le `thumbnailLink` d'un fichier non partagé publiquement — c'est-à-dire
+    // le cas normal ici — répond 401/403 à un `fetch` anonyme : le repli censé
+    // rattraper les HEIC échouerait précisément quand on en a besoin.
+    const response = await this.drive.fetchAuthorized(url, `vignette Drive de ${fileId}`);
     return Buffer.from(await response.arrayBuffer());
   }
 }

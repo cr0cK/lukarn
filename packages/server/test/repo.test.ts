@@ -183,6 +183,33 @@ describe('résolution média → albums', () => {
   });
 });
 
+describe('métadonnées de fichier', () => {
+  it('rend la ligne revue le plus récemment quand le fichier est dans deux albums', () => {
+    // Le même fichier Drive indexé sous deux albums a deux lignes, qui
+    // divergent le temps qu'une synchronisation rattrape l'autre.
+    const ancienne = { ...media('archives-a', 'double', '2024-03-03T10:00:00.000Z') };
+    ancienne.md5 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    ancienne.size = 1000;
+    repo.upsertMany([ancienne], '2025-01-01T00:00:00.000Z');
+
+    const recente = { ...media('archives-b', 'double', '2024-03-03T10:00:00.000Z') };
+    recente.md5 = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    recente.size = 2000;
+    repo.upsertMany([recente], '2025-06-01T00:00:00.000Z');
+
+    // Servir l'ancienne ferait produire un dérivé à partir d'une empreinte
+    // périmée, sous un ETag qui le déclare immuable : la photo corrigée
+    // resterait affichée dans sa version d'avant.
+    const meta = repo.getFileMeta('double');
+    assert.equal(meta?.md5, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+    assert.equal(meta?.size, 2000);
+  });
+
+  it('répond la même chose à deux appels consécutifs', () => {
+    assert.deepEqual(repo.getFileMeta('double'), repo.getFileMeta('double'));
+  });
+});
+
 describe('statistiques', () => {
   it("compte et borne l'album", () => {
     const stats = repo.stats('prive');

@@ -1,10 +1,4 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-  scryptSync,
-  timingSafeEqual,
-} from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 
 /**
  * Chiffrement du refresh token Google au repos. Le VPS n'est pas un HSM, mais
@@ -51,12 +45,4 @@ export function decryptSecret(encoded: string, secret: string): string {
   // `final()` lève si le tag ne colle pas : TOKEN_KEY a changé, ou la base a
   // été altérée. Dans les deux cas il faut refaire le consentement OAuth.
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
-}
-
-/** Comparaison de chaînes en temps constant, tolérante aux longueurs différentes. */
-export function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a, 'utf8');
-  const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
 }

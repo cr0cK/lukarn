@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { decryptSecret, encryptSecret, safeEqual } from '../src/crypto.js';
+import { decryptSecret, encryptSecret } from '../src/crypto.js';
 
 const KEY = 'a'.repeat(64);
 
@@ -33,14 +33,5 @@ describe('chiffrement du refresh token', () => {
 
   it('rejette une entrée tronquée', () => {
     assert.throws(() => decryptSecret('AAAA', KEY), /tronqu/);
-  });
-});
-
-describe('safeEqual', () => {
-  it('compare des chaînes', () => {
-    assert.equal(safeEqual('abc', 'abc'), true);
-    assert.equal(safeEqual('abc', 'abd'), false);
-    // Longueurs différentes : refusé sans lever.
-    assert.equal(safeEqual('abc', 'abcd'), false);
   });
 });

@@ -3,7 +3,6 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import { SESSION_COOKIE } from '../sessions.js';
-import { LoginThrottle } from '../throttle.js';
 
 /**
  * Hash jetable comparé lorsqu'aucun utilisateur ne correspond au login fourni.
@@ -19,7 +18,7 @@ const loginSchema = z.object({
 });
 
 export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
-  const throttle = new LoginThrottle();
+  const throttle = context.throttle;
 
   return async (app) => {
     app.post('/login', async (request, reply) => {
@@ -31,9 +30,9 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       const { username, password } = parsed.data;
-      const throttleKey = `${request.ip}:${username.toLowerCase()}`;
+      const attempt = { ip: request.ip, username };
 
-      const retryAfter = throttle.blockedFor(throttleKey);
+      const retryAfter = throttle.blockedFor(attempt);
       if (retryAfter > 0) {
         return reply
           .code(429)
@@ -54,14 +53,14 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       if (!user || !valid) {
-        throttle.fail(throttleKey);
+        throttle.fail(attempt);
         request.log.warn({ username, ip: request.ip }, 'Échec de connexion');
         return reply
           .code(401)
           .send({ error: 'invalid_credentials', message: 'Identifiant ou mot de passe incorrect' });
       }
 
-      throttle.succeed(throttleKey);
+      throttle.succeed(attempt);
       const session = context.sessions.create(user.username);
 
       return reply

@@ -138,8 +138,16 @@ cache disque.
   est servi, conformément à la RFC 9110.
 - Réponse `206` si Drive a répondu 206, sinon `200`. Toujours
   `Accept-Ranges: bytes` — sans quoi le navigateur refuserait le seek vidéo.
+- **`416`** si Drive a répondu 416 : le `Content-Range` reçu est recopié et le
+  corps est vide. Une plage insatisfaisable — offset au-delà de la fin, courant
+  quand on change de vidéo pendant qu'une requête est en vol — appartient au
+  protocole `Range` normal ; en faire une erreur serveur donnerait un 500 là où
+  le lecteur attend un code qu'il sait interpréter.
 - `502 bad_gateway` si Drive répond sans corps ; `404` si le média n'est pas
   indexé ; `503` sur Drive non connecté ou révoqué.
+- Un `401` de Drive n'est jamais relayé : le jeton d'accès est renouvelé et la
+  requête retentée une fois. Si Google refuse aussi le renouvellement, la
+  connexion est marquée révoquée et la réponse est `503 drive_revoked`.
 - Contrairement aux rendus, cette route ne filtre pas sur `kind` : elle sert
   aussi bien l'original d'une photo que le flux d'une vidéo.
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, beforeEach, describe, it } from 'node:test';
+import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import { encryptSecret } from '../src/crypto.js';
 import { openDb, type Db } from '../src/db.js';
 import { DriveRevokedError, DriveService } from '../src/drive/service.js';
@@ -136,5 +136,106 @@ describe('détection de invalid_grant', () => {
     service.disconnect();
     assert.equal(service.connection, null);
     assert.equal(service.connected, false);
+  });
+
+  it('ne révoque pas un jeton enregistré pendant que la requête était en vol', async () => {
+    await assert.rejects(
+      () =>
+        service.guard(() => {
+          // Le propriétaire réautorise l'accès depuis /admin pendant qu'une
+          // requête partie avant est encore en cours.
+          db.prepare('UPDATE oauth_token SET ciphertext = ? WHERE id = 1').run(
+            encryptSecret('refresh-token-tout-neuf', TOKEN_KEY),
+          );
+          return Promise.reject(invalidGrant());
+        }),
+      DriveRevokedError,
+    );
+
+    // C'est l'ancien jeton que Google a refusé. Marquer le nouveau ferait
+    // réclamer à /admin une reconnexion qui vient précisément d'être faite.
+    assert.equal(service.connected, true);
+    assert.equal(service.connection?.revokedAt, null);
+  });
+});
+
+/**
+ * Refus de l'access token par Drive (401). Il ne remonte pas comme
+ * `invalid_grant` : c'est la réponse HTTP du téléchargement qui le porte, et
+ * sans traitement il devient une erreur opaque répétée jusqu'à l'expiration
+ * naturelle du jeton — une heure pendant laquelle /admin affiche « connecté ».
+ */
+describe('téléchargement refusé par Drive', () => {
+  class ServiceInstrumente extends DriveService {
+    readonly jetons: string[] = [];
+    renouvellementRefuse = false;
+
+    protected override async accessToken(force: boolean): Promise<string> {
+      if (force && this.renouvellementRefuse) {
+        // Google refuse aussi le refresh token : c'est ici que la révocation
+        // se constate pour de bon.
+        return this.guard<string>(() => Promise.reject(invalidGrant()));
+      }
+      const token = force ? 'jeton-neuf' : 'jeton-perime';
+      this.jetons.push(token);
+      return Promise.resolve(token);
+    }
+  }
+
+  const vraiFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = vraiFetch;
+  });
+
+  /** Réponses servies dans l'ordre, une par appel. */
+  function reponses(...suite: Response[]): { jetonsPresentes: (string | null)[] } {
+    const jetonsPresentes: (string | null)[] = [];
+    let index = 0;
+    globalThis.fetch = (_url: unknown, init?: { headers?: Record<string, string> }) => {
+      jetonsPresentes.push(init?.headers?.Authorization ?? null);
+      const reponse = suite[index++];
+      assert.ok(reponse, `appel réseau nº ${index} non prévu`);
+      return Promise.resolve(reponse);
+    };
+    return { jetonsPresentes };
+  }
+
+  it('renouvelle le jeton et retente une seule fois sur un 401', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    const { jetonsPresentes } = reponses(
+      new Response(null, { status: 401 }),
+      new Response('contenu', { status: 200 }),
+    );
+
+    const response = await instrumente.fetchFile('une-photo');
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(jetonsPresentes, ['Bearer jeton-perime', 'Bearer jeton-neuf']);
+    // Une seule reprise : boucler sur un 401 persistant ferait tourner le
+    // serveur à vide sur chaque vignette de la grille.
+    assert.equal(instrumente.jetons.length, 2);
+  });
+
+  it('constate la révocation quand le renouvellement est refusé à son tour', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    instrumente.renouvellementRefuse = true;
+    reponses(new Response(null, { status: 401 }));
+
+    await assert.rejects(() => instrumente.fetchFile('une-photo'), DriveRevokedError);
+
+    // Sans ça, /admin afficherait « connecté » pendant que chaque image échoue.
+    assert.equal(instrumente.connected, false);
+  });
+
+  it('relaie une plage insatisfaisable au lieu de lever', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    reponses(new Response(null, { status: 416, headers: { 'content-range': 'bytes */4096' } }));
+
+    // Demander un offset au-delà de la fin fait partie du protocole `Range` :
+    // cela arrive dès qu'un lecteur change de vidéo pendant une requête.
+    const response = await instrumente.fetchFile('une-video', 'bytes=99999-');
+
+    assert.equal(response.status, 416);
+    assert.equal(response.headers.get('content-range'), 'bytes */4096');
   });
 });

@@ -67,12 +67,25 @@ export function toText(value: unknown): string | null {
 }
 
 /**
- * Drive renvoie `0` pour une géolocalisation absente. Un vrai (0,0) est au
- * milieu de l'Atlantique : le traiter comme « pas de position » est le
- * compromis raisonnable.
+ * Position d'une photo, latitude et longitude traitées **ensemble**.
+ *
+ * Drive renvoie le couple `(0, 0)` quand la photo n'est pas géolocalisée. Ce
+ * point est au milieu de l'Atlantique : l'écarter est le compromis retenu.
+ * Écarter chaque zéro séparément serait tout autre chose — une photo prise sur
+ * l'équateur ou sur le méridien de Greenwich perdrait sa position alors qu'elle
+ * en a bien une.
+ *
+ * Une coordonnée seule ne situe rien : si l'une des deux manque, les deux sont
+ * rendues nulles plutôt que d'afficher une demi-position.
  */
-export function toCoordinate(value: unknown): number | null {
-  const parsed = toNumber(value);
-  if (parsed === null || parsed === 0) return null;
-  return parsed;
+export function toCoordinates(
+  latitude: unknown,
+  longitude: unknown,
+): { lat: number | null; lng: number | null } {
+  const lat = toNumber(latitude);
+  const lng = toNumber(longitude);
+
+  if (lat === null || lng === null) return { lat: null, lng: null };
+  if (lat === 0 && lng === 0) return { lat: null, lng: null };
+  return { lat, lng };
 }

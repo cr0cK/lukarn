@@ -142,6 +142,20 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
         range ? formatRange(range) : undefined,
       );
 
+      /**
+       * Plage insatisfaisable : le lecteur a demandé un offset au-delà de la
+       * fin du fichier, ce qui arrive couramment en changeant de vidéo pendant
+       * qu'une requête est en vol. La réponse est relayée telle quelle — son
+       * `Content-Range` porte la taille réelle du fichier, ce qui dit au
+       * lecteur où recommencer là où un 500 ne lui apprendrait rien.
+       */
+      if (upstream.status === 416) {
+        const contentRange = upstream.headers.get('content-range');
+        reply.code(416).header('Accept-Ranges', 'bytes');
+        if (contentRange) reply.header('Content-Range', contentRange);
+        return reply.send();
+      }
+
       if (!upstream.body) {
         return reply.code(502).send({ error: 'bad_gateway', message: 'Réponse Drive vide' });
       }

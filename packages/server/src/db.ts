@@ -5,6 +5,22 @@ import Database from 'better-sqlite3';
 export type Db = Database.Database;
 
 /**
+ * Trois colonnes sont écrites sans qu'aucune requête ne les relise. Ce n'est
+ * pas un oubli, et il ne faut pas les supprimer — SQLite ne sait pas retirer
+ * une colonne autrement qu'en recréant la table, ce qui ne vaut pas le gain sur
+ * une base en service :
+ *
+ * - `media.modified_time` — date de modification Drive, seul repère
+ *   chronologique quand l'EXIF manque. `takenAt` en dérive au moment de la
+ *   synchronisation ; la garder permet de recalculer sans réindexer, et de
+ *   diagnostiquer un `taken_at` qui surprend.
+ * - `oauth_token.scope` — portée demandée lors du consentement. Elle sert à
+ *   savoir, quand `SCOPES` évoluera, si le jeton stocké couvre encore ce que
+ *   l'application demande ou s'il faut refaire le consentement.
+ * - `sessions.created_at` — date d'ouverture. `expires_at` suffit à la purge,
+ *   mais c'est la seule trace qui dise depuis quand une session traîne, ce qui
+ *   est la première question posée après un accès suspect.
+ *
  * Migrations appliquées dans l'ordre, suivies par `PRAGMA user_version`.
  * Ne jamais modifier une migration déjà publiée : en ajouter une nouvelle.
  *

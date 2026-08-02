@@ -181,11 +181,17 @@ export class DriveService {
    * l'appelant, pas ici.
    */
   async guard<T>(operation: () => Promise<T>): Promise<T> {
+    // Le jeton en place au lancement de l'appel. Une requête peut être encore
+    // en vol quand un nouveau consentement enregistre un autre jeton : sans
+    // cette photographie, son échec marquerait révoqué un jeton tout neuf, et
+    // /admin réclamerait une reconnexion qui vient d'être faite.
+    const used = this.readToken()?.ciphertext ?? null;
+
     try {
       return await operation();
     } catch (error) {
       if (isRevocation(error)) {
-        this.markRevoked();
+        this.markRevoked(used);
         throw new DriveRevokedError();
       }
       throw error;
@@ -197,10 +203,23 @@ export class DriveService {
    * conservé plutôt que supprimé : /admin peut ainsi dire « l'autorisation a
    * été révoquée » et pour quel compte, là où une base vide se lirait comme
    * une installation neuve.
+   *
+   * `used` est le chiffré du jeton dont le refus est constaté. L'écriture n'a
+   * lieu que s'il est toujours celui qui est stocké — chaque `completeAuth`
+   * produit un chiffré différent (sel et IV tirés à chaque fois), ce qui suffit
+   * à reconnaître qu'une reconnexion est passée entre-temps.
    */
-  private markRevoked(): void {
+  private markRevoked(used: string | null): void {
     const row = this.readToken();
     if (!row || row.revoked_at !== null) return;
+
+    if (used === null || row.ciphertext !== used) {
+      this.log.warn(
+        "Google a refusé un jeton qui n'est plus celui enregistré : une reconnexion a eu " +
+          'lieu pendant la requête, la connexion actuelle est laissée intacte.',
+      );
+      return;
+    }
 
     this.db
       .prepare('UPDATE oauth_token SET revoked_at = ? WHERE id = 1')
@@ -218,23 +237,65 @@ export class DriveService {
    * retraitement, ce qui donne le seek vidéo natif sans transcodage.
    */
   async fetchFile(fileId: string, range?: string): Promise<Response> {
+    const url = `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
+    return this.fetchAuthorized(url, fileId, range);
+  }
+
+  /**
+   * `fetch` porteur du jeton OAuth courant, pour les URL Google servies hors de
+   * `api()` — le `thumbnailLink` d'un fichier non public répond 401/403 sans
+   * en-tête `Authorization`, ce qui ferait échouer le repli au moment précis où
+   * il sert. `label` n'apparaît que dans les messages d'erreur.
+   */
+  async fetchAuthorized(url: string, label: string, range?: string): Promise<Response> {
+    let response = await this.send(url, await this.accessToken(false), range);
+
+    if (response.status === 401) {
+      // Google a cessé d'accepter cet access token avant son expiration :
+      // accès retiré, mot de passe changé, application révoquée. Sans ce
+      // renouvellement forcé, le jeton en cache resterait utilisé jusqu'à une
+      // heure et le propriétaire ne verrait que des erreurs opaques pendant ce
+      // temps-là. Le nouvel échange passe par `guard` : si Google refuse aussi
+      // le refresh token, la révocation est enregistrée et /admin le dit.
+      if (response.body) await response.body.cancel();
+      response = await this.send(url, await this.accessToken(true), range);
+    }
+
+    // 206 (fragment) et 416 (plage insatisfaisable) font partie du protocole
+    // `Range` normal — 416 arrive dès qu'un lecteur demande un offset au-delà
+    // de la fin, ce qui est courant en changeant de vidéo. Les convertir en
+    // exception donnerait un 500 là où le navigateur attend un code qu'il sait
+    // interpréter.
+    if (!response.ok && response.status !== 206 && response.status !== 416) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Drive a répondu ${response.status} pour ${label}: ${body.slice(0, 200)}`);
+    }
+    return response;
+  }
+
+  private send(url: string, token: string, range?: string): Promise<Response> {
+    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (range) headers.Range = range;
+    return fetch(url, { headers });
+  }
+
+  /**
+   * Jeton d'accès courant. `force` jette le client en cache pour repartir du
+   * refresh token, seul moyen d'obtenir un access token neuf avant l'expiration
+   * de celui qui vient d'être refusé.
+   *
+   * `protected` et non `private` : c'est le seul point de contact réseau du
+   * service, et les tests s'en servent comme couture pour ne pas appeler Google.
+   */
+  protected async accessToken(force: boolean): Promise<string> {
+    if (force) this.cachedClient = null;
+
     const client = this.authorizedClient();
     // C'est ici que le refresh token est échangé quand l'access token approche
     // de son expiration — donc ici que la révocation se manifeste en premier.
     const { token } = await this.guard(() => client.getAccessToken());
     if (!token) throw new DriveNotConnectedError();
-
-    const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
-    if (range) headers.Range = range;
-
-    const url = `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
-    const response = await fetch(url, { headers });
-
-    if (!response.ok && response.status !== 206) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Drive a répondu ${response.status} pour ${fileId}: ${body.slice(0, 200)}`);
-    }
-    return response;
+    return token;
   }
 
   private authorizedClient(): OAuth2Client {

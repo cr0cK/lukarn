@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { classify, parseExifTime, toCoordinate, toNumber } from '../src/drive/metadata.js';
+import { classify, parseExifTime, toCoordinates, toNumber } from '../src/drive/metadata.js';
 
 describe('classify', () => {
   it('reconnaît photos et vidéos', () => {
@@ -45,7 +45,7 @@ describe('parseExifTime', () => {
   });
 });
 
-describe('toNumber / toCoordinate', () => {
+describe('toNumber', () => {
   it('convertit les nombres et les chaînes numériques', () => {
     assert.equal(toNumber(42), 42);
     assert.equal(toNumber('1024'), 1024);
@@ -53,10 +53,29 @@ describe('toNumber / toCoordinate', () => {
     assert.equal(toNumber(null), null);
     assert.equal(toNumber('abc'), null);
   });
+});
 
-  it('traite 0 comme une absence de position', () => {
-    assert.equal(toCoordinate(0), null);
-    assert.equal(toCoordinate(48.8566), 48.8566);
-    assert.equal(toCoordinate(-0.5), -0.5);
+describe('toCoordinates', () => {
+  it('rend une position renseignée', () => {
+    assert.deepEqual(toCoordinates(48.8566, 2.3522), { lat: 48.8566, lng: 2.3522 });
+  });
+
+  it('écarte le couple (0, 0) que Drive renvoie sans position', () => {
+    assert.deepEqual(toCoordinates(0, 0), { lat: null, lng: null });
+  });
+
+  it("garde la latitude d'une photo prise sur l'équateur", () => {
+    // Le zéro n'est pas une absence : cette photo a bien une position.
+    assert.deepEqual(toCoordinates(0, 32.5825), { lat: 0, lng: 32.5825 });
+  });
+
+  it('garde la longitude d’une photo prise sur le méridien de Greenwich', () => {
+    assert.deepEqual(toCoordinates(51.4779, 0), { lat: 51.4779, lng: 0 });
+  });
+
+  it('refuse une demi-position', () => {
+    // Une latitude sans longitude ne situe rien : mieux vaut ne rien afficher.
+    assert.deepEqual(toCoordinates(48.8566, null), { lat: null, lng: null });
+    assert.deepEqual(toCoordinates(undefined, 2.3522), { lat: null, lng: null });
   });
 });

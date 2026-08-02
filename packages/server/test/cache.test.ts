@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { MediaCache } from '../src/media/cache.js';
-import { LoginThrottle } from '../src/throttle.js';
 
 const root = mkdtempSync(join(tmpdir(), 'gdv-cache-'));
 after(() => rmSync(root, { recursive: true, force: true }));
@@ -83,57 +82,55 @@ describe('cache disque', () => {
     assert.equal(cache.stats().bytes, 0);
     assert.equal(cache.hit('k'), null);
   });
-});
 
-describe('throttle de connexion', () => {
-  const now = 1_700_000_000_000;
+  it("épargne une entrée réclamée pendant que l'éviction tourne", async () => {
+    const cache = new MediaCache(join(root, 'lru-course'), 300);
+    await cache.load();
 
-  it('laisse passer les premières erreurs de frappe', () => {
-    const throttle = new LoginThrottle();
-    // Cinq échecs restent sans pénalité : une erreur de frappe ne doit pas
-    // faire attendre.
-    for (let attempt = 0; attempt < 5; attempt++) {
-      assert.equal(throttle.blockedFor('ip:user', now), 0);
-      throttle.fail('ip:user', now);
-    }
-    assert.equal(throttle.blockedFor('ip:user', now), 0);
+    await cache.put('a', Buffer.alloc(100, 1));
+    await cache.put('b', Buffer.alloc(100, 2));
+    await cache.put('c', Buffer.alloc(100, 3));
 
-    // Le sixième déclenche le délai.
-    throttle.fail('ip:user', now);
-    assert.ok(throttle.blockedFor('ip:user', now) > 0);
+    // La quatrième écriture dépasse la limite et lance l'éviction, qui a déjà
+    // figé son ordre — « a » puis « b » — quand la ligne suivante s'exécute.
+    await cache.put('d', Buffer.alloc(100, 4));
+
+    // Une requête réclame « b » à cet instant précis. Elle va en lire le
+    // fichier : le supprimer maintenant lui rendrait un ENOENT.
+    const reclame = cache.hit('b');
+    assert.ok(reclame, 'la mise en scène suppose que « b » est encore là');
+
+    await settle();
+
+    assert.ok(cache.stats().bytes <= 300, 'la limite doit rester respectée');
+    assert.ok(cache.hit('b'), 'une entrée réclamée pendant l’éviction doit survivre');
+    assert.ok(existsSync(reclame), 'son fichier doit exister quand on va le lire');
   });
 
-  it('double le délai à chaque échec supplémentaire', () => {
-    const throttle = new LoginThrottle();
-    for (let attempt = 0; attempt < 6; attempt++) throttle.fail('ip:user', now);
-    const first = throttle.blockedFor('ip:user', now);
+  it('poursuit son ménage quand une suppression échoue', async () => {
+    const avertissements: string[] = [];
+    const cache = new MediaCache(join(root, 'rm-ko'), 300, {
+      warn: (msg) => avertissements.push(msg),
+    });
+    await cache.load();
 
-    throttle.fail('ip:user', now);
-    const second = throttle.blockedFor('ip:user', now);
+    // Un répertoire à la place du fichier : `rm` le refuse, comme le ferait un
+    // volume remonté en lecture seule ou une erreur d'E/S.
+    const bloque = await cache.put('bloque', Buffer.alloc(100, 1));
+    rmSync(bloque);
+    mkdirSync(join(bloque, 'occupe'), { recursive: true });
 
-    assert.equal(second, first * 2);
-  });
+    await cache.put('b', Buffer.alloc(100, 2));
+    await cache.put('c', Buffer.alloc(100, 3));
+    await cache.put('d', Buffer.alloc(100, 4));
 
-  it('remet le compteur à zéro après une connexion réussie', () => {
-    const throttle = new LoginThrottle();
-    for (let attempt = 0; attempt < 8; attempt++) throttle.fail('ip:user', now);
-    assert.ok(throttle.blockedFor('ip:user', now) > 0);
+    await settle();
 
-    throttle.succeed('ip:user');
-    assert.equal(throttle.blockedFor('ip:user', now), 0);
-  });
-
-  it('oublie une série ancienne', () => {
-    const throttle = new LoginThrottle();
-    for (let attempt = 0; attempt < 8; attempt++) throttle.fail('ip:user', now);
-
-    const plusTwoHours = now + 2 * 60 * 60 * 1000;
-    assert.equal(throttle.blockedFor('ip:user', plusTwoHours), 0);
-  });
-
-  it('isole les clés entre elles', () => {
-    const throttle = new LoginThrottle();
-    for (let attempt = 0; attempt < 8; attempt++) throttle.fail('ip1:user', now);
-    assert.equal(throttle.blockedFor('ip2:user', now), 0);
+    // Sans traitement de l'échec, l'éviction s'arrêtait sur « bloque » : rien
+    // n'était libéré et le rejet non géré pouvait terminer le process.
+    assert.equal(cache.hit('b'), null, 'les entrées suivantes doivent partir quand même');
+    assert.ok(avertissements.length > 0, "l'échec doit être journalisé");
+    // L'entrée récalcitrante reste inventoriée : son fichier est toujours là.
+    assert.ok(cache.hit('bloque'), "l'inventaire doit continuer de décrire le disque");
   });
 });

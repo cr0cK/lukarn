@@ -10,6 +10,7 @@ import { MediaCache } from './media/cache.js';
 import { MediaRenderer } from './media/renderer.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SessionStore } from './sessions.js';
+import { LoginThrottle } from './throttle.js';
 
 const GIB = 1024 ** 3;
 
@@ -26,6 +27,12 @@ export class AppContext {
   readonly media: MediaRepo;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
+  /**
+   * Porté par le contexte et non par les routes d'authentification : sa purge
+   * est branchée sur le ménage horaire de `main.ts`, qui n'a pas accès aux
+   * fermetures d'une fabrique de routes.
+   */
+  readonly throttle = new LoginThrottle();
   readonly drive: DriveService;
   readonly cache: MediaCache;
   readonly renderer: MediaRenderer;
@@ -56,7 +63,7 @@ export class AppContext {
     };
 
     this.drive = new DriveService(env, this.db, logger);
-    this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB);
+    this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
     this.renderer = new MediaRenderer(this.drive, this.cache, logger);
     this.syncer = new Syncer(this.drive, this.media, this.syncState, logger);
 

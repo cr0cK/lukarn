@@ -95,9 +95,14 @@ Déclenchée au démarrage (`sync.onStartup`), périodiquement
 (`sync.intervalMinutes`), après un consentement OAuth réussi, ou depuis
 `POST /api/admin/resync`.
 
-1. `Syncer.sync(album)` — si une sync du même album tourne déjà, la promesse en
-   cours est renvoyée telle quelle. Une resync manuelle ne double jamais le
-   travail.
+1. `Syncer.sync(album)` — si une sync du même album tourne déjà **avec la même
+   configuration effective** (`folderId` et `recursive`), la promesse en cours
+   est renvoyée telle quelle : une resync manuelle ne double jamais le travail.
+   Si la configuration a changé entre-temps, une nouvelle sync est enchaînée
+   derrière la précédente. Partager la promesse de l'ancienne rendrait à
+   l'appelant un travail qui repeuple l'album avec le dossier qu'il vient de
+   quitter ; les lancer en parallèle laisserait l'ordre d'arrivée des
+   `deleteStale` décider du contenu final.
 2. `sync_state` passe à `running`, erreur remise à `null`.
 3. Un `seenAt` ISO est figé : c'est l'estampille du passage.
 4. Parcours en profondeur depuis `folderId`, avec `visited` contre les cycles de
@@ -116,7 +121,12 @@ videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
    déplacé, supprimé ou mis à la corbeille.
 9. `sync_state` passe à `ok`. En cas d'échec, le statut passe à `error` avec le
    message, **mais `lastSyncAt` garde la valeur de la dernière sync réussie** :
-   l'index précédent continue d'être servi.
+   /admin annonce ainsi le dernier passage vraiment complet. Attention à ce que
+   cela ne dit **pas** : l'index n'est pas revenu en arrière. Les lots déjà
+   écrits sont validés, `deleteStale` n'a pas eu lieu, donc l'index mélange
+   l'ancien et le nouveau contenu. Il reste cohérent — tout ce qui a été écrit
+   existe bien dans Drive — simplement incomplet (voir [08](./08-decisions.md),
+   D27).
 10. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
     s'arrête net sur `DriveRevokedError` — les suivants échoueraient de la même
     façon.
@@ -145,11 +155,41 @@ L'inventaire est **reconstruit au démarrage** par `MediaCache.load()` : un
 fichier déposé pendant que le serveur tourne est ignoré jusqu'au redémarrage
 (c'est le piège du script `seed-demo`).
 
+L'éviction tourne en tâche de fond, sans que l'écriture qui l'a déclenchée
+l'attende. Deux précautions y sont indispensables :
+
+- **Chaque candidat est revérifié juste avant sa suppression.** L'ordre est figé
+  au début de la passe, mais `rm` rend la main à la boucle d'événements : une
+  requête peut servir une entrée entre le tri et sa suppression. Une estampille
+  d'accès strictement croissante, portée par chaque entrée, révèle ce cas ;
+  l'entrée touchée est épargnée. Sans cela, `createReadStream` recevrait un
+  `ENOENT` sur une entrée que `hit()` venait de valider.
+- **Un `rm` en échec est journalisé, pas propagé.** Un rejet non géré en tâche de
+  fond termine le process Node : toute la galerie tomberait parce qu'un fichier
+  de cache n'a pas pu être supprimé (volume en lecture seule, erreur d'E/S).
+  L'entrée reste inventoriée, puisque son fichier est toujours là, et la passe
+  continue avec les suivantes.
+
+Côté lecture, `MediaRenderer.render()` vérifie que le fichier désigné par
+l'inventaire existe encore avant de le rendre ; sinon il refabrique le dérivé.
+C'est ce qui couvre « vider le cache » depuis /admin pendant qu'une grille se
+charge, et tout ménage manuel sur le volume.
+
 **Pas de transcodage vidéo.** `GET /api/media/:id/original` relaie le header
 `Range` tel quel vers Drive et recopie `Content-Length` / `Content-Range` de la
 réponse. Le seek natif marche, le CPU du VPS ne fait rien, et il n'y a aucun
-format intermédiaire à stocker. La contrepartie assumée : un format que le
+format intermédiaire à stocker. Les statuts `206` **et `416`** sont relayés :
+une plage insatisfaisable fait partie du protocole `Range` normal (offset au-delà
+de la fin, courant quand on change de vidéo), et son `Content-Range` dit au
+lecteur où s'arrête le fichier. La contrepartie assumée : un format que le
 navigateur ne lit pas n'est pas lisible du tout.
+
+**Le repli Drive est authentifié.** Quand libvips ne décode pas un HEIC ou un
+RAW, le rendu repart du `thumbnailLink` produit par Google. Ce lien porte le même
+contrôle d'accès que le fichier : demandé sans en-tête `Authorization`, il répond
+401/403 pour tout fichier non public — c'est-à-dire dans le cas normal. Il passe
+donc par `DriveService.fetchAuthorized()`, comme les téléchargements d'originaux,
+avec le même renouvellement de jeton sur 401.
 
 **Un seul conteneur.** Le front buildé est servi par `@fastify/static` depuis le
 même process. Une seule origine, donc des cookies de session simples, aucun CORS,

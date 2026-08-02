@@ -160,7 +160,7 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 | Visionneuse | `Début` / `Fin` | Premier / dernier                                                     |
 | Visionneuse | `Échap`         | Défait une couche à la fois : zoom, puis panneau EXIF, puis fermeture |
 | Visionneuse | `I` `F` `D`     | Infos · plein écran · télécharger l'original                          |
-| Visionneuse | `Z`             | Zoom à 100 % (un pixel de photo = un pixel d'écran)                   |
+| Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)        |
 | Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                      |
 | Partout     | `?`             | Aide-mémoire des raccourcis                                           |
 
@@ -196,6 +196,11 @@ focus ou qu'un modificateur est enfoncé.
   liée vers OpenStreetMap.
 - Les flèches de navigation sont masquées pendant le zoom : le glisser sert alors
   à se déplacer dans l'image, et elles tomberaient sous le curseur.
+- **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
+  le dernier, une flèche à une extrémité : la cible est l'index courant, aucun
+  élément n'est remonté, donc aucun `loadeddata` n'est émis. Remettre `loaded` à
+  `false` dans ce cas laisserait le tourniquet de chargement d'une vidéo tourner
+  indéfiniment.
 
 ### Préchargement asymétrique
 
@@ -220,12 +225,42 @@ parce que rebasculer sur `full` en revenant au cadre ferait clignoter l'image à
 chaque aller-retour.
 
 Deux échelles à ne pas confondre : l'**échelle 1** est l'image ajustée au cadre ;
-l'**échelle native** (`nativeScale`) est celle où un pixel de la photo occupe un
-pixel d'écran, calculée depuis `naturalWidth` — donc depuis les dimensions de
-l'index. C'est la cible de `Z` et du clic, le premier cran utile et souvent le
-seul voulu. Plafond `MAX_SCALE = 8` : au-delà, on n'observe plus que le grain du
-capteur. Si l'index ne connaît pas les dimensions, elles sont reprises du rendu
-reçu à son `onLoad` : le zoom est plus limité, mais présent.
+l'**échelle 100 %** (`pixelScale`) est celle où un pixel **du rendu disponible**
+occupe un pixel d'écran. C'est la cible de `Z` et du clic, le premier cran utile
+et souvent le seul voulu. Plafond `MAX_SCALE = 8` : au-delà, on n'observe plus
+que le grain du capteur.
+
+#### « 100 % », c'est la résolution servie, pas celle du fichier
+
+Le serveur plafonne le plus grand côté du rendu `hd` à 4096 px
+(`HD_MAX_EDGE`, `media/renderer.ts`). Une photo de 6000 px n'est donc jamais
+servie en 6000 px, et caler le 100 % sur les dimensions de l'index — ce que
+faisait `nativeScale` — annonçait des pixels natifs tout en en interpolant un
+sur trois. **100 % signifie désormais « un pixel du rendu par pixel d'écran »**,
+c'est-à-dire la limite au-delà de laquelle le navigateur invente.
+
+Le calcul vit dans `lib/zoom.ts` (`computeZoomScale`, `zoomPercent`), en
+fonctions pures testées par `test/zoom.test.ts` : une échelle fausse de 40 %
+ressemble à une image un peu molle, pas à un bug, et ne se voit pas à l'œil.
+
+- La **mesure fait autorité** : `naturalWidth` de l'`<img>` donne la largeur du
+  rendu réellement chargé, relevée à l'`onLoad` du rendu visible et à celui du
+  préchargement `hd` hors écran.
+- Avant ce chargement, la résolution `hd` est **anticipée** par une constante
+  `HD_MAX_EDGE` en miroir du serveur, appliquée au plus grand côté (un portrait
+  4000 × 6000 donne 2731 px de large, pas 4000). Sans cette anticipation, `Z`
+  ne pourrait viser que la résolution du rendu `full` déjà chargé. Une
+  divergence avec le serveur se corrige d'elle-même dès que `hd` est mesuré.
+- Le **pourcentage se calcule depuis `availableWidth`**, pas depuis
+  `pixelScale`, qui est plafonné par `MAX_SCALE` : sur une photo qui demanderait
+  plus que ce plafond, le rapporter à `pixelScale` afficherait 100 % là où le
+  zoom maximal ne montre encore qu'une partie des pixels.
+- Quand le rendu disponible est plus petit que le fichier, l'indicateur le dit
+  (`100 % · rendu 4096 px sur 6000 px`) : c'est l'information que masquait
+  l'ancien affichage.
+- Si l'index ne connaît pas les dimensions, elles sont reprises du rendu reçu à
+  son `onLoad` : le zoom part de la résolution mesurée, plus limité mais présent,
+  et remonte quand `hd` est chargé.
 
 Trois détails qui ont une raison :
 
@@ -241,9 +276,9 @@ Deux repères visuels : un **placeholder** (la vignette 320, déjà en cache
 navigateur puisqu'elle vient d'être affichée dans la grille) flouté à la taille
 exacte du rendu final, le temps que celui-ci arrive ; et une **minimap** pendant
 le zoom, avec le cadre de la zone visible — sans elle on perd tout sens de
-l'orientation dès qu'on se déplace dans une image agrandie. Le pourcentage
-affiché est relatif à l'échelle native, et signale `chargement HD…` tant que la
-variante `hd` n'est pas prête.
+l'orientation dès qu'on se déplace dans une image agrandie. L'indicateur signale
+en plus `chargement HD…` tant que la variante `hd` n'est pas prête : le
+pourcentage repose alors sur la résolution anticipée, pas sur une mesure.
 
 ## Administration — `pages/AdminPage.tsx` et `components/admin/`
 

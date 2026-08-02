@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { computeZoomScale, zoomPercent } from '../lib/zoom';
 
 /** Au-delà, on n'observe plus que le grain du capteur. */
 const MAX_SCALE = 8;
@@ -23,7 +24,10 @@ interface ZoomableImageProps {
   /** Vignette déjà en cache navigateur, affichée pendant le chargement de `src`. */
   placeholderSrc: string;
   alt: string;
-  /** Dimensions natives connues de l'index, pour calculer le zoom 1:1. */
+  /**
+   * Dimensions du fichier d'origine d'après l'index. Elles bornent le zoom par
+   * le haut, mais ne le décident pas : le rendu servi peut en avoir moins.
+   */
   naturalWidth: number | null;
   naturalHeight: number | null;
   /** Piloté depuis la visionneuse (touche `z`). */
@@ -55,9 +59,11 @@ function fitInside(image: Box, container: Box): Box {
  * bascule donc sur la variante `hd` (4096 px), qui contient les détails que le
  * rendu d'écran a perdus.
  *
- * L'échelle 1 correspond à l'image ajustée au cadre ; l'échelle « native » est
- * celle où un pixel de la photo occupe un pixel d'écran. Le déplacement est
- * borné pour que l'image ne puisse jamais quitter le cadre.
+ * L'échelle 1 correspond à l'image ajustée au cadre ; l'échelle « 100 % »
+ * (`pixelScale`) est celle où un pixel du rendu disponible occupe un pixel
+ * d'écran — pas celle des dimensions du fichier d'origine, que le rendu `hd`
+ * n'atteint pas toujours. Le déplacement est borné pour que l'image ne puisse
+ * jamais quitter le cadre.
  */
 export function ZoomableImage({
   src,
@@ -76,6 +82,12 @@ export function ZoomableImage({
     width: naturalWidth ?? 0,
     height: naturalHeight ?? 0,
   });
+  /**
+   * Largeur du rendu réellement chargé, mesurée sur l'élément. Le serveur
+   * plafonne le plus grand côté de `hd` : sans cette mesure, une photo de
+   * 6000 px afficherait « 100 % » alors qu'il n'y a que 4096 pixels à peindre.
+   */
+  const [renderedWidth, setRenderedWidth] = useState(0);
 
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -103,15 +115,19 @@ export function ZoomableImage({
   const displayed = fitInside(intrinsic, container);
 
   /**
-   * Échelle à laquelle un pixel de la photo occupe un pixel d'écran. C'est la
+   * Échelle à laquelle un pixel du rendu occupe un pixel d'écran. C'est la
    * cible de la touche `z` : le premier cran utile, et souvent le seul voulu.
    */
-  const nativeScale =
-    displayed.width > 0 && intrinsic.width > 0
-      ? Math.min(MAX_SCALE, Math.max(1, intrinsic.width / displayed.width))
-      : 1;
+  const { availableWidth, pixelScale, limited } = computeZoomScale({
+    sourceWidth: naturalWidth ?? 0,
+    sourceHeight: naturalHeight ?? 0,
+    renderedWidth,
+    hdLoaded: hdReady,
+    displayedWidth: displayed.width,
+    maxScale: MAX_SCALE,
+  });
 
-  const canZoom = nativeScale > 1 + FIT_EPSILON;
+  const canZoom = pixelScale > 1 + FIT_EPSILON;
 
   /** Déplacement maximal avant que le cadre ne déborde de l'image. */
   const clampOffset = useCallback(
@@ -171,9 +187,9 @@ export function ZoomableImage({
   // Réagit à l'intention venue de la visionneuse (touche `z`), sans se relancer
   // à chaque cran de molette — ce qui ramènerait aussitôt l'image au niveau natif.
   useEffect(() => {
-    if (zoomed && scaleRef.current <= 1 + FIT_EPSILON) applyScale(nativeScale);
+    if (zoomed && scaleRef.current <= 1 + FIT_EPSILON) applyScale(pixelScale);
     else if (!zoomed && scaleRef.current > 1 + FIT_EPSILON) applyScale(1);
-  }, [zoomed, nativeScale, applyScale]);
+  }, [zoomed, pixelScale, applyScale]);
 
   // Charge la variante haute résolution dès le premier agrandissement, puis la
   // laisse en place : rebasculer sur `full` en revenant au cadre ferait
@@ -182,8 +198,12 @@ export function ZoomableImage({
     if (!canZoom || hdReady || scale <= 1 + FIT_EPSILON) return;
     const image = new Image();
     // Chargé et décodé hors écran : le passage à la haute résolution se fait
-    // sur une image prête, sans à-coup visible.
-    image.onload = () => setHdReady(true);
+    // sur une image prête, sans à-coup visible. Sa largeur réelle est relevée
+    // ici : c'est la seule mesure qui remplace l'estimation du plafond serveur.
+    image.onload = () => {
+      setRenderedWidth(image.naturalWidth);
+      setHdReady(true);
+    };
     image.src = hdSrc;
   }, [scale, canZoom, hdReady, hdSrc]);
 
@@ -257,7 +277,7 @@ export function ZoomableImage({
     // Agrandit à l'endroit cliqué plutôt qu'au centre : on zoome sur ce qu'on
     // regarde, pas sur le milieu de la photo.
     const rect = event.currentTarget.getBoundingClientRect();
-    applyScale(nativeScale, {
+    applyScale(pixelScale, {
       x: event.clientX - rect.left - rect.width / 2,
       y: event.clientY - rect.top - rect.height / 2,
     });
@@ -295,12 +315,13 @@ export function ZoomableImage({
         alt={alt}
         draggable={false}
         onLoad={(event) => {
+          const image = event.currentTarget;
           setLoaded(true);
           onLoadedChange?.(true);
+          setRenderedWidth(image.naturalWidth);
           // Repli quand l'index ne connaît pas les dimensions du fichier : on
           // prend celles du rendu reçu. Le zoom sera plus limité, mais présent.
           if (intrinsic.width <= 0) {
-            const image = event.currentTarget;
             setIntrinsic({ width: image.naturalWidth, height: image.naturalHeight });
           }
         }}
@@ -329,7 +350,12 @@ export function ZoomableImage({
 
       {isZoomed && (
         <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs tabular-nums text-ink-100">
-          {Math.round((scale / nativeScale) * 100)} %{!hdReady && ' · chargement HD…'}
+          {zoomPercent(displayed.width, scale, availableWidth)} %
+          {/* Dit que le rendu servi est plus petit que le fichier plutôt que de
+              le taire : sans ça, « 100 % » sur une photo de 6000 px laisserait
+              croire qu'on regarde ses pixels alors qu'il n'y en a que 4096. */}
+          {limited && ` · rendu ${availableWidth} px sur ${naturalWidth} px`}
+          {!hdReady && ' · chargement HD…'}
         </span>
       )}
 

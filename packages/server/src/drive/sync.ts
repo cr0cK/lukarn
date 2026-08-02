@@ -4,7 +4,7 @@ import {
   classify,
   FOLDER_MIME,
   parseExifTime,
-  toCoordinate,
+  toCoordinates,
   toNumber,
   toText,
 } from './metadata.js';
@@ -41,6 +41,17 @@ export interface Logger {
   error: (msg: string) => void;
 }
 
+function noop(): void {}
+
+/**
+ * Configuration effectivement parcourue par une sync. Deux syncs du même album
+ * ne sont interchangeables que si elles visent le même dossier avec la même
+ * profondeur.
+ */
+function fingerprint(album: SyncAlbum): string {
+  return `${album.folderId}:${album.recursive ? 'recursif' : 'plat'}`;
+}
+
 /**
  * Indexation d'un album : parcours du dossier Drive et recopie des métadonnées
  * en base. Rien n'est téléchargé — `imageMediaMetadata` fournit dimensions,
@@ -50,7 +61,7 @@ export interface Logger {
  */
 export class Syncer {
   /** Albums en cours de sync : évite qu'une resync manuelle double le travail. */
-  private readonly running = new Map<string, Promise<SyncResult>>();
+  private readonly running = new Map<string, { fingerprint: string; task: Promise<SyncResult> }>();
 
   constructor(
     private readonly drive: DriveService,
@@ -63,13 +74,30 @@ export class Syncer {
     return this.running.has(albumId);
   }
 
-  /** Lance la sync, ou renvoie celle déjà en cours pour cet album. */
+  /**
+   * Lance la sync, ou renvoie celle déjà en cours pour cet album **à la même
+   * configuration**. Changer le dossier Drive pendant une sync rend l'ancienne
+   * inutilisable : la resservir renverrait à l'appelant une promesse qui va
+   * repeupler l'album avec les fichiers du dossier qu'on vient de quitter.
+   */
   sync(album: SyncAlbum): Promise<SyncResult> {
-    const existing = this.running.get(album.id);
-    if (existing) return existing;
+    const wanted = fingerprint(album);
+    const current = this.running.get(album.id);
+    if (current?.fingerprint === wanted) return current.task;
 
-    const task = this.run(album).finally(() => this.running.delete(album.id));
-    this.running.set(album.id, task);
+    // La nouvelle sync attend la précédente au lieu de tourner à côté : les deux
+    // écrivent sous le même `album_id`, et c'est le `deleteStale` du dernier
+    // arrivé qui décide de ce qui reste. Sans cet enchaînement, l'ordre de fin
+    // déciderait du contenu de l'album.
+    const previous = current ? current.task.then(noop, noop) : Promise.resolve();
+    const task = previous.then(() => this.run(album));
+
+    void task.catch(noop).finally(() => {
+      // Ne retirer que sa propre entrée : si une reconfiguration a déjà pris la
+      // place, l'effacer laisserait la sync suivante croire qu'aucune ne tourne.
+      if (this.running.get(album.id)?.task === task) this.running.delete(album.id);
+    });
+    this.running.set(album.id, { fingerprint: wanted, task });
     return task;
   }
 
@@ -155,8 +183,17 @@ export class Syncer {
       return { albumId: album.id, indexed, removed, folders: visited.size, durationMs };
     } catch (error) {
       const message = (error as Error).message;
-      // On garde `lastSyncAt` de la sync réussie précédente : l'index reste
-      // servi, l'erreur est simplement remontée dans /admin.
+      /**
+       * Les lots déjà écrits sont validés — une transaction par lot de 500,
+       * pas une pour toute la sync : l'index mélange donc l'ancien et le
+       * nouveau contenu. `deleteStale` n'ayant pas eu lieu, rien n'a été
+       * retiré, et ce qui vient d'être écrit existe bien dans Drive. L'album
+       * reste consultable et cohérent, simplement incomplet.
+       *
+       * `lastSyncAt` garde la valeur du dernier passage **réussi** : c'est ce
+       * que /admin affiche, et prétendre que la sync date de maintenant
+       * masquerait qu'elle n'est pas allée au bout.
+       */
       this.syncState.set(album.id, {
         lastSyncAt: previous.lastSyncAt,
         status: 'error',
@@ -217,6 +254,8 @@ export class Syncer {
     // ici évite des vignettes déformées avant même leur chargement.
     const rotated = typeof image?.rotation === 'number' && image.rotation % 2 === 1;
 
+    const { lat, lng } = toCoordinates(image?.location?.latitude, image?.location?.longitude);
+
     return {
       albumId,
       id: file.id,
@@ -237,8 +276,8 @@ export class Syncer {
       exposureTime: toNumber(image?.exposureTime),
       aperture: toNumber(image?.aperture),
       focalLength: toNumber(image?.focalLength),
-      lat: toCoordinate(image?.location?.latitude),
-      lng: toCoordinate(image?.location?.longitude),
+      lat,
+      lng,
       md5: toText(file.md5Checksum),
     };
   }

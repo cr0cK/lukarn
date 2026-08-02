@@ -16,6 +16,12 @@ function startScheduler(context: AppContext): () => void {
   const housekeeping = setInterval(() => {
     const purged = context.sessions.purgeExpired();
     if (purged > 0) context.log.debug(`${purged} sessions expirées purgées`);
+
+    // Les compteurs de connexion vivent en mémoire : sans cette purge, une
+    // rafale d'identifiants inventés laisserait ses entrées jusqu'au
+    // redémarrage, même une fois la pénalité expirée.
+    const forgotten = context.throttle.purge();
+    if (forgotten > 0) context.log.debug(`${forgotten} compteurs de connexion oubliés`);
   }, HOUSEKEEPING_INTERVAL_MS);
   housekeeping.unref();
 

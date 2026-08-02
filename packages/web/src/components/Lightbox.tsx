@@ -53,7 +53,12 @@ export function Lightbox({
 
   const goTo = useCallback(
     (next: number) => {
-      if (next < 0 || next >= items.length) return;
+      // `Début` sur le premier média, `Fin` sur le dernier, une flèche à une
+      // extrémité : l'index demandé est déjà celui affiché. Sans ce garde-fou,
+      // `setLoaded(false)` attendrait un chargement qui ne viendra pas — aucun
+      // élément n'est remonté, donc aucun `loadeddata` n'est émis, et le
+      // tourniquet de la vidéo tourne indéfiniment.
+      if (next < 0 || next >= items.length || next === index) return;
       setDirection(next >= index ? 1 : -1);
       setZoomed(false);
       setLoaded(false);
