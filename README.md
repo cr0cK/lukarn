@@ -8,10 +8,21 @@ L'accès se fait par identifiant et mot de passe. Un fichier YAML déclare quels
 dossiers Drive deviennent des albums et quels utilisateurs y ont accès — de quoi
 partager un album précis sans exposer le reste du Drive.
 
+## Deux authentifications à ne pas confondre
+
+|                                | Qui             | Quand                      | Ce que ça ouvre                   |
+| ------------------------------ | --------------- | -------------------------- | --------------------------------- |
+| **OAuth Google**               | Le propriétaire | Une fois, à l'installation | L'accès en lecture à _son_ Drive  |
+| **Identifiant / mot de passe** | Chaque visiteur | À chaque session           | Les albums qui lui sont attribués |
+
+Les visiteurs ne voient jamais Google et n'ont besoin d'aucun compte Google.
+L'application détient un seul jeton — celui du propriétaire — et sert les photos
+à travers lui.
+
 ## Ce que ça fait
 
 - **Connexion OAuth à Google Drive**, autorisée une fois depuis `/admin`. Le
-  refresh token est chiffré au repos.
+  refresh token est chiffré au repos et renouvelé automatiquement ensuite.
 - **Albums déclarés en YAML**, avec droits par utilisateur. Aucune inscription,
   aucun écran de gestion de comptes.
 - **Photos et vidéos** : JPEG, PNG, WebP, HEIC, MP4, MOV. Vidéos lues en
@@ -42,14 +53,32 @@ partager un album précis sans exposer le reste du Drive.
 
 ### 1. Identifiants OAuth Google
 
-Dans la [console Google Cloud](https://console.cloud.google.com/) :
+Tout se passe dans la [console Google Cloud](https://console.cloud.google.com/),
+dans un **projet dédié** plutôt qu'un projet fourre-tout : l'écran de
+consentement est unique par projet et porte le nom affiché, les scopes et le
+statut de publication. Y loger plusieurs applications les mélange dans une même
+demande d'autorisation.
 
-1. Créer un projet, puis activer **Google Drive API**.
-2. **API et services → Écran de consentement OAuth** : type « Externe », ajouter
-   ton adresse Google dans les utilisateurs de test. Publier l'application n'est
-   pas nécessaire pour un usage personnel.
-3. **Identifiants → Créer → ID client OAuth**, type **Application Web**.
-4. Dans « URI de redirection autorisés », ajouter exactement :
+1. Créer un projet, puis **API et services → Bibliothèque** : activer
+   **Google Drive API**.
+2. **Écran de consentement OAuth** (aussi présenté sous le nom _Google Auth
+   Platform_) : type **Externe**, nom d'application et adresse d'assistance.
+3. **Publier l'application.** Étape indispensable : tant qu'elle reste en statut
+   « Test », Google fait **expirer le refresh token au bout de 7 jours** et il
+   faut se reconnecter chaque semaine.
+
+   Publier ne déclenche aucune procédure de vérification tant que tu ne la
+   demandes pas. L'application reste « publiée, non vérifiée », plafonnée à
+   100 utilisateurs. Seule conséquence : au moment du consentement, un écran
+   « Google n'a pas validé cette application » — passer par **Paramètres avancés
+   → Accéder à**. Une seule fois, et uniquement pour toi.
+
+   _(Avec un compte Google Workspace, le type « Interne » évite cet écran. Il
+   n'est pas proposé aux adresses `gmail.com`.)_
+
+4. **Identifiants → Créer → ID client OAuth**, type **Application Web**.
+5. Dans « URI de redirection autorisés », ajouter exactement `PUBLIC_URL` suivi
+   de `/api/oauth/callback`, par exemple :
    `https://photos.exemple.fr/api/oauth/callback`
 
 ### 2. Configuration
@@ -98,11 +127,18 @@ photos.exemple.fr {
 }
 ```
 
-### 4. Première connexion
+### 4. Connecter le Drive
 
-Ouvrir `https://photos.exemple.fr`, se connecter avec un compte administrateur,
-aller sur **/admin** et cliquer sur **Connecter Google Drive**. La première
-synchronisation démarre automatiquement à la fin du consentement.
+À faire **une seule fois**, et par le propriétaire du Drive uniquement :
+
+1. Ouvrir `https://photos.exemple.fr` et se connecter avec un compte `admin: true`.
+2. Aller sur **/admin** → **Connecter Google Drive**.
+3. Choisir son compte Google et accepter. L'écran « Google n'a pas validé cette
+   application » se passe par **Paramètres avancés → Accéder à**.
+
+Au retour, la première synchronisation démarre seule ; les albums se remplissent
+en quelques secondes. À partir de là, les visiteurs se connectent avec leur
+identifiant et leur mot de passe, sans jamais passer par Google.
 
 ## Exploitation
 

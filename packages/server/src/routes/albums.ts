@@ -1,4 +1,4 @@
-import type { Album, ItemsPage } from '@gdv/shared';
+import { DEFAULT_SORT_ORDER, type Album, type ItemsPage } from '@gdv/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -11,6 +11,10 @@ const MAX_LIMIT = 500;
 const querySchema = z.object({
   cursor: z.string().max(512).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+  // Un sens de tri inconnu est refusé plutôt que ramené au défaut : un client
+  // qui se trompe de valeur doit l'apprendre, pas recevoir silencieusement
+  // l'album à l'envers de ce qu'il affiche.
+  order: z.enum(['desc', 'asc']).default(DEFAULT_SORT_ORDER),
 });
 
 export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
@@ -52,6 +56,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
         albumId,
         query.data.limit,
         query.data.cursor ?? null,
+        query.data.order,
       );
       return reply.send(page);
     });

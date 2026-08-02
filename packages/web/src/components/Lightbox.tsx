@@ -1,20 +1,18 @@
 import type { MediaItem } from '@gdv/shared';
-import {
-  type MouseEvent as ReactMouseEvent,
-  type ReactElement,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { useMediaDetail } from '../api/hooks';
 import { formatDateTime } from '../lib/format';
 import { ExifPanel } from './ExifPanel';
+import { ZoomableImage } from './ZoomableImage';
 
-const ZOOM_SCALE = 2.5;
-/** Nombre de médias préchargés de part et d'autre du média courant. */
-const PRELOAD_RADIUS = 2;
+/**
+ * Photos préchargées dans le sens de navigation, et dans l'autre. Le total
+ * reste modeste : chaque rendu absent du cache serveur coûte le téléchargement
+ * de l'original depuis Drive, et saturer la file ralentirait la photo courante.
+ */
+const PRELOAD_AHEAD = 4;
+const PRELOAD_BEHIND = 1;
 
 interface LightboxProps {
   albumId: string;
@@ -43,8 +41,10 @@ export function Lightbox({
 }: LightboxProps): ReactElement | null {
   const item = items[index];
   const [showInfo, setShowInfo] = useState(false);
-  const [zoom, setZoom] = useState<{ x: number; y: number } | null>(null);
+  const [zoomed, setZoomed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  /** Sens du dernier déplacement : oriente le préchargement. */
+  const [direction, setDirection] = useState(1);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -54,11 +54,12 @@ export function Lightbox({
   const goTo = useCallback(
     (next: number) => {
       if (next < 0 || next >= items.length) return;
-      setZoom(null);
+      setDirection(next >= index ? 1 : -1);
+      setZoomed(false);
       setLoaded(false);
       onIndexChange(next);
     },
-    [items.length, onIndexChange],
+    [index, items.length, onIndexChange],
   );
 
   // Gèle le défilement de la page derrière la visionneuse — sans ça, la molette
@@ -79,18 +80,48 @@ export function Lightbox({
     return () => previouslyFocused?.focus?.();
   }, []);
 
-  // Précharge les voisins : à l'arrivée sur la photo suivante, l'image est déjà
-  // dans le cache du navigateur.
+  /**
+   * Précharge les photos voisines pour que ←/→ enchaîne sans attente.
+   *
+   * Le préchargement est asymétrique et suit le sens de navigation : quelqu'un
+   * qui avance continue presque toujours d'avancer. À nombre de requêtes égal,
+   * pousser plus loin devant que derrière rend le parcours nettement plus
+   * fluide, ce qui compte d'autant plus que chaque première génération demande
+   * au serveur de télécharger l'original depuis Drive.
+   *
+   * L'ordre des requêtes est délibéré : les plus proches d'abord, pour que la
+   * photo immédiatement suivante ne soit pas mise en file derrière des voisines
+   * plus lointaines.
+   */
   useEffect(() => {
-    for (let offset = -PRELOAD_RADIUS; offset <= PRELOAD_RADIUS; offset++) {
-      const neighbour = items[index + offset];
-      if (!neighbour || offset === 0 || neighbour.kind !== 'photo') continue;
-      const image = new Image();
-      image.src = mediaUrl.full(neighbour.id);
+    const ahead = direction >= 0 ? PRELOAD_AHEAD : PRELOAD_BEHIND;
+    const behind = direction >= 0 ? PRELOAD_BEHIND : PRELOAD_AHEAD;
+
+    const targets: number[] = [];
+    for (let distance = 1; distance <= Math.max(ahead, behind); distance++) {
+      if (distance <= ahead) targets.push(index + distance);
+      if (distance <= behind) targets.push(index - distance);
     }
 
-    if (index >= items.length - 5) onNeedMore();
-  }, [index, items, onNeedMore]);
+    const pending = targets
+      .map((position) => items[position])
+      .filter((neighbour) => neighbour?.kind === 'photo')
+      .map((neighbour) => {
+        const image = new Image();
+        image.src = mediaUrl.full(neighbour!.id, neighbour!.version);
+        return image;
+      });
+
+    return () => {
+      // Navigation rapide : abandonner les téléchargements devenus inutiles
+      // libère les connexions pour la photo réellement affichée.
+      for (const image of pending) image.src = '';
+    };
+  }, [index, items, direction]);
+
+  useEffect(() => {
+    if (index >= items.length - PRELOAD_AHEAD - 2) onNeedMore();
+  }, [index, items.length, onNeedMore]);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
@@ -122,7 +153,9 @@ export function Lightbox({
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
-          if (zoom) setZoom(null);
+          // Échap défait la dernière couche ouverte plutôt que de tout fermer :
+          // sortir du zoom, puis du panneau, puis de la visionneuse.
+          if (zoomed) setZoomed(false);
           else if (showInfo) setShowInfo(false);
           else onClose();
           break;
@@ -160,7 +193,7 @@ export function Lightbox({
         case 'z':
         case 'Z':
           event.preventDefault();
-          setZoom((value) => (value ? null : { x: 50, y: 50 }));
+          setZoomed((value) => !value);
           break;
         case ' ': {
           // L'espace fait défiler la page par défaut : ici il pilote la vidéo.
@@ -176,20 +209,11 @@ export function Lightbox({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [index, items.length, zoom, showInfo, goTo, onClose, toggleFullscreen, download]);
+  }, [index, items.length, zoomed, showInfo, goTo, onClose, toggleFullscreen, download]);
 
   if (!item) return null;
 
   const isVideo = item.kind === 'video';
-
-  const onMouseMove = (event: ReactMouseEvent<HTMLDivElement>): void => {
-    if (!zoom) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    setZoom({
-      x: ((event.clientX - rect.left) / rect.width) * 100,
-      y: ((event.clientY - rect.top) / rect.height) * 100,
-    });
-  };
 
   return (
     <div
@@ -235,6 +259,17 @@ export function Lightbox({
           <path d="M12 11v5M12 7.5v.5" />
         </IconButton>
 
+        {!isVideo && (
+          <IconButton
+            label={zoomed ? 'Revenir à la taille écran (z)' : 'Zoomer (z)'}
+            active={zoomed}
+            onClick={() => setZoomed((value) => !value)}
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
+          </IconButton>
+        )}
+
         <IconButton label="Télécharger l'original (d)" onClick={download}>
           <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
         </IconButton>
@@ -244,16 +279,12 @@ export function Lightbox({
         </IconButton>
       </header>
 
-      <div
-        className="relative flex flex-1 items-center justify-center overflow-hidden"
-        onMouseMove={onMouseMove}
-        onDoubleClick={() => setZoom((value) => (value ? null : { x: 50, y: 50 }))}
-      >
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden">
         {isVideo ? (
           <video
             ref={videoRef}
             key={item.id}
-            src={mediaUrl.original(item.id)}
+            src={mediaUrl.original(item.id, item.version)}
             controls
             autoPlay
             playsInline
@@ -261,43 +292,44 @@ export function Lightbox({
             onLoadedData={() => setLoaded(true)}
           />
         ) : (
-          <img
+          <ZoomableImage
+            // Remonter le composant à chaque photo réinitialise zoom et cadrage
+            // sans avoir à les remettre à zéro à la main.
             key={item.id}
-            src={mediaUrl.full(item.id)}
+            src={mediaUrl.full(item.id, item.version)}
+            hdSrc={mediaUrl.hd(item.id, item.version)}
+            placeholderSrc={mediaUrl.thumb(item.id, 320, item.version)}
             alt={item.name}
-            className={`max-h-full max-w-full object-contain lightbox-enter ${
-              zoom ? 'cursor-zoom-out' : 'cursor-zoom-in'
-            } ${loaded ? '' : 'opacity-0'}`}
-            style={
-              zoom
-                ? {
-                    transform: `scale(${ZOOM_SCALE})`,
-                    transformOrigin: `${zoom.x}% ${zoom.y}%`,
-                  }
-                : undefined
-            }
-            onLoad={() => setLoaded(true)}
-            onClick={() => setZoom((value) => (value ? null : { x: 50, y: 50 }))}
-            draggable={false}
+            naturalWidth={item.width}
+            naturalHeight={item.height}
+            zoomed={zoomed}
+            onZoomedChange={setZoomed}
+            onLoadedChange={setLoaded}
           />
         )}
 
-        {!loaded && (
+        {!loaded && isVideo && (
           <span className="absolute size-8 animate-spin rounded-full border-2 border-ink-700 border-t-accent" />
         )}
 
-        <NavButton
-          side="left"
-          disabled={index === 0}
-          onClick={() => goTo(index - 1)}
-          label="Précédent (←)"
-        />
-        <NavButton
-          side="right"
-          disabled={index === items.length - 1}
-          onClick={() => goTo(index + 1)}
-          label="Suivant (→)"
-        />
+        {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
+            l'image, et les flèches tomberaient sous le curseur. */}
+        {!zoomed && (
+          <NavButton
+            side="left"
+            disabled={index === 0}
+            onClick={() => goTo(index - 1)}
+            label="Précédent (←)"
+          />
+        )}
+        {!zoomed && (
+          <NavButton
+            side="right"
+            disabled={index === items.length - 1}
+            onClick={() => goTo(index + 1)}
+            label="Suivant (→)"
+          />
+        )}
       </div>
 
       {showInfo && <ExifPanel detail={detail} onClose={() => setShowInfo(false)} />}

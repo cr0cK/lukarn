@@ -21,8 +21,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/status', async (_request, reply) => {
       const connection = context.drive.connection;
       const status: AdminStatus = {
-        driveConnected: connection !== null,
+        driveConnected: context.drive.connected,
         driveAccount: connection?.account ?? null,
+        driveRevokedAt: connection?.revokedAt ?? null,
         oauthConfigured: context.drive.configured,
         albums: context.albums.map((album) => buildAlbum(album, context.media, context.syncState)),
         cache: context.cache.stats(),

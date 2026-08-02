@@ -55,7 +55,7 @@ export function Thumb({
     >
       {!isVideo && !failed && (
         <img
-          src={mediaUrl.thumb(item.id, pickThumbSize(width))}
+          src={mediaUrl.thumb(item.id, pickThumbSize(width), item.version)}
           alt=""
           width={width}
           height={height}

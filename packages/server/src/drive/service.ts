@@ -35,15 +35,48 @@ export class DriveNotConfiguredError extends Error {
   }
 }
 
+export class DriveRevokedError extends Error {
+  constructor() {
+    super(
+      "L'autorisation Google a été révoquée ou a expiré. Reconnecte Google Drive depuis /admin.",
+    );
+    this.name = 'DriveRevokedError';
+  }
+}
+
+/**
+ * Google répond `invalid_grant` quand le refresh token n'est plus échangeable :
+ * accès retiré depuis myaccount.google.com, six mois sans utilisation, ou
+ * application repassée en statut « Test » (les jetons y expirent à 7 jours).
+ *
+ * L'erreur remonte tantôt de `getAccessToken()`, tantôt d'un appel à l'API
+ * Drive, avec une forme qui varie selon le chemin parcouru — d'où la
+ * reconnaissance sur plusieurs emplacements plutôt que sur un seul champ.
+ */
+function isRevocation(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as {
+    message?: unknown;
+    response?: { data?: { error?: unknown; error_description?: unknown } };
+  };
+
+  if (candidate.response?.data?.error === 'invalid_grant') return true;
+  return typeof candidate.message === 'string' && candidate.message.includes('invalid_grant');
+}
+
 interface TokenRow {
   ciphertext: string;
   account: string | null;
   granted_at: string;
+  revoked_at: string | null;
 }
 
 export interface DriveConnection {
   account: string | null;
   grantedAt: string;
+  /** Non `null` si Google a cessé d'accepter le refresh token. */
+  revokedAt: string | null;
 }
 
 /**
@@ -67,11 +100,15 @@ export class DriveService {
 
   get connection(): DriveConnection | null {
     const row = this.readToken();
-    return row ? { account: row.account, grantedAt: row.granted_at } : null;
+    return row
+      ? { account: row.account, grantedAt: row.granted_at, revokedAt: row.revoked_at }
+      : null;
   }
 
+  /** Un jeton révoqué est encore stocké, mais ne permet plus rien. */
   get connected(): boolean {
-    return this.readToken() !== null;
+    const row = this.readToken();
+    return row !== null && row.revoked_at === null;
   }
 
   /** URL de consentement Google. `state` protège le callback contre le CSRF. */
@@ -105,13 +142,15 @@ export class DriveService {
 
     this.db
       .prepare(
-        `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at)
-         VALUES (1, ?, ?, ?, ?)
+        `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at, revoked_at)
+         VALUES (1, ?, ?, ?, ?, NULL)
          ON CONFLICT (id) DO UPDATE SET
            ciphertext = excluded.ciphertext,
            account = excluded.account,
            scope = excluded.scope,
-           granted_at = excluded.granted_at`,
+           granted_at = excluded.granted_at,
+           -- Un nouveau consentement lève la révocation précédente.
+           revoked_at = NULL`,
       )
       .run(
         encryptSecret(tokens.refresh_token, this.env.tokenKey),
@@ -136,6 +175,43 @@ export class DriveService {
   }
 
   /**
+   * Exécute un appel à Drive en surveillant la révocation du refresh token.
+   * À utiliser autour de tout ce qui passe par `api()` — le client renvoyé
+   * échange le refresh token de lui-même, donc l'erreur naît dans l'appel de
+   * l'appelant, pas ici.
+   */
+  async guard<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (isRevocation(error)) {
+        this.markRevoked();
+        throw new DriveRevokedError();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Enregistre que Google refuse désormais le refresh token. Le jeton est
+   * conservé plutôt que supprimé : /admin peut ainsi dire « l'autorisation a
+   * été révoquée » et pour quel compte, là où une base vide se lirait comme
+   * une installation neuve.
+   */
+  private markRevoked(): void {
+    const row = this.readToken();
+    if (!row || row.revoked_at !== null) return;
+
+    this.db
+      .prepare('UPDATE oauth_token SET revoked_at = ? WHERE id = 1')
+      .run(new Date().toISOString());
+    this.cachedClient = null;
+    this.log.warn(
+      'Google a refusé le refresh token (invalid_grant). Reconnecte Google Drive depuis /admin.',
+    );
+  }
+
+  /**
    * Télécharge le contenu d'un fichier. Passe par `fetch` plutôt que par
    * googleapis pour garder la main sur les en-têtes : un `Range` fourni est
    * transmis à Google, et la réponse 206 est renvoyée au navigateur sans
@@ -143,7 +219,9 @@ export class DriveService {
    */
   async fetchFile(fileId: string, range?: string): Promise<Response> {
     const client = this.authorizedClient();
-    const { token } = await client.getAccessToken();
+    // C'est ici que le refresh token est échangé quand l'access token approche
+    // de son expiration — donc ici que la révocation se manifeste en premier.
+    const { token } = await this.guard(() => client.getAccessToken());
     if (!token) throw new DriveNotConnectedError();
 
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -164,6 +242,9 @@ export class DriveService {
 
     const row = this.readToken();
     if (!row) throw new DriveNotConnectedError();
+    // Inutile de retenter un jeton que Google a déjà refusé : autant échouer
+    // tout de suite avec le message qui dit quoi faire.
+    if (row.revoked_at !== null) throw new DriveRevokedError();
 
     let refreshToken: string;
     try {
@@ -195,7 +276,7 @@ export class DriveService {
 
   private readToken(): TokenRow | null {
     const row = this.db
-      .prepare('SELECT ciphertext, account, granted_at FROM oauth_token WHERE id = 1')
+      .prepare('SELECT ciphertext, account, granted_at, revoked_at FROM oauth_token WHERE id = 1')
       .get() as TokenRow | undefined;
     return row ?? null;
   }

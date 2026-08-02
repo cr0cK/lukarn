@@ -8,6 +8,9 @@ cache/
 .env
 config/albums.yaml
 
+# Artefacts d'automatisation navigateur (captures, snapshots, journaux console)
+.playwright-cli/
+
 # Divers
 .DS_Store
 *.log

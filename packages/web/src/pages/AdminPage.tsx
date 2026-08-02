@@ -203,6 +203,21 @@ export default function AdminPage(): ReactElement {
                       GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET ne sont pas définis dans le fichier{' '}
                       <code>.env</code>.
                     </p>
+                  ) : status.driveRevokedAt ? (
+                    // L'autorisation a existé mais Google la refuse désormais.
+                    // Le dire explicitement évite de chercher la panne ailleurs.
+                    <>
+                      <p className="text-sm text-red-300">
+                        Autorisation révoquée
+                        {status.driveAccount ? ` pour ${status.driveAccount}` : ''} —{' '}
+                        {formatRelative(status.driveRevokedAt)}
+                      </p>
+                      <p className="mt-1 text-xs text-ink-400">
+                        L'accès a été retiré côté Google, ou le jeton a expiré. Les albums restent
+                        consultables tant que les vignettes sont en cache. Reconnecte pour reprendre
+                        les synchronisations.
+                      </p>
+                    </>
                   ) : status.driveConnected ? (
                     <p className="text-sm text-ink-200">
                       Connecté{status.driveAccount ? ` — ${status.driveAccount}` : ''}
@@ -224,7 +239,7 @@ export default function AdminPage(): ReactElement {
                     onClick={() => connect.mutate()}
                     disabled={!status.oauthConfigured || connect.isPending}
                   >
-                    Connecter Google Drive
+                    {status.driveRevokedAt ? 'Reconnecter Google Drive' : 'Connecter Google Drive'}
                   </Button>
                 )}
               </div>

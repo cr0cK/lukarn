@@ -92,8 +92,9 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
   const allRows: LayoutRow[] = [];
   let cursorY = 0;
 
-  // Les items arrivent déjà triés du plus récent au plus ancien : un simple
-  // parcours suffit à les découper en mois consécutifs.
+  // Les items arrivent déjà triés chronologiquement, dans un sens ou dans
+  // l'autre selon le choix de l'utilisateur : un simple parcours suffit à les
+  // découper en mois consécutifs, sans présumer de la direction.
   let index = 0;
   while (index < items.length) {
     const key = monthKey(items[index]!.takenAt);

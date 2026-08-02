@@ -86,18 +86,40 @@ export class AppContext {
    * app qui tourne sur l'ancienne config qu'une app cassée.
    */
   reloadConfig(): AppConfig {
+    const previous = this.currentConfig;
     const next = loadConfig(this.env.configPath);
     this.currentConfig = next;
     this.media.pruneAlbums(next.albums.map((album) => album.id));
 
-    // Un utilisateur supprimé, renommé, ou dont le mot de passe change ne doit
-    // pas continuer à naviguer avec sa session ouverte.
-    const known = new Set(next.users.map((user) => user.username.toLowerCase()));
+    /**
+     * Un utilisateur retiré, renommé, ou dont le mot de passe vient d'être
+     * changé ne doit pas continuer à naviguer avec sa session ouverte.
+     *
+     * Le changement de mot de passe se déduit de la comparaison avec la config
+     * précédente : sans elle, on ne verrait qu'un identifiant toujours présent
+     * et la session survivrait — c'est-à-dire que changer le mot de passe de
+     * quelqu'un ne lui retirerait pas l'accès, ce qui est précisément la raison
+     * pour laquelle on le change.
+     */
+    const hashBefore = new Map(
+      previous.users.map((user) => [user.username.toLowerCase(), user.passwordHash]),
+    );
+    const hashAfter = new Map(
+      next.users.map((user) => [user.username.toLowerCase(), user.passwordHash]),
+    );
+
     const sessions = this.db.prepare('SELECT DISTINCT username FROM sessions').all() as {
       username: string;
     }[];
+
     for (const { username } of sessions) {
-      if (!known.has(username.toLowerCase())) this.sessions.destroyForUser(username);
+      const key = username.toLowerCase();
+      const current = hashAfter.get(key);
+      const revoked = current === undefined || current !== hashBefore.get(key);
+      if (revoked) {
+        this.sessions.destroyForUser(username);
+        this.log.info(`Sessions de "${username}" fermées après rechargement de la configuration`);
+      }
     }
 
     this.log.info('Configuration rechargée');

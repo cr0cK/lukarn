@@ -1,0 +1,154 @@
+# 02 — Architecture
+
+## Vue d'ensemble
+
+Monorepo pnpm, trois packages, un seul conteneur en production. Le serveur
+Fastify sert à la fois l'API sous `/api` et le front buildé sur tout le reste.
+
+```mermaid
+flowchart LR
+  N[Navigateur] -->|cookie de session| F[Fastify]
+  F --> S[(SQLite<br/>index + sessions + token)]
+  F --> C[/Cache disque<br/>dérivés WebP/]
+  F -->|OAuth propriétaire| G[(Google Drive)]
+  F -->|index.html + assets| N
+```
+
+| Package           | Rôle                                                                                                                                                                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/shared` | Types du contrat d'API (`MediaItem`, `Album`, `ItemsPage`, `AdminStatus`…) et les quelques constantes partagées (`THUMB_SIZES`, `SortOrder`). Aucune dépendance, aucune logique. Le front ne redéclare jamais une forme de réponse. |
+| `packages/server` | Fastify 5, better-sqlite3, sharp, `@googleapis/drive`. Détient l'index, la connexion Drive, le pipeline média, les sessions.                                                                                                        |
+| `packages/web`    | React 19, Vite, Tailwind 4, TanStack Query, React Router. Aucun accès direct à Google.                                                                                                                                              |
+
+### Le serveur, fichier par fichier
+
+| Fichier                 | Responsabilité                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
+| `src/main.ts`           | Point d'entrée : `.env`, env, config, `buildApp`, minuteurs, arrêt gracieux.                        |
+| `src/app.ts`            | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.         |
+| `src/env.ts`            | Schéma zod des variables d'environnement, résolution des chemins.                                   |
+| `src/config.ts`         | Schéma zod d'`albums.yaml`, helpers d'autorisation (`visibleAlbums`, `canSeeAlbum`, `findUser`).    |
+| `src/context.ts`        | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.      |
+| `src/db.ts`             | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                    |
+| `src/repo.ts`           | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                   |
+| `src/sessions.ts`       | Création, lecture, destruction et purge des sessions.                                               |
+| `src/crypto.ts`         | AES-256-GCM pour le refresh token, comparaison en temps constant.                                   |
+| `src/throttle.ts`       | Backoff progressif des tentatives de connexion, en mémoire.                                         |
+| `src/drive/service.ts`  | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation. |
+| `src/drive/sync.ts`     | Parcours des dossiers et remplissage de l'index.                                                    |
+| `src/drive/metadata.ts` | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées).                       |
+| `src/media/renderer.ts` | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive.            |
+| `src/media/cache.ts`    | Cache disque avec inventaire en mémoire et éviction LRU.                                            |
+| `src/media/range.ts`    | Validation du header `Range` avant relais.                                                          |
+| `src/plugins/auth.ts`   | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                   |
+| `src/routes/*.ts`       | Les quatre familles de routes — voir [05](./05-api.md).                                             |
+
+## Cheminement d'une vignette
+
+Du clic sur un album jusqu'à l'octet rendu.
+
+```mermaid
+sequenceDiagram
+  participant N as Navigateur
+  participant F as Fastify
+  participant D as SQLite
+  participant C as Cache disque
+  participant G as Drive
+
+  N->>F: GET /api/albums/vacances/items?order=desc
+  F->>D: SELECT … ORDER BY taken_at DESC LIMIT 201
+  D-->>F: 200 lignes + curseur
+  F-->>N: ItemsPage (dimensions comprises)
+  Note over N: computeLayout() positionne toute la grille<br/>avant le moindre chargement d'image
+  N->>F: GET /api/media/<id>/thumb?s=640
+  F->>F: requireAuth puis authorize (albumsContaining)
+  F->>C: hit("<id>:t640")
+  alt en cache
+    C-->>F: chemin du fichier
+  else absent
+    F->>G: GET files/<id>?alt=media
+    G-->>F: octets de l'original
+    F->>F: sharp().rotate().resize(640).webp()
+    F->>C: put("<id>:t640")
+  end
+  F-->>N: image/webp, Cache-Control immutable, ETag
+```
+
+Points qui comptent :
+
+- Le contrôle d'accès est un `preHandler` global sur le préfixe `/media`
+  (`routes/media.ts`) : aucune route média ne peut l'oublier.
+- La déduplication vit dans `MediaRenderer.inFlight` : une grille qui s'ouvre
+  demande des dizaines de vignettes, mais chaque fichier n'est téléchargé qu'une
+  fois même si dix requêtes arrivent ensemble.
+- L'`ETag` vaut `"<mediaId>-<variante>"`, la variante étant `320`/`640`/`1280`,
+  `full` ou `hd`. Un `If-None-Match` correspondant répond 304 sans toucher au
+  disque.
+- Les vidéos n'ont pas de rendu : `serveRendered` répond **415** si
+  `kind !== 'photo'`. La grille affiche une tuile sobre avec la durée.
+
+## Cheminement d'une synchronisation
+
+Déclenchée au démarrage (`sync.onStartup`), périodiquement
+(`sync.intervalMinutes`), après un consentement OAuth réussi, ou depuis
+`POST /api/admin/resync`.
+
+1. `Syncer.sync(album)` — si une sync du même album tourne déjà, la promesse en
+   cours est renvoyée telle quelle. Une resync manuelle ne double jamais le
+   travail.
+2. `sync_state` passe à `running`, erreur remise à `null`.
+3. Un `seenAt` ISO est figé : c'est l'estampille du passage.
+4. Parcours en profondeur depuis `folderId`, avec `visited` contre les cycles de
+   raccourcis et un plafond `MAX_FOLDERS = 5000`. `recursive: false` n'empile
+   pas les sous-dossiers.
+5. `files.list` par pages de 1000, en ne demandant que
+   `id, name, mimeType, size, modifiedTime, md5Checksum, imageMediaMetadata,
+videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
+6. `toUpsert` normalise : `classify` écarte tout ce qui n'est ni image ni vidéo,
+   `parseExifTime` lit `YYYY:MM:DD HH:MM:SS`, et les dimensions sont inversées
+   quand `imageMediaMetadata.rotation` est impair — sinon les portraits
+   casseraient la mise en page.
+7. Écriture par lots de 500 dans une transaction. L'album devient consultable
+   pendant la sync.
+8. `deleteStale(albumId, seenAt)` retire ce qui n'a pas été revu — fichier
+   déplacé, supprimé ou mis à la corbeille.
+9. `sync_state` passe à `ok`. En cas d'échec, le statut passe à `error` avec le
+   message, **mais `lastSyncAt` garde la valeur de la dernière sync réussie** :
+   l'index précédent continue d'être servi.
+10. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
+    s'arrête net sur `DriveRevokedError` — les suivants échoueraient de la même
+    façon.
+
+## Les choix structurants, et leur raison
+
+**Index SQLite plutôt qu'appels Drive à la volée.** Une grille de 200 vignettes
+qui interrogerait Drive à chaque défilement consommerait le quota et
+ajouterait 200 à 400 ms de latence à chaque page. L'index local rend la
+pagination instantanée, permet de trier sur la date EXIF (que Drive ne sait pas
+trier) et laisse l'application fonctionner en lecture même quand Drive est
+injoignable ou l'autorisation révoquée — seuls les rendus non encore en cache
+échouent alors.
+
+**Proxy média plutôt que redirection vers Google.** Servir des liens Google
+signés serait moins coûteux en bande passante, mais : un lien signé fuit hors du
+contrôle d'accès dès qu'il est copié, il expire et casse le cache navigateur, et
+il exposerait l'arborescence Drive au visiteur. Tout passe donc par
+`/api/media/...`, où chaque requête revérifie l'autorisation.
+
+**Cache disque des dérivés.** Régénérer une vignette coûte un téléchargement
+Drive plus un décodage sharp. Le cache est un simple fichier par entrée, clé
+`sha256(<fileId>:<variante>)` répartie sur 256 sous-dossiers, inventaire des
+tailles en mémoire pour décider des évictions sans re-parcourir l'arborescence.
+L'inventaire est **reconstruit au démarrage** par `MediaCache.load()` : un
+fichier déposé pendant que le serveur tourne est ignoré jusqu'au redémarrage
+(c'est le piège du script `seed-demo`).
+
+**Pas de transcodage vidéo.** `GET /api/media/:id/original` relaie le header
+`Range` tel quel vers Drive et recopie `Content-Length` / `Content-Range` de la
+réponse. Le seek natif marche, le CPU du VPS ne fait rien, et il n'y a aucun
+format intermédiaire à stocker. La contrepartie assumée : un format que le
+navigateur ne lit pas n'est pas lisible du tout.
+
+**Un seul conteneur.** Le front buildé est servi par `@fastify/static` depuis le
+même process. Une seule origine, donc des cookies de session simples, aucun CORS,
+aucun reverse-proxy interne à configurer.

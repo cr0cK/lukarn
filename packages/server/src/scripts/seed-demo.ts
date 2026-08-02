@@ -75,6 +75,12 @@ async function renderPlaceholder(
   const label = `#${index + 1}`;
   const fontSize = Math.round(Math.min(outWidth, outHeight) * 0.22);
 
+  // Mire fine : à la taille d'écran ces traits se confondent, au zoom ils se
+  // séparent. C'est ce qui permet de vérifier que la variante haute résolution
+  // apporte réellement du détail, au lieu d'agrandir des pixels existants.
+  const step = Math.max(4, Math.round(Math.max(outWidth, outHeight) / 160));
+  const gridStroke = Math.max(0.5, step / 24);
+
   const svg = `
     <svg width="${outWidth}" height="${outHeight}" xmlns="http://www.w3.org/2000/svg">
       <defs>
@@ -84,11 +90,19 @@ async function renderPlaceholder(
             color.g * 0.35,
           )},${Math.round(color.b * 0.55)})" />
         </linearGradient>
+        <pattern id="mire" width="${step}" height="${step}" patternUnits="userSpaceOnUse">
+          <path d="M ${step} 0 L 0 0 0 ${step}" fill="none"
+                stroke="rgba(255,255,255,0.28)" stroke-width="${gridStroke}" />
+        </pattern>
       </defs>
       <rect width="100%" height="100%" fill="url(#g)" />
+      <rect width="100%" height="100%" fill="url(#mire)" />
       <text x="50%" y="50%" text-anchor="middle" dominant-baseline="central"
             font-family="sans-serif" font-size="${fontSize}" font-weight="700"
             fill="rgba(255,255,255,0.82)">${label}</text>
+      <text x="50%" y="${outHeight * 0.62}" text-anchor="middle" dominant-baseline="central"
+            font-family="monospace" font-size="${Math.max(6, Math.round(fontSize * 0.07))}"
+            fill="rgba(255,255,255,0.75)">rendu ${outWidth}×${outHeight} px</text>
     </svg>`;
 
   return sharp(Buffer.from(svg)).webp({ quality: 80 }).toBuffer();
@@ -158,11 +172,14 @@ async function main(): Promise<void> {
 
       if (!isVideo) {
         // Pré-remplit toutes les variantes que l'interface peut demander.
+        // Les clés doivent suivre exactement `variantKey()` du renderer,
+        // sinon le serveur ne trouvera rien et ira interroger Drive.
         for (const [key, edge] of [
           [`${id}:t320`, 320],
           [`${id}:t640`, 640],
           [`${id}:t1280`, 1280],
           [`${id}:full`, 2560],
+          [`${id}:hd`, 4096],
         ] as const) {
           await cache.put(key, await renderPlaceholder(index, shape.width, shape.height, edge));
         }

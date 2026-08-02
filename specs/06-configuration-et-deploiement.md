@@ -1,0 +1,196 @@
+# 06 — Configuration et déploiement
+
+Deux fichiers de configuration, deux natures :
+
+- **`.env`** — secrets et chemins, lus au démarrage, jamais rechargés à chaud.
+- **`config/albums.yaml`** — utilisateurs et albums, rechargeables sans
+  redémarrer.
+
+## Variables d'environnement — `packages/server/src/env.ts`
+
+Schéma zod ; une valeur invalide empêche le démarrage avec un message qui nomme
+la variable et le problème.
+
+| Variable               | Défaut                                        | Rôle et conséquence d'une erreur                                                                                                                                                                                                                                                        |
+| ---------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`             | `development`                                 | `development` active `pino-pretty`. Valeurs admises : `development`, `production`, `test`.                                                                                                                                                                                              |
+| `PORT`                 | `8080`                                        | Entier positif.                                                                                                                                                                                                                                                                         |
+| `HOST`                 | `0.0.0.0`                                     | En conteneur, `127.0.0.1` rendrait l'app injoignable depuis l'hôte.                                                                                                                                                                                                                     |
+| `PUBLIC_URL`           | `http://localhost:8080`                       | URL valide obligatoire. Les `/` finaux sont retirés. **Sert à deux choses : construire l'URI de redirection OAuth, et décider si les cookies sont `secure`.** Une valeur fausse casse le consentement (`redirect_uri_mismatch`) ou, en HTTPS mal déclaré, empêche le cookie de revenir. |
+| `SESSION_SECRET`       | —                                             | **Obligatoire**, ≥ 32 caractères. Signe les cookies. Le changer déconnecte tout le monde.                                                                                                                                                                                               |
+| `TOKEN_KEY`            | —                                             | **Obligatoire**, ≥ 32 caractères. Chiffre le refresh token. Le changer rend le jeton stocké illisible : il est supprimé et il faut refaire le consentement.                                                                                                                             |
+| `GOOGLE_CLIENT_ID`     | absent                                        | Optionnel, mais **indissociable** de `GOOGLE_CLIENT_SECRET` : n'en renseigner qu'un fait échouer le démarrage. Sans les deux, l'app tourne et sert l'index existant, `/admin` affiche « non configuré ».                                                                                |
+| `GOOGLE_CLIENT_SECRET` | absent                                        | Idem.                                                                                                                                                                                                                                                                                   |
+| `CONFIG_PATH`          | `./config/albums.yaml`                        | Résolu depuis le répertoire du `.env`, pas depuis le cwd (voir plus bas). Fichier absent ⇒ refus de démarrer avec le conseil de copier l'exemple.                                                                                                                                       |
+| `DATA_DIR`             | `./data`                                      | Contient `gdv.db`. Créé s'il manque. **La seule donnée irremplaçable.**                                                                                                                                                                                                                 |
+| `CACHE_DIR`            | `./cache`                                     | Dérivés WebP. Régénérable — le supprimer ne coûte que du CPU.                                                                                                                                                                                                                           |
+| `WEB_DIR`              | `packages/web/dist`, calculé depuis le module | Front buildé. Absent ⇒ seule l'API est servie, avec un avertissement.                                                                                                                                                                                                                   |
+| `LOG_LEVEL`            | `info`                                        | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                                                                                                                                                                                                                           |
+
+Dérivé, non configurable : `oauthRedirectUri = PUBLIC_URL + '/api/oauth/callback'`.
+
+**Résolution des chemins relatifs.** `loadDotEnv()` (`src/dotenv.ts`) remonte
+l'arborescence depuis le cwd **puis** depuis le module pour trouver un `.env`, et
+`loadEnv` prend le répertoire de ce fichier comme racine des chemins relatifs.
+Conséquence utile : un script lancé depuis `packages/server` vise les mêmes
+fichiers que le serveur lancé depuis la racine. L'absence de `.env` n'est pas une
+erreur — en conteneur, tout vient de l'environnement.
+
+## `config/albums.yaml` — `packages/server/src/config.ts`
+
+Modèle commenté dans `config/albums.example.yaml`. Le fichier n'est pas suivi par
+git.
+
+### `users[]`
+
+| Champ          | Type    | Défaut  | Contrainte                                                                                        |
+| -------------- | ------- | ------- | ------------------------------------------------------------------------------------------------- |
+| `username`     | chaîne  | —       | 1–64 caractères, `^[a-z0-9][a-z0-9._-]*$` (casse indifférente). Doublons refusés, casse comprise. |
+| `passwordHash` | chaîne  | —       | Doit commencer par `$argon2`. Produit par `pnpm hash-password`.                                   |
+| `admin`        | booléen | `false` | Ouvre `/api/admin/*` et le callback OAuth. N'accorde **aucun** album au passage.                  |
+| `albums`       | tableau | `[]`    | Ids d'albums, ou `["*"]` pour tous. Un id inconnu fait échouer le chargement.                     |
+
+### `albums[]`
+
+| Champ         | Type    | Défaut | Contrainte                                                                                                                                                       |
+| ------------- | ------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | chaîne  | —      | Même format que `username`. Doublons refusés. Sert dans les URL et comme `album_id` en base.                                                                     |
+| `title`       | chaîne  | —      | Non vide. Affiché.                                                                                                                                               |
+| `description` | chaîne  | absent | Optionnelle.                                                                                                                                                     |
+| `folderId`    | chaîne  | —      | Non vide. Le segment après `/folders/` dans l'URL Drive — **pas un chemin**, l'API Drive ne connaît que des identifiants. Survit aux renommages et déplacements. |
+| `recursive`   | booléen | `true` | Descendre dans les sous-dossiers. `false` n'indexe que la racine du dossier.                                                                                     |
+
+### `sync` et `cache`
+
+| Champ                  | Défaut | Effet                                                                                  |
+| ---------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `sync.intervalMinutes` | `30`   | Entier ≥ 0. `0` désactive la resynchronisation périodique ; `/admin` reste disponible. |
+| `sync.onStartup`       | `true` | Synchroniser tous les albums au démarrage, sans bloquer l'écoute HTTP.                 |
+| `cache.maxSizeGB`      | `20`   | Nombre > 0. Au-delà, éviction LRU jusqu'à 90 % de la limite.                           |
+
+### Erreurs de validation
+
+Le chargement rassemble toutes les erreurs zod en un message multiligne préfixé
+du chemin (`users.1.albums.0: album inconnu : "fantome"`). Trois vérifications
+custom vont au-delà du schéma : ids d'albums en double, identifiants en double
+(insensibles à la casse), et référence à un album inexistant — presque toujours
+une faute de frappe qui priverait silencieusement quelqu'un de son accès.
+
+## Rechargement à chaud
+
+`POST /api/admin/reload` → `AppContext.reloadConfig()` :
+
+1. relit et valide le fichier ; **en cas d'échec, rien ne change** et l'erreur
+   remonte en 400 — mieux vaut une app qui tourne sur l'ancienne config qu'une
+   app cassée ;
+2. remplace la config en mémoire ;
+3. `pruneAlbums` supprime de l'index les albums qui ne sont plus déclarés ;
+4. détruit les sessions dont l'identifiant a disparu de la config.
+
+**Ce que le rechargement ne fait pas** — il faut redémarrer pour ces trois-là :
+
+| Changement             | Pourquoi il ne prend pas effet                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `cache.maxSizeGB`      | `MediaCache` reçoit `maxBytes` dans le constructeur d'`AppContext`, une seule fois. |
+| `sync.intervalMinutes` | Le `setInterval` est armé dans `startScheduler` au démarrage.                       |
+| `sync.onStartup`       | N'a de sens qu'au démarrage.                                                        |
+
+Un changement de `folderId` sur un album existant est pris en compte, mais
+l'ancien contenu reste indexé jusqu'à ce que la prochaine synchronisation le
+retire via `deleteStale` (`clearAlbum` existe dans le repo mais n'est appelé nulle
+part).
+
+## Dockerfile — trois étapes
+
+`Dockerfile`, base `node:24-slim`, pnpm par corepack.
+
+1. **`builder`** — installe `python3 make g++` (nécessaires si `better-sqlite3`,
+   `argon2` ou `sharp` n'ont pas de binaire prébuilt pour la plateforme), copie
+   **d'abord les manifestes seuls** pour que Docker réutilise le cache de
+   `pnpm install` tant qu'ils ne bougent pas, puis les sources, puis `pnpm build`.
+2. **`deps`** — même installation en `--prod`, sans les sources : c'est
+   l'arborescence `node_modules` que l'image finale embarquera.
+3. **`runtime`** — pas de compilateur. Copie `node_modules` et `packages/`
+   depuis `deps`, puis les trois `dist/` depuis `builder`. Crée
+   `/app/{data,cache,config}` et les donne à `node` **avant** le montage des
+   volumes, sinon ils appartiendraient à root. Tourne en `USER node`.
+
+`tini` en `ENTRYPOINT` : relaie `SIGTERM` pour que l'arrêt gracieux de `main.ts`
+(fermeture des minuteurs, du serveur et de la base) se déclenche réellement, et
+récolte les zombies. Le `HEALTHCHECK` interroge `/api/health` toutes les 30 s.
+
+Le cache pnpm est monté en `--mount=type=cache`, donc il n'entre pas dans les
+couches de l'image.
+
+## docker-compose et volumes
+
+`docker-compose.yml` expose un service, sur **`127.0.0.1:8080` seulement** : le
+TLS et l'accès public relèvent d'un reverse-proxy (Caddy, nginx, Traefik) sur le
+VPS. Retirer le préfixe `127.0.0.1:` joint l'app directement, sans HTTPS.
+
+`PUBLIC_URL`, `SESSION_SECRET` et `TOKEN_KEY` sont déclarés avec la syntaxe
+`${VAR:?message}` : compose refuse de démarrer s'ils manquent, avec le message
+qui dit quoi faire.
+
+| Montage                   | Contenu                                                    | Sauvegarde                                    |
+| ------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
+| `./config:/app/config:ro` | `albums.yaml`. En lecture seule : l'app ne l'écrit jamais. | Dans le dépôt ou ton gestionnaire de secrets  |
+| `gdv-data`                | `gdv.db` — index, sessions, refresh token chiffré          | **Oui. C'est la seule donnée irremplaçable.** |
+| `gdv-cache`               | Dérivés WebP                                               | Non — régénérable à la demande                |
+
+Sauvegarder `gdv-data` ne suffit pas seul : sans `TOKEN_KEY`, le refresh token
+qu'il contient est indéchiffrable. Sauvegarde le `.env` avec.
+
+Les logs sont plafonnés (`json-file`, 10 Mo × 3).
+
+## Configuration côté Google Cloud
+
+Dans un **projet dédié** : l'écran de consentement est unique par projet et porte
+le nom affiché, les scopes et le statut de publication ; y loger plusieurs
+applications les mélange dans une même demande d'autorisation.
+
+1. **API et services → Bibliothèque** : activer **Google Drive API**.
+2. **Écran de consentement OAuth** : type **Externe**, nom d'application, adresse
+   d'assistance.
+3. **Publier l'application.** Étape indispensable : tant qu'elle reste en statut
+   « Test », **Google fait expirer le refresh token au bout de 7 jours** et il
+   faut se reconnecter chaque semaine. C'est aussi l'une des causes possibles de
+   l'`invalid_grant` que détecte `DriveService` (voir
+   [04](./04-securite-et-acces.md)).
+
+   Publier ne déclenche aucune procédure de vérification tant qu'on ne la demande
+   pas : l'application reste « publiée, non vérifiée », plafonnée à
+   100 utilisateurs. Seule conséquence visible : au moment du consentement, un
+   écran « Google n'a pas validé cette application », à passer par **Paramètres
+   avancés → Accéder à**. Une seule fois, et pour le propriétaire uniquement.
+   (Avec Google Workspace, le type « Interne » évite cet écran ; il n'est pas
+   proposé aux adresses `gmail.com`.)
+
+4. **Identifiants → Créer → ID client OAuth**, type **Application Web**.
+5. Dans « URI de redirection autorisés », ajouter **exactement** `PUBLIC_URL`
+   suivi de `/api/oauth/callback`. Un caractère de différence — `http` au lieu de
+   `https`, un `/` final, `www.` en trop — donne un `redirect_uri_mismatch` au
+   moment du consentement.
+
+## Scripts
+
+| Commande                                       | Effet                                                                                                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm hash-password`                           | Demande un mot de passe sans l'afficher et imprime la ligne `passwordHash:` à coller. Un argument est accepté mais laisse une trace dans l'historique du shell. |
+| `pnpm --filter @gdv/server seed-demo [nombre]` | Remplit l'index **et** le cache avec des médias générés localement, pour travailler l'interface sans compte Drive. Défaut : 240 par album.                      |
+
+`seed-demo` insère dans **tous** les albums déclarés et écrit les cinq variantes
+en cache (`t320`, `t640`, `t1280`, `full`, `hd`) pour que le pipeline ne cherche
+jamais à joindre Drive. Deux avertissements : il faut **redémarrer le
+serveur** ensuite, puisque le cache n'est inventorié qu'au démarrage ; et il ne
+faut pas le lancer sur une instance réelle — la prochaine synchronisation
+supprimerait ces entrées, mais elles pollueraient les albums entre-temps.
+
+## Vérifications
+
+```bash
+pnpm typecheck && pnpm lint && pnpm test
+```
+
+Les tests serveur tournent avec le runner natif de Node (`node --import tsx
+--test`) : pas de framework de test dans les dépendances.

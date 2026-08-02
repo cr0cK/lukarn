@@ -9,7 +9,7 @@ import {
   toNumber,
   toText,
 } from './metadata.js';
-import type { DriveService } from './service.js';
+import { DriveRevokedError, type DriveService } from './service.js';
 
 const FIELDS =
   'nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum, imageMediaMetadata, videoMediaMetadata)';
@@ -72,6 +72,10 @@ export class Syncer {
         results.push(await this.sync(album));
       } catch (error) {
         this.log.error(`Sync de "${album.id}" en échec : ${(error as Error).message}`);
+        // Autorisation révoquée : les albums suivants échoueraient tous de la
+        // même façon. On s'arrête, l'erreur déjà inscrite dans `sync_state`
+        // expliquant à chacun ce qui s'est passé.
+        if (error instanceof DriveRevokedError) break;
       }
     }
     return results;
@@ -160,16 +164,21 @@ export class Syncer {
     let pageToken: string | undefined;
 
     do {
-      const { data } = await api.files.list({
-        q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`,
-        fields: FIELDS,
-        pageSize: PAGE_SIZE,
-        pageToken,
-        // Nécessaire pour que les Drive partagés soient visibles.
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
-        orderBy: 'name',
-      });
+      // `guard` traduit un refus `invalid_grant` en DriveRevokedError et marque
+      // la connexion comme révoquée : sans lui, chaque album échouerait sur un
+      // message technique sans dire qu'il faut réautoriser l'accès.
+      const { data } = await this.drive.guard(() =>
+        api.files.list({
+          q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`,
+          fields: FIELDS,
+          pageSize: PAGE_SIZE,
+          pageToken,
+          // Nécessaire pour que les Drive partagés soient visibles.
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+          orderBy: 'name',
+        }),
+      );
 
       for (const file of data.files ?? []) {
         yield file;

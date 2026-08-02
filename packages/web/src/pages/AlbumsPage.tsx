@@ -20,7 +20,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
       <div className="relative aspect-[4/3] overflow-hidden bg-ink-800">
         {album.coverId ? (
           <img
-            src={mediaUrl.thumb(album.coverId, 640)}
+            src={mediaUrl.thumb(album.coverId, 640, album.coverVersion)}
             alt=""
             loading="lazy"
             decoding="async"

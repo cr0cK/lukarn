@@ -1,3 +1,4 @@
+import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from '@gdv/shared';
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumItems } from '../api/hooks';
@@ -15,9 +16,17 @@ export default function AlbumPage(): ReactElement {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Le sens de tri vit dans l'URL, comme la photo ouverte : un lien partagé
+  // restitue la vue exacte. Une valeur inconnue (URL bricolée à la main) est
+  // ramenée au défaut plutôt que de laisser l'API répondre 400.
+  const orderParam = searchParams.get('order');
+  const order: SortOrder = isSortOrder(orderParam) ? orderParam : DEFAULT_SORT_ORDER;
+
   const album = useAlbum(albumId);
-  const { items, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useAlbumItems(albumId);
+  const { items, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useAlbumItems(
+    albumId,
+    order,
+  );
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -30,13 +39,31 @@ export default function AlbumPage(): ReactElement {
   const openedIndex = openedId ? items.findIndex((item) => item.id === openedId) : -1;
   const isOpen = openedIndex >= 0;
 
+  // `photo` et `order` sont deux réglages indépendants de la même URL : chaque
+  // écriture repart des paramètres courants, sinon ouvrir une photo effacerait
+  // le sens de tri et le refermer le rétablirait tout seul.
+  const setParam = useCallback(
+    (key: 'photo' | 'order', value: string | null, replace: boolean) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (value === null) next.delete(key);
+          else next.set(key, value);
+          return next;
+        },
+        { replace },
+      );
+    },
+    [setSearchParams],
+  );
+
   const openAt = useCallback(
     (index: number) => {
       const item = items[index];
       if (!item) return;
-      setSearchParams({ photo: item.id }, { replace: false });
+      setParam('photo', item.id, false);
     },
-    [items, setSearchParams],
+    [items, setParam],
   );
 
   // Navigation d'une photo à l'autre dans la visionneuse : en `replace`, sinon
@@ -46,14 +73,21 @@ export default function AlbumPage(): ReactElement {
     (index: number) => {
       const item = items[index];
       if (!item) return;
-      setSearchParams({ photo: item.id }, { replace: true });
+      setParam('photo', item.id, true);
     },
-    [items, setSearchParams],
+    [items, setParam],
   );
 
   const closeLightbox = useCallback(() => {
-    setSearchParams({}, { replace: true });
-  }, [setSearchParams]);
+    setParam('photo', null, true);
+  }, [setParam]);
+
+  const toggleOrder = useCallback(() => {
+    const next: SortOrder = order === 'desc' ? 'asc' : 'desc';
+    // Le défaut n'est pas écrit dans l'URL : elle reste courte, et l'album
+    // revient à son adresse d'origine quand on rebascule.
+    setParam('order', next === DEFAULT_SORT_ORDER ? null : next, false);
+  }, [order, setParam]);
 
   // Une photo demandée par l'URL mais pas encore chargée : on continue de
   // paginer jusqu'à la trouver (ou jusqu'à la fin de l'album).
@@ -67,6 +101,14 @@ export default function AlbumPage(): ReactElement {
   useEffect(() => {
     if (openedId && openedIndex === -1 && !hasNextPage && items.length > 0) closeLightbox();
   }, [openedId, openedIndex, hasNextPage, items.length, closeLightbox]);
+
+  // Inverser le tri renumérote tout l'album : conserver l'index sélectionné
+  // désignerait une autre photo, et la position de défilement un autre mois.
+  // On repart du haut de la nouvelle liste.
+  useEffect(() => {
+    setSelectedIndex(-1);
+    window.scrollTo({ top: 0 });
+  }, [order]);
 
   useEffect(() => {
     if (isOpen) setSelectedIndex(openedIndex);
@@ -129,9 +171,37 @@ export default function AlbumPage(): ReactElement {
         .join(' · ')
     : null;
 
+  // Le bouton annonce l'état courant ; l'infobulle annonce ce que le clic fera.
+  const orderLabel = order === 'desc' ? "Plus récentes d'abord" : "Plus anciennes d'abord";
+  const orderAction =
+    order === 'desc' ? "Afficher les plus anciennes d'abord" : "Afficher les plus récentes d'abord";
+
   return (
     <div className="min-h-full">
-      <TopBar title={album.data?.title ?? 'Album'} subtitle={subtitle} back />
+      <TopBar title={album.data?.title ?? 'Album'} subtitle={subtitle} back>
+        <button
+          type="button"
+          onClick={toggleOrder}
+          title={orderAction}
+          // Le libellé disparaît sous `sm` faute de place : le nom accessible
+          // doit rester complet, et dire aussi l'effet du clic.
+          aria-label={`Tri : ${orderLabel}. ${orderAction}.`}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="size-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14" />
+            <path d={order === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
+          </svg>
+          <span className="hidden sm:inline">{orderLabel}</span>
+        </button>
+      </TopBar>
 
       <main className="mx-auto max-w-[2000px] px-4 py-4 sm:px-6">
         {isPending && <Spinner label="Chargement des photos" />}

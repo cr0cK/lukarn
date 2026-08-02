@@ -1,4 +1,4 @@
-import type { MediaItem } from '@gdv/shared';
+import { DEFAULT_SORT_ORDER, type MediaItem, type SortOrder } from '@gdv/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { ApiError, api } from './client';
@@ -7,7 +7,10 @@ export const queryKeys = {
   me: ['me'] as const,
   albums: ['albums'] as const,
   album: (id: string) => ['album', id] as const,
-  items: (id: string) => ['items', id] as const,
+  // Le sens de tri fait partie de la clé : sans lui, TanStack Query resservirait
+  // les pages déjà chargées dans l'autre sens, et les curseurs accumulés
+  // continueraient de paginer à l'envers.
+  items: (id: string, order: SortOrder) => ['items', id, order] as const,
   detail: (albumId: string, mediaId: string) => ['detail', albumId, mediaId] as const,
   adminStatus: ['admin', 'status'] as const,
 };
@@ -54,14 +57,15 @@ export function useAlbum(albumId: string) {
 }
 
 /**
- * Charge l'album page par page et rend la liste aplatie. Le curseur du serveur
- * est stable même si une synchronisation insère des médias pendant le
- * défilement, donc aucune photo n'est sautée ni dupliquée.
+ * Charge l'album page par page, dans le sens chronologique demandé, et rend la
+ * liste aplatie. Le curseur du serveur est stable même si une synchronisation
+ * insère des médias pendant le défilement, donc aucune photo n'est sautée ni
+ * dupliquée.
  */
-export function useAlbumItems(albumId: string) {
+export function useAlbumItems(albumId: string, order: SortOrder = DEFAULT_SORT_ORDER) {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.items(albumId),
-    queryFn: ({ pageParam }) => api.items(albumId, pageParam),
+    queryKey: queryKeys.items(albumId, order),
+    queryFn: ({ pageParam }) => api.items(albumId, pageParam, order),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });

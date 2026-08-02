@@ -24,6 +24,7 @@ function photo(id: string, takenAt: string, width = 4000, height = 3000): MediaI
     takenAt,
     takenAtFromExif: true,
     durationMs: null,
+    version: null,
   };
 }
 
@@ -52,6 +53,19 @@ describe('computeLayout', () => {
       layout.sections.map((section) => section.key),
       ['2024-03', '2024-04', '2024-05'],
     );
+  });
+
+  it('segmente aussi bien un album servi du plus ancien au plus récent', () => {
+    // La grille ne trie rien : elle découpe la suite reçue en mois consécutifs.
+    // Le tri ascendant de l'API doit donc lui suffire tel quel, en-têtes dans
+    // l'ordre inverse et sans mois dédoublé.
+    const layout = computeLayout([...items].reverse(), OPTIONS);
+
+    assert.deepEqual(
+      layout.sections.map((section) => section.key),
+      ['2024-05', '2024-04', '2024-03'],
+    );
+    assert.equal(layout.rows.flatMap((row) => row.cells).length, items.length);
   });
 
   it('place chaque média une fois et une seule', () => {

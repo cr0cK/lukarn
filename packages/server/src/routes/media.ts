@@ -4,14 +4,15 @@ import { isThumbSize } from '@gdv/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { DriveNotConnectedError } from '../drive/service.js';
+import { DriveNotConnectedError, DriveRevokedError } from '../drive/service.js';
 import { formatRange, parseRange } from '../media/range.js';
 import type { Variant } from '../media/renderer.js';
 import { requireAuth } from '../plugins/auth.js';
 
 /**
- * Les dérivés sont immuables : l'id Drive change dès que le fichier est
- * remplacé, donc l'URL désigne toujours le même octet-pour-octet.
+ * Les dérivés se comportent comme immuables : l'ETag intègre l'empreinte du
+ * contenu, si bien qu'une nouvelle version du fichier produit un nouvel ETag et
+ * force le rechargement, même à URL identique.
  */
 const IMMUTABLE = 'private, max-age=31536000, immutable';
 
@@ -57,12 +58,19 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
         .send({ error: 'unsupported', message: 'Rendu image indisponible pour une vidéo' });
     }
 
-    const etag = `"${mediaId}-${variant.kind === 'thumb' ? variant.size : 'full'}"`;
+    /**
+     * L'ETag distingue les variantes — sans quoi `full` et `hd` partageraient
+     * la même entrée de cache navigateur et le zoom resservirait l'image basse
+     * résolution — et la version du contenu, puisque Drive garde le même
+     * identifiant quand un fichier est remplacé par une nouvelle version.
+     */
+    const version = meta.md5 ?? 'v0';
+    const etag = `"${mediaId}-${version}-${variant.kind === 'thumb' ? variant.size : variant.kind}"`;
     if (request.headers['if-none-match'] === etag) {
       return reply.code(304).header('Cache-Control', IMMUTABLE).header('ETag', etag).send();
     }
 
-    const rendered = await context.renderer.render(mediaId, variant);
+    const rendered = await context.renderer.render(mediaId, variant, meta.md5);
     return reply
       .header('Content-Type', rendered.contentType)
       .header('Cache-Control', IMMUTABLE)
@@ -76,9 +84,13 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       await authorize(request, reply);
     });
 
-    // Drive non connecté : message explicite plutôt qu'un 500 opaque répété
-    // sur chaque vignette de la grille.
+    // Drive indisponible : message explicite plutôt qu'un 500 opaque répété sur
+    // chaque vignette de la grille. Les deux cas sont distingués pour que
+    // l'administrateur sache s'il doit connecter ou reconnecter.
     app.setErrorHandler(async (error, _request, reply) => {
+      if (error instanceof DriveRevokedError) {
+        return reply.code(503).send({ error: 'drive_revoked', message: error.message });
+      }
       if (error instanceof DriveNotConnectedError) {
         return reply.code(503).send({ error: 'drive_disconnected', message: error.message });
       }
@@ -98,6 +110,16 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/:mediaId/full', async (request, reply) =>
       serveRendered(request, reply, { kind: 'full' }),
+    );
+
+    /**
+     * Rendu haute résolution, demandé uniquement au premier zoom. Plafonné à
+     * 4096 px, il pèse une fraction de l'original — quelques centaines de Ko
+     * là où un JPEG d'appareil dépasse souvent 9 Mo — tout en montrant les
+     * mêmes détails à l'écran.
+     */
+    app.get('/:mediaId/hd', async (request, reply) =>
+      serveRendered(request, reply, { kind: 'hd' }),
     );
 
     /**

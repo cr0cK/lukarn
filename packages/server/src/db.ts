@@ -7,8 +7,11 @@ export type Db = Database.Database;
 /**
  * Migrations appliquées dans l'ordre, suivies par `PRAGMA user_version`.
  * Ne jamais modifier une migration déjà publiée : en ajouter une nouvelle.
+ *
+ * Exporté pour que les tests puissent reconstituer une base d'une version
+ * antérieure et vérifier qu'elle se met à jour sans perdre de données.
  */
-const MIGRATIONS: string[] = [
+export const MIGRATIONS: string[] = [
   // 1 — schéma initial
   `
   CREATE TABLE media (
@@ -67,6 +70,12 @@ const MIGRATIONS: string[] = [
   );
 
   CREATE INDEX idx_sessions_expires ON sessions (expires_at);
+  `,
+
+  // 2 — trace de la révocation du refresh token par Google (`invalid_grant`),
+  // pour que /admin distingue « jamais connecté » de « accès retiré ».
+  `
+  ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT;
   `,
 ];
 

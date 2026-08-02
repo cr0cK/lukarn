@@ -14,6 +14,23 @@ export function isThumbSize(value: number): value is ThumbSize {
 
 export type MediaKind = 'photo' | 'video';
 
+/** Sens du tri chronologique d'un album. `desc` = le plus récent d'abord. */
+export type SortOrder = 'desc' | 'asc';
+
+export const DEFAULT_SORT_ORDER: SortOrder = 'desc';
+
+export function isSortOrder(value: unknown): value is SortOrder {
+  return value === 'desc' || value === 'asc';
+}
+
+/**
+ * Variante de rendu servie par le pipeline média.
+ * `hd` existe pour le zoom : `full` est plafonné à 2560 px, ce qui suffit à
+ * remplir un écran mais pas à examiner une photo à sa résolution native.
+ */
+export const IMAGE_VARIANTS = ['full', 'hd'] as const;
+export type ImageVariant = (typeof IMAGE_VARIANTS)[number];
+
 export interface MediaItem {
   id: string;
   albumId: string;
@@ -30,6 +47,15 @@ export interface MediaItem {
   takenAtFromExif: boolean;
   /** Durée en millisecondes, uniquement pour les vidéos. */
   durationMs: number | null;
+  /**
+   * Empreinte courte du contenu, à joindre aux URLs média.
+   *
+   * Drive conserve l'identifiant d'un fichier dont on remplace le contenu par
+   * une nouvelle version : sans ce discriminant dans l'URL, les dérivés servis
+   * en `immutable` resteraient éternellement ceux de l'ancienne version.
+   * `null` pour les rares fichiers sans empreinte.
+   */
+  version: string | null;
 }
 
 export interface MediaExif {
@@ -55,6 +81,8 @@ export interface Album {
   itemCount: number;
   /** Id du média utilisé comme couverture, `null` si l'album est vide. */
   coverId: string | null;
+  /** Empreinte de la couverture, à joindre à son URL. Voir `MediaItem.version`. */
+  coverVersion: string | null;
   /** ISO 8601 des bornes chronologiques de l'album, `null` si vide. */
   newestAt: string | null;
   oldestAt: string | null;
@@ -85,6 +113,12 @@ export interface AdminStatus {
   /** `true` si un refresh token Google est stocké et utilisable. */
   driveConnected: boolean;
   driveAccount: string | null;
+  /**
+   * ISO 8601 si Google a cessé d'accepter le refresh token (accès retiré,
+   * jeton expiré). `null` sinon. À distinguer d'une absence de connexion :
+   * ici il y a eu autorisation, elle ne vaut simplement plus.
+   */
+  driveRevokedAt: string | null;
   /** `true` si GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET sont configurés. */
   oauthConfigured: boolean;
   albums: Album[];

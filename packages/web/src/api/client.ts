@@ -1,10 +1,12 @@
-import type {
-  AdminStatus,
-  Album,
-  ItemsPage,
-  MediaDetail,
-  SessionUser,
-  ThumbSize,
+import {
+  DEFAULT_SORT_ORDER,
+  type AdminStatus,
+  type Album,
+  type ItemsPage,
+  type MediaDetail,
+  type SessionUser,
+  type SortOrder,
+  type ThumbSize,
 } from '@gdv/shared';
 
 /** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
@@ -61,8 +63,13 @@ export const api = {
 
   album: (albumId: string) => request<Album>(`/albums/${encodeURIComponent(albumId)}`),
 
-  items: (albumId: string, cursor: string | null, limit = 250) => {
-    const params = new URLSearchParams({ limit: String(limit) });
+  items: (
+    albumId: string,
+    cursor: string | null,
+    order: SortOrder = DEFAULT_SORT_ORDER,
+    limit = 250,
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit), order });
     if (cursor) params.set('cursor', cursor);
     return request<ItemsPage>(`/albums/${encodeURIComponent(albumId)}/items?${params}`);
   },
@@ -90,10 +97,25 @@ export const api = {
   clearCache: () => request<{ ok: true }>('/admin/cache/clear', { method: 'POST' }),
 };
 
+/**
+ * Discriminant de version dans l'URL. Les dérivés sont servis en `immutable` :
+ * le navigateur ne revalide jamais, donc c'est l'URL elle-même qui doit changer
+ * lorsqu'un fichier Drive est remplacé par une nouvelle version — l'identifiant
+ * du fichier, lui, reste le même.
+ */
+const query = (version?: string | null): string => (version ? `?v=${version}` : '');
+const suffix = (version?: string | null): string => (version ? `&v=${version}` : '');
+
 /** URLs des médias — construites côté client, servies par le proxy Fastify. */
 export const mediaUrl = {
-  thumb: (id: string, size: ThumbSize) => `/api/media/${encodeURIComponent(id)}/thumb?s=${size}`,
-  full: (id: string) => `/api/media/${encodeURIComponent(id)}/full`,
-  original: (id: string) => `/api/media/${encodeURIComponent(id)}/original`,
+  thumb: (id: string, size: ThumbSize, version?: string | null) =>
+    `/api/media/${encodeURIComponent(id)}/thumb?s=${size}${suffix(version)}`,
+  full: (id: string, version?: string | null) =>
+    `/api/media/${encodeURIComponent(id)}/full${query(version)}`,
+  /** Rendu 4096 px, demandé uniquement au zoom. */
+  hd: (id: string, version?: string | null) =>
+    `/api/media/${encodeURIComponent(id)}/hd${query(version)}`,
+  original: (id: string, version?: string | null) =>
+    `/api/media/${encodeURIComponent(id)}/original${query(version)}`,
   download: (id: string) => `/api/media/${encodeURIComponent(id)}/original?download=1`,
 };
