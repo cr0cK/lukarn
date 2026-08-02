@@ -224,8 +224,11 @@ ce que le JWT prétendait éviter. Ici la session **est** la ligne, et la suppri
 suffit.
 
 **Conséquences.** Une lecture SQLite par requête, négligeable en process. En
-prime, le hook `onRequest` revérifie à chaque fois que l'utilisateur existe
-encore dans `albums.yaml` : la config fait autorité, pas le cookie.
+prime, le hook `onRequest` revérifie à chaque fois que le compte existe encore
+et relit son rôle : la configuration fait autorité, pas le cookie. C'est ce qui
+permet à un retrait de droits de prendre effet sans attendre l'expiration de la
+session — la configuration vivait alors dans `albums.yaml`, elle est depuis
+passée en base (voir D24), mais le raisonnement est inchangé.
 
 ---
 
