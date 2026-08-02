@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Données locales — jamais committées
+data/
+cache/
+.env
+config/albums.yaml
+
+# Divers
+.DS_Store
+*.log
+.eslintcache

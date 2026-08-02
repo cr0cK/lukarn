@@ -1,0 +1,54 @@
+# Configuration de la visionneuse.
+#
+# Copier ce fichier vers config/albums.yaml, qui n'est pas suivi par git.
+# Après modification : bouton « Recharger albums.yaml » dans /admin, ou
+# redémarrage du conteneur. Une configuration invalide est rejetée sans
+# interrompre l'instance en cours.
+
+users:
+  # Génère chaque hash avec : pnpm hash-password
+  - username: alexis
+    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$REMPLACE_MOI$REMPLACE_MOI'
+    # Un administrateur peut connecter le Drive, synchroniser et vider le cache.
+    admin: true
+    # "*" donne accès à tous les albums déclarés plus bas.
+    albums: ['*']
+
+  # Compte à accès restreint : ne voit que les albums listés.
+  - username: famille
+    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$REMPLACE_MOI$REMPLACE_MOI'
+    albums: ['vacances-2025']
+
+albums:
+  # `folderId` est le segment après /folders/ dans l'URL du dossier Drive :
+  # https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
+  #                                        ^--------- ceci ----------^
+  #
+  # Ce n'est pas un chemin : `/Vacances/photos/2026-07-Allemagne` ne fonctionne
+  # pas. L'API Drive ne connaît que des identifiants — ouvre le dossier voulu et
+  # copie le segment de son URL. L'identifiant reste valable si tu renommes ou
+  # déplaces le dossier ensuite.
+  - id: vacances-2025
+    title: 'Vacances 2025'
+    description: 'Corse, juillet et août'
+    folderId: '1AbCdEfGhIjKlMnOpQrStUvWxYz'
+    # Descendre dans les sous-dossiers. Passer à false pour n'indexer que la
+    # racine du dossier.
+    recursive: true
+
+  - id: famille
+    title: 'Photos de famille'
+    folderId: '1ZyXwVuTsRqPoNmLkJiHgFeDcBa'
+    recursive: true
+
+sync:
+  # Intervalle de resynchronisation automatique, en minutes. 0 pour désactiver
+  # (la synchronisation reste déclenchable depuis /admin).
+  intervalMinutes: 30
+  # Synchroniser tous les albums au démarrage du serveur.
+  onStartup: true
+
+cache:
+  # Espace disque maximal des vignettes générées. Au-delà, les moins récemment
+  # consultées sont supprimées et régénérées à la demande.
+  maxSizeGB: 20
