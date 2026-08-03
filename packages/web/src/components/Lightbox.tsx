@@ -397,7 +397,10 @@ function NavButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-black/40 p-3 text-ink-100 transition-opacity hover:bg-black/60 disabled:pointer-events-none disabled:opacity-0 ${
+      // Même traitement que les boutons de la barre : rien au repos, un voile
+      // clair au survol. Un fond permanent alourdissait l'image alors que ces
+      // deux boutons sont posés dessus, pas sur un chrome.
+      className={`absolute top-1/2 -translate-y-1/2 rounded-full p-3 text-ink-200 transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-0 ${
         side === 'left' ? 'left-4' : 'right-4'
       }`}
     >
