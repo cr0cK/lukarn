@@ -109,6 +109,36 @@ jointure de plus. Il compte les commentaires **visibles**, réponses comprises, 
 voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
 charger un fil que la plupart des visiteurs n'ouvriront pas.
 
+## Identité de commentateur — `routes/identity.ts`
+
+`requireAuth` sur tout le préfixe : on déclare une identité depuis une session
+déjà ouverte, la clé d'accès et la personne étant deux choses distinctes.
+
+| Méthode | Chemin                       | Réponse       |
+| ------- | ---------------------------- | ------------- |
+| POST    | `/api/identity/request-code` | `202`         |
+| POST    | `/api/identity/verify`       | `SessionUser` |
+| POST    | `/api/identity/forget`       | `SessionUser` |
+
+**`request-code`** — corps `IdentityRequest` = `{ email, displayName }`. Envoie
+un code à six chiffres et répond **toujours `202`**, que l'adresse soit déjà
+connue ou non : distinguer les deux dirait à qui l'essaie quelles adresses ont
+déjà commenté ici. `429 too_soon` avec `Retry-After` si un code a été envoyé
+dans la minute — sans quoi le formulaire expédierait des emails en rafale vers
+une adresse qu'on ne possède pas. `503 mail_not_configured` sans SMTP : aucun
+code ne peut partir, donc personne ne peut commenter.
+
+**`verify`** — corps `VerifyIdentityRequest` = `{ email, code }`. Rattache
+l'identité à la session et rend le `SessionUser` à jour. `400` sur un code faux,
+expiré ou épuisé — **le même message dans les trois cas**, détailler lequel
+aidant surtout celui qui essaie des codes au hasard. Cinq tentatives, puis il
+faut redemander un code.
+
+**`forget`** — délie l'identité de cette session. Les commentaires déjà écrits
+restent en place, signés du nom sous lequel ils l'ont été : ils appartiennent à
+la conversation, pas à l'appareil. Se ré-identifier avec la même adresse les
+retrouve, et le droit de les supprimer avec.
+
 ## Commentaires — `routes/comments.ts`
 
 | Méthode | Chemin                            | Accès     | Réponse        |
@@ -135,6 +165,11 @@ l'ait décidé.
 découpé aux espaces avant contrôle : 1 à `COMMENT_MAX_LENGTH` (2000) caractères.
 `201` avec le `Comment` créé.
 
+- **`403 identity_required`** tant qu'aucune identité vérifiée n'est rattachée à
+  la session. Seconde exception assumée au « 404 et jamais 403 » (voir
+  [04](./04-securite-et-acces.md)) : le refus porte sur l'état de son propre
+  compte, pas sur une ressource d'autrui.
+
 - `404` si l'album est inconnu/interdit, ou si le média n'est pas dans cet album.
 - `404` si `parentId` désigne un commentaire inexistant **ou vivant sur un autre
   média** — sans ce second contrôle, un client pourrait greffer sa réponse sur un
@@ -147,8 +182,9 @@ lequel. `404` dans tous les cas de refus, sans distinguer « inexistant » de
 « pas à toi ». Un visiteur ne peut supprimer que dans un album qu'il voit encore,
 sinon un accès retiré laisserait subsister un droit d'écriture.
 
-**`GET /api/comments/unsubscribe?u=&t=`** — **seule route de ce préfixe sans
-session.** On clique ce lien depuis sa boîte aux lettres, souvent sur un autre
+**`GET /api/comments/unsubscribe?u=&t=`** — `u` est l'**adresse email**, pas un
+identifiant de compte : c'est elle qui identifie une personne. **Seule route de
+ce préfixe sans session.** On clique ce lien depuis sa boîte aux lettres, souvent sur un autre
 appareil : exiger une connexion pour cesser d'être dérangé reviendrait à ne pas
 répondre à la demande. `t` est un HMAC de l'identifiant, sans expiration (voir
 [04](./04-securite-et-acces.md)). Rend une page HTML servie par le serveur — pas
@@ -261,21 +297,15 @@ sont régénérées à la demande.
 
 ### Comptes
 
-Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums?,
-displayName?, email? }`. `PATCH` : `UpdateUserRequest` = `{ password?, admin?,
-albums?, displayName?, email?, notify? }`, champ absent valant « inchangé ». La
-réponse est un `AdminUser` — **jamais d'empreinte de mot de passe, sous aucune
-clé**.
+Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums? }`.
+`PATCH` : `UpdateUserRequest` = `{ password?, admin?, albums? }`, champ absent
+valant « inchangé ». La réponse est un `AdminUser` — **jamais d'empreinte de mot
+de passe, sous aucune clé**.
 
-- `displayName` signe les commentaires ; vide ou absent, l'identifiant en tient
-  lieu. 64 caractères au plus.
-- `email` reçoit les notifications de commentaires. La **chaîne vide est
-  acceptée** à côté d'une adresse valide : c'est ce qu'envoie un champ de
-  formulaire qu'on vient de vider, et `ConfigRepo` ramène les deux au même
-  `NULL`. Sans quoi un `email = ''` passerait le filtre des destinataires.
-- `notify` passe à `false` par le lien de désabonnement d'un email. Le
-  repasser à `true` depuis /admin est possible mais suppose l'accord de
-  l'intéressé.
+**Aucune adresse email ici** : un compte est une clé d'accès, possiblement
+partagée, pas quelqu'un de joignable. Les adresses appartiennent aux identités
+de commentateur, et celle prévenue des nouveaux commentaires est le réglage
+`moderationEmail`.
 
 - `username` : `USERNAME_PATTERN`, 64 caractères au plus. `password` :
   `PASSWORD_MIN_LENGTH` (8) au minimum, 512 au plus.
@@ -324,8 +354,12 @@ dernier commentaire rendu : `AUTOINCREMENT` garantit que l'ordre des id est
 l'ordre d'écriture, ce qui évite le curseur composite dont la pagination des
 médias a besoin.
 
-`AdminComment` ajoute au `Comment` de quoi savoir de quelle photo on parle —
-`albumId`, `albumTitle`, `mediaId`, `mediaName`, `hiddenAt`, `hiddenBy`.
+`AdminComment` ajoute au `Comment` de quoi savoir de quelle photo on parle et
+qui écrit — `albumId`, `albumTitle`, `mediaId`, `mediaName`, `authorEmail`,
+`account`, `hiddenAt`, `hiddenBy`. `authorEmail` n'apparaît **qu'ici** : la
+modération a besoin de savoir qui parle derrière un nom déclaré, le fil non.
+`account` est la clé d'accès employée pour écrire, ce qui dit quel mot de passe
+partagé changer.
 `mediaName` vaut `null` si le média a disparu de l'index depuis : le commentaire
 reste modérable, seul le lien vers la photo n'est plus rendu.
 
@@ -345,9 +379,12 @@ doit le dire plutôt que de laisser espérer des notifications.
 
 ### Réglages
 
-`AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB }`. `PATCH`
+`AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB,
+moderationEmail }`. `PATCH`
 accepte un sous-ensemble (`UpdateSettingsRequest`) et renvoie l'état complet.
 Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0.
+`moderationEmail` accepte une adresse valide, `null` ou la chaîne vide — les deux
+dernières valant « aucune alerte », `ConfigRepo` les ramenant au même `NULL`.
 
 **Les réglages s'appliquent sans redémarrage** : la limite de `MediaCache` est
 ajustée dans la foulée (avec éviction si elle baisse) et le minuteur de

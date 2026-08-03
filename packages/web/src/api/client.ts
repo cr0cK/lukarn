@@ -11,6 +11,7 @@ import {
   type CreateAlbumRequest,
   type CreateCommentRequest,
   type CreateUserRequest,
+  type IdentityRequest,
   type ItemsPage,
   type MediaDetail,
   type ModerationFilter,
@@ -20,6 +21,7 @@ import {
   type UpdateAlbumRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
+  type VerifyIdentityRequest,
 } from '@gdv/shared';
 
 /** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
@@ -94,6 +96,17 @@ export const api = {
     request<MediaDetail>(
       `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
     ),
+
+  requestIdentityCode: (body: IdentityRequest) =>
+    request<{ ok: true }>('/identity/request-code', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  verifyIdentity: (body: VerifyIdentityRequest) =>
+    request<SessionUser>('/identity/verify', { method: 'POST', body: JSON.stringify(body) }),
+
+  forgetIdentity: () => request<SessionUser>('/identity/forget', { method: 'POST' }),
 
   comments: (albumId: string, mediaId: string) =>
     request<CommentsPage>(

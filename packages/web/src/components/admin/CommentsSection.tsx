@@ -92,6 +92,9 @@ function CommentRow({ comment, notify }: { comment: AdminComment; notify: Notify
     <li className={`px-4 py-3 ${hidden ? 'opacity-60' : ''}`}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-ink-400">
         <span className="text-sm font-medium text-ink-100">{comment.author.displayName}</span>
+        {/* L'adresse vérifiée n'apparaît que dans la modération : elle dit qui
+            parle derrière un nom déclaré, ce que le fil n'a pas à révéler. */}
+        <span className="text-ink-400">{comment.authorEmail}</span>
         <time dateTime={comment.createdAt} title={formatLocalDateTime(comment.createdAt)}>
           {formatRelative(comment.createdAt)}
         </time>
@@ -121,6 +124,9 @@ function CommentRow({ comment, notify }: { comment: AdminComment; notify: Notify
             <span className="italic">photo retirée de l’index</span>
           )}
           <span> — {comment.albumTitle}</span>
+          {/* La clé d'accès employée pour écrire : c'est elle qu'on change quand
+              un mot de passe partagé a trop circulé. */}
+          {comment.account && <span> · via {comment.account}</span>}
         </p>
 
         <Button

@@ -2,6 +2,7 @@ import type { AppSettings } from '@gdv/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { bootstrapFromYaml } from './bootstrap.js';
 import { CommentRepo } from './comments.js';
+import { CommenterRepo } from './commenters.js';
 import { ConfigRepo, type StoredAlbum } from './config-repo.js';
 import { type Db, openDb } from './db.js';
 import { DriveService } from './drive/service.js';
@@ -28,6 +29,8 @@ export class AppContext {
   readonly config: ConfigRepo;
   readonly media: MediaRepo;
   readonly comments: CommentRepo;
+  /** Identités de commentateur — les personnes, par opposition aux clés d'accès. */
+  readonly commenters: CommenterRepo;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
   /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
@@ -53,6 +56,7 @@ export class AppContext {
     this.config = new ConfigRepo(this.db);
     this.media = new MediaRepo(this.db);
     this.comments = new CommentRepo(this.db);
+    this.commenters = new CommenterRepo(this.db, env.sessionSecret);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
 

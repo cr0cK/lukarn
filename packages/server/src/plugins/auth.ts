@@ -1,14 +1,21 @@
 import type { SessionUser } from '@gdv/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
+import { toIdentity } from '../commenters.js';
 import type { AppContext } from '../context.js';
 import { SESSION_COOKIE } from '../sessions.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    /** Utilisateur authentifié, ou `null` si la requête est anonyme. */
+    /** Clé d'accès authentifiée, ou `null` si la requête est anonyme. */
     user: SessionUser | null;
     sessionId: string | null;
+    /**
+     * Identité de commentateur portée par la session, `null` si personne ne
+     * s'est déclaré. Distincte de `user` : le même identifiant peut être
+     * partagé, chaque personne signe de son nom.
+     */
+    commenterId: number | null;
   }
 }
 
@@ -19,6 +26,7 @@ declare module 'fastify' {
 const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { context }) => {
   app.decorateRequest('user', null);
   app.decorateRequest('sessionId', null);
+  app.decorateRequest('commenterId', null);
 
   app.addHook('onRequest', async (request) => {
     const raw = request.cookies[SESSION_COOKIE];
@@ -40,13 +48,24 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       return;
     }
 
+    // L'identité est relue à chaque requête plutôt que figée à la connexion :
+    // une adresse effacée depuis un autre appareil doit retirer le droit de
+    // commenter sans attendre une reconnexion — la session dure un an.
+    const commenter =
+      session.commenterId === null ? null : context.commenters.byId(session.commenterId);
+    // Identité supprimée entre-temps : on délie plutôt que de garder un
+    // identifiant qui ne désigne plus rien.
+    if (session.commenterId !== null && !commenter) {
+      context.sessions.attachCommenter(session.id, null);
+    }
+
     request.sessionId = session.id;
+    request.commenterId = commenter?.id ?? null;
     request.user = {
       username: configured.username,
       admin: configured.admin,
-      // Résolu ici plutôt qu'à l'affichage : le nom qui signe un commentaire
-      // ne doit pas dépendre de l'écran qui le rend.
-      displayName: configured.displayName?.trim() || configured.username,
+      identity: commenter ? toIdentity(commenter) : null,
+      commentsEnabled: context.mailer.enabled,
     };
   });
 };

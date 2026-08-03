@@ -115,12 +115,51 @@ export interface Album {
 
 export type SyncStatus = 'never' | 'running' | 'ok' | 'error';
 
+/**
+ * Session en cours.
+ *
+ * `username` est une **clé d'accès**, pas une personne : le même identifiant
+ * peut être partagé par plusieurs membres d'un foyer. Ce qui identifie
+ * quelqu'un, c'est `identity` — déclaré par l'intéressé et vérifié par email.
+ */
 export interface SessionUser {
   username: string;
   admin: boolean;
-  /** Nom affiché à côté des commentaires. Vaut `username` tant qu'aucun n'est saisi. */
+  /** `null` tant que personne ne s'est identifié sur cette session. */
+  identity: CommenterIdentity | null;
+  /**
+   * `false` si l'instance n'a pas de serveur SMTP : aucun code de vérification
+   * ne peut partir, donc personne ne peut s'identifier ni commenter. L'interface
+   * doit le dire plutôt que d'offrir un formulaire qui échouera.
+   */
+  commentsEnabled: boolean;
+}
+
+/**
+ * Identité de commentateur, telle que son titulaire la voit. Présente
+ * uniquement une fois l'adresse vérifiée : une identité non vérifiée n'est
+ * rattachée à aucune session.
+ */
+export interface CommenterIdentity {
+  email: string;
+  displayName: string;
+  /** `false` après un désabonnement depuis un email reçu. */
+  notify: boolean;
+}
+
+/** Ce qu'on déclare pour s'identifier. L'adresse reçoit ensuite un code. */
+export interface IdentityRequest {
+  email: string;
   displayName: string;
 }
+
+export interface VerifyIdentityRequest {
+  email: string;
+  code: string;
+}
+
+/** Longueur du code envoyé par email. Six chiffres, saisis à la main. */
+export const VERIFICATION_CODE_LENGTH = 6;
 
 export interface LoginRequest {
   username: string;
@@ -140,10 +179,14 @@ export interface ItemsPage {
  * albums porte deux conversations distinctes. Voir `specs/04-securite-et-acces.md`.
  * ------------------------------------------------------------------------ */
 
-/** Auteur d'un commentaire, réduit à ce que l'affichage demande. */
+/**
+ * Auteur d'un commentaire, réduit à ce que l'affichage demande.
+ *
+ * **L'adresse email n'y figure pas et ne doit jamais y figurer** : elle sert à
+ * identifier et à notifier, pas à être diffusée aux autres lecteurs du fil.
+ */
 export interface CommentAuthor {
-  username: string;
-  /** Nom saisi dans /admin, ou `username` à défaut. Jamais vide. */
+  /** Nom déclaré par l'intéressé, vérifié par email. Jamais vide. */
   displayName: string;
 }
 
@@ -230,17 +273,16 @@ export interface ApiError {
 /** Le joker `*` donne accès à tous les albums, présents et à venir. */
 export const ALL_ALBUMS = '*';
 
+/**
+ * Une clé d'accès. Elle ouvre des albums et peut être partagée entre plusieurs
+ * personnes : aucune adresse email ne lui est attachée, celles-ci appartiennent
+ * aux identités de commentateur.
+ */
 export interface AdminUser {
   username: string;
   admin: boolean;
   /** Liste d'ids d'albums, ou `['*']`. */
   albums: string[];
-  /** Nom affiché à côté des commentaires. `null` si le compte s'en tient à son identifiant. */
-  displayName: string | null;
-  /** Adresse de notification. `null` si le compte n'en a pas — il ne recevra rien. */
-  email: string | null;
-  /** `false` après un désabonnement : le compte garde son adresse mais ne reçoit plus rien. */
-  notify: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -250,8 +292,6 @@ export interface CreateUserRequest {
   password: string;
   admin?: boolean;
   albums?: string[];
-  displayName?: string | null;
-  email?: string | null;
 }
 
 /** Champs omis = inchangés. `password` absent laisse le mot de passe en place. */
@@ -259,9 +299,6 @@ export interface UpdateUserRequest {
   password?: string;
   admin?: boolean;
   albums?: string[];
-  displayName?: string | null;
-  email?: string | null;
-  notify?: boolean;
 }
 
 export interface AdminAlbum {
@@ -301,6 +338,15 @@ export interface AppSettings {
   syncIntervalMinutes: number;
   syncOnStartup: boolean;
   cacheMaxSizeGB: number;
+  /**
+   * Adresse prévenue de chaque nouveau commentaire. `null` pour n'en prévenir
+   * aucune.
+   *
+   * C'est un réglage d'instance et non une colonne sur les comptes : un compte
+   * administrateur est une clé d'accès, pas quelqu'un de joignable, et
+   * l'instance n'a qu'un propriétaire.
+   */
+  moderationEmail: string | null;
 }
 
 export type UpdateSettingsRequest = Partial<AppSettings>;
@@ -316,6 +362,16 @@ export interface AdminComment extends Comment {
   mediaId: string;
   /** Nom du fichier Drive, ou `null` si le média a disparu de l'index depuis. */
   mediaName: string | null;
+  /**
+   * Adresse vérifiée de l'auteur. Visible **ici seulement** : la modération a
+   * besoin de savoir qui parle derrière un nom déclaré, le fil non.
+   */
+  authorEmail: string;
+  /**
+   * Clé d'accès utilisée pour écrire, `null` si elle a été supprimée depuis.
+   * C'est elle qu'on change quand un mot de passe partagé a trop circulé.
+   */
+  account: string | null;
   /** ISO 8601 du masquage, `null` si le commentaire est visible. */
   hiddenAt: string | null;
   /** Administrateur ayant masqué. Sur une instance à plusieurs, c'est à qui en reparler. */

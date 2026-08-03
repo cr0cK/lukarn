@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
+import { Mailer, type MailMessage } from '../src/mail.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
@@ -23,6 +24,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
+const silencieux = { info: () => {}, warn: () => {}, debug: () => {} };
 const root = mkdtempSync(join(tmpdir(), 'gdv-comments-'));
 
 let server: FastifyInstance;
@@ -67,6 +69,38 @@ async function login(username: string): Promise<string> {
   return `gdv_session=${cookie.value}`;
 }
 
+/**
+ * Déclare une identité sur cette session et valide le code reçu.
+ *
+ * Le code n'est jamais rendu par l'API : il part par email. Le test le récupère
+ * donc dans le message capturé par le faux transport, ce qui vérifie au passage
+ * qu'il est bien envoyé.
+ */
+async function identify(cookie: string, email: string, displayName: string): Promise<void> {
+  envoyes.length = 0;
+  const asked = await server.inject({
+    method: 'POST',
+    url: '/api/identity/request-code',
+    headers: { cookie },
+    payload: { email, displayName },
+  });
+  assert.equal(asked.statusCode, 202, asked.body);
+  await context.mailer.drain();
+
+  const message = envoyes.at(-1);
+  assert.ok(message, 'aucun code envoyé');
+  const code = /\b(\d{6})\b/.exec(message.subject)?.[1];
+  assert.ok(code, `code introuvable dans « ${message.subject} »`);
+
+  const verified = await server.inject({
+    method: 'POST',
+    url: '/api/identity/verify',
+    headers: { cookie },
+    payload: { email, code },
+  });
+  assert.equal(verified.statusCode, 200, verified.body);
+}
+
 /** Poste un commentaire et rend l'objet créé, en vérifiant le code de retour. */
 async function post(
   cookie: string,
@@ -97,6 +131,8 @@ async function read(cookie: string, albumId: string, mediaId: string): Promise<C
 
 let adminCookie: string;
 let familleCookie: string;
+/** Messages capturés : l'instance de test n'ouvre évidemment pas de SMTP. */
+const envoyes: MailMessage[] = [];
 
 before(async () => {
   const hash = await argon2.hash(PASSWORD, { type: argon2.argon2id });
@@ -115,6 +151,12 @@ before(async () => {
   const built = await buildApp(env);
   server = built.server;
   context = built.context;
+
+  // Sans transport, aucun code ne peut partir et personne ne peut commenter :
+  // c'est le comportement voulu, mais il rendrait ces tests inertes.
+  context.mailer = new Mailer(async (message) => {
+    envoyes.push(message);
+  }, silencieux);
 
   context.config.createAlbum({
     id: 'vacances',
@@ -135,12 +177,13 @@ before(async () => {
     admin: true,
     albums: [ALL_ALBUMS],
   });
+  // Une seule clé d'accès pour tout le foyer : c'est l'usage prévu, et c'est
+  // pour ça que l'identité ne peut pas venir du compte.
   context.config.createUser({
     username: 'famille',
     passwordHash: hash,
     admin: false,
     albums: ['vacances'],
-    displayName: 'Mamie',
   });
 
   // La même photo Drive indexée dans les deux albums : c'est le cas qui rend le
@@ -152,6 +195,9 @@ before(async () => {
 
   adminCookie = await login('alexis');
   familleCookie = await login('famille');
+
+  await identify(adminCookie, 'chef@exemple.fr', 'Alexis');
+  await identify(familleCookie, 'mamie@exemple.fr', 'Mamie');
 });
 
 after(async () => {
@@ -237,13 +283,53 @@ describe('profondeur limitée à un niveau', () => {
 });
 
 describe('identité de l’auteur', () => {
-  it('signe du nom affiché quand il est renseigné, de l’identifiant sinon', async () => {
+  it('signe du nom déclaré, pas de la clé d’accès partagée', async () => {
     const parMamie = await post(familleCookie, 'vacances', 'photo-partagee', 'Signé');
     const parAdmin = await post(adminCookie, 'vacances', 'photo-partagee', 'Signé aussi');
 
     assert.equal(parMamie.author.displayName, 'Mamie');
-    assert.equal(parMamie.author.username, 'famille');
-    assert.equal(parAdmin.author.displayName, 'alexis');
+    assert.equal(parAdmin.author.displayName, 'Alexis');
+  });
+
+  it('n’expose jamais l’adresse email dans un fil', async () => {
+    const page = await read(familleCookie, 'vacances', 'photo-partagee');
+    // L'adresse identifie et notifie ; elle n'a pas à circuler auprès des autres
+    // lecteurs du fil.
+    assert.ok(!JSON.stringify(page).includes('@exemple.fr'));
+  });
+
+  it('refuse de commenter tant qu’aucune identité n’est vérifiée', async () => {
+    const anonyme = await login('famille');
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/comments/vacances/photo-partagee',
+      headers: { cookie: anonyme },
+      payload: { body: 'Sans identité' },
+    });
+
+    // 403 et non 404 : le refus porte sur l'état de son propre compte, pas sur
+    // une ressource d'autrui dont il faudrait cacher l'existence.
+    assert.equal(response.statusCode, 403);
+    assert.equal(response.json<{ error: string }>().error, 'identity_required');
+  });
+
+  it('retrouve ses commentaires en se ré-identifiant avec la même adresse', async () => {
+    const mien = await post(familleCookie, 'vacances', 'photo-partagee', 'À retrouver');
+
+    // Nouvel appareil : session neuve, aucune identité.
+    const autreAppareil = await login('famille');
+    // Le délai anti-renvoi refuse un second code dans la minute — ce qui est
+    // voulu en service, mais rendrait ce test tributaire d'une attente réelle.
+    context.db
+      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
+      .run('mamie@exemple.fr');
+    await identify(autreAppareil, 'mamie@exemple.fr', 'Mamie');
+
+    const page = await read(autreAppareil, 'vacances', 'photo-partagee');
+    const retrouve = page.threads.find((thread) => thread.root.id === mien.id);
+    assert.ok(retrouve, 'le commentaire a disparu');
+    // L'adresse identifie la personne : elle garde la main sur ses messages.
+    assert.equal(retrouve.root.canDelete, true);
   });
 });
 

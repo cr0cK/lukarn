@@ -102,11 +102,14 @@ export interface CommentNotification {
   body: string;
 }
 
+/**
+ * À qui, et pourquoi. `moderation` désigne l'adresse de l'instance, réglée dans
+ * /admin : elle n'a pas d'identité de commentateur, donc pas de lien de
+ * désabonnement — on la retire en la vidant du formulaire.
+ */
 export interface Recipient {
-  username: string;
   email: string;
-  displayName: string;
-  reason: 'admin' | 'reply';
+  reason: 'moderation' | 'reply';
 }
 
 /**
@@ -123,7 +126,10 @@ export function buildCommentMail(
   env: Env,
 ): MailMessage {
   const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}`;
-  const unsubscribe = `${env.publicUrl}/api/comments/unsubscribe?u=${encodeURIComponent(recipient.username)}&t=${signUnsubscribeToken(recipient.username, env.sessionSecret)}`;
+  const unsubscribe =
+    recipient.reason === 'reply'
+      ? `${env.publicUrl}/api/comments/unsubscribe?u=${encodeURIComponent(recipient.email)}&t=${signUnsubscribeToken(recipient.email, env.sessionSecret)}`
+      : null;
 
   // Le sujet sert aussi d'accroche dans le corps : le lecteur qui ouvre depuis
   // une notification a déjà lu cette phrase, la répéter à l'identique lui dit
@@ -144,9 +150,7 @@ export function buildCommentMail(
     '',
     where,
     link,
-    '',
-    '—',
-    `Se désabonner de ces emails : ${unsubscribe}`,
+    ...(unsubscribe ? ['', '—', `Se désabonner de ces emails : ${unsubscribe}`] : []),
   ].join('\n');
 
   // HTML volontairement pauvre : styles en ligne, pas d'image, pas de police
@@ -158,10 +162,14 @@ export function buildCommentMail(
       <blockquote style="margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid #d4d4d4; background: #fafafa; white-space: pre-wrap;">${escapeHtml(notification.body)}</blockquote>
       <p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>
       <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">Voir la photo</a></p>
-      <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
+      ${
+        unsubscribe
+          ? `<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
         <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Se désabonner de ces emails</a>
-      </p>
+      </p>`
+          : ''
+      }
     </div>
   `.trim();
 
@@ -188,4 +196,45 @@ function escapeHtml(value: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+/**
+ * Code de vérification d'une adresse.
+ *
+ * Le code figure dans le sujet autant que dans le corps : sur un téléphone, la
+ * notification d'arrivée du mail suffit alors à le lire sans ouvrir la boîte.
+ * Aucun lien cliquable — un code se recopie dans l'onglet resté ouvert, là où
+ * un lien ouvrirait une seconde session dans un autre navigateur.
+ */
+export function buildVerificationMail(
+  email: string,
+  displayName: string,
+  code: string,
+  env: Env,
+): MailMessage {
+  const subject = `${code} — code de vérification`;
+
+  const text = [
+    `Bonjour ${displayName},`,
+    '',
+    `Ton code pour commenter sur ${env.publicUrl} est : ${code}`,
+    '',
+    "Il est valable quinze minutes. Si tu n'as rien demandé, ignore ce message :",
+    "tant que le code n'est pas saisi, rien n'est associé à cette adresse.",
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      <p style="margin: 0 0 16px;">Bonjour ${escapeHtml(displayName)},</p>
+      <p style="margin: 0 0 8px;">Ton code pour commenter :</p>
+      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
+      <p style="margin: 0 0 16px; color: #666;">Il est valable quinze minutes.</p>
+      <p style="margin: 0; font-size: 13px; color: #888;">
+        Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,
+        rien n'est associé à cette adresse.
+      </p>
+    </div>
+  `.trim();
+
+  return { to: email, subject, text, html };
 }

@@ -1,5 +1,16 @@
 # 04 — Sécurité et accès
 
+## Trois choses distinctes, à ne pas confondre
+
+|                  | Ce que c'est                                | Ce que ça ouvre                       |
+| ---------------- | ------------------------------------------- | ------------------------------------- |
+| **OAuth Google** | Le consentement du propriétaire             | La lecture de _son_ Drive, au serveur |
+| **`users`**      | Une **clé d'accès**, possiblement partagée  | Les albums attribués                  |
+| **`commenters`** | Une **personne**, adresse vérifiée par code | Le droit de signer un commentaire     |
+
+La distinction entre les deux dernières est récente et structurante : un
+identifiant confié à tout un foyer ne dit pas qui écrit. Voir D38.
+
 ## Les deux authentifications, à ne pas confondre
 
 C'est la confusion la plus coûteuse du projet. Ce sont deux mécanismes sans
@@ -86,8 +97,19 @@ comptes derrière un reverse-proxy, c'est le compromis retenu.
 
 `packages/server/src/sessions.ts`. Identifiant de 32 octets aléatoires
 (`randomBytes(32).toString('base64url')`), stocké en base avec sa date
-d'expiration. TTL 30 jours. Purge horaire des sessions expirées par le minuteur
-de `main.ts`.
+d'expiration. **TTL d'un an, repoussé dès que la session a passé sa mi-vie** :
+en pratique on ne se déconnecte jamais tant qu'on utilise la galerie, et une
+session vraiment abandonnée finit par s'éteindre. Purge horaire des sessions
+expirées par le minuteur de `main.ts`.
+
+Pourquoi pas d'expiration du tout, comme le mot « indéfiniment » le suggérait :
+une session éternelle est un jeton de connexion permanent — volé une fois,
+valable à vie — et la table grossirait sans que rien ne la nettoie. Attention au
+vocabulaire au passage : un _cookie de session_ au sens HTTP, sans `maxAge`, est
+celui qui meurt à la fermeture du navigateur, soit exactement l'inverse. Le
+cookie posé ici est persistant. Repousser l'échéance à mi-vie plutôt qu'à chaque
+requête ramène le coût à une écriture par visiteur et par semestre, au lieu
+d'une par vignette.
 
 Le cookie `gdv_session` est `httpOnly`, `sameSite: 'lax'`, **signé** avec
 `SESSION_SECRET` via `@fastify/cookie`, et `secure` uniquement si `PUBLIC_URL`
@@ -164,6 +186,27 @@ L'exception assumée : `/api/admin/*` répond **403** à un utilisateur connect�
 administrateur. L'existence de l'espace d'administration n'est pas un secret —
 il est annoncé par le README et par un lien dans la barre supérieure.
 
+## Identité de commentateur
+
+`routes/identity.ts` et `commenters.ts`. Trois routes : déclarer une adresse et
+un nom, valider le code reçu, oublier l'identité de cette session.
+
+- **Le code est un HMAC en base** (`hashVerificationCode`), jamais le code en
+  clair : un dump ne doit pas livrer de quoi valider une adresse. Il vit quinze
+  minutes, tolère cinq essais, et ne peut être renvoyé qu'une fois par minute.
+- **La vérification est ce qui empêche l'usurpation.** Sans elle, quiconque
+  connaît le mot de passe partagé pourrait signer « Mamie », ou déclarer
+  l'adresse d'un tiers pour lui faire recevoir les notifications.
+- **`POST /identity/request-code` répond toujours `202`**, que l'adresse soit
+  déjà connue ou non : distinguer les deux dirait à qui l'essaie quelles adresses
+  ont déjà commenté sur cette instance.
+- **La session mémorise l'identité, elle ne la définit pas.** L'identité est
+  relue à chaque requête : une adresse supprimée retire le droit de commenter
+  sans attendre une reconnexion — la session dure un an.
+- **Sans SMTP, aucun code ne part**, donc personne ne peut s'identifier ni
+  commenter. `SessionUser.commentsEnabled` le dit au front, qui l'annonce au lieu
+  d'offrir un formulaire condamné à échouer.
+
 ## Commentaires : le fil est cloisonné comme l'album
 
 `routes/comments.ts` refait le contrôle dans chaque handler au lieu de le poser
@@ -184,6 +227,13 @@ Trois points qui tiennent ce cloisonnement :
 - **Supprimer exige de voir encore l'album.** Un visiteur dont l'accès vient
   d'être retiré conserverait sinon un droit d'écriture sur un contenu qu'il ne
   peut plus consulter.
+- **Commenter exige une identité vérifiée**, faute de quoi la route répond
+  **403 `identity_required`**. C'est la seconde exception assumée au « 404 et
+  jamais 403 » : ce refus ne porte pas sur une ressource d'autrui dont il
+  faudrait cacher l'existence, mais sur l'état de son propre compte — il ne
+  révèle rien.
+- **L'adresse email n'apparaît jamais dans un fil.** Elle identifie et notifie ;
+  seuls le nom déclaré et la modération y ont accès.
 
 `packages/server/test/comments.test.ts` verrouille ces trois points, ainsi que
 l'indistinguabilité des réponses 404 entre album interdit et album inexistant.
@@ -195,7 +245,7 @@ bannissement furtif. Masquer est réversible ; la suppression, elle, est
 définitive et reste offerte à l'auteur comme à l'administrateur.
 
 **Lien de désabonnement.** `signUnsubscribeToken` (`crypto.ts`) produit un HMAC
-de l'identifiant avec `SESSION_SECRET`, comparé en temps constant. **Sans
+de l'adresse avec `SESSION_SECRET`, comparé en temps constant. **Sans
 expiration et sans session** : le lien vit dans un email qu'on rouvre des mois
 plus tard, et un jeton périmé renverrait vers un écran de connexion quelqu'un qui
 cherche précisément à ne plus être dérangé. Ce qu'il ouvre est sans gravité —
@@ -287,5 +337,6 @@ son échec est ignoré).
   500 — il peut contenir des chemins ou des identifiants. Le message reste dans
   les logs, la réponse dit « Erreur interne ».
 - `safeEqual` (`crypto.ts`) fait une comparaison en temps constant tolérante aux
-  longueurs différentes. Il n'est pas utilisé par le code de production
-  actuel — le `state` OAuth est comparé par `unsignCookie` puis égalité stricte.
+  longueurs différentes. Il sert aux jetons de désabonnement et aux codes de
+  vérification ; le `state` OAuth, lui, est comparé par `unsignCookie` puis
+  égalité stricte.

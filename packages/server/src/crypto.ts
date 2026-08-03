@@ -71,9 +71,30 @@ export function signUnsubscribeToken(username: string, secret: string): string {
 
 /** Comparaison en temps constant : un jeton ne se devine pas au chronomètre. */
 export function verifyUnsubscribeToken(username: string, token: string, secret: string): boolean {
-  const expected = Buffer.from(signUnsubscribeToken(username, secret), 'utf8');
-  const received = Buffer.from(token, 'utf8');
-  // `timingSafeEqual` lève si les longueurs diffèrent — ce qui est déjà une
-  // réponse, et n'apprend rien de plus que la longueur du jeton attendu.
-  return expected.length === received.length && timingSafeEqual(expected, received);
+  return safeEqual(signUnsubscribeToken(username, secret), token);
+}
+
+/**
+ * Empreinte du code de vérification d'une adresse email.
+ *
+ * Le code est court et vit quinze minutes, mais il n'a aucune raison d'être
+ * lisible dans un dump de la base : un HMAC coûte moins qu'une requête SQL. Il
+ * est lié à l'adresse, pour qu'un code valide pour l'une ne le soit pour aucune
+ * autre.
+ */
+export function hashVerificationCode(email: string, code: string, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(`verify:${email.toLowerCase()}:${code}`)
+    .digest('base64url');
+}
+
+/**
+ * Comparaison en temps constant tolérante aux longueurs différentes.
+ * `timingSafeEqual` lève quand elles diffèrent — ce qui est déjà une réponse,
+ * mais sous forme d'exception plutôt que de `false`.
+ */
+export function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  return left.length === right.length && timingSafeEqual(left, right);
 }

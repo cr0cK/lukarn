@@ -21,6 +21,11 @@ Deux rôles, et seulement deux :
 | Le propriétaire | Un seul par instance | Connecte son Drive une fois en OAuth, administre comptes et albums depuis `/admin` |
 | Les visiteurs   | Quelques comptes     | Se connectent avec un identifiant/mot de passe et consultent leurs albums          |
 
+Un **compte n'est pas une personne** : c'est une clé d'accès, et rien n'interdit
+d'en confier une à tout un foyer — c'est même l'usage prévu depuis
+`albums.yaml`. Quand il s'agit de signer un commentaire, chacun se déclare avec
+son nom et son adresse, vérifiée par un code (voir [04](./04-securite-et-acces.md)).
+
 Un visiteur n'a jamais de compte Google et ne voit jamais une URL Google. Tout
 le contenu transite par le serveur, qui l'obtient avec l'unique jeton du
 propriétaire.
@@ -76,4 +81,7 @@ calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
 - Vignettes WebP générées à la demande, mises en cache sur disque avec éviction
   LRU.
 - Commentaires par photo, avec un niveau de réponse, modérés a posteriori depuis
-  `/admin` et notifiés par email quand un serveur SMTP est configuré.
+  `/admin` et notifiés par email. Ils sont signés par une **identité** — un nom
+  et une adresse vérifiée par code — distincte de la clé d'accès, qu'un foyer
+  peut partager. Sans serveur SMTP, aucun code ne part et les commentaires
+  restent indisponibles.

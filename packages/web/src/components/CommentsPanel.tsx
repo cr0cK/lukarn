@@ -1,8 +1,9 @@
 import { COMMENT_MAX_LENGTH, type Comment, type CommentThread } from '@gdv/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
-import { useComments, useCreateComment, useDeleteComment } from '../api/hooks';
+import { useComments, useCreateComment, useDeleteComment, useMe } from '../api/hooks';
 import { formatLocalDateTime, formatRelative } from '../lib/format';
+import { IdentityForm } from './IdentityForm';
 import { Spinner } from './Spinner';
 
 /**
@@ -68,14 +69,68 @@ export function CommentsPanel({
           défile : sur une photo très commentée, il faudrait sinon parcourir
           toute la conversation pour trouver où écrire. */}
       <div className="border-t border-ink-800 px-5 py-4">
+        <Composer albumId={albumId} mediaId={mediaId} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Ce qui occupe le bas du panneau : le champ de saisie, l'invitation à
+ * s'identifier, ou l'explication d'une galerie sans serveur d'envoi.
+ *
+ * L'identité est demandée **ici**, au moment où l'on veut écrire — pas à la
+ * connexion. C'est le seul instant où renseigner son adresse a un sens visible
+ * pour celui à qui on la demande.
+ */
+function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): ReactElement {
+  const { data: me } = useMe();
+  const [identifying, setIdentifying] = useState(false);
+
+  if (me?.identity && !identifying) {
+    return (
+      <>
         <CommentForm
           albumId={albumId}
           mediaId={mediaId}
           parentId={null}
-          placeholder="Écrire un commentaire…"
+          placeholder={`Commenter en tant que ${me.identity.displayName}…`}
         />
-      </div>
-    </div>
+        <p className="mt-2 text-xs text-ink-400">
+          Tu commentes en tant que <span className="text-ink-200">{me.identity.displayName}</span>.{' '}
+          <button
+            type="button"
+            onClick={() => setIdentifying(true)}
+            className="underline underline-offset-2 transition-colors hover:text-ink-100"
+          >
+            Changer d’adresse
+          </button>
+        </p>
+      </>
+    );
+  }
+
+  // Sans serveur SMTP, aucun code ne peut partir : mieux vaut le dire que
+  // d'offrir un formulaire qui échouera à la dernière étape.
+  if (me && !me.commentsEnabled) {
+    return (
+      <p className="text-sm text-ink-400">
+        Les commentaires sont indisponibles : cette galerie n’a pas de serveur d’envoi d’emails
+        configuré.
+      </p>
+    );
+  }
+
+  if (identifying) return <IdentityForm onDone={() => setIdentifying(false)} />;
+
+  return (
+    <button
+      type="button"
+      onClick={() => setIdentifying(true)}
+      className="w-full rounded border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
+    >
+      S’identifier pour commenter
+    </button>
   );
 }
 
@@ -92,6 +147,10 @@ function ThreadView({
   replyTo: number | null;
   onReplyTo: (id: number | null) => void;
 }): ReactElement {
+  const { data: me } = useMe();
+  // Sans identité vérifiée, le serveur refuserait la réponse : proposer le
+  // bouton mènerait droit à un message d'erreur.
+  const canReply = Boolean(me?.identity);
   const open = replyTo === thread.root.id;
 
   return (
@@ -100,7 +159,7 @@ function ThreadView({
         comment={thread.root}
         albumId={albumId}
         mediaId={mediaId}
-        onReply={() => onReplyTo(open ? null : thread.root.id)}
+        onReply={canReply ? () => onReplyTo(open ? null : thread.root.id) : undefined}
       />
 
       {thread.replies.length > 0 && (

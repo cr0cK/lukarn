@@ -10,6 +10,7 @@ import { createAdminRoutes, createOAuthCallbackRoute } from './routes/admin.js';
 import { createAlbumRoutes } from './routes/albums.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createCommentRoutes } from './routes/comments.js';
+import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
 
 export interface BuiltApp {
@@ -49,6 +50,7 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
       await api.register(createAlbumRoutes(context), { prefix: '/albums' });
       await api.register(createMediaRoutes(context), { prefix: '/media' });
       await api.register(createCommentRoutes(context), { prefix: '/comments' });
+      await api.register(createIdentityRoutes(context), { prefix: '/identity' });
       await api.register(createAdminRoutes(context), { prefix: '/admin' });
       await api.register(createOAuthCallbackRoute(context), { prefix: '/oauth' });
     },

@@ -2,6 +2,7 @@ import {
   DEFAULT_SORT_ORDER,
   type CreateAlbumRequest,
   type CreateCommentRequest,
+  type IdentityRequest,
   type CreateUserRequest,
   type MediaItem,
   type ModerationFilter,
@@ -9,6 +10,7 @@ import {
   type UpdateAlbumRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
+  type VerifyIdentityRequest,
 } from '@gdv/shared';
 import {
   type QueryClient,
@@ -119,6 +121,44 @@ export function useMediaDetail(albumId: string, mediaId: string | null) {
     queryFn: () => api.itemDetail(albumId, mediaId!),
     enabled: mediaId !== null,
     staleTime: Infinity,
+  });
+}
+
+/* --------------------------------------------------------------------------
+ * Identité de commentateur
+ * ------------------------------------------------------------------------ */
+
+/** Demande l'envoi du code. Ne change rien tant qu'il n'est pas saisi. */
+export function useRequestIdentityCode() {
+  return useMutation({ mutationFn: (body: IdentityRequest) => api.requestIdentityCode(body) });
+}
+
+/**
+ * Valide le code et rattache l'identité à la session. La session rendue par le
+ * serveur remplace celle du cache : c'est elle qui porte `identity`, donc le
+ * droit de commenter.
+ */
+export function useVerifyIdentity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VerifyIdentityRequest) => api.verifyIdentity(body),
+    onSuccess: (user) => {
+      queryClient.setQueryData(queryKeys.me, user);
+      // Les fils déjà chargés portent `canDelete` calculé pour un anonyme :
+      // s'identifier rend la main sur ses propres messages.
+      void queryClient.invalidateQueries({ queryKey: ['comments'] });
+    },
+  });
+}
+
+export function useForgetIdentity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: api.forgetIdentity,
+    onSuccess: (user) => {
+      queryClient.setQueryData(queryKeys.me, user);
+      void queryClient.invalidateQueries({ queryKey: ['comments'] });
+    },
   });
 }
 

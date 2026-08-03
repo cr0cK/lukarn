@@ -152,8 +152,52 @@ export const MIGRATIONS: string[] = [
   );
   `,
 
-  // 4 — commentaires des visiteurs, et de quoi les notifier.
+  // 4 — commentaires, et l'identité qui les signe.
+  //
+  // Deux niveaux à ne pas confondre, et c'est toute la raison de cette migration :
+  //
+  //   users      — une CLÉ D'ACCÈS. Elle ouvre des albums, et rien n'interdit de
+  //                la confier à plusieurs personnes : un mot de passe partagé par
+  //                toute une famille est l'usage prévu depuis albums.yaml.
+  //   commenters — une PERSONNE, identifiée par une adresse qu'elle a vérifiée
+  //                elle-même. C'est elle qui signe un commentaire.
+  //
+  // Les confondre ferait signer « famille » tous les messages du foyer, et
+  // laisserait l'administrateur responsable d'adresses qui ne sont pas les
+  // siennes.
   `
+  CREATE TABLE commenters (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- L'adresse EST l'identité : se ré-identifier avec la même, depuis un autre
+    -- appareil ou après avoir vidé ses cookies, retrouve ses commentaires. Sans
+    -- cette clé stable, chaque navigateur créerait une personne de plus.
+    email           TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    display_name    TEXT NOT NULL,
+    notify          INTEGER NOT NULL DEFAULT 1,
+    -- NULL tant que le code reçu par email n'a pas été saisi. Sans cette
+    -- vérification l'identité serait purement déclarative : n'importe qui
+    -- derrière la clé d'accès partagée pourrait signer du nom d'un autre, ou
+    -- faire atterrir les notifications dans la boîte d'un tiers.
+    verified_at     TEXT,
+    -- HMAC du code, jamais le code en clair : un dump de la base ne doit pas
+    -- livrer de quoi valider une adresse. Même secret que le lien de
+    -- désabonnement, SESSION_SECRET.
+    code_hash       TEXT,
+    code_expires_at TEXT,
+    -- Date du dernier envoi : sans elle, le formulaire deviendrait une machine à
+    -- expédier des emails vers une adresse qu'on ne possède pas.
+    code_sent_at    TEXT,
+    -- Six chiffres se parcourent en un million d'essais. Sans plafond, la
+    -- vérification ne vérifierait rien.
+    code_attempts   INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+  );
+
+  -- La session mémorise l'identité, elle ne la définit pas. ON DELETE SET NULL :
+  -- perdre son identité ne coupe pas l'accès aux albums, qui ne vient que de la
+  -- clé d'accès.
+  ALTER TABLE sessions ADD COLUMN commenter_id INTEGER REFERENCES commenters (id) ON DELETE SET NULL;
+
   -- AUTOINCREMENT, contrairement au rowid ordinaire : sans lui, SQLite réattribue
   -- l'identifiant d'une ligne supprimée à la ligne suivante. Les emails de
   -- notification portent un lien vers #<id> et survivent des mois dans une boîte
@@ -172,14 +216,17 @@ export const MIGRATIONS: string[] = [
     -- détruirait les commentaires sur un simple contretemps d'indexation, alors
     -- que l'identifiant Drive est stable : la photo revenue retrouve son fil.
     media_id    TEXT NOT NULL,
-    -- ON DELETE SET NULL et non CASCADE : supprimer un compte emporte ses
+    -- ON DELETE SET NULL et non CASCADE : supprimer une identité emporte ses
     -- messages, mais les réponses que d'autres y ont écrites leur appartiennent.
     -- Elles remontent en tête de fil plutôt que de disparaître avec lui.
     parent_id   INTEGER REFERENCES comments (id) ON DELETE SET NULL,
-    -- COLLATE NOCASE comme la colonne référencée : la clé étrangère compare déjà
-    -- avec la collation du parent, l'écrire ici évite qu'un index posé plus tard
-    -- sur cette colonne se comporte autrement que la contrainte.
-    username    TEXT NOT NULL COLLATE NOCASE REFERENCES users (username) ON DELETE CASCADE,
+    -- L'auteur est une personne, pas une clé d'accès.
+    commenter_id INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
+    -- Clé d'accès utilisée au moment d'écrire, gardée pour la modération : c'est
+    -- ce qui dit par quel mot de passe partagé un message gênant est arrivé,
+    -- donc lequel changer. ON DELETE SET NULL — supprimer un compte ne doit pas
+    -- emporter des commentaires qui ne lui appartiennent pas.
+    account     TEXT COLLATE NOCASE REFERENCES users (username) ON DELETE SET NULL,
     body        TEXT NOT NULL,
     created_at  TEXT NOT NULL,
     -- Modération a posteriori : le commentaire est publié tout de suite et
@@ -198,17 +245,8 @@ export const MIGRATIONS: string[] = [
   -- Sert le rattachement des réponses à leur racine, et leur remontée en tête de
   -- fil quand le parent disparaît (ON DELETE SET NULL ci-dessus).
   CREATE INDEX idx_comments_parent ON comments (parent_id);
-
-  -- Le nom affiché sépare l'identité de connexion de l'identité sociale : on
-  -- signe « Mamie » sans avoir à se connecter sous ce nom. NULL = on s'en tient
-  -- à l'identifiant.
-  ALTER TABLE users ADD COLUMN display_name TEXT;
-  -- Adresse de notification. NULL est le cas normal d'une instance qui n'envoie
-  -- pas d'email : la fonctionnalité s'éteint d'elle-même, compte par compte.
-  ALTER TABLE users ADD COLUMN email TEXT;
-  -- Désabonnement. Une colonne plutôt qu'une adresse effacée : se désabonner ne
-  -- doit pas obliger l'administrateur à ressaisir l'adresse pour réabonner.
-  ALTER TABLE users ADD COLUMN notify INTEGER NOT NULL DEFAULT 1;
+  -- Sert « mes commentaires » : ceux que le lecteur courant peut supprimer.
+  CREATE INDEX idx_comments_commenter ON comments (commenter_id);
   `,
 ];
 

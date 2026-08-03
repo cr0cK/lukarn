@@ -483,6 +483,7 @@ describe('réglages', () => {
       syncIntervalMinutes: 5,
       syncOnStartup: true,
       cacheMaxSizeGB: 2,
+      moderationEmail: null,
     });
 
     // La limite du cache disque bouge tout de suite — le rechargement de

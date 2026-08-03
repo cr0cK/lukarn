@@ -484,6 +484,14 @@ Volontairement pauvre en fonctions : un fil, une réponse par fil, la suppressio
 de ses propres messages. Pas d'édition, pas de réactions, pas de mentions — c'est
 ce qui sépare une conversation sous une photo d'un forum.
 
+- **L'identité se déclare au moment d'écrire**, dans le bas du panneau
+  (`IdentityForm`) — pas à la connexion. C'est le seul instant où renseigner son
+  adresse a un sens visible pour celui à qui on la demande. Sans identité, un
+  bouton « S'identifier pour commenter » remplace le champ ; sans serveur SMTP,
+  une phrase explique que les commentaires sont indisponibles plutôt que
+  d'ouvrir un formulaire qui échouerait à la dernière étape.
+- **Pas de bouton « Répondre » sans identité vérifiée** : le serveur refuserait,
+  et proposer le geste mènerait droit à un message d'erreur.
 - **Le formulaire d'ouverture de fil est ancré en bas**, hors de la zone qui
   défile. Sur une photo très commentée, il faudrait sinon parcourir toute la
   conversation pour trouver où écrire.

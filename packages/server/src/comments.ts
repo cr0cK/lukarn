@@ -12,11 +12,17 @@ import type { Db } from './db.js';
  * Dépôt des commentaires : lecture d'un fil, écriture, suppression et
  * modération.
  *
- * Le fil appartient au couple `(albumId, mediaId)` et non au seul média. Un
- * même fichier Drive indexé sous deux albums porte deux conversations
- * séparées : les réunir montrerait à un visiteur ce qui s'est dit dans un album
- * qu'il n'a pas le droit de voir, alors que tout le reste de l'application
- * cloisonne par album (D12).
+ * Un commentaire est signé par une **identité** (`commenters`), pas par la clé
+ * d'accès qui a servi à ouvrir l'album : le même identifiant peut être partagé
+ * par plusieurs personnes, et chacune doit signer de son nom. La clé d'accès est
+ * tout de même conservée dans `account`, parce que c'est elle qu'on change quand
+ * un mot de passe a trop circulé.
+ *
+ * Le fil appartient au couple `(albumId, mediaId)` et non au seul média. Un même
+ * fichier Drive indexé sous deux albums porte deux conversations séparées : les
+ * réunir montrerait à un visiteur ce qui s'est dit dans un album qu'il n'a pas
+ * le droit de voir, alors que tout le reste de l'application cloisonne par
+ * album (D12).
  *
  * Toutes les lectures écartent les commentaires masqués, sauf celles de la
  * modération. C'est le seul endroit qui décide de cette visibilité — une route
@@ -25,14 +31,17 @@ import type { Db } from './db.js';
 
 /** Qui lit. Détermine `canDelete` et l'accès aux commentaires masqués. */
 export interface Viewer {
-  username: string;
+  /** Identité en cours, `null` si personne ne s'est identifié sur la session. */
+  commenterId: number | null;
   admin: boolean;
 }
 
 export interface CreateCommentInput {
   albumId: string;
   mediaId: string;
-  username: string;
+  commenterId: number;
+  /** Clé d'accès utilisée, conservée pour la modération. */
+  account: string;
   body: string;
   /** Commentaire auquel on répond, ou `null` pour ouvrir un fil. */
   parentId: number | null;
@@ -54,32 +63,29 @@ export class UnknownParentError extends Error {
 interface CommentRow {
   id: number;
   parent_id: number | null;
-  username: string;
-  display_name: string | null;
+  commenter_id: number;
+  display_name: string;
   body: string;
   created_at: string;
   hidden_at: string | null;
 }
 
-/** Le nom affiché n'est jamais vide : à défaut de nom saisi, l'identifiant. */
 function toComment(row: CommentRow, viewer: Viewer): Comment {
   return {
     id: row.id,
     parentId: row.parent_id,
-    author: {
-      username: row.username,
-      displayName: row.display_name?.trim() || row.username,
-    },
+    author: { displayName: row.display_name },
     body: row.body,
     createdAt: row.created_at,
-    canDelete: viewer.admin || row.username.toLowerCase() === viewer.username.toLowerCase(),
+    // L'administrateur peut tout retirer ; chacun peut retirer ce qu'il a écrit.
+    canDelete: viewer.admin || row.commenter_id === viewer.commenterId,
   };
 }
 
 const SELECT_COMMENT = `
-  SELECT c.id, c.parent_id, c.username, u.display_name, c.body, c.created_at, c.hidden_at
+  SELECT c.id, c.parent_id, c.commenter_id, a.display_name, c.body, c.created_at, c.hidden_at
     FROM comments c
-    LEFT JOIN users u ON u.username = c.username
+    JOIN commenters a ON a.id = c.commenter_id
 `;
 
 export class CommentRepo {
@@ -117,9 +123,8 @@ export class CommentRepo {
       }
       // Une réponse dont la racine est masquée n'a plus de fil où s'accrocher.
       // La laisser de côté la ferait disparaître sans que personne ne l'ait
-      // décidé : elle remonte donc en tête de fil. Son `parentId` repasse à
-      // `null` pour que la forme rendue dise la vérité — une racine qui
-      // désignerait encore un parent absent de la réponse n'aurait aucun sens.
+      // décidé : elle remonte donc en tête de fil, `parentId` remis à `null`
+      // pour que la forme rendue dise la vérité.
       const parent = byId.get(row.parent_id);
       if (parent) parent.replies.push(comment);
       else {
@@ -157,13 +162,21 @@ export class CommentRepo {
 
     const result = this.db
       .prepare(
-        `INSERT INTO comments (album_id, media_id, parent_id, username, body, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO comments (album_id, media_id, parent_id, commenter_id, account, body, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(input.albumId, input.mediaId, parentId, input.username, input.body, createdAt);
+      .run(
+        input.albumId,
+        input.mediaId,
+        parentId,
+        input.commenterId,
+        input.account,
+        input.body,
+        createdAt,
+      );
 
     return this.byId(Number(result.lastInsertRowid), {
-      username: input.username,
+      commenterId: input.commenterId,
       admin: false,
     })!;
   }
@@ -198,18 +211,21 @@ export class CommentRepo {
   }
 
   /**
-   * Supprime définitivement — l'auteur son message, l'administrateur n'importe
+   * Supprime définitivement — chacun son message, l'administrateur n'importe
    * lequel. Rend `false` si le commentaire n'existe pas ou n'appartient pas au
-   * demandeur, sans distinguer les deux : le demandeur n'a pas à apprendre
-   * qu'un identifiant qu'il a deviné correspond au message de quelqu'un.
+   * demandeur, sans distinguer les deux : celui-ci n'a pas à apprendre qu'un
+   * identifiant qu'il a deviné correspond au message de quelqu'un.
    */
   remove(id: number, viewer: Viewer): boolean {
-    const changes = viewer.admin
-      ? this.db.prepare('DELETE FROM comments WHERE id = ?').run(id).changes
-      : this.db
-          .prepare('DELETE FROM comments WHERE id = ? AND username = ?')
-          .run(id, viewer.username).changes;
-    return changes > 0;
+    if (viewer.admin) {
+      return this.db.prepare('DELETE FROM comments WHERE id = ?').run(id).changes > 0;
+    }
+    if (viewer.commenterId === null) return false;
+    return (
+      this.db
+        .prepare('DELETE FROM comments WHERE id = ? AND commenter_id = ?')
+        .run(id, viewer.commenterId).changes > 0
+    );
   }
 
   /* -------------------------------------------------------------- modération */
@@ -255,12 +271,12 @@ export class CommentRepo {
 
     const rows = this.db
       .prepare(
-        `SELECT c.id, c.parent_id, c.username, u.display_name, c.body, c.created_at,
-                c.hidden_at, c.hidden_by, c.album_id, c.media_id,
-                a.title AS album_title, m.name AS media_name
+        `SELECT c.id, c.parent_id, c.commenter_id, a.display_name, a.email, c.body, c.created_at,
+                c.hidden_at, c.hidden_by, c.album_id, c.media_id, c.account,
+                al.title AS album_title, m.name AS media_name
            FROM comments c
-           LEFT JOIN users u ON u.username = c.username
-           LEFT JOIN albums a ON a.id = c.album_id
+           JOIN commenters a ON a.id = c.commenter_id
+           LEFT JOIN albums al ON al.id = c.album_id
            -- LEFT JOIN : un commentaire survit à la disparition de sa photo de
            -- l'index (voir la migration 4). Il doit rester modérable.
            LEFT JOIN media m ON m.album_id = c.album_id AND m.id = c.media_id
@@ -269,9 +285,11 @@ export class CommentRepo {
            LIMIT ?`,
       )
       .all(...params, limit + 1) as (CommentRow & {
+      email: string;
       hidden_by: string | null;
       album_id: string;
       media_id: string;
+      account: string | null;
       album_title: string | null;
       media_name: string | null;
     })[];
@@ -280,21 +298,20 @@ export class CommentRepo {
     const page = hasMore ? rows.slice(0, limit) : rows;
 
     // L'administrateur peut tout supprimer : `canDelete` est vrai partout ici.
-    const viewer: Viewer = { username: '', admin: true };
+    const viewer: Viewer = { commenterId: null, admin: true };
     const comments: AdminComment[] = page.map((row) => ({
       ...toComment(row, viewer),
       albumId: row.album_id,
       albumTitle: row.album_title ?? row.album_id,
       mediaId: row.media_id,
       mediaName: row.media_name,
+      authorEmail: row.email,
+      account: row.account,
       hiddenAt: row.hidden_at,
       hiddenBy: row.hidden_by,
     }));
 
-    return {
-      comments,
-      nextCursor: hasMore ? String(page.at(-1)!.id) : null,
-    };
+    return { comments, nextCursor: hasMore ? String(page.at(-1)!.id) : null };
   }
 
   /** Nombre de commentaires masqués, pour la pastille de la section modération. */
@@ -303,49 +320,5 @@ export class CommentRepo {
       .prepare('SELECT COUNT(*) AS count FROM comments WHERE hidden_at IS NOT NULL')
       .get() as { count: number };
     return row.count;
-  }
-
-  /**
-   * Destinataires d'une notification : les administrateurs pour tout nouveau
-   * commentaire, plus l'auteur de la racine quand il s'agit d'une réponse.
-   *
-   * L'auteur du message ne s'y trouve jamais — recevoir un email pour ce qu'on
-   * vient d'écrire est le premier réflexe qui fait couper les notifications.
-   * Les comptes sans adresse ou désabonnés sont écartés ici plutôt que par
-   * l'appelant, pour que la règle ne vive qu'à un seul endroit.
-   */
-  recipientsFor(comment: { id: number; parentId: number | null; username: string }): {
-    username: string;
-    email: string;
-    displayName: string;
-    reason: 'admin' | 'reply';
-  }[] {
-    const rows = this.db
-      .prepare(
-        `SELECT u.username, u.email, u.display_name, u.admin,
-                CASE WHEN p.username IS NULL THEN 0 ELSE 1 END AS is_parent_author
-           FROM users u
-           LEFT JOIN comments p ON p.id = ? AND p.username = u.username
-          WHERE u.email IS NOT NULL AND TRIM(u.email) <> ''
-            AND u.notify = 1
-            AND u.username <> ?
-            AND (u.admin = 1 OR p.username IS NOT NULL)`,
-      )
-      .all(comment.parentId, comment.username) as {
-      username: string;
-      email: string;
-      display_name: string | null;
-      admin: number;
-      is_parent_author: number;
-    }[];
-
-    return rows.map((row) => ({
-      username: row.username,
-      email: row.email.trim(),
-      displayName: row.display_name?.trim() || row.username,
-      // Un administrateur qui a aussi écrit la racine est notifié une seule
-      // fois, et c'est la réponse à son message qui motive l'envoi.
-      reason: row.is_parent_author === 1 ? 'reply' : 'admin',
-    }));
   }
 }

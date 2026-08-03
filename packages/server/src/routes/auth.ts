@@ -79,7 +79,10 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         .send({
           username: user.username,
           admin: user.admin,
-          displayName: user.displayName?.trim() || user.username,
+          // Une connexion fraîche ne porte aucune identité : elle se déclare
+          // ensuite, et vaut pour la personne, pas pour la clé d'accès.
+          identity: null,
+          commentsEnabled: context.mailer.enabled,
         });
     });
 

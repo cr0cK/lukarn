@@ -2,7 +2,6 @@ import { randomBytes } from 'node:crypto';
 import {
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
-  DISPLAY_NAME_MAX_LENGTH,
   EMAIL_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
@@ -48,15 +47,13 @@ const password = z
 /** `['*']` ou une liste d'ids. Le contenu est confronté aux albums existants. */
 const albumList = z.array(z.union([z.literal(ALL_ALBUMS), albumId])).max(500);
 
-const displayName = z.string().trim().max(DISPLAY_NAME_MAX_LENGTH).nullable().optional();
-
 /**
- * La chaîne vide est acceptée à côté d'une adresse valide : c'est ce qu'envoie
- * un champ de formulaire qu'on vient de vider, et le refuser obligerait le
- * front à traduire « vide » en `null` avant chaque envoi. `ConfigRepo` ramène
- * les deux au même `NULL`.
+ * Adresse prévenue de chaque commentaire. La chaîne vide est acceptée à côté
+ * d'une adresse valide : c'est ce qu'envoie un champ de formulaire qu'on vient
+ * de vider, et la refuser obligerait le front à traduire « vide » en `null`
+ * avant chaque envoi. `ConfigRepo` ramène les deux au même `NULL`.
  */
-const email = z
+const moderationEmail = z
   .union([z.string().trim().email('adresse invalide').max(EMAIL_MAX_LENGTH), z.literal('')])
   .nullable()
   .optional();
@@ -66,17 +63,12 @@ const createUserSchema = z.object({
   password,
   admin: z.boolean().default(false),
   albums: albumList.default([]),
-  displayName,
-  email,
 });
 
 const updateUserSchema = z.object({
   password: password.optional(),
   admin: z.boolean().optional(),
   albums: albumList.optional(),
-  displayName,
-  email,
-  notify: z.boolean().optional(),
 });
 
 const moderationQuerySchema = z.object({
@@ -106,6 +98,7 @@ const updateSettingsSchema = z.object({
   syncIntervalMinutes: z.number().int().min(0).max(10080).optional(),
   syncOnStartup: z.boolean().optional(),
   cacheMaxSizeGB: z.number().positive().max(10000).optional(),
+  moderationEmail,
 });
 
 /** Message d'erreur lisible : le chemin du champ fautif, puis la raison. */
@@ -197,8 +190,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         passwordHash: await argon2.hash(input.password, { type: argon2.argon2id }),
         admin: input.admin,
         albums: input.albums,
-        displayName: input.displayName,
-        email: input.email,
       });
 
       request.log.info(`Compte "${user.username}" créé`);
@@ -243,9 +234,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           : undefined,
         admin: patch.admin,
         albums: patch.albums,
-        displayName: patch.displayName,
-        email: patch.email,
-        notify: patch.notify,
       });
 
       /**
@@ -317,7 +305,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // Masquer deux fois n'est pas une erreur, mais ne doit pas réécrire la
       // date : c'est celle de la décision d'origine qui intéresse.
       if (!context.comments.hide(id, request.user!.username)) {
-        const existing = context.comments.byId(id, request.user!);
+        const existing = context.comments.byId(id, { commenterId: null, admin: true });
         if (!existing) {
           return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
         }

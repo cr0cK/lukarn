@@ -756,15 +756,14 @@ le paient plus.
 
 ---
 
-## D33 — Les commentaires sont signés par les comptes existants, pas par Google
+## D33 — Pas de connexion Google pour commenter
 
 **Contexte.** Il fallait attacher une identité aux commentaires. L'hypothèse de
 départ était un « connexion avec Google », comme le font les services grand
 public.
 
-**Choix.** Le commentaire est signé par le compte local qui a déjà servi à ouvrir
-l'album. Deux colonnes suffisent (`display_name`, `email`, migration 4) : le nom
-qui s'affiche, et l'adresse qui reçoit les notifications.
+**Choix.** L'identité reste interne à l'application. Voir D38 pour la forme
+qu'elle a fini par prendre — ce qui compte ici est ce qu'on a écarté.
 
 **Écarté.** Un OAuth Google pour les visiteurs. Trois raisons, dans cet ordre.
 
@@ -784,11 +783,9 @@ Enfin il **contredit le périmètre** : « un visiteur n'a jamais de compte Goog
 et ne voit jamais une URL Google » ([01](./01-vision-et-perimetre.md)), et
 l'inscription publique en est exclue depuis l'origine.
 
-**Conséquences.** Commenter suppose un compte créé par le propriétaire — ce qui
-est déjà vrai pour regarder. Le nom affiché est purement décoratif : il n'entre
-dans aucune décision d'autorisation, et deux comptes peuvent porter le même sans
-conséquence. Si un jour l'instance doit s'ouvrir à des gens sans compte, c'est le
-modèle d'accès entier qu'il faudra reprendre, pas les commentaires.
+**Conséquences.** Commenter suppose de pouvoir déjà ouvrir l'album. Si un jour
+l'instance doit s'ouvrir à des gens sans compte, c'est le modèle d'accès entier
+qu'il faudra reprendre, pas les commentaires.
 
 ---
 
@@ -875,8 +872,8 @@ question qu'on se pose en premier.
 
 ## D37 — Les notifications partent hors du chemin de la requête, et n'échouent jamais
 
-**Contexte.** Un commentaire doit prévenir les administrateurs, et l'auteur d'un
-fil quand on lui répond. L'application n'avait jusque-là aucune dépendance
+**Contexte.** Un commentaire doit prévenir le propriétaire de l'instance, et
+l'auteur d'un fil quand on lui répond. L'application n'avait jusque-là aucune dépendance
 d'envoi d'email — « pas de courriel à envoyer » figurait même dans le hors
 périmètre de [01](./01-vision-et-perimetre.md), à propos de l'inscription.
 
@@ -901,3 +898,91 @@ et sans session (voir [04](./04-securite-et-acces.md)) — un email se rouvre de
 mois plus tard, et demander de se connecter pour cesser d'être dérangé serait une
 façon de ne pas répondre. `PUBLIC_URL` devient structurante une fois de plus :
 mal renseignée, elle produit des notifications qui ne mènent nulle part.
+
+---
+
+## D38 — Une clé d'accès n'est pas une personne
+
+**Contexte.** D33 laissait le commentaire signé par le compte qui ouvre l'album,
+avec un `display_name` et un `email` posés sur `users`. C'était une confusion :
+`albums.yaml` a toujours permis de confier **un** identifiant à plusieurs
+personnes — un mot de passe donné à toute une famille est l'usage prévu. Tous les
+messages du foyer se seraient donc signés « famille », et l'administrateur se
+serait retrouvé à saisir et à maintenir les adresses email des autres.
+
+**Choix.** Deux niveaux séparés.
+
+- `users` reste une **clé d'accès** : elle ouvre des albums, et rien n'interdit
+  de la partager. Aucune adresse n'y est attachée.
+- `commenters` est une **personne** : un nom, et une adresse email qui lui sert
+  d'identité. C'est elle qui signe.
+
+La session porte un `commenter_id` et **mémorise** l'identité sans la définir :
+c'est l'adresse qui identifie, si bien que se ré-identifier depuis un autre
+appareil retrouve ses commentaires et le droit de les supprimer. `comments.account`
+conserve tout de même la clé d'accès employée, parce que c'est elle qu'on change
+quand un mot de passe a trop circulé.
+
+**Écarté.** Faire de l'email l'identifiant de connexion, en remplacement de
+`username`. C'est la clé primaire de `users`, référencée par `user_albums` et
+`comments` sans `ON UPDATE CASCADE` : il aurait fallu recréer ces tables sur une
+base en service, et un changement d'adresse serait devenu un changement
+d'identité. Écarté aussi : laisser l'administrateur saisir les adresses, qui ne
+survit pas au premier changement d'adresse de quelqu'un d'autre.
+
+**Conséquences.** L'adresse est obligatoire pour écrire, jamais pour lire. Elle
+n'apparaît **jamais** dans un fil — seulement dans la modération, qui a besoin de
+savoir qui parle derrière un nom déclaré. Les notifications destinées au
+propriétaire ne peuvent plus viser « les administrateurs » : elles vont à
+`settings.moderationEmail`, un réglage d'instance, puisqu'un compte administrateur
+n'est plus quelqu'un de joignable.
+
+---
+
+## D39 — L'adresse est vérifiée par un code à usage unique
+
+**Contexte.** L'identité de D38 est déclarative : derrière un mot de passe
+partagé, n'importe qui peut se dire « Mamie ». Et déclarer l'adresse d'un tiers
+lui ferait recevoir les notifications d'une galerie où il n'a rien demandé.
+
+**Choix.** Un code à six chiffres envoyé à l'adresse, à saisir pour que
+l'identité soit rattachée à la session. Quinze minutes de validité, cinq essais,
+un envoi par minute au plus. Seul un HMAC du code est stocké.
+
+**Écarté.** Faire confiance à la déclaration, au motif que le cercle est déjà
+protégé par un mot de passe. Un mot de passe partagé circule justement plus
+largement que prévu, et c'est bon marché de s'en prémunir. Écarté aussi : un lien
+de confirmation cliquable plutôt qu'un code — il ouvre une seconde session dans
+le navigateur par défaut, alors qu'un code se recopie dans l'onglet resté ouvert.
+Écarté enfin : hacher le code en argon2, disproportionné pour un secret qui vit
+quinze minutes, là où un HMAC coûte moins qu'une requête SQL.
+
+**Conséquences.** **Sans SMTP configuré, personne ne peut commenter** : aucun
+code ne peut partir. C'est cohérent — sans serveur d'envoi, les notifications ne
+partiraient pas davantage —, et l'interface l'annonce au lieu d'offrir un
+formulaire condamné à échouer. Le plafond de cinq essais est ce qui rend six
+chiffres suffisants ; sans lui, un million de tentatives en viendraient à bout.
+
+---
+
+## D40 — Session d'un an, prolongée à mi-vie
+
+**Contexte.** Le TTL de 30 jours obligeait à ressaisir un mot de passe partagé
+plusieurs fois par an, pour une galerie familiale consultée irrégulièrement. La
+demande était « une session qui ne se termine jamais ».
+
+**Choix.** Un an, repoussé d'un an dès que la session a passé sa mi-vie. En
+pratique on ne se déconnecte jamais tant qu'on utilise la galerie.
+
+**Écarté.** Une session sans expiration. C'est un jeton de connexion permanent —
+volé une fois, valable à vie — et la table `sessions` grossirait sans que rien ne
+la nettoie, la purge horaire n'ayant plus rien à purger. Écarté aussi : le
+« cookie de session » au sens HTTP, sans `maxAge`, qui fait exactement l'inverse
+de ce qui était demandé puisqu'il meurt à la fermeture du navigateur. Écarté
+enfin : repousser l'échéance à chaque requête, soit une écriture SQLite par
+vignette ; à mi-vie, c'est une écriture par visiteur et par semestre.
+
+**Conséquences.** Une session abandonnée met jusqu'à un an à disparaître, contre
+un mois auparavant. Les leviers de coupure immédiate restent les mêmes et
+comptent d'autant plus : suppression du compte et changement de mot de passe
+ferment les sessions, et `plugins/auth.ts` relit les droits à chaque requête.

@@ -92,26 +92,31 @@ describe('migrations', () => {
     const db = databaseAtVersion(3);
     db.prepare(
       `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
-       VALUES ('mamie', 'empreinte', 0, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+       VALUES ('famille', 'empreinte', 0, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
     ).run();
 
     migrate(db);
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get('mamie') as {
+    // La clé d'accès est inchangée : l'identité des commentateurs vit ailleurs,
+    // et confondre les deux ferait signer « famille » tous les messages du foyer.
+    assert.deepEqual(columns(db, 'users'), [
+      'username',
+      'password_hash',
+      'admin',
+      'all_albums',
+      'created_at',
+      'updated_at',
+    ]);
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get('famille') as {
       password_hash: string;
-      display_name: string | null;
-      email: string | null;
-      notify: number;
     };
-    // Le compte existant garde son empreinte et hérite des défauts : pas de nom
-    // affiché, pas d'adresse, mais abonné — sans quoi renseigner une adresse
-    // plus tard n'enverrait toujours rien.
     assert.equal(user.password_hash, 'empreinte');
-    assert.equal(user.display_name, null);
-    assert.equal(user.email, null);
-    assert.equal(user.notify, 1);
 
-    assert.ok(columns(db, 'comments').includes('hidden_at'));
+    assert.ok(columns(db, 'comments').includes('commenter_id'));
+    assert.ok(columns(db, 'commenters').includes('verified_at'));
+    // La session mémorise l'identité, sans que les sessions ouvertes soient
+    // invalidées par la mise à jour.
+    assert.ok(columns(db, 'sessions').includes('commenter_id'));
     db.close();
   });
 
