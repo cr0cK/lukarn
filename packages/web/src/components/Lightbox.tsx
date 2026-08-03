@@ -3,6 +3,7 @@ import { type ReactElement, useCallback, useEffect, useRef, useState } from 'rea
 import { mediaUrl } from '../api/client';
 import { useMediaDetail } from '../api/hooks';
 import { formatDateTime } from '../lib/format';
+import { useSwipe } from '../lib/useSwipe';
 import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
 
@@ -40,6 +41,7 @@ export function Lightbox({
   onNeedMore,
 }: LightboxProps): ReactElement | null {
   const item = items[index];
+  const isVideo = item?.kind === 'video';
   /** `null` = panneau fermé ; sinon l'onglet visible. */
   const [panel, setPanel] = useState<PanelTab | null>(null);
   const [zoomed, setZoomed] = useState(false);
@@ -72,6 +74,10 @@ export function Lightbox({
     },
     [index, items.length, onIndexChange],
   );
+
+  // Désactivé pendant le zoom, où le doigt sert à se déplacer dans l'image, et
+  // sur une vidéo, où il traverserait les contrôles natifs de lecture.
+  const swipe = useSwipe((towards) => goTo(index + towards), !zoomed && !isVideo);
 
   // Gèle le défilement de la page derrière la visionneuse — sans ça, la molette
   // ferait défiler la grille sous l'image.
@@ -242,8 +248,6 @@ export function Lightbox({
 
   if (!item) return null;
 
-  const isVideo = item.kind === 'video';
-
   return (
     <div
       ref={containerRef}
@@ -316,7 +320,7 @@ export function Lightbox({
         </IconButton>
       </header>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden" {...swipe}>
         {isVideo ? (
           <video
             ref={videoRef}

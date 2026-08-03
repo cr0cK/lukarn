@@ -235,6 +235,19 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 curseur, clic pour basculer au niveau natif à l'endroit visé, glisser pour se
 déplacer dans l'image agrandie.
 
+**Au doigt** (`lib/useSwipe.ts`) : un balayage horizontal passe à la photo
+suivante ou précédente. Trois conditions, chacune pour une raison :
+
+- **Tactile et stylet seulement.** À la souris, le clic sert déjà à zoomer ;
+  y ajouter un changement de photo rendrait le clic imprévisible selon qu'on a
+  bougé de trois pixels ou non.
+- **Franchement horizontal** (50 px, et 1,5 fois plus que la composante
+  verticale) : sans ce rapport, un défilement vertical un peu oblique — le geste
+  le plus courant sur un téléphone — ferait sauter une photo.
+- **Désactivé pendant le zoom et sur les vidéos**, où le doigt sert
+  respectivement à se déplacer dans l'image et à atteindre les contrôles natifs
+  de lecture.
+
 `moveSelection` (`useGridLayout.ts`) est le point délicat : les déplacements
 verticaux suivent les **lignes réelles** du layout, dont le nombre de vignettes
 varie, et visent la photo dont le centre horizontal est le plus proche. Un
