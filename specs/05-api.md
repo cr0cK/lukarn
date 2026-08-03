@@ -100,8 +100,60 @@ demandé, le 400 sur `zigzag`, `ASC`, `''` ou `asc,desc`, et le 404 sur un album
 interdit quel que soit l'ordre.
 
 **`GET /api/albums/:albumId/items/:mediaId`** — `MediaDetail` = `MediaItem` plus
-le bloc `exif`. `404` si l'album est inconnu/interdit, `404` si le média n'est
-pas dans **cet** album.
+le bloc `exif` et `commentCount`. `404` si l'album est inconnu/interdit, `404` si
+le média n'est pas dans **cet** album.
+
+`commentCount` est composé par la route, pas par `MediaRepo` : l'index média n'a
+pas à connaître les commentaires, sans quoi chaque requête média deviendrait une
+jointure de plus. Il compte les commentaires **visibles**, réponses comprises, et
+voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
+charger un fil que la plupart des visiteurs n'ouvriront pas.
+
+## Commentaires — `routes/comments.ts`
+
+| Méthode | Chemin                            | Accès     | Réponse        |
+| ------- | --------------------------------- | --------- | -------------- |
+| GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage` |
+| POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`      |
+| DELETE  | `/api/comments/:commentId`        | session   | `204`          |
+| GET     | `/api/comments/unsubscribe`       | **aucun** | page HTML      |
+
+Le contrôle d'accès est refait dans chaque handler plutôt que posé en
+`preHandler` de préfixe comme pour les médias : ici l'album n'occupe pas un
+segment fixe de l'URL. Il reste identique à celui des albums — **404 et jamais
+403** sur un album inconnu ou non attribué (voir
+[04](./04-securite-et-acces.md)).
+
+**`GET`** — `CommentsPage` = `{ threads: CommentThread[], total: number }`, où
+`CommentThread` = `{ root, replies }`. Les commentaires masqués par la modération
+n'y figurent pas, **y compris pour leur auteur**. Une réponse dont la racine
+vient d'être masquée remonte en tête de fil, `parentId` remis à `null` : la
+laisser accrochée à un parent absent la ferait disparaître sans que personne ne
+l'ait décidé.
+
+**`POST`** — corps `CreateCommentRequest` = `{ body, parentId? }`. `body` est
+découpé aux espaces avant contrôle : 1 à `COMMENT_MAX_LENGTH` (2000) caractères.
+`201` avec le `Comment` créé.
+
+- `404` si l'album est inconnu/interdit, ou si le média n'est pas dans cet album.
+- `404` si `parentId` désigne un commentaire inexistant **ou vivant sur un autre
+  média** — sans ce second contrôle, un client pourrait greffer sa réponse sur un
+  fil qu'il n'a pas le droit de lire en devinant un identifiant.
+- Répondre à une réponse **n'échoue pas** : le message est rattaché à la racine
+  du fil (voir [08](./08-decisions.md), D35).
+
+**`DELETE`** — l'auteur son propre commentaire, un administrateur n'importe
+lequel. `404` dans tous les cas de refus, sans distinguer « inexistant » de
+« pas à toi ». Un visiteur ne peut supprimer que dans un album qu'il voit encore,
+sinon un accès retiré laisserait subsister un droit d'écriture.
+
+**`GET /api/comments/unsubscribe?u=&t=`** — **seule route de ce préfixe sans
+session.** On clique ce lien depuis sa boîte aux lettres, souvent sur un autre
+appareil : exiger une connexion pour cesser d'être dérangé reviendrait à ne pas
+répondre à la demande. `t` est un HMAC de l'identifiant, sans expiration (voir
+[04](./04-securite-et-acces.md)). Rend une page HTML servie par le serveur — pas
+le front, qui redirigerait vers l'écran de connexion. Un jeton invalide répond
+`400` ; un compte supprimé depuis l'envoi rend la page en le disant.
 
 ## Médias — `routes/media.ts`
 
@@ -209,10 +261,21 @@ sont régénérées à la demande.
 
 ### Comptes
 
-Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums? }`.
-`PATCH` : `UpdateUserRequest` = `{ password?, admin?, albums? }`, champ absent
-valant « inchangé ». La réponse est un `AdminUser` — **jamais d'empreinte de mot
-de passe, sous aucune clé**.
+Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums?,
+displayName?, email? }`. `PATCH` : `UpdateUserRequest` = `{ password?, admin?,
+albums?, displayName?, email?, notify? }`, champ absent valant « inchangé ». La
+réponse est un `AdminUser` — **jamais d'empreinte de mot de passe, sous aucune
+clé**.
+
+- `displayName` signe les commentaires ; vide ou absent, l'identifiant en tient
+  lieu. 64 caractères au plus.
+- `email` reçoit les notifications de commentaires. La **chaîne vide est
+  acceptée** à côté d'une adresse valide : c'est ce qu'envoie un champ de
+  formulaire qu'on vient de vider, et `ConfigRepo` ramène les deux au même
+  `NULL`. Sans quoi un `email = ''` passerait le filtre des destinataires.
+- `notify` passe à `false` par le lien de désabonnement d'un email. Le
+  repasser à `true` depuis /admin est possible mais suppose l'accord de
+  l'intéressé.
 
 - `username` : `USERNAME_PATTERN`, 64 caractères au plus. `password` :
   `PASSWORD_MIN_LENGTH` (8) au minimum, 512 au plus.
@@ -246,6 +309,39 @@ Deux effets de bord assumés :
   autre album y garde sa ligne (clé primaire `(album_id, id)`). Les dérivés en
   cache disque sont laissés : ils sont indexés par id de fichier, donc partagés
   entre albums, et régénérables — `cache/clear` les balaie tous.
+
+### Modération des commentaires
+
+| Méthode | Chemin                         | Réponse             |
+| ------- | ------------------------------ | ------------------- |
+| GET     | `/api/admin/comments`          | `AdminCommentsPage` |
+| POST    | `/api/admin/comments/:id/hide` | `{ ok: true }`      |
+| POST    | `/api/admin/comments/:id/show` | `{ ok: true }`      |
+
+Paramètres de `GET` : `filter` (`all` par défaut, ou `hidden`), `limit` (1 à 200,
+50 par défaut) et `cursor`. Le curseur est un **simple entier**, l'identifiant du
+dernier commentaire rendu : `AUTOINCREMENT` garantit que l'ordre des id est
+l'ordre d'écriture, ce qui évite le curseur composite dont la pagination des
+médias a besoin.
+
+`AdminComment` ajoute au `Comment` de quoi savoir de quelle photo on parle —
+`albumId`, `albumTitle`, `mediaId`, `mediaName`, `hiddenAt`, `hiddenBy`.
+`mediaName` vaut `null` si le média a disparu de l'index depuis : le commentaire
+reste modérable, seul le lien vers la photo n'est plus rendu.
+
+La file couvre **tous les albums**, y compris ceux que cet administrateur ne
+verrait pas dans la galerie : modérer suppose de tout lire, et restreindre la
+file au périmètre de lecture laisserait des commentaires que personne ne
+pourrait traiter.
+
+**`hide` / `show`** — masquer plutôt que supprimer : la décision reste
+réversible. Masquer deux fois n'est pas une erreur et ne réécrit pas `hiddenAt`,
+qui doit garder la date de la décision d'origine. La suppression définitive passe
+par `DELETE /api/comments/:commentId`, où l'administrateur a tous les droits.
+
+`AdminStatus` porte `hiddenComments` (pastille de la file) et `mailConfigured` —
+sans SMTP, renseigner une adresse ne produit rien, et l'écran d'administration
+doit le dire plutôt que de laisser espérer des notifications.
 
 ### Réglages
 

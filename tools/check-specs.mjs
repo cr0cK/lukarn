@@ -102,7 +102,13 @@ for (const variable of variables) {
 /* ----------------------------------------------------------- Migrations */
 
 const dbSource = lire(join(RACINE, 'packages/server/src/db.ts'));
-const nbMigrations = (dbSource.match(/^\s{2}`$/gm) ?? []).length / 2;
+// Une migration ouvre son littéral par un backtick seul sur sa ligne ; elle le
+// referme par « `, », qui ne correspond pas à ce motif. Compter les ouvertures
+// donne donc directement le nombre de migrations — le diviser par deux, comme
+// on le faisait, rendait un compte deux fois trop petit, et carrément
+// fractionnaire en nombre impair : `Number.isInteger` était alors faux et le
+// contrôle se désactivait sans rien dire.
+const nbMigrations = (dbSource.match(/^\s{2}`$/gm) ?? []).length;
 const annoncees = [...lire(join(SPECS, '03-modele-de-donnees.md')).matchAll(/migration (\d+)/gi)]
   .map((m) => Number(m[1]))
   .reduce((max, n) => Math.max(max, n), 0);

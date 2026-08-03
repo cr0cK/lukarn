@@ -164,6 +164,44 @@ L'exception assumée : `/api/admin/*` répond **403** à un utilisateur connect�
 administrateur. L'existence de l'espace d'administration n'est pas un secret —
 il est annoncé par le README et par un lien dans la barre supérieure.
 
+## Commentaires : le fil est cloisonné comme l'album
+
+`routes/comments.ts` refait le contrôle dans chaque handler au lieu de le poser
+en `preHandler` de préfixe : l'album n'occupe pas ici un segment fixe de l'URL.
+La règle reste celle des albums — 404 sur un album inconnu comme sur un album
+interdit.
+
+Trois points qui tiennent ce cloisonnement :
+
+- **Un fil appartient au couple `(albumId, mediaId)`.** Le même fichier Drive
+  indexé sous deux albums porte deux conversations distinctes. Sans cela, un
+  visiteur lirait dans son album les propos tenus dans un album qu'il n'a pas le
+  droit d'ouvrir — le contrôle d'accès média porte sur les octets de la photo,
+  pas sur ce qu'on en a dit.
+- **`parentId` est vérifié contre le média courant.** Répondre à un commentaire
+  suppose de prouver qu'il vit sur cette photo-là ; sinon un identifiant deviné
+  suffirait à greffer un message dans un fil qu'on ne peut pas lire.
+- **Supprimer exige de voir encore l'album.** Un visiteur dont l'accès vient
+  d'être retiré conserverait sinon un droit d'écriture sur un contenu qu'il ne
+  peut plus consulter.
+
+`packages/server/test/comments.test.ts` verrouille ces trois points, ainsi que
+l'indistinguabilité des réponses 404 entre album interdit et album inexistant.
+
+**Modération.** Un commentaire masqué disparaît de la lecture pour tout le monde,
+**y compris son auteur** : le laisser croire que son message est encore lu serait
+un mensonge par omission, et c'est ce qui sépare une modération assumée d'un
+bannissement furtif. Masquer est réversible ; la suppression, elle, est
+définitive et reste offerte à l'auteur comme à l'administrateur.
+
+**Lien de désabonnement.** `signUnsubscribeToken` (`crypto.ts`) produit un HMAC
+de l'identifiant avec `SESSION_SECRET`, comparé en temps constant. **Sans
+expiration et sans session** : le lien vit dans un email qu'on rouvre des mois
+plus tard, et un jeton périmé renverrait vers un écran de connexion quelqu'un qui
+cherche précisément à ne plus être dérangé. Ce qu'il ouvre est sans gravité —
+couper ses propres notifications — et se rétablit depuis /admin. Changer
+`SESSION_SECRET` invalide les liens déjà envoyés, au même titre que les sessions.
+
 ## Chiffrement du refresh token
 
 `packages/server/src/crypto.ts`. AES-256-GCM, clé dérivée par `scryptSync` d'un
@@ -232,12 +270,13 @@ son échec est ignoré).
 
 ## Ce que voit, et ne voit pas, un visiteur
 
-| Voit                                                                                                       | Ne voit pas                                                 |
-| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Les albums qui lui sont attribués, leur titre, description, couverture, nombre d'éléments, bornes de dates | L'existence des autres albums, y compris par sondage d'URL  |
-| Les métadonnées et l'EXIF des médias de ses albums                                                         | Toute URL Google, tout id de dossier Drive, tout `folderId` |
-| Les originaux de ses albums, en téléchargement                                                             | La liste des comptes, les réglages, l'état des synchros     |
-| Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué     |
+| Voit                                                                                                       | Ne voit pas                                                                                               |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Les albums qui lui sont attribués, leur titre, description, couverture, nombre d'éléments, bornes de dates | L'existence des autres albums, y compris par sondage d'URL                                                |
+| Les métadonnées et l'EXIF des médias de ses albums                                                         | Toute URL Google, tout id de dossier Drive, tout `folderId`                                               |
+| Les originaux de ses albums, en téléchargement                                                             | La liste des comptes, les réglages, l'état des synchros                                                   |
+| Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué                                                   |
+| Les commentaires des photos de ses albums, et le nom affiché de leurs auteurs                              | Les commentaires portant sur un album qui ne lui est pas attribué, et ceux qu'un administrateur a masqués |
 
 ## Divers
 

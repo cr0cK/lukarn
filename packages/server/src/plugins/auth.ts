@@ -41,7 +41,13 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
     }
 
     request.sessionId = session.id;
-    request.user = { username: configured.username, admin: configured.admin };
+    request.user = {
+      username: configured.username,
+      admin: configured.admin,
+      // Résolu ici plutôt qu'à l'affichage : le nom qui signe un commentaire
+      // ne doit pas dépendre de l'écran qui le rend.
+      displayName: configured.displayName?.trim() || configured.username,
+    };
   });
 };
 

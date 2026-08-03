@@ -22,6 +22,8 @@ la variable et le problème.
 | `TOKEN_KEY`            | —                                             | **Obligatoire**, ≥ 32 caractères. Chiffre le refresh token. Le changer rend le jeton stocké illisible : il est supprimé et il faut refaire le consentement.                                                                                                                                   |
 | `GOOGLE_CLIENT_ID`     | absent                                        | Optionnel, mais **indissociable** de `GOOGLE_CLIENT_SECRET` : n'en renseigner qu'un fait échouer le démarrage. Sans les deux, l'app tourne et sert l'index existant, `/admin` affiche « non configuré ».                                                                                      |
 | `GOOGLE_CLIENT_SECRET` | absent                                        | Idem.                                                                                                                                                                                                                                                                                         |
+| `SMTP_URL`             | absent                                        | Optionnel, **indissociable** de `MAIL_FROM`. URL du relais : `smtp://utilisateur:motdepasse@hote:587` ou `smtps://…` pour du TLS implicite. Absent ⇒ les notifications de commentaires ne partent pas, ce que `/admin` signale au lieu de laisser espérer des emails.                         |
+| `MAIL_FROM`            | absent                                        | Expéditeur des notifications, par exemple `Galerie <galerie@exemple.fr>`. Beaucoup de relais imposent une adresse qu'ils autorisent.                                                                                                                                                          |
 | `CONFIG_PATH`          | `./config/albums.yaml`                        | Fichier d'**amorçage**, résolu depuis le répertoire du `.env`, pas depuis le cwd (voir plus bas). Absent ⇒ le serveur démarre quand même ; s'il n'y a aucun compte en base, il dit comment créer le premier administrateur.                                                                   |
 | `DATA_DIR`             | `./data`                                      | Contient `gdv.db`. Créé s'il manque. **La seule donnée irremplaçable.**                                                                                                                                                                                                                       |
 | `CACHE_DIR`            | `./cache`                                     | Dérivés WebP. Régénérable — le supprimer ne coûte que du CPU.                                                                                                                                                                                                                                 |
@@ -30,6 +32,19 @@ la variable et le problème.
 | `UV_THREADPOOL_SIZE`   | `16`, posé par le serveur s'il manque         | Taille du pool de fils de libuv, partagé entre le décodage d'images, les lectures de fichiers et argon2. Le défaut de Node (4) fait attendre une vignette déjà en cache derrière quelques rendus — mesuré à 2 s au 95e centile (D32). Une valeur présente dans l'environnement fait autorité. |
 
 Dérivé, non configurable : `oauthRedirectUri = PUBLIC_URL + '/api/oauth/callback'`.
+
+**Les variables qui vont par paire échouent au démarrage si une seule est
+donnée** — `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` comme `SMTP_URL`/`MAIL_FROM`.
+Une instance configurée avec un relais mais sans expéditeur ne se manifesterait
+qu'au premier commentaire posté, des semaines après la mise en service.
+
+**Les notifications ne bloquent jamais une requête.** Poster un commentaire
+répond dès que la ligne est écrite ; les emails partent ensuite, sur une file
+sérialisée (`mail.ts`). Un échec d'envoi est **journalisé et abandonné**, sans
+réessai : une notification manquée est un désagrément, un rejet non géré en tâche
+de fond terminerait le process — même précaution que pour l'éviction du cache
+disque. `PUBLIC_URL` sert à construire les liens des emails : mal renseignée,
+elle produit des notifications qui ne mènent nulle part.
 
 **Résolution des chemins relatifs.** `loadDotEnv()` (`src/dotenv.ts`) remonte
 l'arborescence depuis le cwd **puis** depuis le module pour trouver un `.env`, et

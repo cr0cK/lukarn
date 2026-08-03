@@ -3,7 +3,7 @@ import { type ReactElement, useCallback, useEffect, useRef, useState } from 'rea
 import { mediaUrl } from '../api/client';
 import { useMediaDetail } from '../api/hooks';
 import { formatDateTime } from '../lib/format';
-import { ExifPanel } from './ExifPanel';
+import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
 
 /**
@@ -40,7 +40,8 @@ export function Lightbox({
   onNeedMore,
 }: LightboxProps): ReactElement | null {
   const item = items[index];
-  const [showInfo, setShowInfo] = useState(false);
+  /** `null` = panneau fermé ; sinon l'onglet visible. */
+  const [panel, setPanel] = useState<PanelTab | null>(null);
   const [zoomed, setZoomed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   /** Sens du dernier déplacement : oriente le préchargement. */
@@ -49,7 +50,12 @@ export function Lightbox({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const { data: detail } = useMediaDetail(albumId, showInfo && item ? item.id : null);
+  const { data: detail } = useMediaDetail(albumId, panel && item ? item.id : null);
+
+  /** Ouvre le panneau sur cet onglet, ou le referme s'il y est déjà. */
+  const togglePanel = useCallback((tab: PanelTab) => {
+    setPanel((current) => (current === tab ? null : tab));
+  }, []);
 
   const goTo = useCallback(
     (next: number) => {
@@ -155,13 +161,26 @@ export function Lightbox({
       // Laisse passer les raccourcis navigateur (Ctrl+R, Cmd+W…).
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
+      // Le panneau des commentaires contient un champ de saisie. Sans ce garde,
+      // écrire « info » ferait défiler les photos et ouvrirait le panneau sous
+      // les doigts. Échap reste écouté : c'est la sortie de secours, et elle
+      // doit marcher aussi depuis le champ.
+      const target = event.target;
+      if (
+        event.key !== 'Escape' &&
+        target instanceof HTMLElement &&
+        (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)
+      ) {
+        return;
+      }
+
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
           // Échap défait la dernière couche ouverte plutôt que de tout fermer :
           // sortir du zoom, puis du panneau, puis de la visionneuse.
           if (zoomed) setZoomed(false);
-          else if (showInfo) setShowInfo(false);
+          else if (panel) setPanel(null);
           else onClose();
           break;
         case 'ArrowLeft':
@@ -183,7 +202,12 @@ export function Lightbox({
         case 'i':
         case 'I':
           event.preventDefault();
-          setShowInfo((value) => !value);
+          togglePanel('info');
+          break;
+        case 'c':
+        case 'C':
+          event.preventDefault();
+          togglePanel('comments');
           break;
         case 'f':
         case 'F':
@@ -214,7 +238,7 @@ export function Lightbox({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [index, items.length, zoomed, showInfo, goTo, onClose, toggleFullscreen, download]);
+  }, [index, items.length, zoomed, panel, goTo, onClose, toggleFullscreen, download, togglePanel]);
 
   if (!item) return null;
 
@@ -257,11 +281,19 @@ export function Lightbox({
 
         <IconButton
           label="Informations (i)"
-          active={showInfo}
-          onClick={() => setShowInfo((v) => !v)}
+          active={panel === 'info'}
+          onClick={() => togglePanel('info')}
         >
           <circle cx="12" cy="12" r="9" />
           <path d="M12 11v5M12 7.5v.5" />
+        </IconButton>
+
+        <IconButton
+          label="Commentaires (c)"
+          active={panel === 'comments'}
+          onClick={() => togglePanel('comments')}
+        >
+          <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
         </IconButton>
 
         {!isVideo && (
@@ -337,7 +369,17 @@ export function Lightbox({
         )}
       </div>
 
-      {showInfo && <ExifPanel detail={detail} onClose={() => setShowInfo(false)} />}
+      {panel && (
+        <SidePanel
+          albumId={albumId}
+          mediaId={item.id}
+          mediaName={item.name}
+          detail={detail}
+          tab={panel}
+          onTabChange={setPanel}
+          onClose={() => setPanel(null)}
+        />
+      )}
     </div>
   );
 }

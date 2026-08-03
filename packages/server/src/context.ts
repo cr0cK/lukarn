@@ -1,11 +1,13 @@
 import type { AppSettings } from '@gdv/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { bootstrapFromYaml } from './bootstrap.js';
+import { CommentRepo } from './comments.js';
 import { ConfigRepo, type StoredAlbum } from './config-repo.js';
 import { type Db, openDb } from './db.js';
 import { DriveService } from './drive/service.js';
 import { Syncer } from './drive/sync.js';
 import type { Env } from './env.js';
+import { Mailer } from './mail.js';
 import { MediaCache } from './media/cache.js';
 import { MediaRenderer } from './media/renderer.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
@@ -25,8 +27,11 @@ export class AppContext {
   readonly db: Db;
   readonly config: ConfigRepo;
   readonly media: MediaRepo;
+  readonly comments: CommentRepo;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
+  /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
+  readonly mailer: Mailer;
   /**
    * Porté par le contexte et non par les routes d'authentification : sa purge
    * est branchée sur le ménage horaire de `main.ts`, qui n'a pas accès aux
@@ -47,6 +52,7 @@ export class AppContext {
     this.db = openDb(env.dataDir);
     this.config = new ConfigRepo(this.db);
     this.media = new MediaRepo(this.db);
+    this.comments = new CommentRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
 
@@ -62,6 +68,7 @@ export class AppContext {
       debug: (msg: string) => log.debug(msg),
     };
 
+    this.mailer = Mailer.fromEnv(env, logger);
     this.drive = new DriveService(env, this.db, logger);
     this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
     this.renderer = new MediaRenderer(this.drive, this.cache, logger);

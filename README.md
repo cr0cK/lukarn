@@ -30,6 +30,13 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
   streaming avec seek natif, sans transcodage.
 - **EXIF** : date de prise de vue, appareil, objectif, ouverture, vitesse, ISO,
   géolocalisation. Tri chronologique sur la date de prise de vue réelle.
+- **Commentaires par photo**, dans un panneau latéral, avec un niveau de réponse.
+  Signés par le compte qui sert déjà à consulter l'album — pas de compte Google,
+  pas d'inscription. L'administrateur peut masquer un commentaire depuis
+  `/admin`, et le rendre visible à nouveau.
+- **Notifications par email** (optionnel) : les administrateurs sont prévenus des
+  nouveaux commentaires, l'auteur d'un fil des réponses qu'il reçoit. Chaque
+  message porte un lien de désabonnement.
 - **Téléchargement de l'original** pleine résolution.
 - **Tout passe par le serveur** : aucune URL Google n'est exposée au navigateur.
   Les vignettes sont générées en WebP et mises en cache sur disque.
@@ -45,6 +52,7 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 | `Échap`         | Fermer                                          |
 | `F`             | Plein écran                                     |
 | `I`             | Informations et EXIF                            |
+| `C`             | Commentaires                                    |
 | `D`             | Télécharger l'original                          |
 | `Z`             | Zoom                                            |
 | `Espace`        | Lecture / pause vidéo                           |
@@ -92,6 +100,8 @@ cp .env.example .env
 openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 32   # TOKEN_KEY
 # Renseigner aussi PUBLIC_URL, GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET
+# Facultatif : SMTP_URL et MAIL_FROM pour les notifications de commentaires
+# (les deux ou aucun des deux — sinon le démarrage échoue)
 
 pnpm install
 pnpm create-admin alexis  # premier administrateur, mot de passe demandé
@@ -155,6 +165,8 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 | Changer un intervalle, une limite  | `/admin`, appliqué sans redémarrage                                       |
 | Forcer une synchronisation         | **Resynchroniser** dans `/admin`                                          |
 | Voir l'état des synchronisations   | `/admin`                                                                  |
+| Modérer un commentaire             | `/admin`, section **Commentaires** : masquer, ou rendre visible à nouveau |
+| Activer les notifications email    | `SMTP_URL` et `MAIL_FROM` dans `.env`, puis une adresse par compte        |
 | Mot de passe administrateur perdu  | `pnpm reset-password <identifiant>` sur le serveur                        |
 | Mettre à jour                      | `git pull && docker compose up -d --build`                                |
 | Sauvegarder                        | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable |

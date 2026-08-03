@@ -76,7 +76,11 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           maxAge: Math.floor(context.sessions.ttlMs / 1000),
           signed: true,
         })
-        .send({ username: user.username, admin: user.admin });
+        .send({
+          username: user.username,
+          admin: user.admin,
+          displayName: user.displayName?.trim() || user.username,
+        });
     });
 
     app.post('/logout', async (request, reply) => {

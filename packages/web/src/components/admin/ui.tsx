@@ -84,7 +84,7 @@ interface TextFieldProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: 'text' | 'password';
+  type?: 'text' | 'password' | 'email';
   hint?: ReactNode;
   error?: string | null;
   placeholder?: string;

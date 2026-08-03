@@ -216,19 +216,20 @@ tuile sobre avec l'icône de lecture et la durée.
 Deux gestionnaires distincts, jamais actifs ensemble : celui de la grille se
 désactive quand la visionneuse ou l'aide sont ouvertes.
 
-| Contexte    | Touche          | Effet                                                                 |
-| ----------- | --------------- | --------------------------------------------------------------------- |
-| Grille      | `← ↑ ↓ →`       | `moveSelection` sur le layout réel                                    |
-| Grille      | `Début` / `Fin` | Premier / dernier média                                               |
-| Grille      | `Entrée`        | Ouvrir la visionneuse                                                 |
-| Grille      | `Échap`         | Revenir à la liste des albums                                         |
-| Visionneuse | `← →`           | Média précédent / suivant                                             |
-| Visionneuse | `Début` / `Fin` | Premier / dernier                                                     |
-| Visionneuse | `Échap`         | Défait une couche à la fois : zoom, puis panneau EXIF, puis fermeture |
-| Visionneuse | `I` `F` `D`     | Infos · plein écran · télécharger l'original                          |
-| Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)        |
-| Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                      |
-| Partout     | `?`             | Aide-mémoire des raccourcis                                           |
+| Contexte    | Touche          | Effet                                                                   |
+| ----------- | --------------- | ----------------------------------------------------------------------- |
+| Grille      | `← ↑ ↓ →`       | `moveSelection` sur le layout réel                                      |
+| Grille      | `Début` / `Fin` | Premier / dernier média                                                 |
+| Grille      | `Entrée`        | Ouvrir la visionneuse                                                   |
+| Grille      | `Échap`         | Revenir à la liste des albums                                           |
+| Visionneuse | `← →`           | Média précédent / suivant                                               |
+| Visionneuse | `Début` / `Fin` | Premier / dernier                                                       |
+| Visionneuse | `Échap`         | Défait une couche à la fois : zoom, puis panneau, puis fermeture        |
+| Visionneuse | `I` `C`         | Ouvre le panneau sur l'onglet Infos · Commentaires (referme si déjà là) |
+| Visionneuse | `F` `D`         | Plein écran · télécharger l'original                                    |
+| Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)          |
+| Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                        |
+| Partout     | `?`             | Aide-mémoire des raccourcis                                             |
 
 À la souris dans la visionneuse : molette pour un zoom progressif centré sur le
 curseur, clic pour basculer au niveau natif à l'endroit visé, glisser pour se
@@ -258,8 +259,15 @@ focus ou qu'un modificateur est enfoncé.
   pour réinitialiser zoom et cadrage sans les remettre à zéro à la main.
 - Le téléchargement passe par une ancre synthétique plutôt que `window.open` :
   pas de blocage de popup, et le navigateur gère sa barre de téléchargement.
-- `ExifPanel` n'est monté qu'à l'ouverture du panneau, et la position EXIF est
-  liée vers OpenStreetMap.
+- `SidePanel` n'est monté qu'à l'ouverture, et la position EXIF est liée vers
+  OpenStreetMap.
+- **Le gestionnaire de touches de la visionneuse écoute la fenêtre, et le
+  panneau des commentaires contient un champ de saisie.** Sans garde, écrire
+  « info » ferait défiler les photos et ouvrirait le panneau sous les doigts :
+  les touches venant d'un `input`, d'un `textarea` ou d'un élément éditable sont
+  donc ignorées — **sauf `Échap`**, qui doit rester la sortie de secours y
+  compris depuis le champ. Le garde vit dans la visionneuse, à l'unique endroit
+  qui écoute, plutôt qu'en `stopPropagation` dispersé dans les formulaires.
 - Les flèches de navigation sont masquées pendant le zoom : le glisser sert alors
   à se déplacer dans l'image, et elles tomberaient sous le curseur.
 - **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
@@ -454,6 +462,50 @@ compte, et on ne retire pas son propre rôle administrateur. Le serveur reste
 libre de les refuser aussi — ces règles ne sont ici que pour ne pas proposer un
 geste qui se retourne contre l'utilisateur.
 
+### Panneau latéral — `components/SidePanel.tsx`
+
+Un seul `aside` à droite, deux onglets : « Infos » (`ExifPanel`) et
+« Commentaires » (`CommentsPanel`). Deux panneaux distincts se seraient disputé
+la même place, chacun avec son en-tête et son bouton de fermeture, et basculer de
+l'un à l'autre aurait décalé l'image deux fois. `ExifPanel` ne rend donc plus que
+ses lignes ; le cadre appartient à `SidePanel`.
+
+L'état est un `PanelTab | null` — `null` valant « fermé ». `i` et `c` ouvrent
+l'onglet correspondant et le referment s'il est déjà affiché.
+
+Le compteur de la pastille vient de `MediaDetail.commentCount`, déjà chargé avec
+le détail : afficher « 3 » avant même d'ouvrir l'onglet est ce qui donne envie de
+le lire, et le fil lui-même n'est demandé qu'à l'ouverture — la plupart des
+photos sont regardées sans qu'on lise les commentaires.
+
+### Commentaires — `components/CommentsPanel.tsx`
+
+Volontairement pauvre en fonctions : un fil, une réponse par fil, la suppression
+de ses propres messages. Pas d'édition, pas de réactions, pas de mentions — c'est
+ce qui sépare une conversation sous une photo d'un forum.
+
+- **Le formulaire d'ouverture de fil est ancré en bas**, hors de la zone qui
+  défile. Sur une photo très commentée, il faudrait sinon parcourir toute la
+  conversation pour trouver où écrire.
+- **Entrée publie, Maj+Entrée passe à la ligne.** Convention des messageries ; un
+  commentaire de photo tient presque toujours en une phrase, et exiger un clic
+  sur un bouton à chaque fois use.
+- **Pas de bouton « Répondre » sous une réponse.** Le serveur rattacherait le
+  message à la racine du fil (D35) : proposer un geste dont le résultat n'est pas
+  celui qu'on montre serait trompeur.
+- **Poster invalide le fil _et_ le détail du média.** Le second porte le
+  compteur de l'onglet, qui resterait sinon en retard d'une unité jusqu'à la
+  réouverture de la photo.
+- Le corps est rendu en `whitespace-pre-wrap` : les retours à la ligne saisis
+  sont conservés, et React échappe le texte — aucun HTML n'est interprété.
+
+### Modération — `components/admin/CommentsSection.tsx`
+
+File paginée, filtrable sur « tous » ou « masqués ». Chaque ligne renvoie vers la
+photo commentée (`/album/:id?photo=<mediaId>`) : modérer sans voir l'image qui a
+suscité le message revient à juger un propos hors contexte. Un média disparu de
+l'index laisse le commentaire modérable, sans lien.
+
 ## Dates : tout en UTC
 
 `lib/format.ts` construit tous ses `Intl.DateTimeFormat` avec
@@ -466,11 +518,19 @@ cette valeur dans le fuseau du navigateur décalerait la photo — une photo pri
 par mois ou par jour basculerait pour les prises de vue de fin de mois ou de fin
 de soirée. **Toute nouvelle date affichée doit passer par `lib/format.ts`.**
 
-**Une seule exception**, et elle ne rend aucune date : le « aujourd'hui » auquel
-`dayLabel` compare une clé de jour est pris sur le calendrier **local** du
-navigateur. Voir [D31](./08-decisions.md) — ce n'est pas une valeur venue du
-serveur, c'est l'horloge murale de celui qui regarde, la même que celle de
-l'appareil qui a horodaté la photo.
+**Deux exceptions**, et elles portent sur des instants réels, pas sur des heures
+d'appareil.
+
+- Le « aujourd'hui » auquel `dayLabel` compare une clé de jour est pris sur le
+  calendrier **local** du navigateur. Voir [D31](./08-decisions.md) — ce n'est pas
+  une valeur venue du serveur, c'est l'horloge murale de celui qui regarde, la
+  même que celle de l'appareil qui a horodaté la photo.
+- `formatLocalDateTime` rend la date d'un **commentaire** dans le fuseau du
+  lecteur. Le raisonnement du fichier vaut pour `taken_at`, une heure murale sans
+  fuseau qu'une conversion rendrait fausse ; `created_at` est l'inverse — un
+  instant réel, celui où quelqu'un a appuyé sur « Publier ». L'afficher en UTC
+  montrerait 19:14 à qui vient d'écrire à 21:14 depuis Paris. Les fils affichent
+  `formatRelative` (« il y a 5 min ») et gardent la date complète en infobulle.
 
 ## Thème sombre — `styles.css`
 

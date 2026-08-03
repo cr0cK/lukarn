@@ -1,14 +1,19 @@
 import {
   DEFAULT_SORT_ORDER,
   type AdminAlbum,
+  type AdminCommentsPage,
   type AdminStatus,
   type AdminUser,
   type Album,
   type AppSettings,
+  type Comment,
+  type CommentsPage,
   type CreateAlbumRequest,
+  type CreateCommentRequest,
   type CreateUserRequest,
   type ItemsPage,
   type MediaDetail,
+  type ModerationFilter,
   type SessionUser,
   type SortOrder,
   type ThumbSize,
@@ -89,6 +94,32 @@ export const api = {
     request<MediaDetail>(
       `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
     ),
+
+  comments: (albumId: string, mediaId: string) =>
+    request<CommentsPage>(
+      `/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`,
+    ),
+
+  createComment: (albumId: string, mediaId: string, body: CreateCommentRequest) =>
+    request<Comment>(`/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  deleteComment: (commentId: number) =>
+    request<void>(`/comments/${commentId}`, { method: 'DELETE' }),
+
+  adminComments: (filter: ModerationFilter, cursor: string | null) => {
+    const params = new URLSearchParams({ filter });
+    if (cursor) params.set('cursor', cursor);
+    return request<AdminCommentsPage>(`/admin/comments?${params}`);
+  },
+
+  hideComment: (commentId: number) =>
+    request<{ ok: true }>(`/admin/comments/${commentId}/hide`, { method: 'POST' }),
+
+  showComment: (commentId: number) =>
+    request<{ ok: true }>(`/admin/comments/${commentId}/show`, { method: 'POST' }),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

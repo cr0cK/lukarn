@@ -753,3 +753,151 @@ change un jour. Une valeur déjà présente dans l'environnement fait autorité.
 Sur une grille entièrement à froid, le temps total pour afficher toutes les
 vignettes reste le même ; ce sont les visiteurs qui regardent autre chose qui ne
 le paient plus.
+
+---
+
+## D33 — Les commentaires sont signés par les comptes existants, pas par Google
+
+**Contexte.** Il fallait attacher une identité aux commentaires. L'hypothèse de
+départ était un « connexion avec Google », comme le font les services grand
+public.
+
+**Choix.** Le commentaire est signé par le compte local qui a déjà servi à ouvrir
+l'album. Deux colonnes suffisent (`display_name`, `email`, migration 4) : le nom
+qui s'affiche, et l'adresse qui reçoit les notifications.
+
+**Écarté.** Un OAuth Google pour les visiteurs. Trois raisons, dans cet ordre.
+
+D'abord il est **sans objet** : toute route média exige déjà une session, donc au
+moment où quelqu'un peut voir une photo, le serveur connaît son identité. Le
+seul apport propre de Google serait une adresse email vérifiée — pour laquelle
+un champ de formulaire rempli par le propriétaire fait le même travail sur une
+instance de quelques comptes.
+
+Ensuite il **ouvre un trou d'autorisation**. Les droits vivent dans
+`user_albums`, attachés à `users.username`. Un compte Google qui se présente
+n'existe dans aucune de ces tables : il faudrait une allowlist d'adresses par
+album, c'est-à-dire réinventer les comptes déjà là, ou accepter que n'importe
+quel détenteur d'un compte Google entre.
+
+Enfin il **contredit le périmètre** : « un visiteur n'a jamais de compte Google
+et ne voit jamais une URL Google » ([01](./01-vision-et-perimetre.md)), et
+l'inscription publique en est exclue depuis l'origine.
+
+**Conséquences.** Commenter suppose un compte créé par le propriétaire — ce qui
+est déjà vrai pour regarder. Le nom affiché est purement décoratif : il n'entre
+dans aucune décision d'autorisation, et deux comptes peuvent porter le même sans
+conséquence. Si un jour l'instance doit s'ouvrir à des gens sans compte, c'est le
+modèle d'accès entier qu'il faudra reprendre, pas les commentaires.
+
+---
+
+## D34 — Un fil par couple (album, média), et non par média
+
+**Contexte.** Un même fichier Drive apparaît dans plusieurs albums quand leurs
+dossiers sont imbriqués — c'est déjà la raison de la clé primaire composite
+`(album_id, id)` de `media` et de `albumsContaining()`.
+
+**Choix.** `comments` porte `album_id` **et** `media_id`. La même photo vue
+depuis deux albums montre deux conversations distinctes.
+
+**Écarté.** Indexer sur le seul `media_id`, ce qui aurait donné une conversation
+unique par fichier — plus naturel a priori, et moins de lignes. Mais le contrôle
+d'accès média accorde l'accès dès qu'**un** album contenant le fichier est
+visible : un visiteur de l'album « Vacances » lirait alors les propos tenus dans
+« Privé » par ceux qui y ont accès. Le cloisonnement de D12 porte sur les octets
+de la photo ; il n'aurait rien dit de ce qu'on en écrit.
+
+**Conséquences.** Une photo rangée dans deux albums peut porter deux fils sans
+que personne ne s'en aperçoive. C'est le prix du cloisonnement, et le cas est
+rare : les albums d'une même instance se recoupent peu. Le `parentId` d'une
+réponse est vérifié contre le média courant pour la même raison — sans quoi un
+identifiant deviné suffirait à greffer un message dans un fil illisible.
+
+---
+
+## D35 — Répondre à une réponse rattache à la racine, plutôt que de refuser
+
+**Contexte.** Le besoin était « un seul niveau de réponse ». Reste à décider ce
+que fait le serveur quand `parentId` désigne une réponse.
+
+**Choix.** Le message est rattaché à la **racine du fil**. Le front, lui,
+n'affiche pas de bouton « Répondre » sous une réponse.
+
+**Écarté.** Répondre `400`. L'utilisateur qui atteint ce cas — par un client
+tiers, ou une interface qui évoluerait — a une intention parfaitement claire :
+écrire dans ce fil. Lui renvoyer une erreur qu'il ne peut pas corriger n'a aucune
+valeur. Écarté aussi : autoriser la profondeur et l'aplatir à l'affichage, qui
+aurait laissé en base une hiérarchie dont personne ne se sert et qu'il aurait
+fallu parcourir à chaque lecture.
+
+**Conséquences.** `parent_id` ne désigne **jamais** une ligne qui a elle-même un
+parent — invariant tenu par `rootOf()` à l'écriture, pas par une contrainte SQL,
+que SQLite ne sait pas exprimer ici. La lecture d'un fil s'en trouve simple : une
+seule passe, les racines précédant leurs réponses puisque l'ordre des id est
+l'ordre d'écriture. Le corollaire est qu'une réponse dont la racine disparaît
+(compte supprimé, commentaire masqué) remonte en tête de fil plutôt que de
+disparaître : elle appartient à son auteur, pas à celui qu'elle cite.
+
+---
+
+## D36 — Modération a posteriori, par masquage réversible
+
+**Contexte.** Il fallait un moyen pour l'administrateur de retirer un
+commentaire.
+
+**Choix.** Le commentaire est publié immédiatement et peut être **masqué** après
+coup depuis `/admin`. `hidden_at` et `hidden_by` portent la décision. Un
+commentaire masqué disparaît de la lecture pour tout le monde, son auteur
+compris.
+
+**Écarté.** La pré-modération, où chaque message attend une validation. Sur une
+galerie familiale dont les comptes sont créés à la main par le propriétaire, elle
+retarde tout le monde pour un risque qui n'existe pas : il n'y a pas d'inconnus.
+Elle a de plus un coût caché — l'auteur ne voit pas son propre message
+apparaître, et croit à une panne.
+
+Écarté aussi : **laisser l'auteur voir son commentaire masqué**, comme le font
+les grandes plateformes. Cela revient à lui laisser croire qu'on le lit encore.
+Autant que la décision soit visible : c'est ce qui distingue une modération
+assumée d'un bannissement furtif.
+
+Écarté enfin : la suppression pure. Masquer garde la décision réversible, ce qui
+compte quand elle est prise vite. La suppression définitive reste possible, par
+`DELETE /api/comments/:id`.
+
+**Conséquences.** Une réponse dont la racine est masquée remonte en tête de fil
+(voir D35). `hidden_by` est affiché dans la file de modération plutôt que gardé
+comme trace morte : sur une instance à plusieurs administrateurs, c'est la
+question qu'on se pose en premier.
+
+---
+
+## D37 — Les notifications partent hors du chemin de la requête, et n'échouent jamais
+
+**Contexte.** Un commentaire doit prévenir les administrateurs, et l'auteur d'un
+fil quand on lui répond. L'application n'avait jusque-là aucune dépendance
+d'envoi d'email — « pas de courriel à envoyer » figurait même dans le hors
+périmètre de [01](./01-vision-et-perimetre.md), à propos de l'inscription.
+
+**Choix.** `nodemailer` derrière `SMTP_URL` et `MAIL_FROM`. `POST` répond dès que
+la ligne est écrite ; les messages sont mis dans une file sérialisée et partent
+après. Un échec est **journalisé et abandonné**, sans réessai. Sans configuration
+SMTP, le `Mailer` est inerte plutôt qu'absent : aucun appelant n'a à savoir si
+l'instance envoie des emails.
+
+**Écarté.** Envoyer dans le handler : un relais SMTP lent ferait attendre
+plusieurs secondes après un clic sur « Publier », pour un travail qui ne
+concerne pas celui qui attend. Écarté aussi : une file persistante avec
+réessais — c'est un mécanisme à surveiller, alors qu'une notification manquée
+est un désagrément et que le commentaire, lui, est bien enregistré. Écarté
+enfin : écrire un client SMTP maison pour éviter la dépendance ; `nodemailer`
+n'a aucune dépendance runtime, ce qui rejoint le raisonnement de D5.
+
+**Conséquences.** Le `drain()` de l'arrêt gracieux est indispensable : sans lui,
+un commentaire posté juste avant un redéploiement serait enregistré sans que
+personne n'en soit prévenu. Le lien de désabonnement est un HMAC sans expiration
+et sans session (voir [04](./04-securite-et-acces.md)) — un email se rouvre des
+mois plus tard, et demander de se connecter pour cesser d'être dérangé serait une
+façon de ne pas répondre. `PUBLIC_URL` devient structurante une fois de plus :
+mal renseignée, elle produit des notifications qui ne mènent nulle part.

@@ -36,6 +36,12 @@ export interface StoredUser {
   allAlbums: boolean;
   /** Ids d'albums explicitement attribués, hors joker. */
   albums: string[];
+  /** Nom signant les commentaires. `null` : l'identifiant en tient lieu. */
+  displayName: string | null;
+  /** Adresse de notification, `null` si le compte n'en a pas. */
+  email: string | null;
+  /** `false` après un désabonnement depuis un email reçu. */
+  notify: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,12 +52,18 @@ export interface CreateUserInput {
   admin: boolean;
   /** Ids d'albums, ou une liste contenant `'*'` pour le joker. */
   albums: string[];
+  displayName?: string | null;
+  email?: string | null;
 }
 
+/** `null` efface la valeur, `undefined` la laisse en place. */
 export interface UpdateUserInput {
   passwordHash?: string;
   admin?: boolean;
   albums?: string[];
+  displayName?: string | null;
+  email?: string | null;
+  notify?: boolean;
 }
 
 export interface CreateAlbumInput {
@@ -97,6 +109,9 @@ interface UserRow {
   password_hash: string;
   admin: number;
   all_albums: number;
+  display_name: string | null;
+  email: string | null;
+  notify: number;
   created_at: string;
   updated_at: string;
 }
@@ -130,6 +145,9 @@ export function toAdminUser(user: StoredUser): AdminUser {
     username: user.username,
     admin: user.admin,
     albums: user.allAlbums ? [ALL_ALBUMS] : [...user.albums],
+    displayName: user.displayName,
+    email: user.email,
+    notify: user.notify,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -209,10 +227,20 @@ export class ConfigRepo {
     this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO users
+             (username, password_hash, admin, all_albums, display_name, email, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(input.username, input.passwordHash, input.admin ? 1 : 0, allAlbums ? 1 : 0, now, now);
+        .run(
+          input.username,
+          input.passwordHash,
+          input.admin ? 1 : 0,
+          allAlbums ? 1 : 0,
+          normalize(input.displayName),
+          normalize(input.email),
+          now,
+          now,
+        );
       this.linkAlbums(input.username, ids);
     })();
 
@@ -235,6 +263,21 @@ export class ConfigRepo {
         this.db
           .prepare('UPDATE users SET admin = ? WHERE username = ?')
           .run(patch.admin ? 1 : 0, stored.username);
+      }
+      if (patch.displayName !== undefined) {
+        this.db
+          .prepare('UPDATE users SET display_name = ? WHERE username = ?')
+          .run(normalize(patch.displayName), stored.username);
+      }
+      if (patch.email !== undefined) {
+        this.db
+          .prepare('UPDATE users SET email = ? WHERE username = ?')
+          .run(normalize(patch.email), stored.username);
+      }
+      if (patch.notify !== undefined) {
+        this.db
+          .prepare('UPDATE users SET notify = ? WHERE username = ?')
+          .run(patch.notify ? 1 : 0, stored.username);
       }
       if (patch.albums !== undefined) {
         const { allAlbums, ids } = splitAlbums(patch.albums);
@@ -415,7 +458,8 @@ export class ConfigRepo {
       .all() as AlbumRow[];
     const userRows = this.db
       .prepare(
-        `SELECT username, password_hash, admin, all_albums, created_at, updated_at
+        `SELECT username, password_hash, admin, all_albums, display_name, email, notify,
+                created_at, updated_at
            FROM users ORDER BY username`,
       )
       .all() as UserRow[];
@@ -443,6 +487,9 @@ export class ConfigRepo {
         allAlbums: row.all_albums === 1,
         // Trié comme les albums : la liste rendue par l'API est stable.
         albums: albums.filter((album) => granted.get(key)?.has(album.id)).map((album) => album.id),
+        displayName: row.display_name,
+        email: row.email,
+        notify: row.notify === 1,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       });
@@ -475,6 +522,17 @@ export class ConfigRepo {
     const parsed = settingsSchema.partial().safeParse(raw);
     return { ...DEFAULT_SETTINGS, ...(parsed.success ? parsed.data : {}) };
   }
+}
+
+/**
+ * Une chaîne vide venue d'un formulaire vaut « pas de valeur ». La stocker
+ * telle quelle donnerait deux représentations du vide à départager à chaque
+ * lecture — et un `email = ''` passerait le filtre `IS NOT NULL` des
+ * destinataires de notification.
+ */
+function normalize(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 /** `['*', 'a']` vaut joker : le plus permissif l'emporte, sans erreur silencieuse. */

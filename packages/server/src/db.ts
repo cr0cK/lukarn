@@ -151,6 +151,65 @@ export const MIGRATIONS: string[] = [
     value  TEXT NOT NULL
   );
   `,
+
+  // 4 — commentaires des visiteurs, et de quoi les notifier.
+  `
+  -- AUTOINCREMENT, contrairement au rowid ordinaire : sans lui, SQLite réattribue
+  -- l'identifiant d'une ligne supprimée à la ligne suivante. Les emails de
+  -- notification portent un lien vers #<id> et survivent des mois dans une boîte
+  -- aux lettres ; un id recyclé ferait pointer un vieux message vers la
+  -- conversation de quelqu'un d'autre.
+  CREATE TABLE comments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- Le fil appartient au couple (album, média), jamais au seul média : le même
+    -- fichier Drive indexé sous deux albums porte deux conversations. Les
+    -- mélanger montrerait à un visiteur les propos tenus dans un album auquel il
+    -- n'a pas accès, ce qui contredirait le cloisonnement décidé en D12.
+    album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    -- Pas de clé étrangère vers media : deleteStale retire une photo dès
+    -- qu'une synchronisation ne la revoit pas — dossier renommé, sync
+    -- interrompue, corbeille Drive le temps d'un retour en arrière. Une cascade
+    -- détruirait les commentaires sur un simple contretemps d'indexation, alors
+    -- que l'identifiant Drive est stable : la photo revenue retrouve son fil.
+    media_id    TEXT NOT NULL,
+    -- ON DELETE SET NULL et non CASCADE : supprimer un compte emporte ses
+    -- messages, mais les réponses que d'autres y ont écrites leur appartiennent.
+    -- Elles remontent en tête de fil plutôt que de disparaître avec lui.
+    parent_id   INTEGER REFERENCES comments (id) ON DELETE SET NULL,
+    -- COLLATE NOCASE comme la colonne référencée : la clé étrangère compare déjà
+    -- avec la collation du parent, l'écrire ici évite qu'un index posé plus tard
+    -- sur cette colonne se comporte autrement que la contrainte.
+    username    TEXT NOT NULL COLLATE NOCASE REFERENCES users (username) ON DELETE CASCADE,
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL,
+    -- Modération a posteriori : le commentaire est publié tout de suite et
+    -- masqué après coup, plutôt que retenu jusqu'à validation. Masquer plutôt que
+    -- supprimer laisse à l'administrateur le droit de se raviser.
+    hidden_at   TEXT,
+    hidden_by   TEXT COLLATE NOCASE
+  );
+
+  -- Sert la lecture d'un fil et le compteur affiché avec le détail d'un média.
+  -- Trier sur id plutôt que sur created_at suffit : AUTOINCREMENT ne réattribue
+  -- jamais un identifiant, donc l'ordre des id est l'ordre d'écriture. C'est ce
+  -- qui permet aussi à la file de modération de paginer sur un simple entier
+  -- plutôt que sur un curseur (date, id).
+  CREATE INDEX idx_comments_thread ON comments (album_id, media_id, id);
+  -- Sert le rattachement des réponses à leur racine, et leur remontée en tête de
+  -- fil quand le parent disparaît (ON DELETE SET NULL ci-dessus).
+  CREATE INDEX idx_comments_parent ON comments (parent_id);
+
+  -- Le nom affiché sépare l'identité de connexion de l'identité sociale : on
+  -- signe « Mamie » sans avoir à se connecter sous ce nom. NULL = on s'en tient
+  -- à l'identifiant.
+  ALTER TABLE users ADD COLUMN display_name TEXT;
+  -- Adresse de notification. NULL est le cas normal d'une instance qui n'envoie
+  -- pas d'email : la fonctionnalité s'éteint d'elle-même, compte par compte.
+  ALTER TABLE users ADD COLUMN email TEXT;
+  -- Désabonnement. Une colonne plutôt qu'une adresse effacée : se désabonner ne
+  -- doit pas obliger l'administrateur à ressaisir l'adresse pour réabonner.
+  ALTER TABLE users ADD COLUMN notify INTEGER NOT NULL DEFAULT 1;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

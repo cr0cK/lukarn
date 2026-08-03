@@ -35,6 +35,8 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | `packages/shared/src/index.ts`                                               | `specs/05-api.md`, et `03` si le modèle bouge                                  |
 | `packages/server/src/db.ts` (`MIGRATIONS`, index, pragmas)                   | `specs/03-modele-de-donnees.md`                                                |
 | `packages/server/src/repo.ts` (curseurs, requêtes)                           | `specs/03-modele-de-donnees.md`                                                |
+| `packages/server/src/comments.ts` (fils, modération, destinataires)          | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`               |
+| `packages/server/src/mail.ts` (transport, file, composition)                 | `specs/06-configuration-et-deploiement.md`, et `08` si un compromis change     |
 | `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                     |
 | `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`               |
 | `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                     |

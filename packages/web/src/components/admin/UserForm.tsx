@@ -7,7 +7,7 @@ import {
 } from '@gdv/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
-import { useCreateUser, useUpdateUser } from '../../api/hooks';
+import { useAdminStatus, useCreateUser, useUpdateUser } from '../../api/hooks';
 import { validatePassword, validateUsername } from '../../lib/adminForm';
 import { AlbumAccessPicker } from './AlbumAccessPicker';
 import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
@@ -34,11 +34,18 @@ export function UserForm({
   const create = useCreateUser();
   const update = useUpdateUser();
   const editing = user !== undefined;
+  // Déjà chargé par le tableau de bord : cette lecture sert le cache, pas une
+  // requête de plus. Renseigner une adresse sans serveur SMTP ne produit rien,
+  // et le formulaire doit le dire au lieu de laisser espérer des emails.
+  const { data: status } = useAdminStatus();
+  const mailConfigured = status?.mailConfigured !== false;
 
   const [username, setUsername] = useState(user?.username ?? '');
   const [password, setPassword] = useState('');
   const [admin, setAdmin] = useState(user?.admin ?? false);
   const [userAlbums, setUserAlbums] = useState<string[]>(user?.albums ?? []);
+  const [displayName, setDisplayName] = useState(user?.displayName ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
   const [touched, setTouched] = useState(false);
 
   const usernameError = editing ? null : validateUsername(username);
@@ -53,7 +60,14 @@ export function UserForm({
 
     if (!editing) {
       create.mutate(
-        { username: username.trim(), password, admin, albums: userAlbums },
+        {
+          username: username.trim(),
+          password,
+          admin,
+          albums: userAlbums,
+          displayName: displayName.trim(),
+          email: email.trim(),
+        },
         {
           onSuccess: (created) => {
             notify({ tone: 'ok', text: `Compte « ${created.username} » créé.` });
@@ -70,6 +84,8 @@ export function UserForm({
     if (password) body.password = password;
     if (admin !== user.admin) body.admin = admin;
     if (!sameAlbums(userAlbums, user.albums)) body.albums = userAlbums;
+    if (displayName.trim() !== (user.displayName ?? '')) body.displayName = displayName.trim();
+    if (email.trim() !== (user.email ?? '')) body.email = email.trim();
 
     if (Object.keys(body).length === 0) {
       onClose();
@@ -123,6 +139,40 @@ export function UserForm({
           }
         />
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField
+          id={`${fieldId}-display-name`}
+          label="Nom affiché"
+          value={displayName}
+          onChange={setDisplayName}
+          autoComplete="off"
+          disabled={pending}
+          hint="Signe les commentaires. Vide : l'identifiant est utilisé."
+        />
+
+        <TextField
+          id={`${fieldId}-email`}
+          label="Adresse email"
+          type="email"
+          value={email}
+          onChange={setEmail}
+          autoComplete="off"
+          disabled={pending}
+          hint={
+            mailConfigured
+              ? 'Reçoit les notifications de commentaires. Vide : aucun envoi.'
+              : "Aucun serveur SMTP configuré : renseignée, elle ne recevra rien pour l'instant."
+          }
+        />
+      </div>
+
+      {editing && user.email && !user.notify && (
+        <p className="text-xs text-ink-400">
+          Ce compte s’est désabonné des notifications. Son adresse est conservée ; il faut son
+          accord pour le réabonner.
+        </p>
+      )}
 
       <Checkbox
         id={`${fieldId}-admin`}

@@ -33,6 +33,8 @@ flowchart LR
 | `src/context.ts`        | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.      |
 | `src/db.ts`             | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                    |
 | `src/repo.ts`           | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                   |
+| `src/comments.ts`       | `CommentRepo` : fils, profondeur limitée à un niveau, modération, destinataires des notifications.  |
+| `src/mail.ts`           | Transport SMTP, file d'envoi hors requête, composition des emails de notification.                  |
 | `src/sessions.ts`       | Création, lecture, destruction et purge des sessions.                                               |
 | `src/crypto.ts`         | AES-256-GCM pour le refresh token, comparaison en temps constant.                                   |
 | `src/throttle.ts`       | Backoff progressif des tentatives de connexion, en mémoire.                                         |

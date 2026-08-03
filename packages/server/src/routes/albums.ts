@@ -1,4 +1,4 @@
-import { DEFAULT_SORT_ORDER, type Album, type ItemsPage } from '@gdv/shared';
+import { DEFAULT_SORT_ORDER, type Album, type ItemsPage, type MediaDetail } from '@gdv/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -71,7 +71,15 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
       if (!detail) {
         return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
       }
-      return reply.send(detail);
+
+      // Le compteur voyage avec le détail : la visionneuse l'affiche sur son
+      // onglet sans avoir à charger un fil que la plupart des visiteurs
+      // n'ouvriront pas.
+      const media: MediaDetail = {
+        ...detail,
+        commentCount: context.comments.countFor(albumId, mediaId),
+      };
+      return reply.send(media);
     });
   };
 }

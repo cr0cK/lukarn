@@ -1,8 +1,10 @@
 import {
   DEFAULT_SORT_ORDER,
   type CreateAlbumRequest,
+  type CreateCommentRequest,
   type CreateUserRequest,
   type MediaItem,
+  type ModerationFilter,
   type SortOrder,
   type UpdateAlbumRequest,
   type UpdateSettingsRequest,
@@ -27,6 +29,8 @@ export const queryKeys = {
   // continueraient de paginer à l'envers.
   items: (id: string, order: SortOrder) => ['items', id, order] as const,
   detail: (albumId: string, mediaId: string) => ['detail', albumId, mediaId] as const,
+  comments: (albumId: string, mediaId: string) => ['comments', albumId, mediaId] as const,
+  adminComments: (filter: ModerationFilter) => ['admin', 'comments', filter] as const,
   adminStatus: ['admin', 'status'] as const,
   adminUsers: ['admin', 'users'] as const,
   adminAlbums: ['admin', 'albums'] as const,
@@ -115,6 +119,78 @@ export function useMediaDetail(albumId: string, mediaId: string | null) {
     queryFn: () => api.itemDetail(albumId, mediaId!),
     enabled: mediaId !== null,
     staleTime: Infinity,
+  });
+}
+
+/* --------------------------------------------------------------------------
+ * Commentaires
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Fil d'une photo. Chargé seulement quand le panneau est ouvert : la plupart
+ * des photos sont regardées sans qu'on lise les commentaires, et le compteur
+ * affiché sur l'onglet vient déjà du détail du média.
+ */
+export function useComments(albumId: string, mediaId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.comments(albumId, mediaId ?? ''),
+    queryFn: () => api.comments(albumId, mediaId!),
+    enabled: enabled && mediaId !== null,
+  });
+}
+
+/**
+ * Poste un commentaire. Le fil **et** le détail du média sont invalidés :
+ * le second porte le compteur affiché sur l'onglet, qui resterait sinon en
+ * retard d'une unité jusqu'à la réouverture de la photo.
+ */
+export function useCreateComment(albumId: string, mediaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateCommentRequest) => api.createComment(albumId, mediaId, body),
+    onSuccess: () => invalidateThread(queryClient, albumId, mediaId),
+  });
+}
+
+export function useDeleteComment(albumId: string, mediaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (commentId: number) => api.deleteComment(commentId),
+    onSuccess: () => invalidateThread(queryClient, albumId, mediaId),
+  });
+}
+
+function invalidateThread(queryClient: QueryClient, albumId: string, mediaId: string): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.comments(albumId, mediaId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.detail(albumId, mediaId) });
+}
+
+/** File de modération, paginée à la demande depuis /admin. */
+export function useAdminComments(filter: ModerationFilter) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.adminComments(filter),
+    queryFn: ({ pageParam }) => api.adminComments(filter, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  });
+}
+
+/**
+ * Masque ou démasque. Les deux filtres de la file sont invalidés, puisque le
+ * commentaire traité passe de l'un à l'autre ; le tableau de bord l'est aussi,
+ * pour sa pastille de commentaires masqués.
+ */
+export function useModerateComment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId, hide }: { commentId: number; hide: boolean }) =>
+      hide ? api.hideComment(commentId) : api.showComment(commentId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'comments'] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
+      // Le fil vu côté galerie change aussi : un commentaire masqué en disparaît.
+      void queryClient.invalidateQueries({ queryKey: ['comments'] });
+    },
   });
 }
 
