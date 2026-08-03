@@ -58,6 +58,7 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 | `D`             | Télécharger l'original                          |
 | `Z`             | Zoom                                            |
 | `Espace`        | Lecture / pause vidéo                           |
+| Balayage        | Photo précédente / suivante, au doigt           |
 | `?`             | Afficher cette liste                            |
 
 ## Installation sur un VPS
