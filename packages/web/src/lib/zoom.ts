@@ -110,3 +110,61 @@ export function zoomPercent(displayedWidth: number, scale: number, availableWidt
   if (availableWidth <= 0 || displayedWidth <= 0) return 100;
   return Math.round(((displayedWidth * scale) / availableWidth) * 100);
 }
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * Part de l'image occupée par la zone visible, sur chaque axe, dans `[0, 1]`.
+ *
+ * Sert au cadre du repère de position : `1` signifie que l'image tient
+ * entièrement dans la fenêtre sur cet axe — le cadre couvre alors tout le
+ * repère, ce qui est la lecture juste.
+ */
+export function visibleFraction(
+  displayedSize: number,
+  containerSize: number,
+  scale: number,
+): number {
+  if (displayedSize <= 0 || scale <= 0) return 1;
+  return Math.min(1, containerSize / (displayedSize * scale));
+}
+
+/**
+ * Position du centre de la zone visible dans l'image, en fractions `[0, 1]`.
+ *
+ * Le déplacement décale l'image sous une fenêtre fixe : la zone regardée se
+ * déplace donc en sens inverse, d'où le signe négatif.
+ */
+export function viewCenter(
+  offset: Point,
+  displayed: { width: number; height: number },
+  scale: number,
+): Point {
+  return {
+    x: displayed.width > 0 ? 0.5 - offset.x / (displayed.width * scale) : 0.5,
+    y: displayed.height > 0 ? 0.5 - offset.y / (displayed.height * scale) : 0.5,
+  };
+}
+
+/**
+ * Réciproque de `viewCenter` : déplacement à appliquer pour amener un point de
+ * l'image au centre de la fenêtre.
+ *
+ * C'est ce qui rend le repère de position manipulable — cliquer dedans désigne
+ * un endroit de la photo, et l'affichage doit s'y rendre. Le résultat n'est pas
+ * borné ici : c'est à l'appelant d'appliquer ses limites de débordement, qu'il
+ * est le seul à connaître.
+ */
+export function offsetForCenter(
+  center: Point,
+  displayed: { width: number; height: number },
+  scale: number,
+): Point {
+  return {
+    x: (0.5 - center.x) * displayed.width * scale,
+    y: (0.5 - center.y) * displayed.height * scale,
+  };
+}

@@ -274,11 +274,22 @@ Trois détails qui ont une raison :
 
 Deux repères visuels : un **placeholder** (la vignette 320, déjà en cache
 navigateur puisqu'elle vient d'être affichée dans la grille) flouté à la taille
-exacte du rendu final, le temps que celui-ci arrive ; et une **minimap** pendant
-le zoom, avec le cadre de la zone visible — sans elle on perd tout sens de
-l'orientation dès qu'on se déplace dans une image agrandie. L'indicateur signale
-en plus `chargement HD…` tant que la variante `hd` n'est pas prête : le
-pourcentage repose alors sur la résolution anticipée, pas sur une mesure.
+exacte du rendu final, le temps que celui-ci arrive ; et un **repère de
+position** pendant le zoom, avec le cadre de la zone visible — sans lui on perd
+tout sens de l'orientation dès qu'on se déplace dans une image agrandie.
+L'indicateur signale en plus `chargement HD…` tant que la variante `hd` n'est
+pas prête : le pourcentage repose alors sur la résolution anticipée, pas sur une
+mesure.
+
+Le repère est **manipulable** : y cliquer ou y glisser amène le point visé au
+centre de la fenêtre. Il montrait où l'on se trouvait sans permettre d'y agir,
+ce qui invite au geste puis le refuse. Les conversions vivent dans
+`lib/zoom.ts` — `viewCenter` pour l'afficher, `offsetForCenter` pour le
+commander — et leur réciprocité est testée : ce que le repère montre et ce
+qu'il commande doivent désigner la même chose, faute de quoi le cadre sauterait
+sous le curseur. Le `pointerdown` interrompt sa propagation, sans quoi le
+conteneur démarrerait en plus son propre déplacement et l'image partirait dans
+le sens du glissement pendant que le repère la ramène ailleurs.
 
 ## Administration — `pages/AdminPage.tsx` et `components/admin/`
 

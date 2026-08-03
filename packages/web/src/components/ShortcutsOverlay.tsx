@@ -20,7 +20,7 @@ const GROUPS: { title: string; shortcuts: [string, string][] }[] = [
       ['D', "Télécharger l'original"],
       ['Z', 'Zoom à 100 %'],
       ['Molette', 'Zoom progressif'],
-      ['Glisser', "Se déplacer dans l'image"],
+      ['Glisser', "Se déplacer dans l'image, ou dans le repère en bas à droite"],
       ['Espace', 'Lecture / pause vidéo'],
     ],
   },

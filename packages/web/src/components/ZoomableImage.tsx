@@ -8,7 +8,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import { computeZoomScale, zoomPercent } from '../lib/zoom';
+import {
+  computeZoomScale,
+  offsetForCenter,
+  viewCenter,
+  visibleFraction,
+  zoomPercent,
+  type Point,
+} from '../lib/zoom';
 
 /** Au-delà, on n'observe plus que le grain du capteur. */
 const MAX_SCALE = 8;
@@ -152,6 +159,23 @@ export function ZoomableImage({
   const offsetRef = useRef(offset);
   scaleRef.current = scale;
   offsetRef.current = offset;
+
+  /**
+   * Amène un point de la photo au centre de la fenêtre. Le repère de position
+   * s'en sert : y cliquer ou y glisser désigne un endroit de l'image, et
+   * l'affichage doit s'y rendre.
+   *
+   * Le bornage évite un effet déroutant près des angles — viser le coin ne doit
+   * pas faire apparaître de bande vide à côté de la photo.
+   */
+  const seekTo = useCallback(
+    (center: Point) => {
+      setOffset(
+        clampOffset(offsetForCenter(center, displayed, scaleRef.current), scaleRef.current),
+      );
+    },
+    [clampOffset, displayed],
+  );
 
   const applyScale = useCallback(
     (nextScale: number, focus?: { x: number; y: number }) => {
@@ -345,6 +369,7 @@ export function ZoomableImage({
           scale={scale}
           offset={offset}
           src={placeholderSrc}
+          onSeek={seekTo}
         />
       )}
 
@@ -375,42 +400,79 @@ function Minimap({
   scale,
   offset,
   src,
+  onSeek,
 }: {
   displayed: Box;
   container: Box;
   scale: number;
-  offset: { x: number; y: number };
+  offset: Point;
   src: string;
+  /** Reçoit le point visé, en fractions `[0, 1]` de l'image. */
+  onSeek: (center: Point) => void;
 }): ReactElement {
   const MAX_EDGE = 132;
   const ratio = Math.min(MAX_EDGE / displayed.width, MAX_EDGE / displayed.height);
   const width = displayed.width * ratio;
   const height = displayed.height * ratio;
 
-  // Part de l'image couverte par le cadre, bornée à 1 : sur un écran plus large
-  // que l'image zoomée, la zone visible ne dépasse pas la photo.
-  const viewWidth = Math.min(1, container.width / (displayed.width * scale));
-  const viewHeight = Math.min(1, container.height / (displayed.height * scale));
+  const dragging = useRef(false);
 
-  // `offset` déplace l'image sous un cadre fixe : la zone regardée se déplace
-  // donc en sens inverse, d'où le signe négatif.
-  const centerX = 0.5 - offset.x / (displayed.width * scale);
-  const centerY = 0.5 - offset.y / (displayed.height * scale);
+  const viewWidth = visibleFraction(displayed.width, container.width, scale);
+  const viewHeight = visibleFraction(displayed.height, container.height, scale);
+  const center = viewCenter(offset, displayed, scale);
+
+  /** Point sous le curseur, ramené en fractions de l'image. */
+  const seekFromEvent = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    onSeek({
+      x: (event.clientX - rect.left) / rect.width,
+      y: (event.clientY - rect.top) / rect.height,
+    });
+  };
 
   return (
     <div
-      className="pointer-events-none absolute right-4 bottom-4 overflow-hidden rounded border border-white/25 shadow-lg"
+      className="absolute right-4 bottom-4 cursor-crosshair overflow-hidden rounded border border-white/25 shadow-lg transition-colors hover:border-white/60"
       style={{ width, height }}
-      aria-hidden="true"
+      role="img"
+      aria-label="Repère de position : cliquer ou glisser pour se déplacer dans la photo"
+      onPointerDown={(event) => {
+        // Sans cette interruption, le conteneur démarrerait en plus son propre
+        // déplacement : l'image partirait dans le sens du glissement pendant
+        // que le repère la ramène ailleurs.
+        event.stopPropagation();
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragging.current = true;
+        seekFromEvent(event);
+      }}
+      onPointerMove={(event) => {
+        if (!dragging.current) return;
+        event.stopPropagation();
+        seekFromEvent(event);
+      }}
+      onPointerUp={(event) => {
+        dragging.current = false;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+      }}
+      onPointerCancel={() => {
+        dragging.current = false;
+      }}
+      // Le repère recouvre l'image : sans ça, un double-clic dessus basculerait
+      // le zoom au lieu de viser un endroit.
+      onDoubleClick={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
     >
-      <img src={src} alt="" className="size-full object-cover opacity-60" />
+      <img src={src} alt="" draggable={false} className="size-full object-cover opacity-60" />
       <span
-        className="absolute border-2 border-white/90 bg-white/10"
+        className="pointer-events-none absolute border-2 border-white/90 bg-white/10"
         style={{
           width: `${viewWidth * 100}%`,
           height: `${viewHeight * 100}%`,
-          left: `${(centerX - viewWidth / 2) * 100}%`,
-          top: `${(centerY - viewHeight / 2) * 100}%`,
+          left: `${(center.x - viewWidth / 2) * 100}%`,
+          top: `${(center.y - viewHeight / 2) * 100}%`,
         }}
       />
     </div>

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { computeZoomScale, HD_MAX_EDGE, zoomPercent } from '../src/lib/zoom';
+import {
+  computeZoomScale,
+  HD_MAX_EDGE,
+  offsetForCenter,
+  viewCenter,
+  visibleFraction,
+  zoomPercent,
+} from '../src/lib/zoom';
 
 const MAX_SCALE = 8;
 
@@ -95,5 +102,54 @@ describe('zoomPercent', () => {
   it('dépasse 100 % dès que le navigateur interpole', () => {
     const { availableWidth } = scaleFor();
     assert.equal(zoomPercent(1200, MAX_SCALE, availableWidth), 234);
+  });
+});
+
+describe('repère de position', () => {
+  const displayed = { width: 1000, height: 800 };
+  const container = { width: 500, height: 400 };
+
+  it('rapporte la part visible de la photo', () => {
+    // Échelle 2 : la fenêtre couvre la moitié de chaque côté.
+    assert.equal(visibleFraction(displayed.width, container.width, 2), 0.25);
+    assert.equal(visibleFraction(displayed.height, container.height, 2), 0.25);
+  });
+
+  it('ne dépasse jamais la photo entière', () => {
+    // Image plus petite que la fenêtre : le cadre couvre tout le repère, il ne
+    // déborde pas — sinon il désignerait une zone qui n'existe pas.
+    assert.equal(visibleFraction(200, 500, 1), 1);
+  });
+
+  it('situe la vue au centre quand rien n’est déplacé', () => {
+    assert.deepEqual(viewCenter({ x: 0, y: 0 }, displayed, 2), { x: 0.5, y: 0.5 });
+  });
+
+  it('fait un aller-retour fidèle entre déplacement et point visé', () => {
+    // C'est l'invariant qui rend le repère manipulable : ce qu'il affiche et ce
+    // qu'il commande doivent parler de la même chose.
+    for (const scale of [1.5, 2, 4]) {
+      for (const offset of [
+        { x: 0, y: 0 },
+        { x: 120, y: -80 },
+        { x: -333, y: 210 },
+      ]) {
+        const center = viewCenter(offset, displayed, scale);
+        const retour = offsetForCenter(center, displayed, scale);
+        assert.ok(Math.abs(retour.x - offset.x) < 1e-9, `x à l'échelle ${scale}`);
+        assert.ok(Math.abs(retour.y - offset.y) < 1e-9, `y à l'échelle ${scale}`);
+      }
+    }
+  });
+
+  it('déplace vers la gauche quand on vise la droite de la photo', () => {
+    // L'image glisse sous une fenêtre fixe : viser la droite la fait reculer.
+    const { x } = offsetForCenter({ x: 1, y: 0.5 }, displayed, 2);
+    assert.ok(x < 0, 'le déplacement doit être négatif');
+    assert.equal(x, -1000);
+  });
+
+  it('ne bouge pas pour un clic au centre', () => {
+    assert.deepEqual(offsetForCenter({ x: 0.5, y: 0.5 }, displayed, 3), { x: 0, y: 0 });
   });
 });
