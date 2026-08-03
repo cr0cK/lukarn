@@ -8,7 +8,10 @@ import type { AppContext } from './context.js';
 import { loadDotEnv } from './dotenv.js';
 import { loadEnv } from './env.js';
 
-/** Purge des sessions expirées et des compteurs de throttle. */
+/**
+ * Purge des sessions expirées et des compteurs de throttle, et annonce des
+ * nouvelles photos aux abonnés.
+ */
 const HOUSEKEEPING_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
@@ -26,6 +29,20 @@ function startScheduler(context: AppContext): () => void {
     // redémarrage, même une fois la pénalité expirée.
     const forgotten = context.throttle.purge();
     if (forgotten > 0) context.log.debug(`${forgotten} compteurs de connexion oubliés`);
+
+    // L'annonce des nouvelles photos est ici, et non à la fin d'une sync : avec
+    // une synchronisation toutes les demi-heures écrivant par lots, verser deux
+    // cents photos enverrait une dizaine d'emails dans la journée. Le notifieur
+    // n'annonce que les albums calmes depuis une heure.
+    try {
+      context.notifier.run();
+    } catch (error) {
+      // Le ménage horaire ne doit pas s'interrompre pour ça : les purges
+      // ci-dessus ont déjà eu lieu, mais le prochain tour aurait lieu quand
+      // même — c'est la même règle qu'en D37, une notification manquée est un
+      // désagrément.
+      context.log.error({ err: error }, 'Annonce des nouvelles photos en échec');
+    }
   }, HOUSEKEEPING_INTERVAL_MS);
   housekeeping.unref();
 

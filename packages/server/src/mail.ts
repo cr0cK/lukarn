@@ -1,5 +1,5 @@
 import { createTransport } from 'nodemailer';
-import { signUnsubscribeToken } from './crypto.js';
+import { signAlbumUnsubscribeToken, signUnsubscribeToken } from './crypto.js';
 import type { Env } from './env.js';
 
 /**
@@ -54,7 +54,10 @@ export class Mailer {
    */
   static fromEnv(env: Env, log: Logger): Mailer {
     if (!env.mail) {
-      log.info("SMTP non configuré : les notifications de commentaires n'enverront rien.");
+      log.info(
+        "SMTP non configuré : ni les notifications de commentaires ni l'annonce des " +
+          "nouvelles photos n'enverront rien.",
+      );
       return new Mailer(null, log);
     }
 
@@ -126,6 +129,16 @@ export function buildCommentMail(
   env: Env,
 ): MailMessage {
   const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}`;
+  /**
+   * Ce lien coupe `commenters.notify`, donc **tout** ce que la galerie envoie :
+   * les réponses aux commentaires comme les annonces de nouvelles photos. Le
+   * libellé le dit en toutes lettres — « se désabonner de ces emails » laisserait
+   * croire qu'on ne coupe que les notifications de commentaires, et la surprise
+   * se paierait au signalement en indésirable.
+   *
+   * Pour ne faire taire qu'un album, c'est le lien de l'email de nouveautés
+   * (`buildAlbumUpdateMail`) qu'il faut suivre.
+   */
   const unsubscribe =
     recipient.reason === 'reply'
       ? `${env.publicUrl}/api/comments/unsubscribe?u=${encodeURIComponent(recipient.email)}&t=${signUnsubscribeToken(recipient.email, env.sessionSecret)}`
@@ -150,7 +163,9 @@ export function buildCommentMail(
     '',
     where,
     link,
-    ...(unsubscribe ? ['', '—', `Se désabonner de ces emails : ${unsubscribe}`] : []),
+    ...(unsubscribe
+      ? ['', '—', `Ne plus recevoir aucun email de cette galerie : ${unsubscribe}`]
+      : []),
   ].join('\n');
 
   // HTML volontairement pauvre : styles en ligne, pas d'image, pas de police
@@ -166,7 +181,7 @@ export function buildCommentMail(
         unsubscribe
           ? `<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Se désabonner de ces emails</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Ne plus recevoir aucun email de cette galerie</a>
       </p>`
           : ''
       }
@@ -174,6 +189,64 @@ export function buildCommentMail(
   `.trim();
 
   return { to: recipient.email, subject, text, html };
+}
+
+/** Ce qu'il faut savoir de l'album pour annoncer ses nouveautés. */
+export interface AlbumUpdateNotification {
+  albumId: string;
+  albumTitle: string;
+  /** Médias entrés dans l'index depuis la dernière annonce. */
+  count: number;
+}
+
+/**
+ * Annonce des nouvelles photos d'un album à quelqu'un qui l'a ouvert.
+ *
+ * Le compte figure dans le sujet : c'est ce qui distingue « il y a du nouveau »
+ * de « il y a beaucoup de nouveau », et ce qu'on lit sans ouvrir le message.
+ * Le lien de désabonnement porte l'album, pas seulement l'adresse — se
+ * désabonner d'une galerie bavarde ne doit pas couper les autres.
+ */
+export function buildAlbumUpdateMail(
+  notification: AlbumUpdateNotification,
+  email: string,
+  env: Env,
+): MailMessage {
+  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}`;
+  const unsubscribe =
+    `${env.publicUrl}/api/subscriptions/unsubscribe` +
+    `?u=${encodeURIComponent(email)}&a=${encodeURIComponent(notification.albumId)}` +
+    `&t=${signAlbumUnsubscribeToken(email, notification.albumId, env.sessionSecret)}`;
+
+  const plural = notification.count > 1;
+  const subject = `${notification.count} nouvelle${plural ? 's' : ''} photo${plural ? 's' : ''} dans ${notification.albumTitle}`;
+
+  const text = [
+    `${subject}.`,
+    '',
+    link,
+    '',
+    '—',
+    `Tu reçois ce message parce que tu as ouvert cet album.`,
+    `Ne plus être prévenu des nouveautés de « ${notification.albumTitle} » : ${unsubscribe}`,
+  ].join('\n');
+
+  // Même sobriété que les notifications de commentaires : styles en ligne, rien
+  // à charger depuis le serveur — donc rien qui signale la lecture non plus.
+  const html = `
+    <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      <p style="margin: 0 0 16px;">${escapeHtml(subject)}.</p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">Voir l’album</a></p>
+      <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
+      <p style="margin: 0; font-size: 13px; color: #888;">
+        Tu reçois ce message parce que tu as ouvert cet album.
+        <br>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Ne plus être prévenu des nouveautés de «&nbsp;${escapeHtml(notification.albumTitle)}&nbsp;»</a>
+      </p>
+    </div>
+  `.trim();
+
+  return { to: email, subject, text, html };
 }
 
 /** Citation en texte brut, préfixée « > » comme le veut l'usage du courrier. */
@@ -189,7 +262,15 @@ function quote(body: string): string {
  * fonction avant d'entrer dans le HTML de l'email, sinon un message contenant
  * une balise s'exécuterait dans le client de messagerie du destinataire.
  */
-function escapeHtml(value: string): string {
+/**
+ * Échappement HTML des textes composés par l'application — noms d'albums, noms
+ * d'auteurs, corps de commentaires.
+ *
+ * Exporté parce que les pages de confirmation de désabonnement en ont besoin
+ * elles aussi : deux copies d'une fonction de sécurité finissent par diverger,
+ * et c'est celle qu'on oublie de corriger qui laisse passer une injection.
+ */
+export function escapeHtml(value: string): string {
   return value
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

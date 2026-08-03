@@ -52,6 +52,17 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(400).send({ error: 'bad_request', message: 'Paramètres invalides' });
       }
 
+      // Ouvrir un album vaut abonnement à ses nouveautés (D41) : c'est un
+      // signal d'intérêt bien meilleur qu'une case à cocher, que personne ne
+      // coche. Sur la première page seulement — les suivantes sont le même
+      // geste — et jamais sur le détail d'un média, sinon le lien « Voir la
+      // photo » d'une notification de commentaire abonnerait aux nouveautés de
+      // l'album, ce que personne n'a demandé. Le dépôt écarte les identités non
+      // vérifiées.
+      if (query.data.cursor === undefined && request.commenterId !== null) {
+        context.subscriptions.subscribe(request.commenterId, albumId);
+      }
+
       const page: ItemsPage = context.media.listItems(
         albumId,
         query.data.limit,

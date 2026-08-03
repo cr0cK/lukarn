@@ -120,6 +120,62 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute les abonnements à une base en version 4 sans rien perdre', () => {
+    const db = databaseAtVersion(4);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
+       VALUES ('vacances', 'Vacances', 'dossier', 1, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO commenters (email, display_name, verified_at, created_at)
+       VALUES ('mamie@exemple.fr', 'Mamie', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
+       VALUES ('vacances', 'abc', 'IMG.jpg', 'image/jpeg', 'photo',
+               '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO sync_state (album_id, last_sync_at, status)
+       VALUES ('vacances', '2026-01-01T00:00:00.000Z', 'ok')`,
+    ).run();
+
+    migrate(db);
+
+    assert.ok(columns(db, 'album_subscriptions').includes('state'));
+    assert.ok(columns(db, 'sync_state').includes('notified_at'));
+    assert.ok(columns(db, 'media').includes('added_at'));
+
+    const photo = db.prepare('SELECT * FROM media WHERE id = ?').get('abc') as {
+      name: string;
+      seen_at: string;
+      added_at: string | null;
+    };
+    // L'index, l'identité et l'état de sync traversent la mise à jour intacts,
+    // et les deux colonnes ajoutées arrivent à NULL : c'est ce qui fait que la
+    // première annonce ne parlera pas des photos déjà là.
+    assert.equal(photo.name, 'IMG.jpg');
+    assert.equal(photo.seen_at, '2026-01-01T00:00:00.000Z');
+    assert.equal(photo.added_at, null);
+
+    const etat = db.prepare('SELECT * FROM sync_state WHERE album_id = ?').get('vacances') as {
+      last_sync_at: string;
+      status: string;
+      notified_at: string | null;
+    };
+    assert.equal(etat.last_sync_at, '2026-01-01T00:00:00.000Z');
+    assert.equal(etat.status, 'ok');
+    assert.equal(etat.notified_at, null);
+
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS n FROM commenters').get() as { n: number }).n,
+      1,
+      'les identités vérifiées doivent survivre',
+    );
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

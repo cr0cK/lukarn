@@ -248,6 +248,47 @@ export const MIGRATIONS: string[] = [
   -- Sert « mes commentaires » : ceux que le lecteur courant peut supprimer.
   CREATE INDEX idx_comments_commenter ON comments (commenter_id);
   `,
+
+  // 5 — annonce des nouvelles photos d'un album à ceux qui l'ouvrent.
+  //
+  // Une identité n'est rattachée à aucun album : l'accès vient de la clé, et
+  // l'identité de l'adresse vérifiée. On ne sait donc pas nativement à qui
+  // écrire — d'où l'abonnement à l'ouverture, et cette table pour le porter.
+  `
+  CREATE TABLE album_subscriptions (
+    commenter_id INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
+    album_id     TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    -- 'auto' : abonné en ouvrant l'album. 'opted_out' : s'est désabonné.
+    --
+    -- Un état plutôt qu'une simple présence, parce que l'abonnement est
+    -- automatique : sans lui, rouvrir l'album le lendemain d'un désabonnement
+    -- réabonnerait — précisément ce qui fait détester un service. L'inscription
+    -- s'écrit INSERT OR IGNORE, qui laisse intacte une ligne déjà 'opted_out'.
+    state        TEXT NOT NULL CHECK (state IN ('auto', 'opted_out')),
+    created_at   TEXT NOT NULL,
+    PRIMARY KEY (commenter_id, album_id)
+  );
+
+  -- Sert « qui est abonné à cet album », la seule lecture du notifieur. Le sens
+  -- inverse est déjà couvert par la clé primaire.
+  CREATE INDEX idx_album_subscriptions_album ON album_subscriptions (album_id);
+
+  -- Date des dernières photos annoncées. Sans elle, une seconde synchronisation
+  -- réannoncerait tout : l'index ne garde aucune trace de ce qui a été signalé.
+  -- NULL sur une base déjà en service : la première exécution l'initialise sans
+  -- rien envoyer, faute de quoi la mise à jour annoncerait tout l'historique.
+  ALTER TABLE sync_state ADD COLUMN notified_at TEXT;
+
+  -- Date d'entrée dans l'index, renseignée à l'INSERT et JAMAIS touchée par le
+  -- ON CONFLICT DO UPDATE de upsertMany. La colonne seen_at ne peut pas jouer
+  -- ce rôle : elle est réécrite sur *tous* les médias à chaque passage de la
+  -- sync, y compris ceux déjà connus — compter les nouveautés dessus les
+  -- compterait toutes.
+  --
+  -- Les lignes existantes restent à NULL, et WHERE added_at > ? les exclut :
+  -- c'est ce qui évite d'annoncer rétroactivement un album entier.
+  ALTER TABLE media ADD COLUMN added_at TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

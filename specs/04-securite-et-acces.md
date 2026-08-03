@@ -244,6 +244,45 @@ un mensonge par omission, et c'est ce qui sépare une modération assumée d'un
 bannissement furtif. Masquer est réversible ; la suppression, elle, est
 définitive et reste offerte à l'auteur comme à l'administrateur.
 
+## Abonnement aux nouveautés d'un album
+
+`subscriptions.ts` pour l'état, `notifier.ts` pour l'envoi,
+`routes/subscriptions.ts` pour le désabonnement. Le raisonnement complet est en
+[08](./08-decisions.md), D41 ; ce qui suit est ce qui touche à l'accès et au
+consentement.
+
+- **On s'abonne en ouvrant l'album**, sur la première page de
+  `GET /api/albums/:albumId/items` — donc derrière `requireAuth` et derrière le
+  contrôle d'album, exactement comme la lecture. Personne ne peut donc s'abonner
+  à un album qu'il n'a pas le droit de voir.
+- **Seule une identité vérifiée est abonnée.** La condition vit dans le SQL de
+  `SubscriptionRepo.subscribe`, pas chez l'appelant : une adresse seulement
+  déclarée peut être celle d'un tiers (D39), à qui cette galerie n'a rien à
+  écrire.
+- **Pas sur le détail d'un média.** Sinon cliquer « Voir la photo » depuis une
+  notification de commentaire abonnerait aux nouveautés de l'album, ce que
+  personne n'a demandé.
+- **Un désabonnement survit à la réouverture de l'album.** C'est l'invariant le
+  plus important de cette fonctionnalité : l'abonnement étant automatique, une
+  simple ligne effacée serait recréée le lendemain. D'où l'état `opted_out` et
+  l'`INSERT OR IGNORE` (voir [03](./03-modele-de-donnees.md)).
+- **Le désabonnement est par album.** `commenters.notify` reste le commutateur
+  global : il coupe les réponses aux commentaires **et** les annonces de
+  nouveautés. Sans cette distinction, quelqu'un qui trouve « Noël 2019 » trop
+  bavard couperait tout, et perdrait les réponses à ses propres commentaires —
+  ce qu'il y a de plus précieux.
+- **Le jeton de désabonnement couvre l'adresse et l'album**
+  (`signAlbumUnsubscribeToken`). Sans l'album dans le message signé, le lien
+  reçu pour un album vaudrait pour tous les autres. Comme celui des
+  commentaires : sans expiration, sans session, comparé en temps constant.
+- Un album ou une identité disparus depuis l'envoi rendent la page en le disant,
+  plutôt qu'une erreur : le lien vit dans un email qu'on rouvre des mois plus
+  tard.
+
+`packages/server/test/subscriptions.test.ts` verrouille ces points, y compris
+par l'API : la première page abonne, le détail d'un média non, une page suivante
+non plus, et le jeton d'un album est refusé sur un autre.
+
 **Lien de désabonnement.** `signUnsubscribeToken` (`crypto.ts`) produit un HMAC
 de l'adresse avec `SESSION_SECRET`, comparé en temps constant. **Sans
 expiration et sans session** : le lien vit dans un email qu'on rouvre des mois
