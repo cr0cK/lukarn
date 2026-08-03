@@ -155,7 +155,7 @@ export function Lightbox({
     // Ancre synthétique plutôt que window.open : évite le blocage de popup et
     // laisse le navigateur gérer la barre de téléchargement.
     const anchor = document.createElement('a');
-    anchor.href = mediaUrl.download(item.id);
+    anchor.href = mediaUrl.download(item.id, item.version);
     anchor.download = item.name;
     document.body.appendChild(anchor);
     anchor.click();

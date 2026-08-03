@@ -33,6 +33,22 @@ export interface SyncResult {
   removed: number;
   folders: number;
   durationMs: number;
+  /**
+   * Vrai quand l'album a été reconfiguré pendant le parcours : ce passage s'est
+   * arrêté sans rien écrire, laissant la main à celui qui l'a remplacé.
+   */
+  superseded: boolean;
+}
+
+/**
+ * Abandon d'un passage rendu caduc par une reconfiguration. Interne au
+ * `Syncer` : elle ne remonte jamais à l'appelant, qui reçoit un `SyncResult`
+ * marqué `superseded`.
+ */
+class SyncSupersededError extends Error {
+  constructor(albumId: string) {
+    super(`Sync de "${albumId}" abandonnée : l'album a été reconfiguré entre-temps`);
+  }
 }
 
 export interface Logger {
@@ -61,7 +77,17 @@ function fingerprint(album: SyncAlbum): string {
  */
 export class Syncer {
   /** Albums en cours de sync : évite qu'une resync manuelle double le travail. */
-  private readonly running = new Map<string, { fingerprint: string; task: Promise<SyncResult> }>();
+  private readonly running = new Map<
+    string,
+    { fingerprint: string; task: Promise<SyncResult>; generation: number }
+  >();
+
+  /**
+   * Distingue deux passages sur le même album. Le `fingerprint` ne suffirait
+   * pas : revenir au dossier de départ pendant une sync rendrait les deux
+   * passages indiscernables, et le premier reprendrait la main sur l'index.
+   */
+  private generations = 0;
 
   constructor(
     private readonly drive: DriveService,
@@ -90,14 +116,15 @@ export class Syncer {
     // arrivé qui décide de ce qui reste. Sans cet enchaînement, l'ordre de fin
     // déciderait du contenu de l'album.
     const previous = current ? current.task.then(noop, noop) : Promise.resolve();
-    const task = previous.then(() => this.run(album));
+    const generation = ++this.generations;
+    const task = previous.then(() => this.run(album, generation));
 
     void task.catch(noop).finally(() => {
       // Ne retirer que sa propre entrée : si une reconfiguration a déjà pris la
       // place, l'effacer laisserait la sync suivante croire qu'aucune ne tourne.
       if (this.running.get(album.id)?.task === task) this.running.delete(album.id);
     });
-    this.running.set(album.id, { fingerprint: wanted, task });
+    this.running.set(album.id, { fingerprint: wanted, task, generation });
     return task;
   }
 
@@ -118,7 +145,19 @@ export class Syncer {
     return results;
   }
 
-  private async run(album: SyncAlbum): Promise<SyncResult> {
+  /**
+   * Ce passage a-t-il encore la main sur l'album ? Faux dès qu'une
+   * reconfiguration en a lancé un autre — auquel cas plus rien ne doit être
+   * écrit : la route a purgé l'index en changeant le dossier, et réinsérer ici
+   * rendrait visibles les photos que le propriétaire vient de retirer.
+   */
+  private ensureCurrent(albumId: string, generation: number): void {
+    if (this.running.get(albumId)?.generation !== generation) {
+      throw new SyncSupersededError(albumId);
+    }
+  }
+
+  private async run(album: SyncAlbum, generation: number): Promise<SyncResult> {
     const startedAt = Date.now();
     // Estampille du passage : tout média non revu avec cette valeur a disparu
     // du dossier et sera retiré de l'index à la fin.
@@ -127,10 +166,11 @@ export class Syncer {
     const previous = this.syncState.get(album.id);
     this.syncState.set(album.id, { ...previous, status: 'running', error: null });
 
+    const visited = new Set<string>();
+
     try {
       const api = this.drive.api();
       const pending = [album.folderId];
-      const visited = new Set<string>();
       let indexed = 0;
       let batch: MediaUpsert[] = [];
 
@@ -163,12 +203,15 @@ export class Syncer {
           // Écriture par lots : une transaction par millier de fichiers plutôt
           // qu'une par fichier, et l'album devient consultable en cours de sync.
           if (batch.length >= 500) {
+            this.ensureCurrent(album.id, generation);
             this.media.upsertMany(batch, seenAt);
             batch = [];
           }
         }
       }
 
+      // Dernier contrôle avant les écritures qui décident du contenu visible.
+      this.ensureCurrent(album.id, generation);
       if (batch.length > 0) this.media.upsertMany(batch, seenAt);
 
       const removed = this.media.deleteStale(album.id, seenAt);
@@ -180,8 +223,31 @@ export class Syncer {
           `${visited.size} dossiers, ${durationMs} ms`,
       );
 
-      return { albumId: album.id, indexed, removed, folders: visited.size, durationMs };
+      return {
+        albumId: album.id,
+        indexed,
+        removed,
+        folders: visited.size,
+        durationMs,
+        superseded: false,
+      };
     } catch (error) {
+      if (error instanceof SyncSupersededError) {
+        // Ni l'index ni `sync_state` ne sont touchés : les deux appartiennent
+        // désormais au passage qui a pris la place. Écrire « erreur » ici
+        // afficherait un échec dans /admin alors que rien n'a échoué — la
+        // configuration a simplement changé sous les pieds de ce passage-ci.
+        this.log.info(error.message);
+        return {
+          albumId: album.id,
+          indexed: 0,
+          removed: 0,
+          folders: visited.size,
+          durationMs: Date.now() - startedAt,
+          superseded: true,
+        };
+      }
+
       const message = (error as Error).message;
       /**
        * Les lots déjà écrits sont validés — une transaction par lot de 500,
@@ -194,11 +260,13 @@ export class Syncer {
        * que /admin affiche, et prétendre que la sync date de maintenant
        * masquerait qu'elle n'est pas allée au bout.
        */
-      this.syncState.set(album.id, {
-        lastSyncAt: previous.lastSyncAt,
-        status: 'error',
-        error: message,
-      });
+      if (this.running.get(album.id)?.generation === generation) {
+        this.syncState.set(album.id, {
+          lastSyncAt: previous.lastSyncAt,
+          status: 'error',
+          error: message,
+        });
+      }
       throw error;
     }
   }

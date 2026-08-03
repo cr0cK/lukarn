@@ -374,19 +374,28 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const album = context.config.updateAlbum(id, patch);
 
       /**
-       * Changer le dossier Drive change le contenu de l'album : les médias
-       * indexés désignent l'ancien dossier et resteraient visibles — donc
-       * consultables par les comptes qui ont cet album — jusqu'à la prochaine
-       * synchronisation. Purge immédiate plutôt que d'attendre `deleteStale` :
-       * la fenêtre entre les deux est exactement celle où l'album montre ce que
-       * le propriétaire vient de vouloir retirer. La resynchronisation qui suit
-       * le remplit à nouveau, sans qu'il ait à la déclencher lui-même.
+       * Changer le périmètre change le contenu de l'album : les médias indexés
+       * désignent l'ancien et resteraient visibles — donc consultables par les
+       * comptes qui ont cet album — jusqu'à la prochaine synchronisation. Purge
+       * immédiate plutôt que d'attendre `deleteStale` : la fenêtre entre les
+       * deux est exactement celle où l'album montre ce que le propriétaire vient
+       * de vouloir retirer. La resynchronisation qui suit le remplit à nouveau,
+       * sans qu'il ait à la déclencher lui-même.
+       *
+       * `recursive` compte autant que `folderId` : le repasser à `false` doit
+       * retirer les sous-dossiers tout de suite, et non à la prochaine sync
+       * périodique — jamais, sur une instance où la sync automatique est
+       * coupée.
        */
-      if (patch.folderId !== undefined && patch.folderId !== stored.folderId) {
+      const perimetreChange =
+        (patch.folderId !== undefined && patch.folderId !== stored.folderId) ||
+        (patch.recursive !== undefined && patch.recursive !== stored.recursive);
+
+      if (perimetreChange) {
         const removed = context.media.clearAlbum(id);
         context.syncState.set(id, { lastSyncAt: null, status: 'never', error: null });
         request.log.info(
-          `Album "${id}" : dossier Drive changé, ${removed} médias retirés de l'index`,
+          `Album "${id}" : périmètre Drive changé, ${removed} médias retirés de l'index`,
         );
         startSync(album, request.log);
       }

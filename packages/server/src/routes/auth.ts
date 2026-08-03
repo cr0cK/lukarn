@@ -2,7 +2,7 @@ import argon2 from 'argon2';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { SESSION_COOKIE } from '../sessions.js';
+import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 
 /**
  * Hash jetable comparé lorsqu'aucun utilisateur ne correspond au login fourni.
@@ -64,18 +64,11 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       const session = context.sessions.create(user.username);
 
       return reply
-        .setCookie(SESSION_COOKIE, session.id, {
-          path: '/',
-          httpOnly: true,
-          // `lax` laisse passer la navigation entrante (retour du callback
-          // OAuth) tout en bloquant les requêtes cross-site déclenchées par un
-          // tiers.
-          sameSite: 'lax',
-          // En HTTP local le cookie `secure` ne serait jamais renvoyé.
-          secure: context.env.publicUrl.startsWith('https://'),
-          maxAge: Math.floor(context.sessions.ttlMs / 1000),
-          signed: true,
-        })
+        .setCookie(
+          SESSION_COOKIE,
+          session.id,
+          sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
+        )
         .send({
           username: user.username,
           admin: user.admin,

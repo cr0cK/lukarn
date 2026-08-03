@@ -19,7 +19,7 @@ rapport, qui ne partagent ni stockage, ni durée de vie, ni population.
 |                 | OAuth Google                           | Identifiant / mot de passe       |
 | --------------- | -------------------------------------- | -------------------------------- |
 | Qui             | Le propriétaire du Drive, une personne | Chaque visiteur                  |
-| Quand           | Une fois, à l'installation             | À chaque session (30 jours)      |
+| Quand           | Une fois, à l'installation             | À chaque session (un an)         |
 | Ce que ça ouvre | La lecture du Drive **par le serveur** | Les albums attribués à ce compte |
 | Où c'est stocké | `oauth_token`, refresh token chiffré   | Table `users`, hash argon2id     |
 | Qui déclenche   | `/admin` → « Connecter Google Drive »  | Le formulaire de `/login`        |
@@ -114,7 +114,16 @@ d'une par vignette.
 Le cookie `gdv_session` est `httpOnly`, `sameSite: 'lax'`, **signé** avec
 `SESSION_SECRET` via `@fastify/cookie`, et `secure` uniquement si `PUBLIC_URL`
 commence par `https://` — sinon le navigateur ne le renverrait jamais en
-développement local.
+développement local. Ses options sortent d'une seule fonction
+(`sessionCookieOptions`), utilisée à la connexion **comme à la prolongation** :
+deux jeux d'options qui divergeraient, c'est un cookie qui change de portée au
+premier renouvellement.
+
+Prolonger la session en base ne suffit pas : le cookie porte sa propre échéance,
+que le navigateur applique sans rien savoir de la base. Le hook `onRequest` le
+réémet donc dès que la lecture a repoussé l'expiration — sans quoi le visiteur
+le plus assidu se retrouvait déconnecté un an après sa connexion, la
+prolongation ne servant qu'à faire grossir `sessions`.
 
 `sameSite: 'lax'` et non `strict` : le retour du callback OAuth est une
 navigation entrante depuis `accounts.google.com`, et `strict` empêcherait le
@@ -185,6 +194,14 @@ interdit comme sur un album inexistant.
 L'exception assumée : `/api/admin/*` répond **403** à un utilisateur connecté non
 administrateur. L'existence de l'espace d'administration n'est pas un secret —
 il est annoncé par le README et par un lien dans la barre supérieure.
+
+**Le cache navigateur est cloisonné par session.** Les réponses média portent
+`Vary: Cookie` en plus de `Cache-Control: private, …, immutable`. Sans lui, deux
+comptes qui se succèdent dans le même profil de navigateur — l'ordinateur du
+salon — partagent les mêmes entrées de cache : le second rouvre depuis
+l'historique une photo d'un album qu'il n'a jamais eu le droit de voir, sans
+qu'aucune requête n'atteigne `authorize()`. Ce que cet en-tête ne règle pas, et
+qu'aucun autre ne réglerait, est décrit en D43.
 
 ## Identité de commentateur
 

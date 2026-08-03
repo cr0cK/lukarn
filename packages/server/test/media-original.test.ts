@@ -135,3 +135,23 @@ describe('relais du fichier d’origine', () => {
     assert.equal(response.headers['content-range'], 'bytes */4096');
   });
 });
+
+describe('cache navigateur d’un média protégé', () => {
+  it('indexe l’entrée sur la session qui l’a obtenue', async () => {
+    context.drive.fetchFile = () => Promise.resolve(new Response('des octets'));
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/api/media/clip/original',
+      headers: { cookie },
+    });
+
+    assert.equal(response.statusCode, 200);
+    // Sans `Vary`, deux comptes qui se succèdent dans le même profil de
+    // navigateur — l'ordinateur du salon — partagent les entrées : le second
+    // rouvre depuis l'historique un média qu'il n'a jamais eu le droit de voir,
+    // sans qu'aucune requête n'atteigne le contrôle d'accès.
+    assert.equal(response.headers.vary, 'Cookie');
+    assert.match(String(response.headers['cache-control']), /private/);
+  });
+});

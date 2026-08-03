@@ -16,6 +16,19 @@ import { requireAuth } from '../plugins/auth.js';
  */
 const IMMUTABLE = 'private, max-age=31536000, immutable';
 
+/**
+ * Le cache privé du navigateur est indexé par la valeur du cookie, donc par la
+ * session. Sans cela, deux comptes qui se succèdent dans le même profil —
+ * l'ordinateur du salon — partagent les mêmes entrées : le second rouvre depuis
+ * l'historique une photo d'un album qu'il n'a jamais eu le droit de voir, sans
+ * qu'aucune requête n'atteigne `authorize()`.
+ *
+ * Ce que cet en-tête ne règle pas, et qu'aucun autre ne réglerait : celui à qui
+ * on retire un album garde dans son cache les photos qu'il avait déjà chargées.
+ * Il les a eues — on n'efface pas ce qui est déjà sur son disque (D43).
+ */
+const VARY_COOKIE = 'Cookie';
+
 const thumbQuery = z.object({ s: z.coerce.number().int().default(320) });
 
 export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
@@ -67,13 +80,19 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     const version = meta.md5 ?? 'v0';
     const etag = `"${mediaId}-${version}-${variant.kind === 'thumb' ? variant.size : variant.kind}"`;
     if (request.headers['if-none-match'] === etag) {
-      return reply.code(304).header('Cache-Control', IMMUTABLE).header('ETag', etag).send();
+      return reply
+        .code(304)
+        .header('Cache-Control', IMMUTABLE)
+        .header('Vary', VARY_COOKIE)
+        .header('ETag', etag)
+        .send();
     }
 
     const rendered = await context.renderer.render(mediaId, variant, meta.md5);
     return reply
       .header('Content-Type', rendered.contentType)
       .header('Cache-Control', IMMUTABLE)
+      .header('Vary', VARY_COOKIE)
       .header('ETag', etag)
       .send(createReadStream(rendered.path));
   }
@@ -165,7 +184,8 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
         .header('Content-Type', meta.mimeType)
         // Indispensable pour que le navigateur autorise le seek dans la vidéo.
         .header('Accept-Ranges', 'bytes')
-        .header('Cache-Control', IMMUTABLE);
+        .header('Cache-Control', IMMUTABLE)
+        .header('Vary', VARY_COOKIE);
 
       // Content-Length / Content-Range viennent de Drive : les recopier tels
       // quels garantit qu'ils décrivent exactement le corps relayé.

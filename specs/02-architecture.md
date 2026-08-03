@@ -118,9 +118,12 @@ Déclenchée au démarrage (`sync.onStartup`), périodiquement
    `deleteStale` décider du contenu final.
 2. `sync_state` passe à `running`, erreur remise à `null`.
 3. Un `seenAt` ISO est figé : c'est l'estampille du passage.
-4. Parcours en profondeur depuis `folderId`, avec `visited` contre les cycles de
-   raccourcis et un plafond `MAX_FOLDERS = 5000`. `recursive: false` n'empile
-   pas les sous-dossiers.
+4. Parcours en profondeur depuis `folderId`, avec `visited` contre les cycles et
+   un plafond `MAX_FOLDERS = 5000`. `recursive: false` n'empile pas les
+   sous-dossiers. Les **raccourcis Drive ne sont pas suivis** : `files.list` ne
+   demande pas `shortcutDetails`, si bien qu'un dossier atteignable seulement
+   par un raccourci n'est jamais indexé. `visited` sert donc au cas où le même
+   dossier est atteint par deux chemins, pas à casser un cycle de raccourcis.
 5. `files.list` par pages de 1000, en ne demandant que
    `id, name, mimeType, size, modifiedTime, md5Checksum, imageMediaMetadata,
 videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
@@ -162,7 +165,8 @@ il exposerait l'arborescence Drive au visiteur. Tout passe donc par
 
 **Cache disque des dérivés.** Régénérer une vignette coûte un téléchargement
 Drive plus un décodage sharp. Le cache est un simple fichier par entrée, clé
-`sha256(<fileId>:<variante>)` répartie sur 256 sous-dossiers, inventaire des
+`sha256(<fileId>:<md5>:<variante>)` — sans le `<md5>` pour les rares fichiers
+que Drive n'empreinte pas — répartie sur 256 sous-dossiers, inventaire des
 tailles en mémoire pour décider des évictions sans re-parcourir l'arborescence.
 L'inventaire est **reconstruit au démarrage** par `MediaCache.load()` : un
 fichier déposé pendant que le serveur tourne est ignoré jusqu'au redémarrage
@@ -188,6 +192,13 @@ l'inventaire existe encore avant de le rendre ; sinon il refabrique le dérivé.
 C'est ce qui couvre « vider le cache » depuis /admin pendant qu'une grille se
 charge, et tout ménage manuel sur le volume.
 
+Limite connue, assumée : la revérification a lieu **avant** le `rm`, pas après.
+Une requête peut donc valider une entrée pendant qu'une suppression est déjà en
+vol et recevoir un `ENOENT` à l'ouverture — de même qu'un `clear()` déclenché
+depuis /admin pendant une écriture. Fermer complètement la fenêtre demanderait
+des baux ou un compteur de références sur chaque entrée, ce qui coûte plus cher
+en complexité permanente qu'une vignette manquante ne coûte à qui la recharge.
+
 **Pas de transcodage vidéo.** `GET /api/media/:id/original` relaie le header
 `Range` tel quel vers Drive et recopie `Content-Length` / `Content-Range` de la
 réponse. Le seek natif marche, le CPU du VPS ne fait rien, et il n'y a aucun
@@ -197,8 +208,17 @@ de la fin, courant quand on change de vidéo), et son `Content-Range` dit au
 lecteur où s'arrête le fichier. La contrepartie assumée : un format que le
 navigateur ne lit pas n'est pas lisible du tout.
 
+**Un original de plus de 80 Mo n'est pas décodé sur place.** Le limiteur borne
+le nombre de rendus simultanés, pas leur taille, et chaque rendu charge son
+original entier en mémoire pour le donner à sharp : trois places prises par des
+fichiers de 300 Mo suffisent à emporter le processus, donc la galerie. La taille
+annoncée par Drive est donc contrôlée **avant** de lire le corps, et le corps
+mesuré à son tour — un en-tête absent ou menteur ne doit pas suffire. Au-delà,
+la photo n'est pas refusée : elle emprunte le repli ci-dessous.
+
 **Le repli Drive est authentifié.** Quand libvips ne décode pas un HEIC ou un
-RAW, le rendu repart du `thumbnailLink` produit par Google. Ce lien porte le même
+RAW, ou quand l'original est trop lourd, le rendu repart du `thumbnailLink`
+produit par Google. Ce lien porte le même
 contrôle d'accès que le fichier : demandé sans en-tête `Authorization`, il répond
 401/403 pour tout fichier non public — c'est-à-dire dans le cas normal. Il passe
 donc par `DriveService.fetchAuthorized()`, comme les téléchargements d'originaux,

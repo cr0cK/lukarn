@@ -28,6 +28,23 @@ export class DriveNotConnectedError extends Error {
   }
 }
 
+/**
+ * `TOKEN_KEY` ne déchiffre pas le jeton stocké. Sous-classe de
+ * `DriveNotConnectedError` pour hériter de son traitement — l'instance ne peut
+ * effectivement rien lire de Drive — tout en disant la seule chose qui compte :
+ * le jeton est là, c'est la clé qui ne va pas. Le supprimer ferait perdre une
+ * autorisation valide pour une variable d'environnement mal recopiée.
+ */
+export class DriveKeyMismatchError extends DriveNotConnectedError {
+  constructor() {
+    super();
+    this.message =
+      'Le refresh token stocké ne se déchiffre pas avec TOKEN_KEY. Rétablis la clé ' +
+      "d'origine, ou reconnecte Google Drive depuis /admin pour en obtenir un nouveau.";
+    this.name = 'DriveKeyMismatchError';
+  }
+}
+
 export class DriveNotConfiguredError extends Error {
   constructor() {
     super('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET ne sont pas définis dans .env.');
@@ -88,6 +105,13 @@ export interface DriveConnection {
 export class DriveService {
   private cachedClient: OAuth2Client | null = null;
 
+  /**
+   * Vrai depuis qu'une tentative de déchiffrement a échoué. Retenu ici plutôt
+   * que recalculé : `connected` est lu à chaque page de /admin, et déchiffrer
+   * coûte un `scrypt` — un prix qu'on ne paie pas pour afficher un état.
+   */
+  private unreadableToken = false;
+
   constructor(
     private readonly env: Env,
     private readonly db: Db,
@@ -105,8 +129,13 @@ export class DriveService {
       : null;
   }
 
-  /** Un jeton révoqué est encore stocké, mais ne permet plus rien. */
+  /**
+   * Un jeton révoqué — ou qui ne se déchiffre pas — est encore stocké, mais ne
+   * permet plus rien. /admin doit donc proposer de reconnecter, sans que le
+   * jeton en place soit effacé pour autant.
+   */
   get connected(): boolean {
+    if (this.unreadableToken) return false;
     const row = this.readToken();
     return row !== null && row.revoked_at === null;
   }
@@ -160,12 +189,14 @@ export class DriveService {
       );
 
     this.cachedClient = null;
+    this.unreadableToken = false;
     this.log.info(`Google Drive connecté${account ? ` (${account})` : ''}`);
   }
 
   disconnect(): void {
     this.db.prepare('DELETE FROM oauth_token').run();
     this.cachedClient = null;
+    this.unreadableToken = false;
     this.log.info('Google Drive déconnecté');
   }
 
@@ -311,14 +342,23 @@ export class DriveService {
     try {
       refreshToken = decryptSecret(row.ciphertext, this.env.tokenKey);
     } catch {
-      // TOKEN_KEY a changé : le token stocké est irrécupérable, autant le
-      // supprimer pour que /admin affiche clairement « non connecté ».
+      /**
+       * La ligne est **conservée**. Un jeton illisible n'est pas un jeton
+       * invalide : une `TOKEN_KEY` mal recopiée dans un déploiement, ou une
+       * variable oubliée, suffit à produire cette erreur — et la supprimer
+       * détruirait une autorisation encore valable, que seul un nouveau
+       * consentement Google permettrait de retrouver. Rétablir la bonne clé
+       * doit suffire.
+       */
+      this.unreadableToken = true;
       this.log.warn(
-        'Le refresh token stocké est illisible (TOKEN_KEY a changé ?). Reconnecte Drive depuis /admin.',
+        'Le refresh token stocké est illisible (TOKEN_KEY a changé ?). Il est conservé : ' +
+          "rétablis la clé d'origine, ou reconnecte Drive depuis /admin.",
       );
-      this.disconnect();
-      throw new DriveNotConnectedError();
+      throw new DriveKeyMismatchError();
     }
+
+    this.unreadableToken = false;
 
     const client = this.newClient();
     client.setCredentials({ refresh_token: refreshToken });

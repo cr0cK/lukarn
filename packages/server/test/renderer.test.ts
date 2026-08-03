@@ -95,3 +95,40 @@ describe('repli sur la vignette Drive', () => {
     }
   });
 });
+
+describe('original trop lourd', () => {
+  it('renonce sur la taille annoncée et passe par l’aperçu Drive', async () => {
+    const cache = new MediaCache(join(root, 'enorme'), 1024 * 1024);
+    await cache.load();
+
+    let repliDemande = 0;
+    const drive = {
+      // Le corps est une image parfaitement décodable : seul l'en-tête de
+      // taille doit provoquer le renoncement. Sans ce contrôle, sharp la
+      // décoderait et le repli ne servirait jamais — c'est ce qui distingue ce
+      // test d'un simple « format non supporté ».
+      fetchFile: () =>
+        Promise.resolve(
+          new Response(jpeg, { headers: { 'content-length': String(500 * 1024 * 1024) } }),
+        ),
+      guard: <T>(operation: () => Promise<T>) => operation(),
+      api: () => ({
+        files: {
+          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/XyZ=s220' } }),
+        },
+      }),
+      fetchAuthorized: () => {
+        repliDemande++;
+        return Promise.resolve(new Response(jpeg));
+      },
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const rendu = await renderer.render('panorama', { kind: 'full' }, null);
+
+    // La photo reste servie — c'est l'aperçu de Drive, pas un échec : refuser
+    // afficherait une case cassée dans la grille pour un fichier valide.
+    assert.equal(repliDemande, 1, 'un original hors limite ne doit pas être décodé sur place');
+    assert.ok(existsSync(rendu.path));
+  });
+});

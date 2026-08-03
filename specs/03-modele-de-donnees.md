@@ -76,7 +76,9 @@ perdu son autorisation.
 ### `sessions`
 
 `id` (PK, 32 octets aléatoires en base64url), `username`, `created_at`,
-`expires_at`. TTL de 30 jours (`sessions.ts`).
+`expires_at`. TTL d'un an (`sessions.ts`), repoussé d'autant dès qu'une session
+passe sa mi-vie — le cookie est réémis en même temps, sans quoi le navigateur
+jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
 
 ### `users`, `albums`, `user_albums`, `settings`
 
@@ -336,8 +338,12 @@ après la mise à jour.
 `MediaRepo.listItems(albumId, limit, cursor, order)` rend `limit` lignes et lit
 `limit + 1` pour savoir s'il y a une suite, sans `COUNT`.
 
-Le curseur est `base64url("<taken_at> <id>")` — un simple encodage, pas un
-secret. La reprise est :
+Le curseur est `base64url("<taken_at>\u0000<id>")` — un simple encodage, pas un
+secret. Le séparateur est l'octet nul : ni une date ISO ni un identifiant Drive
+ne peuvent en contenir, là où l'espace resterait un pari sur la forme des
+identifiants. Il s'écrit `\u0000` dans la source et **jamais littéralement** —
+un octet nul fait classer le fichier comme binaire par git, qui cesse alors
+d'en afficher les diffs. La reprise est :
 
 ```sql
 WHERE album_id = ?

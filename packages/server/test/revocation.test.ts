@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import { encryptSecret } from '../src/crypto.js';
 import { openDb, type Db } from '../src/db.js';
-import { DriveRevokedError, DriveService } from '../src/drive/service.js';
+import { DriveKeyMismatchError, DriveRevokedError, DriveService } from '../src/drive/service.js';
 import { loadEnv, type Env } from '../src/env.js';
 
 /**
@@ -156,6 +156,21 @@ describe('détection de invalid_grant', () => {
     // réclamer à /admin une reconnexion qui vient précisément d'être faite.
     assert.equal(service.connected, true);
     assert.equal(service.connection?.revokedAt, null);
+  });
+
+  it('conserve un jeton que TOKEN_KEY ne déchiffre plus', () => {
+    const avecMauvaiseCle = new DriveService({ ...env, tokenKey: 'z'.repeat(48) }, db, silent);
+
+    // Le jeton est illisible : l'instance ne peut rien faire de Drive et doit
+    // le dire, /admin proposant alors de reconnecter.
+    assert.throws(() => avecMauvaiseCle.api(), DriveKeyMismatchError);
+    assert.equal(avecMauvaiseCle.connected, false);
+
+    // Mais il est toujours là. Une clé mal recopiée dans un déploiement ne doit
+    // pas coûter l'autorisation Google elle-même : rétablir la clé suffit.
+    assert.equal(service.connected, true);
+    assert.ok(db.prepare('SELECT ciphertext FROM oauth_token WHERE id = 1').get());
+    assert.equal(service.connection?.account, 'photos@exemple.fr');
   });
 });
 

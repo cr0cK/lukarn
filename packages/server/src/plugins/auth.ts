@@ -3,7 +3,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { toIdentity } from '../commenters.js';
 import type { AppContext } from '../context.js';
-import { SESSION_COOKIE } from '../sessions.js';
+import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -28,7 +28,7 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
   app.decorateRequest('sessionId', null);
   app.decorateRequest('commenterId', null);
 
-  app.addHook('onRequest', async (request) => {
+  app.addHook('onRequest', async (request, reply) => {
     const raw = request.cookies[SESSION_COOKIE];
     if (!raw) return;
 
@@ -57,6 +57,19 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
     // identifiant qui ne désigne plus rien.
     if (session.commenterId !== null && !commenter) {
       context.sessions.attachCommenter(session.id, null);
+    }
+
+    // La base vient de repousser l'échéance : le cookie doit suivre. Il porte
+    // sa propre date d'expiration, que le navigateur applique sans rien savoir
+    // de la base — sans cette réémission, un visiteur assidu se retrouverait
+    // déconnecté un an après sa connexion, et la prolongation ne servirait à
+    // rien qu'à faire grossir `sessions`.
+    if (session.renewed) {
+      void reply.setCookie(
+        SESSION_COOKIE,
+        session.id,
+        sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
+      );
     }
 
     request.sessionId = session.id;

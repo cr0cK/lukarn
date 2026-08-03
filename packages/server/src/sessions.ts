@@ -31,6 +31,42 @@ export interface SessionRecord {
   expiresAt: string;
   /** Identité de commentateur mémorisée, `null` si personne ne s'est déclaré. */
   commenterId: number | null;
+  /**
+   * Vrai quand cette lecture vient de repousser l'échéance. L'appelant doit
+   * alors réémettre le cookie : sans lui, la prolongation ne vivrait qu'en
+   * base et le navigateur jetterait quand même le sien à la date d'origine —
+   * la session la plus assidue finirait déconnectée au bout d'un an.
+   */
+  renewed: boolean;
+}
+
+/**
+ * Options du cookie de session, partagées entre la connexion et la
+ * prolongation. Deux jeux d'options qui divergent, c'est un cookie qui change
+ * de portée ou de politique `sameSite` au premier renouvellement.
+ */
+export function sessionCookieOptions(
+  publicUrl: string,
+  ttlMs: number,
+): {
+  path: string;
+  httpOnly: true;
+  sameSite: 'lax';
+  secure: boolean;
+  maxAge: number;
+  signed: true;
+} {
+  return {
+    path: '/',
+    httpOnly: true,
+    // `lax` laisse passer la navigation entrante (retour du callback OAuth)
+    // tout en bloquant les requêtes cross-site déclenchées par un tiers.
+    sameSite: 'lax',
+    // En HTTP local le cookie `secure` ne serait jamais renvoyé.
+    secure: publicUrl.startsWith('https://'),
+    maxAge: Math.floor(ttlMs / 1000),
+    signed: true,
+  };
 }
 
 /**
@@ -54,7 +90,13 @@ export class SessionStore {
       .prepare('INSERT INTO sessions (id, username, created_at, expires_at) VALUES (?, ?, ?, ?)')
       .run(id, username, now.toISOString(), expiresAt.toISOString());
 
-    return { id, username, expiresAt: expiresAt.toISOString(), commenterId: null };
+    return {
+      id,
+      username,
+      expiresAt: expiresAt.toISOString(),
+      commenterId: null,
+      renewed: false,
+    };
   }
 
   /**
@@ -67,7 +109,7 @@ export class SessionStore {
         `SELECT id, username, expires_at AS expiresAt, commenter_id AS commenterId
            FROM sessions WHERE id = ?`,
       )
-      .get(id) as SessionRecord | undefined;
+      .get(id) as Omit<SessionRecord, 'renewed'> | undefined;
 
     if (!row) return null;
 
@@ -80,10 +122,10 @@ export class SessionStore {
     if (expiresAt - Date.now() < RENEW_AFTER_MS) {
       const next = new Date(Date.now() + SESSION_TTL_MS).toISOString();
       this.db.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?').run(next, id);
-      return { ...row, expiresAt: next };
+      return { ...row, expiresAt: next, renewed: true };
     }
 
-    return row;
+    return { ...row, renewed: false };
   }
 
   /**

@@ -229,4 +229,33 @@ describe('cycle de session', () => {
     });
     assert.equal(response.statusCode, 401);
   });
+
+  it('repose le cookie quand la session est prolongée', async () => {
+    const cookie = await login('famille');
+    const sessionId = cookie.slice('gdv_session='.length);
+
+    // Session arrivée à mi-vie : la lecture suivante repousse son échéance en
+    // base. Le cookie, lui, porte encore la date de la connexion — sans
+    // réémission, il expirerait alors que la session, elle, est prolongée.
+    const miVie = new Date(Date.now() + context.sessions.ttlMs / 4).toISOString();
+    context.db.prepare('UPDATE sessions SET expires_at = ? WHERE id LIKE ?').run(
+      miVie,
+      // Le cookie est signé : sa valeur porte un suffixe que la base ignore.
+      `${sessionId.split('.')[0]}%`,
+    );
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie },
+    });
+    assert.equal(response.statusCode, 200);
+
+    const repose = response.cookies.find((entry) => entry.name === 'gdv_session');
+    assert.ok(repose, 'la prolongation doit réémettre le cookie');
+    assert.ok(
+      (repose.maxAge ?? 0) > context.sessions.ttlMs / 1000 / 2,
+      "le cookie réémis doit porter la nouvelle échéance, pas l'ancienne",
+    );
+  });
 });

@@ -118,4 +118,46 @@ describe('déduplication des synchronisations', () => {
     await recursive;
     await plat;
   });
+
+  it("n'écrit plus rien une fois l'album reconfiguré sous ses pieds", async () => {
+    let ouvrirD = (): void => {};
+    let ouvrirE = (): void => {};
+    const barriereD = new Promise<void>((resolve) => {
+      ouvrirD = resolve;
+    });
+    const barriereE = new Promise<void>((resolve) => {
+      ouvrirE = resolve;
+    });
+
+    const syncer = new Syncer(
+      fauxDrive(
+        { 'dossier-d': ['d1'], 'dossier-e': ['e1'] },
+        { 'dossier-d': barriereD, 'dossier-e': barriereE },
+      ),
+      media,
+      syncState,
+      silencieux,
+    );
+
+    const premiere = syncer.sync({ id: 'perime', folderId: 'dossier-d', recursive: true });
+    const seconde = syncer.sync({ id: 'perime', folderId: 'dossier-e', recursive: true });
+
+    // Ce que fait la route PATCH quand le dossier change : purger l'index sans
+    // attendre, pour que l'album cesse tout de suite de montrer l'ancien
+    // contenu. C'est cette purge que le passage périmé ne doit pas défaire.
+    media.clearAlbum('perime');
+
+    ouvrirD();
+    const resultat = await premiere;
+    assert.equal(resultat.superseded, true, 'le passage périmé doit se déclarer abandonné');
+    assert.deepEqual(
+      contenuIndexe('perime'),
+      [],
+      'un passage périmé qui réinsère rend visibles les photos que le propriétaire vient de retirer',
+    );
+
+    ouvrirE();
+    await seconde;
+    assert.deepEqual(contenuIndexe('perime'), ['e1']);
+  });
 });

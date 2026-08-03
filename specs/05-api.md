@@ -127,9 +127,10 @@ déjà ouverte, la clé d'accès et la personne étant deux choses distinctes.
 | POST    | `/api/identity/forget`       | `SessionUser` |
 
 **`request-code`** — corps `IdentityRequest` = `{ email, displayName }`. Envoie
-un code à six chiffres et répond **toujours `202`**, que l'adresse soit déjà
-connue ou non : distinguer les deux dirait à qui l'essaie quelles adresses ont
-déjà commenté ici. `429 too_soon` avec `Retry-After` si un code a été envoyé
+un code à six chiffres et répond `202` **que l'adresse soit déjà connue ou
+non** : distinguer les deux dirait à qui l'essaie quelles adresses ont déjà
+commenté ici. Le nom fourni n'est pas appliqué tout de suite si l'identité est
+déjà vérifiée — il attend le code (D42). `429 too_soon` avec `Retry-After` si un code a été envoyé
 dans la minute — sans quoi le formulaire expédierait des emails en rafale vers
 une adresse qu'on ne possède pas. `503 mail_not_configured` sans SMTP : aucun
 code ne peut partir, donc personne ne peut commenter.
@@ -256,13 +257,13 @@ plutôt qu'une 500 opaque répétée sur chaque vignette de la grille.
 
 Les trois répondent :
 
-| Code | Quand                                                                                                                             |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 200  | `Content-Type: image/webp`, `Cache-Control: private, max-age=31536000, immutable`, `ETag: "<mediaId>-<320\|640\|1280\|full\|hd>"` |
-| 304  | `If-None-Match` correspondant à l'ETag                                                                                            |
-| 404  | Média absent de l'index, ou album interdit                                                                                        |
-| 415  | `unsupported` — le média est une vidéo, il n'y a pas de rendu image                                                               |
-| 503  | Drive non connecté ou révoqué                                                                                                     |
+| Code | Quand                                                                                                                                                       |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 200  | `Content-Type: image/webp`, `Cache-Control: private, max-age=31536000, immutable`, `Vary: Cookie`, `ETag: "<mediaId>-<version>-<320\|640\|1280\|full\|hd>"` |
+| 304  | `If-None-Match` correspondant à l'ETag                                                                                                                      |
+| 404  | Média absent de l'index, ou album interdit                                                                                                                  |
+| 415  | `unsupported` — le média est une vidéo, il n'y a pas de rendu image                                                                                         |
+| 503  | Drive non connecté ou révoqué                                                                                                                               |
 
 **`original`** — le fichier tel quel, relayé depuis Drive sans passer par le
 cache disque.
