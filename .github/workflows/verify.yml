@@ -1,0 +1,37 @@
+# Contrôle à chaque poussée et à chaque proposition de fusion.
+#
+# La documentation fait partie du contrôle, au même titre que les types et les
+# tests : `check:specs` compare ce que le code expose — routes, variables
+# d'environnement, migrations, modules — à ce que les specs décrivent. Une règle
+# qu'on doit se rappeler d'appliquer finit par être oubliée ; celle-ci échoue.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Les modules natifs (sharp, better-sqlite3, argon2) ont besoin de leurs
+      # scripts d'installation ; `allowBuilds` de pnpm-workspace.yaml les
+      # autorise déjà nommément.
+      - run: pnpm install --frozen-lockfile
+
+      # `shared` doit être compilé avant que les deux autres paquets ne
+      # typecheckent : ils importent ses déclarations depuis `dist`.
+      - run: pnpm --filter @gdv/shared build
+
+      - run: pnpm verify

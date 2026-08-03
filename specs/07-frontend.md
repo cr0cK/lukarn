@@ -383,13 +383,24 @@ Les comptes, les albums et les réglages s'administrent depuis `/admin` :
 `config/albums.yaml` ne sert plus qu'à amorcer une installation neuve. Le bouton
 « Recharger albums.yaml » a donc disparu avec la route `POST /api/admin/reload`.
 
-`AdminPage` ne fait qu'assembler cinq sections — Connexion Google Drive,
-Utilisateurs, Albums, Réglages, Maintenance — et porter le bandeau de message,
+`AdminPage` ne fait qu'assembler cinq sections et porter le bandeau de message,
 collé sous la barre supérieure : la page est longue, un message affiché tout en
-haut passerait inaperçu depuis le bas. Chaque section vit dans
-`components/admin/` avec ses propres mutations ; `ui.tsx` réunit les primitives
-(bouton, champ, case à cocher, encadré de section) pour que les formulaires ne
-réinventent ni les classes ni le lien `label` / `aria-describedby`.
+haut passerait inaperçu depuis le bas.
+
+| Composant                     | Rôle                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                   |
+| `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée        |
+| `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, création, modification       |
+| `SettingsSection`             | Intervalle de synchronisation, synchronisation au démarrage, cache      |
+| `MaintenanceSection`          | Occupation du cache et purge                                            |
+| `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                      |
+| `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                |
+| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section |
+
+Chaque section porte ses propres mutations, et `ui.tsx` existe pour que les
+formulaires ne réinventent ni les classes ni le lien `label` /
+`aria-describedby`.
 
 ### L'attribution des albums est un choix entre deux régimes
 

@@ -15,6 +15,20 @@ configuration ou d'un choix technique met à jour la spec correspondante DANS LE
 MÊME travail que le code.** Une spec mise à jour « plus tard » ne l'est jamais.
 Un changement de code sans changement de spec n'est pas terminé.
 
+Cette règle **est contrôlée**, elle ne repose pas sur la mémoire :
+`pnpm check:specs` compare ce que le code expose — routes déclarées, variables
+d'environnement, migrations, modules — à ce que les specs mentionnent, et échoue
+sur l'écart. Il tourne dans `pnpm verify`, dans la CI, et sur `pre-push`.
+
+Le contrôle vérifie l'**existence** d'une mention, pas sa qualité : il attrape
+la route ajoutée sans un mot dans `05-api.md`, jamais un paragraphe devenu faux.
+Ce dernier cas reste à ta charge — c'est d'ailleurs le plus fréquent quand on
+modifie un comportement existant plutôt que d'en ajouter un.
+
+Si un manque signalé est un faux positif — un composant trivial dont le rôle est
+décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
+`tools/check-specs.mjs`, avec la raison. Un contrôle bruyant finit désactivé.
+
 | Si tu touches…                                                               | Mets à jour…                                                                   |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `packages/server/src/routes/*.ts` (route, code de retour, payload)           | `specs/05-api.md`                                                              |
@@ -50,6 +64,8 @@ pnpm typecheck
 pnpm lint                          # eslint .
 pnpm format                        # prettier --write .
 pnpm test                          # runner natif de Node, tous les packages
+pnpm check:specs                   # les specs ont-elles décroché du code ?
+pnpm verify                        # les quatre d'un coup — la porte avant de publier
 
 pnpm create-admin <identifiant>    # premier administrateur d'une base vide
 pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
@@ -57,7 +73,10 @@ pnpm hash-password                 # hash argon2id, pour un config/albums.yaml d
 pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compte Drive
 ```
 
-Avant de déclarer un travail terminé : `pnpm typecheck && pnpm lint && pnpm test`.
+Avant de déclarer un travail terminé : **`pnpm verify`** — typecheck, lint,
+tests et contrôle des specs. C'est ce que lance la CI, et `check:specs` tourne
+aussi sur `pre-push` : une divergence bloque la publication avant d'atteindre
+le dépôt distant.
 
 ## Conventions de code
 

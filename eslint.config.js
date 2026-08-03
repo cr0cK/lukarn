@@ -24,7 +24,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['packages/server/**/*.ts', 'eslint.config.js', '**/vite.config.ts'],
+    files: [
+      'packages/server/**/*.ts',
+      'eslint.config.js',
+      '**/vite.config.ts',
+      // Outillage du dépôt : contrôle des specs, scripts de maintenance.
+      'tools/**/*.mjs',
+    ],
     languageOptions: { globals: globals.node },
   },
   {

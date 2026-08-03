@@ -1,0 +1,16 @@
+#!/bin/sh
+# Empêche de publier une divergence entre le code et les specs.
+#
+# Posé sur `pre-push` et non `pre-commit` : commiter une étape intermédiaire est
+# légitime, publier un état où la documentation ment ne l'est pas. Le contrôle
+# prend une fraction de seconde.
+#
+# Installé par le script `prepare` du package.json, via `core.hooksPath`.
+# Pour passer outre une fois : git push --no-verify
+
+if ! node tools/check-specs.mjs; then
+  echo ""
+  echo "Publication interrompue. Mets à jour les specs concernées, ou"
+  echo "utilise --no-verify si tu sais pourquoi tu contournes."
+  exit 1
+fi
