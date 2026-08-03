@@ -331,6 +331,52 @@ describe('identité de l’auteur', () => {
     // L'adresse identifie la personne : elle garde la main sur ses messages.
     assert.equal(retrouve.root.canDelete, true);
   });
+
+  it('ne renomme personne tant que le code n’est pas validé', async () => {
+    const signe = await post(familleCookie, 'vacances', 'photo-partagee', 'Écrit par Mamie');
+    assert.equal(signe.author.displayName, 'Mamie');
+
+    // Quelqu'un d'autre derrière la même clé partagée demande un code pour
+    // l'adresse de Mamie, en déclarant le nom de son choix. Le code part chez
+    // elle : il ne le verra jamais.
+    const usurpateur = await login('famille');
+    context.db
+      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
+      .run('mamie@exemple.fr');
+    const demande = await server.inject({
+      method: 'POST',
+      url: '/api/identity/request-code',
+      headers: { cookie: usurpateur },
+      payload: { email: 'mamie@exemple.fr', displayName: 'Sale gosse' },
+    });
+    assert.equal(demande.statusCode, 202, demande.body);
+
+    // La signature est relue à chaque requête : si la demande avait écrit le
+    // nom, tout l'historique de Mamie porterait déjà celui de l'usurpateur.
+    const page = await read(familleCookie, 'vacances', 'photo-partagee');
+    const apres = page.threads.find((thread) => thread.root.id === signe.id);
+    assert.equal(apres?.root.author.displayName, 'Mamie');
+  });
+
+  it('applique le nouveau nom une fois le code validé', async () => {
+    const avant = await post(familleCookie, 'vacances', 'photo-partagee', 'Avant le renommage');
+    assert.equal(avant.author.displayName, 'Mamie');
+
+    context.db
+      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
+      .run('mamie@exemple.fr');
+    await identify(familleCookie, 'mamie@exemple.fr', 'Grand-mère');
+
+    const page = await read(familleCookie, 'vacances', 'photo-partagee');
+    const apres = page.threads.find((thread) => thread.root.id === avant.id);
+    assert.equal(apres?.root.author.displayName, 'Grand-mère');
+
+    // Remis en état : les tests suivants attendent « Mamie ».
+    context.db
+      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
+      .run('mamie@exemple.fr');
+    await identify(familleCookie, 'mamie@exemple.fr', 'Mamie');
+  });
 });
 
 describe('suppression', () => {

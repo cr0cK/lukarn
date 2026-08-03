@@ -211,5 +211,11 @@ export const mediaUrl = {
     `/api/media/${encodeURIComponent(id)}/hd${query(version)}`,
   original: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/original${query(version)}`,
-  download: (id: string) => `/api/media/${encodeURIComponent(id)}/original?download=1`,
+  /**
+   * Le téléchargement porte la version comme les autres : servi en `immutable`,
+   * il resservirait sinon depuis le cache l'ancien contenu d'un fichier Drive
+   * remplacé, pendant un an, alors que la photo affichée à côté est la neuve.
+   */
+  download: (id: string, version?: string | null) =>
+    `/api/media/${encodeURIComponent(id)}/original?download=1${suffix(version)}`,
 };

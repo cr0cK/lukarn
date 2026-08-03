@@ -18,6 +18,20 @@ const FULL_MAX_EDGE = 2560;
  */
 const HD_MAX_EDGE = 4096;
 
+/**
+ * Au-delà, l'original n'est pas décodé localement : il part directement au
+ * repli par l'aperçu Drive.
+ *
+ * Le limiteur borne le **nombre** de rendus, pas leur taille — et chaque rendu
+ * charge son original entier en mémoire pour le donner à sharp. Trois places
+ * occupées par des fichiers de 300 Mo suffisent à faire tomber le processus,
+ * emportant la galerie entière pour une poignée de photos. 80 Mo laisse passer
+ * tout ce qu'un appareil produit, RAW compris, et arrête ce qui n'est plus une
+ * photo : un panorama assemblé, un scan de très grand format, une vidéo mal
+ * classée par son type MIME.
+ */
+const MAX_DECODE_BYTES = 80 * 1024 * 1024;
+
 const THUMB_QUALITY = 78;
 const FULL_QUALITY = 82;
 /** Plus généreux que `full` : c'est la variante qu'on examine de près. */
@@ -131,14 +145,17 @@ export class MediaRenderer {
   }
 
   private async build(fileId: string, variant: Variant, key: string): Promise<Rendered> {
-    const source = await this.download(fileId);
     let output: Buffer;
 
     try {
-      output = await this.transform(source, variant);
+      output = await this.transform(await this.download(fileId), variant);
     } catch (error) {
       // Formats que la libvips embarquée ne décode pas (certains HEIC, RAW
-      // propriétaires) : Drive sait en produire un aperçu JPEG, on repart de là.
+      // propriétaires), et fichiers trop lourds pour être tenus en mémoire :
+      // Drive sait produire un aperçu JPEG, on repart de là. Le téléchargement
+      // est dans le `try` pour que le second cas emprunte ce chemin — sans
+      // quoi la seule issue serait une erreur, pour une photo que Drive sait
+      // pourtant afficher.
       this.log.warn(
         `Décodage local impossible pour ${fileId} (${(error as Error).message}), ` +
           'repli sur la vignette Drive',
@@ -174,9 +191,28 @@ export class MediaRenderer {
     );
   }
 
+  /**
+   * Original en mémoire, refusé au-delà de `MAX_DECODE_BYTES`.
+   *
+   * La taille annoncée par Drive est contrôlée avant de lire le corps — c'est
+   * elle qui évite l'allocation — mais le corps est mesuré à son tour : un
+   * en-tête absent ou menteur ne doit pas suffire à faire tomber le processus.
+   */
   private async download(fileId: string): Promise<Buffer> {
     const response = await this.drive.fetchFile(fileId);
-    return Buffer.from(await response.arrayBuffer());
+
+    const annoncee = Number(response.headers.get('content-length'));
+    if (Number.isFinite(annoncee) && annoncee > MAX_DECODE_BYTES) {
+      throw new Error(`original de ${Math.round(annoncee / 1024 / 1024)} Mo, trop lourd à décoder`);
+    }
+
+    const source = Buffer.from(await response.arrayBuffer());
+    if (source.byteLength > MAX_DECODE_BYTES) {
+      throw new Error(
+        `original de ${Math.round(source.byteLength / 1024 / 1024)} Mo, trop lourd à décoder`,
+      );
+    }
+    return source;
   }
 
   /** Aperçu JPEG généré par Google, demandé à la taille du rendu voulu. */

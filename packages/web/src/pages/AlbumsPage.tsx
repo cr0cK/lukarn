@@ -67,8 +67,13 @@ export default function AlbumsPage(): ReactElement {
         {albums && albums.length === 0 && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
             <p className="text-sm text-ink-300">Aucun album ne t'est attribué.</p>
+            {/* Plus de renvoi vers `config/albums.yaml` : la base fait autorité
+                dès qu'un compte existe, et le fichier n'est plus relu. Suivre
+                cette consigne revenait à éditer un fichier sans effet. */}
             <p className="mt-1 text-xs text-ink-400">
-              Les albums se déclarent dans <code className="text-ink-300">config/albums.yaml</code>.
+              {user?.admin
+                ? 'Crée un album depuis /admin, puis attribue-le à un compte.'
+                : "Demande à l'administrateur de l'instance de t'en attribuer un."}
             </p>
           </div>
         )}

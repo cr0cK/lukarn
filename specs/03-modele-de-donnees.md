@@ -76,7 +76,9 @@ perdu son autorisation.
 ### `sessions`
 
 `id` (PK, 32 octets aléatoires en base64url), `username`, `created_at`,
-`expires_at`. TTL de 30 jours (`sessions.ts`).
+`expires_at`. TTL d'un an (`sessions.ts`), repoussé d'autant dès qu'une session
+passe sa mi-vie — le cookie est réémis en même temps, sans quoi le navigateur
+jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
 
 ### `users`, `albums`, `user_albums`, `settings`
 
@@ -127,8 +129,9 @@ Une **personne**, par opposition à la clé d'accès de `users`.
 | `notify`                                                        | Désabonnement                                 |
 | `verified_at`                                                   | `NULL` tant que le code n'a pas été saisi     |
 | `code_hash`, `code_expires_at`, `code_sent_at`, `code_attempts` | La vérification en cours                      |
+| `pending_display_name`                                          | Renommage demandé, en attente du code         |
 
-Quatre choix à connaître :
+Cinq choix à connaître :
 
 - **L'adresse EST l'identité.** Se ré-identifier avec la même, depuis un autre
   appareil ou après avoir vidé ses cookies, retrouve ses commentaires — et le
@@ -145,6 +148,12 @@ Quatre choix à connaître :
   devient une machine à expédier des emails vers une adresse qu'on ne possède
   pas ; le second plafonne à cinq essais, six chiffres se parcourant en un
   million de tentatives.
+- **`pending_display_name` retient un renommage jusqu'à la preuve.** Le nom
+  d'une identité **déjà vérifiée** ne change qu'à la validation du code, jamais
+  à la demande : sinon, connaître l'adresse de quelqu'un suffisait à le
+  renommer, et comme la signature d'un commentaire est relue à chaque requête,
+  tout son historique changeait de nom sans qu'un seul code ait été saisi. Une
+  identité pas encore vérifiée s'écrit directement — rien n'est signé d'elle.
 
 `sessions` porte un `commenter_id` (`ON DELETE SET NULL`) : la session
 **mémorise** l'identité, elle ne la définit pas. Perdre son identité ne coupe
@@ -299,6 +308,11 @@ reparte de la même étape.
 | 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base. |
 | 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                  |
 | 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.   |
+| 6       | `commenters.pending_display_name`.                                                  |
+
+La migration 6 ajoute `commenters.pending_display_name`, vide sur l'existant :
+`COALESCE(pending_display_name, display_name)` au premier code validé rend donc
+le nom déjà en place, et personne n'est renommé par la mise à jour.
 
 La migration 5 ajoute deux colonnes qui arrivent à `NULL` sur une base en
 service, et c'est tout l'intérêt : `media.added_at` vide exclut l'historique du
@@ -324,8 +338,12 @@ après la mise à jour.
 `MediaRepo.listItems(albumId, limit, cursor, order)` rend `limit` lignes et lit
 `limit + 1` pour savoir s'il y a une suite, sans `COUNT`.
 
-Le curseur est `base64url("<taken_at> <id>")` — un simple encodage, pas un
-secret. La reprise est :
+Le curseur est `base64url("<taken_at>\u0000<id>")` — un simple encodage, pas un
+secret. Le séparateur est l'octet nul : ni une date ISO ni un identifiant Drive
+ne peuvent en contenir, là où l'espace resterait un pari sur la forme des
+identifiants. Il s'écrit `\u0000` dans la source et **jamais littéralement** —
+un octet nul fait classer le fichier comme binaire par git, qui cesse alors
+d'en afficher les diffs. La reprise est :
 
 ```sql
 WHERE album_id = ?

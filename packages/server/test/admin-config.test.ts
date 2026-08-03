@@ -371,6 +371,27 @@ describe('albums', () => {
     assert.equal(context.syncState.get('vacances').status, 'never');
   });
 
+  it('vide l’index quand la profondeur change', async () => {
+    await post('/api/admin/albums', {
+      id: 'profondeur',
+      title: 'Profondeur',
+      folderId: 'folder-profondeur',
+      recursive: true,
+    });
+    context.media.upsertMany(
+      [media('profondeur', 'photo-sous-dossier')],
+      '2026-07-01T00:00:00.000Z',
+    );
+
+    // Repasser à plat retire des sous-dossiers du périmètre : leurs photos ne
+    // doivent pas rester consultables en attendant la prochaine sync, qui peut
+    // ne jamais venir sur une instance où la sync automatique est coupée.
+    const aplati = await patch('/api/admin/albums/profondeur', { recursive: false });
+    assert.equal(aplati.statusCode, 200);
+    assert.equal(context.media.stats('profondeur').itemCount, 0);
+    assert.equal(context.syncState.get('profondeur').status, 'never');
+  });
+
   it('retire les médias de l’album supprimé, et eux seuls', async () => {
     for (const id of ['vacances', 'prive']) {
       await post('/api/admin/albums', { id, title: id, folderId: `folder-${id}` });

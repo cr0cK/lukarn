@@ -176,6 +176,30 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('garde son nom à une identité vérifiée en version 5', () => {
+    const db = databaseAtVersion(5);
+    db.prepare(
+      `INSERT INTO commenters (email, display_name, verified_at, created_at)
+       VALUES ('mamie@exemple.fr', 'Mamie', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    assert.ok(columns(db, 'commenters').includes('pending_display_name'));
+    const identite = db
+      .prepare('SELECT * FROM commenters WHERE email = ?')
+      .get('mamie@exemple.fr') as {
+      display_name: string;
+      pending_display_name: string | null;
+    };
+    // La colonne arrive vide : un `COALESCE(pending, display_name)` au premier
+    // code validé ne doit pas renommer qui que ce soit.
+    assert.equal(identite.display_name, 'Mamie');
+    assert.equal(identite.pending_display_name, null);
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);
