@@ -28,11 +28,12 @@ Utilisée par le `HEALTHCHECK` du Dockerfile.
 
 ## Authentification — `routes/auth.ts`
 
-| Méthode | Chemin             | Accès   |
-| ------- | ------------------ | ------- |
-| POST    | `/api/auth/login`  | aucun   |
-| POST    | `/api/auth/logout` | aucun   |
-| GET     | `/api/auth/me`     | aucun\* |
+| Méthode | Chemin                  | Accès   |
+| ------- | ----------------------- | ------- |
+| POST    | `/api/auth/login`       | aucun   |
+| POST    | `/api/auth/logout`      | aucun   |
+| GET     | `/api/auth/me`          | aucun\* |
+| GET     | `/api/auth/setup-state` | aucun   |
 
 **`POST /api/auth/login`** — corps `{ username, password }` (1–64 et 1–512
 caractères).
@@ -51,6 +52,16 @@ efface le cookie. Répond toujours `200 { ok: true }`, même sans session.
 sinon. \*Route ouverte au sens où elle ne rejette pas avant d'entrer : le 401 est
 la réponse normale d'un visiteur non connecté, et le front s'en sert pour décider
 d'afficher le formulaire.
+
+**`GET /api/auth/setup-state`** — `200 { needsSetup: boolean }`. Dit si la base
+ne contient encore aucun compte, auquel cas l'écran de connexion affiche la
+commande à lancer (`pnpm create-admin`) au lieu de refuser toutes les tentatives
+sans explication.
+
+Publique, et elle doit l'être : elle est interrogée avant toute connexion. Elle
+ne divulgue rien — sur une instance sans compte il n'y a rien à protéger, et la
+réponse ne dit jamais **qui** existe, seulement s'il existe quelqu'un
+(`packages/server/test/setup-state.test.ts` le vérifie).
 
 ## Albums — `routes/albums.ts`
 

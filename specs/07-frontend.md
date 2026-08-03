@@ -338,7 +338,7 @@ Trois détails qui ont une raison :
   sans en dépendre — sinon chaque cran de molette relancerait l'effet, qui
   ramènerait aussitôt l'image au niveau natif.
 
-Deux repères visuels : un **placeholder** (la vignette 320, déjà en cache
+Deux repères visuels : un **aperçu d'attente** (la vignette 320, déjà en cache
 navigateur puisqu'elle vient d'être affichée dans la grille) flouté à la taille
 exacte du rendu final, le temps que celui-ci arrive ; et un **repère de
 position** pendant le zoom, avec le cadre de la zone visible — sans lui on perd
@@ -346,6 +346,26 @@ tout sens de l'orientation dès qu'on se déplace dans une image agrandie.
 L'indicateur signale en plus `chargement HD…` tant que la variante `hd` n'est
 pas prête : le pourcentage repose alors sur la résolution anticipée, pas sur une
 mesure.
+
+### L'aperçu flou ne va jamais sans indicateur
+
+`lib/preview.ts` décide ensemble ce qui s'affiche pendant l'attente : aperçu,
+indicateur d'activité, message d'échec. La combinaison est isolée en fonction
+pure parce qu'une erreur y est silencieuse — elle ne casse rien, elle produit un
+écran trompeur, qu'aucun typage ni test d'intégration ne signale.
+
+Le cas s'est déjà produit : l'aperçu flou avait été introduit alors que
+l'indicateur restait conditionné aux seules vidéos. L'ouverture d'une photo
+donnait donc une image intégralement floue, sans rien qui dise qu'un rendu était
+en cours — et le défaut disparaissait dès que le rendu était en cache, ce qui le
+faisait passer pour aléatoire. Sur des fichiers de 9 Mo, l'attente dure plusieurs
+secondes : le temps que le serveur télécharge l'original depuis Drive et le
+ré-encode.
+
+Les invariants sont vérifiés sur toutes les combinaisons
+(`packages/web/test/preview.test.ts`) : un aperçu n'est jamais montré sans
+indicateur, un échec exclut les deux, et l'indicateur apparaît même sans aperçu à
+montrer — dimensions inconnues, un écran noir muet serait pire.
 
 Le repère est **manipulable** : y cliquer ou y glisser amène le point visé au
 centre de la fenêtre. Il montrait où l'on se trouvait sans permettre d'y agir,

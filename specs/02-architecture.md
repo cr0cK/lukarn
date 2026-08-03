@@ -83,6 +83,16 @@ Points qui comptent :
 - La déduplication vit dans `MediaRenderer.inFlight` : une grille qui s'ouvre
   demande des dizaines de vignettes, mais chaque fichier n'est téléchargé qu'une
   fois même si dix requêtes arrivent ensemble.
+- **Les rendus de fichiers _différents_ sont bridés** par un limiteur
+  (`media/semaphore.ts`), dimensionné à `cpus - 2` et borné entre 2 et 4. La
+  place est prise avant le téléchargement, parce que c'est l'original chargé en
+  mémoire qui pèse : sans cette limite, vingt-quatre rendus simultanés font
+  grimper le processus de plus de 300 Mo. Le débit total est inchangé, c'est la
+  mémoire qui est divisée par trois (D32).
+- Le décodage se fait **hors du fil principal**, mais sur le pool de fils de
+  libuv, partagé avec les lectures de fichiers. D'où `threadpool.ts`, importé en
+  premier par `main.ts` : à la taille par défaut de quatre, servir une vignette
+  déjà en cache attend deux secondes derrière les rendus en cours.
 - L'`ETag` vaut `"<mediaId>-<variante>"`, la variante étant `320`/`640`/`1280`,
   `full` ou `hd`. Un `If-None-Match` correspondant répond 304 sans toucher au
   disque.
