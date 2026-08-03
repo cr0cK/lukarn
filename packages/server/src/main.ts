@@ -1,3 +1,7 @@
+// En tout premier : la taille du pool de fils est fixée au chargement de ce
+// module, et doit l'être avant la moindre entrée-sortie. Voir `threadpool.ts`
+// pour la mesure qui justifie ce réglage.
+import { threadPoolSize } from './threadpool.js';
 import { dirname } from 'node:path';
 import { buildApp } from './app.js';
 import type { AppContext } from './context.js';
@@ -99,6 +103,10 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await server.listen({ port: env.port, host: env.host });
+
+  server.log.info(
+    `Pool de fils : ${threadPoolSize} · rendus simultanés : ${context.renderer.load.limit}`,
+  );
 
   if (!context.drive.configured) {
     server.log.warn(

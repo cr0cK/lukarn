@@ -111,4 +111,12 @@ Avant de déclarer un travail terminé : `pnpm typecheck && pnpm lint && pnpm te
 - **Un refus d'accès répond 404, jamais 403** (albums et médias). Seul
   `/api/admin/*` répond 403.
 - **`better-sqlite3` est synchrone** : garde les requêtes indexées et bornées.
+- **`threadpool.ts` doit rester le premier import de `main.ts`.** Node fixe la
+  taille du pool de libuv au premier usage de celui-ci, et en ESM tous les
+  imports sont évalués avant le corps du module : un seul import qui ouvrirait un
+  fichier avant lui figerait la valeur par défaut. Mesuré : avec quatre fils, une
+  vignette déjà en cache met 2 s à être servie pendant des rendus (D32).
+- **Le décodage d'images est bridé** (`media/semaphore.ts`). N'appelle pas sharp
+  hors de `MediaRenderer` sans passer par ce limiteur : c'est lui qui empêche une
+  grille à froid de faire tripler la mémoire du processus.
 - **Ordre de build imposé** : `shared` avant `web` avant `server`.

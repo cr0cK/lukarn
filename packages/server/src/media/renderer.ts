@@ -1,8 +1,10 @@
 import { access } from 'node:fs/promises';
+import { cpus } from 'node:os';
 import sharp from 'sharp';
 import type { ThumbSize } from '@gdv/shared';
 import type { DriveService } from '../drive/service.js';
 import type { MediaCache } from './cache.js';
+import { Semaphore, renderConcurrencyFor } from './semaphore.js';
 
 /** Côté le plus long du rendu « plein écran ». Au-delà, le gain est invisible. */
 const FULL_MAX_EDGE = 2560;
@@ -79,12 +81,25 @@ function encodingFor(variant: Variant): { edge: number; quality: number } {
  */
 export class MediaRenderer {
   private readonly inFlight = new Map<string, Promise<Rendered>>();
+  private readonly places: Semaphore;
 
   constructor(
     private readonly drive: DriveService,
     private readonly cache: MediaCache,
     private readonly log: Logger,
-  ) {}
+    concurrency = renderConcurrencyFor(cpus().length),
+  ) {
+    this.places = new Semaphore(concurrency);
+  }
+
+  /** Rendus en cours et en attente. Remonté dans /admin pour le diagnostic. */
+  get load(): { running: number; waiting: number; limit: number } {
+    return {
+      running: this.places.enCours,
+      waiting: this.places.enAttente,
+      limit: this.places.limite,
+    };
+  }
 
   /** `md5` vient de l'index et identifie la version du fichier. */
   async render(fileId: string, variant: Variant, md5: string | null = null): Promise<Rendered> {
@@ -106,7 +121,16 @@ export class MediaRenderer {
     return task;
   }
 
-  private async produce(fileId: string, variant: Variant, key: string): Promise<Rendered> {
+  /**
+   * La place est prise **avant** le téléchargement, pas seulement autour du
+   * décodage : c'est l'original en mémoire qui pèse le plus lourd, et attendre
+   * son tour avec neuf mégaoctets déjà chargés reviendrait à ne rien limiter.
+   */
+  private produce(fileId: string, variant: Variant, key: string): Promise<Rendered> {
+    return this.places.run(() => this.build(fileId, variant, key));
+  }
+
+  private async build(fileId: string, variant: Variant, key: string): Promise<Rendered> {
     const source = await this.download(fileId);
     let output: Buffer;
 

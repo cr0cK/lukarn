@@ -69,6 +69,12 @@ ENV CACHE_DIR=/app/cache
 ENV WEB_DIR=/app/packages/web/dist
 ENV PORT=8080
 ENV HOST=0.0.0.0
+# Le décodage d'images, les lectures de fichiers et argon2 partagent le pool de
+# fils de libuv. À sa taille par défaut de quatre, quelques rendus le remplissent
+# et une vignette déjà en cache attend derrière — mesuré à 2 s au 95e centile.
+# Le serveur pose lui-même cette valeur si elle manque ; la fixer ici la rend
+# visible à l'exploitation.
+ENV UV_THREADPOOL_SIZE=16
 
 WORKDIR /app
 
