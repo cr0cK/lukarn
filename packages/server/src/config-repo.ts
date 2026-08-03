@@ -74,12 +74,14 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncIntervalMinutes: 30,
   syncOnStartup: true,
   cacheMaxSizeGB: 20,
+  moderationEmail: null,
 };
 
 const settingsSchema = z.object({
   syncIntervalMinutes: z.number().int().min(0),
   syncOnStartup: z.boolean(),
   cacheMaxSizeGB: z.number().positive(),
+  moderationEmail: z.string().nullable(),
 });
 
 interface AlbumRow {
@@ -342,7 +344,11 @@ export class ConfigRepo {
     this.db.transaction(() => {
       for (const [key, value] of Object.entries(patch)) {
         if (value === undefined) continue;
-        statement.run(key, JSON.stringify(value));
+        // Une adresse vidée dans le formulaire arrive en chaîne vide : la
+        // stocker telle quelle donnerait deux façons de dire « aucune », et
+        // `moderationEmail: ''` passerait le test de présence des destinataires.
+        const stored = key === 'moderationEmail' ? normalize(value as string | null) : value;
+        statement.run(key, JSON.stringify(stored));
       }
     })();
 
@@ -475,6 +481,12 @@ export class ConfigRepo {
     const parsed = settingsSchema.partial().safeParse(raw);
     return { ...DEFAULT_SETTINGS, ...(parsed.success ? parsed.data : {}) };
   }
+}
+
+/** Une chaîne vide venue d'un formulaire vaut « pas de valeur ». */
+function normalize(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
 }
 
 /** `['*', 'a']` vaut joker : le plus permissif l'emporte, sans erreur silencieuse. */

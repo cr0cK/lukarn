@@ -91,6 +91,89 @@ Quatre choix à connaître :
 - **`created_at` / `updated_at` sont écrits par l'application**, en ISO 8601 UTC,
   pas par `CURRENT_TIMESTAMP` qui produirait un format différent du reste de la
   base.
+  **Aucune adresse email sur `users`, et c'est délibéré.** Un compte est une clé
+  d'accès, pas quelqu'un de joignable : le même identifiant peut être partagé par
+  tout un foyer. Les adresses appartiennent à `commenters` ci-dessous, et
+  l'adresse prévenue des nouveaux commentaires est un réglage d'instance
+  (`settings.moderationEmail`).
+
+### `commenters`
+
+Une **personne**, par opposition à la clé d'accès de `users`.
+
+| Colonne                                                         | Rôle                                          |
+| --------------------------------------------------------------- | --------------------------------------------- |
+| `id`                                                            | PK, `AUTOINCREMENT`                           |
+| `email`                                                         | `NOT NULL UNIQUE COLLATE NOCASE` — l'identité |
+| `display_name`                                                  | Nom qui signe les commentaires                |
+| `notify`                                                        | Désabonnement                                 |
+| `verified_at`                                                   | `NULL` tant que le code n'a pas été saisi     |
+| `code_hash`, `code_expires_at`, `code_sent_at`, `code_attempts` | La vérification en cours                      |
+
+Quatre choix à connaître :
+
+- **L'adresse EST l'identité.** Se ré-identifier avec la même, depuis un autre
+  appareil ou après avoir vidé ses cookies, retrouve ses commentaires — et le
+  droit de les supprimer. Sans cette clé stable, chaque navigateur créerait une
+  personne de plus, et plus personne ne pourrait effacer ses propres messages.
+- **`verified_at` n'est pas décoratif.** L'identité est déclarative : n'importe
+  qui derrière la clé d'accès partagée pourrait signer du nom d'un autre, ou
+  faire arriver les notifications dans la boîte d'un tiers. Le code envoyé par
+  email est ce qui l'empêche.
+- **`code_hash` et jamais le code en clair.** Un HMAC coûte moins qu'une requête
+  SQL, et un dump de la base ne doit pas livrer de quoi valider une adresse.
+- **`code_sent_at` et `code_attempts` sont des garde-fous, pas des traces.** Le
+  premier interdit de renvoyer un code dans la minute — sinon le formulaire
+  devient une machine à expédier des emails vers une adresse qu'on ne possède
+  pas ; le second plafonne à cinq essais, six chiffres se parcourant en un
+  million de tentatives.
+
+`sessions` porte un `commenter_id` (`ON DELETE SET NULL`) : la session
+**mémorise** l'identité, elle ne la définit pas. Perdre son identité ne coupe
+donc jamais l'accès aux albums, qui ne vient que de la clé d'accès.
+
+### `comments`
+
+Un fil de discussion par média **et par album**.
+
+| Colonne                  | Rôle                                                                  |
+| ------------------------ | --------------------------------------------------------------------- |
+| `id`                     | PK, `AUTOINCREMENT`                                                   |
+| `album_id`, `media_id`   | Le couple auquel le fil appartient                                    |
+| `parent_id`              | `NULL` pour une racine, sinon l'id de la racine — jamais plus profond |
+| `username`               | Auteur, `COLLATE NOCASE`, FK `ON DELETE CASCADE`                      |
+| `body`, `created_at`     | Le message et sa date                                                 |
+| `hidden_at`, `hidden_by` | Modération a posteriori                                               |
+
+Cinq choix structurants :
+
+- **`AUTOINCREMENT` plutôt que le rowid ordinaire.** SQLite réattribue sinon
+  l'identifiant d'une ligne supprimée. Les emails de notification portent un lien
+  vers un commentaire et survivent des mois dans une boîte aux lettres : un id
+  recyclé ferait pointer un vieux message vers la conversation de quelqu'un
+  d'autre. C'est aussi ce qui rend l'ordre des id égal à l'ordre d'écriture, donc
+  le tri et la pagination possibles sur un simple entier.
+- **Le fil appartient au couple `(album_id, media_id)`.** Un même fichier Drive
+  indexé sous deux albums porte deux conversations. Les réunir montrerait à un
+  visiteur les propos tenus dans un album qu'il n'a pas le droit de voir, ce qui
+  contredirait le cloisonnement de [04](./04-securite-et-acces.md).
+- **Aucune clé étrangère vers `media`.** `deleteStale` retire une photo dès
+  qu'une synchronisation ne la revoit pas — dossier renommé, sync interrompue,
+  passage par la corbeille Drive. Une cascade détruirait des commentaires sur un
+  simple contretemps d'indexation, alors que l'identifiant Drive est stable : la
+  photo revenue retrouve son fil. Le prix est un commentaire orphelin possible,
+  que la modération affiche sans nom de fichier.
+- **`parent_id` en `ON DELETE SET NULL`, pas `CASCADE`.** Supprimer une identité
+  emporte ses messages (cascade sur `commenter_id`), mais les réponses que
+  d'autres y ont écrites leur appartiennent : elles remontent en tête de fil
+  plutôt que de disparaître avec lui.
+- **`account` en `ON DELETE SET NULL`.** C'est la clé d'accès utilisée au moment
+  d'écrire, gardée pour la modération : elle dit par quel mot de passe partagé un
+  message gênant est arrivé, donc lequel changer. Supprimer un compte ne doit pas
+  emporter des commentaires qui ne lui appartiennent pas — ils appartiennent à
+  leur auteur.
+- **`album_id` en `ON DELETE CASCADE`.** Supprimer un album emporte ses
+  commentaires : ils désignaient un contenu qui n'est plus exposé.
 
 `settings` porte des valeurs JSON et les défauts vivent dans le code
 (`DEFAULT_SETTINGS`) : une clé absente n'est pas une anomalie, et ajouter un
@@ -110,6 +193,9 @@ instantané périmé.
 | `idx_media_id (id)`                                        | `albumsContaining(mediaId)`, appelé à **chaque** requête média pour le contrôle d'accès. Sans lui, chaque vignette provoquerait un scan complet.                 |
 | `idx_sessions_expires (expires_at)`                        | La purge horaire des sessions expirées.                                                                                                                          |
 | `idx_user_albums_album (album_id)`                         | « Qui a accès à cet album », affiché par `GET /api/admin/albums`. Le sens inverse est déjà couvert par la clé primaire `(username, album_id)`.                   |
+| `idx_comments_thread (album_id, media_id, id)`             | La lecture d'un fil et le compteur servi avec le détail d'un média. Trier sur `id` suffit — il croît avec le temps —, d'où l'absence d'index sur `created_at`.   |
+| `idx_comments_parent (parent_id)`                          | Le rattachement des réponses à leur racine, et leur remontée en tête de fil quand le parent disparaît.                                                           |
+| `idx_comments_commenter (commenter_id)`                    | « Mes commentaires » : ceux que le lecteur courant peut supprimer.                                                                                               |
 
 ## La clé primaire composite `(album_id, id)`
 
@@ -150,8 +236,11 @@ entrée à la fin du tableau.
 
 `packages/server/test/migrate.test.ts` verrouille les invariants : une base
 neuve arrive à la dernière version, une base en version 1 gagne `revoked_at`
-sans perdre son jeton ni son index, `migrate` est idempotente, et un échec
-laisse `user_version` inchangé pour que la reprise reparte de la même étape.
+sans perdre son jeton ni son index, une base en version 3 gagne les commentaires
+**sans que `users` change d'une colonne** — les clés d'accès existantes gardent
+leur empreinte, et les sessions ouvertes ne sont pas invalidées —, `migrate` est
+idempotente, et un échec laisse `user_version` inchangé pour que la reprise
+reparte de la même étape.
 
 État actuel :
 
@@ -160,6 +249,12 @@ laisse `user_version` inchangé pour que la reprise reparte de la même étape.
 | 1       | Schéma initial : `media`, `sync_state`, `oauth_token`, `sessions` et leurs index.   |
 | 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                               |
 | 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base. |
+| 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                  |
+
+La migration 4 sépare ce que l'application confondait : elle crée `commenters`
+et `comments` sans toucher à une seule colonne de `users`. Une instance en
+service la traverse sans que ses clés d'accès ni ses sessions ouvertes en
+pâtissent.
 
 La migration 3 crée des tables vides. Ce sont `bootstrap.ts` et `ConfigRepo` qui
 les remplissent au démarrage, à partir de `config/albums.yaml` si l'installation

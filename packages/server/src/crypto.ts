@@ -1,4 +1,11 @@
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+  scryptSync,
+  timingSafeEqual,
+} from 'node:crypto';
 
 /**
  * Chiffrement du refresh token Google au repos. Le VPS n'est pas un HSM, mais
@@ -45,4 +52,49 @@ export function decryptSecret(encoded: string, secret: string): string {
   // `final()` lève si le tag ne colle pas : TOKEN_KEY a changé, ou la base a
   // été altérée. Dans les deux cas il faut refaire le consentement OAuth.
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+
+/**
+ * Jeton du lien « se désabonner » porté par les emails de notification.
+ *
+ * Un HMAC du seul identifiant, sans état en base et **sans expiration** : le
+ * lien se trouve dans un email qui peut être rouvert des mois plus tard, et un
+ * jeton périmé renverrait l'utilisateur vers un formulaire de connexion alors
+ * qu'il cherche justement à ne plus être dérangé. Ce qu'il ouvre est sans
+ * gravité — couper ses propres notifications — et se rétablit depuis /admin.
+ */
+export function signUnsubscribeToken(username: string, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(`unsubscribe:${username.toLowerCase()}`)
+    .digest('base64url');
+}
+
+/** Comparaison en temps constant : un jeton ne se devine pas au chronomètre. */
+export function verifyUnsubscribeToken(username: string, token: string, secret: string): boolean {
+  return safeEqual(signUnsubscribeToken(username, secret), token);
+}
+
+/**
+ * Empreinte du code de vérification d'une adresse email.
+ *
+ * Le code est court et vit quinze minutes, mais il n'a aucune raison d'être
+ * lisible dans un dump de la base : un HMAC coûte moins qu'une requête SQL. Il
+ * est lié à l'adresse, pour qu'un code valide pour l'une ne le soit pour aucune
+ * autre.
+ */
+export function hashVerificationCode(email: string, code: string, secret: string): string {
+  return createHmac('sha256', secret)
+    .update(`verify:${email.toLowerCase()}:${code}`)
+    .digest('base64url');
+}
+
+/**
+ * Comparaison en temps constant tolérante aux longueurs différentes.
+ * `timingSafeEqual` lève quand elles diffèrent — ce qui est déjà une réponse,
+ * mais sous forme d'exception plutôt que de `false`.
+ */
+export function safeEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  return left.length === right.length && timingSafeEqual(left, right);
 }

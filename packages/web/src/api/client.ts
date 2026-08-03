@@ -1,20 +1,27 @@
 import {
   DEFAULT_SORT_ORDER,
   type AdminAlbum,
+  type AdminCommentsPage,
   type AdminStatus,
   type AdminUser,
   type Album,
   type AppSettings,
+  type Comment,
+  type CommentsPage,
   type CreateAlbumRequest,
+  type CreateCommentRequest,
   type CreateUserRequest,
+  type IdentityRequest,
   type ItemsPage,
   type MediaDetail,
+  type ModerationFilter,
   type SessionUser,
   type SortOrder,
   type ThumbSize,
   type UpdateAlbumRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
+  type VerifyIdentityRequest,
 } from '@gdv/shared';
 
 /** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
@@ -89,6 +96,43 @@ export const api = {
     request<MediaDetail>(
       `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
     ),
+
+  requestIdentityCode: (body: IdentityRequest) =>
+    request<{ ok: true }>('/identity/request-code', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  verifyIdentity: (body: VerifyIdentityRequest) =>
+    request<SessionUser>('/identity/verify', { method: 'POST', body: JSON.stringify(body) }),
+
+  forgetIdentity: () => request<SessionUser>('/identity/forget', { method: 'POST' }),
+
+  comments: (albumId: string, mediaId: string) =>
+    request<CommentsPage>(
+      `/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`,
+    ),
+
+  createComment: (albumId: string, mediaId: string, body: CreateCommentRequest) =>
+    request<Comment>(`/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  deleteComment: (commentId: number) =>
+    request<void>(`/comments/${commentId}`, { method: 'DELETE' }),
+
+  adminComments: (filter: ModerationFilter, cursor: string | null) => {
+    const params = new URLSearchParams({ filter });
+    if (cursor) params.set('cursor', cursor);
+    return request<AdminCommentsPage>(`/admin/comments?${params}`);
+  },
+
+  hideComment: (commentId: number) =>
+    request<{ ok: true }>(`/admin/comments/${commentId}/hide`, { method: 'POST' }),
+
+  showComment: (commentId: number) =>
+    request<{ ok: true }>(`/admin/comments/${commentId}/show`, { method: 'POST' }),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

@@ -19,8 +19,30 @@ const MONTH_YEAR = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'UTC',
 });
 
+/**
+ * Seul formateur de ce module à ne pas être en UTC, et c'est délibéré.
+ *
+ * Le raisonnement du fichier vaut pour les dates de prise de vue : `taken_at`
+ * est l'heure qu'affichait l'appareil, une heure murale sans fuseau, qu'on
+ * rendrait fausse en la convertissant. La date d'un commentaire est l'inverse :
+ * un instant réel, celui où quelqu'un a appuyé sur « Publier ». L'afficher en
+ * UTC montrerait 19:14 à qui vient d'écrire à 21:14 depuis Paris.
+ *
+ * Même logique que « Aujourd'hui » / « Hier » dans la grille (D31) : ce qui se
+ * rapporte à l'horloge du lecteur se lit sur son horloge.
+ */
+const LOCAL_DATE_TIME = new Intl.DateTimeFormat('fr-FR', {
+  dateStyle: 'long',
+  timeStyle: 'short',
+});
+
 export function formatDateTime(iso: string): string {
   return DATE_TIME.format(new Date(iso));
+}
+
+/** Date d'un événement réel — un commentaire —, dans le fuseau du lecteur. */
+export function formatLocalDateTime(iso: string): string {
+  return LOCAL_DATE_TIME.format(new Date(iso));
 }
 
 export function formatDate(iso: string): string {

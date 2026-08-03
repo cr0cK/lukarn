@@ -92,6 +92,10 @@ async function main(): Promise<void> {
     stopScheduler();
     try {
       await server.close();
+      // Les notifications partent hors du chemin de la requête : sans cette
+      // attente, un commentaire posté juste avant un redéploiement serait
+      // enregistré sans que personne n'en soit prévenu.
+      await context.mailer.drain();
       context.close();
     } catch (error) {
       context.log.error({ err: error }, "Erreur pendant l'arrêt");

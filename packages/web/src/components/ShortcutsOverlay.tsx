@@ -17,6 +17,7 @@ const GROUPS: { title: string; shortcuts: [string, string][] }[] = [
       ['Échap', 'Quitter le zoom, puis fermer'],
       ['F', 'Plein écran'],
       ['I', 'Informations et EXIF'],
+      ['C', 'Commentaires'],
       ['D', "Télécharger l'original"],
       ['Z', 'Zoom à 100 %'],
       ['Molette', 'Zoom progressif'],

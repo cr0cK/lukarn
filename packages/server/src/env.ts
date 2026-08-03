@@ -28,6 +28,12 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
+  // Notifications de commentaires. Une URL plutôt qu'un quatuor hôte/port/
+  // utilisateur/mot de passe : c'est la forme que tous les fournisseurs
+  // documentent, et elle porte le chiffrement dans son schéma (`smtps://`).
+  SMTP_URL: z.string().optional(),
+  MAIL_FROM: z.string().optional(),
+
   CONFIG_PATH: z.string().default('./config/albums.yaml'),
   DATA_DIR: z.string().default('./data'),
   CACHE_DIR: z.string().default('./cache'),
@@ -44,6 +50,8 @@ export interface Env {
   sessionSecret: string;
   tokenKey: string;
   google: { clientId: string; clientSecret: string } | null;
+  /** `null` si l'instance n'envoie pas d'email : les notifications s'éteignent. */
+  mail: { smtpUrl: string; from: string } | null;
   configPath: string;
   dataDir: string;
   cacheDir: string;
@@ -84,6 +92,15 @@ export function loadEnv(
     );
   }
 
+  // Même raison que ci-dessus : une instance configurée avec un serveur SMTP
+  // mais sans expéditeur n'échouerait qu'au premier commentaire posté, des
+  // semaines après la mise en service.
+  const hasSmtp = Boolean(env.SMTP_URL);
+  const hasFrom = Boolean(env.MAIL_FROM);
+  if (hasSmtp !== hasFrom) {
+    throw new Error('SMTP_URL et MAIL_FROM doivent être renseignés ensemble (ou aucun des deux).');
+  }
+
   return {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
@@ -95,6 +112,7 @@ export function loadEnv(
       hasId && hasSecret
         ? { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET! }
         : null,
+    mail: hasSmtp && hasFrom ? { smtpUrl: env.SMTP_URL!, from: env.MAIL_FROM! } : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),
     cacheDir: resolve(baseDir, env.CACHE_DIR),

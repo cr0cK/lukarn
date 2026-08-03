@@ -88,6 +88,38 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute les commentaires à une base en version 3 sans toucher aux comptes', () => {
+    const db = databaseAtVersion(3);
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('famille', 'empreinte', 0, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    // La clé d'accès est inchangée : l'identité des commentateurs vit ailleurs,
+    // et confondre les deux ferait signer « famille » tous les messages du foyer.
+    assert.deepEqual(columns(db, 'users'), [
+      'username',
+      'password_hash',
+      'admin',
+      'all_albums',
+      'created_at',
+      'updated_at',
+    ]);
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get('famille') as {
+      password_hash: string;
+    };
+    assert.equal(user.password_hash, 'empreinte');
+
+    assert.ok(columns(db, 'comments').includes('commenter_id'));
+    assert.ok(columns(db, 'commenters').includes('verified_at'));
+    // La session mémorise l'identité, sans que les sessions ouvertes soient
+    // invalidées par la mise à jour.
+    assert.ok(columns(db, 'sessions').includes('commenter_id'));
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

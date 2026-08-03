@@ -5,6 +5,7 @@ import { useAdminAlbums, useAdminStatus } from '../api/hooks';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
+import { CommentsSection } from '../components/admin/CommentsSection';
 import { DriveSection } from '../components/admin/DriveSection';
 import { MaintenanceSection } from '../components/admin/MaintenanceSection';
 import { SettingsSection } from '../components/admin/SettingsSection';
@@ -96,6 +97,8 @@ export default function AdminPage(): ReactElement {
             />
           </>
         )}
+
+        <CommentsSection notify={setNotice} />
 
         <SettingsSection notify={setNotice} />
 

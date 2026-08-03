@@ -753,3 +753,236 @@ change un jour. Une valeur déjà présente dans l'environnement fait autorité.
 Sur une grille entièrement à froid, le temps total pour afficher toutes les
 vignettes reste le même ; ce sont les visiteurs qui regardent autre chose qui ne
 le paient plus.
+
+---
+
+## D33 — Pas de connexion Google pour commenter
+
+**Contexte.** Il fallait attacher une identité aux commentaires. L'hypothèse de
+départ était un « connexion avec Google », comme le font les services grand
+public.
+
+**Choix.** L'identité reste interne à l'application. Voir D38 pour la forme
+qu'elle a fini par prendre — ce qui compte ici est ce qu'on a écarté.
+
+**Écarté.** Un OAuth Google pour les visiteurs. Trois raisons, dans cet ordre.
+
+D'abord il est **sans objet** : toute route média exige déjà une session, donc au
+moment où quelqu'un peut voir une photo, le serveur connaît son identité. Le
+seul apport propre de Google serait une adresse email vérifiée — pour laquelle
+un champ de formulaire rempli par le propriétaire fait le même travail sur une
+instance de quelques comptes.
+
+Ensuite il **ouvre un trou d'autorisation**. Les droits vivent dans
+`user_albums`, attachés à `users.username`. Un compte Google qui se présente
+n'existe dans aucune de ces tables : il faudrait une allowlist d'adresses par
+album, c'est-à-dire réinventer les comptes déjà là, ou accepter que n'importe
+quel détenteur d'un compte Google entre.
+
+Enfin il **contredit le périmètre** : « un visiteur n'a jamais de compte Google
+et ne voit jamais une URL Google » ([01](./01-vision-et-perimetre.md)), et
+l'inscription publique en est exclue depuis l'origine.
+
+**Conséquences.** Commenter suppose de pouvoir déjà ouvrir l'album. Si un jour
+l'instance doit s'ouvrir à des gens sans compte, c'est le modèle d'accès entier
+qu'il faudra reprendre, pas les commentaires.
+
+---
+
+## D34 — Un fil par couple (album, média), et non par média
+
+**Contexte.** Un même fichier Drive apparaît dans plusieurs albums quand leurs
+dossiers sont imbriqués — c'est déjà la raison de la clé primaire composite
+`(album_id, id)` de `media` et de `albumsContaining()`.
+
+**Choix.** `comments` porte `album_id` **et** `media_id`. La même photo vue
+depuis deux albums montre deux conversations distinctes.
+
+**Écarté.** Indexer sur le seul `media_id`, ce qui aurait donné une conversation
+unique par fichier — plus naturel a priori, et moins de lignes. Mais le contrôle
+d'accès média accorde l'accès dès qu'**un** album contenant le fichier est
+visible : un visiteur de l'album « Vacances » lirait alors les propos tenus dans
+« Privé » par ceux qui y ont accès. Le cloisonnement de D12 porte sur les octets
+de la photo ; il n'aurait rien dit de ce qu'on en écrit.
+
+**Conséquences.** Une photo rangée dans deux albums peut porter deux fils sans
+que personne ne s'en aperçoive. C'est le prix du cloisonnement, et le cas est
+rare : les albums d'une même instance se recoupent peu. Le `parentId` d'une
+réponse est vérifié contre le média courant pour la même raison — sans quoi un
+identifiant deviné suffirait à greffer un message dans un fil illisible.
+
+---
+
+## D35 — Répondre à une réponse rattache à la racine, plutôt que de refuser
+
+**Contexte.** Le besoin était « un seul niveau de réponse ». Reste à décider ce
+que fait le serveur quand `parentId` désigne une réponse.
+
+**Choix.** Le message est rattaché à la **racine du fil**. Le front, lui,
+n'affiche pas de bouton « Répondre » sous une réponse.
+
+**Écarté.** Répondre `400`. L'utilisateur qui atteint ce cas — par un client
+tiers, ou une interface qui évoluerait — a une intention parfaitement claire :
+écrire dans ce fil. Lui renvoyer une erreur qu'il ne peut pas corriger n'a aucune
+valeur. Écarté aussi : autoriser la profondeur et l'aplatir à l'affichage, qui
+aurait laissé en base une hiérarchie dont personne ne se sert et qu'il aurait
+fallu parcourir à chaque lecture.
+
+**Conséquences.** `parent_id` ne désigne **jamais** une ligne qui a elle-même un
+parent — invariant tenu par `rootOf()` à l'écriture, pas par une contrainte SQL,
+que SQLite ne sait pas exprimer ici. La lecture d'un fil s'en trouve simple : une
+seule passe, les racines précédant leurs réponses puisque l'ordre des id est
+l'ordre d'écriture. Le corollaire est qu'une réponse dont la racine disparaît
+(compte supprimé, commentaire masqué) remonte en tête de fil plutôt que de
+disparaître : elle appartient à son auteur, pas à celui qu'elle cite.
+
+---
+
+## D36 — Modération a posteriori, par masquage réversible
+
+**Contexte.** Il fallait un moyen pour l'administrateur de retirer un
+commentaire.
+
+**Choix.** Le commentaire est publié immédiatement et peut être **masqué** après
+coup depuis `/admin`. `hidden_at` et `hidden_by` portent la décision. Un
+commentaire masqué disparaît de la lecture pour tout le monde, son auteur
+compris.
+
+**Écarté.** La pré-modération, où chaque message attend une validation. Sur une
+galerie familiale dont les comptes sont créés à la main par le propriétaire, elle
+retarde tout le monde pour un risque qui n'existe pas : il n'y a pas d'inconnus.
+Elle a de plus un coût caché — l'auteur ne voit pas son propre message
+apparaître, et croit à une panne.
+
+Écarté aussi : **laisser l'auteur voir son commentaire masqué**, comme le font
+les grandes plateformes. Cela revient à lui laisser croire qu'on le lit encore.
+Autant que la décision soit visible : c'est ce qui distingue une modération
+assumée d'un bannissement furtif.
+
+Écarté enfin : la suppression pure. Masquer garde la décision réversible, ce qui
+compte quand elle est prise vite. La suppression définitive reste possible, par
+`DELETE /api/comments/:id`.
+
+**Conséquences.** Une réponse dont la racine est masquée remonte en tête de fil
+(voir D35). `hidden_by` est affiché dans la file de modération plutôt que gardé
+comme trace morte : sur une instance à plusieurs administrateurs, c'est la
+question qu'on se pose en premier.
+
+---
+
+## D37 — Les notifications partent hors du chemin de la requête, et n'échouent jamais
+
+**Contexte.** Un commentaire doit prévenir le propriétaire de l'instance, et
+l'auteur d'un fil quand on lui répond. L'application n'avait jusque-là aucune dépendance
+d'envoi d'email — « pas de courriel à envoyer » figurait même dans le hors
+périmètre de [01](./01-vision-et-perimetre.md), à propos de l'inscription.
+
+**Choix.** `nodemailer` derrière `SMTP_URL` et `MAIL_FROM`. `POST` répond dès que
+la ligne est écrite ; les messages sont mis dans une file sérialisée et partent
+après. Un échec est **journalisé et abandonné**, sans réessai. Sans configuration
+SMTP, le `Mailer` est inerte plutôt qu'absent : aucun appelant n'a à savoir si
+l'instance envoie des emails.
+
+**Écarté.** Envoyer dans le handler : un relais SMTP lent ferait attendre
+plusieurs secondes après un clic sur « Publier », pour un travail qui ne
+concerne pas celui qui attend. Écarté aussi : une file persistante avec
+réessais — c'est un mécanisme à surveiller, alors qu'une notification manquée
+est un désagrément et que le commentaire, lui, est bien enregistré. Écarté
+enfin : écrire un client SMTP maison pour éviter la dépendance ; `nodemailer`
+n'a aucune dépendance runtime, ce qui rejoint le raisonnement de D5.
+
+**Conséquences.** Le `drain()` de l'arrêt gracieux est indispensable : sans lui,
+un commentaire posté juste avant un redéploiement serait enregistré sans que
+personne n'en soit prévenu. Le lien de désabonnement est un HMAC sans expiration
+et sans session (voir [04](./04-securite-et-acces.md)) — un email se rouvre des
+mois plus tard, et demander de se connecter pour cesser d'être dérangé serait une
+façon de ne pas répondre. `PUBLIC_URL` devient structurante une fois de plus :
+mal renseignée, elle produit des notifications qui ne mènent nulle part.
+
+---
+
+## D38 — Une clé d'accès n'est pas une personne
+
+**Contexte.** D33 laissait le commentaire signé par le compte qui ouvre l'album,
+avec un `display_name` et un `email` posés sur `users`. C'était une confusion :
+`albums.yaml` a toujours permis de confier **un** identifiant à plusieurs
+personnes — un mot de passe donné à toute une famille est l'usage prévu. Tous les
+messages du foyer se seraient donc signés « famille », et l'administrateur se
+serait retrouvé à saisir et à maintenir les adresses email des autres.
+
+**Choix.** Deux niveaux séparés.
+
+- `users` reste une **clé d'accès** : elle ouvre des albums, et rien n'interdit
+  de la partager. Aucune adresse n'y est attachée.
+- `commenters` est une **personne** : un nom, et une adresse email qui lui sert
+  d'identité. C'est elle qui signe.
+
+La session porte un `commenter_id` et **mémorise** l'identité sans la définir :
+c'est l'adresse qui identifie, si bien que se ré-identifier depuis un autre
+appareil retrouve ses commentaires et le droit de les supprimer. `comments.account`
+conserve tout de même la clé d'accès employée, parce que c'est elle qu'on change
+quand un mot de passe a trop circulé.
+
+**Écarté.** Faire de l'email l'identifiant de connexion, en remplacement de
+`username`. C'est la clé primaire de `users`, référencée par `user_albums` et
+`comments` sans `ON UPDATE CASCADE` : il aurait fallu recréer ces tables sur une
+base en service, et un changement d'adresse serait devenu un changement
+d'identité. Écarté aussi : laisser l'administrateur saisir les adresses, qui ne
+survit pas au premier changement d'adresse de quelqu'un d'autre.
+
+**Conséquences.** L'adresse est obligatoire pour écrire, jamais pour lire. Elle
+n'apparaît **jamais** dans un fil — seulement dans la modération, qui a besoin de
+savoir qui parle derrière un nom déclaré. Les notifications destinées au
+propriétaire ne peuvent plus viser « les administrateurs » : elles vont à
+`settings.moderationEmail`, un réglage d'instance, puisqu'un compte administrateur
+n'est plus quelqu'un de joignable.
+
+---
+
+## D39 — L'adresse est vérifiée par un code à usage unique
+
+**Contexte.** L'identité de D38 est déclarative : derrière un mot de passe
+partagé, n'importe qui peut se dire « Mamie ». Et déclarer l'adresse d'un tiers
+lui ferait recevoir les notifications d'une galerie où il n'a rien demandé.
+
+**Choix.** Un code à six chiffres envoyé à l'adresse, à saisir pour que
+l'identité soit rattachée à la session. Quinze minutes de validité, cinq essais,
+un envoi par minute au plus. Seul un HMAC du code est stocké.
+
+**Écarté.** Faire confiance à la déclaration, au motif que le cercle est déjà
+protégé par un mot de passe. Un mot de passe partagé circule justement plus
+largement que prévu, et c'est bon marché de s'en prémunir. Écarté aussi : un lien
+de confirmation cliquable plutôt qu'un code — il ouvre une seconde session dans
+le navigateur par défaut, alors qu'un code se recopie dans l'onglet resté ouvert.
+Écarté enfin : hacher le code en argon2, disproportionné pour un secret qui vit
+quinze minutes, là où un HMAC coûte moins qu'une requête SQL.
+
+**Conséquences.** **Sans SMTP configuré, personne ne peut commenter** : aucun
+code ne peut partir. C'est cohérent — sans serveur d'envoi, les notifications ne
+partiraient pas davantage —, et l'interface l'annonce au lieu d'offrir un
+formulaire condamné à échouer. Le plafond de cinq essais est ce qui rend six
+chiffres suffisants ; sans lui, un million de tentatives en viendraient à bout.
+
+---
+
+## D40 — Session d'un an, prolongée à mi-vie
+
+**Contexte.** Le TTL de 30 jours obligeait à ressaisir un mot de passe partagé
+plusieurs fois par an, pour une galerie familiale consultée irrégulièrement. La
+demande était « une session qui ne se termine jamais ».
+
+**Choix.** Un an, repoussé d'un an dès que la session a passé sa mi-vie. En
+pratique on ne se déconnecte jamais tant qu'on utilise la galerie.
+
+**Écarté.** Une session sans expiration. C'est un jeton de connexion permanent —
+volé une fois, valable à vie — et la table `sessions` grossirait sans que rien ne
+la nettoie, la purge horaire n'ayant plus rien à purger. Écarté aussi : le
+« cookie de session » au sens HTTP, sans `maxAge`, qui fait exactement l'inverse
+de ce qui était demandé puisqu'il meurt à la fermeture du navigateur. Écarté
+enfin : repousser l'échéance à chaque requête, soit une écriture SQLite par
+vignette ; à mi-vie, c'est une écriture par visiteur et par semestre.
+
+**Conséquences.** Une session abandonnée met jusqu'à un an à disparaître, contre
+un mois auparavant. Les leviers de coupure immédiate restent les mêmes et
+comptent d'autant plus : suppression du compte et changement de mot de passe
+ferment les sessions, et `plugins/auth.ts` relit les droits à chaque requête.

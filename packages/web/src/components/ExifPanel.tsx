@@ -47,68 +47,39 @@ function buildRows(detail: MediaDetail): Row[] {
   return rows;
 }
 
-/** Panneau latéral des métadonnées, ouvert avec `i` dans la visionneuse. */
-export function ExifPanel({
-  detail,
-  onClose,
-}: {
-  detail: MediaDetail | undefined;
-  onClose: () => void;
-}): ReactElement {
-  return (
-    <aside
-      className="absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col overflow-y-auto border-l border-ink-700 bg-ink-900/95 backdrop-blur-sm"
-      aria-label="Informations sur le média"
-    >
-      <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
-        <h3 className="min-w-0 text-sm font-medium break-words text-ink-100">
-          {detail?.name ?? 'Informations'}
-        </h3>
-        <button
-          type="button"
-          onClick={onClose}
-          className="shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-          aria-label="Fermer le panneau"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="size-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </header>
+/**
+ * Contenu de l'onglet « Infos » du panneau latéral.
+ *
+ * Ne rend que ses lignes : l'`aside`, l'en-tête et les onglets appartiennent à
+ * `SidePanel`, qui les partage avec les commentaires. Les deux onglets se
+ * disputaient sinon la même largeur avec chacun son cadre.
+ */
+export function ExifPanel({ detail }: { detail: MediaDetail | undefined }): ReactElement {
+  if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">Chargement…</p>;
 
-      {!detail ? (
-        <p className="px-5 py-4 text-sm text-ink-400">Chargement…</p>
-      ) : (
-        <dl className="divide-y divide-ink-850">
-          {buildRows(detail).map((row) => (
-            <div key={row.label} className="flex gap-4 px-5 py-3">
-              <dt className="w-28 shrink-0 text-xs tracking-wide text-ink-400 uppercase">
-                {row.label}
-              </dt>
-              <dd className="min-w-0 text-sm break-words text-ink-100">
-                {row.href ? (
-                  <a
-                    href={row.href}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="text-accent underline-offset-2 hover:underline"
-                  >
-                    {row.value}
-                  </a>
-                ) : (
-                  row.value
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </aside>
+  return (
+    <dl className="divide-y divide-ink-850">
+      {buildRows(detail).map((row) => (
+        <div key={row.label} className="flex gap-4 px-5 py-3">
+          <dt className="w-28 shrink-0 text-xs tracking-wide text-ink-400 uppercase">
+            {row.label}
+          </dt>
+          <dd className="min-w-0 text-sm break-words text-ink-100">
+            {row.href ? (
+              <a
+                href={row.href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                {row.value}
+              </a>
+            ) : (
+              row.value
+            )}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

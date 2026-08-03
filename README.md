@@ -4,7 +4,8 @@ Une galerie auto-hébergée pour parcourir les photos et vidéos d'un compte Goo
 Drive, en remplacement de la prévisualisation native : grille justifiée groupée
 par mois, visionneuse plein écran pilotable au clavier, thème sombre.
 
-L'accès se fait par identifiant et mot de passe. Depuis `/admin`, le
+L'accès se fait par identifiant et mot de passe, qu'on peut confier à plusieurs
+personnes ; chacune déclare ensuite son nom et son adresse pour commenter. Depuis `/admin`, le
 propriétaire déclare quels dossiers Drive deviennent des albums et qui y a accès
 — de quoi partager un album précis sans exposer le reste du Drive.
 
@@ -30,6 +31,14 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
   streaming avec seek natif, sans transcodage.
 - **EXIF** : date de prise de vue, appareil, objectif, ouverture, vitesse, ISO,
   géolocalisation. Tri chronologique sur la date de prise de vue réelle.
+- **Commentaires par photo**, dans un panneau latéral, avec un niveau de réponse.
+  Chacun signe de son nom : l'identifiant peut être partagé par tout un foyer, on
+  déclare donc son nom et son adresse au moment d'écrire, et un code reçu par
+  email confirme l'adresse. L'administrateur peut masquer un commentaire depuis
+  `/admin`, et le rendre visible à nouveau.
+- **Notifications par email** : l'adresse de modération réglée dans `/admin` est
+  prévenue des nouveaux commentaires, l'auteur d'un fil des réponses qu'il
+  reçoit. Chaque message porte un lien de désabonnement.
 - **Téléchargement de l'original** pleine résolution.
 - **Tout passe par le serveur** : aucune URL Google n'est exposée au navigateur.
   Les vignettes sont générées en WebP et mises en cache sur disque.
@@ -45,6 +54,7 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 | `Échap`         | Fermer                                          |
 | `F`             | Plein écran                                     |
 | `I`             | Informations et EXIF                            |
+| `C`             | Commentaires                                    |
 | `D`             | Télécharger l'original                          |
 | `Z`             | Zoom                                            |
 | `Espace`        | Lecture / pause vidéo                           |
@@ -92,6 +102,8 @@ cp .env.example .env
 openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 32   # TOKEN_KEY
 # Renseigner aussi PUBLIC_URL, GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET
+# SMTP_URL et MAIL_FROM : nécessaires aux commentaires (le code de vérification
+# d'adresse part par email) — les deux ou aucun, sinon le démarrage échoue
 
 pnpm install
 pnpm create-admin alexis  # premier administrateur, mot de passe demandé
@@ -149,16 +161,19 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 
 ## Exploitation
 
-| Action                             | Comment                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------- |
-| Ajouter un album ou un utilisateur | `/admin`, prise en compte immédiate                                       |
-| Changer un intervalle, une limite  | `/admin`, appliqué sans redémarrage                                       |
-| Forcer une synchronisation         | **Resynchroniser** dans `/admin`                                          |
-| Voir l'état des synchronisations   | `/admin`                                                                  |
-| Mot de passe administrateur perdu  | `pnpm reset-password <identifiant>` sur le serveur                        |
-| Mettre à jour                      | `git pull && docker compose up -d --build`                                |
-| Sauvegarder                        | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable |
-| Consulter les logs                 | `docker compose logs -f`                                                  |
+| Action                             | Comment                                                                                     |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| Ajouter un album ou un utilisateur | `/admin`, prise en compte immédiate                                                         |
+| Changer un intervalle, une limite  | `/admin`, appliqué sans redémarrage                                                         |
+| Forcer une synchronisation         | **Resynchroniser** dans `/admin`                                                            |
+| Voir l'état des synchronisations   | `/admin`                                                                                    |
+| Modérer un commentaire             | `/admin`, section **Commentaires** : masquer, ou rendre visible à nouveau                   |
+| Activer les commentaires           | `SMTP_URL` et `MAIL_FROM` dans `.env` — sans serveur d'envoi, personne ne peut s'identifier |
+| Être prévenu des commentaires      | Renseigner l'adresse de modération dans `/admin`                                            |
+| Mot de passe administrateur perdu  | `pnpm reset-password <identifiant>` sur le serveur                                          |
+| Mettre à jour                      | `git pull && docker compose up -d --build`                                                  |
+| Sauvegarder                        | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable                   |
+| Consulter les logs                 | `docker compose logs -f`                                                                    |
 
 Mise à jour d'une instance qui tournait sur `config/albums.yaml` : rien à faire.
 Au premier démarrage, ses comptes, albums, droits et réglages sont repris en

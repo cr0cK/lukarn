@@ -21,6 +21,11 @@ Deux rôles, et seulement deux :
 | Le propriétaire | Un seul par instance | Connecte son Drive une fois en OAuth, administre comptes et albums depuis `/admin` |
 | Les visiteurs   | Quelques comptes     | Se connectent avec un identifiant/mot de passe et consultent leurs albums          |
 
+Un **compte n'est pas une personne** : c'est une clé d'accès, et rien n'interdit
+d'en confier une à tout un foyer — c'est même l'usage prévu depuis
+`albums.yaml`. Quand il s'agit de signer un commentaire, chacun se déclare avec
+son nom et son adresse, vérifiée par un code (voir [04](./04-securite-et-acces.md)).
+
 Un visiteur n'a jamais de compte Google et ne voit jamais une URL Google. Tout
 le contenu transite par le serveur, qui l'obtient avec l'unique jeton du
 propriétaire.
@@ -30,16 +35,18 @@ propriétaire.
 Ces absences ne sont pas des manques à combler, ce sont des choix qui tiennent
 le projet à sa taille.
 
-| Absent                                      | Pourquoi                                                                                                                           |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Toute écriture dans Drive                   | Le scope demandé est `drive.readonly` (`packages/server/src/drive/service.ts`). Aucun bug de l'app ne peut détruire les originaux. |
-| Édition, retouche, rotation persistée       | Les originaux appartiennent à Drive ; l'app n'en produit que des dérivés jetables.                                                 |
-| Inscription, mot de passe oublié            | Les comptes sont créés par le propriétaire depuis `/admin`. Pas de formulaire public, pas de courriel à envoyer.                   |
-| Partage public par lien                     | Toute route média exige une session. Un lien copié à un tiers ne lui donne rien.                                                   |
-| Reconnaissance faciale, recherche, tags     | Demanderait un traitement du contenu — donc de télécharger tous les originaux, ce que l'indexation évite précisément.              |
-| Transcodage vidéo                           | ffmpeg sur un VPS modeste consomme le CPU qu'on n'a pas. Les `Range` sont relayées telles quelles à Drive.                         |
-| Albums construits par requête (dates, tags) | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans `/admin`.                                             |
-| Multi-tenant, plusieurs Drive               | La table `oauth_token` a une contrainte `CHECK (id = 1)` : une instance, un Drive.                                                 |
+| Absent                                                        | Pourquoi                                                                                                                                                                               |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Toute écriture dans Drive                                     | Le scope demandé est `drive.readonly` (`packages/server/src/drive/service.ts`). Aucun bug de l'app ne peut détruire les originaux.                                                     |
+| Édition, retouche, rotation persistée                         | Les originaux appartiennent à Drive ; l'app n'en produit que des dérivés jetables.                                                                                                     |
+| Inscription, mot de passe oublié                              | Les comptes sont créés par le propriétaire depuis `/admin`. Pas de formulaire public, pas de courriel à envoyer.                                                                       |
+| Partage public par lien                                       | Toute route média exige une session. Un lien copié à un tiers ne lui donne rien.                                                                                                       |
+| Reconnaissance faciale, recherche, tags                       | Demanderait un traitement du contenu — donc de télécharger tous les originaux, ce que l'indexation évite précisément.                                                                  |
+| Commentaires publics, ou signés d'un compte Google            | Commenter suppose la session qui donne déjà accès à l'album. Un identifiant tiers ouvrirait une seconde population d'utilisateurs sans droits, à réconcilier avec `user_albums` (D33). |
+| Édition d'un commentaire, réactions, mentions, fils imbriqués | Ce qui sépare une conversation sous une photo d'un forum. Un seul niveau de réponse, et la suppression pour se corriger.                                                               |
+| Transcodage vidéo                                             | ffmpeg sur un VPS modeste consomme le CPU qu'on n'a pas. Les `Range` sont relayées telles quelles à Drive.                                                                             |
+| Albums construits par requête (dates, tags)                   | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans `/admin`.                                                                                                 |
+| Multi-tenant, plusieurs Drive                                 | La table `oauth_token` a une contrainte `CHECK (id = 1)` : une instance, un Drive.                                                                                                     |
 
 ## Les contraintes qui ont guidé la conception
 
@@ -73,3 +80,8 @@ calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
   `classify()` reconnaît comme `image/*` ou `video/*`.
 - Vignettes WebP générées à la demande, mises en cache sur disque avec éviction
   LRU.
+- Commentaires par photo, avec un niveau de réponse, modérés a posteriori depuis
+  `/admin` et notifiés par email. Ils sont signés par une **identité** — un nom
+  et une adresse vérifiée par code — distincte de la clé d'accès, qu'un foyer
+  peut partager. Sans serveur SMTP, aucun code ne part et les commentaires
+  restent indisponibles.

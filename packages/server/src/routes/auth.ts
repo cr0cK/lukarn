@@ -76,7 +76,14 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           maxAge: Math.floor(context.sessions.ttlMs / 1000),
           signed: true,
         })
-        .send({ username: user.username, admin: user.admin });
+        .send({
+          username: user.username,
+          admin: user.admin,
+          // Une connexion fraîche ne porte aucune identité : elle se déclare
+          // ensuite, et vaut pour la personne, pas pour la clé d'accès.
+          identity: null,
+          commentsEnabled: context.mailer.enabled,
+        });
     });
 
     app.post('/logout', async (request, reply) => {

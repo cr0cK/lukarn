@@ -100,8 +100,96 @@ demandé, le 400 sur `zigzag`, `ASC`, `''` ou `asc,desc`, et le 404 sur un album
 interdit quel que soit l'ordre.
 
 **`GET /api/albums/:albumId/items/:mediaId`** — `MediaDetail` = `MediaItem` plus
-le bloc `exif`. `404` si l'album est inconnu/interdit, `404` si le média n'est
-pas dans **cet** album.
+le bloc `exif` et `commentCount`. `404` si l'album est inconnu/interdit, `404` si
+le média n'est pas dans **cet** album.
+
+`commentCount` est composé par la route, pas par `MediaRepo` : l'index média n'a
+pas à connaître les commentaires, sans quoi chaque requête média deviendrait une
+jointure de plus. Il compte les commentaires **visibles**, réponses comprises, et
+voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
+charger un fil que la plupart des visiteurs n'ouvriront pas.
+
+## Identité de commentateur — `routes/identity.ts`
+
+`requireAuth` sur tout le préfixe : on déclare une identité depuis une session
+déjà ouverte, la clé d'accès et la personne étant deux choses distinctes.
+
+| Méthode | Chemin                       | Réponse       |
+| ------- | ---------------------------- | ------------- |
+| POST    | `/api/identity/request-code` | `202`         |
+| POST    | `/api/identity/verify`       | `SessionUser` |
+| POST    | `/api/identity/forget`       | `SessionUser` |
+
+**`request-code`** — corps `IdentityRequest` = `{ email, displayName }`. Envoie
+un code à six chiffres et répond **toujours `202`**, que l'adresse soit déjà
+connue ou non : distinguer les deux dirait à qui l'essaie quelles adresses ont
+déjà commenté ici. `429 too_soon` avec `Retry-After` si un code a été envoyé
+dans la minute — sans quoi le formulaire expédierait des emails en rafale vers
+une adresse qu'on ne possède pas. `503 mail_not_configured` sans SMTP : aucun
+code ne peut partir, donc personne ne peut commenter.
+
+**`verify`** — corps `VerifyIdentityRequest` = `{ email, code }`. Rattache
+l'identité à la session et rend le `SessionUser` à jour. `400` sur un code faux,
+expiré ou épuisé — **le même message dans les trois cas**, détailler lequel
+aidant surtout celui qui essaie des codes au hasard. Cinq tentatives, puis il
+faut redemander un code.
+
+**`forget`** — délie l'identité de cette session. Les commentaires déjà écrits
+restent en place, signés du nom sous lequel ils l'ont été : ils appartiennent à
+la conversation, pas à l'appareil. Se ré-identifier avec la même adresse les
+retrouve, et le droit de les supprimer avec.
+
+## Commentaires — `routes/comments.ts`
+
+| Méthode | Chemin                            | Accès     | Réponse        |
+| ------- | --------------------------------- | --------- | -------------- |
+| GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage` |
+| POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`      |
+| DELETE  | `/api/comments/:commentId`        | session   | `204`          |
+| GET     | `/api/comments/unsubscribe`       | **aucun** | page HTML      |
+
+Le contrôle d'accès est refait dans chaque handler plutôt que posé en
+`preHandler` de préfixe comme pour les médias : ici l'album n'occupe pas un
+segment fixe de l'URL. Il reste identique à celui des albums — **404 et jamais
+403** sur un album inconnu ou non attribué (voir
+[04](./04-securite-et-acces.md)).
+
+**`GET`** — `CommentsPage` = `{ threads: CommentThread[], total: number }`, où
+`CommentThread` = `{ root, replies }`. Les commentaires masqués par la modération
+n'y figurent pas, **y compris pour leur auteur**. Une réponse dont la racine
+vient d'être masquée remonte en tête de fil, `parentId` remis à `null` : la
+laisser accrochée à un parent absent la ferait disparaître sans que personne ne
+l'ait décidé.
+
+**`POST`** — corps `CreateCommentRequest` = `{ body, parentId? }`. `body` est
+découpé aux espaces avant contrôle : 1 à `COMMENT_MAX_LENGTH` (2000) caractères.
+`201` avec le `Comment` créé.
+
+- **`403 identity_required`** tant qu'aucune identité vérifiée n'est rattachée à
+  la session. Seconde exception assumée au « 404 et jamais 403 » (voir
+  [04](./04-securite-et-acces.md)) : le refus porte sur l'état de son propre
+  compte, pas sur une ressource d'autrui.
+
+- `404` si l'album est inconnu/interdit, ou si le média n'est pas dans cet album.
+- `404` si `parentId` désigne un commentaire inexistant **ou vivant sur un autre
+  média** — sans ce second contrôle, un client pourrait greffer sa réponse sur un
+  fil qu'il n'a pas le droit de lire en devinant un identifiant.
+- Répondre à une réponse **n'échoue pas** : le message est rattaché à la racine
+  du fil (voir [08](./08-decisions.md), D35).
+
+**`DELETE`** — l'auteur son propre commentaire, un administrateur n'importe
+lequel. `404` dans tous les cas de refus, sans distinguer « inexistant » de
+« pas à toi ». Un visiteur ne peut supprimer que dans un album qu'il voit encore,
+sinon un accès retiré laisserait subsister un droit d'écriture.
+
+**`GET /api/comments/unsubscribe?u=&t=`** — `u` est l'**adresse email**, pas un
+identifiant de compte : c'est elle qui identifie une personne. **Seule route de
+ce préfixe sans session.** On clique ce lien depuis sa boîte aux lettres, souvent sur un autre
+appareil : exiger une connexion pour cesser d'être dérangé reviendrait à ne pas
+répondre à la demande. `t` est un HMAC de l'identifiant, sans expiration (voir
+[04](./04-securite-et-acces.md)). Rend une page HTML servie par le serveur — pas
+le front, qui redirigerait vers l'écran de connexion. Un jeton invalide répond
+`400` ; un compte supprimé depuis l'envoi rend la page en le disant.
 
 ## Médias — `routes/media.ts`
 
@@ -214,6 +302,11 @@ Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums? }
 valant « inchangé ». La réponse est un `AdminUser` — **jamais d'empreinte de mot
 de passe, sous aucune clé**.
 
+**Aucune adresse email ici** : un compte est une clé d'accès, possiblement
+partagée, pas quelqu'un de joignable. Les adresses appartiennent aux identités
+de commentateur, et celle prévenue des nouveaux commentaires est le réglage
+`moderationEmail`.
+
 - `username` : `USERNAME_PATTERN`, 64 caractères au plus. `password` :
   `PASSWORD_MIN_LENGTH` (8) au minimum, 512 au plus.
 - `albums` : liste d'ids, ou `['*']` (`ALL_ALBUMS`) pour le joker. Un id inconnu
@@ -247,11 +340,51 @@ Deux effets de bord assumés :
   cache disque sont laissés : ils sont indexés par id de fichier, donc partagés
   entre albums, et régénérables — `cache/clear` les balaie tous.
 
+### Modération des commentaires
+
+| Méthode | Chemin                         | Réponse             |
+| ------- | ------------------------------ | ------------------- |
+| GET     | `/api/admin/comments`          | `AdminCommentsPage` |
+| POST    | `/api/admin/comments/:id/hide` | `{ ok: true }`      |
+| POST    | `/api/admin/comments/:id/show` | `{ ok: true }`      |
+
+Paramètres de `GET` : `filter` (`all` par défaut, ou `hidden`), `limit` (1 à 200,
+50 par défaut) et `cursor`. Le curseur est un **simple entier**, l'identifiant du
+dernier commentaire rendu : `AUTOINCREMENT` garantit que l'ordre des id est
+l'ordre d'écriture, ce qui évite le curseur composite dont la pagination des
+médias a besoin.
+
+`AdminComment` ajoute au `Comment` de quoi savoir de quelle photo on parle et
+qui écrit — `albumId`, `albumTitle`, `mediaId`, `mediaName`, `authorEmail`,
+`account`, `hiddenAt`, `hiddenBy`. `authorEmail` n'apparaît **qu'ici** : la
+modération a besoin de savoir qui parle derrière un nom déclaré, le fil non.
+`account` est la clé d'accès employée pour écrire, ce qui dit quel mot de passe
+partagé changer.
+`mediaName` vaut `null` si le média a disparu de l'index depuis : le commentaire
+reste modérable, seul le lien vers la photo n'est plus rendu.
+
+La file couvre **tous les albums**, y compris ceux que cet administrateur ne
+verrait pas dans la galerie : modérer suppose de tout lire, et restreindre la
+file au périmètre de lecture laisserait des commentaires que personne ne
+pourrait traiter.
+
+**`hide` / `show`** — masquer plutôt que supprimer : la décision reste
+réversible. Masquer deux fois n'est pas une erreur et ne réécrit pas `hiddenAt`,
+qui doit garder la date de la décision d'origine. La suppression définitive passe
+par `DELETE /api/comments/:commentId`, où l'administrateur a tous les droits.
+
+`AdminStatus` porte `hiddenComments` (pastille de la file) et `mailConfigured` —
+sans SMTP, renseigner une adresse ne produit rien, et l'écran d'administration
+doit le dire plutôt que de laisser espérer des notifications.
+
 ### Réglages
 
-`AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB }`. `PATCH`
+`AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB,
+moderationEmail }`. `PATCH`
 accepte un sous-ensemble (`UpdateSettingsRequest`) et renvoie l'état complet.
 Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0.
+`moderationEmail` accepte une adresse valide, `null` ou la chaîne vide — les deux
+dernières valant « aucune alerte », `ConfigRepo` les ramenant au même `NULL`.
 
 **Les réglages s'appliquent sans redémarrage** : la limite de `MediaCache` est
 ajustée dans la foulée (avec éviction si elle baisse) et le minuteur de

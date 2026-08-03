@@ -1,7 +1,7 @@
 import type { AppSettings, UpdateSettingsRequest } from '@gdv/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
-import { useSettings, useUpdateSettings } from '../../api/hooks';
+import { useAdminStatus, useSettings, useUpdateSettings } from '../../api/hooks';
 import { parseNumber, validateCacheSizeGB, validateIntervalMinutes } from '../../lib/adminForm';
 import { Spinner } from '../Spinner';
 import { Button, Checkbox, FormError, Section, TextField, type Notify } from './ui';
@@ -44,10 +44,16 @@ function SettingsForm({
   notify: Notify;
 }): ReactElement {
   const save = useUpdateSettings();
+  // Déjà chargé par le tableau de bord : cette lecture sert le cache. Sans SMTP,
+  // aucun code de vérification ne part, donc personne ne peut commenter — le
+  // réglage doit le dire au lieu de laisser espérer des emails.
+  const { data: status } = useAdminStatus();
+  const mailConfigured = status?.mailConfigured !== false;
 
   const [minutes, setMinutes] = useState(String(settings.syncIntervalMinutes));
   const [onStartup, setOnStartup] = useState(settings.syncOnStartup);
   const [cacheSize, setCacheSize] = useState(String(settings.cacheMaxSizeGB));
+  const [moderationEmail, setModerationEmail] = useState(settings.moderationEmail ?? '');
   const [touched, setTouched] = useState(false);
 
   const intervalError = validateIntervalMinutes(minutes);
@@ -58,7 +64,8 @@ function SettingsForm({
   const dirty =
     parsedInterval !== settings.syncIntervalMinutes ||
     onStartup !== settings.syncOnStartup ||
-    parsedCache !== settings.cacheMaxSizeGB;
+    parsedCache !== settings.cacheMaxSizeGB ||
+    moderationEmail.trim() !== (settings.moderationEmail ?? '');
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -70,6 +77,9 @@ function SettingsForm({
     if (parsedInterval !== settings.syncIntervalMinutes) body.syncIntervalMinutes = parsedInterval;
     if (onStartup !== settings.syncOnStartup) body.syncOnStartup = onStartup;
     if (parsedCache !== settings.cacheMaxSizeGB) body.cacheMaxSizeGB = parsedCache;
+    if (moderationEmail.trim() !== (settings.moderationEmail ?? '')) {
+      body.moderationEmail = moderationEmail.trim();
+    }
     if (Object.keys(body).length === 0) return;
 
     save.mutate(body, {
@@ -81,6 +91,7 @@ function SettingsForm({
     setMinutes(String(settings.syncIntervalMinutes));
     setOnStartup(settings.syncOnStartup);
     setCacheSize(String(settings.cacheMaxSizeGB));
+    setModerationEmail(settings.moderationEmail ?? '');
     setTouched(false);
   };
 
@@ -109,6 +120,20 @@ function SettingsForm({
           hint="Vignettes et rendus. Au-delà, les entrées les plus anciennes sont évincées."
         />
       </div>
+
+      <TextField
+        id="settings-moderation-email"
+        label="Adresse prévenue des nouveaux commentaires"
+        type="email"
+        value={moderationEmail}
+        onChange={setModerationEmail}
+        disabled={save.isPending}
+        hint={
+          mailConfigured
+            ? 'Reçoit un email à chaque commentaire posté. Vide : aucune alerte de modération.'
+            : 'Aucun serveur SMTP configuré : renseignée, elle ne recevra rien — et personne ne peut commenter tant que les codes de vérification ne peuvent pas partir.'
+        }
+      />
 
       <Checkbox
         id="settings-startup"

@@ -87,6 +87,13 @@ export interface MediaExif {
 
 export interface MediaDetail extends MediaItem {
   exif: MediaExif;
+  /**
+   * Nombre de commentaires visibles, réponses comprises. Servi avec le détail
+   * pour que la visionneuse affiche le compte sur son bouton sans avoir à
+   * charger le fil : la plupart des photos sont regardées sans qu'on ouvre les
+   * commentaires.
+   */
+  commentCount: number;
 }
 
 export interface Album {
@@ -108,10 +115,51 @@ export interface Album {
 
 export type SyncStatus = 'never' | 'running' | 'ok' | 'error';
 
+/**
+ * Session en cours.
+ *
+ * `username` est une **clé d'accès**, pas une personne : le même identifiant
+ * peut être partagé par plusieurs membres d'un foyer. Ce qui identifie
+ * quelqu'un, c'est `identity` — déclaré par l'intéressé et vérifié par email.
+ */
 export interface SessionUser {
   username: string;
   admin: boolean;
+  /** `null` tant que personne ne s'est identifié sur cette session. */
+  identity: CommenterIdentity | null;
+  /**
+   * `false` si l'instance n'a pas de serveur SMTP : aucun code de vérification
+   * ne peut partir, donc personne ne peut s'identifier ni commenter. L'interface
+   * doit le dire plutôt que d'offrir un formulaire qui échouera.
+   */
+  commentsEnabled: boolean;
 }
+
+/**
+ * Identité de commentateur, telle que son titulaire la voit. Présente
+ * uniquement une fois l'adresse vérifiée : une identité non vérifiée n'est
+ * rattachée à aucune session.
+ */
+export interface CommenterIdentity {
+  email: string;
+  displayName: string;
+  /** `false` après un désabonnement depuis un email reçu. */
+  notify: boolean;
+}
+
+/** Ce qu'on déclare pour s'identifier. L'adresse reçoit ensuite un code. */
+export interface IdentityRequest {
+  email: string;
+  displayName: string;
+}
+
+export interface VerifyIdentityRequest {
+  email: string;
+  code: string;
+}
+
+/** Longueur du code envoyé par email. Six chiffres, saisis à la main. */
+export const VERIFICATION_CODE_LENGTH = 6;
 
 export interface LoginRequest {
   username: string;
@@ -123,6 +171,63 @@ export interface ItemsPage {
   /** À repasser en `?cursor=` pour la page suivante. `null` = fin de l'album. */
   nextCursor: string | null;
 }
+
+/* --------------------------------------------------------------------------
+ * Commentaires
+ *
+ * Un fil par média *et par album* : le même fichier Drive indexé sous deux
+ * albums porte deux conversations distinctes. Voir `specs/04-securite-et-acces.md`.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Auteur d'un commentaire, réduit à ce que l'affichage demande.
+ *
+ * **L'adresse email n'y figure pas et ne doit jamais y figurer** : elle sert à
+ * identifier et à notifier, pas à être diffusée aux autres lecteurs du fil.
+ */
+export interface CommentAuthor {
+  /** Nom déclaré par l'intéressé, vérifié par email. Jamais vide. */
+  displayName: string;
+}
+
+export interface Comment {
+  id: number;
+  /** `null` pour un commentaire de premier niveau, sinon l'id de la racine du fil. */
+  parentId: number | null;
+  author: CommentAuthor;
+  body: string;
+  createdAt: string;
+  /**
+   * `true` si le commentaire peut être supprimé par le lecteur courant — son
+   * propre commentaire, ou n'importe lequel s'il est administrateur. Calculé
+   * par le serveur : le front n'a pas à rejouer la règle d'autorisation.
+   */
+  canDelete: boolean;
+}
+
+/**
+ * Un commentaire racine et ses réponses. La hiérarchie s'arrête là : répondre
+ * à une réponse rattache le message à la racine du fil (voir D35).
+ */
+export interface CommentThread {
+  root: Comment;
+  replies: Comment[];
+}
+
+export interface CommentsPage {
+  threads: CommentThread[];
+  /** Total visible, réponses comprises — ce qu'affiche le compteur du panneau. */
+  total: number;
+}
+
+export interface CreateCommentRequest {
+  body: string;
+  /** Répondre à ce commentaire. Absent ou `null` pour ouvrir un nouveau fil. */
+  parentId?: number | null;
+}
+
+/** Longueur maximale d'un commentaire, contrôlée des deux côtés à l'identique. */
+export const COMMENT_MAX_LENGTH = 2000;
 
 export interface AdminStatus {
   /** `true` si un refresh token Google est stocké et utilisable. */
@@ -142,6 +247,14 @@ export interface AdminStatus {
     bytes: number;
     maxBytes: number;
   };
+  /** Commentaires masqués, pour signaler la file de modération sans l'ouvrir. */
+  hiddenComments: number;
+  /**
+   * `true` si SMTP_URL et MAIL_FROM sont configurés. Sans quoi renseigner une
+   * adresse sur un compte ne produit rien, et l'écran d'administration doit le
+   * dire plutôt que de laisser croire à des notifications qui ne partiront pas.
+   */
+  mailConfigured: boolean;
 }
 
 export interface ApiError {
@@ -160,6 +273,11 @@ export interface ApiError {
 /** Le joker `*` donne accès à tous les albums, présents et à venir. */
 export const ALL_ALBUMS = '*';
 
+/**
+ * Une clé d'accès. Elle ouvre des albums et peut être partagée entre plusieurs
+ * personnes : aucune adresse email ne lui est attachée, celles-ci appartiennent
+ * aux identités de commentateur.
+ */
 export interface AdminUser {
   username: string;
   admin: boolean;
@@ -220,12 +338,60 @@ export interface AppSettings {
   syncIntervalMinutes: number;
   syncOnStartup: boolean;
   cacheMaxSizeGB: number;
+  /**
+   * Adresse prévenue de chaque nouveau commentaire. `null` pour n'en prévenir
+   * aucune.
+   *
+   * C'est un réglage d'instance et non une colonne sur les comptes : un compte
+   * administrateur est une clé d'accès, pas quelqu'un de joignable, et
+   * l'instance n'a qu'un propriétaire.
+   */
+  moderationEmail: string | null;
 }
 
 export type UpdateSettingsRequest = Partial<AppSettings>;
+
+/**
+ * Commentaire vu depuis la modération : les visiteurs lisent un fil sur une
+ * photo qu'ils ont sous les yeux, l'administrateur balaie tous les albums et a
+ * besoin de savoir de quelle photo on parle.
+ */
+export interface AdminComment extends Comment {
+  albumId: string;
+  albumTitle: string;
+  mediaId: string;
+  /** Nom du fichier Drive, ou `null` si le média a disparu de l'index depuis. */
+  mediaName: string | null;
+  /**
+   * Adresse vérifiée de l'auteur. Visible **ici seulement** : la modération a
+   * besoin de savoir qui parle derrière un nom déclaré, le fil non.
+   */
+  authorEmail: string;
+  /**
+   * Clé d'accès utilisée pour écrire, `null` si elle a été supprimée depuis.
+   * C'est elle qu'on change quand un mot de passe partagé a trop circulé.
+   */
+  account: string | null;
+  /** ISO 8601 du masquage, `null` si le commentaire est visible. */
+  hiddenAt: string | null;
+  /** Administrateur ayant masqué. Sur une instance à plusieurs, c'est à qui en reparler. */
+  hiddenBy: string | null;
+}
+
+/** Ce que la section de modération demande : tout, ou seulement ce qui est masqué. */
+export type ModerationFilter = 'all' | 'hidden';
+
+export interface AdminCommentsPage {
+  comments: AdminComment[];
+  /** À repasser en `?cursor=`. `null` = fin de la liste. */
+  nextCursor: string | null;
+}
 
 /** Contraintes de saisie, partagées pour valider des deux côtés à l'identique. */
 export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
 export const USERNAME_MAX_LENGTH = 64;
 export const ALBUM_ID_PATTERN = USERNAME_PATTERN;
 export const PASSWORD_MIN_LENGTH = 8;
+export const DISPLAY_NAME_MAX_LENGTH = 64;
+/** Longueur maximale d'une adresse, telle que la fixe la RFC 5321. */
+export const EMAIL_MAX_LENGTH = 254;
