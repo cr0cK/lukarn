@@ -24,7 +24,7 @@ revenir après la connexion.
 Le serveur rend `index.html` sur toute URL non-`/api` et non-`/assets`, donc un
 rechargement direct sur `/album/vacances` fonctionne (voir [05](./05-api.md)).
 
-### Deux paramètres de requête portent l'état de la vue
+### Trois paramètres de requête portent l'état de la vue
 
 Sur `/album/:albumId` :
 
@@ -34,12 +34,26 @@ Sur `/album/:albumId` :
   l'URL, qui reste courte et revient à son adresse d'origine quand on rebascule.
   Une valeur inconnue est ramenée au défaut côté front (`isSortOrder`), pour ne
   pas laisser une URL bricolée à la main provoquer un 400.
+- `?group=day` — découpage de la grille en sections. Même règle : le défaut
+  `month` n'est pas écrit, une valeur inconnue est ramenée au défaut
+  (`isGroupBy`). Contrairement à `order`, ce paramètre **ne part jamais au
+  serveur** et n'entre pas dans la clé TanStack Query : la liste est la même,
+  seule la mise en page la segmente autrement, donc rebasculer ne recharge rien.
 
-Les deux sont indépendants : `setParam` repart toujours des paramètres courants,
+Les trois sont indépendants : `setParam` repart toujours des paramètres courants,
 sinon ouvrir une photo effacerait le tri et le refermer le rétablirait tout seul.
 Ouvrir une photo pousse une entrée d'historique ; naviguer d'une photo à l'autre
 aux flèches utilise `replace`, sinon parcourir 50 photos empilerait 50 entrées et
 le bouton Retour ne ramènerait plus à la grille.
+
+`order` et `group` se pilotent depuis deux bascules de la `TopBar` (`children`),
+bâties sur le même patron : **le libellé annonce l'état courant** (« Par mois »),
+**l'infobulle annonce ce que le clic fera** (« Regrouper par jour »), et
+l'`aria-label` réunit les deux — le libellé disparaît sous `sm` faute de place,
+le nom accessible doit rester complet. Changer l'un ou l'autre remet la sélection
+clavier à `-1` et remonte la page : inverser le tri renumérote l'album, changer
+le regroupement recalcule toutes les hauteurs, et dans les deux cas la position
+conservée désignerait autre chose.
 
 ## Gestion d'état — `api/hooks.ts`
 
@@ -82,15 +96,14 @@ et de téléchargement.
 images gardent leur proportion et remplissent exactement la largeur — la
 disposition de Google Photos.
 
-Principe : les médias arrivent triés, on les découpe en mois consécutifs
-(`monthKey` = les 7 premiers caractères de l'ISO, donc en UTC), puis on remplit
-ligne par ligne. Une ligne est bouclée dès que la hauteur nécessaire pour la
-remplir passe sous `targetRowHeight`. La hauteur exacte vaut
-`(largeur − gaps) / somme des ratios`.
+Principe : les médias arrivent triés, on les découpe en sections consécutives
+(`sectionKeyOf`, voir plus bas), puis on remplit ligne par ligne. Une ligne est
+bouclée dès que la hauteur nécessaire pour la remplir passe sous
+`targetRowHeight`. La hauteur exacte vaut `(largeur − gaps) / somme des ratios`.
 
 Détails qui ont une raison :
 
-- **La dernière ligne d'un mois n'est pas justifiée.** L'étirer donnerait des
+- **La dernière ligne d'une section n'est pas justifiée.** L'étirer donnerait des
   vignettes démesurées pour deux photos ; elle reste à `targetRowHeight`.
 - **Le dernier élément d'une ligne justifiée absorbe l'arrondi cumulé**
   (`containerWidth - x`), pour que la ligne finisse pile au bord droit sans
@@ -103,7 +116,48 @@ Détails qui ont une raison :
 
 `packages/web/test/justify.test.ts` verrouille : chaque média placé une fois et
 une seule, les lignes justifiées finissant exactement au bord, la dernière ligne
-non étirée, l'empilement des sections sans chevauchement.
+non étirée, l'empilement des sections sans chevauchement — par mois comme par
+jour.
+
+### Par mois ou par jour — `GroupBy`
+
+`LayoutOptions.groupBy` choisit le découpage ; omis, c'est `DEFAULT_GROUP_BY`,
+donc le mois. Le type vient de `@gdv/shared` bien qu'aucune route ne le
+transporte : c'est une valeur d'interface, pas de payload, et la dupliquer côté
+front pour la seule raison qu'elle ne traverse pas le réseau ferait deux
+sources pour un même vocabulaire.
+
+| `groupBy` | Clé (`sectionKeyOf`)    | En-tête (`sectionLabelOf`)                        |
+| --------- | ----------------------- | ------------------------------------------------- |
+| `month`   | `monthKey` → `2026-07`  | `monthLabel` → « Juillet 2026 »                   |
+| `day`     | `dayKey` → `2026-07-14` | `dayLabel` → « 14 juillet 2026 », « Aujourd'hui » |
+
+Pas de regroupement par année : sur un album de vacances il ne produirait qu'une
+seule section, c'est-à-dire aucun repère.
+
+Ce qui a une raison :
+
+- **Les deux clés sont des tranches de la chaîne ISO**, jamais un `getMonth()`
+  ou un `getDate()` : ceux-là lisent le fuseau du navigateur et feraient
+  basculer de section une photo de 23 h 30 (voir « Dates : tout en UTC »).
+  C'est aussi ce qui rend `dayKey` insensible au sens de tri.
+- **Le découpage reste un parcours linéaire**, sans tri ni table de hachage :
+  la suite reçue est déjà ordonnée, et regrouper par clé la réordonnerait — le
+  tri ascendant afficherait des en-têtes à l'envers.
+- **Une clé de jour porte le mois**, donc le 30 mars et le 30 avril ne peuvent
+  pas se retrouver dans la même section.
+- **`dayLabel` nomme les deux jours les plus récents** « Aujourd'hui » et
+  « Hier ». Vingt en-têtes qui ne diffèrent que par le quantième obligent à lire
+  chaque chiffre ; au-delà de la veille, un repère relatif (« il y a 5 jours »)
+  demanderait un calcul mental de plus que la date. La date complète passe par
+  `formatDate` (`lib/format.ts`), donc en UTC.
+- **La comparaison à « aujourd'hui » est la seule date en heure locale de tout
+  le front** — voir [D31](./08-decisions.md).
+- **Par jour, la grille est beaucoup plus haute** : chaque section coûte un
+  en-tête (56 px), une marge (28 px) et une dernière ligne non justifiée. Sur un
+  album pathologique de 3 000 photos toutes de jours différents, 94 000 px par
+  mois deviennent 837 000 px par jour. C'est la conséquence assumée du
+  découpage, pas un défaut de calcul.
 
 ### La règle qui explique tout le reste
 
@@ -123,10 +177,11 @@ case mal proportionnée que l'image ne remplirait pas.
 
 ## Virtualisation — `lib/useGridLayout.ts` et `components/JustifiedGrid.tsx`
 
-`useGridLayout(items)` mesure le conteneur (`ResizeObserver` + `resize`), suit le
-défilement (`scroll` passif) et mémoïse `computeLayout` sur `[items, width]`. Il
-expose une fenêtre `[visibleFrom, visibleTo]` élargie de `OVERSCAN_PX = 900` de
-chaque côté, pour qu'un défilement rapide reste plein.
+`useGridLayout(items, groupBy)` mesure le conteneur (`ResizeObserver` +
+`resize`), suit le défilement (`scroll` passif) et mémoïse `computeLayout` sur
+`[items, width, groupBy]`. Il expose une fenêtre `[visibleFrom, visibleTo]`
+élargie de `OVERSCAN_PX = 900` de chaque côté, pour qu'un défilement rapide reste
+plein.
 
 Le `ref` est une **callback ref** et non un `useRef` : le conteneur n'est monté
 qu'une fois les médias chargés, donc un effet à dépendances vides s'exécuterait
@@ -137,6 +192,17 @@ positionne en absolu **uniquement** les sections et lignes qui croisent la
 fenêtre. Un album de 10 000 photos tient ainsi dans quelques dizaines de nœuds
 DOM. Le chargement de la page suivante se déclenche quand `visibleTo + 1500 px`
 dépasse la hauteur totale.
+
+Le filtrage des sections est un balayage linéaire de `layout.sections`, refait à
+chaque événement de défilement. Le découpage par jour multiplie ce tableau, ce
+qui pose la question : mesuré sur le pire cas imaginable — 3 000 photos toutes
+de jours différents, donc 3 000 sections —, ce balayage coûte **0,02 ms** par
+défilement, contre 0,004 ms pour les 99 sections du même album par mois. Le
+budget d'une frame en absorbe cinquante. Une recherche dichotomique sur `y`
+n'apporterait rien de mesurable et ferait porter au composant une invariante de
+tri qu'il n'a pas aujourd'hui. `computeLayout` lui-même prend 17 ms sur ce pire
+cas, mais il est mémoïsé : il ne rejoue qu'au changement de largeur, de liste ou
+de regroupement, jamais au défilement.
 
 `Thumb` choisit la variante par `pickThumbSize(displayWidth)` : la plus petite
 des tailles 320/640/1280 qui couvre la largeur d'affichage multipliée par le DPR
@@ -366,8 +432,14 @@ La raison : `taken_at` est l'heure qu'affichait l'appareil au déclenchement,
 lue d'un EXIF sans fuseau et interprétée en UTC par `parseExifTime`. Réafficher
 cette valeur dans le fuseau du navigateur décalerait la photo — une photo prise à
 14 h s'afficherait à 16 h pour un navigateur en Europe/Paris, et le regroupement
-par mois basculerait pour les prises de vue de fin de mois. **Toute nouvelle
-date affichée doit passer par `lib/format.ts`.**
+par mois ou par jour basculerait pour les prises de vue de fin de mois ou de fin
+de soirée. **Toute nouvelle date affichée doit passer par `lib/format.ts`.**
+
+**Une seule exception**, et elle ne rend aucune date : le « aujourd'hui » auquel
+`dayLabel` compare une clé de jour est pris sur le calendrier **local** du
+navigateur. Voir [D31](./08-decisions.md) — ce n'est pas une valeur venue du
+serveur, c'est l'horloge murale de celui qui regarde, la même que celle de
+l'appareil qui a horodaté la photo.
 
 ## Thème sombre — `styles.css`
 

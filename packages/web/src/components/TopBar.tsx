@@ -18,7 +18,7 @@ export function TopBar({ title, subtitle, back = false, children }: TopBarProps)
 
   return (
     <header className="sticky top-0 z-30 border-b border-ink-850 bg-ink-900/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[2000px] items-center gap-3 px-4 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-[2000px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:flex-nowrap sm:px-6">
         {back && (
           <Link
             to="/"
@@ -42,7 +42,15 @@ export function TopBar({ title, subtitle, back = false, children }: TopBarProps)
           {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
         </div>
 
-        {children}
+        {/* Les contrôles de vue passent sous le titre en dessous de `sm`.
+            Alignés sur une seule ligne, ils réduisaient le titre d'album à une
+            initiale suivie de points de suspension — le nom de l'album compte
+            plus que de gagner une rangée. */}
+        {children && (
+          <div className="order-last flex w-full items-center gap-2 sm:order-none sm:w-auto">
+            {children}
+          </div>
+        )}
 
         {user?.admin && (
           <Link

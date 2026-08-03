@@ -1,4 +1,5 @@
-import type { MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@gdv/shared';
+import { formatDate } from './format';
 
 /**
  * Calcul du layout « justifié » de la grille : des lignes de hauteur variable
@@ -16,10 +17,12 @@ export interface LayoutOptions {
   /** Hauteur visée pour une ligne. Les lignes s'en écartent pour tomber juste. */
   targetRowHeight: number;
   gap: number;
-  /** Hauteur de l'en-tête de mois. */
+  /** Hauteur de l'en-tête de section. */
   headerHeight: number;
   /** Marge sous chaque section. */
   sectionGap: number;
+  /** Découpage en sections. Omis, c'est le mois — le défaut partagé. */
+  groupBy?: GroupBy;
 }
 
 export interface LayoutCell {
@@ -50,7 +53,7 @@ export interface LayoutSection {
 export interface Layout {
   sections: LayoutSection[];
   totalHeight: number;
-  /** Toutes les lignes, tous mois confondus, dans l'ordre d'affichage. */
+  /** Toutes les lignes, toutes sections confondues, dans l'ordre d'affichage. */
   rows: LayoutRow[];
 }
 
@@ -65,9 +68,20 @@ function ratioOf(item: MediaItem): number {
   return Math.min(MAX_RATIO, Math.max(MIN_RATIO, item.width / item.height));
 }
 
-/** Clé de regroupement `YYYY-MM`, sur la date de prise de vue en UTC. */
+/**
+ * Clé de regroupement `YYYY-MM`, sur la date de prise de vue en UTC.
+ *
+ * Découper sur la chaîne ISO plutôt que sur un `Date` garde le découpage en
+ * UTC : `getMonth()` bascule de mois pour une photo du 31 à 23 h vue depuis
+ * Paris, alors que `taken_at` est déjà l'heure de l'appareil.
+ */
 export function monthKey(iso: string): string {
   return iso.slice(0, 7);
+}
+
+/** Clé de regroupement `YYYY-MM-DD`, en UTC pour la même raison que `monthKey`. */
+export function dayKey(iso: string): string {
+  return iso.slice(0, 10);
 }
 
 export function monthLabel(key: string, locale = 'fr-FR'): string {
@@ -81,8 +95,66 @@ export function monthLabel(key: string, locale = 'fr-FR'): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+/**
+ * Jour courant sur l'horloge de celui qui regarde, en `YYYY-MM-DD`.
+ *
+ * Volontairement le calendrier **local** et non le jour UTC, à l'inverse de
+ * tout le reste : `taken_at` est l'heure qu'affichait l'appareil, c'est-à-dire
+ * la même horloge murale que celle du navigateur. Comparer au jour UTC
+ * refuserait « Aujourd'hui » à un après-midi encore en cours à Montréal, et
+ * l'accorderait à Auckland avant que la journée n'ait commencé.
+ */
+function localDayKey(now: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** Jour calendaire précédant `key`, en `YYYY-MM-DD`. */
+function previousDayKey(key: string): string {
+  const [year, month, day] = key.split('-').map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day! - 1));
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Libellé d'une section jour : « 14 juillet 2026 », ou un repère relatif pour
+ * les deux jours les plus récents.
+ *
+ * Une date complète est illisible en série — vingt en-têtes qui ne diffèrent
+ * que par le quantième obligent à lire chaque chiffre. « Aujourd'hui » et
+ * « Hier » se reconnaissent d'un coup d'œil ; au-delà, le repère relatif
+ * (« il y a 5 jours ») demanderait un calcul mental de plus que la date elle-même.
+ *
+ * `today` est injectable pour que les tests ne dépendent pas de la date du jour.
+ */
+export function dayLabel(key: string, today = localDayKey(new Date())): string {
+  if (key === today) return "Aujourd'hui";
+  if (key === previousDayKey(today)) return 'Hier';
+  // Midi et non minuit : une clé de jour n'est qu'un quantième, et si un
+  // formateur de `format.ts` cessait un jour d'être en UTC, minuit basculerait
+  // de jour dans la moitié des fuseaux — midi ne bascule dans aucun.
+  return formatDate(`${key}T12:00:00.000Z`);
+}
+
+/** Clé de section d'un média, selon le découpage demandé. */
+export function sectionKeyOf(iso: string, groupBy: GroupBy): string {
+  return groupBy === 'day' ? dayKey(iso) : monthKey(iso);
+}
+
+/** En-tête affiché pour une clé de section, selon le découpage demandé. */
+export function sectionLabelOf(key: string, groupBy: GroupBy): string {
+  return groupBy === 'day' ? dayLabel(key) : monthLabel(key);
+}
+
 export function computeLayout(items: MediaItem[], options: LayoutOptions): Layout {
-  const { containerWidth, targetRowHeight, gap, headerHeight, sectionGap } = options;
+  const {
+    containerWidth,
+    targetRowHeight,
+    gap,
+    headerHeight,
+    sectionGap,
+    groupBy = DEFAULT_GROUP_BY,
+  } = options;
 
   if (containerWidth <= 0 || items.length === 0) {
     return { sections: [], totalHeight: 0, rows: [] };
@@ -94,12 +166,13 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
 
   // Les items arrivent déjà triés chronologiquement, dans un sens ou dans
   // l'autre selon le choix de l'utilisateur : un simple parcours suffit à les
-  // découper en mois consécutifs, sans présumer de la direction.
+  // découper en sections consécutives, sans présumer de la direction. Un
+  // regroupement qui trierait ses clés casserait le tri ascendant.
   let index = 0;
   while (index < items.length) {
-    const key = monthKey(items[index]!.takenAt);
+    const key = sectionKeyOf(items[index]!.takenAt, groupBy);
     const start = index;
-    while (index < items.length && monthKey(items[index]!.takenAt) === key) index++;
+    while (index < items.length && sectionKeyOf(items[index]!.takenAt, groupBy) === key) index++;
 
     const sectionItems = items.slice(start, index);
     const sectionY = cursorY;
@@ -116,7 +189,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
       const available = containerWidth - totalGap;
       // Hauteur qui fait tenir la ligne pile dans la largeur disponible.
       const exactHeight = available / ratioSum;
-      // La dernière ligne d'un mois est rarement pleine : l'étirer donnerait
+      // La dernière ligne d'une section est rarement pleine : l'étirer donnerait
       // des vignettes démesurées, on la laisse à la hauteur cible.
       const height = justified ? exactHeight : Math.min(exactHeight, targetRowHeight);
 
@@ -157,7 +230,13 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
 
     // `rowY` a avancé d'un `gap` de trop après la dernière ligne.
     const sectionHeight = Math.max(0, rowY - gap - sectionY);
-    sections.push({ key, label: monthLabel(key), y: sectionY, height: sectionHeight, rows });
+    sections.push({
+      key,
+      label: sectionLabelOf(key, groupBy),
+      y: sectionY,
+      height: sectionHeight,
+      rows,
+    });
     cursorY = sectionY + sectionHeight + sectionGap;
   }
 

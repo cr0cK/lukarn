@@ -1,7 +1,14 @@
 import type { MediaItem } from '@gdv/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { computeLayout, monthKey, monthLabel, targetRowHeightFor } from '../src/lib/justify';
+import {
+  computeLayout,
+  dayKey,
+  dayLabel,
+  monthKey,
+  monthLabel,
+  targetRowHeightFor,
+} from '../src/lib/justify';
 
 const OPTIONS = {
   containerWidth: 1200,
@@ -171,6 +178,145 @@ describe('regroupement par mois', () => {
 
   it('rend un libellé lisible avec majuscule', () => {
     assert.equal(monthLabel('2024-07'), 'Juillet 2024');
+  });
+});
+
+describe('regroupement par jour', () => {
+  it('extrait la clé YYYY-MM-DD', () => {
+    assert.equal(dayKey('2024-07-14T18:32:10.000Z'), '2024-07-14');
+  });
+
+  it('ne bascule pas de jour pour une prise de vue de fin de soirée', () => {
+    // Le piège du fuseau : lue en Europe/Paris, une photo de 23 h 30 le 14
+    // tomberait au 15. `taken_at` étant l'heure de l'appareil, elle doit rester
+    // au 14 quel que soit le fuseau du navigateur.
+    assert.equal(dayKey('2024-07-14T23:30:00.000Z'), '2024-07-14');
+    assert.equal(dayKey('2024-07-15T00:30:00.000Z'), '2024-07-15');
+  });
+
+  it('rend une date lisible plutôt que la clé technique', () => {
+    assert.equal(dayLabel('2026-07-14', '2026-08-01'), '14 juillet 2026');
+  });
+
+  it('nomme les deux jours les plus récents plutôt que de les dater', () => {
+    // Dans un album qu'on vient d'alimenter, « Aujourd'hui » se repère d'un
+    // coup d'œil là où deux quantièmes voisins demandent de lire les chiffres.
+    assert.equal(dayLabel('2026-08-01', '2026-08-01'), "Aujourd'hui");
+    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Hier');
+    assert.equal(dayLabel('2026-07-30', '2026-08-01'), '30 juillet 2026');
+  });
+
+  it('trouve la veille par-dessus un changement de mois et une année bissextile', () => {
+    // Un décalage naïf sur le quantième daterait « Hier » au 0 mars.
+    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Hier');
+    assert.equal(dayLabel('2024-02-29', '2024-03-01'), 'Hier');
+    assert.equal(dayLabel('2025-12-31', '2026-01-01'), 'Hier');
+  });
+});
+
+describe('computeLayout, découpage en sections', () => {
+  /** Deux photos par jour sur quatre jours à cheval sur deux mois. */
+  const acrossMonths = [
+    photo('a', '2024-03-30T09:00:00.000Z'),
+    photo('b', '2024-03-30T18:00:00.000Z'),
+    photo('c', '2024-03-31T09:00:00.000Z'),
+    photo('d', '2024-04-01T09:00:00.000Z'),
+    photo('e', '2024-04-30T09:00:00.000Z'),
+  ];
+
+  it("découpe par mois quand rien n'est demandé", () => {
+    // `month` est le défaut partagé : l'omettre ne doit pas changer la grille.
+    const implicite = computeLayout(items, OPTIONS);
+    const explicite = computeLayout(items, { ...OPTIONS, groupBy: 'month' });
+    assert.deepEqual(
+      implicite.sections.map((section) => section.key),
+      explicite.sections.map((section) => section.key),
+    );
+  });
+
+  it('produit une section par jour', () => {
+    const layout = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'day' });
+    assert.deepEqual(
+      layout.sections.map((section) => section.key),
+      ['2024-03-30', '2024-03-31', '2024-04-01', '2024-04-30'],
+    );
+  });
+
+  it('sépare deux photos du même quantième mais de mois différents', () => {
+    // Le 30 mars et le 30 avril partagent leur quantième : une clé qui ne
+    // porterait que le jour les fusionnerait en une seule section.
+    const layout = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'day' });
+    const mars = layout.sections.find((section) => section.key === '2024-03-30')!;
+    const avril = layout.sections.find((section) => section.key === '2024-04-30')!;
+
+    assert.equal(mars.rows.flatMap((row) => row.cells).length, 2);
+    assert.equal(avril.rows.flatMap((row) => row.cells).length, 1);
+  });
+
+  it('réunit dans un même mois des jours que le découpage par jour sépare', () => {
+    // La réciproque : trois jours de mars, un seul en-tête « Mars 2024 ».
+    const layout = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'month' });
+    assert.deepEqual(
+      layout.sections.map((section) => section.key),
+      ['2024-03', '2024-04'],
+    );
+    assert.equal(layout.sections[0]!.rows.flatMap((row) => row.cells).length, 3);
+  });
+
+  it('ne fusionne jamais deux photos de jours différents dans la même section', () => {
+    const layout = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
+
+    for (const section of layout.sections) {
+      for (const cell of section.rows.flatMap((row) => row.cells)) {
+        assert.equal(dayKey(cell.item.takenAt), section.key);
+      }
+    }
+  });
+
+  it('découpe par jour dans les deux sens de tri', () => {
+    // La grille ne trie rien : le tri ascendant de l'API doit lui suffire tel
+    // quel, en-têtes dans l'ordre inverse et sans jour dédoublé.
+    const desc = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'day' });
+    const asc = computeLayout([...acrossMonths].reverse(), { ...OPTIONS, groupBy: 'day' });
+
+    assert.deepEqual(
+      asc.sections.map((section) => section.key),
+      [...desc.sections.map((section) => section.key)].reverse(),
+    );
+    assert.equal(asc.rows.flatMap((row) => row.cells).length, acrossMonths.length);
+  });
+
+  it('place chaque média une fois et une seule par jour aussi', () => {
+    const layout = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
+    const indexes = layout.rows.flatMap((row) => row.cells.map((cell) => cell.index));
+
+    assert.deepEqual(
+      [...indexes].sort((a, b) => a - b),
+      items.map((_, index) => index),
+    );
+  });
+
+  it('empile les sections de jour sans chevauchement', () => {
+    // Le découpage par jour multiplie les en-têtes : c'est là qu'une hauteur de
+    // section mal calculée ferait se recouvrir deux grilles.
+    const layout = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
+
+    for (let index = 1; index < layout.sections.length; index++) {
+      const previous = layout.sections[index - 1]!;
+      assert.equal(layout.sections[index]!.y, previous.y + previous.height + OPTIONS.sectionGap);
+    }
+    const last = layout.sections.at(-1)!;
+    assert.equal(layout.totalHeight, last.y + last.height);
+  });
+
+  it('donne une grille plus haute par jour que par mois', () => {
+    // Chaque jour ajoute un en-tête et une dernière ligne non justifiée : la
+    // hauteur totale, dont dépend la barre de défilement, doit suivre.
+    const parMois = computeLayout(items, { ...OPTIONS, groupBy: 'month' });
+    const parJour = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
+
+    assert.equal(parJour.sections.length, 30);
+    assert.ok(parJour.totalHeight > parMois.totalHeight);
   });
 });
 

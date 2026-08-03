@@ -1,4 +1,11 @@
-import { DEFAULT_SORT_ORDER, isSortOrder, type SortOrder } from '@gdv/shared';
+import {
+  DEFAULT_GROUP_BY,
+  DEFAULT_SORT_ORDER,
+  isGroupBy,
+  isSortOrder,
+  type GroupBy,
+  type SortOrder,
+} from '@gdv/shared';
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumItems } from '../api/hooks';
@@ -22,6 +29,11 @@ export default function AlbumPage(): ReactElement {
   const orderParam = searchParams.get('order');
   const order: SortOrder = isSortOrder(orderParam) ? orderParam : DEFAULT_SORT_ORDER;
 
+  // Le découpage en sections suit la même règle. Il ne concerne que la mise en
+  // page : la requête est la même, seule la grille segmente autrement.
+  const groupParam = searchParams.get('group');
+  const groupBy: GroupBy = isGroupBy(groupParam) ? groupParam : DEFAULT_GROUP_BY;
+
   const album = useAlbum(albumId);
   const { items, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useAlbumItems(
     albumId,
@@ -31,7 +43,7 @@ export default function AlbumPage(): ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
-  const grid = useGridLayout(items);
+  const grid = useGridLayout(items, groupBy);
 
   // La photo ouverte vit dans l'URL : le bouton Retour la referme, et un lien
   // partagé rouvre exactement la même vue.
@@ -39,11 +51,11 @@ export default function AlbumPage(): ReactElement {
   const openedIndex = openedId ? items.findIndex((item) => item.id === openedId) : -1;
   const isOpen = openedIndex >= 0;
 
-  // `photo` et `order` sont deux réglages indépendants de la même URL : chaque
-  // écriture repart des paramètres courants, sinon ouvrir une photo effacerait
-  // le sens de tri et le refermer le rétablirait tout seul.
+  // `photo`, `order` et `group` sont trois réglages indépendants de la même
+  // URL : chaque écriture repart des paramètres courants, sinon ouvrir une
+  // photo effacerait le tri et le refermer le rétablirait tout seul.
   const setParam = useCallback(
-    (key: 'photo' | 'order', value: string | null, replace: boolean) => {
+    (key: 'photo' | 'order' | 'group', value: string | null, replace: boolean) => {
       setSearchParams(
         (current) => {
           const next = new URLSearchParams(current);
@@ -89,6 +101,11 @@ export default function AlbumPage(): ReactElement {
     setParam('order', next === DEFAULT_SORT_ORDER ? null : next, false);
   }, [order, setParam]);
 
+  const toggleGroupBy = useCallback(() => {
+    const next: GroupBy = groupBy === 'month' ? 'day' : 'month';
+    setParam('group', next === DEFAULT_GROUP_BY ? null : next, false);
+  }, [groupBy, setParam]);
+
   // Une photo demandée par l'URL mais pas encore chargée : on continue de
   // paginer jusqu'à la trouver (ou jusqu'à la fin de l'album).
   useEffect(() => {
@@ -104,11 +121,13 @@ export default function AlbumPage(): ReactElement {
 
   // Inverser le tri renumérote tout l'album : conserver l'index sélectionné
   // désignerait une autre photo, et la position de défilement un autre mois.
-  // On repart du haut de la nouvelle liste.
+  // Changer de regroupement ne renumérote rien, mais recalcule toutes les
+  // hauteurs : la même ordonnée tombe ailleurs, et la sélection se retrouve
+  // hors écran. Dans les deux cas on repart du haut.
   useEffect(() => {
     setSelectedIndex(-1);
     window.scrollTo({ top: 0 });
-  }, [order]);
+  }, [order, groupBy]);
 
   useEffect(() => {
     if (isOpen) setSelectedIndex(openedIndex);
@@ -176,6 +195,11 @@ export default function AlbumPage(): ReactElement {
   const orderAction =
     order === 'desc' ? "Afficher les plus anciennes d'abord" : "Afficher les plus récentes d'abord";
 
+  // Même règle pour le regroupement : le libellé dit l'état, l'infobulle dit
+  // l'effet du clic.
+  const groupLabel = groupBy === 'month' ? 'Par mois' : 'Par jour';
+  const groupAction = groupBy === 'month' ? 'Regrouper par jour' : 'Regrouper par mois';
+
   return (
     <div className="min-h-full">
       <TopBar title={album.data?.title ?? 'Album'} subtitle={subtitle} back>
@@ -200,6 +224,29 @@ export default function AlbumPage(): ReactElement {
             <path d={order === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
           </svg>
           <span className="hidden sm:inline">{orderLabel}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleGroupBy}
+          title={groupAction}
+          aria-label={`Regroupement : ${groupLabel}. ${groupAction}.`}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="size-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path d="M3 10h18M8 3v4M16 3v4" />
+            {/* Plusieurs traits pour le mois, un seul repère pour le jour. */}
+            <path d={groupBy === 'month' ? 'M7 14h10M7 17.5h6' : 'M11 14h2v3h-2z'} />
+          </svg>
+          <span className="hidden sm:inline">{groupLabel}</span>
         </button>
       </TopBar>
 

@@ -1,4 +1,4 @@
-import type { MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@gdv/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 
@@ -31,7 +31,7 @@ export interface GridLayout {
  * la navigation clavier se déplace de ligne en ligne, et seules les positions
  * calculées ici disent quelles vignettes sont voisines à l'écran.
  */
-export function useGridLayout(items: MediaItem[]): GridLayout {
+export function useGridLayout(items: MediaItem[], groupBy: GroupBy = DEFAULT_GROUP_BY): GridLayout {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [offsetTop, setOffsetTop] = useState(0);
@@ -77,8 +77,9 @@ export function useGridLayout(items: MediaItem[]): GridLayout {
         gap: GRID_GAP,
         headerHeight: GRID_HEADER_HEIGHT,
         sectionGap: GRID_SECTION_GAP,
+        groupBy,
       }),
-    [items, width],
+    [items, width, groupBy],
   );
 
   return {

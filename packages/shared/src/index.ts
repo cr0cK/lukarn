@@ -17,6 +17,21 @@ export type MediaKind = 'photo' | 'video';
 /** Sens du tri chronologique d'un album. `desc` = le plus récent d'abord. */
 export type SortOrder = 'desc' | 'asc';
 
+/**
+ * Découpage de la grille en sections. Purement côté client : le serveur rend
+ * une liste triée, c'est la mise en page qui la segmente.
+ *
+ * Pas de regroupement par année : sur un album de vacances, il ne produirait
+ * qu'une seule section, c'est-à-dire aucun repère.
+ */
+export type GroupBy = 'month' | 'day';
+
+export const DEFAULT_GROUP_BY: GroupBy = 'month';
+
+export function isGroupBy(value: unknown): value is GroupBy {
+  return value === 'month' || value === 'day';
+}
+
 export const DEFAULT_SORT_ORDER: SortOrder = 'desc';
 
 export function isSortOrder(value: unknown): value is SortOrder {
