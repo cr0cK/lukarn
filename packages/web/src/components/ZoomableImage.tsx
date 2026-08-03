@@ -16,6 +16,7 @@ import {
   zoomPercent,
   type Point,
 } from '../lib/zoom';
+import { previewOverlay } from '../lib/preview';
 
 /** Au-delà, on n'observe plus que le grain du capteur. */
 const MAX_SCALE = 8;
@@ -310,6 +311,10 @@ export function ZoomableImage({
 
   const isZoomed = scale > 1 + FIT_EPSILON;
 
+  // Aperçu, indicateur et message d'échec sont décidés ensemble : c'est leur
+  // combinaison qui doit rester juste, pas chacun pris isolément.
+  const overlay = previewOverlay({ loaded, failed, measured: displayed.width > 0 });
+
   return (
     <div
       ref={containerRef}
@@ -320,18 +325,39 @@ export function ZoomableImage({
       onPointerCancel={endDrag}
       onDoubleClick={(event) => event.preventDefault()}
     >
-      {/* Placeholder : la vignette est déjà en cache navigateur puisqu'elle
-          vient d'être affichée dans la grille. Elle occupe l'espace exact du
-          rendu final le temps que celui-ci arrive — quelques secondes quand la
-          photo doit encore être téléchargée depuis Drive. */}
-      {!loaded && !failed && displayed.width > 0 && (
+      {/* Aperçu : la vignette est déjà en cache navigateur puisqu'elle vient
+          d'être affichée dans la grille. Elle occupe l'espace exact du rendu
+          final le temps que celui-ci arrive — quelques secondes quand la photo
+          doit encore être téléchargée depuis Drive.
+
+          Le flou reste mesuré : il masque la pixellisation de l'agrandissement,
+          mais assez léger pour qu'on reconnaisse la photo et qu'on comprenne
+          qu'elle se précise, au lieu d'y voir un rendu raté. */}
+      {overlay.placeholder && (
         <img
           src={placeholderSrc}
           alt=""
           aria-hidden="true"
-          className="absolute scale-105 blur-lg"
+          className="absolute blur-md"
           style={{ width: displayed.width, height: displayed.height }}
         />
+      )}
+
+      {/* Sans cet indicateur, l'aperçu flou ne se lit pas comme une attente :
+          on croit que la photo elle-même est floue. C'est exactement ce qui
+          avait été rapporté comme « ouverture toute floue, aléatoirement ». */}
+      {overlay.spinner && (
+        <span
+          role="status"
+          aria-label="Chargement de la photo"
+          className="absolute flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-ink-100"
+        >
+          <span
+            className="size-3.5 animate-spin rounded-full border-2 border-ink-600 border-t-accent"
+            aria-hidden="true"
+          />
+          Chargement…
+        </span>
       )}
 
       <img
@@ -384,7 +410,9 @@ export function ZoomableImage({
         </span>
       )}
 
-      {failed && <p className="text-sm text-ink-400">Cette image n'a pas pu être affichée.</p>}
+      {overlay.error && (
+        <p className="text-sm text-ink-400">Cette image n'a pas pu être affichée.</p>
+      )}
     </div>
   );
 }
