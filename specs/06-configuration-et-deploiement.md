@@ -238,3 +238,20 @@ pnpm typecheck && pnpm lint && pnpm test
 
 Les tests serveur tournent avec le runner natif de Node (`node --import tsx
 --test`) : pas de framework de test dans les dépendances.
+
+### Voir les emails pour de vrai
+
+Les tests vérifient ce que `buildCommentMail`, `buildAlbumUpdateMail` et
+`buildVerificationMail` composent — sujet, liens, échappement. Ils ne disent
+rien du rendu dans un client, ni de l'encodage MIME des accents, qui ne se
+constatent qu'après un envoi. Un relais bouchon suffit :
+
+```bash
+docker run -d --rm --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+# puis, dans .env : SMTP_URL=smtp://localhost:1025 et MAIL_FROM=Galerie <galerie@exemple.fr>
+```
+
+Mailpit accepte tout, ne relaie rien et rend les messages sur
+`http://localhost:8025`. C'est le seul moyen d'essayer les emails sans envoyer
+de courrier à une vraie adresse, et sans faire dépendre un test d'un relais
+distant.
