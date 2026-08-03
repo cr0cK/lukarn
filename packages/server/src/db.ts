@@ -289,6 +289,17 @@ export const MIGRATIONS: string[] = [
   -- c'est ce qui évite d'annoncer rétroactivement un album entier.
   ALTER TABLE media ADD COLUMN added_at TEXT;
   `,
+
+  // 6 — un renommage n'a lieu qu'une fois le code validé.
+  //
+  // `requestCode` écrivait `display_name` immédiatement, avant toute
+  // vérification : demander un code pour l'adresse d'un tiers déjà vérifié
+  // renommait donc son identité, et avec elle tous ses commentaires passés — la
+  // signature affichée est lue à chaque requête, pas figée à l'écriture. Le nom
+  // demandé attend ici jusqu'à ce que le code prouve qu'on tient la boîte.
+  `
+  ALTER TABLE commenters ADD COLUMN pending_display_name TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

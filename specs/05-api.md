@@ -141,9 +141,17 @@ aidant surtout celui qui essaie des codes au hasard. Cinq tentatives, puis il
 faut redemander un code.
 
 **`forget`** — délie l'identité de cette session. Les commentaires déjà écrits
-restent en place, signés du nom sous lequel ils l'ont été : ils appartiennent à
-la conversation, pas à l'appareil. Se ré-identifier avec la même adresse les
-retrouve, et le droit de les supprimer avec.
+restent en place : ils appartiennent à la conversation, pas à l'appareil. Se
+ré-identifier avec la même adresse les retrouve, et le droit de les supprimer
+avec.
+
+La signature affichée est **celle du moment**, pas celle de l'écriture : le fil
+lit `commenters.display_name` par jointure. Se renommer renomme donc tout son
+historique, ce qui est le comportement voulu — l'identité est l'adresse, le nom
+n'en est que l'étiquette courante. C'est aussi pourquoi un renommage attend la
+validation du code (`pending_display_name`, voir
+[03](./03-modele-de-donnees.md)) : sans cela, la demande seule aurait suffi à
+réécrire la signature de tous les messages d'un tiers.
 
 ## Commentaires — `routes/comments.ts`
 

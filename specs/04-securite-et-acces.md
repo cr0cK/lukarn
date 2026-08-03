@@ -197,9 +197,17 @@ un nom, valider le code reçu, oublier l'identité de cette session.
 - **La vérification est ce qui empêche l'usurpation.** Sans elle, quiconque
   connaît le mot de passe partagé pourrait signer « Mamie », ou déclarer
   l'adresse d'un tiers pour lui faire recevoir les notifications.
-- **`POST /identity/request-code` répond toujours `202`**, que l'adresse soit
-  déjà connue ou non : distinguer les deux dirait à qui l'essaie quelles adresses
-  ont déjà commenté sur cette instance.
+- **Une demande de code ne renomme personne.** Le nom fourni pour une identité
+  déjà vérifiée attend dans `pending_display_name` et n'est appliqué que par
+  `verify`. Sans cela, la demande seule — que n'importe qui derrière la clé
+  partagée peut faire pour l'adresse d'un autre — renommait sa signature sur
+  tout son historique, le fil relisant le nom courant à chaque requête.
+- **`POST /identity/request-code` répond `202` que l'adresse soit déjà connue ou
+  non** : distinguer les deux dirait à qui l'essaie quelles adresses ont déjà
+  commenté sur cette instance. Un `429` reste possible dans la minute qui suit un
+  envoi — il ne révèle pas qu'une adresse est connue de l'instance, seulement
+  qu'un code vient de partir vers elle, et la route n'est ouverte qu'à un compte
+  authentifié.
 - **La session mémorise l'identité, elle ne la définit pas.** L'identité est
   relue à chaque requête : une adresse supprimée retire le droit de commenter
   sans attendre une reconnexion — la session dure un an.

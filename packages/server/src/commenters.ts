@@ -50,6 +50,7 @@ interface CommenterRow {
   code_expires_at: string | null;
   code_sent_at: string | null;
   code_attempts: number;
+  pending_display_name: string | null;
 }
 
 function toCommenter(row: CommenterRow): StoredCommenter {
@@ -100,8 +101,15 @@ export class CommenterRepo {
    * un code et le rend en clair **une seule fois**, à l'appelant qui l'enverra
    * par email. Seul son HMAC est conservé.
    *
-   * Le nom affiché fourni écrase le précédent : c'est le moyen de se renommer,
-   * et il est de toute façon revalidé par le code qui suit.
+   * Le nom fourni **n'est pas appliqué tout de suite** à une identité déjà
+   * vérifiée : il attend dans `pending_display_name` que `verify` prouve qu'on
+   * tient la boîte. Sans ce délai, il suffisait de connaître l'adresse de
+   * quelqu'un pour la renommer — et la signature des commentaires étant relue à
+   * chaque requête, tout son historique changeait de nom à la seconde, sans
+   * qu'aucun code n'ait été saisi.
+   *
+   * Une identité pas encore vérifiée s'écrit directement : rien n'est signé
+   * d'elle, il n'y a donc rien à détourner.
    */
   requestCode(
     email: string,
@@ -134,10 +142,13 @@ export class CommenterRepo {
     const hash = hashVerificationCode(normalized, code, this.secret);
 
     if (existing) {
+      // Le nom de colonne est choisi entre deux littéraux de ce fichier, jamais
+      // construit depuis la requête : rien à injecter par là.
+      const column = existing.verified_at === null ? 'display_name' : 'pending_display_name';
       this.db
         .prepare(
           `UPDATE commenters
-              SET display_name = ?, code_hash = ?, code_expires_at = ?, code_sent_at = ?,
+              SET ${column} = ?, code_hash = ?, code_expires_at = ?, code_sent_at = ?,
                   code_attempts = 0
             WHERE id = ?`,
         )
@@ -176,12 +187,15 @@ export class CommenterRepo {
     if (!safeEqual(expected, row.code_hash)) return { failure: 'mismatch' };
 
     // Le code est consommé : le rejouer ne doit pas re-valider une adresse dont
-    // on aurait retiré l'accès entre-temps.
+    // on aurait retiré l'accès entre-temps. C'est aussi ici, et nulle part
+    // ailleurs, qu'un renommage prend effet — la preuve vient d'être faite.
     this.db
       .prepare(
         `UPDATE commenters
-            SET verified_at = COALESCE(verified_at, ?), code_hash = NULL,
-                code_expires_at = NULL, code_attempts = 0
+            SET verified_at = COALESCE(verified_at, ?),
+                display_name = COALESCE(pending_display_name, display_name),
+                pending_display_name = NULL,
+                code_hash = NULL, code_expires_at = NULL, code_attempts = 0
           WHERE id = ?`,
       )
       .run(new Date().toISOString(), row.id);
