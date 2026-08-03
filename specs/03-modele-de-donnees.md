@@ -33,16 +33,34 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 | `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, tous nullables. Servis par `/items/:mediaId`.                                                                                   |
 | `md5`                                                                                                         | TEXT    | Empreinte du contenu Drive. Porte la version des URL et des ETag, et entre dans la clé du cache disque.                               |
 | `seen_at`                                                                                                     | TEXT    | Estampille de la sync qui a vu cette ligne. Base de `deleteStale`.                                                                    |
+| `added_at`                                                                                                    | TEXT    | Date d'entrée dans l'index, écrite à l'INSERT et **jamais** par le `ON CONFLICT DO UPDATE`. Nullable — voir ci-dessous.               |
 | **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                      |
+
+**`added_at` n'est pas un doublon de `seen_at`, et c'est le piège de la
+migration 5.** `seen_at` est réécrit sur _tous_ les médias à chaque passage de
+la synchronisation, y compris ceux déjà connus : compter les nouveautés dessus
+compterait l'album entier, toutes les demi-heures. `added_at`, lui, ne bouge
+plus une fois posé — ce qui rend `WHERE added_at > ?` fiable, et c'est ce que
+lit `MediaRepo.countAddedSince`.
+
+Corollaire assumé : les lignes indexées **avant** la migration 5 restent à
+`NULL`, donc exclues de toute comparaison. C'est voulu — sans quoi la première
+annonce de nouveautés parlerait de l'historique entier de la galerie.
 
 ### `sync_state`
 
 Une ligne par album : `album_id` (PK), `last_sync_at`, `status`
-(`never` \| `running` \| `ok` \| `error`), `error`.
+(`never` \| `running` \| `ok` \| `error`), `error`, `notified_at`.
 
 `status` et `error` sont écrasés à chaque tentative, mais `last_sync_at` n'est
 mis à jour qu'en cas de succès (`drive/sync.ts`) : `/admin` peut donc afficher
 « en erreur, dernière synchro réussie il y a 3 h ».
+
+`notified_at` porte la date des dernières nouveautés annoncées par email
+(`notifier.ts`). `SyncStateRepo.set()` ne la touche jamais : elle survit donc
+aux synchronisations comme à leurs échecs, faute de quoi une sync ratée ferait
+tout réannoncer. `NULL` signifie « jamais annoncé », et la première exécution du
+notifieur pose la borne **sans rien envoyer**.
 
 ### `oauth_token`
 
@@ -175,6 +193,30 @@ Cinq choix structurants :
 - **`album_id` en `ON DELETE CASCADE`.** Supprimer un album emporte ses
   commentaires : ils désignaient un contenu qui n'est plus exposé.
 
+### `album_subscriptions`
+
+Qui veut être prévenu des nouvelles photos d'un album. Écrite par
+`subscriptions.ts`, lue par `notifier.ts`.
+
+| Colonne        | Rôle                                     |
+| -------------- | ---------------------------------------- |
+| `commenter_id` | La personne. FK `ON DELETE CASCADE`      |
+| `album_id`     | L'album. FK `ON DELETE CASCADE`          |
+| `state`        | `CHECK (state IN ('auto', 'opted_out'))` |
+| `created_at`   | Date de la première ouverture de l'album |
+| **PK**         | `(commenter_id, album_id)`               |
+
+Deux choix à connaître :
+
+- **Un état, et non la simple présence d'une ligne.** L'abonnement étant
+  automatique (D41), effacer la ligne au désabonnement la ferait recréer à la
+  réouverture de l'album le lendemain — précisément ce qui fait détester un
+  service. L'inscription s'écrit `INSERT OR IGNORE`, qui laisse intacte une
+  ligne déjà `opted_out`.
+- **La vérification est portée par le SQL.** L'inscription est un
+  `INSERT … SELECT … WHERE verified_at IS NOT NULL` : une adresse seulement
+  déclarée peut être celle d'un tiers, et cette galerie n'a rien à lui écrire.
+
 `settings` porte des valeurs JSON et les défauts vivent dans le code
 (`DEFAULT_SETTINGS`) : une clé absente n'est pas une anomalie, et ajouter un
 réglage ne demande pas de migration.
@@ -196,6 +238,12 @@ instantané périmé.
 | `idx_comments_thread (album_id, media_id, id)`             | La lecture d'un fil et le compteur servi avec le détail d'un média. Trier sur `id` suffit — il croît avec le temps —, d'où l'absence d'index sur `created_at`.   |
 | `idx_comments_parent (parent_id)`                          | Le rattachement des réponses à leur racine, et leur remontée en tête de fil quand le parent disparaît.                                                           |
 | `idx_comments_commenter (commenter_id)`                    | « Mes commentaires » : ceux que le lecteur courant peut supprimer.                                                                                               |
+| `idx_album_subscriptions_album (album_id)`                 | « Qui est abonné à cet album », seule lecture du notifieur. Le sens inverse est déjà couvert par la clé primaire `(commenter_id, album_id)`.                     |
+
+Pas d'index sur `(album_id, added_at)` : le comptage des nouveautés a lieu une
+fois par heure et par album, et la clé primaire `(album_id, id)` borne déjà le
+parcours à l'album concerné. Un index de plus se paierait à chaque
+synchronisation, pour une lecture horaire.
 
 ## La clé primaire composite `(album_id, id)`
 
@@ -250,6 +298,14 @@ reparte de la même étape.
 | 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                               |
 | 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base. |
 | 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                  |
+| 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.   |
+
+La migration 5 ajoute deux colonnes qui arrivent à `NULL` sur une base en
+service, et c'est tout l'intérêt : `media.added_at` vide exclut l'historique du
+comptage des nouveautés, `sync_state.notified_at` vide fait poser la borne sans
+envoyer. Une instance qui se met à jour n'annonce donc **rien** rétroactivement.
+`packages/server/test/migrate.test.ts` le vérifie sur une base en version 4
+portant un album, une identité vérifiée, un média et un état de sync.
 
 La migration 4 sépare ce que l'application confondait : elle crée `commenters`
 et `comments` sans toucher à une seule colonne de `users`. Une instance en

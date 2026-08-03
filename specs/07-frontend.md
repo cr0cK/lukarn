@@ -503,6 +503,13 @@ ce qui sépare une conversation sous une photo d'un forum.
   bouton « S'identifier pour commenter » remplace le champ ; sans serveur SMTP,
   une phrase explique que les commentaires sont indisponibles plutôt que
   d'ouvrir un formulaire qui échouerait à la dernière étape.
+- **Le texte du formulaire énumère tous les usages de l'adresse**, y compris
+  l'abonnement automatique aux nouveautés des albums ouverts (D41). C'est le
+  seul endroit où quelqu'un décide de la donner : un abonnement par défaut se
+  défend dans un cercle privé à condition d'être annoncé là, et non découvert à
+  la réception du premier email. Toute évolution de ce que l'application fait de
+  l'adresse se répercute donc **dans ce paragraphe**, sans quoi il devient un
+  engagement qu'on ne tient pas.
 - **Pas de bouton « Répondre » sans identité vérifiée** : le serveur refuserait,
   et proposer le geste mènerait droit à un message d'erreur.
 - **Le formulaire d'ouverture de fil est ancré en bas**, hors de la zone qui

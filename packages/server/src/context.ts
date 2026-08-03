@@ -11,8 +11,10 @@ import type { Env } from './env.js';
 import { Mailer } from './mail.js';
 import { MediaCache } from './media/cache.js';
 import { MediaRenderer } from './media/renderer.js';
+import { AlbumNotifier } from './notifier.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SessionStore } from './sessions.js';
+import { SubscriptionRepo } from './subscriptions.js';
 import { LoginThrottle } from './throttle.js';
 
 const GIB = 1024 ** 3;
@@ -31,6 +33,10 @@ export class AppContext {
   readonly comments: CommentRepo;
   /** Identités de commentateur — les personnes, par opposition aux clés d'accès. */
   readonly commenters: CommenterRepo;
+  /** Abonnements aux nouveautés, pris à l'ouverture d'un album. */
+  readonly subscriptions: SubscriptionRepo;
+  /** Annonce des nouvelles photos, déclenchée par le ménage horaire de `main.ts`. */
+  readonly notifier: AlbumNotifier;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
   /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
@@ -57,6 +63,7 @@ export class AppContext {
     this.media = new MediaRepo(this.db);
     this.comments = new CommentRepo(this.db);
     this.commenters = new CommenterRepo(this.db, env.sessionSecret);
+    this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
 
@@ -77,6 +84,17 @@ export class AppContext {
     this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
     this.renderer = new MediaRenderer(this.drive, this.cache, logger);
     this.syncer = new Syncer(this.drive, this.media, this.syncState, logger);
+    this.notifier = new AlbumNotifier({
+      // Une fonction et non la liste : un album créé depuis /admin doit entrer
+      // dans le tour de garde sans redémarrage.
+      albums: () => this.albums,
+      media: this.media,
+      syncState: this.syncState,
+      subscriptions: this.subscriptions,
+      mailer: () => this.mailer,
+      env,
+      log: logger,
+    });
 
     // Filet de sécurité : une base restaurée d'une sauvegarde peut porter des
     // médias d'albums disparus depuis. La condition est indispensable — sans

@@ -90,9 +90,15 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
 
   return (
     <form onSubmit={submitDeclare} className="space-y-3">
+      {/* C'est le seul moment où quelqu'un décide de donner son adresse : tout
+          ce qu'on en fera doit être dit ici, y compris l'abonnement automatique
+          aux nouveautés des albums ouverts. Un abonnement par défaut se défend
+          dans un cercle privé à condition d'être annoncé et défait en un clic —
+          pas s'il se découvre à la réception du premier email. */}
       <p className="text-sm text-ink-300">
-        Pour commenter, dis-nous qui tu es. Ton adresse sert à signer tes messages et à te prévenir
-        des réponses ; elle n’est jamais montrée aux autres.
+        Pour commenter, dis-nous qui tu es. Ton adresse sert à signer tes messages, à te prévenir
+        des réponses, et à t’annoncer les nouvelles photos des albums que tu ouvres ; elle n’est
+        jamais montrée aux autres. Chaque email reçu porte un lien pour s’en désabonner.
       </p>
 
       <input

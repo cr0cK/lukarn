@@ -75,6 +75,34 @@ export function verifyUnsubscribeToken(username: string, token: string, secret: 
 }
 
 /**
+ * Jeton du lien « se désabonner » porté par l'annonce des nouvelles photos.
+ *
+ * Il couvre l'adresse **et** l'album : sans l'album dans le message signé, le
+ * jeton reçu pour « Noël 2019 » vaudrait pour « Vacances », et un lien
+ * recopié d'un email à l'autre couperait un abonnement qu'on n'a pas voulu
+ * couper. Le préfixe le distingue du jeton global de D37 : les deux ne doivent
+ * pas être interchangeables, ils ne coupent pas la même chose.
+ */
+export function signAlbumUnsubscribeToken(email: string, albumId: string, secret: string): string {
+  // `ALBUM_ID_PATTERN` interdit le « : » dans un id d'album, et zod l'interdit
+  // dans une adresse : le message signé se découpe donc sans ambiguïté, là où
+  // un séparateur permis des deux côtés laisserait deux couples produire le
+  // même jeton.
+  return createHmac('sha256', secret)
+    .update(`unsubscribe-album:${email.toLowerCase()}:${albumId}`)
+    .digest('base64url');
+}
+
+export function verifyAlbumUnsubscribeToken(
+  email: string,
+  albumId: string,
+  token: string,
+  secret: string,
+): boolean {
+  return safeEqual(signAlbumUnsubscribeToken(email, albumId, secret), token);
+}
+
+/**
  * Empreinte du code de vérification d'une adresse email.
  *
  * Le code est court et vit quinze minutes, mais il n'a aucune raison d'être

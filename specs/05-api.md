@@ -93,6 +93,12 @@ Réponse `ItemsPage` = `{ items: MediaItem[], nextCursor: string | null }`.
 paramètres sont invalides, `404 not_found` si l'album est inconnu ou interdit —
 le contrôle d'accès passe **avant** la validation des paramètres.
 
+**Effet de bord assumé** : sur la **première page** seulement (`cursor` absent),
+si la session porte une identité vérifiée, un `INSERT OR IGNORE` abonne cette
+personne aux nouveautés de l'album (voir [04](./04-securite-et-acces.md) et
+[08](./08-decisions.md), D41). Une écriture par ouverture d'album, négligeable.
+Ni les pages suivantes ni `/items/:mediaId` ne le font.
+
 `packages/server/test/items-order.test.ts` verrouille le contrat de cette route :
 le défaut `desc` (les liens déjà partagés ne portent pas `order` et doivent
 continuer d'ouvrir l'album dans le même sens), la pagination dans le sens
@@ -190,6 +196,29 @@ répondre à la demande. `t` est un HMAC de l'identifiant, sans expiration (voir
 [04](./04-securite-et-acces.md)). Rend une page HTML servie par le serveur — pas
 le front, qui redirigerait vers l'écran de connexion. Un jeton invalide répond
 `400` ; un compte supprimé depuis l'envoi rend la page en le disant.
+
+## Abonnements — `routes/subscriptions.ts`
+
+| Méthode | Chemin                           | Accès     | Réponse   |
+| ------- | -------------------------------- | --------- | --------- |
+| GET     | `/api/subscriptions/unsubscribe` | **aucun** | page HTML |
+
+On ne s'abonne par aucune route : l'abonnement est l'effet de bord de
+l'ouverture de l'album décrit plus haut. Ce préfixe ne porte donc que le
+désabonnement.
+
+**`GET /api/subscriptions/unsubscribe?u=&a=&t=`** — `u` l'adresse email, `a`
+l'id de l'album, `t` un HMAC du **couple**, sans expiration : le jeton d'un
+album ne vaut pas pour un autre, sinon un lien recopié couperait un abonnement
+qu'on n'a pas visé. Sans session, comme le désabonnement des commentaires — on
+clique depuis sa boîte aux lettres, souvent sur un autre appareil.
+
+`400 bad_request` sur un lien incomplet, un id d'album hors motif ou un jeton
+invalide. Sinon `200` et une page HTML servie par le serveur : celle du front
+redirigerait vers l'écran de connexion. Un album supprimé ou une identité
+effacée depuis l'envoi rendent la page en le disant, sans erreur. Le
+désabonnement ne touche que cet album — les réponses aux commentaires
+continuent d'arriver, elles se coupent depuis `/api/comments/unsubscribe`.
 
 ## Médias — `routes/media.ts`
 

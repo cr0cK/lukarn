@@ -85,3 +85,8 @@ calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
   et une adresse vérifiée par code — distincte de la clé d'accès, qu'un foyer
   peut partager. Sans serveur SMTP, aucun code ne part et les commentaires
   restent indisponibles.
+- **Annonce par email des nouvelles photos d'un album**, aux identités vérifiées
+  qui ont ouvert cet album. Personne ne revient spontanément sur une galerie
+  auto-hébergée : sans cette annonce, les photos déposées et les commentaires
+  qu'elles appelleraient resteraient sans lecteur. L'abonnement est automatique
+  et le désabonnement se fait par album (voir D41).
