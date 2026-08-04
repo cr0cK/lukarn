@@ -229,10 +229,11 @@ MAIL_FROM=Galerie <prenom.nom@gmail.com>
   réécrit ou refuse tout autre expéditeur.
 - Gmail plafonne à quelques centaines de destinataires par jour. Sans objet pour
   une galerie familiale.
-- **Attention aux caractères spéciaux** dans un mot de passe : `/`, `+` ou `:`
-  cassent l'URL en silence, et le serveur démarre avec une configuration
-  absurde. Les mots de passe d'application Google n'en contiennent pas ; pour un
-  autre relais, encoder (`/` → `%2F`, `+` → `%2B`, `:` → `%3A`).
+- **Un mot de passe contenant `/`, `?` ou `#` coupe l'URL** au milieu des
+  identifiants. Le serveur refuse alors de démarrer, en le disant : encoder ces
+  caractères (`%2F`, `%3F`, `%23`), comme le `@` en `%40`. Les mots de passe
+  d'application Google n'en contiennent pas. `+`, `:` et l'espace passent sans
+  rien encoder.
 
 #### Vérifier le rendu avant d'écrire à quelqu'un
 

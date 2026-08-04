@@ -109,6 +109,42 @@ function readServiceAccount(file: string): { email: string; privateKey: string; 
 }
 
 /**
+ * Contrôle la forme de `SMTP_URL`.
+ *
+ * Le cas visé est silencieux, et c'est ce qui le rend coûteux : un mot de passe
+ * contenant `/`, `?` ou `#` non encodé **termine l'adresse** au milieu des
+ * identifiants. Nodemailer ne s'en plaint pas — il construit un transport vers
+ * un hôte qui est en fait le nom d'utilisateur, sans authentification — et
+ * l'instance démarre normalement. La panne ne se voit qu'au premier envoi, des
+ * semaines plus tard, sous la forme d'un échec réseau incompréhensible.
+ *
+ * `new URL` refuse exactement ces cas. `+`, `:` et l'espace passent très bien,
+ * et ne sont donc pas signalés : un contrôle qui crie à tort finit contourné.
+ */
+function validateSmtpUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(
+      "SMTP_URL n'est pas une URL valide. Un mot de passe contenant « / », « ? » ou " +
+        "« # » coupe l'adresse : encode ces caractères (%2F, %3F, %23), comme le « @ » " +
+        "d'une adresse email en %40.",
+    );
+  }
+
+  if (parsed.protocol !== 'smtp:' && parsed.protocol !== 'smtps:') {
+    throw new Error(
+      `SMTP_URL doit commencer par « smtp:// » ou « smtps:// », pas « ${parsed.protocol}// ».`,
+    );
+  }
+
+  if (!parsed.hostname) {
+    throw new Error("SMTP_URL ne désigne aucun serveur : il manque le nom d'hôte.");
+  }
+}
+
+/**
  * `baseDir` sert de racine aux chemins relatifs (CONFIG_PATH, DATA_DIR…).
  * C'est le répertoire du `.env` quand il y en a un, si bien qu'un script lancé
  * depuis `packages/server` vise les mêmes fichiers que le serveur lancé depuis
@@ -147,6 +183,7 @@ export function loadEnv(
   if (hasSmtp !== hasFrom) {
     throw new Error('SMTP_URL et MAIL_FROM doivent être renseignés ensemble (ou aucun des deux).');
   }
+  if (hasSmtp) validateSmtpUrl(env.SMTP_URL!);
 
   return {
     nodeEnv: env.NODE_ENV,
