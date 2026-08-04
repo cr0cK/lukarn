@@ -16,6 +16,11 @@ identifiant confié à tout un foyer ne dit pas qui écrit. Voir D38.
 C'est la confusion la plus coûteuse du projet. Ce sont deux mécanismes sans
 rapport, qui ne partagent ni stockage, ni durée de vie, ni population.
 
+L'accès du serveur à Drive emprunte l'un de **deux** chemins, exclusifs :
+`GOOGLE_SERVICE_ACCOUNT_FILE` renseigné, c'est le compte de service ; sinon,
+OAuth. Le tableau ci-dessous décrit OAuth, qui reste le défaut ; le compte de
+service a sa section plus bas.
+
 |                 | OAuth Google                           | Identifiant / mot de passe       |
 | --------------- | -------------------------------------- | -------------------------------- |
 | Qui             | Le propriétaire du Drive, une personne | Chaque visiteur                  |
@@ -378,6 +383,39 @@ quota-là se compte en heures, attendre trente secondes n'y change rien.
 Sans ce repli, chaque refus laisserait une vignette cassée qu'aucun mécanisme ne
 rattrape. Il compte d'autant plus depuis le préchauffage (D45), qui concentre
 les téléchargements au lieu de les étaler sur les clics.
+
+## Compte de service, en alternative au consentement
+
+`GOOGLE_SERVICE_ACCOUNT_FILE` désigne la clé JSON d'un compte de service. Quand
+elle est là, `DriveService.mode` vaut `service_account` et **rien d'autre n'est
+lu** : ni `oauth_token`, ni `TOKEN_KEY`, ni `GOOGLE_CLIENT_*`. `auth.JWT`
+échange la clé contre un access token et le renouvelle de lui-même.
+
+Ce que ça change, et pourquoi c'est le chemin recommandé (D46) :
+
+- **Plus d'écran « Google n'a pas validé cette application ».** `drive.readonly`
+  est un scope _restreint_ : le faire lever demanderait la vérification de
+  l'application par Google, avec audit de sécurité tiers.
+- **Plus de refresh token**, donc plus rien à chiffrer, à renouveler, ni à
+  perdre — `invalid_grant` après six mois d'inactivité disparaît avec lui.
+- **Portée réduite.** `drive.readonly` donne la lecture de **tout** le Drive du
+  propriétaire ; un compte de service ne voit que ce qui lui est explicitement
+  partagé. C'est un gain de sécurité, et une contrainte : chaque dossier
+  d'album doit être partagé en lecture avec l'adresse du compte de service,
+  sans quoi sa synchronisation ne trouve rien.
+- **La clé ne s'expire pas.** Elle se protège comme `TOKEN_KEY` : hors du dépôt,
+  montée en lecture seule dans le conteneur.
+
+Une clé désignée mais illisible **arrête le démarrage** (`env.ts`) au lieu de
+retomber sur OAuth : basculer en silence ferait réapparaître l'écran de
+consentement là où on venait de le supprimer, sans dire pourquoi. Un chemin non
+monté dans le conteneur est l'erreur la plus probable, et elle doit se voir.
+
+`/api/admin/oauth/start` et `/api/admin/drive/disconnect` répondent **409** dans
+ce mode : le premier enregistrerait un jeton que rien n'utilise, le second
+laisserait croire que l'instance est coupée alors qu'elle continue de tout lire.
+/admin affiche à la place l'adresse du compte de service — c'est elle qu'on
+recopie dans le partage Drive.
 
 ## Consentement OAuth
 

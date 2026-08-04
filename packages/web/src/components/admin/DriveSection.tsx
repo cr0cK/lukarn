@@ -36,6 +36,30 @@ export function DriveSection({
       notify({ tone: 'error', text: errorText(error, 'Déconnexion impossible.') }),
   });
 
+  /**
+   * En compte de service, il n'y a rien à connecter ni à déconnecter :
+   * l'autorisation vit dans le partage du dossier côté Drive, que l'API ne sait
+   * pas interroger. Afficher les boutons du consentement ici laisserait croire
+   * qu'ils agissent — et « Déconnecter » supprimerait une ligne qui n'existe
+   * pas. Ce qu'il faut montrer, c'est l'adresse à qui partager.
+   */
+  if (status.driveMode === 'service_account') {
+    return (
+      <Section title="Connexion Google Drive">
+        <div className="px-4 py-4">
+          <p className="text-sm text-ink-200">
+            Compte de service{status.driveAccount ? ` — ${status.driveAccount}` : ''}
+          </p>
+          <p className="mt-1 text-xs text-ink-400">
+            Aucun consentement à donner, aucun jeton à renouveler. Chaque dossier d'album doit être
+            partagé en lecture avec cette adresse depuis Google Drive — sans quoi il reste
+            invisible, et sa synchronisation ne trouve rien.
+          </p>
+        </div>
+      </Section>
+    );
+  }
+
   return (
     <Section title="Connexion Google Drive">
       <div className="flex flex-wrap items-center gap-4 px-4 py-4">

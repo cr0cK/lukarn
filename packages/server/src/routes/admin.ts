@@ -147,6 +147,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/status', async (_request, reply) => {
       const connection = context.drive.connection;
       const status: AdminStatus = {
+        driveMode: context.drive.mode,
         driveConnected: context.drive.connected,
         driveAccount: connection?.account ?? null,
         driveRevokedAt: connection?.revokedAt ?? null,
@@ -452,7 +453,21 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
      * faire aboutir un callback avec un code obtenu ailleurs et connecter le
      * Drive de quelqu'un d'autre à cette instance.
      */
+    /**
+     * Le consentement n'a pas de sens en compte de service : l'autorisation
+     * vient du partage du dossier côté Drive. Le refuser ici plutôt que de le
+     * laisser aboutir évite d'enregistrer un jeton que rien n'utiliserait, et
+     * de laisser croire qu'il faut le faire.
+     */
     app.get('/oauth/start', async (_request, reply) => {
+      if (context.drive.mode === 'service_account') {
+        return reply.code(409).send({
+          error: 'service_account_mode',
+          message:
+            "Cette instance s'authentifie avec un compte de service : il n'y a pas de " +
+            'consentement à donner. Partage le dossier avec son adresse depuis Google Drive.',
+        });
+      }
       if (!context.drive.configured) {
         return reply.code(400).send({
           error: 'oauth_not_configured',
@@ -474,6 +489,17 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     app.post('/drive/disconnect', async (_request, reply) => {
+      // Rien à déconnecter : la clé vient de la configuration, et l'accès du
+      // partage Drive. Répondre « fait » laisserait croire que l'instance est
+      // coupée alors qu'elle continue de tout lire.
+      if (context.drive.mode === 'service_account') {
+        return reply.code(409).send({
+          error: 'service_account_mode',
+          message:
+            "Cette instance s'authentifie avec un compte de service : retire " +
+            'GOOGLE_SERVICE_ACCOUNT_FILE, ou le partage du dossier côté Drive.',
+        });
+      }
       context.drive.disconnect();
       return reply.send({ ok: true });
     });

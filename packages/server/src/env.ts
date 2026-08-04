@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { z } from 'zod';
@@ -28,6 +29,14 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
+  /**
+   * Clé JSON d'un compte de service, en alternative au consentement OAuth.
+   * Renseignée, elle prend le pas : plus d'écran « Google n'a pas validé cette
+   * application », plus de refresh token à renouveler. Le compte de service ne
+   * voit que les dossiers explicitement partagés avec son adresse.
+   */
+  GOOGLE_SERVICE_ACCOUNT_FILE: z.string().optional(),
+
   // Notifications de commentaires. Une URL plutôt qu'un quatuor hôte/port/
   // utilisateur/mot de passe : c'est la forme que tous les fournisseurs
   // documentent, et elle porte le chiffrement dans son schéma (`smtps://`).
@@ -50,6 +59,12 @@ export interface Env {
   sessionSecret: string;
   tokenKey: string;
   google: { clientId: string; clientSecret: string } | null;
+  /**
+   * Compte de service, `null` si l'instance passe par OAuth. Les deux peuvent
+   * être configurés — c'est alors le compte de service qui sert, l'autre
+   * restant utilisable après avoir retiré la clé.
+   */
+  serviceAccount: { email: string; privateKey: string; file: string } | null;
   /** `null` si l'instance n'envoie pas d'email : les notifications s'éteignent. */
   mail: { smtpUrl: string; from: string } | null;
   configPath: string;
@@ -59,6 +74,74 @@ export interface Env {
   logLevel: string;
   /** Callback OAuth, dérivé de PUBLIC_URL — doit être déclaré tel quel dans la console GCP. */
   oauthRedirectUri: string;
+}
+
+/**
+ * Lit la clé JSON d'un compte de service.
+ *
+ * Échoue franchement plutôt que de retomber sur OAuth : une clé désignée mais
+ * illisible est une erreur de déploiement — chemin non monté dans le
+ * conteneur, droits trop stricts, fichier tronqué. Basculer silencieusement
+ * sur l'autre chemin d'authentification ferait réapparaître l'écran de
+ * consentement là où on venait précisément de le supprimer, sans dire pourquoi.
+ */
+function readServiceAccount(file: string): { email: string; privateKey: string; file: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `GOOGLE_SERVICE_ACCOUNT_FILE : « ${file} » est illisible ou n'est pas du JSON ` +
+        `(${(error as Error).message})`,
+    );
+  }
+
+  const shape = z.object({ client_email: z.string().min(1), private_key: z.string().min(1) });
+  const result = shape.safeParse(parsed);
+  if (!result.success) {
+    throw new Error(
+      `GOOGLE_SERVICE_ACCOUNT_FILE : « ${file} » ne porte pas « client_email » et ` +
+        '« private_key ». Télécharge la clé au format JSON depuis la console Google Cloud.',
+    );
+  }
+
+  return { email: result.data.client_email, privateKey: result.data.private_key, file };
+}
+
+/**
+ * Contrôle la forme de `SMTP_URL`.
+ *
+ * Le cas visé est silencieux, et c'est ce qui le rend coûteux : un mot de passe
+ * contenant `/`, `?` ou `#` non encodé **termine l'adresse** au milieu des
+ * identifiants. Nodemailer ne s'en plaint pas — il construit un transport vers
+ * un hôte qui est en fait le nom d'utilisateur, sans authentification — et
+ * l'instance démarre normalement. La panne ne se voit qu'au premier envoi, des
+ * semaines plus tard, sous la forme d'un échec réseau incompréhensible.
+ *
+ * `new URL` refuse exactement ces cas. `+`, `:` et l'espace passent très bien,
+ * et ne sont donc pas signalés : un contrôle qui crie à tort finit contourné.
+ */
+function validateSmtpUrl(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(
+      "SMTP_URL n'est pas une URL valide. Un mot de passe contenant « / », « ? » ou " +
+        "« # » coupe l'adresse : encode ces caractères (%2F, %3F, %23), comme le « @ » " +
+        "d'une adresse email en %40.",
+    );
+  }
+
+  if (parsed.protocol !== 'smtp:' && parsed.protocol !== 'smtps:') {
+    throw new Error(
+      `SMTP_URL doit commencer par « smtp:// » ou « smtps:// », pas « ${parsed.protocol}// ».`,
+    );
+  }
+
+  if (!parsed.hostname) {
+    throw new Error("SMTP_URL ne désigne aucun serveur : il manque le nom d'hôte.");
+  }
 }
 
 /**
@@ -100,6 +183,7 @@ export function loadEnv(
   if (hasSmtp !== hasFrom) {
     throw new Error('SMTP_URL et MAIL_FROM doivent être renseignés ensemble (ou aucun des deux).');
   }
+  if (hasSmtp) validateSmtpUrl(env.SMTP_URL!);
 
   return {
     nodeEnv: env.NODE_ENV,
@@ -112,6 +196,9 @@ export function loadEnv(
       hasId && hasSecret
         ? { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET! }
         : null,
+    serviceAccount: env.GOOGLE_SERVICE_ACCOUNT_FILE
+      ? readServiceAccount(resolve(baseDir, env.GOOGLE_SERVICE_ACCOUNT_FILE))
+      : null,
     mail: hasSmtp && hasFrom ? { smtpUrl: env.SMTP_URL!, from: env.MAIL_FROM! } : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),

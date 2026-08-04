@@ -7,6 +7,9 @@ data/
 cache/
 .env
 config/albums.yaml
+# Clé privée d'un compte de service : elle vaut l'accès en lecture aux dossiers
+# partagés, et rien ne l'expire.
+config/*.json
 
 # Artefacts d'automatisation navigateur (captures, snapshots, journaux console)
 .playwright-cli/

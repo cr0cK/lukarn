@@ -20,6 +20,14 @@ const DRIVE_FILES_ENDPOINT = 'https://www.googleapis.com/drive/v3/files';
 
 /** google-auth-library n'est pas une dépendance directe : le type vient d'ici. */
 type OAuth2Client = InstanceType<typeof auth.OAuth2>;
+type JwtClient = InstanceType<typeof auth.JWT>;
+
+/**
+ * Ce qui sert à signer les appels à Drive. Les deux exposent `getAccessToken()`
+ * et se donnent tels quels à `drive({ auth })` : tout le reste du service les
+ * traite indifféremment.
+ */
+type AuthorizedClient = OAuth2Client | JwtClient;
 
 export class DriveNotConnectedError extends Error {
   constructor() {
@@ -127,7 +135,8 @@ interface TokenRow {
 
 export interface DriveConnection {
   account: string | null;
-  grantedAt: string;
+  /** `null` pour un compte de service : il n'y a pas eu de consentement à dater. */
+  grantedAt: string | null;
   /** Non `null` si Google a cessé d'accepter le refresh token. */
   revokedAt: string | null;
 }
@@ -139,7 +148,7 @@ export interface DriveConnection {
  * `Range` telles quelles vers le navigateur.
  */
 export class DriveService {
-  private cachedClient: OAuth2Client | null = null;
+  private cachedClient: AuthorizedClient | null = null;
 
   /**
    * Vrai depuis qu'une tentative de déchiffrement a échoué. Retenu ici plutôt
@@ -155,10 +164,28 @@ export class DriveService {
   ) {}
 
   get configured(): boolean {
-    return this.env.google !== null;
+    return this.env.serviceAccount !== null || this.env.google !== null;
+  }
+
+  /**
+   * Comment l'instance s'authentifie auprès de Drive. Le compte de service
+   * prend le pas quand sa clé est fournie : c'est le seul moyen d'éviter
+   * l'écran « Google n'a pas validé cette application », que la vérification
+   * d'un scope restreint ne lèverait qu'au prix d'un audit tiers (D46).
+   */
+  get mode(): 'service_account' | 'oauth' {
+    return this.env.serviceAccount ? 'service_account' : 'oauth';
   }
 
   get connection(): DriveConnection | null {
+    // Un compte de service n'a ni consentement ni révocation : il est autorisé
+    // par le partage du dossier côté Drive, que l'API ne sait pas interroger.
+    // /admin affiche donc son adresse, la seule chose utile — c'est elle qu'on
+    // recopie dans le partage.
+    if (this.env.serviceAccount) {
+      return { account: this.env.serviceAccount.email, grantedAt: null, revokedAt: null };
+    }
+
     const row = this.readToken();
     return row
       ? { account: row.account, grantedAt: row.granted_at, revokedAt: row.revoked_at }
@@ -171,6 +198,7 @@ export class DriveService {
    * jeton en place soit effacé pour autant.
    */
   get connected(): boolean {
+    if (this.env.serviceAccount) return true;
     if (this.unreadableToken) return false;
     const row = this.readToken();
     return row !== null && row.revoked_at === null;
@@ -391,8 +419,21 @@ export class DriveService {
     return token;
   }
 
-  private authorizedClient(): OAuth2Client {
+  private authorizedClient(): AuthorizedClient {
     if (this.cachedClient) return this.cachedClient;
+
+    // Le compte de service court-circuite tout le reste : pas de jeton en base,
+    // rien à déchiffrer, rien qui expire. La bibliothèque échange elle-même la
+    // clé contre un access token et le renouvelle.
+    if (this.env.serviceAccount) {
+      const client = new auth.JWT({
+        email: this.env.serviceAccount.email,
+        key: this.env.serviceAccount.privateKey,
+        scopes: SCOPES,
+      });
+      this.cachedClient = client;
+      return client;
+    }
 
     const row = this.readToken();
     if (!row) throw new DriveNotConnectedError();
