@@ -12,6 +12,7 @@ import { Mailer } from './mail.js';
 import { MediaCache } from './media/cache.js';
 import { MediaRenderer } from './media/renderer.js';
 import { AlbumNotifier } from './notifier.js';
+import { CachePrewarmer } from './media/prewarm.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SessionStore } from './sessions.js';
 import { SubscriptionRepo } from './subscriptions.js';
@@ -37,6 +38,7 @@ export class AppContext {
   readonly subscriptions: SubscriptionRepo;
   /** Annonce des nouvelles photos, déclenchée par le ménage horaire de `main.ts`. */
   readonly notifier: AlbumNotifier;
+  readonly prewarmer: CachePrewarmer;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
   /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
@@ -93,6 +95,18 @@ export class AppContext {
       subscriptions: this.subscriptions,
       mailer: () => this.mailer,
       env,
+      log: logger,
+    });
+
+    this.prewarmer = new CachePrewarmer({
+      albums: () => this.albums,
+      media: this.media,
+      cache: this.cache,
+      renderer: this.renderer,
+      // Relu à chaque photo : décocher le réglage dans /admin doit arrêter le
+      // passage en cours, pas seulement le suivant — c'est ce qu'on attend
+      // d'un interrupteur quand on vient de constater que ça sature la ligne.
+      enabled: () => this.settings.prewarmCache,
       log: logger,
     });
 

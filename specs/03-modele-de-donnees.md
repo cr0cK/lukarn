@@ -85,12 +85,12 @@ jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
 La configuration : qui se connecte, quels dossiers Drive sont exposés, et les
 réglages. Écrites **uniquement** par `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Colonnes                                                                                              |
-| ------------- | ----------------------------------------------------------------------------------------------------- |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at` |
-| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `position`, `created_at`, `updated_at`   |
-| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                        |
-| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`           |
+| Table         | Colonnes                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                          |
+| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `position`, `created_at`, `updated_at`                            |
+| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                 |
+| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail` |
 
 Quatre choix à connaître :
 

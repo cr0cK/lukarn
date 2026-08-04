@@ -504,6 +504,8 @@ describe('réglages', () => {
       syncIntervalMinutes: 5,
       syncOnStartup: true,
       cacheMaxSizeGB: 2,
+      // Non touché par ce PATCH : seuls les champs envoyés changent.
+      prewarmCache: true,
       moderationEmail: null,
     });
 

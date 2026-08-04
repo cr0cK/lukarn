@@ -32,6 +32,24 @@ const HD_MAX_EDGE = 4096;
  */
 const MAX_DECODE_BYTES = 80 * 1024 * 1024;
 
+/**
+ * Effort d'encodage WebP. Mesuré sur un JPEG de reflex de 8 Mo réduit à
+ * 2560 px, sur la machine de développement :
+ *
+ * | effort | temps   | poids   |
+ * | ------ | ------- | ------- |
+ * | 0      |  707 ms | 1262 Ko |
+ * | 2      |  898 ms | 1206 Ko |
+ * | 4      | 1526 ms | 1186 Ko |
+ * | 6      | 3792 ms | 1155 Ko |
+ *
+ * Passer de 4 à 2 rend 600 ms sur les ~3,5 s d'une première ouverture, contre
+ * 1,7 % de poids. Le poids se paie une fois, sur un réseau local ou une fibre ;
+ * l'attente se paie à chaque photo jamais ouverte, devant l'écran. Descendre
+ * à 0 gagnerait encore 200 ms mais coûterait 6 % — le rapport se dégrade.
+ */
+const WEBP_EFFORT = 2;
+
 const THUMB_QUALITY = 78;
 const FULL_QUALITY = 82;
 /** Plus généreux que `full` : c'est la variante qu'on examine de près. */
@@ -115,6 +133,16 @@ export class MediaRenderer {
     };
   }
 
+  /**
+   * Ce dérivé est-il déjà en cache ? Sert au préchauffage, qui a besoin de
+   * sauter ce qui existe sans le rendre ni le marquer comme consulté. La clé
+   * de variante ne sort pas de ce module : c'est ici qu'on sait qu'elle
+   * contient l'empreinte du contenu.
+   */
+  isCached(fileId: string, variant: Variant, md5: string | null): boolean {
+    return this.cache.has(variantKey(fileId, variant, md5));
+  }
+
   /** `md5` vient de l'index et identifie la version du fichier. */
   async render(fileId: string, variant: Variant, md5: string | null = null): Promise<Rendered> {
     const key = variantKey(fileId, variant, md5);
@@ -183,10 +211,7 @@ export class MediaRenderer {
           // Ne jamais suréchantillonner : une petite image reste à sa taille.
           withoutEnlargement: true,
         })
-        // `effort: 4` est le compromis retenu : au-delà, l'encodage coûte des
-        // centaines de millisecondes de plus par image pour quelques pourcents
-        // de poids, ce qui se paierait à chaque première ouverture.
-        .webp({ quality, effort: 4 })
+        .webp({ quality, effort: WEBP_EFFORT })
         .toBuffer()
     );
   }

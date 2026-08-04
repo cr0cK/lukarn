@@ -43,6 +43,16 @@ function startScheduler(context: AppContext): () => void {
       // désagrément.
       context.log.error({ err: error }, 'Annonce des nouvelles photos en échec');
     }
+
+    // Le préchauffage est ici plutôt qu'à la fin d'une synchronisation : la
+    // sync automatique peut être désactivée — elle l'est par défaut sur une
+    // instance dont le Drive bouge peu — et le cache aurait alors besoin d'un
+    // clic pour se remplir, ce qui est exactement ce qu'on cherche à éviter.
+    // Sans `await` : le passage dure des minutes, le ménage n'a pas à
+    // l'attendre pour rendre la main.
+    void context.prewarmer.run().catch((error: unknown) => {
+      context.log.error({ err: error }, 'Préchauffage du cache en échec');
+    });
   }, HOUSEKEEPING_INTERVAL_MS);
   housekeeping.unref();
 
@@ -104,9 +114,19 @@ async function main(): Promise<void> {
     });
   }
 
+  // Sans ce premier passage, le cache attendrait le ménage horaire pour
+  // commencer à se remplir : une heure pendant laquelle chaque première
+  // ouverture se paie plein tarif, juste après un redémarrage.
+  void context.prewarmer.run().catch((error: unknown) => {
+    context.log.error({ err: error }, 'Préchauffage du cache en échec');
+  });
+
   const shutdown = async (signal: string): Promise<void> => {
     context.log.info(`${signal} reçu, arrêt en cours`);
     stopScheduler();
+    // Un passage en cours tiendrait l'arrêt pendant des minutes, pour des
+    // rendus qui repartiront d'eux-mêmes au démarrage suivant.
+    context.prewarmer.stop();
     try {
       await server.close();
       // Les notifications partent hors du chemin de la requête : sans cette

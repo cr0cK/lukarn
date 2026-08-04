@@ -163,7 +163,9 @@ describe('mise à jour d’une instance en service', () => {
         syncIntervalMinutes: 0,
         syncOnStartup: false,
         cacheMaxSizeGB: 5,
-        // Le YAML d'amorçage ne connaît pas ce réglage : il reste au défaut.
+        // Le YAML d'amorçage ne connaît ni l'un ni l'autre : ils restent au
+        // défaut.
+        prewarmCache: true,
         moderationEmail: null,
       });
       assert.equal(context.cache.stats().maxBytes, 5 * 1024 ** 3);

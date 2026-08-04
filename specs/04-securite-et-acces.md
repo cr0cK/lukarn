@@ -363,6 +363,22 @@ Une coupure réseau ou un 500 de Google **ne** déclenche pas la révocation :
 `packages/server/test/revocation.test.ts` le vérifie explicitement. Invalider la
 connexion sur une erreur passagère imposerait un nouveau consentement pour rien.
 
+## Limites de débit Drive
+
+À distinguer de la révocation, qu'elles peuvent imiter : Google refuse une
+requête de trop avec un `429`, ou un `403` dont **le corps** porte le motif.
+`fetchAuthorized` réessaie jusqu'à quatre fois, en doublant l'attente (1 s, 2 s,
+4 s…, plafond 30 s) ou en suivant le `Retry-After` annoncé quand il est là.
+
+Le corps décide, pas le statut : un `403` est aussi ce que répond un fichier
+auquel le compte n'a pas accès, et le réessayer quatre fois ne ferait que
+retarder l'échec. `downloadQuotaExceeded` est exclu pour la même raison — ce
+quota-là se compte en heures, attendre trente secondes n'y change rien.
+
+Sans ce repli, chaque refus laisserait une vignette cassée qu'aucun mécanisme ne
+rattrape. Il compte d'autant plus depuis le préchauffage (D45), qui concentre
+les téléchargements au lieu de les étaler sur les clics.
+
 ## Consentement OAuth
 
 - `GET /api/admin/oauth/start` exige une session administrateur, tire un `state`

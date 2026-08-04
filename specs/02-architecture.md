@@ -208,6 +208,16 @@ de la fin, courant quand on change de vidéo), et son `Content-Range` dit au
 lecteur où s'arrête le fichier. La contrepartie assumée : un format que le
 navigateur ne lit pas n'est pas lisible du tout.
 
+**Le cache se remplit sans attendre qu'on clique.** `media/prewarm.ts` rend la
+variante `full` des photos en fond, des plus récentes aux plus anciennes : une
+photo jamais ouverte coûte sinon ~3,5 s au premier clic — deux secondes de
+téléchargement Drive, une et demie de décodage et d'encodage — contre 5 ms
+depuis le cache. Il est branché sur le ménage horaire de `main.ts` et sur le
+démarrage, jamais sur la fin d'une synchronisation : celle-ci peut être
+désactivée, et le cache attendrait alors un clic pour se remplir. Réglage
+`prewarmCache`, relu à chaque photo. Sa lenteur est volontaire — voir D45 pour
+les trois garde-fous.
+
 **Un original de plus de 80 Mo n'est pas décodé sur place.** Le limiteur borne
 le nombre de rendus simultanés, pas leur taille, et chaque rendu charge son
 original entier en mémoire pour le donner à sharp : trois places prises par des

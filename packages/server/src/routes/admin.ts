@@ -98,6 +98,7 @@ const updateSettingsSchema = z.object({
   syncIntervalMinutes: z.number().int().min(0).max(10080).optional(),
   syncOnStartup: z.boolean().optional(),
   cacheMaxSizeGB: z.number().positive().max(10000).optional(),
+  prewarmCache: z.boolean().optional(),
   moderationEmail,
 });
 
