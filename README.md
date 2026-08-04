@@ -63,6 +63,77 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 
 ## Installation sur un VPS
 
+Il faut un VPS Debian ou Ubuntu (1 Go de RAM suffit, 2 Go sont confortables
+quand sharp rend des photos de reflex) et un nom de domaine dont
+l'enregistrement `A` — et `AAAA` si le VPS a une IPv6 — pointe déjà sur son
+adresse. Le certificat TLS est obtenu automatiquement à partir de ce nom : sans
+DNS en place, l'étape 3 échoue.
+
+### 0. Préparer la machine
+
+Cinq minutes qui évitent l'essentiel de ce qui arrive à un serveur exposé. Tout
+se fait en root, à la première connexion.
+
+**Un compte à soi, une clé, et plus de mot de passe.** Un serveur exposé reçoit
+des tentatives de connexion SSH en continu, quelques milliers par jour. Elles
+sont sans objet dès qu'aucun mot de passe n'est accepté.
+
+```bash
+adduser alexis && adduser alexis sudo
+rsync --archive --chown=alexis:alexis ~/.ssh /home/alexis   # reprend ta clé
+```
+
+```bash
+# /etc/ssh/sshd_config
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+```
+
+```bash
+systemctl restart ssh
+```
+
+> **Garde la session root ouverte** et vérifie dans un **second** terminal que
+> `ssh alexis@…` fonctionne avant de la fermer. C'est le seul moment de cette
+> installation où une faute de frappe coûte une réinstallation.
+
+**Le pare-feu.** Trois ports ouverts, rien d'autre. L'application n'écoute sur
+aucune interface publique — seul Caddy est joignable — mais un pare-feu couvre
+aussi ce qu'on installera plus tard sans y penser.
+
+```bash
+apt install ufw
+ufw default deny incoming && ufw default allow outgoing
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp
+ufw enable
+```
+
+`443/udp` sert à HTTP/3 ; l'omettre ne casse rien, les navigateurs retombent sur
+TCP.
+
+**Les mises à jour de sécurité, sans y penser.** C'est la mesure la plus
+rentable des cinq : les intrusions opportunistes visent des failles publiées
+depuis des mois.
+
+```bash
+apt install unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+```
+
+**Docker.**
+
+```bash
+curl -fsSL https://get.docker.com | sh
+usermod -aG docker alexis   # se déconnecter/reconnecter pour que ça prenne
+```
+
+Ajouter `alexis` au groupe `docker` équivaut à lui donner root sur la machine —
+c'est déjà le cas, il est `sudo`. Sur un serveur partagé avec quelqu'un qui ne
+doit pas l'être, préférer `sudo docker`.
+
+La suite se fait avec le compte `alexis`.
+
 ### 1. Donner au serveur l'accès à ton Drive
 
 Deux façons, au choix. La seconde évite l'écran d'avertissement de Google et
@@ -187,14 +258,29 @@ renommages et aux déplacements.
 docker compose up -d --build
 ```
 
-L'application écoute sur `127.0.0.1:8080`. Un reverse-proxy assure le TLS ;
-avec Caddy, deux lignes suffisent :
+Deux conteneurs démarrent : l'application, et **Caddy** qui assure le TLS. Le
+certificat Let's Encrypt est demandé au premier démarrage et renouvelé seul —
+il n'y a ni tâche planifiée à écrire, ni certificat à surveiller.
 
+L'application **ne publie aucun port** : elle n'est joignable que par Caddy, sur
+le réseau interne du compose. Le seul réglage est `PUBLIC_URL`, qui donne à
+Caddy le domaine à servir en même temps qu'il construit l'URI de redirection
+OAuth — les deux ne peuvent donc pas diverger. Elle doit valoir exactement
+`https://photos.exemple.fr`, sans `/` final.
+
+```bash
+docker compose logs -f caddy    # « certificate obtained successfully »
 ```
-photos.exemple.fr {
-	reverse_proxy 127.0.0.1:8080
-}
-```
+
+Si le certificat n'arrive pas, c'est presque toujours le DNS : le nom doit
+pointer sur l'IP du VPS **avant** le premier démarrage, et le port 80 doit être
+ouvert (Let's Encrypt s'en sert pour la vérification).
+
+Un proxy tourne déjà sur la machine (nginx, Traefik, une autre application en
+443) ? Supprimer le service `caddy` du `docker-compose.yml` et rendre à `app` sa
+publication locale — `ports: ['127.0.0.1:8080:8080']` —, puis proxifier vers
+elle. Les en-têtes de sécurité sont posés par l'application, ils suivent quel
+que soit le frontal.
 
 ### 4. Emails — facultatif, mais nécessaire aux commentaires
 
@@ -276,8 +362,8 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 | Être prévenu des commentaires        | Renseigner l'adresse de modération dans `/admin`                                                                               |
 | Mot de passe administrateur perdu    | `pnpm reset-password <identifiant>` sur le serveur                                                                             |
 | Mettre à jour                        | `git pull && docker compose up -d --build`                                                                                     |
-| Sauvegarder                          | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable                                                      |
-| Consulter les logs                   | `docker compose logs -f`                                                                                                       |
+| Sauvegarder                          | Le volume `gdv-data` **et** le `.env` — voir « Sauvegarde » plus bas. `gdv-cache` est régénérable                              |
+| Consulter les logs                   | `docker compose logs -f` (ou `logs -f caddy` pour le certificat)                                                               |
 
 Mise à jour d'une instance qui tournait sur `config/albums.yaml` : rien à faire.
 Au premier démarrage, ses comptes, albums, droits et réglages sont repris en
@@ -353,3 +439,37 @@ Quelques choix qui expliquent le reste :
 - Consentement OAuth protégé par un `state` anti-CSRF et réservé aux
   administrateurs.
 - `noindex` sur toutes les pages.
+- **En-têtes de sécurité sur toutes les réponses** : `Content-Security-Policy`
+  (`script-src 'self'` — un `<script>` glissé dans un titre d'album ou un
+  commentaire ne s'exécute pas), `X-Content-Type-Options`, `Referrer-Policy`,
+  `frame-ancestors 'none'`, et `Strict-Transport-Security` dès que `PUBLIC_URL`
+  est en `https`. Ils viennent de l'application, pas du proxy : ils valent donc
+  aussi en développement et derrière un frontal qu'on n'a pas configuré.
+- **Seul le frontal est joignable.** L'application ne publie aucun port sur
+  l'hôte. Les `X-Forwarded-For` ne sont crus que s'ils viennent d'un réseau
+  privé, sinon un client forgerait le sien à chaque tentative et ne serait
+  jamais ralenti par le backoff de connexion.
+
+### Sauvegarde
+
+Deux choses, et elles vont ensemble : le volume `gdv-data` contient les comptes,
+l'index et le refresh token **chiffré**, que `TOKEN_KEY` seul déchiffre. Une
+sauvegarde du volume sans le `.env` rend un jeton illisible et impose de refaire
+le consentement Google.
+
+```bash
+# À lancer depuis le répertoire du dépôt.
+docker compose stop app                     # SQLite au repos : pas de WAL en vol
+docker run --rm -v gdv-data:/data -v "$PWD:/sortie" alpine \
+  tar czf /sortie/gdv-$(date +%F).tar.gz -C /data .
+docker compose start app
+cp .env gdv-env-$(date +%F).bak
+```
+
+Les deux fichiers sont à copier **hors du VPS** — une sauvegarde qui vit sur la
+machine qu'elle protège ne protège de rien. `gdv-cache` n'a pas à être
+sauvegardé : il se régénère.
+
+Restaurer, sur une machine neuve : remettre le `.env`, puis
+`docker run --rm -v gdv-data:/data -v "$PWD:/e" alpine tar xzf /e/gdv-<date>.tar.gz -C /data`
+avant le premier `docker compose up`.

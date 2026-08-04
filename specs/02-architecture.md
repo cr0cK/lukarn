@@ -46,6 +46,7 @@ flowchart LR
 | `src/media/cache.ts`    | Cache disque avec inventaire en mémoire et éviction LRU.                                            |
 | `src/media/range.ts`    | Validation du header `Range` avant relais.                                                          |
 | `src/plugins/auth.ts`   | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                   |
+| `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).        |
 | `src/routes/*.ts`       | Les quatre familles de routes — voir [05](./05-api.md).                                             |
 
 ## Cheminement d'une vignette
@@ -237,3 +238,9 @@ avec le même renouvellement de jeton sur 401.
 **Un seul conteneur.** Le front buildé est servi par `@fastify/static` depuis le
 même process. Une seule origine, donc des cookies de session simples, aucun CORS,
 aucun reverse-proxy interne à configurer.
+
+En production, un second conteneur l'accompagne : **Caddy**, qui termine le TLS
+et relaie vers `app:8080`. L'application ne publie aucun port sur l'hôte. Ce
+n'est pas une exception au paragraphe précédent — Caddy ne connaît rien de
+l'application, il n'y a toujours qu'une origine et qu'un process applicatif —
+c'est le TLS et le renouvellement de certificat sortis du code (D47).

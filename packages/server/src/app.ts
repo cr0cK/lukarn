@@ -6,6 +6,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import { AppContext } from './context.js';
 import type { Env } from './env.js';
 import authPlugin from './plugins/auth.js';
+import securityHeaders from './plugins/headers.js';
 import { createAdminRoutes, createOAuthCallbackRoute } from './routes/admin.js';
 import { createAlbumRoutes } from './routes/albums.js';
 import { createAuthRoutes } from './routes/auth.js';
@@ -33,14 +34,24 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
     },
     // Seuls des JSON courts sont postés ; les gros transferts sont sortants.
     bodyLimit: 64 * 1024,
-    // Nginx/Caddy en frontal : sans ça, request.ip serait toujours celui du proxy
-    // et le throttle de connexion regrouperait tout le monde sous une seule clé.
-    trustProxy: true,
+    // Caddy en frontal : sans ça, request.ip serait toujours celui du proxy et
+    // le throttle de connexion regrouperait tout le monde sous une seule clé.
+    //
+    // La liste, plutôt que `true` : `true` fait confiance à n'importe quel
+    // `X-Forwarded-For`, y compris celui qu'un client forge lui-même. Le
+    // backoff de `throttle.ts` étant indexé sur l'IP, un attaquant changerait
+    // d'en-tête à chaque tentative et ne serait jamais ralenti. Ne sont crus
+    // que les intermédiaires joignables sur un réseau privé — la boucle locale
+    // et le réseau interne de Docker, c'est-à-dire nos propres proxys.
+    trustProxy: ['loopback', 'uniquelocal'],
   });
 
   const context = new AppContext(env, server.log);
   await context.cache.load();
 
+  // Avant tout le reste : un en-tête posé sur `onRequest` couvre aussi les
+  // réponses que les plugins suivants produisent sans nous consulter.
+  await server.register(securityHeaders, { publicUrl: env.publicUrl });
   await server.register(fastifyCookie, { secret: env.sessionSecret });
   await server.register(authPlugin, { context });
 
