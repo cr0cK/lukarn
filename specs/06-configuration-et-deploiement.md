@@ -17,7 +17,7 @@ la variable et le problème.
 | `NODE_ENV`                    | `development`                                 | `development` active `pino-pretty`. Valeurs admises : `development`, `production`, `test`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `PORT`                        | `8080`                                        | Entier positif.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `HOST`                        | `0.0.0.0`                                     | En conteneur, `127.0.0.1` rendrait l'app injoignable depuis l'hôte.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `PUBLIC_URL`                  | `http://localhost:8080`                       | URL valide obligatoire. Les `/` finaux sont retirés. **Sert à deux choses : construire l'URI de redirection OAuth, et décider si les cookies sont `secure`.** Une valeur fausse casse le consentement (`redirect_uri_mismatch`) ou, en HTTPS mal déclaré, empêche le cookie de revenir.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `PUBLIC_URL`                  | `http://localhost:8080`                       | URL valide obligatoire. Les `/` finaux sont retirés. **Sert à quatre choses : construire l'URI de redirection OAuth, décider si les cookies sont `secure`, décider si `Strict-Transport-Security` est posé, et — en production — donner à Caddy le domaine dont il obtient le certificat.** Une valeur fausse casse le consentement (`redirect_uri_mismatch`) ou, en HTTPS mal déclaré, empêche le cookie de revenir. Le `Caddyfile` la lit directement (`{$PUBLIC_URL}`) : le domaine servi et le domaine déclaré ne peuvent donc pas diverger.                                                                                                                                                                                                                                                                                                                                                     |
 | `SESSION_SECRET`              | —                                             | **Obligatoire**, ≥ 32 caractères. Signe les cookies. Le changer déconnecte tout le monde.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `TOKEN_KEY`                   | —                                             | **Obligatoire**, ≥ 32 caractères. Chiffre le refresh token. Le changer rend le jeton stocké illisible : il est supprimé et il faut refaire le consentement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `GOOGLE_CLIENT_ID`            | absent                                        | Optionnel, mais **indissociable** de `GOOGLE_CLIENT_SECRET` : n'en renseigner qu'un fait échouer le démarrage. Sans les deux, l'app tourne et sert l'index existant, `/admin` affiche « non configuré ».                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -168,24 +168,68 @@ couches de l'image.
 
 ## docker-compose et volumes
 
-`docker-compose.yml` expose un service, sur **`127.0.0.1:8080` seulement** : le
-TLS et l'accès public relèvent d'un reverse-proxy (Caddy, nginx, Traefik) sur le
-VPS. Retirer le préfixe `127.0.0.1:` joint l'app directement, sans HTTPS.
+`docker-compose.yml` déclare **deux services** :
+
+- **`app`** — l'application. Elle ne publie **aucun port sur l'hôte** (`expose`
+  et non `ports`) : elle n'est joignable que par le réseau interne du compose.
+  Rien de l'application n'écoute sur une interface publique.
+- **`caddy`** — `caddy:2-alpine`, seul à publier 80, 443 et 443/udp. Il termine
+  le TLS, obtient et renouvelle le certificat Let's Encrypt sans tâche
+  planifiée, et relaie vers `app:8080`.
+
+Le `Caddyfile` est monté en lecture seule et tient en une dizaine de lignes.
+Son adresse de site est `{$PUBLIC_URL}` : la variable qui construit l'URI de
+redirection OAuth est aussi celle qui décide du domaine servi, ce qui supprime
+la divergence la plus fréquente de cette application. Elle doit donc valoir
+exactement `https://photos.exemple.fr`, sans `/` final ni port.
+
+Le `Caddyfile` ne pose **aucun en-tête de sécurité** : ils viennent de
+`plugins/headers.ts` (voir [04](./04-securite-et-acces.md)), pour qu'ils valent
+aussi en développement et derrière un frontal remplacé.
+
+Deux autres réglages y vivent, et ce sont les seuls : `request_body max_size
+1MB`, qui refuse au frontal un corps que `bodyLimit` rejetterait de toute façon,
+et `flush_interval -1`, sans lequel une vidéo relayée en `Range` serait
+accumulée avant d'être envoyée.
+
+Un proxy déjà présent sur l'hôte se substitue à `caddy` : supprimer le service
+et rendre à `app` un `ports: ['127.0.0.1:8080:8080']`.
 
 `PUBLIC_URL`, `SESSION_SECRET` et `TOKEN_KEY` sont déclarés avec la syntaxe
 `${VAR:?message}` : compose refuse de démarrer s'ils manquent, avec le message
-qui dit quoi faire.
+qui dit quoi faire. Les variables optionnelles — `GOOGLE_SERVICE_ACCOUNT_FILE`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SMTP_URL`, `MAIL_FROM` — sont
+transmises en `${VAR:-}`. **Elles doivent l'être explicitement** : une variable
+présente dans le `.env` mais absente du bloc `environment` n'atteint jamais le
+conteneur, et l'instance démarre en annonçant simplement que les commentaires
+sont indisponibles ou que Drive n'est pas configuré — sans que rien ne désigne
+la vraie cause.
+
+`GOOGLE_SERVICE_ACCOUNT_FILE` désigne un chemin **vu par le serveur** :
+`/app/config/…` sous Docker, `./config/…` en développement.
 
 | Montage                   | Contenu                                                                                                                          | Sauvegarde                                                |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `./config:/app/config:ro` | `albums.yaml` d'amorçage, et la clé du compte de service si l'instance en utilise une. Lecture seule : l'app n'écrit jamais ici. | **Oui, si la clé y est** — sinon inutile après l'amorçage |
+| `./Caddyfile:ro`          | Configuration du frontal                                                                                                          | Non — versionné dans le dépôt                             |
 | `gdv-data`                | `gdv.db` — **comptes, albums, réglages**, index, sessions, refresh token chiffré                                                 | **Oui. C'est la seule donnée irremplaçable.**             |
 | `gdv-cache`               | Dérivés WebP                                                                                                                     | Non — régénérable à la demande                            |
+| `caddy-data`              | Certificats et clé de compte ACME                                                                                                | Souhaitable — sinon réémission à chaque redéploiement, et Let's Encrypt plafonne par domaine et par semaine |
+| `caddy-config`            | État interne de Caddy                                                                                                            | Non                                                       |
 
 Sauvegarder `gdv-data` ne suffit pas seul : sans `TOKEN_KEY`, le refresh token
-qu'il contient est indéchiffrable. Sauvegarde le `.env` avec.
+qu'il contient est indéchiffrable. Sauvegarde le `.env` avec. La procédure
+complète — arrêt de `app` pour que SQLite soit au repos, `tar` du volume, copie
+hors du VPS — est dans le `README.md`, qui s'adresse à l'installateur.
 
-Les logs sont plafonnés (`json-file`, 10 Mo × 3).
+Les logs des deux services sont plafonnés (`json-file`, 10 Mo × 3).
+
+## Durcissement de la machine
+
+Il n'appartient pas au dépôt et n'est donc pas décrit ici, mais le `README.md`
+en donne la procédure : SSH par clé seule, `ufw`, mises à jour de sécurité
+automatiques. Le compose est fait pour en tirer parti — l'application ne publie
+aucun port, donc seuls 22, 80 et 443 ont à être ouverts.
 
 ## Configuration côté Google Cloud
 

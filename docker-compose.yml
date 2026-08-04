@@ -3,17 +3,24 @@ services:
     build: .
     image: googledrive-viewer
     restart: unless-stopped
-    # N'expose le port que sur la boucle locale : le TLS et l'accès public sont
-    # du ressort du reverse-proxy (Caddy, nginx, Traefik) installé sur le VPS.
-    # Retirer `127.0.0.1:` pour joindre l'app directement, sans HTTPS.
-    ports:
-      - '127.0.0.1:8080:8080'
+    # Aucun port publié sur l'hôte : seul Caddy joint l'application, par le
+    # réseau interne du compose. Rien n'écoute sur une interface publique en
+    # dehors du frontal, donc rien à filtrer côté pare-feu pour cette app.
+    expose:
+      - '8080'
     environment:
       PUBLIC_URL: ${PUBLIC_URL:?définis PUBLIC_URL dans .env}
       SESSION_SECRET: ${SESSION_SECRET:?génère-le avec openssl rand -hex 32}
       TOKEN_KEY: ${TOKEN_KEY:?génère-le avec openssl rand -hex 32}
+      # Chemin **dans le conteneur** : la clé est lue sous /app/config, monté
+      # depuis ./config. Renseignée, elle prend le pas sur GOOGLE_CLIENT_*.
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Sans ces deux-là, les commentaires restent indisponibles : le code de
+      # vérification d'adresse ne peut pas partir.
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # Configuration en lecture seule : l'application ne la modifie jamais.
@@ -28,6 +35,34 @@ services:
         max-size: '10m'
         max-file: '3'
 
+  # TLS et frontal public. Voir `Caddyfile`. Si un proxy tourne déjà sur l'hôte,
+  # supprimer ce service et rendre à `app` un `ports: ['127.0.0.1:8080:8080']`.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80' # redirection vers HTTPS et défi ACME
+      - '443:443'
+      - '443:443/udp' # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificats et clé de compte ACME. **À conserver** : les perdre force
+      # une réémission à chaque redéploiement, et Let's Encrypt plafonne le
+      # nombre de certificats par domaine et par semaine.
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      PUBLIC_URL: ${PUBLIC_URL:?définis PUBLIC_URL dans .env}
+    depends_on:
+      - app
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
 volumes:
   gdv-data:
   gdv-cache:
+  caddy-data:
+  caddy-config:

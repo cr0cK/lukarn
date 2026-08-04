@@ -89,9 +89,23 @@ ne pas retrier à chaque tentative suivante). `LoginThrottle.purge()` est appel�
 par le ménage horaire de `main.ts`, avec la purge des sessions expirées : sans
 elle, les compteurs d'une rafale survivraient jusqu'au redémarrage.
 
-`trustProxy: true` est indispensable ici (`app.ts`) : derrière Caddy ou nginx,
-`request.ip` vaudrait sinon l'adresse du proxy — tous les visiteurs seraient
-regroupés sous une seule adresse, et l'axe `ip` bloquerait l'instance entière.
+`trustProxy` est indispensable ici (`app.ts`) : derrière Caddy, `request.ip`
+vaudrait sinon l'adresse du proxy — tous les visiteurs seraient regroupés sous
+une seule adresse, et l'axe `ip` bloquerait l'instance entière.
+
+Sa valeur est une **liste**, `['loopback', 'uniquelocal']`, et pas `true`.
+`true` fait confiance à n'importe quel `X-Forwarded-For`, y compris celui qu'un
+client écrit lui-même : il suffirait alors d'en changer à chaque tentative pour
+que les trois axes ci-dessus comptent chacun une seule occurrence, et le
+throttle ne freinerait plus rien. Ne sont crus que les intermédiaires joignables
+sur la boucle locale ou un réseau privé — c'est-à-dire nos propres proxys, le
+seul chemin par lequel une requête arrive. Un en-tête venu d'une adresse
+publique est ignoré, et `request.ip` retombe sur l'adresse de la connexion.
+
+Cette protection ne dépend donc plus de la topologie du déploiement. Elle tenait
+auparavant au seul fait que le port n'était publié que sur `127.0.0.1` : le jour
+où quelqu'un retirait ce préfixe, le throttle devenait contournable sans que
+rien ne le signale.
 
 Limites assumées : les compteurs sont en mémoire, donc perdus au redémarrage, et
 une attaque vraiment distribuée (une adresse par tentative, un identifiant par
@@ -445,6 +459,51 @@ son échec est ignoré).
 | Les originaux de ses albums, en téléchargement                                                             | La liste des comptes, les réglages, l'état des synchros                                                   |
 | Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué                                                   |
 | Les commentaires des photos de ses albums, et le nom affiché de leurs auteurs                              | Les commentaires portant sur un album qui ne lui est pas attribué, et ceux qu'un administrateur a masqués |
+
+## En-têtes de sécurité
+
+`packages/server/src/plugins/headers.ts`, enregistré **avant** tout le reste
+dans `app.ts`. Le hook est `onRequest` : à ce stade aucune route n'a répondu,
+donc aucune ne peut oublier les en-têtes — pas même celles que
+`@fastify/static` sert sans passer par un gestionnaire à nous, ni les 404 et
+les 500.
+
+| En-tête                     | Valeur                              | Ce qu'il empêche                                                                                                         |
+| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `Content-Security-Policy`   | voir ci-dessous                     | L'exécution d'un script injecté, l'exfiltration vers une origine tierce, l'encadrement de la page.                        |
+| `X-Content-Type-Options`    | `nosniff`                           | Qu'un navigateur devine un type MIME et exécute comme script ce qui est servi comme autre chose.                          |
+| `X-Frame-Options`           | `DENY`                              | Le clickjacking sur les navigateurs qui ne connaissent pas `frame-ancestors`.                                             |
+| `Referrer-Policy`           | `no-referrer`                       | Qu'un identifiant Drive, présent dans une URL de média, parte dans les journaux d'un site tiers.                          |
+| `Strict-Transport-Security` | `max-age=15552000`, **si `https`** | Le retour en clair, et l'interception au premier accès sur un réseau hostile.                                            |
+
+La CSP tient en une ligne dont une seule directive fait le travail :
+`script-src 'self'`. C'est elle qui rend inexploitable un `<script>` glissé dans
+un titre d'album ou un commentaire — React échappe déjà ce qu'il affiche, la CSP
+est la seconde barrière, celle qui tient si la première cède. Le reste ferme les
+portes voisines : `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
+`frame-ancestors 'none'`, `connect-src 'self'`.
+
+Deux tolérances, et leur raison :
+
+- **`style-src 'unsafe-inline'`.** React pose ses styles par la propriété
+  `style` du DOM, que la CSP ne filtre pas ; mais Vite peut inliner une petite
+  feuille au build, et une CSP qui casse la mise en page à la prochaine mise à
+  jour de l'outillage finit désactivée. Le style en ligne ne permet pas
+  d'exécuter du code.
+- **`img-src 'self' data:`.** Vite inline en `data:` les images de moins de
+  4 ko.
+
+**HSTS n'est posé que si `PUBLIC_URL` commence par `https://`.** Le poser
+inconditionnellement condamnerait un navigateur ayant visité une instance de
+développement à réclamer du HTTPS à `localhost` pendant six mois, sans moyen
+simple de revenir en arrière. Le `max-age` est de six mois et non de deux ans,
+et sans `preload` : assez pour que la protection serve, assez court pour qu'une
+instance qui perdrait son certificat redevienne joignable dans un délai humain.
+
+Ces en-têtes viennent de l'**application**, pas du frontal. Ils valent donc en
+développement, dans les tests, et derrière un proxy que personne n'a pensé à
+configurer — un `Caddyfile` remplacé par un `nginx.conf` ne les emporte pas avec
+lui (D47).
 
 ## Divers
 

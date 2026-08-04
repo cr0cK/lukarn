@@ -1,0 +1,40 @@
+# Frontal HTTPS de la visionneuse. Caddy obtient et renouvelle seul le
+# certificat Let's Encrypt ; il n'y a rien à programmer pour le renouvellement.
+#
+# L'adresse du site est `PUBLIC_URL` telle quelle, et c'est délibéré : la même
+# variable construit l'URI de redirection OAuth et décide si les cookies sont
+# `secure`. Une seule valeur à renseigner, donc aucun moyen que le domaine servi
+# et le domaine déclaré divergent — c'est la panne classique de cette
+# application (`redirect_uri_mismatch`, ou cookie de session jamais renvoyé).
+#
+# Elle doit donc valoir exactement `https://photos.exemple.fr`, sans `/` final
+# ni port : c'est ce nom que Caddy présentera à Let's Encrypt.
+
+{$PUBLIC_URL} {
+	# Les dérivés WebP et les vidéos sont déjà compressés ; le filtre par défaut
+	# de Caddy les laisse tranquilles et ne comprime que HTML, JSON et bundles.
+	encode zstd gzip
+
+	# Le serveur n'accepte que de courts JSON (`bodyLimit` à 64 ko dans
+	# `app.ts`). Refuser plus gros ici évite d'occuper Node à lire un corps
+	# qu'il rejettera de toute façon.
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy app:8080 {
+		# Les vidéos partent en `Range`, relayées depuis Drive au fil de l'eau :
+		# accumuler la réponse avant de l'envoyer ferait attendre le lecteur et
+		# tiendrait le fichier entier en mémoire.
+		flush_interval -1
+	}
+
+	# Les en-têtes de sécurité (CSP, HSTS, nosniff…) sont posés par
+	# l'application, dans `plugins/headers.ts` : ils valent aussi en
+	# développement et derrière un autre frontal, et il n'y a qu'un endroit où
+	# les lire.
+
+	log {
+		output stdout
+	}
+}
