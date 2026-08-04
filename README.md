@@ -88,15 +88,28 @@ n'a rien à renouveler : c'est celle à préférer pour une installation neuve.
 4. Le déposer hors du dépôt, par exemple `./config/service-account.json`, et
    renseigner `GOOGLE_SERVICE_ACCOUNT_FILE` dans `.env`. Il contient une clé
    privée : le protéger comme un mot de passe (`chmod 600`).
-5. Dans **Google Drive**, partager chaque dossier d'album **en lecture** avec
-   l'adresse du compte de service (elle ressemble à
-   `galerie@mon-projet.iam.gserviceaccount.com`, et `/admin` l'affiche).
+5. **Partager le dossier avec le compte de service.** C'est ce qui remplace le
+   consentement, et la seule manipulation à refaire pour chaque nouvel album :
 
-   C'est le point à ne pas oublier : un dossier non partagé ne produit aucune
-   erreur, seulement un album vide.
+   - récupérer l'adresse du compte de service — `/admin` l'affiche en haut, elle
+     ressemble à `galerie@mon-projet.iam.gserviceaccount.com` ;
+   - dans **Google Drive**, clic droit sur le dossier de l'album → **Partager** ;
+   - coller l'adresse, laisser le rôle **Lecteur**, décocher « Envoyer une
+     notification » (cette boîte n'existe pas), puis **Partager**.
+
+   Le partage est **hérité** : un dossier partagé donne accès à tout ce qu'il
+   contient, sous-dossiers compris. Un album `recursive: true` ne demande donc
+   qu'un seul partage, à la racine — et une photo déposée plus tard hérite
+   aussi.
+
+   **Le piège à connaître** : un dossier oublié ne produit aucune erreur, ni
+   dans `/admin`, ni dans les journaux. Seulement un album vide. Si un album
+   reste à zéro élément après une synchronisation « ok », c'est le partage qu'il
+   faut vérifier en premier.
 
 `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` deviennent inutiles, tout comme le
-bouton « Connecter Google Drive » de `/admin`.
+bouton « Connecter Google Drive » de `/admin`, qui laisse place à l'adresse à
+partager.
 
 #### Option B — OAuth
 
@@ -140,8 +153,7 @@ openssl rand -hex 32   # TOKEN_KEY
 # Renseigner aussi PUBLIC_URL, puis selon l'option retenue à l'étape 1 :
 #   GOOGLE_SERVICE_ACCOUNT_FILE  (compte de service)
 #   GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET  (OAuth)
-# SMTP_URL et MAIL_FROM : nécessaires aux commentaires (le code de vérification
-# d'adresse part par email) — les deux ou aucun, sinon le démarrage échoue
+# SMTP_URL et MAIL_FROM : nécessaires aux commentaires — voir l'étape 4
 
 pnpm install
 pnpm create-admin alexis  # premier administrateur, mot de passe demandé
@@ -184,9 +196,61 @@ photos.exemple.fr {
 }
 ```
 
-### 4. Connecter le Drive
+### 4. Emails — facultatif, mais nécessaire aux commentaires
 
-À faire **une seule fois**, et par le propriétaire du Drive uniquement :
+Sans serveur d'envoi, personne ne peut commenter : le code qui vérifie une
+adresse part par email. Les annonces de nouvelles photos ne partent pas non plus.
+`SMTP_URL` et `MAIL_FROM` vont ensemble — n'en renseigner qu'un empêche le
+démarrage.
+
+#### Avec Gmail
+
+Google refuse le mot de passe du compte depuis la fin de l'« accès aux
+applications moins sécurisées ». Il faut un **mot de passe d'application**, qui
+ne sert qu'à l'envoi et se révoque seul :
+
+1. Activer la **validation en deux étapes** sur le compte Google — sans elle,
+   l'option n'apparaît pas.
+2. Aller sur [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
+   nommer l'application (« Galerie »), valider.
+3. Google affiche **16 lettres en quatre groupes** : les recopier **sans les
+   espaces**.
+
+```bash
+# Le @ de l'adresse doit être encodé en %40 : sans ça, l'URL est coupée au
+# mauvais endroit et l'hôte devient n'importe quoi.
+SMTP_URL=smtps://prenom.nom%40gmail.com:abcdefghijklmnop@smtp.gmail.com:465
+MAIL_FROM=Galerie <prenom.nom@gmail.com>
+```
+
+- `smtps://` et le port **465** : TLS dès la connexion. Le port **587** avec
+  `smtp://` fonctionne aussi (STARTTLS).
+- `MAIL_FROM` doit porter **l'adresse du compte** ou un alias vérifié : Gmail
+  réécrit ou refuse tout autre expéditeur.
+- Gmail plafonne à quelques centaines de destinataires par jour. Sans objet pour
+  une galerie familiale.
+- **Attention aux caractères spéciaux** dans un mot de passe : `/`, `+` ou `:`
+  cassent l'URL en silence, et le serveur démarre avec une configuration
+  absurde. Les mots de passe d'application Google n'en contiennent pas ; pour un
+  autre relais, encoder (`/` → `%2F`, `+` → `%2B`, `:` → `%3A`).
+
+#### Vérifier le rendu avant d'écrire à quelqu'un
+
+Un relais bouchon local évite d'envoyer de vrais messages pendant les essais :
+
+```bash
+docker run -d --rm -p 1025:1025 -p 8025:8025 axllent/mailpit
+# puis dans .env : SMTP_URL=smtp://localhost:1025
+```
+
+Mailpit accepte tout, ne relaie rien, et affiche les messages sur
+`http://localhost:8025`.
+
+### 5. Connecter le Drive
+
+En **compte de service**, il n'y a rien à faire ici : l'accès vient du partage
+du dossier (étape 1). Cette étape ne concerne que l'**option B**, et se fait une
+seule fois, par le propriétaire du Drive :
 
 1. Ouvrir `https://photos.exemple.fr` et se connecter avec un compte administrateur.
 2. Aller sur **/admin** → **Connecter Google Drive**.
@@ -199,19 +263,20 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 
 ## Exploitation
 
-| Action                             | Comment                                                                                     |
-| ---------------------------------- | ------------------------------------------------------------------------------------------- |
-| Ajouter un album ou un utilisateur | `/admin`, prise en compte immédiate                                                         |
-| Changer un intervalle, une limite  | `/admin`, appliqué sans redémarrage                                                         |
-| Forcer une synchronisation         | **Resynchroniser** dans `/admin`                                                            |
-| Voir l'état des synchronisations   | `/admin`                                                                                    |
-| Modérer un commentaire             | `/admin`, section **Commentaires** : masquer, ou rendre visible à nouveau                   |
-| Activer les commentaires           | `SMTP_URL` et `MAIL_FROM` dans `.env` — sans serveur d'envoi, personne ne peut s'identifier |
-| Être prévenu des commentaires      | Renseigner l'adresse de modération dans `/admin`                                            |
-| Mot de passe administrateur perdu  | `pnpm reset-password <identifiant>` sur le serveur                                          |
-| Mettre à jour                      | `git pull && docker compose up -d --build`                                                  |
-| Sauvegarder                        | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable                   |
-| Consulter les logs                 | `docker compose logs -f`                                                                    |
+| Action                               | Comment                                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| Ajouter un album ou un utilisateur   | `/admin`, prise en compte immédiate                                                                                            |
+| Ajouter un album (compte de service) | `/admin`, **puis partager son dossier Drive** avec l'adresse du compte — sinon l'album reste vide, sans erreur                 |
+| Changer un intervalle, une limite    | `/admin`, appliqué sans redémarrage                                                                                            |
+| Forcer une synchronisation           | **Resynchroniser** dans `/admin`                                                                                               |
+| Voir l'état des synchronisations     | `/admin`                                                                                                                       |
+| Modérer un commentaire               | `/admin`, section **Commentaires** : masquer, ou rendre visible à nouveau                                                      |
+| Activer les commentaires             | `SMTP_URL` et `MAIL_FROM` dans `.env` (voir « Emails » à l'installation) — sans serveur d'envoi, personne ne peut s'identifier |
+| Être prévenu des commentaires        | Renseigner l'adresse de modération dans `/admin`                                                                               |
+| Mot de passe administrateur perdu    | `pnpm reset-password <identifiant>` sur le serveur                                                                             |
+| Mettre à jour                        | `git pull && docker compose up -d --build`                                                                                     |
+| Sauvegarder                          | Le volume `gdv-data` (comptes, index, token). `gdv-cache` est régénérable                                                      |
+| Consulter les logs                   | `docker compose logs -f`                                                                                                       |
 
 Mise à jour d'une instance qui tournait sur `config/albums.yaml` : rien à faire.
 Au premier démarrage, ses comptes, albums, droits et réglages sont repris en
