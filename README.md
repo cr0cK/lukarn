@@ -63,7 +63,42 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 
 ## Installation sur un VPS
 
-### 1. Identifiants OAuth Google
+### 1. Donner au serveur l'accès à ton Drive
+
+Deux façons, au choix. La seconde évite l'écran d'avertissement de Google et
+n'a rien à renouveler : c'est celle à préférer pour une installation neuve.
+
+|                                                   | Compte de service            | OAuth                                     |
+| ------------------------------------------------- | ---------------------------- | ----------------------------------------- |
+| Écran « Google n'a pas validé cette application » | Jamais                       | À chaque consentement                     |
+| À renouveler                                      | Rien                         | Le jeton expire après six mois sans usage |
+| Ce que le serveur peut lire                       | Les dossiers que tu partages | **Tout** ton Drive                        |
+| À faire pour chaque nouvel album                  | Partager son dossier         | Rien                                      |
+
+#### Option A — compte de service (recommandé)
+
+1. Dans la [console Google Cloud](https://console.cloud.google.com/), créer un
+   projet, puis **API et services → Bibliothèque** : activer **Google Drive
+   API**.
+2. **IAM et administration → Comptes de service → Créer**. Aucun rôle à
+   accorder : ce compte ne touche à rien dans le projet, il sert seulement
+   d'identité.
+3. Sur le compte créé : **Clés → Ajouter une clé → Créer → JSON**. Le fichier
+   se télécharge une seule fois.
+4. Le déposer hors du dépôt, par exemple `./config/service-account.json`, et
+   renseigner `GOOGLE_SERVICE_ACCOUNT_FILE` dans `.env`. Il contient une clé
+   privée : le protéger comme un mot de passe (`chmod 600`).
+5. Dans **Google Drive**, partager chaque dossier d'album **en lecture** avec
+   l'adresse du compte de service (elle ressemble à
+   `galerie@mon-projet.iam.gserviceaccount.com`, et `/admin` l'affiche).
+
+   C'est le point à ne pas oublier : un dossier non partagé ne produit aucune
+   erreur, seulement un album vide.
+
+`GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET` deviennent inutiles, tout comme le
+bouton « Connecter Google Drive » de `/admin`.
+
+#### Option B — OAuth
 
 Tout se passe dans la [console Google Cloud](https://console.cloud.google.com/),
 dans un **projet dédié** plutôt qu'un projet fourre-tout : l'écran de
@@ -102,7 +137,9 @@ cp .env.example .env
 # Générer les deux secrets et les coller dans .env
 openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 32   # TOKEN_KEY
-# Renseigner aussi PUBLIC_URL, GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET
+# Renseigner aussi PUBLIC_URL, puis selon l'option retenue à l'étape 1 :
+#   GOOGLE_SERVICE_ACCOUNT_FILE  (compte de service)
+#   GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET  (OAuth)
 # SMTP_URL et MAIL_FROM : nécessaires aux commentaires (le code de vérification
 # d'adresse part par email) — les deux ou aucun, sinon le démarrage échoue
 

@@ -230,6 +230,13 @@ export interface CreateCommentRequest {
 export const COMMENT_MAX_LENGTH = 2000;
 
 export interface AdminStatus {
+  /**
+   * Comment l'instance s'authentifie auprès de Drive. `service_account` :
+   * une clé fournie par la configuration, rien à connecter ni à renouveler,
+   * l'accès venant du partage du dossier côté Drive. `oauth` : le
+   * consentement du propriétaire, à donner depuis /admin.
+   */
+  driveMode: 'service_account' | 'oauth';
   /** `true` si un refresh token Google est stocké et utilisable. */
   driveConnected: boolean;
   driveAccount: string | null;
@@ -239,7 +246,7 @@ export interface AdminStatus {
    * ici il y a eu autorisation, elle ne vaut simplement plus.
    */
   driveRevokedAt: string | null;
-  /** `true` si GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET sont configurés. */
+  /** `true` si l'un des deux chemins d'authentification est configuré. */
   oauthConfigured: boolean;
   albums: Album[];
   cache: {
