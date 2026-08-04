@@ -82,6 +82,42 @@ function isRevocation(error: unknown): boolean {
   return typeof candidate.message === 'string' && candidate.message.includes('invalid_grant');
 }
 
+/** Réessais avant d'abandonner sur une limite de débit. */
+const RATE_LIMIT_ATTEMPTS = 4;
+
+/** Premier délai d'attente. Doublé à chaque tentative, plafonné à 30 s. */
+const RATE_LIMIT_BASE_MS = 1000;
+const RATE_LIMIT_MAX_MS = 30_000;
+
+/**
+ * Google exprime ses limites de débit de deux façons : un `429`, ou un `403`
+ * dont le corps porte le motif. Le statut seul ne suffit donc pas — un `403`
+ * est aussi ce que répond un fichier auquel le compte n'a pas accès, et
+ * réessayer celui-là quatre fois ne ferait que retarder l'échec.
+ *
+ * `downloadQuotaExceeded` est délibérément exclu : c'est le quota de
+ * téléchargement d'un fichier trop sollicité, qui se compte en heures. Attendre
+ * trente secondes n'y change rien.
+ */
+function isRateLimited(status: number, body: string): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  if (/downloadQuotaExceeded/i.test(body)) return false;
+  return /rateLimitExceeded|userRateLimitExceeded|quotaExceeded/i.test(body);
+}
+
+/**
+ * Délai avant la prochaine tentative. `Retry-After` de Google fait autorité
+ * quand il est là ; sinon, doublement à chaque essai.
+ */
+function retryDelayMs(retryAfter: string | null, attempt: number): number {
+  const annonce = Number(retryAfter);
+  if (Number.isFinite(annonce) && annonce > 0) {
+    return Math.min(annonce * 1000, RATE_LIMIT_MAX_MS);
+  }
+  return Math.min(RATE_LIMIT_BASE_MS * 2 ** attempt, RATE_LIMIT_MAX_MS);
+}
+
 interface TokenRow {
   ciphertext: string;
   account: string | null;
@@ -279,6 +315,32 @@ export class DriveService {
    * il sert. `label` n'apparaît que dans les messages d'erreur.
    */
   async fetchAuthorized(url: string, label: string, range?: string): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      const response = await this.sendWithRefresh(url, range);
+
+      if (response.ok || response.status === 206 || response.status === 416) return response;
+
+      const body = await response.text().catch(() => '');
+
+      // Une limite de débit n'est pas une erreur : Google demande d'attendre.
+      // Sans ce réessai, un préchauffage ou une grande grille à froid laisse
+      // des trous — chaque refus devient une vignette cassée qu'aucun mécanisme
+      // ne rattrape, alors que la seconde d'après serait passée.
+      if (attempt < RATE_LIMIT_ATTEMPTS && isRateLimited(response.status, body)) {
+        const wait = retryDelayMs(response.headers.get('retry-after'), attempt);
+        this.log.warn(
+          `Drive limite le débit (${response.status}) pour ${label} : nouvelle tentative dans ${Math.round(wait / 1000)} s`,
+        );
+        await this.delay(wait);
+        continue;
+      }
+
+      throw new Error(`Drive a répondu ${response.status} pour ${label}: ${body.slice(0, 200)}`);
+    }
+  }
+
+  /** Un envoi, avec renouvellement du jeton si Google le refuse en cours de vie. */
+  private async sendWithRefresh(url: string, range?: string): Promise<Response> {
     let response = await this.send(url, await this.accessToken(false), range);
 
     if (response.status === 401) {
@@ -292,16 +354,16 @@ export class DriveService {
       response = await this.send(url, await this.accessToken(true), range);
     }
 
-    // 206 (fragment) et 416 (plage insatisfaisable) font partie du protocole
-    // `Range` normal — 416 arrive dès qu'un lecteur demande un offset au-delà
-    // de la fin, ce qui est courant en changeant de vidéo. Les convertir en
-    // exception donnerait un 500 là où le navigateur attend un code qu'il sait
-    // interpréter.
-    if (!response.ok && response.status !== 206 && response.status !== 416) {
-      const body = await response.text().catch(() => '');
-      throw new Error(`Drive a répondu ${response.status} pour ${label}: ${body.slice(0, 200)}`);
-    }
     return response;
+  }
+
+  /**
+   * Attente entre deux tentatives. `protected` pour la même raison
+   * qu'`accessToken` : c'est la couture qui permet aux tests de vérifier le
+   * réessai sans attendre réellement des secondes.
+   */
+  protected delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private send(url: string, token: string, range?: string): Promise<Response> {

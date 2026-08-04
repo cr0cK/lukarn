@@ -195,6 +195,14 @@ describe('téléchargement refusé par Drive', () => {
       this.jetons.push(token);
       return Promise.resolve(token);
     }
+
+    /** Attentes enregistrées plutôt que subies : le test dure des millisecondes. */
+    readonly attentes: number[] = [];
+
+    protected override delay(ms: number): Promise<void> {
+      this.attentes.push(ms);
+      return Promise.resolve();
+    }
   }
 
   const vraiFetch = globalThis.fetch;
@@ -240,6 +248,62 @@ describe('téléchargement refusé par Drive', () => {
 
     // Sans ça, /admin afficherait « connecté » pendant que chaque image échoue.
     assert.equal(instrumente.connected, false);
+  });
+
+  it('attend et retente quand Drive limite le débit', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    reponses(
+      new Response('{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}', { status: 403 }),
+      new Response('{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}', { status: 429 }),
+      new Response('contenu', { status: 200 }),
+    );
+
+    const response = await instrumente.fetchFile('une-photo');
+
+    // Sans réessai, chaque refus devient une vignette cassée que rien ne
+    // rattrape — alors que la seconde d'après serait passée.
+    assert.equal(response.status, 200);
+    // Doublement à chaque tentative : marteler à intervalle fixe est
+    // exactement ce que la limite demande d'arrêter.
+    assert.deepEqual(instrumente.attentes, [1000, 2000]);
+  });
+
+  it('respecte le Retry-After annoncé par Google', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    reponses(
+      new Response('{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}', {
+        status: 429,
+        headers: { 'retry-after': '7' },
+      }),
+      new Response('contenu', { status: 200 }),
+    );
+
+    await instrumente.fetchFile('une-photo');
+
+    assert.deepEqual(instrumente.attentes, [7000]);
+  });
+
+  it('ne retente pas un 403 qui refuse l’accès', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    reponses(
+      new Response('{"error":{"errors":[{"reason":"insufficientPermissions"}]}}', { status: 403 }),
+    );
+
+    // Un fichier interdit reste interdit : quatre tentatives ne feraient que
+    // retarder l'échec, et le 403 d'une permission ressemble en tout au 403
+    // d'une limite de débit hors de son corps.
+    await assert.rejects(() => instrumente.fetchFile('une-photo'), /403/);
+    assert.deepEqual(instrumente.attentes, []);
+  });
+
+  it('abandonne un quota de téléchargement, qui ne se vide pas en trente secondes', async () => {
+    const instrumente = new ServiceInstrumente(env, db, silent);
+    reponses(
+      new Response('{"error":{"errors":[{"reason":"downloadQuotaExceeded"}]}}', { status: 403 }),
+    );
+
+    await assert.rejects(() => instrumente.fetchFile('une-photo'), /403/);
+    assert.deepEqual(instrumente.attentes, []);
   });
 
   it('relaie une plage insatisfaisable au lieu de lever', async () => {

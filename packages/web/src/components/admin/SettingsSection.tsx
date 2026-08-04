@@ -52,6 +52,7 @@ function SettingsForm({
 
   const [minutes, setMinutes] = useState(String(settings.syncIntervalMinutes));
   const [onStartup, setOnStartup] = useState(settings.syncOnStartup);
+  const [prewarm, setPrewarm] = useState(settings.prewarmCache);
   const [cacheSize, setCacheSize] = useState(String(settings.cacheMaxSizeGB));
   const [moderationEmail, setModerationEmail] = useState(settings.moderationEmail ?? '');
   const [touched, setTouched] = useState(false);
@@ -64,6 +65,7 @@ function SettingsForm({
   const dirty =
     parsedInterval !== settings.syncIntervalMinutes ||
     onStartup !== settings.syncOnStartup ||
+    prewarm !== settings.prewarmCache ||
     parsedCache !== settings.cacheMaxSizeGB ||
     moderationEmail.trim() !== (settings.moderationEmail ?? '');
 
@@ -76,6 +78,7 @@ function SettingsForm({
     const body: UpdateSettingsRequest = {};
     if (parsedInterval !== settings.syncIntervalMinutes) body.syncIntervalMinutes = parsedInterval;
     if (onStartup !== settings.syncOnStartup) body.syncOnStartup = onStartup;
+    if (prewarm !== settings.prewarmCache) body.prewarmCache = prewarm;
     if (parsedCache !== settings.cacheMaxSizeGB) body.cacheMaxSizeGB = parsedCache;
     if (moderationEmail.trim() !== (settings.moderationEmail ?? '')) {
       body.moderationEmail = moderationEmail.trim();
@@ -90,6 +93,7 @@ function SettingsForm({
   const reset = (): void => {
     setMinutes(String(settings.syncIntervalMinutes));
     setOnStartup(settings.syncOnStartup);
+    setPrewarm(settings.prewarmCache);
     setCacheSize(String(settings.cacheMaxSizeGB));
     setModerationEmail(settings.moderationEmail ?? '');
     setTouched(false);
@@ -142,6 +146,15 @@ function SettingsForm({
         onChange={setOnStartup}
         disabled={save.isPending}
         hint="Utile après un redémarrage ; à éviter si le démarrage doit être immédiat."
+      />
+
+      <Checkbox
+        id="settings-prewarm"
+        label="Préparer les photos à l'avance"
+        checked={prewarm}
+        onChange={setPrewarm}
+        disabled={save.isPending}
+        hint="Rend les photos en fond, une à la fois, des plus récentes aux plus anciennes : la première ouverture passe de quelques secondes à instantanée. À décocher si la liaison Internet du serveur est comptée."
       />
 
       <FormError

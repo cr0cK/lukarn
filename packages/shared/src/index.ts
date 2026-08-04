@@ -339,6 +339,12 @@ export interface AppSettings {
   syncOnStartup: boolean;
   cacheMaxSizeGB: number;
   /**
+   * Rendre les photos en fond, sans attendre qu'on les ouvre. Coupe la
+   * première ouverture de plusieurs secondes à quelques millisecondes, au prix
+   * de téléchargements Drive faits d'avance.
+   */
+  prewarmCache: boolean;
+  /**
    * Adresse prévenue de chaque nouveau commentaire. `null` pour n'en prévenir
    * aucune.
    *

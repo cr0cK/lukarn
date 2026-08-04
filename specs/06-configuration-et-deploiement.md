@@ -133,14 +133,15 @@ Tout se fait par `/api/admin/*` (voir [05](./05-api.md)), sans redémarrage et
 sans fichier. `POST /api/admin/reload` et `AppContext.reloadConfig()` ont disparu
 avec le fichier qu'ils relisaient.
 
-| Changement            | Effet immédiat                                                                                       |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| Compte, droits, rôle  | Relus à chaque requête par `plugins/auth.ts` et `canSee()`.                                          |
-| Album créé/supprimé   | Suppression : ses médias et son `sync_state` partent avec lui.                                       |
-| `folderId` modifié    | L'index de l'album est vidé et une resynchronisation démarre si Drive est connecté.                  |
-| `cacheMaxSizeGB`      | `MediaCache.setMaxBytes()`, avec éviction immédiate si la limite baisse.                             |
-| `syncIntervalMinutes` | `startScheduler` réarme son minuteur ; réarmer à valeur égale est évité, ça repousserait la synchro. |
-| `syncOnStartup`       | N'a de sens qu'au démarrage — mais il est lu en base, donc pris en compte au suivant.                |
+| Changement            | Effet immédiat                                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Compte, droits, rôle  | Relus à chaque requête par `plugins/auth.ts` et `canSee()`.                                                 |
+| Album créé/supprimé   | Suppression : ses médias et son `sync_state` partent avec lui.                                              |
+| `folderId` modifié    | L'index de l'album est vidé et une resynchronisation démarre si Drive est connecté.                         |
+| `cacheMaxSizeGB`      | `MediaCache.setMaxBytes()`, avec éviction immédiate si la limite baisse.                                    |
+| `syncIntervalMinutes` | `startScheduler` réarme son minuteur ; réarmer à valeur égale est évité, ça repousserait la synchro.        |
+| `syncOnStartup`       | N'a de sens qu'au démarrage — mais il est lu en base, donc pris en compte au suivant.                       |
+| `prewarmCache`        | Relu à chaque photo par `media/prewarm.ts` : décocher arrête le passage en cours, pas seulement le suivant. |
 
 ## Dockerfile — trois étapes
 

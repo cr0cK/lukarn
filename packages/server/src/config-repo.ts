@@ -74,6 +74,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncIntervalMinutes: 30,
   syncOnStartup: true,
   cacheMaxSizeGB: 20,
+  prewarmCache: true,
   moderationEmail: null,
 };
 
@@ -81,6 +82,7 @@ const settingsSchema = z.object({
   syncIntervalMinutes: z.number().int().min(0),
   syncOnStartup: z.boolean(),
   cacheMaxSizeGB: z.number().positive(),
+  prewarmCache: z.boolean(),
   moderationEmail: z.string().nullable(),
 });
 

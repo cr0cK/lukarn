@@ -112,6 +112,16 @@ export class MediaCache {
     return path;
   }
 
+  /**
+   * L'entrée est-elle inventoriée ? Contrairement à `hit`, ne touche **pas** à
+   * l'ordre d'éviction : le préchauffage consulte le cache sans avoir à
+   * prétendre qu'on a regardé la photo, sans quoi il protégerait de l'éviction
+   * ce que personne n'a jamais ouvert.
+   */
+  has(key: string): boolean {
+    return this.entries.has(this.pathFor(key));
+  }
+
   /** Écrit une entrée et renvoie son chemin. Déclenche l'éviction si besoin. */
   async put(key: string, data: Buffer): Promise<string> {
     const path = this.pathFor(key);
