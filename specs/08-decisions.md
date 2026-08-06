@@ -1388,3 +1388,78 @@ d'un bloc ou pas du tout. C'est assumé : le champ accepte n'importe quel texte,
 donc « Bonifacio, puis les Lavezzi » reste possible — simplement écrit à la main
 plutôt que déduit. La correction survit aux synchronisations et aux recalculs,
 puisqu'elle ne vit pas dans `media`.
+
+## D52 — Un VPS et `docker compose`, pas un PaaS auto-hébergé
+
+**Contexte.** Le dépôt savait construire une image et servir du HTTPS (D47),
+mais rien n'y décrivait comment on arrive à une machine qui tourne. Le
+`README.md` visait un VPS générique : gabarit sous-dimensionné, SSH ouvert au
+monde, mise à jour par `git pull && docker compose up` sans rien vérifier
+ensuite. La question ouverte était donc : qu'est-ce qui comble ce trou ?
+
+**Choix.** Un VPS Scaleway provisionné par le CLI `scw`, amorcé par un
+cloud-init versionné (`deploy/cloud-init.yaml`), et deux scripts bash —
+`deploy/backup.sh`, `deploy/deploy.sh`. Rien de plus.
+
+**Écarté.** Coolify, Dokku, CapRover et les autres PaaS auto-hébergés :
+l'essentiel de ce qu'ils apportent — TLS automatique, reverse-proxy, redéploiement
+au push — est déjà dans ce dépôt, et fonctionne. Les adopter, c'est remplacer un
+`Caddyfile` de trente lignes qu'on lit en entier par un composant à héberger, à
+mettre à jour et à dépanner, dont la panne emporte la galerie avec elle. Écarté
+aussi Kamal, plus proche du besoin, mais qui suppose un registre d'images là où
+l'on construit sur la machine, et dont la valeur — déploiement multi-hôtes sans
+interruption — n'a pas d'objet pour une instance unique dont le redémarrage dure
+quelques secondes. Écarté enfin un déploiement par GitHub Actions poussant sur
+la machine : il faudrait y déposer une clé de déploiement et ouvrir un chemin
+entrant, alors que l'accès d'administration se referme sur Tailscale.
+
+**Conséquences.** Le déploiement reste une commande lancée à la main sur la
+machine, et c'est assumé pour une galerie familiale : la fréquence de mise à
+jour ne justifie pas d'automatiser le déclenchement. En contrepartie, `deploy.sh`
+doit être fiable seul — d'où la sauvegarde systématique avant migration et
+l'attente active du retour à `healthy` plutôt qu'un `up -d` qui rend la main sur
+un conteneur qui redémarre en boucle.
+
+Le gabarit annoncé passe de « 1 Go suffit » à 2 vCPU / 4 Go / 60 Go. Ce n'était
+pas une marge de confort : le build tourne sur la machine (`build: .`, donc
+vite, `tsc` et d'éventuels modules natifs à compiler) et le cache disque vise
+20 Go par défaut. À 1 Go de RAM, le build est tué avant la fin.
+
+## D53 — Les volumes du compose portent un nom explicite
+
+**Contexte.** Les volumes étaient déclarés `gdv-data`, `gdv-cache`,
+`caddy-data`, `caddy-config`. Compose les préfixe du nom du projet, c'est-à-dire
+du répertoire de travail : ils s'appelaient en réalité
+`googledrive-viewer_gdv-data`, et autre chose encore selon le nom du clone. La
+procédure de sauvegarde du `README.md`, elle, écrivait
+`docker run --rm -v gdv-data:/data … tar czf`.
+
+Docker crée en silence un volume nommé qui n'existe pas. Cette commande montait
+donc un volume **neuf et vide**, produisait une archive vide, et rendait 0. La
+sauvegarde documentée ne sauvegardait rien, sans un message d'erreur, et on ne
+s'en apercevait qu'en restaurant.
+
+**Choix.** `name:` explicite sur les quatre volumes. Le nom cesse de dépendre du
+répertoire de clonage, et toutes les commandes déjà écrites deviennent justes.
+`deploy/backup.sh` vérifie en plus que l'archive contient `gdv.db` avant de la
+garder.
+
+**Écarté.** Corriger seulement le `README.md` en y écrivant
+`googledrive-viewer_gdv-data` : cela suppose que tout le monde clone sous ce
+nom, et laisse le piège intact pour toute commande écrite de mémoire. Écarté
+aussi `COMPOSE_PROJECT_NAME` dans le `.env` — une variable de plus à ne pas
+oublier, pour un résultat que quatre lignes de `docker-compose.yml` obtiennent
+sans condition.
+
+**Conséquences.** Une instance déjà en service tourne sur des volumes préfixés,
+que la nouvelle déclaration **n'adopte pas** : sans migration, le premier
+`docker compose up` démarre sur une base vide — comptes, albums et index
+compris. La copie de `<projet>_gdv-data` vers `gdv-data`, et de
+`<projet>_caddy-data` vers `caddy-data` pour éviter une réémission de
+certificat, est donc une étape obligatoire, encadrée dans le `README.md`.
+`gdv-cache` ne vaut pas la copie.
+
+C'est aussi la raison pour laquelle la vérification de bout en bout de ces
+scripts se fait en produisant une vraie archive et en listant son contenu :
+l'erreur d'origine se lisait dans le contenu du fichier, pas dans un code de
+sortie.

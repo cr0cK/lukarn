@@ -10,3 +10,4 @@ config/albums.yaml
 *.md
 .eslintcache
 **/*.tsbuildinfo
+deploy

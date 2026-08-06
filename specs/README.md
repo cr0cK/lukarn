@@ -14,7 +14,7 @@ participé à sa conception puisse la reprendre.
 | [03 — Modèle de données](./03-modele-de-donnees.md)                       | Tables, index, migrations, pagination par curseur                                       |
 | [04 — Sécurité et accès](./04-securite-et-acces.md)                       | Les deux authentifications, sessions, contrôle d'accès média, chiffrement du token      |
 | [05 — API](./05-api.md)                                                   | Inventaire exhaustif des routes                                                         |
-| [06 — Configuration et déploiement](./06-configuration-et-deploiement.md) | Variables d'environnement, amorçage, Docker, console Google Cloud                       |
+| [06 — Configuration et déploiement](./06-configuration-et-deploiement.md) | Variables d'environnement, amorçage, Docker, `deploy/`, console Google Cloud            |
 | [07 — Frontend](./07-frontend.md)                                         | Routage, état, layout justifié, virtualisation, clavier, thème                          |
 | [08 — Décisions](./08-decisions.md)                                       | Journal des décisions techniques et des alternatives écartées                           |
 
