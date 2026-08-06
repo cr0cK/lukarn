@@ -15,6 +15,8 @@ config/*.json
 
 # Artefacts d'automatisation navigateur (captures, snapshots, journaux console)
 .playwright-cli/
+# Cache du plugin de design impeccable, propre à chaque poste
+.impeccable/
 
 # Divers
 .DS_Store
