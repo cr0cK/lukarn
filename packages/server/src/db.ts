@@ -300,6 +300,53 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE commenters ADD COLUMN pending_display_name TEXT;
   `,
+
+  // 7 — annoter une journée, et nommer le lieu que les photos portent déjà.
+  //
+  // Deux colonnes distinctes pour le lieu, et c'est tout l'intérêt de cette
+  // migration : `cells` est déduit de l'EXIF, `place` est saisi à la main.
+  // L'agrégation des positions est déterministe et hors réseau, le géocodage
+  // est lent et faillible. Les séparer permet de recalculer les journées à
+  // chaque passage sans rappeler Nominatim, et fait que les libellés
+  // s'allument tout seuls quand ils finissent par arriver.
+  `
+  CREATE TABLE album_days (
+    album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    -- 'YYYY-MM-DD' en UTC, exactement la clé que dayKey() calcule côté front.
+    -- Un jour local ferait basculer de section une photo de 23 h 30.
+    day         TEXT NOT NULL,
+    description TEXT,
+    -- Lieu saisi à la main. Prime sur cells : c'est une correction, et une
+    -- correction que le recalcul écraserait ne servirait à rien.
+    place       TEXT,
+    -- JSON string[] de clés geo_places, dans l'ordre chronologique des
+    -- grappes. Réécrit à chaque passage ; description et place, jamais.
+    cells       TEXT,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (album_id, day)
+  );
+
+  -- Cache de géocodage inverse, partagé par tous les albums : deux séjours au
+  -- même endroit ne comptent qu'un appel à Nominatim, dont la politique
+  -- plafonne à une requête par seconde.
+  CREATE TABLE geo_places (
+    -- 'lat,lng' arrondis à 2 décimales, soit ~1,1 km — la maille en deçà de
+    -- laquelle deux photos portent de toute façon le même nom de lieu.
+    cell       TEXT PRIMARY KEY,
+    -- NULL : le géocodage a abouti sans résultat exploitable. La ligne existe
+    -- quand même, c'est ce qui empêche de redemander éternellement. Un échec
+    -- réseau, lui, n'écrit aucune ligne et sera retenté au passage suivant.
+    label      TEXT,
+    fetched_at TEXT NOT NULL
+  );
+
+  -- Découpage par défaut de la grille. Il vivait uniquement dans l'URL, donc
+  -- nulle part : un album de vacances se lit par jour, un album « les enfants »
+  -- couvrant dix ans se lit par mois, et personne n'a à le redemander à chaque
+  -- ouverture.
+  ALTER TABLE albums ADD COLUMN group_by TEXT NOT NULL DEFAULT 'month'
+    CHECK (group_by IN ('month', 'day'));
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

@@ -5,6 +5,7 @@ import { openDb } from '../db.js';
 import { loadDotEnv } from '../dotenv.js';
 import { loadEnv } from '../env.js';
 import { MediaCache } from '../media/cache.js';
+import { AlbumDayRepo, PlacesPass } from '../places.js';
 import { MediaRepo, SyncStateRepo, type MediaUpsert } from '../repo.js';
 
 /**
@@ -34,6 +35,17 @@ const CAMERAS = [
   { make: 'Apple', model: 'iPhone 15 Pro', lens: 'iPhone 15 Pro back camera' },
   { make: 'FUJIFILM', model: 'X-T5', lens: 'XF33mmF1.4 R LM WR' },
   { make: 'SONY', model: 'ILCE-7M4', lens: 'FE 35mm F1.8' },
+];
+
+/**
+ * Deux lieux distants d'une vingtaine de kilomètres, donc au-delà du rayon
+ * d'agglomération : une journée qui porte les deux produit deux grappes, ce qui
+ * est le cas intéressant à regarder. Les libellés sont posés directement dans
+ * `geo_places`, pour que la démo montre des noms de lieu sans appeler Nominatim.
+ */
+const DEMO_PLACES = [
+  { lat: 41.3878, lng: 9.1597, label: 'Bonifacio, Corse-du-Sud' },
+  { lat: 41.5911, lng: 9.2795, label: 'Porto-Vecchio, Corse-du-Sud' },
 ];
 
 /** Teinte dérivée de l'index : la grille reste lisible et reproductible. */
@@ -108,6 +120,47 @@ async function renderPlaceholder(
   return sharp(Buffer.from(svg)).webp({ quality: 80 }).toBuffer();
 }
 
+/** Position d'une photo de démonstration : deux sur trois n'en ont pas. */
+function position(index: number): { lat: number | null; lng: number | null } {
+  if (index % 3 !== 0) return { lat: null, lng: null };
+  const place = DEMO_PLACES[(index / 3) % DEMO_PLACES.length]!;
+  // Une dispersion de quelques centaines de mètres autour du lieu : de quoi
+  // faire travailler l'agglomération sans franchir son rayon.
+  const jitter = ((index % 7) - 3) * 0.004;
+  return { lat: place.lat + jitter, lng: place.lng + jitter };
+}
+
+/**
+ * Nomme les cellules produites par le passage des lieux, en les rattachant au
+ * lieu de démonstration le plus proche. Sans ça, la démo n'aurait de libellés
+ * qu'après un appel réseau à Nominatim, plafonné à une requête par seconde.
+ */
+function labelDemoCells(db: ReturnType<typeof openDb>): number {
+  const cells = (
+    db.prepare('SELECT DISTINCT cells FROM album_days WHERE cells IS NOT NULL').all() as {
+      cells: string;
+    }[]
+  ).flatMap((row) => JSON.parse(row.cells) as string[]);
+
+  const statement = db.prepare(
+    `INSERT INTO geo_places (cell, label, fetched_at) VALUES (?, ?, ?)
+     ON CONFLICT (cell) DO UPDATE SET label = excluded.label`,
+  );
+  const now = new Date().toISOString();
+
+  for (const cell of new Set(cells)) {
+    const [lat, lng] = cell.split(',').map(Number);
+    const nearest = DEMO_PLACES.reduce((best, place) =>
+      Math.hypot(place.lat - lat!, place.lng - lng!) < Math.hypot(best.lat - lat!, best.lng - lng!)
+        ? place
+        : best,
+    );
+    statement.run(cell, nearest.label, now);
+  }
+
+  return new Set(cells).size;
+}
+
 async function main(): Promise<void> {
   const envFile = loadDotEnv();
 
@@ -175,8 +228,10 @@ async function main(): Promise<void> {
         exposureTime: isVideo ? null : [1 / 60, 1 / 125, 1 / 250, 1 / 500][index % 4]!,
         aperture: isVideo ? null : [1.8, 2.8, 4, 5.6][index % 4]!,
         focalLength: isVideo ? null : [24, 35, 50, 85][index % 4]!,
-        lat: index % 3 === 0 ? 48.8566 + (index % 10) * 0.01 : null,
-        lng: index % 3 === 0 ? 2.3522 + (index % 10) * 0.01 : null,
+        // Une photo sur trois est géolocalisée, alternativement sur l'un des
+        // deux lieux : les journées qui en portent deux montrent l'ordre
+        // chronologique des grappes dans leur en-tête.
+        ...position(index),
         md5: null,
       });
 
@@ -204,8 +259,43 @@ async function main(): Promise<void> {
     console.log(`Album "${album.id}" : ${items.length} médias de démonstration`);
   }
 
+  // Les journées, comme le serveur les calculerait — mais sans géocodeur : les
+  // libellés sont posés juste après, pour ne pas dépendre du réseau.
+  const days = new AlbumDayRepo(db);
+  await new PlacesPass({
+    albums: () => albums,
+    media,
+    days,
+    geocoder: null,
+    log: { info: () => {}, debug: () => {} },
+  }).run();
+  const named = labelDemoCells(db);
+
+  // Deux notes, sur les deux journées les plus récentes du premier album : de
+  // quoi voir la hauteur d'en-tête varier, et le crayon d'édition.
+  const firstAlbum = albums[0]!;
+  const recent = (
+    db
+      .prepare(
+        `SELECT DISTINCT substr(taken_at, 1, 10) AS day FROM media
+          WHERE album_id = ? ORDER BY day DESC LIMIT 2`,
+      )
+      .all(firstAlbum.id) as { day: string }[]
+  ).map((row) => row.day);
+
+  const notes = ['Bonifacio, puis la plage jusqu’au coucher du soleil.', 'Retour par la montagne.'];
+  recent.forEach((day, index) =>
+    days.upsertNote(firstAlbum.id, day, { description: notes[index]! }),
+  );
+
   db.close();
-  console.log(`\n${created} médias créés. Cache : ${cache.stats().entryCount} entrées.`);
+  console.log(
+    `\n${created} médias créés, ${named} lieux nommés, ${recent.length} journées annotées ` +
+      `sur "${firstAlbum.id}". Cache : ${cache.stats().entryCount} entrées.`,
+  );
+  console.log(
+    'Regarde un album réglé sur « par jour » : les lieux et les notes ne s’affichent que là.',
+  );
   // Le serveur inventorie le cache au démarrage : sans redémarrage, il ne verra
   // pas les fichiers écrits ici et tentera d'aller les chercher sur Drive.
   console.log("Redémarre le serveur pour qu'il prenne en compte le cache généré.");

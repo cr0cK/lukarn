@@ -43,6 +43,13 @@ const schema = z.object({
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().optional(),
 
+  /**
+   * Racine du service de géocodage inverse, qui donne un nom aux coordonnées
+   * EXIF. Une chaîne vide le désactive : les journées gardent leurs grappes,
+   * simplement sans libellé. Une instance Nominatim privée se met ici.
+   */
+  GEOCODING_URL: z.string().default('https://nominatim.openstreetmap.org'),
+
   CONFIG_PATH: z.string().default('./config/albums.yaml'),
   DATA_DIR: z.string().default('./data'),
   CACHE_DIR: z.string().default('./cache'),
@@ -67,6 +74,11 @@ export interface Env {
   serviceAccount: { email: string; privateKey: string; file: string } | null;
   /** `null` si l'instance n'envoie pas d'email : les notifications s'éteignent. */
   mail: { smtpUrl: string; from: string } | null;
+  /**
+   * `null` si `GEOCODING_URL` est vide : les lieux déduits de l'EXIF ne sont
+   * plus nommés, le reste de l'application est inchangé.
+   */
+  geocoding: { baseUrl: string; userAgent: string } | null;
   configPath: string;
   dataDir: string;
   cacheDir: string;
@@ -185,6 +197,14 @@ export function loadEnv(
   }
   if (hasSmtp) validateSmtpUrl(env.SMTP_URL!);
 
+  const geocodingUrl = env.GEOCODING_URL.trim().replace(/\/+$/, '');
+  if (geocodingUrl && !URL.canParse(geocodingUrl)) {
+    throw new Error(
+      `GEOCODING_URL n'est pas une URL valide : « ${geocodingUrl} ». Laisse la variable ` +
+        'vide pour désactiver le géocodage des lieux.',
+    );
+  }
+
   return {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
@@ -200,6 +220,12 @@ export function loadEnv(
       ? readServiceAccount(resolve(baseDir, env.GOOGLE_SERVICE_ACCOUNT_FILE))
       : null,
     mail: hasSmtp && hasFrom ? { smtpUrl: env.SMTP_URL!, from: env.MAIL_FROM! } : null,
+    // La politique d'usage de Nominatim exige un `User-Agent` qui identifie
+    // l'appelant : l'instance publique bloque les agents anonymes, et un
+    // `node-fetch` générique se ferait couper sans qu'on sache pourquoi.
+    geocoding: geocodingUrl
+      ? { baseUrl: geocodingUrl, userAgent: `googledrive-viewer (+${publicUrl})` }
+      : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),
     cacheDir: resolve(baseDir, env.CACHE_DIR),

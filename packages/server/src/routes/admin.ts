@@ -1,7 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import {
+  ALBUM_DAY_DESCRIPTION_MAX_LENGTH,
+  ALBUM_DAY_PLACE_MAX_LENGTH,
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
+  DEFAULT_GROUP_BY,
   EMAIL_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
@@ -77,12 +80,15 @@ const moderationQuerySchema = z.object({
   cursor: z.coerce.number().int().positive().optional(),
 });
 
+const groupBy = z.enum(['month', 'day']);
+
 const createAlbumSchema = z.object({
   id: albumId,
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
   folderId: z.string().min(1).max(256),
   recursive: z.boolean().default(true),
+  groupBy: groupBy.default(DEFAULT_GROUP_BY),
 });
 
 const updateAlbumSchema = z.object({
@@ -90,6 +96,21 @@ const updateAlbumSchema = z.object({
   description: z.string().max(2000).nullable().optional(),
   folderId: z.string().min(1).max(256).optional(),
   recursive: z.boolean().optional(),
+  groupBy: groupBy.optional(),
+});
+
+/** `YYYY-MM-DD`, la clé de journée du découpage par jour. */
+const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'attendu : AAAA-MM-JJ');
+
+/**
+ * Note d'une journée. La chaîne vide est acceptée à côté d'un texte, pour la
+ * même raison que `moderationEmail` : c'est ce qu'envoie un champ qu'on vient
+ * de vider, et la refuser obligerait le front à traduire « vide » en `null`
+ * avant chaque envoi. `AlbumDayRepo` ramène les deux au même `NULL`.
+ */
+const updateAlbumDaySchema = z.object({
+  description: z.string().max(ALBUM_DAY_DESCRIPTION_MAX_LENGTH).nullable().optional(),
+  place: z.string().max(ALBUM_DAY_PLACE_MAX_LENGTH).nullable().optional(),
 });
 
 const updateSettingsSchema = z.object({
@@ -122,6 +143,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       description: album.description,
       folderId: album.folderId,
       recursive: album.recursive,
+      groupBy: album.groupBy,
       itemCount: context.media.stats(album.id).itemCount,
       lastSyncAt: state.lastSyncAt,
       syncStatus: state.status,
@@ -354,6 +376,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         description: input.description ?? null,
         folderId: input.folderId,
         recursive: input.recursive,
+        groupBy: input.groupBy,
       });
 
       request.log.info(`Album "${album.id}" créé`);
@@ -429,6 +452,27 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       request.log.info(`Album "${id}" supprimé, ${removed} médias retirés de l'index`);
 
       return reply.send({ ok: true });
+    });
+
+    /**
+     * Annote une journée. La **saisie** vit dans l'album, en face des photos
+     * qu'on décrit ; la **mutation** reste ici, sous `/api/admin`. C'est ce qui
+     * garde l'invariant « 403 nulle part ailleurs » : partout ailleurs, un
+     * refus d'accès répond 404 pour ne pas révéler ce qui existe (D50).
+     */
+    app.patch('/albums/:id/days/:day', async (request, reply) => {
+      const params = request.params as { id: string; day: string };
+      if (!context.findAlbum(params.id)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+      }
+
+      const day = dayKey.safeParse(params.day);
+      if (!day.success) return badRequest(reply, day.error);
+
+      const parsed = updateAlbumDaySchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+
+      return reply.send(context.days.upsertNote(params.id, day.data, parsed.data));
     });
 
     /* ------------------------------------------------------------ réglages */

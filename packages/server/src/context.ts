@@ -8,10 +8,12 @@ import { type Db, openDb } from './db.js';
 import { DriveService } from './drive/service.js';
 import { Syncer } from './drive/sync.js';
 import type { Env } from './env.js';
+import { Geocoder } from './geocoder.js';
 import { Mailer } from './mail.js';
 import { MediaCache } from './media/cache.js';
 import { MediaRenderer } from './media/renderer.js';
 import { AlbumNotifier } from './notifier.js';
+import { AlbumDayRepo, PlacesPass } from './places.js';
 import { CachePrewarmer } from './media/prewarm.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SessionStore } from './sessions.js';
@@ -38,6 +40,10 @@ export class AppContext {
   readonly subscriptions: SubscriptionRepo;
   /** Annonce des nouvelles photos, déclenchée par le ménage horaire de `main.ts`. */
   readonly notifier: AlbumNotifier;
+  /** Journées annotées, et lieux déduits de l'EXIF. */
+  readonly days: AlbumDayRepo;
+  /** Agrégation des positions en journées puis géocodage, en tâche de fond. */
+  readonly places: PlacesPass;
   readonly prewarmer: CachePrewarmer;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
@@ -68,6 +74,7 @@ export class AppContext {
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
+    this.days = new AlbumDayRepo(this.db);
 
     bootstrapFromYaml(this.config, env, {
       info: (msg) => log.info(msg),
@@ -95,6 +102,14 @@ export class AppContext {
       subscriptions: this.subscriptions,
       mailer: () => this.mailer,
       env,
+      log: logger,
+    });
+
+    this.places = new PlacesPass({
+      albums: () => this.albums,
+      media: this.media,
+      days: this.days,
+      geocoder: env.geocoding ? new Geocoder(this.db, env.geocoding, logger) : null,
       log: logger,
     });
 

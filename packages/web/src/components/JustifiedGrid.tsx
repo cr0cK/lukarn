@@ -1,5 +1,7 @@
+import type { AlbumDay } from '@gdv/shared';
 import { type ReactElement, useEffect } from 'react';
-import { GRID_HEADER_HEIGHT, type GridLayout } from '../lib/useGridLayout';
+import type { GridLayout } from '../lib/useGridLayout';
+import { SectionHeader } from './SectionHeader';
 import { Thumb } from './Thumb';
 
 /** Distance au bas du contenu déclenchant le chargement de la page suivante. */
@@ -7,6 +9,11 @@ const LOAD_MORE_MARGIN_PX = 1500;
 
 interface JustifiedGridProps {
   grid: GridLayout;
+  albumId: string;
+  /** Journées annotées, indexées par clé de section. Vide en découpage par mois. */
+  days: Map<string, AlbumDay>;
+  /** Ouvre le crayon des en-têtes : administrateur, en découpage par jour. */
+  canAnnotate: boolean;
   selectedIndex: number;
   onSelect: (index: number) => void;
   onOpen: (index: number) => void;
@@ -24,6 +31,9 @@ interface JustifiedGridProps {
  */
 export function JustifiedGrid({
   grid,
+  albumId,
+  days,
+  canAnnotate,
   selectedIndex,
   onSelect,
   onOpen,
@@ -45,12 +55,12 @@ export function JustifiedGrid({
     <div ref={grid.ref} className="relative w-full" style={{ height: layout.totalHeight }}>
       {visibleSections.map((section) => (
         <div key={section.key}>
-          <h2
-            className="absolute left-0 flex items-end pb-3 text-[15px] font-medium text-ink-200"
-            style={{ top: section.y, height: GRID_HEADER_HEIGHT }}
-          >
-            {section.label}
-          </h2>
+          <SectionHeader
+            albumId={albumId}
+            section={section}
+            day={days.get(section.key)}
+            editable={canAnnotate}
+          />
 
           {section.rows
             .filter((row) => row.y + row.height >= visibleFrom && row.y <= visibleTo)

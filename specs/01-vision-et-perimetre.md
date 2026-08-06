@@ -35,18 +35,20 @@ propriétaire.
 Ces absences ne sont pas des manques à combler, ce sont des choix qui tiennent
 le projet à sa taille.
 
-| Absent                                                        | Pourquoi                                                                                                                                                                               |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Toute écriture dans Drive                                     | Le scope demandé est `drive.readonly` (`packages/server/src/drive/service.ts`). Aucun bug de l'app ne peut détruire les originaux.                                                     |
-| Édition, retouche, rotation persistée                         | Les originaux appartiennent à Drive ; l'app n'en produit que des dérivés jetables.                                                                                                     |
-| Inscription, mot de passe oublié                              | Les comptes sont créés par le propriétaire depuis `/admin`. Pas de formulaire public, pas de courriel à envoyer.                                                                       |
-| Partage public par lien                                       | Toute route média exige une session. Un lien copié à un tiers ne lui donne rien.                                                                                                       |
-| Reconnaissance faciale, recherche, tags                       | Demanderait un traitement du contenu — donc de télécharger tous les originaux, ce que l'indexation évite précisément.                                                                  |
-| Commentaires publics, ou signés d'un compte Google            | Commenter suppose la session qui donne déjà accès à l'album. Un identifiant tiers ouvrirait une seconde population d'utilisateurs sans droits, à réconcilier avec `user_albums` (D33). |
-| Édition d'un commentaire, réactions, mentions, fils imbriqués | Ce qui sépare une conversation sous une photo d'un forum. Un seul niveau de réponse, et la suppression pour se corriger.                                                               |
-| Transcodage vidéo                                             | ffmpeg sur un VPS modeste consomme le CPU qu'on n'a pas. Les `Range` sont relayées telles quelles à Drive.                                                                             |
-| Albums construits par requête (dates, tags)                   | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans `/admin`.                                                                                                 |
-| Multi-tenant, plusieurs Drive                                 | La table `oauth_token` a une contrainte `CHECK (id = 1)` : une instance, un Drive.                                                                                                     |
+| Absent                                                        | Pourquoi                                                                                                                                                                                                                   |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Toute écriture dans Drive                                     | Le scope demandé est `drive.readonly` (`packages/server/src/drive/service.ts`). Aucun bug de l'app ne peut détruire les originaux.                                                                                         |
+| Édition, retouche, rotation persistée                         | Les originaux appartiennent à Drive ; l'app n'en produit que des dérivés jetables.                                                                                                                                         |
+| Inscription, mot de passe oublié                              | Les comptes sont créés par le propriétaire depuis `/admin`. Pas de formulaire public, pas de courriel à envoyer.                                                                                                           |
+| Partage public par lien                                       | Toute route média exige une session. Un lien copié à un tiers ne lui donne rien.                                                                                                                                           |
+| Reconnaissance faciale, recherche, tags                       | Demanderait un traitement du contenu — donc de télécharger tous les originaux, ce que l'indexation évite précisément.                                                                                                      |
+| Commentaires publics, ou signés d'un compte Google            | Commenter suppose la session qui donne déjà accès à l'album. Un identifiant tiers ouvrirait une seconde population d'utilisateurs sans droits, à réconcilier avec `user_albums` (D33).                                     |
+| Édition d'un commentaire, réactions, mentions, fils imbriqués | Ce qui sépare une conversation sous une photo d'un forum. Un seul niveau de réponse, et la suppression pour se corriger.                                                                                                   |
+| Transcodage vidéo                                             | ffmpeg sur un VPS modeste consomme le CPU qu'on n'a pas. Les `Range` sont relayées telles quelles à Drive.                                                                                                                 |
+| Albums construits par requête (dates, tags)                   | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans `/admin`.                                                                                                                                     |
+| Correction du lieu **d'une photo**                            | Le lieu se corrige à la journée. Par photo, il faudrait une table d'override hors de `media` — que `upsertMany` réécrit intégralement à chaque sync —, sa fusion partout où le GPS est lu, et un sélecteur de carte (D51). |
+| Carte, recherche par lieu                                     | Les coordonnées servent à nommer une journée, pas à explorer. Une carte demanderait une tuile tierce dans une app qui ne fait sortir aucune requête du navigateur.                                                         |
+| Multi-tenant, plusieurs Drive                                 | La table `oauth_token` a une contrainte `CHECK (id = 1)` : une instance, un Drive.                                                                                                                                         |
 
 ## Les contraintes qui ont guidé la conception
 
@@ -72,8 +74,16 @@ calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
 
 ## Ce que ça donne
 
-- Grille justifiée groupée par mois, virtualisée, sens chronologique
-  basculable.
+- Grille justifiée groupée par mois ou par jour, virtualisée, sens chronologique
+  basculable. Le découpage par défaut appartient à l'album : un séjour se lit
+  par jour, dix ans de photos d'enfants par mois.
+- **Une journée peut être annotée**, et porter le lieu que ses photos indiquent.
+  Un album n'était qu'une grille datée : rien n'y disait ce qu'on avait fait.
+  La note se saisit dans l'album, en face des photos qu'elle décrit ; le lieu se
+  déduit des coordonnées EXIF par géocodage inverse en tâche de fond, et se
+  corrige à la main quand il tombe à côté. La description de l'album, elle,
+  s'affiche enfin — elle était saisie depuis `/admin` sans être montrée nulle
+  part.
 - Visionneuse plein écran pilotable au clavier, avec EXIF et téléchargement de
   l'original.
 - Photos (JPEG, PNG, WebP, HEIC…) et vidéos (MP4, MOV) — tout ce que

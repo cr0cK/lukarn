@@ -9,8 +9,8 @@ import { loadDotEnv } from './dotenv.js';
 import { loadEnv } from './env.js';
 
 /**
- * Purge des sessions expirées et des compteurs de throttle, et annonce des
- * nouvelles photos aux abonnés.
+ * Purge des sessions expirées et des compteurs de throttle, annonce des
+ * nouvelles photos aux abonnés, agrégation des lieux et préchauffage du cache.
  */
 const HOUSEKEEPING_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -43,6 +43,14 @@ function startScheduler(context: AppContext): () => void {
       // désagrément.
       context.log.error({ err: error }, 'Annonce des nouvelles photos en échec');
     }
+
+    // Les lieux sont ici pour la même raison que l'annonce : le géocodage est
+    // plafonné à une requête par seconde et n'a rien à faire dans le chemin
+    // d'une synchronisation, ni dans celui d'une requête. Sans `await` : un
+    // premier passage sur une grosse bibliothèque dure des minutes.
+    void context.places.run().catch((error: unknown) => {
+      context.log.error({ err: error }, 'Passage des lieux en échec');
+    });
 
     // Le préchauffage est ici plutôt qu'à la fin d'une synchronisation : la
     // sync automatique peut être désactivée — elle l'est par défaut sur une
@@ -119,6 +127,12 @@ async function main(): Promise<void> {
   // ouverture se paie plein tarif, juste après un redémarrage.
   void context.prewarmer.run().catch((error: unknown) => {
     context.log.error({ err: error }, 'Préchauffage du cache en échec');
+  });
+
+  // Même raison pour les lieux : une instance qu'on vient de mettre à jour a
+  // ses journées à agréger, et personne n'attendra une heure pour les voir.
+  void context.places.run().catch((error: unknown) => {
+    context.log.error({ err: error }, 'Passage des lieux en échec');
   });
 
   const shutdown = async (signal: string): Promise<void> => {

@@ -17,8 +17,18 @@ export interface LayoutOptions {
   /** Hauteur visée pour une ligne. Les lignes s'en écartent pour tomber juste. */
   targetRowHeight: number;
   gap: number;
-  /** Hauteur de l'en-tête de section. */
+  /** Hauteur de l'en-tête de section, quand rien ne la fait varier. */
   headerHeight: number;
+  /**
+   * Hauteur de l'en-tête d'une section donnée, quand elle porte plus que son
+   * libellé — un lieu, une note. Omise, ou rendant une valeur nulle, c'est
+   * `headerHeight` qui s'applique.
+   *
+   * La hauteur est **une donnée d'entrée du calcul**, jamais une mesure : tout
+   * le layout est calculé avant que le moindre nœud DOM n'existe, et c'est ce
+   * qui rend la virtualisation et l'absence de décalage possibles.
+   */
+  headerHeightFor?: (key: string) => number;
   /** Marge sous chaque section. */
   sectionGap: number;
   /** Découpage en sections. Omis, c'est le mois — le défaut partagé. */
@@ -46,6 +56,8 @@ export interface LayoutSection {
   label: string;
   /** Position de l'en-tête ; les lignes commencent à `y + headerHeight`. */
   y: number;
+  /** Hauteur réservée à l'en-tête. Le composant y dimensionne sa boîte. */
+  headerHeight: number;
   height: number;
   rows: LayoutRow[];
 }
@@ -152,6 +164,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
     targetRowHeight,
     gap,
     headerHeight,
+    headerHeightFor,
     sectionGap,
     groupBy = DEFAULT_GROUP_BY,
   } = options;
@@ -176,7 +189,8 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
 
     const sectionItems = items.slice(start, index);
     const sectionY = cursorY;
-    let rowY = cursorY + headerHeight;
+    const sectionHeaderHeight = headerHeightFor?.(key) || headerHeight;
+    let rowY = cursorY + sectionHeaderHeight;
     const rows: LayoutRow[] = [];
 
     let buffer: { item: MediaItem; index: number; ratio: number }[] = [];
@@ -234,6 +248,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
       key,
       label: sectionLabelOf(key, groupBy),
       y: sectionY,
+      headerHeight: sectionHeaderHeight,
       height: sectionHeight,
       rows,
     });

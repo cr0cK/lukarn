@@ -33,6 +33,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
   const [description, setDescription] = useState(album?.description ?? '');
   const [folder, setFolder] = useState(album?.folderId ?? '');
   const [recursive, setRecursive] = useState(album?.recursive ?? true);
+  const [byDay, setByDay] = useState(album?.groupBy === 'day');
   const [touched, setTouched] = useState(false);
 
   const idError = editing ? null : validateAlbumId(albumId);
@@ -62,6 +63,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           description: description.trim() || undefined,
           folderId,
           recursive,
+          groupBy: byDay ? 'day' : 'month',
         },
         {
           onSuccess: (created) => {
@@ -85,6 +87,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
     }
     if (folderId !== album.folderId) body.folderId = folderId;
     if (recursive !== album.recursive) body.recursive = recursive;
+    if ((byDay ? 'day' : 'month') !== album.groupBy) body.groupBy = byDay ? 'day' : 'month';
 
     if (Object.keys(body).length === 0) {
       onClose();
@@ -176,6 +179,15 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         onChange={setRecursive}
         disabled={pending}
         hint="Décoche pour n'indexer que les fichiers posés directement dans le dossier."
+      />
+
+      <Checkbox
+        id={`${fieldId}-group-by`}
+        label="Ouvrir la grille regroupée par jour"
+        checked={byDay}
+        onChange={setByDay}
+        disabled={pending}
+        hint="Le bon découpage pour un séjour. Les notes de journée ne s'affichent que par jour. Le visiteur peut toujours rebasculer."
       />
 
       <FormError

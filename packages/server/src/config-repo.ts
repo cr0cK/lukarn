@@ -1,4 +1,10 @@
-import { ALL_ALBUMS, type AdminUser, type AppSettings } from '@gdv/shared';
+import {
+  ALL_ALBUMS,
+  DEFAULT_GROUP_BY,
+  type AdminUser,
+  type AppSettings,
+  type GroupBy,
+} from '@gdv/shared';
 import { z } from 'zod';
 import type { Db } from './db.js';
 
@@ -23,6 +29,8 @@ export interface StoredAlbum {
   description: string | null;
   folderId: string;
   recursive: boolean;
+  /** Découpage de la grille à l'ouverture. Une préférence, pas une contrainte. */
+  groupBy: GroupBy;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +68,8 @@ export interface CreateAlbumInput {
   description?: string | null;
   folderId: string;
   recursive: boolean;
+  /** Omis, c'est le défaut partagé — le mois. */
+  groupBy?: GroupBy;
 }
 
 export interface UpdateAlbumInput {
@@ -67,6 +77,7 @@ export interface UpdateAlbumInput {
   description?: string | null;
   folderId?: string;
   recursive?: boolean;
+  groupBy?: GroupBy;
 }
 
 /** Valeurs appliquées tant qu'aucun réglage n'a été enregistré. */
@@ -92,6 +103,7 @@ interface AlbumRow {
   description: string | null;
   folder_id: string;
   recursive: number;
+  group_by: GroupBy;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +135,7 @@ function toAlbum(row: AlbumRow): StoredAlbum {
     description: row.description,
     folderId: row.folder_id,
     recursive: row.recursive === 1,
+    groupBy: row.group_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -275,8 +288,8 @@ export class ConfigRepo {
 
     this.db
       .prepare(
-        `INSERT INTO albums (id, title, description, folder_id, recursive, position, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO albums (id, title, description, folder_id, recursive, group_by, position, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
@@ -284,6 +297,7 @@ export class ConfigRepo {
         input.description ?? null,
         input.folderId,
         input.recursive ? 1 : 0,
+        input.groupBy ?? DEFAULT_GROUP_BY,
         next.next,
         now,
         now,
@@ -303,13 +317,15 @@ export class ConfigRepo {
       description: patch.description === undefined ? stored.description : patch.description,
       folderId: patch.folderId ?? stored.folderId,
       recursive: patch.recursive ?? stored.recursive,
+      groupBy: patch.groupBy ?? stored.groupBy,
       updatedAt: new Date().toISOString(),
     };
 
     this.db
       .prepare(
         `UPDATE albums
-            SET title = ?, description = ?, folder_id = ?, recursive = ?, updated_at = ?
+            SET title = ?, description = ?, folder_id = ?, recursive = ?, group_by = ?,
+                updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -317,6 +333,7 @@ export class ConfigRepo {
         next.description,
         next.folderId,
         next.recursive ? 1 : 0,
+        next.groupBy,
         next.updatedAt,
         albumId,
       );
@@ -417,7 +434,7 @@ export class ConfigRepo {
   private build(): Snapshot {
     const albumRows = this.db
       .prepare(
-        `SELECT id, title, description, folder_id, recursive, created_at, updated_at
+        `SELECT id, title, description, folder_id, recursive, group_by, created_at, updated_at
            FROM albums ORDER BY position, id`,
       )
       .all() as AlbumRow[];

@@ -22,32 +22,34 @@ flowchart LR
 
 ### Le serveur, fichier par fichier
 
-| Fichier                 | Responsabilité                                                                                      |
-| ----------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/main.ts`           | Point d'entrée : `.env`, env, `buildApp`, minuteurs reprogrammables, arrêt gracieux.                |
-| `src/app.ts`            | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.         |
-| `src/env.ts`            | Schéma zod des variables d'environnement, résolution des chemins.                                   |
-| `src/config.ts`         | Schéma zod d'`albums.yaml`, lu au seul amorçage d'une base vide.                                    |
-| `src/bootstrap.ts`      | Import unique d'`albums.yaml` en base, tant qu'aucun compte n'existe.                               |
-| `src/config-repo.ts`    | `ConfigRepo` : comptes, albums, droits, réglages. Seul écrivain, instantané mémoire.                |
-| `src/context.ts`        | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.      |
-| `src/db.ts`             | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                    |
-| `src/repo.ts`           | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                   |
-| `src/comments.ts`       | `CommentRepo` : fils, profondeur limitée à un niveau, modération.                                   |
-| `src/commenters.ts`     | `CommenterRepo` : identités de commentateur, vérification de l'adresse par code, destinataires.     |
-| `src/mail.ts`           | Transport SMTP, file d'envoi hors requête, composition des emails de notification.                  |
-| `src/sessions.ts`       | Création, lecture, destruction et purge des sessions.                                               |
-| `src/crypto.ts`         | AES-256-GCM pour le refresh token, comparaison en temps constant.                                   |
-| `src/throttle.ts`       | Backoff progressif des tentatives de connexion, en mémoire.                                         |
-| `src/drive/service.ts`  | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation. |
-| `src/drive/sync.ts`     | Parcours des dossiers et remplissage de l'index.                                                    |
-| `src/drive/metadata.ts` | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées).                       |
-| `src/media/renderer.ts` | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive.            |
-| `src/media/cache.ts`    | Cache disque avec inventaire en mémoire et éviction LRU.                                            |
-| `src/media/range.ts`    | Validation du header `Range` avant relais.                                                          |
-| `src/plugins/auth.ts`   | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                   |
-| `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).        |
-| `src/routes/*.ts`       | Les quatre familles de routes — voir [05](./05-api.md).                                             |
+| Fichier                  | Responsabilité                                                                                      |
+| ------------------------ | --------------------------------------------------------------------------------------------------- |
+| `src/main.ts`            | Point d'entrée : `.env`, env, `buildApp`, minuteurs reprogrammables, arrêt gracieux.                |
+| `src/app.ts`             | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.         |
+| `src/env.ts`             | Schéma zod des variables d'environnement, résolution des chemins.                                   |
+| `src/config.ts`          | Schéma zod d'`albums.yaml`, lu au seul amorçage d'une base vide.                                    |
+| `src/bootstrap.ts`       | Import unique d'`albums.yaml` en base, tant qu'aucun compte n'existe.                               |
+| `src/config-repo.ts`     | `ConfigRepo` : comptes, albums, droits, réglages. Seul écrivain, instantané mémoire.                |
+| `src/context.ts`         | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.      |
+| `src/db.ts`              | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                    |
+| `src/repo.ts`            | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                   |
+| `src/comments.ts`        | `CommentRepo` : fils, profondeur limitée à un niveau, modération.                                   |
+| `src/places.ts`          | `AlbumDayRepo` et `PlacesPass` : journées annotées, agglomération des positions EXIF en grappes.    |
+| `src/geocoder.ts`        | Géocodage inverse Nominatim, cadencé et mis en cache par cellule d'environ un kilomètre.            |
+| `src/commenters.ts`      | `CommenterRepo` : identités de commentateur, vérification de l'adresse par code, destinataires.     |
+| `src/mail.ts`            | Transport SMTP, file d'envoi hors requête, composition des emails de notification.                  |
+| `src/sessions.ts`        | Création, lecture, destruction et purge des sessions.                                               |
+| `src/crypto.ts`          | AES-256-GCM pour le refresh token, comparaison en temps constant.                                   |
+| `src/throttle.ts`        | Backoff progressif des tentatives de connexion, en mémoire.                                         |
+| `src/drive/service.ts`   | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation. |
+| `src/drive/sync.ts`      | Parcours des dossiers et remplissage de l'index.                                                    |
+| `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées).                       |
+| `src/media/renderer.ts`  | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive.            |
+| `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU.                                            |
+| `src/media/range.ts`     | Validation du header `Range` avant relais.                                                          |
+| `src/plugins/auth.ts`    | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                   |
+| `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).          |
+| `src/routes/*.ts`        | Les quatre familles de routes — voir [05](./05-api.md).                                             |
 
 ## Cheminement d'une vignette
 
@@ -208,6 +210,35 @@ une plage insatisfaisable fait partie du protocole `Range` normal (offset au-del
 de la fin, courant quand on change de vidéo), et son `Content-Range` dit au
 lecteur où s'arrête le fichier. La contrepartie assumée : un format que le
 navigateur ne lit pas n'est pas lisible du tout.
+
+**Les lieux d'une journée se déduisent en deux temps.** Une grille datée ne dit
+pas ce qu'on a fait ; les photos, elles, portent souvent leur position. Le
+passage `places.ts` est branché sur le ménage horaire de `main.ts` **et** sur le
+démarrage, comme le préchauffage et pour la même raison — la synchronisation
+peut être désactivée, et les lieux attendraient alors indéfiniment. Il tourne en
+deux moitiés délibérément séparées :
+
+1. **L'agrégation**, déterministe et hors réseau. Pour chaque album,
+   `MediaRepo.geolocatedPoints` rend les positions par ordre chronologique ;
+   elles sont regroupées par jour UTC, puis agglomérées gloutonnement à ~15 km,
+   trois grappes au plus — celles où le plus de photos ont été prises, dans
+   l'ordre de leur première photo. Chaque grappe donne une **cellule**
+   `lat,lng` arrondie à deux décimales, soit ~1,1 km. Le résultat s'écrit dans
+   `album_days.cells`.
+2. **Le géocodage**, lent et faillible. `geocoder.ts` ne demande à Nominatim que
+   les cellules absentes de `geo_places`, à raison d'une requête toutes les
+   1,1 s (politique d'usage) et 200 par passage au plus, le reste attendant
+   l'heure suivante. Le cache est partagé entre albums.
+
+Les séparer est ce qui rend le recalcul gratuit : les journées se réécrivent à
+chaque passage sans rappeler personne, et les libellés s'allument tout seuls
+quand ils arrivent (D48). L'invariant qui compte : le recalcul réécrit `cells`
+et **rien d'autre** — `description` et `place` appartiennent à l'administrateur.
+
+Rien de tout cela ne touche au chemin d'une requête : `better-sqlite3` est
+synchrone, et géocoder à la volée ferait attendre le lecteur une seconde par
+lieu. Le passage n'est pas armé par `buildApp`, seulement par `main.ts` — les
+tests ne joignent donc jamais le réseau.
 
 **Le cache se remplit sans attendre qu'on clique.** `media/prewarm.ts` rend la
 variante `full` des photos en fond, des plus récentes aux plus anciennes : une

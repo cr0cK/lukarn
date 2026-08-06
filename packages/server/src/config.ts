@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { DEFAULT_GROUP_BY } from '@gdv/shared';
 import yaml from 'js-yaml';
 import { z } from 'zod';
 
@@ -35,6 +36,8 @@ const albumSchema = z.object({
   folderId: z.string().min(1),
   /** Descendre dans les sous-dossiers. */
   recursive: z.boolean().default(true),
+  /** Découpage de la grille à l'ouverture : un séjour se lit par jour. */
+  groupBy: z.enum(['month', 'day']).default(DEFAULT_GROUP_BY),
 });
 
 const configSchema = z

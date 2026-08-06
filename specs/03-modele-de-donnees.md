@@ -88,7 +88,7 @@ réglages. Écrites **uniquement** par `ConfigRepo` (`config-repo.ts`).
 | Table         | Colonnes                                                                                                                       |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                          |
-| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `position`, `created_at`, `updated_at`                            |
+| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `position`, `created_at`, `updated_at`                |
 | `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                 |
 | `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail` |
 
@@ -108,6 +108,12 @@ Quatre choix à connaître :
   plus tard** : une liste de liaisons figée ne le ferait pas.
 - **`position`** porte l'ordre d'affichage. `created_at` ne le restituerait pas :
   l'amorçage crée tous les albums dans la même milliseconde.
+- **`group_by`** (`CHECK (group_by IN ('month', 'day'))`, défaut `month`) est le
+  découpage appliqué à l'ouverture de l'album. Il vivait uniquement dans l'URL,
+  c'est-à-dire nulle part : un séjour se lit par jour, dix ans de photos
+  d'enfants par mois, et rouvrir l'album redonnait le défaut global à chaque
+  fois. Le paramètre `?group=` continue de primer — c'est une préférence, pas
+  une contrainte.
 - **`created_at` / `updated_at` sont écrits par l'application**, en ISO 8601 UTC,
   pas par `CURRENT_TIMESTAMP` qui produirait un format différent du reste de la
   base.
@@ -226,6 +232,40 @@ Deux choix à connaître :
   `INSERT … SELECT … WHERE verified_at IS NOT NULL` : une adresse seulement
   déclarée peut être celle d'un tiers, et cette galerie n'a rien à lui écrire.
 
+### `album_days` et `geo_places`
+
+Ce qu'on a fait un jour donné, et où. Écrites par `places.ts` (les lieux
+déduits) et par l'API d'administration (la saisie) ; `geo_places` est le cache
+du géocodeur (`geocoder.ts`).
+
+| Table        | Colonnes                                                                                                        |
+| ------------ | --------------------------------------------------------------------------------------------------------------- |
+| `album_days` | `album_id` (FK `ON DELETE CASCADE`), `day`, `description`, `place`, `cells`, `updated_at`, PK `(album_id, day)` |
+| `geo_places` | `cell` (PK), `label`, `fetched_at`                                                                              |
+
+Quatre choix à connaître :
+
+- **`day` est un jour UTC `YYYY-MM-DD`**, exactement la clé que `dayKey()`
+  calcule côté front. Un jour local ferait basculer de section une photo de
+  23 h 30, et la note se retrouverait sur la mauvaise journée.
+- **`place` et `cells` sont deux colonnes, pas une.** `cells` est déduit de
+  l'EXIF et réécrit à chaque passage ; `place` est saisi à la main et **prime**.
+  Un libellé figé une fois pour toutes obligerait à choisir entre ne jamais
+  recalculer les journées et rappeler Nominatim à chaque passage — séparées, le
+  recalcul est gratuit et les libellés s'allument tout seuls quand ils arrivent
+  (voir [08](./08-decisions.md), D48).
+- **Le recalcul n'écrase jamais une saisie.** `replaceCells` fait un
+  `DO UPDATE SET cells = excluded.cells` **et rien d'autre** : un
+  `excluded.description` glissé là effacerait, à chaque ménage horaire, tout ce
+  que l'administrateur a écrit. Une journée dont les photos positionnées
+  disparaissent de l'index perd ses `cells` ; sa note, elle, survit — la journée
+  a bien eu lieu.
+- **`geo_places.label = NULL` n'est pas un échec.** C'est un géocodage abouti
+  sans résultat exploitable — pleine mer, désert — et la ligne existe
+  précisément pour ne plus redemander. Un échec réseau, lui, n'écrit **aucune
+  ligne** et sera retenté au passage suivant. Le cache est partagé entre albums :
+  deux séjours au même endroit ne comptent qu'un appel.
+
 `settings` porte des valeurs JSON et les défauts vivent dans le code
 (`DEFAULT_SETTINGS`) : une clé absente n'est pas une anomalie, et ajouter un
 réglage ne demande pas de migration.
@@ -253,6 +293,13 @@ Pas d'index sur `(album_id, added_at)` : le comptage des nouveautés a lieu une
 fois par heure et par album, et la clé primaire `(album_id, id)` borne déjà le
 parcours à l'album concerné. Un index de plus se paierait à chaque
 synchronisation, pour une lecture horaire.
+
+Pas d'index non plus pour `MediaRepo.geolocatedPoints`, la lecture du passage des
+lieux : `idx_media_album_taken` borne déjà le parcours à l'album et rend les
+lignes dans l'ordre chronologique, ce dont l'agglomération a besoin. Un index
+sur `(album_id, lat)` n'éviterait que le filtre `lat IS NOT NULL`, pour une
+lecture horaire — même arbitrage. `album_days` et `geo_places` se lisent par
+leur clé primaire.
 
 ## La clé primaire composite `(album_id, id)`
 
@@ -309,6 +356,14 @@ reparte de la même étape.
 | 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                  |
 | 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.   |
 | 6       | `commenters.pending_display_name`.                                                  |
+| 7       | `album_days`, `geo_places` ; `albums.group_by`.                                     |
+
+La migration 7 ajoute de quoi annoter une journée et nommer le lieu que ses
+photos portent déjà. Elle ne touche à aucune donnée existante : les deux tables
+arrivent vides — `places.ts` les remplit au premier passage — et
+`albums.group_by` arrive à `'month'`, c'est-à-dire au découpage que l'URL
+appliquait déjà faute de préférence. Une instance en service la traverse sans
+rien voir changer, jusqu'à ce que son propriétaire règle un album sur « jour ».
 
 La migration 6 ajoute `commenters.pending_display_name`, vide sur l'existant :
 `COALESCE(pending_display_name, display_name)` au premier code validé rend donc

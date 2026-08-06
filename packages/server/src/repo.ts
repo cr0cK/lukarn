@@ -1,6 +1,8 @@
 import {
+  DEFAULT_GROUP_BY,
   DEFAULT_SORT_ORDER,
   type Album,
+  type GroupBy,
   type MediaDetail,
   type MediaItem,
   type MediaKind,
@@ -313,6 +315,29 @@ export class MediaRepo {
     return row;
   }
 
+  /**
+   * Toutes les positions connues d'un album, par ordre chronologique croissant,
+   * avec le jour UTC qui les porte. C'est la seule lecture du passage de
+   * `places.ts`, qui en déduit les lieux d'une journée.
+   *
+   * `substr(taken_at, 1, 10)` et non un `Date` : `taken_at` est l'heure de
+   * l'appareil, et la découper sur la chaîne donne exactement la clé que
+   * `dayKey()` calcule côté front. Passer par un fuseau ferait basculer de jour
+   * une photo de 23 h 30, et la journée annotée ne serait plus la bonne.
+   *
+   * Le tri croissant n'est pas cosmétique : l'ordre des grappes rendues est
+   * celui de leur première photo, donc celui du déroulé de la journée.
+   */
+  geolocatedPoints(albumId: string): { day: string; lat: number; lng: number }[] {
+    return this.db
+      .prepare(
+        `SELECT substr(taken_at, 1, 10) AS day, lat, lng FROM media
+          WHERE album_id = ? AND lat IS NOT NULL AND lng IS NOT NULL
+          ORDER BY taken_at ASC, id ASC`,
+      )
+      .all(albumId) as { day: string; lat: number; lng: number }[];
+  }
+
   upsertMany(items: MediaUpsert[], seenAt: string): void {
     const statement = this.db.prepare(
       `INSERT INTO media (
@@ -450,7 +475,7 @@ export class SyncStateRepo {
 
 /** Assemble la vue album exposée par l'API à partir de la config et de l'index. */
 export function buildAlbum(
-  config: { id: string; title: string; description?: string | null },
+  config: { id: string; title: string; description?: string | null; groupBy?: GroupBy },
   media: MediaRepo,
   sync: SyncStateRepo,
 ): Album {
@@ -460,6 +485,7 @@ export function buildAlbum(
     id: config.id,
     title: config.title,
     description: config.description ?? null,
+    groupBy: config.groupBy ?? DEFAULT_GROUP_BY,
     itemCount: stats.itemCount,
     coverId: stats.coverId,
     coverVersion: stats.coverVersion,

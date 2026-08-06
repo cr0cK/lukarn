@@ -18,8 +18,10 @@ export type MediaKind = 'photo' | 'video';
 export type SortOrder = 'desc' | 'asc';
 
 /**
- * Découpage de la grille en sections. Purement côté client : le serveur rend
- * une liste triée, c'est la mise en page qui la segmente.
+ * Découpage de la grille en sections. La liste servie ne change pas d'un
+ * découpage à l'autre : le serveur rend une suite triée, c'est la mise en page
+ * qui la segmente. Ce qui traverse le réseau, c'est la **préférence** de
+ * l'album (`Album.groupBy`), pas le découpage d'une requête.
  *
  * Pas de regroupement par année : sur un album de vacances, il ne produirait
  * qu'une seule section, c'est-à-dire aucun repère.
@@ -100,6 +102,12 @@ export interface Album {
   id: string;
   title: string;
   description: string | null;
+  /**
+   * Découpage appliqué à l'ouverture, tant que l'URL n'en impose pas un autre.
+   * Un séjour se lit par jour, dix ans de photos d'enfants par mois : le bon
+   * découpage dépend de l'album, pas d'un défaut global.
+   */
+  groupBy: GroupBy;
   itemCount: number;
   /** Id du média utilisé comme couverture, `null` si l'album est vide. */
   coverId: string | null;
@@ -171,6 +179,48 @@ export interface ItemsPage {
   /** À repasser en `?cursor=` pour la page suivante. `null` = fin de l'album. */
   nextCursor: string | null;
 }
+
+/* --------------------------------------------------------------------------
+ * Journées d'un album
+ *
+ * Une grille datée ne dit pas ce qu'on a fait. Une journée peut donc porter une
+ * note, et le lieu que ses photos portent déjà dans leur EXIF.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Une journée annotée. Servie uniquement pour les journées qui ont quelque
+ * chose à montrer — inutile de transporter une ligne vide par jour d'album.
+ */
+export interface AlbumDay {
+  /** `YYYY-MM-DD` en UTC, la même clé que le découpage par jour de la grille. */
+  day: string;
+  description: string | null;
+  /**
+   * Lieu saisi à la main. **Prime sur `autoPlaces`** : c'est une correction,
+   * et une correction qu'un recalcul écraserait ne servirait à rien.
+   */
+  place: string | null;
+  /**
+   * Lieux déduits des coordonnées EXIF, du plus tôt au plus tard dans la
+   * journée. Vide tant que le géocodage inverse n'a rien rendu — il est
+   * asynchrone, et l'interface doit tenir sans lui.
+   */
+  autoPlaces: string[];
+}
+
+/** Champ absent = inchangé, `null` = effacé. */
+export interface UpdateAlbumDayRequest {
+  description?: string | null;
+  place?: string | null;
+}
+
+/**
+ * Une note de journée est un repère, pas un récit : deux lignes clampées dans
+ * l'en-tête de section, dont la hauteur est précalculée par le layout. Une
+ * longueur libre le rendrait dépendant d'une mesure DOM (D49).
+ */
+export const ALBUM_DAY_DESCRIPTION_MAX_LENGTH = 300;
+export const ALBUM_DAY_PLACE_MAX_LENGTH = 120;
 
 /* --------------------------------------------------------------------------
  * Commentaires
@@ -314,6 +364,8 @@ export interface AdminAlbum {
   description: string | null;
   folderId: string;
   recursive: boolean;
+  /** Découpage appliqué à l'ouverture de l'album. Voir `Album.groupBy`. */
+  groupBy: GroupBy;
   /** Nombre de médias indexés, et état de la dernière synchronisation. */
   itemCount: number;
   lastSyncAt: string | null;
@@ -331,6 +383,7 @@ export interface CreateAlbumRequest {
   description?: string;
   folderId: string;
   recursive?: boolean;
+  groupBy?: GroupBy;
 }
 
 export interface UpdateAlbumRequest {
@@ -338,6 +391,7 @@ export interface UpdateAlbumRequest {
   description?: string | null;
   folderId?: string;
   recursive?: boolean;
+  groupBy?: GroupBy;
 }
 
 export interface AppSettings {

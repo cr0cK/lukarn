@@ -1,5 +1,6 @@
 import {
   DEFAULT_SORT_ORDER,
+  type AlbumDay,
   type CreateAlbumRequest,
   type CreateCommentRequest,
   type IdentityRequest,
@@ -7,6 +8,7 @@ import {
   type MediaItem,
   type ModerationFilter,
   type SortOrder,
+  type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
@@ -30,6 +32,9 @@ export const queryKeys = {
   // les pages déjà chargées dans l'autre sens, et les curseurs accumulés
   // continueraient de paginer à l'envers.
   items: (id: string, order: SortOrder) => ['items', id, order] as const,
+  // Pas de `order` ici, contrairement aux médias : les journées annotées d'un
+  // album sont les mêmes quel que soit le sens de lecture.
+  days: (id: string) => ['days', id] as const,
   detail: (albumId: string, mediaId: string) => ['detail', albumId, mediaId] as const,
   comments: (albumId: string, mediaId: string) => ['comments', albumId, mediaId] as const,
   adminComments: (filter: ModerationFilter) => ['admin', 'comments', filter] as const,
@@ -113,6 +118,53 @@ export function useAlbumItems(albumId: string, order: SortOrder = DEFAULT_SORT_O
   );
 
   return { ...query, items };
+}
+
+/**
+ * Journées annotées de l'album. Chargées seulement en découpage par jour : en
+ * découpage par mois, les notes sont masquées et la requête ne servirait à rien.
+ */
+export function useAlbumDays(albumId: string, enabled: boolean) {
+  const query = useQuery({
+    queryKey: queryKeys.days(albumId),
+    queryFn: () => api.albumDays(albumId),
+    enabled,
+  });
+
+  // Indexé par clé de jour : c'est ainsi que le layout et les en-têtes s'en
+  // servent, et refaire la Map à chaque rendu invaliderait la mémoïsation du
+  // calcul de hauteur, donc du layout entier.
+  const byDay = useMemo(
+    () => new Map((query.data ?? []).map((day) => [day.day, day])),
+    [query.data],
+  );
+
+  return { ...query, byDay };
+}
+
+/**
+ * Annote une journée. La réponse remplace la ligne dans le cache plutôt que
+ * d'invalider la liste : la hauteur de l'en-tête en dépend, et un aller-retour
+ * réseau de plus ferait sauter la grille une seconde fois.
+ */
+export function useUpdateAlbumDay(albumId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ day, body }: { day: string; body: UpdateAlbumDayRequest }) =>
+      api.updateAlbumDay(albumId, day, body),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<AlbumDay[]>(queryKeys.days(albumId), (current) => {
+        const others = (current ?? []).filter((day) => day.day !== saved.day);
+        // Une journée vidée de sa note et de son lieu ne garde sa place que si
+        // l'EXIF lui en donne un — c'est la règle du serveur, rejouée ici pour
+        // que l'en-tête retombe tout de suite à sa hauteur d'origine.
+        const keep =
+          saved.description !== null || saved.place !== null || saved.autoPlaces.length > 0;
+        const next = keep ? [...others, saved] : others;
+        return next.sort((a, b) => b.day.localeCompare(a.day));
+      });
+    },
+  });
 }
 
 export function useMediaDetail(albumId: string, mediaId: string | null) {

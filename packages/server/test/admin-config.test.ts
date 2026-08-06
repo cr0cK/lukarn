@@ -324,6 +324,40 @@ describe('albums', () => {
     assert.equal(context.findAlbum('vacances')!.title, 'Vacances');
   });
 
+  it('fait l’aller-retour du découpage par défaut, à la création comme à la mise à jour', async () => {
+    // Le découpage vivait dans l'URL, donc nulle part : sans cette colonne,
+    // rouvrir un album de vacances le redonnait par mois à chaque fois.
+    const parMois = await post('/api/admin/albums', {
+      id: 'quotidien',
+      title: 'Quotidien',
+      folderId: 'folder-quotidien',
+    });
+    assert.equal((parMois.json() as AdminAlbum).groupBy, 'month', 'le mois reste le défaut');
+
+    const parJour = await post('/api/admin/albums', {
+      id: 'sejour',
+      title: 'Séjour',
+      folderId: 'folder-sejour',
+      groupBy: 'day',
+    });
+    assert.equal((parJour.json() as AdminAlbum).groupBy, 'day');
+    // La galerie le lit aussi : c'est elle qui ouvre l'album au bon découpage.
+    const vue = await server.inject({
+      method: 'GET',
+      url: '/api/albums/sejour',
+      headers: { cookie },
+    });
+    assert.equal((vue.json() as { groupBy: string }).groupBy, 'day');
+
+    const bascule = await patch('/api/admin/albums/sejour', { groupBy: 'month' });
+    assert.equal((bascule.json() as AdminAlbum).groupBy, 'month');
+    // Changer le découpage ne touche pas au périmètre Drive : rien à réindexer.
+    assert.equal(context.syncState.get('sejour').status, 'never');
+
+    assert.equal((await patch('/api/admin/albums/sejour', { groupBy: 'annee' })).statusCode, 400);
+    assert.equal(context.findAlbum('sejour')!.groupBy, 'month');
+  });
+
   it('liste les comptes ayant explicitement accès', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',

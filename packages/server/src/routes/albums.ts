@@ -1,4 +1,10 @@
-import { DEFAULT_SORT_ORDER, type Album, type ItemsPage, type MediaDetail } from '@gdv/shared';
+import {
+  DEFAULT_SORT_ORDER,
+  type Album,
+  type AlbumDay,
+  type ItemsPage,
+  type MediaDetail,
+} from '@gdv/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -39,6 +45,24 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
       }
       return reply.send(buildAlbum(album, context.media, context.syncState));
+    });
+
+    /**
+     * Les journées annotées de l'album — note, lieu saisi, lieux déduits de
+     * l'EXIF. Seules celles qui ont quelque chose à montrer sont rendues : une
+     * ligne par jour d'album ne servirait qu'à grossir la réponse.
+     *
+     * Route de lecture, donc côté galerie : c'est la grille qui les affiche.
+     * L'écriture, elle, est sous `/api/admin` (D50).
+     */
+    app.get('/:albumId/days', async (request, reply) => {
+      const { albumId } = request.params as { albumId: string };
+      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+      }
+
+      const days: AlbumDay[] = context.days.list(albumId);
+      return reply.send(days);
     });
 
     app.get('/:albumId/items', async (request, reply) => {

@@ -35,6 +35,14 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
 
       <div className="px-3.5 py-3">
         <h2 className="truncate text-sm font-medium text-ink-100">{album.title}</h2>
+        {/* Deux lignes clampées : la vignette est ce qui doit rester visible,
+            et la carte ne peut pas changer de hauteur selon l'album sans
+            trouer la grille. Le titre entier reste dans `title`. */}
+        {album.description && (
+          <p className="mt-1 line-clamp-2 text-xs leading-4 text-ink-300" title={album.description}>
+            {album.description}
+          </p>
+        )}
         <p className="mt-0.5 truncate text-xs text-ink-400">
           {album.itemCount.toLocaleString('fr-FR')} {album.itemCount > 1 ? 'éléments' : 'élément'}
           {period ? ` · ${period}` : ''}
