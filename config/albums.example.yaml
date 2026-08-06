@@ -40,6 +40,10 @@ albums:
     # Descendre dans les sous-dossiers. Passer à false pour n'indexer que la
     # racine du dossier.
     recursive: true
+    # Découpage de la grille à l'ouverture : "month" (défaut) ou "day".
+    # "day" convient à un séjour, et c'est le seul découpage où s'affichent les
+    # notes de journée et les lieux déduits des photos.
+    groupBy: day
 
   - id: famille
     title: 'Photos de famille'

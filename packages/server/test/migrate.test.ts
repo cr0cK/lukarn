@@ -200,6 +200,30 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute les journées et le découpage à une base en version 6', () => {
+    const db = databaseAtVersion(6);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
+       VALUES ('vacances', 'Vacances', 'dossier', 1, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    assert.ok(columns(db, 'album_days').includes('cells'));
+    assert.ok(columns(db, 'geo_places').includes('label'));
+
+    const album = db.prepare('SELECT * FROM albums WHERE id = ?').get('vacances') as {
+      title: string;
+      group_by: string;
+    };
+    // Les albums existants arrivent sur le découpage qu'ils avaient de fait :
+    // `month` est le défaut que l'URL appliquait déjà faute de préférence.
+    assert.equal(album.title, 'Vacances');
+    assert.equal(album.group_by, 'month');
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

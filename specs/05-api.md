@@ -71,14 +71,43 @@ réponse ne dit jamais **qui** existe, seulement s'il existe quelqu'un
 | ------- | ------------------------------------- | ------- | ------------- |
 | GET     | `/api/albums`                         | session | `Album[]`     |
 | GET     | `/api/albums/:albumId`                | session | `Album`       |
+| GET     | `/api/albums/:albumId/days`           | session | `AlbumDay[]`  |
 | GET     | `/api/albums/:albumId/items`          | session | `ItemsPage`   |
 | GET     | `/api/albums/:albumId/items/:mediaId` | session | `MediaDetail` |
 
 **`GET /api/albums`** — uniquement les albums attribués à l'utilisateur, dans
 leur ordre de création (colonne `position`). Tableau nu, non enveloppé.
 
+`Album` porte `groupBy` (`month` \| `day`) : le découpage appliqué à l'ouverture
+de l'album, que le paramètre `?group=` de l'URL peut contredire. C'est une
+préférence de l'album, pas un découpage de la requête — la liste servie est la
+même dans les deux cas.
+
 **`GET /api/albums/:albumId`** — `404 not_found` si l'album n'existe pas **ou**
 n'est pas attribué (voir [04](./04-securite-et-acces.md)).
+
+**`GET /api/albums/:albumId/days`** — les journées annotées de l'album. Même
+règle d'accès que le reste : `404 not_found` si l'album est inconnu **ou** non
+attribué.
+
+```ts
+interface AlbumDay {
+  day: string; // 'YYYY-MM-DD' UTC, la clé du découpage par jour
+  description: string | null;
+  place: string | null; // saisi à la main, prime sur autoPlaces
+  autoPlaces: string[]; // déduits de l'EXIF, du plus tôt au plus tard
+}
+```
+
+Ne sont rendues que les journées **qui ont quelque chose à montrer** : une note,
+un lieu saisi, ou au moins un lieu déduit déjà géocodé. Une journée réduite à
+des cellules qu'aucun géocodage n'a encore nommées n'a rien à afficher, et la
+transporter ajouterait une entrée par jour d'album. Une cellule sans libellé
+disparaît d'`autoPlaces` au lieu d'y laisser un trou.
+
+`autoPlaces` est asynchrone par nature : le géocodage tourne en fond, plafonné à
+une requête par seconde (voir [02](./02-architecture.md) et D48). L'interface
+doit donc tenir sans lui, et les lieux s'allument tout seuls au passage suivant.
 
 **`GET /api/albums/:albumId/items`** — paramètres de requête :
 
@@ -292,23 +321,24 @@ cache disque.
 
 `requireAdmin` en `preHandler` sur tout le préfixe `/api/admin`.
 
-| Méthode | Chemin                        | Réponse                                                        |
-| ------- | ----------------------------- | -------------------------------------------------------------- |
-| GET     | `/api/admin/status`           | `200 AdminStatus`                                              |
-| GET     | `/api/admin/users`            | `200 AdminUser[]`                                              |
-| POST    | `/api/admin/users`            | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
-| PATCH   | `/api/admin/users/:username`  | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
-| DELETE  | `/api/admin/users/:username`  | `200 { ok: true }` · `404` · `409 last_admin`                  |
-| GET     | `/api/admin/albums`           | `200 AdminAlbum[]`                                             |
-| POST    | `/api/admin/albums`           | `201 AdminAlbum` · `400` · `409 conflict`                      |
-| PATCH   | `/api/admin/albums/:id`       | `200 AdminAlbum` · `400` · `404`                               |
-| DELETE  | `/api/admin/albums/:id`       | `200 { ok: true }` · `404`                                     |
-| GET     | `/api/admin/settings`         | `200 AppSettings`                                              |
-| PATCH   | `/api/admin/settings`         | `200 AppSettings` · `400`                                      |
-| GET     | `/api/admin/oauth/start`      | `200 { url }` · `400 oauth_not_configured`                     |
-| POST    | `/api/admin/drive/disconnect` | `200 { ok: true }`                                             |
-| POST    | `/api/admin/resync`           | `202 { started: string[] }` · `400` · `404` · `503`            |
-| POST    | `/api/admin/cache/clear`      | `200 { ok: true }`                                             |
+| Méthode | Chemin                            | Réponse                                                        |
+| ------- | --------------------------------- | -------------------------------------------------------------- |
+| GET     | `/api/admin/status`               | `200 AdminStatus`                                              |
+| GET     | `/api/admin/users`                | `200 AdminUser[]`                                              |
+| POST    | `/api/admin/users`                | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
+| PATCH   | `/api/admin/users/:username`      | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
+| DELETE  | `/api/admin/users/:username`      | `200 { ok: true }` · `404` · `409 last_admin`                  |
+| GET     | `/api/admin/albums`               | `200 AdminAlbum[]`                                             |
+| POST    | `/api/admin/albums`               | `201 AdminAlbum` · `400` · `409 conflict`                      |
+| PATCH   | `/api/admin/albums/:id`           | `200 AdminAlbum` · `400` · `404`                               |
+| DELETE  | `/api/admin/albums/:id`           | `200 { ok: true }` · `404`                                     |
+| PATCH   | `/api/admin/albums/:id/days/:day` | `200 AlbumDay` · `400` · `404`                                 |
+| GET     | `/api/admin/settings`             | `200 AppSettings`                                              |
+| PATCH   | `/api/admin/settings`             | `200 AppSettings` · `400`                                      |
+| GET     | `/api/admin/oauth/start`          | `200 { url }` · `400 oauth_not_configured`                     |
+| POST    | `/api/admin/drive/disconnect`     | `200 { ok: true }`                                             |
+| POST    | `/api/admin/resync`               | `202 { started: string[] }` · `400` · `404` · `503`            |
+| POST    | `/api/admin/cache/clear`          | `200 { ok: true }`                                             |
 
 **`status`** — `AdminStatus` : `driveConnected`, `driveAccount`,
 `driveRevokedAt`, `oauthConfigured`, `albums` (**tous** les albums déclarés, pas
@@ -359,9 +389,14 @@ de commentateur, et celle prévenue des nouveaux commentaires est le réglage
 ### Albums
 
 `POST` : `CreateAlbumRequest` = `{ id, title, description?, folderId,
-recursive? }` (`recursive` vaut `true` par défaut). `PATCH` :
-`UpdateAlbumRequest`, où `description: null` efface la description. `409
-conflict` sur un id déjà pris.
+recursive?, groupBy? }` (`recursive` vaut `true` par défaut, `groupBy` vaut
+`month`). `PATCH` : `UpdateAlbumRequest`, où `description: null` efface la
+description. `409 conflict` sur un id déjà pris.
+
+`groupBy` est le découpage appliqué à l'ouverture de l'album — une préférence,
+que `?group=` contredit. Le changer ne touche **pas** à l'index : contrairement
+à `folderId` et `recursive`, il ne modifie pas le périmètre Drive, seulement la
+mise en page.
 
 `AdminAlbum` complète la configuration par l'état réel : `itemCount`,
 `lastSyncAt`, `syncStatus`, `syncError`, et `members` — les comptes ayant un
@@ -377,6 +412,24 @@ Deux effets de bord assumés :
   autre album y garde sa ligne (clé primaire `(album_id, id)`). Les dérivés en
   cache disque sont laissés : ils sont indexés par id de fichier, donc partagés
   entre albums, et régénérables — `cache/clear` les balaie tous.
+
+### Journées d'un album
+
+`PATCH /api/admin/albums/:id/days/:day` — corps `UpdateAlbumDayRequest` =
+`{ description?, place? }`. Champ absent = inchangé, `null` **ou chaîne vide** =
+effacé (les deux sont ramenés au même `NULL`, comme `moderationEmail`, pour que
+le front n'ait pas à traduire un champ vidé). Bornes : 300 caractères pour la
+description, 120 pour le lieu. `:day` doit être `AAAA-MM-JJ`, sinon `400`. `404`
+si l'album est inconnu. La réponse est l'`AlbumDay` à jour.
+
+**La saisie vit dans l'album, la mutation reste ici.** On décrit une journée en
+voyant ses photos, donc le crayon est dans la grille ; mais l'écriture passe par
+`/api/admin`, seul préfixe qui répond **403**. Partout ailleurs un refus d'accès
+répond 404, et cette route ne déplace pas cet invariant (D50).
+
+La ligne est créée si la journée n'en avait pas : on peut annoter une journée
+dont aucune photo ne porte de position. Une journée vidée de sa note **et** de
+son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
 
 ### Modération des commentaires
 

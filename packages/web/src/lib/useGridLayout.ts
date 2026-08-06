@@ -1,10 +1,21 @@
-import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@gdv/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 
 export const GRID_GAP = 4;
 export const GRID_HEADER_HEIGHT = 56;
 export const GRID_SECTION_GAP = 28;
+
+/**
+ * Ce que coûte un lieu, puis une note, dans un en-tête de section. Ces deux
+ * valeurs sont un contrat avec `SectionHeader`, qui doit tenir dedans : le
+ * layout est calculé sans DOM, donc rien ne rattrapera un dépassement — les
+ * photos de la section suivante passeraient dessous. D'où les hauteurs de ligne
+ * fixées explicitement côté composant (`leading-5`), et la note clampée à deux
+ * lignes.
+ */
+export const GRID_PLACE_HEIGHT = 20;
+export const GRID_DESCRIPTION_HEIGHT = 40;
 /** Marge de lignes rendues hors viewport, pour que le défilement rapide reste plein. */
 const OVERSCAN_PX = 900;
 
@@ -25,13 +36,35 @@ export interface GridLayout {
 }
 
 /**
+ * Le lieu affiché pour une journée : celui qu'on a saisi s'il y en a un, sinon
+ * ceux que l'EXIF a livrés, dans l'ordre du déroulé.
+ *
+ * Exporté parce que la hauteur d'en-tête et le rendu doivent en décider
+ * exactement pareil : un lieu compté ici et pas affiché là laisserait un blanc,
+ * l'inverse ferait déborder l'en-tête sur les photos.
+ */
+export function placeLabelOf(day: AlbumDay | undefined): string | null {
+  if (!day) return null;
+  if (day.place) return day.place;
+  return day.autoPlaces.length > 0 ? day.autoPlaces.join(' · ') : null;
+}
+
+/**
  * Mesure le conteneur, suit le défilement et calcule le layout justifié.
  *
  * Le layout est extrait de la grille parce que la page en a besoin elle aussi :
  * la navigation clavier se déplace de ligne en ligne, et seules les positions
  * calculées ici disent quelles vignettes sont voisines à l'écran.
+ *
+ * `days` n'est consulté qu'en découpage par jour : une note appartient à une
+ * journée, et l'accrocher à un en-tête de mois choisirait arbitrairement
+ * laquelle des trente afficher.
  */
-export function useGridLayout(items: MediaItem[], groupBy: GroupBy = DEFAULT_GROUP_BY): GridLayout {
+export function useGridLayout(
+  items: MediaItem[],
+  groupBy: GroupBy = DEFAULT_GROUP_BY,
+  days?: Map<string, AlbumDay>,
+): GridLayout {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [offsetTop, setOffsetTop] = useState(0);
@@ -69,6 +102,18 @@ export function useGridLayout(items: MediaItem[], groupBy: GroupBy = DEFAULT_GRO
     };
   }, []);
 
+  const headerHeightFor = useMemo(() => {
+    if (groupBy !== 'day' || !days || days.size === 0) return undefined;
+    return (key: string): number => {
+      const day = days.get(key);
+      return (
+        GRID_HEADER_HEIGHT +
+        (placeLabelOf(day) ? GRID_PLACE_HEIGHT : 0) +
+        (day?.description ? GRID_DESCRIPTION_HEIGHT : 0)
+      );
+    };
+  }, [groupBy, days]);
+
   const layout = useMemo(
     () =>
       computeLayout(items, {
@@ -76,10 +121,11 @@ export function useGridLayout(items: MediaItem[], groupBy: GroupBy = DEFAULT_GRO
         targetRowHeight: targetRowHeightFor(width),
         gap: GRID_GAP,
         headerHeight: GRID_HEADER_HEIGHT,
+        headerHeightFor,
         sectionGap: GRID_SECTION_GAP,
         groupBy,
       }),
-    [items, width, groupBy],
+    [items, width, groupBy, headerHeightFor],
   );
 
   return {

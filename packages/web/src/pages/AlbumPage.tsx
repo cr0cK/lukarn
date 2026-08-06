@@ -8,7 +8,7 @@ import {
 } from '@gdv/shared';
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useAlbum, useAlbumItems } from '../api/hooks';
+import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { Lightbox } from '../components/Lightbox';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
@@ -29,21 +29,26 @@ export default function AlbumPage(): ReactElement {
   const orderParam = searchParams.get('order');
   const order: SortOrder = isSortOrder(orderParam) ? orderParam : DEFAULT_SORT_ORDER;
 
-  // Le découpage en sections suit la même règle. Il ne concerne que la mise en
-  // page : la requête est la même, seule la grille segmente autrement.
-  const groupParam = searchParams.get('group');
-  const groupBy: GroupBy = isGroupBy(groupParam) ? groupParam : DEFAULT_GROUP_BY;
-
   const album = useAlbum(albumId);
+  const { data: me } = useMe();
+
+  // Le découpage en sections suit la même règle, à un défaut près : c'est
+  // l'album qui le porte. Un séjour se lit par jour, dix ans de photos
+  // d'enfants par mois, et personne n'a à le redemander à chaque ouverture.
+  const albumGroupBy = album.data?.groupBy ?? DEFAULT_GROUP_BY;
+  const groupParam = searchParams.get('group');
+  const groupBy: GroupBy = isGroupBy(groupParam) ? groupParam : albumGroupBy;
+
   const { items, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useAlbumItems(
     albumId,
     order,
   );
+  const { byDay } = useAlbumDays(albumId, groupBy === 'day');
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
-  const grid = useGridLayout(items, groupBy);
+  const grid = useGridLayout(items, groupBy, byDay);
 
   // La photo ouverte vit dans l'URL : le bouton Retour la referme, et un lien
   // partagé rouvre exactement la même vue.
@@ -103,8 +108,11 @@ export default function AlbumPage(): ReactElement {
 
   const toggleGroupBy = useCallback(() => {
     const next: GroupBy = groupBy === 'month' ? 'day' : 'month';
-    setParam('group', next === DEFAULT_GROUP_BY ? null : next, false);
-  }, [groupBy, setParam]);
+    // Le paramètre n'est écrit que s'il contredit la préférence de l'album :
+    // revenir à celle-ci doit rendre à l'album son adresse d'origine, sinon un
+    // lien partagé traînerait un `?group=` qui ne dit rien de plus.
+    setParam('group', next === albumGroupBy ? null : next, false);
+  }, [groupBy, albumGroupBy, setParam]);
 
   // Une photo demandée par l'URL mais pas encore chargée : on continue de
   // paginer jusqu'à la trouver (ou jusqu'à la fin de l'album).
@@ -124,10 +132,19 @@ export default function AlbumPage(): ReactElement {
   // Changer de regroupement ne renumérote rien, mais recalcule toutes les
   // hauteurs : la même ordonnée tombe ailleurs, et la sélection se retrouve
   // hors écran. Dans les deux cas on repart du haut.
+  //
+  // Rien tant que l'album n'est pas chargé, et c'est indispensable : `groupBy`
+  // part du défaut global puis bascule sur la préférence de l'album à
+  // l'arrivée de la réponse. Sans cette garde, ouvrir un album réglé sur
+  // « jour » remettrait la sélection à zéro et remonterait la page une seconde
+  // fois, après coup, sous le curseur de quelqu'un qui avait déjà commencé à
+  // défiler.
+  const albumLoaded = !album.isPending;
   useEffect(() => {
+    if (!albumLoaded) return;
     setSelectedIndex(-1);
     window.scrollTo({ top: 0 });
-  }, [order, groupBy]);
+  }, [order, groupBy, albumLoaded]);
 
   useEffect(() => {
     if (isOpen) setSelectedIndex(openedIndex);
@@ -251,6 +268,14 @@ export default function AlbumPage(): ReactElement {
       </TopBar>
 
       <main className="mx-auto max-w-[2000px] px-4 py-4 sm:px-6">
+        {/* La description était saisie depuis /admin sans être affichée nulle
+            part. `max-w-prose` : une ligne large de 2000 px ne se lit pas. */}
+        {album.data?.description && (
+          <p className="mb-5 max-w-prose text-sm leading-relaxed whitespace-pre-line text-ink-300">
+            {album.data.description}
+          </p>
+        )}
+
         {isPending && <Spinner label="Chargement des photos" />}
 
         {error && (
@@ -273,6 +298,11 @@ export default function AlbumPage(): ReactElement {
         {items.length > 0 && (
           <JustifiedGrid
             grid={grid}
+            albumId={albumId}
+            days={byDay}
+            // Une note appartient à une journée : en découpage par mois, il n'y
+            // aurait pas d'en-tête à qui l'accrocher.
+            canAnnotate={Boolean(me?.admin) && groupBy === 'day'}
             selectedIndex={selectedIndex}
             onSelect={setSelectedIndex}
             onOpen={openAt}

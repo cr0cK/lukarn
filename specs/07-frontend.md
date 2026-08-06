@@ -34,11 +34,22 @@ Sur `/album/:albumId` :
   l'URL, qui reste courte et revient à son adresse d'origine quand on rebascule.
   Une valeur inconnue est ramenée au défaut côté front (`isSortOrder`), pour ne
   pas laisser une URL bricolée à la main provoquer un 400.
-- `?group=day` — découpage de la grille en sections. Même règle : le défaut
-  `month` n'est pas écrit, une valeur inconnue est ramenée au défaut
+- `?group=day` — découpage de la grille en sections. Même règle, à un défaut
+  près : **c'est l'album qui le porte** (`Album.groupBy`), pas une constante.
+  Le paramètre n'est écrit que s'il contredit cette préférence, sinon revenir
+  dessus rendrait à l'album une adresse traînant un `?group=` qui ne dit rien de
+  plus. Une valeur inconnue est ramenée à la préférence de l'album
   (`isGroupBy`). Contrairement à `order`, ce paramètre **ne part jamais au
-  serveur** et n'entre pas dans la clé TanStack Query : la liste est la même,
-  seule la mise en page la segmente autrement, donc rebasculer ne recharge rien.
+  serveur** et n'entre pas dans la clé TanStack Query de la liste : celle-ci est
+  la même, seule la mise en page la segmente autrement, donc rebasculer ne
+  recharge aucune photo.
+
+  **Piège** : `album` et `items` sont deux requêtes distinctes, et `groupBy`
+  bascule sur la préférence de l'album quand la première arrive. L'effet qui
+  remet la sélection à zéro et remonte la page attend donc qu'`album.isPending`
+  soit retombé — sans cette garde, ouvrir un album réglé sur « jour » ferait
+  sauter la page une seconde fois, après coup, sous le curseur de quelqu'un qui
+  avait déjà commencé à défiler.
 
 Les trois sont indépendants : `setParam` repart toujours des paramètres courants,
 sinon ouvrir une photo effacerait le tri et le refermer le rétablirait tout seul.
@@ -61,23 +72,29 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 — les albums ne changent qu'au rythme des synchronisations —, `staleTime` de
 60 s, `retry: 1`.
 
-| Hook             | Clé                       | Particularité                                                                                                                                                                        |
-| ---------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `useMe`          | `['me']`                  | `staleTime` 5 min. Ne **réessaie pas** sur 401 : c'est la réponse normale d'un visiteur non connecté, pas un incident.                                                               |
-| `useLogin`       | —                         | Écrit `me` dans le cache et invalide `albums`.                                                                                                                                       |
-| `useLogout`      | —                         | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                |
-| `useAlbums`      | `['albums']`              |                                                                                                                                                                                      |
-| `useAlbum`       | `['album', id]`           |                                                                                                                                                                                      |
-| `useAlbumItems`  | `['items', id, order]`    | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers. |
-| `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée seulement quand le panneau EXIF est ouvert.                                                                                                           |
-| `useAdminStatus` | `['admin','status']`      | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                        |
-| `useAdminUsers`  | `['admin','users']`       | Liste d'administration des comptes.                                                                                                                                                  |
-| `useAdminAlbums` | `['admin','albums']`      | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                    |
-| `useSettings`    | `['admin','settings']`    |                                                                                                                                                                                      |
+| Hook             | Clé                       | Particularité                                                                                                                                                                                                                                                                       |
+| ---------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useMe`          | `['me']`                  | `staleTime` 5 min. Ne **réessaie pas** sur 401 : c'est la réponse normale d'un visiteur non connecté, pas un incident.                                                                                                                                                              |
+| `useLogin`       | —                         | Écrit `me` dans le cache et invalide `albums`.                                                                                                                                                                                                                                      |
+| `useLogout`      | —                         | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                                                                                                               |
+| `useAlbums`      | `['albums']`              |                                                                                                                                                                                                                                                                                     |
+| `useAlbum`       | `['album', id]`           |                                                                                                                                                                                                                                                                                     |
+| `useAlbumItems`  | `['items', id, order]`    | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                |
+| `useAlbumDays`   | `['days', id]`            | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout. |
+| `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée seulement quand le panneau EXIF est ouvert.                                                                                                                                                                                                          |
+| `useAdminStatus` | `['admin','status']`      | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                       |
+| `useAdminUsers`  | `['admin','users']`       | Liste d'administration des comptes.                                                                                                                                                                                                                                                 |
+| `useAdminAlbums` | `['admin','albums']`      | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                                                                                                                   |
+| `useSettings`    | `['admin','settings']`    |                                                                                                                                                                                                                                                                                     |
 
 Une mutation par opération d'administration — `useCreateUser`, `useUpdateUser`,
 `useDeleteUser`, `useCreateAlbum`, `useUpdateAlbum`, `useDeleteAlbum`,
-`useResync`, `useUpdateSettings` — chacune invalidant ce qu'elle périme. Deux
+`useResync`, `useUpdateSettings` — chacune invalidant ce qu'elle périme.
+`useUpdateAlbumDay` fait exception : elle **écrit la réponse dans le cache** au
+lieu d'invalider. La hauteur de l'en-tête dépend de la note, donc une
+invalidation ferait sauter la grille une seconde fois, le temps d'un aller-retour
+réseau de plus. Elle rejoue au passage la règle du serveur — une journée vidée
+de sa note et de son lieu ne reste dans la liste que si l'EXIF lui donne un lieu. Deux
 règles d'invalidation valent d'être notées : **écrire un compte périme aussi la
 liste des albums**, parce que `AdminAlbum.members` décrit la même attribution
 vue de l'autre côté ; et **écrire un album périme `['albums']`**, la liste que
@@ -118,6 +135,29 @@ Détails qui ont une raison :
 une seule, les lignes justifiées finissant exactement au bord, la dernière ligne
 non étirée, l'empilement des sections sans chevauchement — par mois comme par
 jour.
+
+### Une hauteur d'en-tête par section
+
+`LayoutOptions.headerHeightFor?: (key) => number` donne à une section l'en-tête
+dont elle a besoin ; omise, ou rendant zéro, c'est `headerHeight` qui
+s'applique. Chaque `LayoutSection` porte la sienne, pour que le composant y
+dimensionne sa boîte.
+
+**La hauteur est une donnée d'entrée du calcul, jamais une mesure**, et c'est le
+seul point délicat de toute la fonctionnalité. Toute la grille est positionnée
+avant qu'un nœud DOM n'existe — c'est ce qui rend possibles la virtualisation et
+l'absence de décalage. Un en-tête qui déciderait de sa taille une fois monté
+passerait sous ses propres photos, et il n'y aurait rien pour le rattraper.
+
+`useGridLayout(items, groupBy, days)` construit la fonction :
+`GRID_HEADER_HEIGHT + (lieu ? 20 : 0) + (note ? 40 : 0)`. Elle rend `undefined`
+en découpage par mois — une note appartient à une journée, et il n'y aurait pas
+d'en-tête à qui l'accrocher parmi les trente. Le layout reste pur et testable
+sans DOM, ce qui est l'invariant de `justify.test.ts`.
+
+Ces deux constantes sont un **contrat avec `SectionHeader`**, qui doit tenir
+dedans : d'où les hauteurs de ligne fixées explicitement (`leading-5`) et la
+note clampée à deux lignes.
 
 ### Par mois ou par jour — `GroupBy`
 
@@ -203,6 +243,31 @@ n'apporterait rien de mesurable et ferait porter au composant une invariante de
 tri qu'il n'a pas aujourd'hui. `computeLayout` lui-même prend 17 ms sur ce pire
 cas, mais il est mémoïsé : il ne rejoue qu'au changement de largeur, de liste ou
 de regroupement, jamais au défilement.
+
+### En-têtes de section — `components/SectionHeader.tsx`
+
+Chaque section rend un `SectionHeader` : la date, le lieu si les photos le
+portent, la note si quelqu'un en a écrit une, et le crayon d'édition pour un
+administrateur en découpage par jour.
+
+- **Le lieu affiché** est `place ?? autoPlaces.join(' · ')` — la saisie prime sur
+  la déduction. Le calcul vit dans `placeLabelOf`, partagé avec le calcul de
+  hauteur : un lieu compté d'un côté et pas affiché de l'autre laisserait un
+  blanc, l'inverse ferait déborder l'en-tête sur les photos.
+- **La note est clampée à deux lignes**, son texte entier restant dans `title`.
+  Une hauteur libre rendrait le layout dépendant d'une mesure DOM (D49).
+- **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
+  grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
+  curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit
+  exactement ce qu'on remplace.
+- **Le crayon n'apparaît qu'au survol de sa section**, et au focus clavier : un
+  crayon par journée, tous visibles à la fois, transformerait la grille en
+  formulaire.
+
+La description de l'album, elle, s'affiche en tête de `<main>` en `max-w-prose`
+— elle était saisie depuis `/admin` sans être montrée nulle part. Sur
+`AlbumsPage`, elle est clampée à deux lignes sous le titre : la carte ne peut pas
+changer de hauteur selon l'album sans trouer la grille.
 
 `Thumb` choisit la variante par `pickThumbSize(displayWidth)` : la plus petite
 des tailles 320/640/1280 qui couvre la largeur d'affichage multipliée par le DPR
@@ -408,20 +473,27 @@ Les comptes, les albums et les réglages s'administrent depuis `/admin` :
 collé sous la barre supérieure : la page est longue, un message affiché tout en
 haut passerait inaperçu depuis le bas.
 
-| Composant                     | Rôle                                                                    |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                   |
-| `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée        |
-| `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, création, modification       |
-| `SettingsSection`             | Intervalle de synchronisation, synchronisation au démarrage, cache      |
-| `MaintenanceSection`          | Occupation du cache et purge                                            |
-| `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                      |
-| `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                |
-| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section |
+| Composant                     | Rôle                                                                                    |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                                   |
+| `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée                        |
+| `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, découpage par défaut, création, modification |
+| `SettingsSection`             | Intervalle de synchronisation, synchronisation au démarrage, cache                      |
+| `MaintenanceSection`          | Occupation du cache et purge                                                            |
+| `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                                      |
+| `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                                |
+| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section                 |
 
 Chaque section porte ses propres mutations, et `ui.tsx` existe pour que les
 formulaires ne réinventent ni les classes ni le lien `label` /
 `aria-describedby`.
+
+**Les notes de journée ne s'administrent pas ici.** Elles se saisissent dans
+l'album, en face des photos qu'elles décrivent — c'est le seul endroit où l'on
+sait quoi écrire (D50). `AlbumForm` ne porte que la préférence de découpage,
+sous forme de case à cocher : `GroupBy` n'a que deux valeurs et l'absence de
+regroupement par année est un choix documenté, un sélecteur n'apporterait qu'un
+composant de plus.
 
 ### L'attribution des albums est un choix entre deux régimes
 

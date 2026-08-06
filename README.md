@@ -276,8 +276,7 @@ Si le certificat n'arrive pas, c'est presque toujours le DNS : le nom doit
 pointer sur l'IP du VPS **avant** le premier démarrage, et le port 80 doit être
 ouvert (Let's Encrypt s'en sert pour la vérification).
 
-Un proxy tourne déjà sur la machine (nginx, Traefik, une autre application en
-443) ? Supprimer le service `caddy` du `docker-compose.yml` et rendre à `app` sa
+Un proxy tourne déjà sur la machine (nginx, Traefik, une autre application en 443) ? Supprimer le service `caddy` du `docker-compose.yml` et rendre à `app` sa
 publication locale — `ports: ['127.0.0.1:8080:8080']` —, puis proxifier vers
 elle. Les en-têtes de sécurité sont posés par l'application, ils suivent quel
 que soit le frontal.
@@ -350,20 +349,22 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 
 ## Exploitation
 
-| Action                               | Comment                                                                                                                        |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| Ajouter un album ou un utilisateur   | `/admin`, prise en compte immédiate                                                                                            |
-| Ajouter un album (compte de service) | `/admin`, **puis partager son dossier Drive** avec l'adresse du compte — sinon l'album reste vide, sans erreur                 |
-| Changer un intervalle, une limite    | `/admin`, appliqué sans redémarrage                                                                                            |
-| Forcer une synchronisation           | **Resynchroniser** dans `/admin`                                                                                               |
-| Voir l'état des synchronisations     | `/admin`                                                                                                                       |
-| Modérer un commentaire               | `/admin`, section **Commentaires** : masquer, ou rendre visible à nouveau                                                      |
-| Activer les commentaires             | `SMTP_URL` et `MAIL_FROM` dans `.env` (voir « Emails » à l'installation) — sans serveur d'envoi, personne ne peut s'identifier |
-| Être prévenu des commentaires        | Renseigner l'adresse de modération dans `/admin`                                                                               |
-| Mot de passe administrateur perdu    | `pnpm reset-password <identifiant>` sur le serveur                                                                             |
-| Mettre à jour                        | `git pull && docker compose up -d --build`                                                                                     |
-| Sauvegarder                          | Le volume `gdv-data` **et** le `.env` — voir « Sauvegarde » plus bas. `gdv-cache` est régénérable                              |
-| Consulter les logs                   | `docker compose logs -f` (ou `logs -f caddy` pour le certificat)                                                               |
+| Action                               | Comment                                                                                                                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ajouter un album ou un utilisateur   | `/admin`, prise en compte immédiate                                                                                                                                                         |
+| Ajouter un album (compte de service) | `/admin`, **puis partager son dossier Drive** avec l'adresse du compte — sinon l'album reste vide, sans erreur                                                                              |
+| Changer un intervalle, une limite    | `/admin`, appliqué sans redémarrage                                                                                                                                                         |
+| Forcer une synchronisation           | **Resynchroniser** dans `/admin`                                                                                                                                                            |
+| Voir l'état des synchronisations     | `/admin`                                                                                                                                                                                    |
+| Modérer un commentaire               | `/admin`, section **Commentaires** : masquer, ou rendre visible à nouveau                                                                                                                   |
+| Activer les commentaires             | `SMTP_URL` et `MAIL_FROM` dans `.env` (voir « Emails » à l'installation) — sans serveur d'envoi, personne ne peut s'identifier                                                              |
+| Être prévenu des commentaires        | Renseigner l'adresse de modération dans `/admin`                                                                                                                                            |
+| Annoter une journée                  | Ouvrir l'album **regroupé par jour**, survoler la date, cliquer le crayon. Le découpage par défaut se règle par album dans `/admin`                                                         |
+| Couper le géocodage des lieux        | `GEOCODING_URL=` (vide) dans `.env`. Par défaut, des coordonnées arrondies au kilomètre partent vers Nominatim/OSM pour nommer les journées ; une instance Nominatim privée se met là aussi |
+| Mot de passe administrateur perdu    | `pnpm reset-password <identifiant>` sur le serveur                                                                                                                                          |
+| Mettre à jour                        | `git pull && docker compose up -d --build`                                                                                                                                                  |
+| Sauvegarder                          | Le volume `gdv-data` **et** le `.env` — voir « Sauvegarde » plus bas. `gdv-cache` est régénérable                                                                                           |
+| Consulter les logs                   | `docker compose logs -f` (ou `logs -f caddy` pour le certificat)                                                                                                                            |
 
 Mise à jour d'une instance qui tournait sur `config/albums.yaml` : rien à faire.
 Au premier démarrage, ses comptes, albums, droits et réglages sont repris en

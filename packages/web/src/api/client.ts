@@ -5,6 +5,7 @@ import {
   type AdminStatus,
   type AdminUser,
   type Album,
+  type AlbumDay,
   type AppSettings,
   type Comment,
   type CommentsPage,
@@ -18,6 +19,7 @@ import {
   type SessionUser,
   type SortOrder,
   type ThumbSize,
+  type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
@@ -91,6 +93,19 @@ export const api = {
     if (cursor) params.set('cursor', cursor);
     return request<ItemsPage>(`/albums/${encodeURIComponent(albumId)}/items?${params}`);
   },
+
+  albumDays: (albumId: string) =>
+    request<AlbumDay[]>(`/albums/${encodeURIComponent(albumId)}/days`),
+
+  /**
+   * La saisie se fait dans l'album, mais l'écriture passe par `/api/admin` :
+   * c'est le seul préfixe qui répond 403 (D50).
+   */
+  updateAlbumDay: (albumId: string, day: string, body: UpdateAlbumDayRequest) =>
+    request<AlbumDay>(
+      `/admin/albums/${encodeURIComponent(albumId)}/days/${encodeURIComponent(day)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
 
   itemDetail: (albumId: string, mediaId: string) =>
     request<MediaDetail>(

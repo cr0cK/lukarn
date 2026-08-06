@@ -320,6 +320,55 @@ describe('computeLayout, découpage en sections', () => {
   });
 });
 
+describe('hauteur d’en-tête variable', () => {
+  /** Six photos réparties sur trois jours consécutifs. */
+  const troisJours = Array.from({ length: 6 }, (_, index) =>
+    photo(`j${index}`, `2024-03-0${Math.floor(index / 2) + 1}T10:00:00.000Z`),
+  );
+
+  it('décale les sections suivantes de ce que l’en-tête a pris en plus', () => {
+    // C'est l'invariant qui tient toute la fonctionnalité : la hauteur est une
+    // donnée d'entrée du calcul, jamais une mesure. Si le décalage ne suivait
+    // pas, la note passerait sous les photos de sa propre section.
+    const base = computeLayout(troisJours, { ...OPTIONS, groupBy: 'day' });
+    const grandi = computeLayout(troisJours, {
+      ...OPTIONS,
+      groupBy: 'day',
+      headerHeightFor: (key) => (key === '2024-03-01' ? OPTIONS.headerHeight + 60 : 0),
+    });
+
+    assert.equal(grandi.sections[0]!.headerHeight, OPTIONS.headerHeight + 60);
+    assert.equal(grandi.sections[1]!.headerHeight, OPTIONS.headerHeight);
+    assert.equal(grandi.sections[0]!.height, base.sections[0]!.height + 60);
+    assert.equal(grandi.sections[1]!.y, base.sections[1]!.y + 60);
+    assert.equal(grandi.totalHeight, base.totalHeight + 60);
+  });
+
+  it('descend les lignes de la section, pas seulement son en-tête', () => {
+    const grandi = computeLayout(troisJours, {
+      ...OPTIONS,
+      groupBy: 'day',
+      headerHeightFor: () => OPTIONS.headerHeight + 60,
+    });
+
+    for (const section of grandi.sections) {
+      assert.equal(section.rows[0]!.y, section.y + section.headerHeight);
+    }
+  });
+
+  it('retombe sur la hauteur de base quand la fonction est absente ou rend zéro', () => {
+    const sans = computeLayout(troisJours, { ...OPTIONS, groupBy: 'day' });
+    const nul = computeLayout(troisJours, {
+      ...OPTIONS,
+      groupBy: 'day',
+      headerHeightFor: () => 0,
+    });
+
+    assert.equal(sans.sections[0]!.headerHeight, OPTIONS.headerHeight);
+    assert.equal(nul.totalHeight, sans.totalHeight);
+  });
+});
+
 describe('targetRowHeightFor', () => {
   it('grandit avec la largeur disponible', () => {
     const widths = [400, 600, 1000, 1600, 2400];

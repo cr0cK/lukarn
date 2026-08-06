@@ -460,6 +460,26 @@ son échec est ignoré).
 | Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué                                                   |
 | Les commentaires des photos de ses albums, et le nom affiché de leurs auteurs                              | Les commentaires portant sur un album qui ne lui est pas attribué, et ceux qu'un administrateur a masqués |
 
+## Ce qui sort de l'instance
+
+Trois destinations, et seulement trois. Les connaître importe pour une
+application dont la promesse est que rien ne fuit.
+
+| Destination                     | Ce qui part                                                                        |
+| ------------------------------- | ---------------------------------------------------------------------------------- |
+| Google Drive                    | Les requêtes d'indexation et de téléchargement, avec le jeton du propriétaire      |
+| Le relais SMTP                  | Codes de vérification, notifications de commentaires, annonces de nouvelles photos |
+| `GEOCODING_URL` (Nominatim/OSM) | Des **coordonnées arrondies au centième de degré**, et rien d'autre                |
+
+Le géocodage mérite d'être explicité, parce qu'il envoie une donnée des photos à
+un tiers. Ce qui part est une cellule `lat,lng` arrondie à deux décimales, soit
+un point à environ un kilomètre près : jamais un identifiant de fichier, jamais
+une date, jamais un nom d'album, et jamais une position exacte. Le service ne
+peut donc pas reconstituer un déplacement, et deux séjours au même endroit ne
+produisent qu'une requête grâce au cache `geo_places`. `GEOCODING_URL` accepte
+une instance Nominatim privée, et une valeur vide coupe entièrement cette
+sortie — les journées gardent alors leurs grappes, sans libellé.
+
 ## En-têtes de sécurité
 
 `packages/server/src/plugins/headers.ts`, enregistré **avant** tout le reste
@@ -468,13 +488,13 @@ donc aucune ne peut oublier les en-têtes — pas même celles que
 `@fastify/static` sert sans passer par un gestionnaire à nous, ni les 404 et
 les 500.
 
-| En-tête                     | Valeur                              | Ce qu'il empêche                                                                                                         |
-| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `Content-Security-Policy`   | voir ci-dessous                     | L'exécution d'un script injecté, l'exfiltration vers une origine tierce, l'encadrement de la page.                        |
-| `X-Content-Type-Options`    | `nosniff`                           | Qu'un navigateur devine un type MIME et exécute comme script ce qui est servi comme autre chose.                          |
-| `X-Frame-Options`           | `DENY`                              | Le clickjacking sur les navigateurs qui ne connaissent pas `frame-ancestors`.                                             |
-| `Referrer-Policy`           | `no-referrer`                       | Qu'un identifiant Drive, présent dans une URL de média, parte dans les journaux d'un site tiers.                          |
-| `Strict-Transport-Security` | `max-age=15552000`, **si `https`** | Le retour en clair, et l'interception au premier accès sur un réseau hostile.                                            |
+| En-tête                     | Valeur                             | Ce qu'il empêche                                                                                   |
+| --------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `Content-Security-Policy`   | voir ci-dessous                    | L'exécution d'un script injecté, l'exfiltration vers une origine tierce, l'encadrement de la page. |
+| `X-Content-Type-Options`    | `nosniff`                          | Qu'un navigateur devine un type MIME et exécute comme script ce qui est servi comme autre chose.   |
+| `X-Frame-Options`           | `DENY`                             | Le clickjacking sur les navigateurs qui ne connaissent pas `frame-ancestors`.                      |
+| `Referrer-Policy`           | `no-referrer`                      | Qu'un identifiant Drive, présent dans une URL de média, parte dans les journaux d'un site tiers.   |
+| `Strict-Transport-Security` | `max-age=15552000`, **si `https`** | Le retour en clair, et l'interception au premier accès sur un réseau hostile.                      |
 
 La CSP tient en une ligne dont une seule directive fait le travail :
 `script-src 'self'`. C'est elle qui rend inexploitable un `<script>` glissé dans
