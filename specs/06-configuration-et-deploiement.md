@@ -210,6 +210,19 @@ la vraie cause.
 `GOOGLE_SERVICE_ACCOUNT_FILE` désigne un chemin **vu par le serveur** :
 `/app/config/…` sous Docker, `./config/…` en développement.
 
+**Les quatre volumes portent un `name:` explicite**, et c'est une correction, pas
+un détail de présentation. Sans lui, compose préfixe chaque volume du nom du
+projet — celui du répertoire de travail : `gdv-data` s'appelle en réalité
+`googledrive-viewer_gdv-data`, ou autre chose si on a cloné sous un autre nom.
+Or docker **crée en silence** un volume nommé qui n'existe pas : la commande de
+sauvegarde du `README.md`, `docker run -v gdv-data:/data … tar czf`, montait donc
+un volume neuf et vide et écrivait une archive vide, sans un mot. Une sauvegarde
+qui ne sauvegarde rien et ne le dit pas ne se découvre qu'à la restauration
+(D53). Le nom explicite rend ces commandes justes quel que soit le répertoire de
+clonage ; la migration d'une instance déjà en service — recopier
+`<projet>_gdv-data` vers `gdv-data` **avant** le premier `up` — est décrite dans
+le `README.md`.
+
 | Montage                   | Contenu                                                                                                                          | Sauvegarde                                                                                                  |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `./config:/app/config:ro` | `albums.yaml` d'amorçage, et la clé du compte de service si l'instance en utilise une. Lecture seule : l'app n'écrit jamais ici. | **Oui, si la clé y est** — sinon inutile après l'amorçage                                                   |
@@ -228,10 +241,64 @@ Les logs des deux services sont plafonnés (`json-file`, 10 Mo × 3).
 
 ## Durcissement de la machine
 
-Il n'appartient pas au dépôt et n'est donc pas décrit ici, mais le `README.md`
-en donne la procédure : SSH par clé seule, `ufw`, mises à jour de sécurité
-automatiques. Le compose est fait pour en tirer parti — l'application ne publie
-aucun port, donc seuls 22, 80 et 443 ont à être ouverts.
+Le dépôt en porte l'amorçage : `deploy/cloud-init.yaml`, passé à
+`scw instance server create … cloud-init=@…`, monte une machine Debian/Ubuntu
+avec un compte `alexis` sudo par clé seule, `PasswordAuthentication no`,
+`unattended-upgrades` activé sans son `dpkg-reconfigure` interactif, Docker,
+`rclone`, Tailscale, et `ufw` ouvert sur 22, 80, 443/tcp et 443/udp. Le compose
+en tire parti : l'application ne publie aucun port sur l'hôte, il n'y a donc
+rien d'autre à ouvrir.
+
+**L'accès d'administration passe par Tailscale, et le séquencement est la seule
+difficulté.** Le fichier installe Tailscale mais ne l'authentifie pas :
+`tailscale up` ouvre une URL à valider dans un navigateur, c'est une action
+humaine. Tant qu'elle n'a pas eu lieu, SSH sur l'IP publique est l'unique chemin
+vers la machine — le fermer depuis le cloud-init la rendrait inatteignable. Le
+port 22 reste donc ouvert à l'amorçage, et se ferme à la main **après** avoir
+vérifié `ssh alexis@<nom-tailnet>` depuis un second terminal (`ufw delete allow
+OpenSSH`, `PermitRootLogin no`, retrait de la règle 22 du groupe de sécurité).
+`disable_root: false` et `PermitRootLogin prohibit-password` gardent le compte
+root par clé accessible pendant cet intervalle ; la console série de
+l'hébergeur, hors réseau de l'instance, est le filet de dernier recours. Tout
+cela est répété en tête de `deploy/cloud-init.yaml` et dans le `README.md` :
+c'est le seul endroit de l'installation où une erreur coûte une réinstallation.
+
+Tailscale ne demande aucune ouverture entrante — il sort en UDP 41641 et se
+rabat sur un relais DERP.
+
+Restent hors du dépôt, parce qu'ils tiennent à un compte et non à du code :
+`scw init`, la création du tailnet, l'enregistrement DNS `A`/`AAAA`, et la
+configuration du remote `rclone` des sauvegardes.
+
+## Scripts de déploiement — `deploy/`
+
+Deux scripts bash, lancés depuis la machine, qui se replacent seuls à la racine
+du dépôt depuis `$0`.
+
+| Script             | Effet                                                                                                                                                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `gdv-data`, redémarrage, copie du `.env` à côté, rétention des 7 dernières archives. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `GDV_BACKUP_REMOTE`. |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, `docker compose up -d --build`, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul.                   |
+
+**Pourquoi arrêter `app` pour sauvegarder.** SQLite est en WAL : copier le
+fichier pendant une écriture donne une base à recomposer. L'arrêt dure quelques
+secondes et rend l'archive triviale à restaurer. Écarté : `db.backup()` à chaud,
+correct mais qu'il faudrait déclencher depuis l'extérieur du conteneur, par une
+route ou un signal — plus de surface pour un gain de quelques secondes
+d'indisponibilité par jour.
+
+**Pourquoi le script vérifie sa propre archive.** Il refuse une archive qui ne
+contient pas `gdv.db` : c'est exactement le symptôme du volume mal nommé
+ci-dessus, et le seul moment où on le constaterait autrement serait la
+restauration. Un volume `gdv-data` **absent** est en revanche un cas normal —
+installation neuve, rien à sauvegarder — et le script sort à 0 en le disant.
+
+**Pourquoi `deploy.sh` attend.** `docker compose up -d` rend la main dès que le
+conteneur est lancé, pas quand il fonctionne : une migration qui échoue ou une
+variable manquante laisse un conteneur qui redémarre en boucle pendant qu'on
+croit le déploiement terminé. Le script s'appuie sur le `HEALTHCHECK` de l'image
+et plafonne l'attente à 150 s — `start-period` de 20 s, puis trois essais à 30 s
+d'intervalle avant qu'un conteneur soit déclaré `unhealthy`, plus une marge.
 
 ## Configuration côté Google Cloud
 

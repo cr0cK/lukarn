@@ -63,16 +63,104 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 
 ## Installation sur un VPS
 
-Il faut un VPS Debian ou Ubuntu (1 Go de RAM suffit, 2 Go sont confortables
-quand sharp rend des photos de reflex) et un nom de domaine dont
-l'enregistrement `A` — et `AAAA` si le VPS a une IPv6 — pointe déjà sur son
-adresse. Le certificat TLS est obtenu automatiquement à partir de ce nom : sans
-DNS en place, l'étape 3 échoue.
+Il faut un VPS Debian ou Ubuntu et un nom de domaine dont l'enregistrement `A`
+— et `AAAA` si le VPS a une IPv6 — pointe déjà sur son adresse. Le certificat
+TLS est obtenu automatiquement à partir de ce nom : sans DNS en place, l'étape 3
+échoue.
+
+**Le gabarit : 2 vCPU, 4 Go de RAM, 60 Go de disque.** Ce n'est pas une machine
+de démonstration, et deux postes expliquent l'écart :
+
+- **Le build tourne sur la machine.** `docker compose up --build` lance vite,
+  `tsc` et, si aucun binaire prébuilt ne convient, la compilation de
+  `better-sqlite3`, `argon2` et `sharp`. Avec 1 Go, le build est tué par l'OOM
+  killer avant la fin. On peut construire ailleurs et pousser l'image, mais ce
+  n'est plus la procédure décrite ici.
+- **Le cache disque vise 20 Go par défaut** (`cache.maxSizeGB`, réglable dans
+  `/admin`), auxquels s'ajoutent l'image Docker et le système. 60 Go laisse de
+  la marge ; 20 Go de disque font tourner l'éviction LRU en permanence.
+
+### Créer la machine (Scaleway)
+
+Depuis un **clone local** du dépôt : `cloud-init=@…` lit le fichier sur ta
+machine, pas sur le serveur, qui n'existe pas encore. Les noms de gammes et les
+tarifs Scaleway bougent, **vérifie-les au moment de provisionner**
+(`scw instance server-type list zone=fr-par-2`) ; au moment où ces lignes sont
+écrites, `PLAY2-NANO` correspond au gabarit ci-dessus.
+
+```bash
+git clone <ce-dépôt> && cd googledrive-viewer
+scw init                                    # une fois, pour la clé d'API
+
+# Le groupe de sécurité : tout fermé en entrée, sauf le nécessaire. 22 y figure
+# le temps de l'amorçage, et s'en retire une fois Tailscale en place (voir plus bas).
+scw instance security-group create name=galerie zone=fr-par-2 \
+  inbound-default-policy=drop outbound-default-policy=accept
+SG=$(scw instance security-group list name=galerie zone=fr-par-2 -o json | jq -r '.[0].id')
+for p in 22 80 443; do
+  scw instance security-group create-rule security-group-id=$SG zone=fr-par-2 \
+    direction=inbound action=accept protocol=TCP dest-port-from=$p
+done
+scw instance security-group create-rule security-group-id=$SG zone=fr-par-2 \
+  direction=inbound action=accept protocol=UDP dest-port-from=443   # HTTP/3
+
+# La machine. `cloud-init=@…` fait tout le § 0 ci-dessous.
+scw instance server create name=galerie zone=fr-par-2 \
+  type=PLAY2-NANO image=debian_bookworm \
+  root-volume=b_ssd:60G ip=new security-group-id=$SG \
+  cloud-init=@deploy/cloud-init.yaml
+```
+
+Relever l'IP publique rendue par la commande, et **poser l'enregistrement `A`
+avant la suite** : Let's Encrypt vérifie le nom au premier démarrage.
 
 ### 0. Préparer la machine
 
-Cinq minutes qui évitent l'essentiel de ce qui arrive à un serveur exposé. Tout
-se fait en root, à la première connexion.
+**Avec le cloud-init** — `deploy/cloud-init.yaml`, passé à la création
+ci-dessus. Une seule chose à faire avant : y remplacer la ligne
+`ssh-ed25519 AAAA_REMPLACE_MOI…` par le contenu de ton `~/.ssh/id_ed25519.pub`.
+Il pose le compte `alexis` (sudo, par clé, sans mot de passe), les mises à jour
+de sécurité automatiques, Docker, `rclone`, Tailscale, et un `ufw` qui ne laisse
+passer que 22, 80 et 443.
+
+**Puis fermer SSH sur l'interface publique.** Le cloud-init installe Tailscale
+mais ne l'authentifie pas — cela demande de valider une URL dans un navigateur.
+Tant que ce n'est pas fait, il n'y a qu'un chemin vers la machine, et le fermer
+la rend inatteignable. L'ordre :
+
+```bash
+ssh alexis@<ip-publique>
+sudo tailscale up                      # ouvre une URL à valider
+
+# Dans un SECOND terminal, sans fermer le premier :
+ssh alexis@<nom-tailnet>               # doit fonctionner
+
+# Alors seulement, dans le premier :
+sudo ufw delete allow OpenSSH
+sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
+  /etc/ssh/sshd_config.d/99-durcissement.conf
+sudo systemctl reload ssh
+
+# Et depuis ta machine, retirer 22 du groupe de sécurité. `list-rules` donne l'id.
+scw instance security-group list-rules security-group-id=$SG zone=fr-par-2
+scw instance security-group delete-rule security-group-id=$SG zone=fr-par-2 \
+  security-group-rule-id=<id-de-la-règle-22>
+```
+
+> **Ne ferme pas la porte par laquelle tu es entré avant d'avoir franchi
+> l'autre**, depuis un terminal distinct. C'est le seul moment de cette
+> installation où une faute de frappe coûte une réinstallation. Filet de
+> secours : la console série Scaleway (`scw instance server console`), qui ne
+> passe pas par le réseau de l'instance.
+
+Tailscale ne demande **aucune ouverture entrante** : il sort en UDP 41641 et se
+rabat sur un relais DERP si le NAT l'en empêche. Le groupe de sécurité et `ufw`
+peuvent rester en « tout fermé sauf 80 et 443 ».
+
+<details>
+<summary>Sans cloud-init — un autre hébergeur, ou une machine déjà créée</summary>
+
+Le même contenu, à la main, en root à la première connexion.
 
 **Un compte à soi, une clé, et plus de mot de passe.** Un serveur exposé reçoit
 des tentatives de connexion SSH en continu, quelques milliers par jour. Elles
@@ -95,8 +183,7 @@ systemctl restart ssh
 ```
 
 > **Garde la session root ouverte** et vérifie dans un **second** terminal que
-> `ssh alexis@…` fonctionne avant de la fermer. C'est le seul moment de cette
-> installation où une faute de frappe coûte une réinstallation.
+> `ssh alexis@…` fonctionne avant de la fermer.
 
 **Le pare-feu.** Trois ports ouverts, rien d'autre. L'application n'écoute sur
 aucune interface publique — seul Caddy est joignable — mais un pare-feu couvre
@@ -131,6 +218,8 @@ usermod -aG docker alexis   # se déconnecter/reconnecter pour que ça prenne
 Ajouter `alexis` au groupe `docker` équivaut à lui donner root sur la machine —
 c'est déjà le cas, il est `sudo`. Sur un serveur partagé avec quelqu'un qui ne
 doit pas l'être, préférer `sudo docker`.
+
+</details>
 
 La suite se fait avec le compte `alexis`.
 
@@ -214,6 +303,9 @@ demande d'autorisation.
 
 ### 2. Configuration
 
+**Sur le serveur**, avec le compte `alexis` — le clone de l'étape précédente
+était sur ta machine, pour le cloud-init.
+
 ```bash
 git clone <ce-dépôt> && cd googledrive-viewer
 
@@ -276,7 +368,8 @@ Si le certificat n'arrive pas, c'est presque toujours le DNS : le nom doit
 pointer sur l'IP du VPS **avant** le premier démarrage, et le port 80 doit être
 ouvert (Let's Encrypt s'en sert pour la vérification).
 
-Un proxy tourne déjà sur la machine (nginx, Traefik, une autre application en 443) ? Supprimer le service `caddy` du `docker-compose.yml` et rendre à `app` sa
+Un proxy tourne déjà sur la machine — nginx, Traefik, une autre application en
+443 ? Supprimer le service `caddy` du `docker-compose.yml` et rendre à `app` sa
 publication locale — `ports: ['127.0.0.1:8080:8080']` —, puis proxifier vers
 elle. Les en-têtes de sécurité sont posés par l'application, ils suivent quel
 que soit le frontal.
@@ -362,8 +455,8 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 | Annoter une journée                  | Ouvrir l'album **regroupé par jour**, survoler la date, cliquer le crayon. Le découpage par défaut se règle par album dans `/admin`                                                         |
 | Couper le géocodage des lieux        | `GEOCODING_URL=` (vide) dans `.env`. Par défaut, des coordonnées arrondies au kilomètre partent vers Nominatim/OSM pour nommer les journées ; une instance Nominatim privée se met là aussi |
 | Mot de passe administrateur perdu    | `pnpm reset-password <identifiant>` sur le serveur                                                                                                                                          |
-| Mettre à jour                        | `git pull && docker compose up -d --build`                                                                                                                                                  |
-| Sauvegarder                          | Le volume `gdv-data` **et** le `.env` — voir « Sauvegarde » plus bas. `gdv-cache` est régénérable                                                                                           |
+| Mettre à jour                        | `./deploy/deploy.sh` — sauvegarde, reconstruit, et **attend** que la porte de santé repasse au vert                                                                                         |
+| Sauvegarder                          | `./deploy/backup.sh` — le volume `gdv-data` **et** le `.env`, voir « Sauvegarde » plus bas. `gdv-cache` est régénérable                                                                     |
 | Consulter les logs                   | `docker compose logs -f` (ou `logs -f caddy` pour le certificat)                                                                                                                            |
 
 Mise à jour d'une instance qui tournait sur `config/albums.yaml` : rien à faire.
@@ -456,21 +549,64 @@ Quelques choix qui expliquent le reste :
 Deux choses, et elles vont ensemble : le volume `gdv-data` contient les comptes,
 l'index et le refresh token **chiffré**, que `TOKEN_KEY` seul déchiffre. Une
 sauvegarde du volume sans le `.env` rend un jeton illisible et impose de refaire
-le consentement Google.
+le consentement Google. `deploy/backup.sh` prend les deux.
 
 ```bash
-# À lancer depuis le répertoire du dépôt.
-docker compose stop app                     # SQLite au repos : pas de WAL en vol
-docker run --rm -v gdv-data:/data -v "$PWD:/sortie" alpine \
-  tar czf /sortie/gdv-$(date +%F).tar.gz -C /data .
-docker compose start app
-cp .env gdv-env-$(date +%F).bak
+./deploy/backup.sh            # archive locale, puis envoi par rclone
+./deploy/backup.sh --local    # archive locale seulement
 ```
 
-Les deux fichiers sont à copier **hors du VPS** — une sauvegarde qui vit sur la
-machine qu'elle protège ne protège de rien. `gdv-cache` n'a pas à être
-sauvegardé : il se régénère.
+Le script arrête `app` le temps du `tar` — quelques secondes, le prix d'un
+SQLite au repos plutôt qu'un fichier copié avec un WAL en vol —, écrit
+`sauvegardes/gdv-<horodatage>.tar.gz` et le `.env` à côté, garde les **7
+dernières** et supprime les plus anciennes. Il vérifie que l'archive contient
+bien `gdv.db` : une archive vide passerait inaperçue jusqu'à la restauration.
 
-Restaurer, sur une machine neuve : remettre le `.env`, puis
-`docker run --rm -v gdv-data:/data -v "$PWD:/e" alpine tar xzf /e/gdv-<date>.tar.gz -C /data`
-avant le premier `docker compose up`.
+**Hors de la machine.** Une sauvegarde qui vit sur la machine qu'elle protège ne
+protège de rien. Sans `--local`, le script recopie l'archive par `rclone` vers
+un remote configuré **hors du dépôt** :
+
+```bash
+rclone config     # remote « scaleway », type s3, fournisseur Scaleway
+# Un autre nom ? GDV_BACKUP_REMOTE=mon-remote:mon-bucket ./deploy/backup.sh
+```
+
+**Automatiser.** Une ligne de `crontab -e` suffit pour une installation
+personnelle — pas d'unité systemd à écrire :
+
+```cron
+# Sauvegarde quotidienne à 4 h, journal dans /home/alexis/sauvegarde.log
+0 4 * * * cd /home/alexis/googledrive-viewer && ./deploy/backup.sh >> /home/alexis/sauvegarde.log 2>&1
+```
+
+`gdv-cache` n'a pas à être sauvegardé : il se régénère.
+
+**Restaurer**, sur une machine neuve : remettre le `.env`, puis, **avant** le
+premier `docker compose up` :
+
+```bash
+docker volume create gdv-data
+docker run --rm -v gdv-data:/data -v "$PWD:/e" alpine \
+  tar xzf /e/gdv-<horodatage>.tar.gz -C /data
+```
+
+> **Mise à jour d'une instance antérieure à ces scripts.** Les volumes portent
+> désormais un nom explicite. Auparavant, compose les préfixait du nom du
+> répertoire de travail : ton volume s'appelle donc `<répertoire>_gdv-data` —
+> `googledrive-viewer_gdv-data` si tu as cloné sous ce nom. Le recopier vers
+> `gdv-data` **avant** le premier `docker compose up` avec cette version, sans
+> quoi l'application démarre sur une base vide (comptes et index compris).
+>
+> ```bash
+> docker compose down
+> docker volume create gdv-data
+> docker run --rm -v googledrive-viewer_gdv-data:/ancien -v gdv-data:/neuf alpine \
+>   sh -c 'cp -a /ancien/. /neuf/'
+> docker run --rm -v googledrive-viewer_caddy-data:/ancien -v caddy-data:/neuf alpine \
+>   sh -c 'cp -a /ancien/. /neuf/'   # évite une réémission de certificat
+> docker compose up -d --build
+> ```
+>
+> `docker volume ls` donne le nom exact. `gdv-cache` ne vaut pas la copie : il
+> se régénère. Une fois l'instance vérifiée, les anciens volumes se suppriment
+> par `docker volume rm`.

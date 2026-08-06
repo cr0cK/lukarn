@@ -1,0 +1,119 @@
+#cloud-config
+# Amorçage d'un VPS Debian 12+ / Ubuntu LTS pour la visionneuse.
+#
+#   scw instance server create \
+#     type=PLAY2-NANO zone=fr-par-2 image=debian_bookworm \
+#     root-volume=b_ssd:60G ip=new name=galerie \
+#     cloud-init=@deploy/cloud-init.yaml
+#
+# À la fin de ce fichier, la machine a : un compte `alexis` sudo par clé, les
+# mises à jour de sécurité automatiques, Docker, Tailscale installé mais **non
+# authentifié**, et un pare-feu qui laisse passer 22, 80 et 443.
+#
+# ---------------------------------------------------------------------------
+# L'ORDRE COMPTE, ET C'EST TOUT L'ENJEU DE CE FICHIER.
+#
+# La cible est une machine dont le port 22 est fermé sur l'interface publique,
+# joignable uniquement par Tailscale. Fermer SSH **ici** la rendrait
+# inatteignable : Tailscale est installé, pas authentifié — il n'y a pas encore
+# de second chemin. Le port 22 reste donc ouvert à l'amorçage, et se ferme à la
+# main une fois l'autre porte vérifiée :
+#
+#   1. ssh alexis@<ip-publique>
+#   2. sudo tailscale up            (ouvre une URL à valider dans un navigateur)
+#   3. dans un SECOND terminal : ssh alexis@<nom-tailnet>   ← doit marcher
+#   4. seulement alors, dans le premier :
+#        sudo ufw delete allow OpenSSH
+#        sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
+#          /etc/ssh/sshd_config.d/99-durcissement.conf
+#        sudo systemctl reload ssh
+#
+# Même précaution qu'au § 0 du README : on ne ferme jamais la porte par
+# laquelle on est entré avant d'avoir franchi l'autre, depuis un terminal
+# distinct. Si malgré tout la machine devient injoignable, le filet est la
+# **console série Scaleway** (`scw instance server console`), qui ne passe pas
+# par le réseau de l'instance.
+#
+# Tailscale ne demande aucune ouverture entrante : il sort en UDP 41641 et se
+# rabat sur un relais DERP si le NAT l'empêche. La règle `allow outgoing`
+# ci-dessous suffit.
+# ---------------------------------------------------------------------------
+
+# `default` conserve le compte que l'image prévoit et les clés que Scaleway y
+# injecte à la création. Sans lui, déclarer `users:` les remplace purement et
+# simplement — et si la clé ci-dessous est mal recopiée, plus personne n'entre.
+users:
+  - default
+  - name: alexis
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    lock_passwd: true
+    ssh_authorized_keys:
+      # REMPLACE CETTE LIGNE par le contenu de ton `~/.ssh/id_ed25519.pub`.
+      # Laissée telle quelle, elle est inutilisable : le compte `alexis`
+      # n'accepterait aucune connexion.
+      - 'ssh-ed25519 AAAA_REMPLACE_MOI_PAR_TA_CLE_PUBLIQUE alexis@portable'
+
+# Root par clé reste possible pendant l'amorçage : c'est le second chemin tant
+# que Tailscale n'est pas authentifié. L'étape 4 ci-dessus le referme.
+disable_root: false
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - ufw
+  - unattended-upgrades
+  # `backup.sh` s'en sert pour l'envoi hors machine ; le remote se configure
+  # ensuite par `rclone config`, jamais dans le dépôt.
+  - rclone
+
+write_files:
+  # Équivaut au `dpkg-reconfigure -plow unattended-upgrades` du README, qui est
+  # interactif et n'a donc pas sa place ici.
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  # Un fichier séparé plutôt qu'une édition de `sshd_config` : une mise à jour
+  # du paquet openssh-server ne proposera pas de fusionner un fichier qu'elle ne
+  # connaît pas.
+  - path: /etc/ssh/sshd_config.d/99-durcissement.conf
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      # `prohibit-password` et non `no` : voir l'encadré en tête de fichier.
+      PermitRootLogin prohibit-password
+
+runcmd:
+  - ['systemctl', 'restart', 'ssh']
+
+  - 'curl -fsSL https://get.docker.com | sh'
+  # Équivaut à donner root sur la machine — `alexis` l'a déjà par sudo.
+  - ['usermod', '-aG', 'docker', 'alexis']
+
+  # Installé, pas authentifié : `sudo tailscale up` est une action humaine, elle
+  # demande de valider une URL dans un navigateur.
+  - 'curl -fsSL https://tailscale.com/install.sh | sh'
+
+  # L'application ne publie aucun port sur l'hôte : seul Caddy est joignable.
+  # 443/udp sert à HTTP/3 — l'omettre ne casse rien, les navigateurs retombent
+  # sur TCP.
+  - ['ufw', 'default', 'deny', 'incoming']
+  - ['ufw', 'default', 'allow', 'outgoing']
+  - ['ufw', 'allow', 'OpenSSH']
+  - ['ufw', 'allow', '80/tcp']
+  - ['ufw', 'allow', '443/tcp']
+  - ['ufw', 'allow', '443/udp']
+  - ['ufw', '--force', 'enable']
+
+final_message: |
+  Machine prête après $UPTIME s.
+  Suite : ssh alexis@<ip>, puis `sudo tailscale up`, puis vérifier
+  `ssh alexis@<nom-tailnet>` dans un second terminal AVANT de fermer le port 22
+  (`sudo ufw delete allow OpenSSH`). Voir l'en-tête de deploy/cloud-init.yaml.
