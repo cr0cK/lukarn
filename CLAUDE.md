@@ -20,6 +20,11 @@ Cette règle **est contrôlée**, elle ne repose pas sur la mémoire :
 d'environnement, migrations, modules — à ce que les specs mentionnent, et échoue
 sur l'écart. Il tourne dans `pnpm verify`, dans la CI, et sur `pre-push`.
 
+`pnpm check:links` complète le premier sur l'autre défaut silencieux : un renvoi
+entre les trois documents qui ne mène plus nulle part. Il résout chaque lien
+relatif et chaque ancre, et n'appelle pas le réseau — un contrôle qui échoue
+parce qu'un site tiers est lent finit désactivé.
+
 Le contrôle vérifie l'**existence** d'une mention, pas sa qualité : il attrape
 la route ajoutée sans un mot dans `05-api.md`, jamais un paragraphe devenu faux.
 Ce dernier cas reste à ta charge — c'est d'ailleurs le plus fréquent quand on
@@ -77,7 +82,8 @@ pnpm lint                          # eslint .
 pnpm format                        # prettier --write .
 pnpm test                          # runner natif de Node, tous les packages
 pnpm check:specs                   # les specs ont-elles décroché du code ?
-pnpm verify                        # les quatre d'un coup — la porte avant de publier
+pnpm check:links                   # les renvois entre documents mènent-ils quelque part ?
+pnpm verify                        # les cinq d'un coup — la porte avant de publier
 
 pnpm create-admin <identifiant>    # premier administrateur d'une base vide
 pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
@@ -86,9 +92,9 @@ pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compt
 ```
 
 Avant de déclarer un travail terminé : **`pnpm verify`** — typecheck, lint,
-tests et contrôle des specs. C'est ce que lance la CI, et `check:specs` tourne
-aussi sur `pre-push` : une divergence bloque la publication avant d'atteindre
-le dépôt distant.
+tests, contrôle des specs et contrôle des liens. C'est ce que lance la CI, et
+les deux contrôles de documentation tournent aussi sur `pre-push` : une
+divergence bloque la publication avant d'atteindre le dépôt distant.
 
 ## Conventions de code
 

@@ -1931,6 +1931,8 @@ la racine. Les renvois de `deploy/cloud-init.yaml` et de `specs/06` pointent
 désormais vers `deploy/README.md`. `tools/check-specs.mjs` n'est pas concerné :
 il ne lit aucun README, il compare le code aux specs.
 
-Un lien mort ne serait signalé par rien — aucun contrôle ne suit les liens de la
-documentation. C'est le coût accepté de la scission, et la raison pour laquelle
-les renvois entre les trois documents sont peu nombreux et tous relatifs.
+Le coût annoncé de la scission était qu'un lien mort ne serait signalé par rien.
+Il ne l'est plus : `tools/check-links.mjs` résout chaque lien relatif et chaque
+ancre des trois documents, et tourne dans `pnpm verify` comme sur `pre-push`.
+Les renvois restent néanmoins peu nombreux et tous relatifs — un contrôle qui
+attrape les liens cassés ne rend pas souhaitable d'en écrire davantage.
