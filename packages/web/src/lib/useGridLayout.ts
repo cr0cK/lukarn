@@ -5,6 +5,15 @@ import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 export const GRID_GAP = 4;
 export const GRID_HEADER_HEIGHT = 56;
 export const GRID_SECTION_GAP = 28;
+/**
+ * En-tête d'une section repliée : juste sa ligne de titre.
+ *
+ * `GRID_HEADER_HEIGHT` réserve une trentaine de pixels au-dessus du titre pour
+ * le décoller des photos de la section précédente. Repliée, la section n'a plus
+ * de photos, et cette respiration devient un vide : un album entièrement replié
+ * s'étirait sur des blancs qui lui ôtaient tout son intérêt de sommaire.
+ */
+export const GRID_COLLAPSED_HEADER_HEIGHT = 36;
 
 /**
  * Ce que coûte un lieu, puis une note, dans un en-tête de section. Ces deux
@@ -59,11 +68,16 @@ export function placeLabelOf(day: AlbumDay | undefined): string | null {
  * `days` n'est consulté qu'en découpage par jour : une note appartient à une
  * journée, et l'accrocher à un en-tête de mois choisirait arbitrairement
  * laquelle des trente afficher.
+ *
+ * `collapsedKeys` porte les sections repliées. Il vaut pour les deux
+ * découpages : leurs clés n'ont pas la même forme (`2026-07` contre
+ * `2026-07-14`), elles ne peuvent pas se confondre dans le même ensemble.
  */
 export function useGridLayout(
   items: MediaItem[],
   groupBy: GroupBy = DEFAULT_GROUP_BY,
   days?: Map<string, AlbumDay>,
+  collapsedKeys?: ReadonlySet<string>,
 ): GridLayout {
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
@@ -103,16 +117,30 @@ export function useGridLayout(
   }, []);
 
   const headerHeightFor = useMemo(() => {
-    if (groupBy !== 'day' || !days || days.size === 0) return undefined;
+    // Les notes n'ont de sens que par jour ; le repli vaut pour les deux
+    // découpages. L'un ou l'autre suffit à faire varier une hauteur.
+    const annotated = groupBy === 'day' && days && days.size > 0 ? days : undefined;
+    const collapses = collapsedKeys && collapsedKeys.size > 0;
+    if (!annotated && !collapses) return undefined;
+
     return (key: string): number => {
-      const day = days.get(key);
+      const day = annotated?.get(key);
+      const base = collapsedKeys?.has(key) ? GRID_COLLAPSED_HEADER_HEIGHT : GRID_HEADER_HEIGHT;
       return (
-        GRID_HEADER_HEIGHT +
+        base +
         (placeLabelOf(day) ? GRID_PLACE_HEIGHT : 0) +
         (day?.description ? GRID_DESCRIPTION_HEIGHT : 0)
       );
     };
-  }, [groupBy, days]);
+  }, [groupBy, days, collapsedKeys]);
+
+  // `undefined` tant que rien n'est replié — le cas de très loin le plus
+  // fréquent — pour que le layout ne se recalcule pas sur une fonction neuve à
+  // chaque rendu.
+  const isCollapsed = useMemo(() => {
+    if (!collapsedKeys || collapsedKeys.size === 0) return undefined;
+    return (key: string): boolean => collapsedKeys.has(key);
+  }, [collapsedKeys]);
 
   const layout = useMemo(
     () =>
@@ -124,8 +152,9 @@ export function useGridLayout(
         headerHeightFor,
         sectionGap: GRID_SECTION_GAP,
         groupBy,
+        isCollapsed,
       }),
-    [items, width, groupBy, headerHeightFor],
+    [items, width, groupBy, headerHeightFor, isCollapsed],
   );
 
   return {
@@ -143,28 +172,38 @@ export function useGridLayout(
  * lignes réelles du layout — dont le nombre de vignettes varie — et visent la
  * photo la plus proche horizontalement, là où un décalage d'index fixe ferait
  * dériver le curseur vers la gauche à chaque ligne.
+ *
+ * **Tout se joue dans l'espace des cellules placées, jamais dans celui des
+ * index de la liste d'origine.** Les deux coïncidaient tant que la grille
+ * montrait tout ; une section repliée les sépare. Un `currentIndex ± 1` y
+ * enverrait la sélection sur une vignette qui n'est nulle part dans le layout :
+ * plus rien à mettre en évidence, et `scrollSelectionIntoView` sans cible.
  */
 export function moveSelection(
   layout: Layout,
   currentIndex: number,
   direction: 'left' | 'right' | 'up' | 'down' | 'home' | 'end',
-  totalItems: number,
 ): number {
-  if (totalItems === 0) return -1;
-  if (currentIndex < 0) return 0;
+  // `layout.rows` est déjà dans l'ordre d'affichage, sections comprises.
+  const cells = layout.rows.flatMap((row) => row.cells);
+  if (cells.length === 0) return -1;
 
   switch (direction) {
     case 'home':
-      return 0;
+      return cells[0]!.index;
     case 'end':
-      return totalItems - 1;
-    case 'left':
-      return Math.max(0, currentIndex - 1);
-    case 'right':
-      return Math.min(totalItems - 1, currentIndex + 1);
+      return cells[cells.length - 1]!.index;
     default:
       break;
   }
+
+  const position = cells.findIndex((cell) => cell.index === currentIndex);
+  // Aucune sélection, ou une sélection que le repli de sa journée vient de
+  // faire disparaître : on repart de la première vignette encore visible.
+  if (position === -1) return cells[0]!.index;
+
+  if (direction === 'left') return cells[Math.max(0, position - 1)]!.index;
+  if (direction === 'right') return cells[Math.min(cells.length - 1, position + 1)]!.index;
 
   const rowIndex = layout.rows.findIndex((row) =>
     row.cells.some((cell) => cell.index === currentIndex),

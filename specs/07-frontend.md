@@ -158,7 +158,49 @@ sans DOM, ce qui est l'invariant de `justify.test.ts`.
 
 Ces deux constantes sont un **contrat avec `SectionHeader`**, qui doit tenir
 dedans : d'où les hauteurs de ligne fixées explicitement (`leading-5`) et la
-note clampée à deux lignes.
+note clampée à deux lignes. C'est l'**interligne** qui tient le contrat, jamais
+la taille de police : remonter le lieu et la note de 13 à 14 px ne touche à
+aucune des deux constantes tant que `leading-5` reste.
+
+### Sections repliées
+
+`LayoutOptions.isCollapsed?: (key) => boolean` replie une section : elle garde
+son en-tête, ne place aucune ligne, et sa hauteur vaut exactement
+`headerHeight` — le retrait du dernier `gap`, qui n'a de sens qu'après une
+ligne, est sauté. Les sections suivantes remontent d'autant.
+
+Le repli passe par le calcul et non par un `display: none` au rendu, pour la
+même raison que les hauteurs d'en-tête : `totalHeight` gouverne la barre de
+défilement et la virtualisation. Masquer les vignettes après coup laisserait la
+page haute de tout ce qu'elle n'affiche plus (D65).
+
+`LayoutSection` porte donc deux champs de plus :
+
+- **`count`**, le nombre de médias de la section. Il n'est pas déductible de
+  `rows` — repliée, la section n'en a plus, et c'est justement là que son
+  en-tête doit annoncer ce qu'elle cache.
+- **`collapsed`**, pour que l'en-tête oriente son chevron.
+
+Les cellules d'une section repliée **n'apparaissent nulle part**, ni dans ses
+`rows` ni dans `layout.rows`. C'est l'invariant dont dépend tout ce qui parcourt
+la grille : la virtualisation n'a rien à monter, et `moveSelection` rien à
+viser. `justify.test.ts` le verrouille, avec la remontée des sections suivantes
+et la conservation de `count`.
+
+Le repli vaut pour les deux découpages, mois compris : le restreindre au jour
+aurait demandé une condition de plus pour rien, et les clés ne se confondent
+pas (`2026-07` contre `2026-07-14`). `useGridLayout(items, groupBy, days,
+collapsedKeys)` le reçoit sous forme d'ensemble de clés, tenu en mémoire par
+`AlbumPage` — ni URL ni `localStorage` (D65).
+
+**Une section repliée change aussi de hauteur de base**
+(`GRID_COLLAPSED_HEADER_HEIGHT`, 36 px contre 56). Les 20 px que
+`GRID_HEADER_HEIGHT` réserve au-dessus du titre servent à le décoller des
+photos de la section précédente ; repliée, il n'y a plus de photos, et cette
+respiration devient un vide. Sans cet ajustement, sept journées repliées
+d'affilée s'étiraient sur des blancs — exactement ce que le repli venait
+supprimer. Le lieu et la note gardent leur coût, eux, puisqu'ils restent
+affichés : c'est tout l'intérêt d'une journée repliée.
 
 ### Par mois ou par jour — `GroupBy`
 
@@ -280,23 +322,41 @@ de regroupement, jamais au défilement.
 
 ### En-têtes de section — `components/SectionHeader.tsx`
 
-Chaque section rend un `SectionHeader` : la date, le lieu si les photos le
-portent, la note si quelqu'un en a écrit une, et le crayon d'édition pour un
-administrateur en découpage par jour.
+Chaque section rend un `SectionHeader` : la date, le nombre d'éléments, le lieu
+si les photos le portent, la note si quelqu'un en a écrit une, et le crayon
+d'édition pour un administrateur en découpage par jour.
 
+- **Le titre est un bouton de repli**, `aria-expanded` à l'appui, précédé d'un
+  chevron qui pivote. Le `button` est **dans** le `h2` et non l'inverse : un
+  `h2` est du contenu de flux, qu'un `button` n'a pas le droit de contenir, et
+  c'est le motif d'accordéon attendu par les lecteurs d'écran.
+- **Le compte s'affiche dans les deux états.** C'est lui qui rend le découpage
+  lisible déplié, et lui qui dit ce qu'une section repliée contient. L'unité
+  (« éléments ») tombe sous `sm` faute de place ; le nombre reste, et le nom
+  accessible du bouton porte l'ensemble.
 - **Le lieu affiché** est `place ?? autoPlaces.join(' · ')` — la saisie prime sur
   la déduction. Le calcul vit dans `placeLabelOf`, partagé avec le calcul de
-  hauteur : un lieu compté d'un côté et pas affiché de l'autre laisserait un
-  blanc, l'inverse ferait déborder l'en-tête sur les photos.
+  hauteur **et avec la visionneuse** : un lieu compté d'un côté et pas affiché
+  de l'autre laisserait un blanc, l'inverse ferait déborder l'en-tête sur les
+  photos.
 - **La note est clampée à deux lignes**, son texte entier restant dans `title`.
   Une hauteur libre rendrait le layout dépendant d'une mesure DOM (D49).
 - **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
   grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
   curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit
   exactement ce qu'on remplace.
-- **Le crayon n'apparaît qu'au survol de sa section**, et au focus clavier : un
-  crayon par journée, tous visibles à la fois, transformerait la grille en
-  formulaire.
+- **Le crayon ne s'efface que sous un pointeur fin** (`pointer-fine:opacity-0`).
+  Un crayon par journée, tous visibles à la fois, transformerait la grille en
+  formulaire — mais en Tailwind v4 `hover:` est déjà borné à
+  `@media (hover: hover)`, si bien qu'un `opacity-0` sec le rendait
+  **définitivement** hors d'atteinte au doigt : un administrateur sur téléphone
+  ne pouvait annoter aucune journée. Le masquage est donc réservé au seul
+  endroit où le survol peut le révéler, et le crayon reste visible sur tactile.
+
+  Le variant natif `pointer-fine:` plutôt qu'un `[@media(hover:hover)]:`
+  arbitraire, qui **n'était pas généré** : Tailwind n'extrayait pas le candidat,
+  la règle n'existait nulle part dans la feuille, et le correctif n'en était pas
+  un — il avait l'air juste dans le source et ne changeait rien à l'écran.
 
 La description de l'album, elle, s'affiche en tête de `<main>` en `max-w-prose`
 — elle était saisie depuis `/admin` sans être montrée nulle part. Sur
@@ -354,6 +414,15 @@ verticaux suivent les **lignes réelles** du layout, dont le nombre de vignettes
 varie, et visent la photo dont le centre horizontal est le plus proche. Un
 décalage d'index fixe ferait dériver le curseur vers la gauche à chaque ligne.
 
+Elle travaille **entièrement dans l'espace des cellules placées**, jamais dans
+celui des index de la liste d'origine — y compris `gauche`, `droite`, `Début` et
+`Fin`, qui valaient autrefois un simple `± 1`. Les deux espaces coïncidaient
+tant que la grille montrait tout ; une section repliée les sépare, et un
+`currentIndex + 1` enverrait la sélection sur une vignette absente du layout :
+plus rien à mettre en évidence, et `scrollSelectionIntoView` sans cible (D65).
+Une sélection introuvable — la journée qu'on vient de replier sous le curseur —
+repart de la première vignette encore visible.
+
 `scrollSelectionIntoView` ne défile que si la cellule sort du viewport, avec une
 marge de 24 px, et respecte `prefers-reduced-motion`.
 
@@ -363,6 +432,25 @@ inclure dans l'ordre de tabulation doublerait le parcours clavier.
 focus ou qu'un modificateur est enfoncé.
 
 ## Visionneuse — `components/Lightbox.tsx`
+
+- **L'en-tête porte le contexte de la journée, pas le nom du fichier** : la
+  date, le lieu, la note. Ouvrir une photo faisait jusque-là perdre ce que son
+  en-tête de section disait, alors que c'est lui qui donne son sens à l'image.
+  Le nom du fichier et l'horodatage exact n'ont pas disparu — ils sont à une
+  touche, dans le panneau `i`, où ils vivaient déjà.
+
+  Les libellés viennent de `dayKey`, `dayLabel` et `placeLabelOf`, **les mêmes
+  fonctions que la grille**. Une visionneuse qui calculerait sa date de son côté
+  finirait par annoncer autre chose que l'en-tête d'où l'on vient de cliquer.
+  `AlbumPage` active donc `useAlbumDays` dès qu'une photo est ouverte, et plus
+  seulement en découpage par jour ; la `queryKey` étant la même, un album déjà
+  par jour ne relance aucune requête.
+
+- **La progression est une barre, doublée du rapport chiffré**, comptée sur
+  `album.itemCount` et non sur la liste paginée, qui grandit en cours de
+  parcours (D66). Elle vit sous les icônes : c'est la première ligne qui manque
+  de place sur un téléphone, où cinq icônes plus la croix ne laissaient qu'une
+  quarantaine de pixels à la date.
 
 - Gèle `document.body.style.overflow` à l'ouverture, sinon la molette ferait
   défiler la grille sous l'image.

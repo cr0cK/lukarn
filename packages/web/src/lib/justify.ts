@@ -33,6 +33,15 @@ export interface LayoutOptions {
   sectionGap: number;
   /** Découpage en sections. Omis, c'est le mois — le défaut partagé. */
   groupBy?: GroupBy;
+  /**
+   * Sections repliées : elles gardent leur en-tête et perdent leurs lignes.
+   *
+   * Le repli passe par le calcul du layout plutôt que par un `display: none`
+   * côté rendu, pour la même raison que les hauteurs d'en-tête : la barre de
+   * défilement et la virtualisation lisent `totalHeight`. Masquer les vignettes
+   * après coup laisserait la page haute de tout ce qu'elle n'affiche plus.
+   */
+  isCollapsed?: (key: string) => boolean;
 }
 
 export interface LayoutCell {
@@ -60,6 +69,16 @@ export interface LayoutSection {
   headerHeight: number;
   height: number;
   rows: LayoutRow[];
+  /**
+   * Nombre de médias de la section.
+   *
+   * Porté par la section et non recompté depuis `rows` : une section repliée
+   * n'a plus de lignes, et c'est précisément là que son en-tête a besoin
+   * d'annoncer ce qu'elle cache.
+   */
+  count: number;
+  /** Repliée : `rows` est vide et `height` vaut exactement `headerHeight`. */
+  collapsed: boolean;
 }
 
 export interface Layout {
@@ -170,6 +189,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
     headerHeightFor,
     sectionGap,
     groupBy = DEFAULT_GROUP_BY,
+    isCollapsed,
   } = options;
 
   if (containerWidth <= 0 || items.length === 0) {
@@ -193,6 +213,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
     const sectionItems = items.slice(start, index);
     const sectionY = cursorY;
     const sectionHeaderHeight = headerHeightFor?.(key) || headerHeight;
+    const collapsed = isCollapsed?.(key) ?? false;
     let rowY = cursorY + sectionHeaderHeight;
     const rows: LayoutRow[] = [];
 
@@ -233,20 +254,27 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
       ratioSum = 0;
     };
 
-    sectionItems.forEach((item, offset) => {
-      const ratio = ratioOf(item);
-      buffer.push({ item, index: start + offset, ratio });
-      ratioSum += ratio;
+    // Repliée, la section ne place aucune ligne : ses cellules n'existent nulle
+    // part, ni dans `rows` ni dans `allRows`. C'est voulu — tout ce qui parcourt
+    // la grille (virtualisation, navigation clavier) lit ces tableaux, et
+    // n'aurait aucun moyen de savoir qu'une cellule est masquée autrement.
+    if (!collapsed) {
+      sectionItems.forEach((item, offset) => {
+        const ratio = ratioOf(item);
+        buffer.push({ item, index: start + offset, ratio });
+        ratioSum += ratio;
 
-      // La ligne est pleine dès que la hauteur nécessaire pour la remplir
-      // passe sous la hauteur cible.
-      const height = (containerWidth - gap * (buffer.length - 1)) / ratioSum;
-      if (height <= targetRowHeight) flush(true);
-    });
-    flush(false);
+        // La ligne est pleine dès que la hauteur nécessaire pour la remplir
+        // passe sous la hauteur cible.
+        const height = (containerWidth - gap * (buffer.length - 1)) / ratioSum;
+        if (height <= targetRowHeight) flush(true);
+      });
+      flush(false);
+    }
 
-    // `rowY` a avancé d'un `gap` de trop après la dernière ligne.
-    const sectionHeight = Math.max(0, rowY - gap - sectionY);
+    // `rowY` a avancé d'un `gap` de trop après la dernière ligne. Sans ligne du
+    // tout, ce retrait ferait remonter la section suivante sous l'en-tête.
+    const sectionHeight = collapsed ? sectionHeaderHeight : Math.max(0, rowY - gap - sectionY);
     sections.push({
       key,
       label: sectionLabelOf(key, groupBy),
@@ -254,6 +282,8 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
       headerHeight: sectionHeaderHeight,
       height: sectionHeight,
       rows,
+      count: sectionItems.length,
+      collapsed,
     });
     cursorY = sectionY + sectionHeight + sectionGap;
   }

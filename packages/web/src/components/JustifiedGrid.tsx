@@ -14,6 +14,8 @@ interface JustifiedGridProps {
   days: Map<string, AlbumDay>;
   /** Ouvre le crayon des en-têtes : administrateur, en découpage par jour. */
   canAnnotate: boolean;
+  /** Replie ou déplie la section, par sa clé. */
+  onToggleSection: (key: string) => void;
   selectedIndex: number;
   onSelect: (index: number) => void;
   onOpen: (index: number) => void;
@@ -34,6 +36,7 @@ export function JustifiedGrid({
   albumId,
   days,
   canAnnotate,
+  onToggleSection,
   selectedIndex,
   onSelect,
   onOpen,
@@ -60,6 +63,7 @@ export function JustifiedGrid({
             section={section}
             day={days.get(section.key)}
             editable={canAnnotate}
+            onToggle={() => onToggleSection(section.key)}
           />
 
           {section.rows

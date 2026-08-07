@@ -369,6 +369,77 @@ describe('hauteur d’en-tête variable', () => {
   });
 });
 
+describe('sections repliées', () => {
+  /** Six photos réparties sur trois jours consécutifs. */
+  const troisJours = Array.from({ length: 6 }, (_, index) =>
+    photo(`j${index}`, `2024-03-0${Math.floor(index / 2) + 1}T10:00:00.000Z`),
+  );
+  const parJour = { ...OPTIONS, groupBy: 'day' as const };
+
+  it('réduit la section à la hauteur de son en-tête, sans retrancher de gap', () => {
+    const layout = computeLayout(troisJours, {
+      ...parJour,
+      isCollapsed: (key) => key === '2024-03-01',
+    });
+
+    assert.equal(layout.sections[0]!.height, layout.sections[0]!.headerHeight);
+    assert.deepEqual(layout.sections[0]!.rows, []);
+  });
+
+  it('remonte les sections suivantes de ce que le repli a libéré', () => {
+    const base = computeLayout(troisJours, parJour);
+    const replie = computeLayout(troisJours, {
+      ...parJour,
+      isCollapsed: (key) => key === '2024-03-01',
+    });
+
+    const libere = base.sections[0]!.height - base.sections[0]!.headerHeight;
+    assert.ok(libere > 0);
+    assert.equal(replie.sections[1]!.y, base.sections[1]!.y - libere);
+    assert.equal(replie.totalHeight, base.totalHeight - libere);
+  });
+
+  it('retire les cellules repliées de toutes les lignes du layout', () => {
+    // C'est l'invariant dont dépend la navigation clavier : elle se déplace
+    // dans `layout.rows`, et n'a aucun autre moyen de savoir qu'une vignette
+    // est masquée.
+    const layout = computeLayout(troisJours, {
+      ...parJour,
+      isCollapsed: (key) => key === '2024-03-01',
+    });
+
+    const places = layout.rows.flatMap((row) => row.cells).map((cell) => cell.item.id);
+    assert.deepEqual(places, ['j2', 'j3', 'j4', 'j5']);
+  });
+
+  it('garde le compte de la section, seul témoin de ce qu’elle cache', () => {
+    const layout = computeLayout(troisJours, { ...parJour, isCollapsed: () => true });
+
+    assert.deepEqual(
+      layout.sections.map((section) => section.count),
+      [2, 2, 2],
+    );
+    assert.deepEqual(layout.rows, []);
+  });
+
+  it('empile trois en-têtes repliés sans les chevaucher', () => {
+    const layout = computeLayout(troisJours, { ...parJour, isCollapsed: () => true });
+
+    layout.sections.forEach((section, position) => {
+      assert.equal(section.collapsed, true);
+      const precedente = layout.sections[position - 1];
+      if (precedente) assert.ok(section.y >= precedente.y + precedente.height);
+    });
+  });
+
+  it('laisse le layout intact quand la fonction est absente', () => {
+    const layout = computeLayout(troisJours, parJour);
+
+    assert.equal(layout.sections[0]!.collapsed, false);
+    assert.equal(layout.sections[0]!.count, 2);
+  });
+});
+
 describe('targetRowHeightFor', () => {
   it('grandit avec la largeur disponible', () => {
     const widths = [400, 600, 1000, 1600, 2400];

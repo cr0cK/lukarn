@@ -43,18 +43,35 @@ export default function AlbumPage(): ReactElement {
     albumId,
     order,
   );
-  const { byDay } = useAlbumDays(albumId, groupBy === 'day');
-
-  const [selectedIndex, setSelectedIndex] = useState(-1);
-  const [showShortcuts, setShowShortcuts] = useState(false);
-
-  const grid = useGridLayout(items, groupBy, byDay);
 
   // La photo ouverte vit dans l'URL : le bouton Retour la referme, et un lien
   // partagé rouvre exactement la même vue.
   const openedId = searchParams.get('photo');
   const openedIndex = openedId ? items.findIndex((item) => item.id === openedId) : -1;
   const isOpen = openedIndex >= 0;
+
+  // La visionneuse porte le contexte de la journée, elle a donc besoin des
+  // notes même en découpage par mois. Même `queryKey` que la grille : ouvrir
+  // une photo depuis un album par jour ne relance aucune requête.
+  const { byDay } = useAlbumDays(albumId, groupBy === 'day' || isOpen);
+
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Repli des sections, par clé. En mémoire seule et volontairement : dans
+  // l'URL, la liste des jours repliés la rendrait illisible ; persisté, on
+  // rouvrirait un album vide des mois plus tard sans comprendre pourquoi.
+  const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(() => new Set());
+
+  const toggleSection = useCallback((key: string) => {
+    setCollapsedKeys((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, []);
+
+  const grid = useGridLayout(items, groupBy, byDay, collapsedKeys);
 
   // `photo`, `order` et `group` sont trois réglages indépendants de la même
   // URL : chaque écriture repart des paramètres courants, sinon ouvrir une
@@ -175,7 +192,7 @@ export default function AlbumPage(): ReactElement {
       const direction = directions[event.key as keyof typeof directions];
       if (direction) {
         event.preventDefault();
-        setSelectedIndex((current) => moveSelection(grid.layout, current, direction, items.length));
+        setSelectedIndex((current) => moveSelection(grid.layout, current, direction));
         return;
       }
 
@@ -303,6 +320,7 @@ export default function AlbumPage(): ReactElement {
             // Une note appartient à une journée : en découpage par mois, il n'y
             // aurait pas d'en-tête à qui l'accrocher.
             canAnnotate={Boolean(me?.admin) && groupBy === 'day'}
+            onToggleSection={toggleSection}
             selectedIndex={selectedIndex}
             onSelect={setSelectedIndex}
             onOpen={openAt}
@@ -323,6 +341,8 @@ export default function AlbumPage(): ReactElement {
           albumId={albumId}
           items={items}
           index={openedIndex}
+          total={album.data?.itemCount ?? items.length}
+          days={byDay}
           onIndexChange={showAt}
           onClose={closeLightbox}
           onNeedMore={loadMore}
