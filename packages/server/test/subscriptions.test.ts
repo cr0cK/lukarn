@@ -84,7 +84,8 @@ async function identification(cookie: string, email: string, nom: string): Promi
   assert.equal(asked.statusCode, 202, asked.body);
   await context.mailer.drain();
 
-  const code = /\b(\d{6})\b/.exec(boiteAuxLettres.at(-1)?.subject ?? '')?.[1];
+  // Le code est dans le corps, pas dans le sujet — voir D60.
+  const code = /\b(\d{6})\b/.exec(boiteAuxLettres.at(-1)?.text ?? '')?.[1];
   assert.ok(code, 'aucun code envoyé');
 
   const verified = await server.inject({

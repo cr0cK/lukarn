@@ -282,10 +282,18 @@ export function escapeHtml(value: string): string {
 /**
  * Code de vérification d'une adresse.
  *
- * Le code figure dans le sujet autant que dans le corps : sur un téléphone, la
- * notification d'arrivée du mail suffit alors à le lire sans ouvrir la boîte.
- * Aucun lien cliquable — un code se recopie dans l'onglet resté ouvert, là où
- * un lien ouvrirait une seconde session dans un autre navigateur.
+ * Le sujet nomme l'instance, pas le code (D60) : c'est l'hôte qui dit pourquoi
+ * ce message est arrivé, alors qu'un code dans le sujet se lit par-dessus une
+ * épaule et reste en clair dans l'historique des notifications.
+ *
+ * Aucun lien cliquable, pas même vers la galerie : un code se recopie dans
+ * l'onglet resté ouvert, là où un lien ouvrirait une seconde session dans un
+ * autre navigateur. L'hôte n'est donc mentionné qu'en texte.
+ *
+ * Le code est affiché d'un seul tenant, jamais groupé en « 123 456 » : `verify`
+ * exige six caractères après `trim()`, et un collage avec l'espace du milieu
+ * serait rejeté. L'aération passe par `letter-spacing`, qui ne touche pas à la
+ * chaîne copiée.
  */
 export function buildVerificationMail(
   email: string,
@@ -293,26 +301,41 @@ export function buildVerificationMail(
   code: string,
   env: Env,
 ): MailMessage {
-  const subject = `${code} — code de vérification`;
+  const host = new URL(env.publicUrl).host;
+  const subject = `Code de vérification — ${host}`;
 
   const text = [
     `Bonjour ${displayName},`,
     '',
-    `Ton code pour commenter sur ${env.publicUrl} est : ${code}`,
+    `Tu viens de renseigner cette adresse sur ${host} pour signer tes commentaires.`,
+    'Voici ton code :',
     '',
-    "Il est valable quinze minutes. Si tu n'as rien demandé, ignore ce message :",
-    "tant que le code n'est pas saisi, rien n'est associé à cette adresse.",
+    code,
+    '',
+    'Recopie-le dans la page restée ouverte. Il est valable quinze minutes et ne',
+    'sert qu’une fois.',
+    '',
+    '—',
+    "Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,",
+    "rien n'est associé à cette adresse. Ne le communique à personne.",
   ].join('\n');
 
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       <p style="margin: 0 0 16px;">Bonjour ${escapeHtml(displayName)},</p>
-      <p style="margin: 0 0 8px;">Ton code pour commenter :</p>
+      <p style="margin: 0 0 8px;">
+        Tu viens de renseigner cette adresse sur ${escapeHtml(host)} pour signer tes
+        commentaires. Voici ton code :
+      </p>
       <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
-      <p style="margin: 0 0 16px; color: #666;">Il est valable quinze minutes.</p>
+      <p style="margin: 0 0 24px; color: #666;">
+        Recopie-le dans la page restée ouverte. Il est valable quinze minutes et ne sert
+        qu’une fois.
+      </p>
+      <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
         Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,
-        rien n'est associé à cette adresse.
+        rien n'est associé à cette adresse. Ne le communique à personne.
       </p>
     </div>
   `.trim();

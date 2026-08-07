@@ -264,12 +264,36 @@ describe('composition des messages', () => {
     assert.ok(!versModeration.text.includes('unsubscribe'));
   });
 
-  it('met le code de vérification dans le sujet autant que dans le corps', () => {
+  it('garde le code de vérification hors du sujet, qui nomme l’instance', () => {
     const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', env);
-    // Sur un téléphone, la notification d'arrivée du mail suffit alors à lire le
-    // code sans ouvrir sa boîte.
-    assert.match(message.subject, /123456/);
+    // Un code dans le sujet se lit par-dessus une épaule et reste en clair dans
+    // l'historique des notifications ; l'hôte, lui, dit pourquoi ce mail arrive.
+    assert.ok(!message.subject.includes('123456'));
+    assert.match(message.subject, /photos\.exemple\.fr/);
     assert.match(message.text, /123456/);
+    assert.match(message.html, /123456/);
+  });
+
+  it('nomme l’instance dans les deux versions du corps', () => {
+    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', env);
+    // La version HTML avait décroché de la version texte, qui seule nommait
+    // l'instance — et c'est le HTML que la destinataire voit.
+    assert.match(message.text, /photos\.exemple\.fr/);
+    assert.match(message.html, /photos\.exemple\.fr/);
+  });
+
+  it('n’écrit pas le code groupé, qui ne se recolle pas dans le champ', () => {
+    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', env);
+    // `verify` exige six caractères après trim() : « 123 456 » collé serait rejeté.
+    assert.ok(!message.text.includes('123 456'));
+    assert.ok(!message.html.includes('123 456'));
+  });
+
+  it('n’offre aucun lien cliquable dans le mail de code', () => {
+    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', env);
+    // Un lien ouvrirait une seconde session dans un autre navigateur, alors que
+    // le code est attendu dans l'onglet resté ouvert.
+    assert.ok(!message.html.includes('<a '));
   });
 });
 

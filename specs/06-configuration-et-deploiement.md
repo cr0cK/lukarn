@@ -57,6 +57,14 @@ dizaine d'emails dans la journée. Un album n'est annonçable que si sa dernièr
 synchronisation **réussie** est calme depuis une heure ; le délai entre l'arrivée
 des photos et l'email est donc de une à deux heures.
 
+**Le mail de code fait exception aux deux autres.** Son sujet nomme l'hôte de
+`PUBLIC_URL` et **jamais le code** ([D60](./08-decisions.md)), et il ne porte
+aucun lien cliquable : l'hôte y figure en texte seulement, parce qu'un lien
+ouvrirait une seconde session dans un autre navigateur alors que le code est
+attendu dans l'onglet resté ouvert. Le corps rappelle le geste qui a déclenché
+l'envoi — renseigner cette adresse sur cet hôte — pour que la destinataire
+sache d'où vient ce message sans avoir à le deviner.
+
 **Résolution des chemins relatifs.** `loadDotEnv()` (`src/dotenv.ts`) remonte
 l'arborescence depuis le cwd **puis** depuis le module pour trouver un `.env`, et
 `loadEnv` prend le répertoire de ce fichier comme racine des chemins relatifs.
