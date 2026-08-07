@@ -61,11 +61,62 @@ L'application détient un seul jeton — celui du propriétaire — et sert les 
 | Balayage        | Photo précédente / suivante, au doigt           |
 | `?`             | Afficher cette liste                            |
 
-## Installation sur un VPS
+## How to — lancer en local
+
+Pour développer, ou pour voir tourner l'application sans VPS, sans nom de
+domaine et sans compte Google. Node ≥ 22 et pnpm suffisent.
+
+```bash
+pnpm install
+pnpm --filter @gdv/shared build   # avant tout le reste — voir ci-dessous
+```
+
+**Le build de `shared` n'est pas optionnel.** `@gdv/shared` s'expose par son
+`dist/`, pas par ses sources : sur un clone neuf, `pnpm dev` et
+`pnpm create-admin` échouent tous les deux sur
+`ERR_MODULE_NOT_FOUND … @gdv/shared/dist/index.js` tant qu'il n'a pas été
+construit. C'est la même raison qui impose l'ordre `shared` → `web` → `server`
+au `pnpm build` complet.
+
+Ensuite le `.env`, obligatoire même en local :
+
+```bash
+cp .env.example .env
+openssl rand -hex 32   # → SESSION_SECRET
+openssl rand -hex 32   # → TOKEN_KEY
+```
+
+Le serveur refuse de démarrer sans ces deux secrets. Le reste du fichier peut
+rester tel quel : le `PUBLIC_URL` par défaut (`http://localhost:8080`) convient
+au développement, et sans identifiants Google l'application démarre en annonçant
+simplement que Drive n'est pas configuré.
+
+```bash
+pnpm create-admin alexis   # premier compte, mot de passe demandé
+pnpm dev                   # API sur :8080, front sur :5173 (proxy /api)
+```
+
+**Sans compte Drive**, un jeu de données de démonstration remplit l'index et le
+cache avec des médias générés localement :
+
+```bash
+pnpm --filter @gdv/server seed-demo 300
+```
+
+Redémarre le serveur ensuite : le cache disque n'est inventorié qu'au démarrage,
+les vignettes que `seed-demo` vient d'écrire lui sont invisibles jusque-là.
+
+Avant de proposer un changement :
+
+```bash
+pnpm verify   # typecheck, lint, tests, et contrôle des specs
+```
+
+## How to — déployer sur un VPS
 
 Il faut un VPS Debian ou Ubuntu et un nom de domaine dont l'enregistrement `A`
 — et `AAAA` si le VPS a une IPv6 — pointe déjà sur son adresse. Le certificat
-TLS est obtenu automatiquement à partir de ce nom : sans DNS en place, l'étape 3
+TLS est obtenu automatiquement à partir de ce nom : sans DNS en place, l'étape 5
 échoue.
 
 **Le gabarit : 2 vCPU, 4 Go de RAM, 60 Go de disque.** Ce n'est pas une machine
@@ -80,20 +131,91 @@ de démonstration, et deux postes expliquent l'écart :
   `/admin`), auxquels s'ajoutent l'image Docker et le système. 60 Go laisse de
   la marge ; 20 Go de disque font tourner l'éviction LRU en permanence.
 
-### Créer la machine (Scaleway)
+### 0. Sur le poste d'administration
 
-Depuis un **clone local** du dépôt : `cloud-init=@…` lit le fichier sur ta
-machine, pas sur le serveur, qui n'existe pas encore. Les noms de gammes et les
-tarifs Scaleway bougent, **vérifie-les au moment de provisionner**
-(`scw instance server-type list zone=fr-par-2`) ; au moment où ces lignes sont
-écrites, `PLAY2-NANO` correspond au gabarit ci-dessus.
+Une clé et un client VPN, à mettre en place **avant** de créer quoi que ce soit.
+
+```bash
+# 1. Une clé ed25519, celle que le cloud-init installera sur le serveur.
+ssh-keygen -t ed25519
+
+# 2. Tailscale — sur le poste AUSSI, pas seulement sur le serveur.
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo systemctl enable --now tailscaled
+sudo tailscale up          # ouvre une URL : c'est là que le compte se crée
+```
+
+**Tailscale des deux côtés, sinon l'étape 2 ne peut pas aboutir.** C'est un VPN
+maillé : chaque machine qui s'y connecte rejoint le même réseau privé, y reçoit
+une adresse `100.x.y.z` stable et un nom (`galerie.<tailnet>.ts.net`). Le
+`ssh deploy@<nom-tailnet>` qui sert de porte d'administration ne fonctionne que
+si **les deux** machines sont sur ce réseau — un serveur seul dessus ne se joint
+de nulle part. Rien à ouvrir en entrée pour autant : Tailscale sort en UDP 41641
+et se rabat sur un relais DERP si le NAT l'en empêche.
+
+Tailscale n'est pas une dépendance de l'application : c'est le choix de ce
+dépôt pour l'accès d'administration, parce qu'il ferme le port 22 sans rien
+ouvrir en échange. WireGuard nu, un bastion, ou un port 22 filtré par IP source
+rendent le même service — l'étape 2 est alors à adapter, le reste ne bouge pas.
+
+Enfin, **recopier la clé publique dans `deploy/cloud-init.yaml`**, à la place de
+la ligne `ssh-ed25519 AAAA_REMPLACER…` :
+
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+
+Laissée telle quelle, le compte `deploy` du serveur n'acceptera aucune
+connexion.
+
+### 1. Créer la machine
+
+N'importe quel hébergeur convient, du moment qu'il propose une image **Debian 12+
+ou Ubuntu LTS** et accepte un **cloud-init** — appelé « user data » ou
+« cloud-config » selon les interfaces. C'est un format standard, pas une
+particularité d'un fournisseur.
+
+Trois choses à obtenir, quelle que soit la console utilisée :
+
+| À faire                                                                   | Pourquoi                                                                 |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Passer `deploy/cloud-init.yaml` en « user data »                          | C'est lui qui fait toute l'étape 2 : compte, pare-feu, Docker, Tailscale |
+| Ouvrir **80/tcp, 443/tcp, 443/udp**, et **22/tcp le temps de l'amorçage** | 80 sert au défi ACME, 443/udp à HTTP/3. Le 22 se referme à l'étape 2     |
+| Relever l'IP publique et **poser l'enregistrement `A` tout de suite**     | Let's Encrypt vérifie le nom au premier démarrage, pas plus tard         |
+
+Le fichier est lu **depuis un clone local** du dépôt, pas depuis le serveur, qui
+n'existe pas encore :
 
 ```bash
 git clone <ce-dépôt> && cd googledrive-viewer
-scw init                                    # une fois, pour la clé d'API
+```
 
-# Le groupe de sécurité : tout fermé en entrée, sauf le nécessaire. 22 y figure
-# le temps de l'amorçage, et s'en retire une fois Tailscale en place (voir plus bas).
+<details>
+<summary>Exemple avec un CLI d'hébergeur</summary>
+
+Aucun de ces fournisseurs n'est requis ni recommandé — ce sont des illustrations
+de la même opération. Les gammes, les tarifs et les noms d'images bougent :
+les vérifier au moment de provisionner.
+
+**Hetzner** (`hcloud`) :
+
+```bash
+hcloud server create --name galerie --type cx22 --image debian-12 \
+  --ssh-key <nom-de-la-cle> --user-data-from-file deploy/cloud-init.yaml
+hcloud firewall create --name galerie
+# puis ouvrir 22, 80, 443/tcp et 443/udp sur ce pare-feu
+```
+
+**DigitalOcean** (`doctl`) :
+
+```bash
+doctl compute droplet create galerie --image debian-12-x64 --size s-2vcpu-4gb \
+  --ssh-keys <empreinte> --user-data-file deploy/cloud-init.yaml
+```
+
+**Scaleway** (`scw`) :
+
+```bash
 scw instance security-group create name=galerie zone=fr-par-2 \
   inbound-default-policy=drop outbound-default-policy=accept
 SG=$(scw instance security-group list name=galerie zone=fr-par-2 -o json | jq -r '.[0].id')
@@ -104,58 +226,61 @@ done
 scw instance security-group create-rule security-group-id=$SG zone=fr-par-2 \
   direction=inbound action=accept protocol=UDP dest-port-from=443   # HTTP/3
 
-# La machine. `cloud-init=@…` fait tout le § 0 ci-dessous.
 scw instance server create name=galerie zone=fr-par-2 \
   type=PLAY2-NANO image=debian_bookworm \
   root-volume=b_ssd:60G ip=new security-group-id=$SG \
   cloud-init=@deploy/cloud-init.yaml
 ```
 
-Relever l'IP publique rendue par la commande, et **poser l'enregistrement `A`
-avant la suite** : Let's Encrypt vérifie le nom au premier démarrage.
+Une console web fait la même chose : le champ « user data » ou « cloud-config »
+attend le contenu de `deploy/cloud-init.yaml`, et le pare-feu se règle à côté.
 
-### 0. Préparer la machine
+</details>
 
-**Avec le cloud-init** — `deploy/cloud-init.yaml`, passé à la création
-ci-dessus. Une seule chose à faire avant : y remplacer la ligne
-`ssh-ed25519 AAAA_REMPLACE_MOI…` par le contenu de ton `~/.ssh/id_ed25519.pub`.
-Il pose le compte `alexis` (sudo, par clé, sans mot de passe), les mises à jour
-de sécurité automatiques, Docker, `rclone`, Tailscale, et un `ufw` qui ne laisse
-passer que 22, 80 et 443.
+### 2. Rejoindre le tailnet, puis fermer SSH
 
-**Puis fermer SSH sur l'interface publique.** Le cloud-init installe Tailscale
-mais ne l'authentifie pas — cela demande de valider une URL dans un navigateur.
-Tant que ce n'est pas fait, il n'y a qu'un chemin vers la machine, et le fermer
-la rend inatteignable. L'ordre :
+Le cloud-init passé à la création a déjà tout posé : le compte `deploy` (sudo,
+par clé, sans mot de passe), les mises à jour de sécurité automatiques, Docker,
+`rclone`, Tailscale, et un `ufw` qui ne laisse passer que 22, 80 et 443. Il
+n'installe **ni Node ni pnpm** — tout ce qui tourne sur cette machine tourne en
+conteneur, et les commandes d'administration passent par `docker compose`.
+
+**Reste à authentifier Tailscale, puis à fermer SSH sur l'interface publique.**
+Le cloud-init installe Tailscale mais ne l'authentifie pas — cela demande de
+valider une URL dans un navigateur, c'est une action humaine. Tant que ce n'est
+pas fait, il n'y a qu'un chemin vers la machine, et le fermer la rend
+inatteignable. L'ordre :
 
 ```bash
-ssh alexis@<ip-publique>
+ssh deploy@<ip-publique>
 sudo tailscale up                      # ouvre une URL à valider
 
-# Dans un SECOND terminal, sans fermer le premier :
-ssh alexis@<nom-tailnet>               # doit fonctionner
+# Dans un SECOND terminal, sans fermer le premier. Suppose le poste sur le
+# tailnet (§ 0) : sinon ce nom ne résout nulle part.
+ssh deploy@<nom-tailnet>               # doit fonctionner
 
 # Alors seulement, dans le premier :
 sudo ufw delete allow OpenSSH
 sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
   /etc/ssh/sshd_config.d/99-durcissement.conf
 sudo systemctl reload ssh
-
-# Et depuis ta machine, retirer 22 du groupe de sécurité. `list-rules` donne l'id.
-scw instance security-group list-rules security-group-id=$SG zone=fr-par-2
-scw instance security-group delete-rule security-group-id=$SG zone=fr-par-2 \
-  security-group-rule-id=<id-de-la-règle-22>
 ```
 
-> **Ne ferme pas la porte par laquelle tu es entré avant d'avoir franchi
+Puis retirer la règle 22 du pare-feu de l'hébergeur, s'il en propose un en amont
+de la machine — c'est le cas de la plupart, sous le nom de groupe de sécurité,
+de firewall ou de network rules. `ufw` seul suffit à bloquer le port ; la règle
+en amont évite simplement que le paquet arrive jusque-là.
+
+> **Ne pas fermer la porte par laquelle on est entré avant d'avoir franchi
 > l'autre**, depuis un terminal distinct. C'est le seul moment de cette
 > installation où une faute de frappe coûte une réinstallation. Filet de
-> secours : la console série Scaleway (`scw instance server console`), qui ne
-> passe pas par le réseau de l'instance.
+> secours : la console hors-réseau de l'hébergeur — console série, KVM ou VNC
+> selon les cas. **Vérifier qu'elle existe et qu'elle s'ouvre avant de fermer
+> quoi que ce soit** : tous n'en fournissent pas.
 
 Tailscale ne demande **aucune ouverture entrante** : il sort en UDP 41641 et se
-rabat sur un relais DERP si le NAT l'en empêche. Le groupe de sécurité et `ufw`
-peuvent rester en « tout fermé sauf 80 et 443 ».
+rabat sur un relais DERP si le NAT l'en empêche. Le pare-feu de l'hébergeur et
+`ufw` peuvent rester en « tout fermé sauf 80 et 443 ».
 
 <details>
 <summary>Sans cloud-init — un autre hébergeur, ou une machine déjà créée</summary>
@@ -167,8 +292,8 @@ des tentatives de connexion SSH en continu, quelques milliers par jour. Elles
 sont sans objet dès qu'aucun mot de passe n'est accepté.
 
 ```bash
-adduser alexis && adduser alexis sudo
-rsync --archive --chown=alexis:alexis ~/.ssh /home/alexis   # reprend ta clé
+adduser deploy && adduser deploy sudo
+rsync --archive --chown=deploy:deploy ~/.ssh /home/deploy   # reprend la clé
 ```
 
 ```bash
@@ -183,7 +308,7 @@ systemctl restart ssh
 ```
 
 > **Garde la session root ouverte** et vérifie dans un **second** terminal que
-> `ssh alexis@…` fonctionne avant de la fermer.
+> `ssh deploy@…` fonctionne avant de la fermer.
 
 **Le pare-feu.** Trois ports ouverts, rien d'autre. L'application n'écoute sur
 aucune interface publique — seul Caddy est joignable — mais un pare-feu couvre
@@ -212,18 +337,18 @@ dpkg-reconfigure -plow unattended-upgrades
 
 ```bash
 curl -fsSL https://get.docker.com | sh
-usermod -aG docker alexis   # se déconnecter/reconnecter pour que ça prenne
+usermod -aG docker deploy   # se déconnecter/reconnecter pour que ça prenne
 ```
 
-Ajouter `alexis` au groupe `docker` équivaut à lui donner root sur la machine —
+Ajouter `deploy` au groupe `docker` équivaut à lui donner root sur la machine —
 c'est déjà le cas, il est `sudo`. Sur un serveur partagé avec quelqu'un qui ne
 doit pas l'être, préférer `sudo docker`.
 
 </details>
 
-La suite se fait avec le compte `alexis`.
+La suite se fait avec le compte `deploy`.
 
-### 1. Donner au serveur l'accès à ton Drive
+### 3. Donner au serveur l'accès à ton Drive
 
 Deux façons, au choix. La seconde évite l'écran d'avertissement de Google et
 n'a rien à renouveler : c'est celle à préférer pour une installation neuve.
@@ -301,10 +426,10 @@ demande d'autorisation.
    de `/api/oauth/callback`, par exemple :
    `https://photos.exemple.fr/api/oauth/callback`
 
-### 2. Configuration
+### 4. Configuration
 
-**Sur le serveur**, avec le compte `alexis` — le clone de l'étape précédente
-était sur ta machine, pour le cloud-init.
+**Sur le serveur**, avec le compte `deploy` — le clone de l'étape 1 était sur le
+poste d'administration, pour le cloud-init.
 
 ```bash
 git clone <ce-dépôt> && cd googledrive-viewer
@@ -313,22 +438,24 @@ cp .env.example .env
 # Générer les deux secrets et les coller dans .env
 openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 32   # TOKEN_KEY
-# Renseigner aussi PUBLIC_URL, puis selon l'option retenue à l'étape 1 :
+# Renseigner aussi PUBLIC_URL, puis selon l'option retenue à l'étape 3 :
 #   GOOGLE_SERVICE_ACCOUNT_FILE  (compte de service)
 #   GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET  (OAuth)
-# SMTP_URL et MAIL_FROM : nécessaires aux commentaires — voir l'étape 4
-
-pnpm install
-pnpm create-admin alexis  # premier administrateur, mot de passe demandé
+# SMTP_URL et MAIL_FROM : nécessaires aux commentaires — voir l'étape 6
 ```
+
+Il n'y a **pas de `pnpm install` ici** : la machine n'a ni Node ni pnpm, et n'en
+a pas besoin. Le `docker compose up --build` de l'étape suivante construit tout
+dans l'image, et le premier administrateur se crée depuis le conteneur.
 
 Les comptes, les albums et les réglages s'administrent ensuite **depuis
 `/admin`**, sans éditer de fichier ni redémarrer.
 
 `config/albums.example.yaml` reste utilisable pour **amorcer** une installation
 neuve d'un coup : copié en `config/albums.yaml` (avec des empreintes produites
-par `pnpm hash-password`), il est repris en base au premier démarrage, puis plus
-jamais relu. Inutile si tu passes par `create-admin`.
+par `pnpm hash-password`, **depuis un poste de développement** — la commande
+demande pnpm), il est repris en base au premier démarrage, puis plus jamais
+relu. Inutile si tu passes par `create-admin`.
 
 Chaque album pointe un dossier Drive par son `folderId` : le segment après
 `/folders/` dans l'URL du dossier.
@@ -344,7 +471,7 @@ veux un album par voyage, puisque `recursive: true` embarque tous les
 sous-dossiers — et copie le segment de son URL. Cet identifiant survit aux
 renommages et aux déplacements.
 
-### 3. Démarrage
+### 5. Démarrage et premier administrateur
 
 ```bash
 docker compose up -d --build
@@ -374,7 +501,32 @@ publication locale — `ports: ['127.0.0.1:8080:8080']` —, puis proxifier vers
 elle. Les en-têtes de sécurité sont posés par l'application, ils suivent quel
 que soit le frontal.
 
-### 4. Emails — facultatif, mais nécessaire aux commentaires
+**Le premier administrateur**, une fois les conteneurs debout. La commande
+`pnpm create-admin` du développement local n'a pas d'équivalent ici : il n'y a
+pas de pnpm sur la machine. Le script vit dans l'image, compilé, et se lance
+dans le conteneur :
+
+```bash
+docker compose exec app node packages/server/dist/scripts/create-admin.js alexis
+```
+
+Le mot de passe est demandé sans être affiché. Le passer en argument
+(`… create-admin.js alexis monSecret`) marche aussi mais le laisse dans
+l'historique du shell.
+
+Écrire en base pendant que l'application tourne est sans danger : `ConfigRepo`
+surveille `PRAGMA data_version` et reconstruit son instantané dès qu'une
+écriture vient d'ailleurs. C'est vrai des processus **distincts** seulement —
+ce que `docker compose exec` garantit.
+
+Si tu préfères créer le compte avant même le premier démarrage, `run` fait la
+même chose sans que `app` tourne :
+
+```bash
+docker compose run --rm app node packages/server/dist/scripts/create-admin.js alexis
+```
+
+### 6. Emails — facultatif, mais nécessaire aux commentaires
 
 Sans serveur d'envoi, personne ne peut commenter : le code qui vérifie une
 adresse part par email. Les annonces de nouvelles photos ne partent pas non plus.
@@ -425,10 +577,10 @@ docker run -d --rm -p 1025:1025 -p 8025:8025 axllent/mailpit
 Mailpit accepte tout, ne relaie rien, et affiche les messages sur
 `http://localhost:8025`.
 
-### 5. Connecter le Drive
+### 7. Connecter le Drive
 
 En **compte de service**, il n'y a rien à faire ici : l'accès vient du partage
-du dossier (étape 1). Cette étape ne concerne que l'**option B**, et se fait une
+du dossier (étape 3). Cette étape ne concerne que l'**option B**, et se fait une
 seule fois, par le propriétaire du Drive :
 
 1. Ouvrir `https://photos.exemple.fr` et se connecter avec un compte administrateur.
@@ -454,7 +606,7 @@ identifiant et leur mot de passe, sans jamais passer par Google.
 | Être prévenu des commentaires        | Renseigner l'adresse de modération dans `/admin`                                                                                                                                            |
 | Annoter une journée                  | Ouvrir l'album **regroupé par jour**, survoler la date, cliquer le crayon. Le découpage par défaut se règle par album dans `/admin`                                                         |
 | Couper le géocodage des lieux        | `GEOCODING_URL=` (vide) dans `.env`. Par défaut, des coordonnées arrondies au kilomètre partent vers Nominatim/OSM pour nommer les journées ; une instance Nominatim privée se met là aussi |
-| Mot de passe administrateur perdu    | `pnpm reset-password <identifiant>` sur le serveur                                                                                                                                          |
+| Mot de passe administrateur perdu    | `docker compose exec app node packages/server/dist/scripts/reset-password.js <identifiant>` — ferme aussi ses sessions ouvertes                                                             |
 | Mettre à jour                        | `./deploy/deploy.sh` — sauvegarde, reconstruit, et **attend** que la porte de santé repasse au vert                                                                                         |
 | Sauvegarder                          | `./deploy/backup.sh` — le volume `gdv-data` **et** le `.env`, voir « Sauvegarde » plus bas. `gdv-cache` est régénérable                                                                     |
 | Consulter les logs                   | `docker compose logs -f` (ou `logs -f caddy` pour le certificat)                                                                                                                            |
@@ -470,27 +622,6 @@ seul, qu'il faut sauvegarder.
 Les albums sont resynchronisés automatiquement selon l'intervalle réglé dans
 `/admin`.
 Rien n'est jamais écrit dans Drive : la portée demandée est en lecture seule.
-
-## Développement
-
-```bash
-pnpm install
-pnpm --filter @gdv/server dev    # API sur :8080
-pnpm --filter @gdv/web dev       # front sur :5173, proxy /api vers :8080
-```
-
-Pour travailler sur l'interface sans compte Drive, un jeu de données de
-démonstration génère des médias et les images correspondantes :
-
-```bash
-pnpm --filter @gdv/server seed-demo 300
-```
-
-Vérifications :
-
-```bash
-pnpm typecheck && pnpm lint && pnpm test
-```
 
 ## Architecture
 
@@ -567,16 +698,17 @@ protège de rien. Sans `--local`, le script recopie l'archive par `rclone` vers
 un remote configuré **hors du dépôt** :
 
 ```bash
-rclone config     # remote « scaleway », type s3, fournisseur Scaleway
-# Un autre nom ? GDV_BACKUP_REMOTE=mon-remote:mon-bucket ./deploy/backup.sh
+rclone config     # n'importe quel backend : S3 et compatibles, B2, SFTP…
+# Le remote par défaut est `sauvegardes:gdv`. Un autre nom ?
+# GDV_BACKUP_REMOTE=mon-remote:mon-bucket ./deploy/backup.sh
 ```
 
 **Automatiser.** Une ligne de `crontab -e` suffit pour une installation
 personnelle — pas d'unité systemd à écrire :
 
 ```cron
-# Sauvegarde quotidienne à 4 h, journal dans /home/alexis/sauvegarde.log
-0 4 * * * cd /home/alexis/googledrive-viewer && ./deploy/backup.sh >> /home/alexis/sauvegarde.log 2>&1
+# Sauvegarde quotidienne à 4 h, journal dans /home/deploy/sauvegarde.log
+0 4 * * * cd /home/deploy/googledrive-viewer && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
 ```
 
 `gdv-cache` n'a pas à être sauvegardé : il se régénère.

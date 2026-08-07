@@ -1,12 +1,12 @@
 #cloud-config
 # Amorçage d'un VPS Debian 12+ / Ubuntu LTS pour la visionneuse.
 #
-#   scw instance server create \
-#     type=PLAY2-NANO zone=fr-par-2 image=debian_bookworm \
-#     root-volume=b_ssd:60G ip=new name=galerie \
-#     cloud-init=@deploy/cloud-init.yaml
+# Ce fichier est du cloud-init standard : il se passe en « user data » à la
+# création de la machine, par n'importe quel hébergeur qui l'accepte — la
+# quasi-totalité le fait, sous ce nom ou sous celui de « cloud-config ». Le
+# README donne la commande exacte pour quelques-uns ; aucun n'est requis.
 #
-# À la fin de ce fichier, la machine a : un compte `alexis` sudo par clé, les
+# À la fin de ce fichier, la machine a : un compte `deploy` sudo par clé, les
 # mises à jour de sécurité automatiques, Docker, Tailscale installé mais **non
 # authentifié**, et un pare-feu qui laisse passer 22, 80 et 443.
 #
@@ -19,9 +19,9 @@
 # de second chemin. Le port 22 reste donc ouvert à l'amorçage, et se ferme à la
 # main une fois l'autre porte vérifiée :
 #
-#   1. ssh alexis@<ip-publique>
+#   1. ssh deploy@<ip-publique>
 #   2. sudo tailscale up            (ouvre une URL à valider dans un navigateur)
-#   3. dans un SECOND terminal : ssh alexis@<nom-tailnet>   ← doit marcher
+#   3. dans un SECOND terminal : ssh deploy@<nom-tailnet>   ← doit marcher
 #   4. seulement alors, dans le premier :
 #        sudo ufw delete allow OpenSSH
 #        sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
@@ -31,29 +31,30 @@
 # Même précaution qu'au § 0 du README : on ne ferme jamais la porte par
 # laquelle on est entré avant d'avoir franchi l'autre, depuis un terminal
 # distinct. Si malgré tout la machine devient injoignable, le filet est la
-# **console série Scaleway** (`scw instance server console`), qui ne passe pas
-# par le réseau de l'instance.
+# **console de secours de l'hébergeur** — console série, KVM ou VNC selon les
+# cas —, qui ne passe pas par le réseau de l'instance. Vérifier qu'elle existe
+# avant de fermer quoi que ce soit.
 #
 # Tailscale ne demande aucune ouverture entrante : il sort en UDP 41641 et se
 # rabat sur un relais DERP si le NAT l'empêche. La règle `allow outgoing`
 # ci-dessous suffit.
 # ---------------------------------------------------------------------------
 
-# `default` conserve le compte que l'image prévoit et les clés que Scaleway y
-# injecte à la création. Sans lui, déclarer `users:` les remplace purement et
+# `default` conserve le compte que l'image prévoit et les clés que l'hébergeur
+# y injecte à la création. Sans lui, déclarer `users:` les remplace purement et
 # simplement — et si la clé ci-dessous est mal recopiée, plus personne n'entre.
 users:
   - default
-  - name: alexis
+  - name: deploy
     shell: /bin/bash
     groups: [sudo]
     sudo: 'ALL=(ALL) NOPASSWD:ALL'
     lock_passwd: true
     ssh_authorized_keys:
-      # REMPLACE CETTE LIGNE par le contenu de ton `~/.ssh/id_ed25519.pub`.
-      # Laissée telle quelle, elle est inutilisable : le compte `alexis`
+      # REMPLACER CETTE LIGNE par le contenu de son `~/.ssh/id_ed25519.pub`.
+      # Laissée telle quelle, elle est inutilisable : le compte `deploy`
       # n'accepterait aucune connexion.
-      - 'ssh-ed25519 AAAA_REMPLACE_MOI_PAR_TA_CLE_PUBLIQUE alexis@portable'
+      - 'ssh-ed25519 AAAA_REMPLACER_PAR_LA_CLE_PUBLIQUE cloud-init@example'
 
 # Root par clé reste possible pendant l'amorçage : c'est le second chemin tant
 # que Tailscale n'est pas authentifié. L'étape 4 ci-dessus le referme.
@@ -94,8 +95,8 @@ runcmd:
   - ['systemctl', 'restart', 'ssh']
 
   - 'curl -fsSL https://get.docker.com | sh'
-  # Équivaut à donner root sur la machine — `alexis` l'a déjà par sudo.
-  - ['usermod', '-aG', 'docker', 'alexis']
+  # Équivaut à donner root sur la machine — `deploy` l'a déjà par sudo.
+  - ['usermod', '-aG', 'docker', 'deploy']
 
   # Installé, pas authentifié : `sudo tailscale up` est une action humaine, elle
   # demande de valider une URL dans un navigateur.
@@ -114,6 +115,6 @@ runcmd:
 
 final_message: |
   Machine prête après $UPTIME s.
-  Suite : ssh alexis@<ip>, puis `sudo tailscale up`, puis vérifier
-  `ssh alexis@<nom-tailnet>` dans un second terminal AVANT de fermer le port 22
+  Suite : ssh deploy@<ip>, puis `sudo tailscale up`, puis vérifier
+  `ssh deploy@<nom-tailnet>` dans un second terminal AVANT de fermer le port 22
   (`sudo ufw delete allow OpenSSH`). Voir l'en-tête de deploy/cloud-init.yaml.

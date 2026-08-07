@@ -4,7 +4,12 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**'],
+    // `.claude/worktrees/` contient des worktrees git — d'autres branches du
+    // même dépôt, montées sur disque. Les analyser fait relire les mêmes
+    // fichiers dans un état arbitraire, et suffit à faire échouer `pnpm lint`,
+    // donc `pnpm verify` et le hook `pre-push`, sans qu'aucun fichier suivi
+    // n'ait de problème.
+    ignores: ['**/dist/**', '**/node_modules/**', '.claude/worktrees/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

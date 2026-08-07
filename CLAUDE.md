@@ -103,6 +103,36 @@ le dépôt distant.
 - Le contrat d'API vit dans `packages/shared` ; le front ne redéclare jamais une
   forme de réponse de son côté.
 
+## Ton de la documentation et des PR
+
+Ce dépôt part en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
+l'équipe qui l'a écrit.
+
+**Commits et pull requests : en anglais.** C'est la seule exception à la règle
+« français partout » ci-dessus — le code, les tests, l'interface et les specs
+restent en français ; l'historique git et les PR, qui sont la porte d'entrée
+d'un contributeur, sont en anglais.
+
+**Une PR dit ce qu'elle apporte ou corrige, pas ce que son auteur a vécu.**
+Concrètement :
+
+- Pas de `I`, pas de `we`, pas de récit de la session. Le sujet grammatical est
+  le code, le comportement, l'utilisateur — jamais celui qui a tapé.
+- **Court.** L'intention en tête, en une phrase ; le problème puis le correctif ;
+  deux à quatre puces à l'échelle du sous-système. La profondeur — alternatives
+  écartées, vérifications, chiffres — va dans un unique `<details>` replié.
+- Pas de restitution fichier par fichier du diff : l'onglet Files le fait mieux.
+
+**Aucun hébergeur, aucun service tiers n'est présenté comme le bon choix** (D63).
+La documentation énonce ce qu'il faut obtenir ; les commandes propres à un
+fournisseur vivent dans un bloc replié, à égalité avec les autres. Un composant
+nommé dans le corps du texte — Tailscale, Caddy, Let's Encrypt — doit être un
+choix d'architecture assumé et documenté comme remplaçable, pas une habitude.
+
+**Rien de nominatif dans ce qui s'exécute.** Un compte système porte un rôle
+(`deploy`), pas un prénom. Les identifiants d'exemple des specs et des tests
+sont une autre affaire : ils restent tels quels.
+
 ## Pièges à connaître
 
 - **Le serveur inventorie le cache disque au démarrage** (`MediaCache.load()`).
