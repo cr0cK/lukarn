@@ -55,6 +55,17 @@ describe('affichage pendant le chargement', () => {
     assert.equal(overlay.error, true);
   });
 
+  it("arrête l'indicateur d'une vidéo que le navigateur ne sait pas lire", () => {
+    // Régression déjà survenue, sur une vidéo HEVC d'iPhone comme sur un Drive
+    // indisponible : la balise `<video>` n'écoutait pas `error`, donc l'attente
+    // ne se terminait jamais. Une vidéo n'ayant pas d'aperçu serveur, elle
+    // passe toujours `measured: false` — c'est la combinaison à protéger.
+    const overlay = previewOverlay({ loaded: false, failed: true, measured: false });
+
+    assert.equal(overlay.error, true);
+    assert.equal(overlay.spinner, false);
+  });
+
   it('ne montre jamais deux états à la fois', () => {
     for (const loaded of [false, true]) {
       for (const failed of [false, true]) {

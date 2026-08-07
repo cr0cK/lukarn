@@ -590,8 +590,11 @@ focus ou qu'un modificateur est enfoncé.
 - Prend le focus à l'ouverture et le **rend à l'élément précédent** à la
   fermeture.
 - Vidéos : `<video controls autoPlay playsInline>` sur `/original`, seek natif
-  par `Range`. Photos : `ZoomableImage`, remonté à chaque photo (`key={item.id}`)
-  pour réinitialiser zoom et cadrage sans les remettre à zéro à la main.
+  par `Range`. `error` remplace la balise par un message et un bouton de
+  téléchargement — le fichier reste lisible ailleurs même quand ce navigateur
+  n'en décode pas le codec ([D79](./08-decisions.md)). Photos :
+  `ZoomableImage`, remonté à chaque photo (`key={item.id}`) pour réinitialiser
+  zoom et cadrage sans les remettre à zéro à la main.
 - Le téléchargement passe par une ancre synthétique plutôt que `window.open` :
   pas de blocage de popup, et le navigateur gère sa barre de téléchargement.
 - `SidePanel` n'est monté qu'à l'ouverture, et la position EXIF est liée vers
@@ -826,6 +829,13 @@ Les invariants sont vérifiés sur toutes les combinaisons
 (`packages/web/test/preview.test.ts`) : un aperçu n'est jamais montré sans
 indicateur, un échec exclut les deux, et l'indicateur apparaît même sans aperçu à
 montrer — dimensions inconnues, un écran noir muet serait pire.
+
+**La visionneuse y passe aussi la vidéo**, avec `measured: false` — une vidéo n'a
+pas de rendu serveur, donc rien à montrer en attendant. C'est ce qui la fait
+sortir de l'attente quand la lecture échoue : la branche vidéo décidait sa
+combinaison en JSX, sans écouter `error` sur la balise, et un codec non décodé ou
+un Drive indisponible laissait le tourniquet tourner indéfiniment sur un écran
+noir muet ([D79](./08-decisions.md)).
 
 Le repère est **manipulable** : y cliquer ou y glisser amène le point visé au
 centre de la fenêtre. Il montrait où l'on se trouvait sans permettre d'y agir,
