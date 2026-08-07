@@ -20,6 +20,13 @@ Cette règle **est contrôlée**, elle ne repose pas sur la mémoire :
 d'environnement, migrations, modules — à ce que les specs mentionnent, et échoue
 sur l'écart. Il tourne dans `pnpm verify`, dans la CI, et sur `pre-push`.
 
+Il vérifie en plus que chaque variable lue par `env.ts` **atteint réellement le
+conteneur** — transmise par le bloc `environment:` de `docker-compose.yml`, ou
+fixée par le `Dockerfile`. Être documentée ne suffit pas : Compose ne propage
+pas l'environnement de l'hôte, et `.env` ne sert qu'à l'interpolation. Une
+variable oubliée là est inchangeable en production tout en paraissant réglable
+partout ailleurs (D78). Si tu ajoutes une variable, câble-la dans le même geste.
+
 `check:specs` contrôle aussi la **numérotation des décisions** : aucun numéro
 défini deux fois dans `08-decisions.md`, et aucun renvoi `(Dxx)` — dans les
 specs comme dans le code — vers une entrée qui n'existe pas. Les deux défauts

@@ -99,6 +99,36 @@ for (const variable of variables) {
   }
 }
 
+/* ------------------------- Variables réellement câblées jusqu'au conteneur */
+
+// Être mentionnée dans les specs ne suffit pas : encore faut-il que la valeur
+// atteigne le processus. Compose ne propage pas l'environnement de l'hôte, et
+// `.env` ne sert qu'à l'interpolation — une variable absente du bloc
+// `environment:` et non fixée par le Dockerfile est donc **inchangeable en
+// production**, la seule installation qui compte.
+//
+// Le défaut n'est pas théorique : `APP_NAME` et `GEOCODING_URL` ont vécu
+// déclarées dans le schéma zod, dans `.env.example` et dans trois specs, sans
+// jamais parvenir au conteneur. La documentation promettait qu'un redémarrage
+// suffisait à renommer l'instance, et qu'une valeur vide coupait le géocodage :
+// les deux étaient faux, et rien ne le signalait (D78).
+const compose = lire(join(RACINE, 'docker-compose.yml'));
+const dockerfile = lire(join(RACINE, 'Dockerfile'));
+
+for (const variable of variables) {
+  // `NOM: ${NOM…}` plutôt que la seule présence du nom : le contrôle porte sur
+  // le câblage, et une variable citée dans un commentaire n'en est pas un.
+  const transmise = new RegExp(String.raw`^\s+${variable}:\s*\$\{${variable}[:}-]`, 'm').test(
+    compose,
+  );
+  const fixee = new RegExp(String.raw`^ENV ${variable}=`, 'm').test(dockerfile);
+  if (!transmise && !fixee) {
+    manques.push(
+      `Variable « ${variable} » lue par env.ts, mais ni transmise par docker-compose.yml ni fixée par le Dockerfile : inchangeable en production`,
+    );
+  }
+}
+
 /* ----------------------------------------------------------- Migrations */
 
 const dbSource = lire(join(RACINE, 'packages/server/src/db.ts'));
