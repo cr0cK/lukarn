@@ -1,7 +1,14 @@
-import { COMMENT_MAX_LENGTH, type Comment, type CommentThread } from '@gdv/shared';
-import { type FormEvent, type ReactElement, useState } from 'react';
+import { COMMENT_MAX_LENGTH, remainingEditMs, type Comment, type CommentThread } from '@gdv/shared';
+import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react';
 import { errorText } from '../api/client';
-import { useComments, useCreateComment, useDeleteComment, useMe } from '../api/hooks';
+import {
+  useComments,
+  useCreateComment,
+  useDeleteComment,
+  useMe,
+  useUpdateComment,
+} from '../api/hooks';
+import { PICKER_EMOJI, emojify, insertEmoji } from '../lib/emoji';
 import { formatLocalDateTime, formatRelative } from '../lib/format';
 import { IdentityForm } from './IdentityForm';
 import { Spinner } from './Spinner';
@@ -10,7 +17,8 @@ import { Spinner } from './Spinner';
  * Contenu de l'onglet « Commentaires » du panneau latéral.
  *
  * Volontairement pauvre en fonctions : un fil, une réponse par fil, la
- * suppression de ses propres messages. Pas d'édition, pas de réactions, pas de
+ * suppression de ses propres messages, et une correction de faute de frappe
+ * dans les trente secondes. Pas d'édition libre, pas de réactions, pas de
  * mentions — c'est ce qui sépare une conversation sous une photo d'un forum, et
  * ce qui permet de tout lire d'un coup d'œil.
  */
@@ -191,6 +199,37 @@ function ThreadView({
   );
 }
 
+/**
+ * Secondes restantes pour corriger ce commentaire, `null` dès qu'il n'y a plus
+ * rien à proposer.
+ *
+ * `canEdit` seul ne suffirait pas : il dit ce que le serveur pensait **au
+ * moment de la réponse**, et un fil resté ouvert le porterait encore à `true`
+ * une heure plus tard. Le décompte est donc rejoué ici, à partir de
+ * `createdAt` et de la même fonction que le serveur.
+ */
+function useEditWindow(comment: Comment): number | null {
+  const [remaining, setRemaining] = useState(() =>
+    comment.canEdit ? remainingEditMs(comment.createdAt, Date.now()) : 0,
+  );
+
+  useEffect(() => {
+    if (!comment.canEdit) return;
+    // Un rendu par seconde, sur un commentaire à la fois et pendant trente
+    // secondes : c'est le prix d'un bouton dont la disparition s'annonce au
+    // lieu de surprendre. L'intervalle s'arrête de lui-même à l'échéance.
+    const timer = setInterval(() => {
+      const left = remainingEditMs(comment.createdAt, Date.now());
+      setRemaining(left);
+      if (left <= 0) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [comment.canEdit, comment.createdAt]);
+
+  if (!comment.canEdit || remaining <= 0) return null;
+  return Math.ceil(remaining / 1000);
+}
+
 function CommentView({
   comment,
   albumId,
@@ -203,6 +242,9 @@ function CommentView({
   onReply?: () => void;
 }): ReactElement {
   const remove = useDeleteComment(albumId, mediaId);
+  const update = useUpdateComment(albumId, mediaId);
+  const [editing, setEditing] = useState(false);
+  const secondsLeft = useEditWindow(comment);
 
   return (
     <article className="group">
@@ -217,17 +259,51 @@ function CommentView({
         </time>
       </header>
 
-      {/* `whitespace-pre-wrap` : les retours à la ligne saisis sont conservés,
-          sans qu'aucun HTML ne soit interprété — React échappe le texte. */}
-      <p className="mt-1 text-sm break-words whitespace-pre-wrap text-ink-200">{comment.body}</p>
+      {editing ? (
+        <EditForm
+          // Le texte saisi, pas le texte rendu : corriger « :) » ne doit pas
+          // remplacer le raccourci par l'emoji dans ce qui est stocké.
+          initial={comment.body}
+          pending={update.isPending}
+          error={
+            update.isError
+              ? errorText(update.error, 'La correction n’a pas pu être enregistrée.')
+              : null
+          }
+          onCancel={() => {
+            update.reset();
+            setEditing(false);
+          }}
+          onSubmit={(body) =>
+            update.mutate({ commentId: comment.id, body }, { onSuccess: () => setEditing(false) })
+          }
+        />
+      ) : (
+        /* `whitespace-pre-wrap` : les retours à la ligne saisis sont conservés,
+           sans qu'aucun HTML ne soit interprété — React échappe le texte.
+           `emojify` rend du texte pur, cette garantie tient donc encore. */
+        <p className="mt-1 text-sm break-words whitespace-pre-wrap text-ink-200">
+          {emojify(comment.body)}
+        </p>
+      )}
 
       <div className="mt-1.5 flex gap-3 text-xs text-ink-400">
-        {onReply && (
+        {onReply && !editing && (
           <button type="button" onClick={onReply} className="transition-colors hover:text-ink-100">
             Répondre
           </button>
         )}
-        {comment.canDelete && (
+        {secondsLeft !== null && !editing && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            title="Corriger une faute de frappe, dans les trente secondes qui suivent la publication"
+            className="tabular-nums transition-colors hover:text-ink-100"
+          >
+            Modifier ({secondsLeft} s)
+          </button>
+        )}
+        {comment.canDelete && !editing && (
           <button
             type="button"
             onClick={() => remove.mutate(comment.id)}
@@ -241,6 +317,159 @@ function CommentView({
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * Correction en place d'un commentaire publié.
+ *
+ * Le formulaire **reste ouvert** si la fenêtre se referme pendant la saisie :
+ * le serveur tranche, et son refus s'affiche ici. Le fermer d'autorité ferait
+ * disparaître le texte en cours de frappe sans prévenir.
+ */
+function EditForm({
+  initial,
+  pending,
+  error,
+  onCancel,
+  onSubmit,
+}: {
+  initial: string;
+  pending: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onSubmit: (body: string) => void;
+}): ReactElement {
+  const [body, setBody] = useState(initial);
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    const trimmed = body.trim();
+    if (!trimmed || pending) return;
+    onSubmit(trimmed);
+  };
+
+  return (
+    <form onSubmit={submit} className="mt-1">
+      <textarea
+        value={body}
+        autoFocus
+        onChange={(event) => setBody(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            submit(event);
+          }
+        }}
+        rows={2}
+        maxLength={COMMENT_MAX_LENGTH}
+        className="w-full resize-none rounded border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-100 focus:border-accent focus:outline-none"
+      />
+
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+
+      <div className="mt-1.5 flex justify-end gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
+        >
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={!body.trim() || pending}
+          className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {pending ? 'Envoi…' : 'Enregistrer'}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Palette d'emoji du formulaire.
+ *
+ * Elle existe pour le clavier physique : sur mobile, le clavier système en
+ * propose déjà, et ces caractères traversent l'application sans traitement.
+ * Trente-deux entrées et aucune recherche — voir `lib/emoji.ts`.
+ */
+function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Referme sur un clic à l'extérieur. `pointerdown` et non `click` : le second
+   * n'arrive qu'au relâchement, si bien qu'un glisser commencé hors de la
+   * palette la laisserait ouverte sous le doigt.
+   */
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative"
+      // Échap referme la palette, et **s'arrête là**. Sans cette interception,
+      // la touche remonterait jusqu'à la visionneuse, qui écoute la fenêtre : le
+      // focus étant sur un bouton et non sur un champ, son garde « zone de
+      // saisie » ne s'applique pas, et elle refermerait tout le panneau — donc
+      // le commentaire en cours de frappe.
+      onKeyDown={(event) => {
+        if (!open || event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label="Ajouter un emoji"
+        aria-expanded={open}
+        // Le formulaire ne porte plus de légende : l'infobulle est le dernier
+        // endroit où la substitution des raccourcis peut encore s'apprendre.
+        title="Ajouter un emoji — « :) » devient 🙂"
+        className={`rounded p-1 text-base transition-colors hover:bg-white/10 ${
+          open ? 'bg-white/10' : ''
+        }`}
+      >
+        <span aria-hidden="true">🙂</span>
+      </button>
+
+      {open && (
+        // Vers le haut parce que le formulaire est ancré en bas du panneau, et
+        // ancrée à droite parce que le bouton l'est aussi : alignée à gauche,
+        // ses 16 rem déborderaient du panneau.
+        <div
+          role="group"
+          aria-label="Emoji"
+          className="absolute right-0 bottom-full z-10 mb-2 grid w-64 grid-cols-8 gap-0.5 rounded border border-ink-700 bg-ink-850 p-2 shadow-lg"
+        >
+          {PICKER_EMOJI.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              onClick={() => {
+                onPick(emoji);
+                setOpen(false);
+              }}
+              aria-label={emoji}
+              className="rounded p-1 text-base transition-colors hover:bg-white/10"
+            >
+              <span aria-hidden="true">{emoji}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -261,6 +490,29 @@ function CommentForm({
 }): ReactElement {
   const [body, setBody] = useState('');
   const create = useCreateComment(albumId, mediaId);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * Insère l'emoji à la place de la sélection, puis rend le focus au champ.
+   *
+   * La remise du curseur est différée d'une image : React réécrit la valeur du
+   * `textarea` au rendu suivant, ce qui replacerait le curseur à la fin du texte
+   * et enverrait le deuxième emoji choisi au mauvais endroit.
+   */
+  const addEmoji = (emoji: string): void => {
+    const field = fieldRef.current;
+    const { value, caret } = insertEmoji(
+      body,
+      field?.selectionStart ?? body.length,
+      field?.selectionEnd ?? body.length,
+      emoji,
+    );
+    setBody(value);
+    requestAnimationFrame(() => {
+      field?.focus();
+      field?.setSelectionRange(caret, caret);
+    });
+  };
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -281,6 +533,7 @@ function CommentForm({
   return (
     <form onSubmit={submit}>
       <textarea
+        ref={fieldRef}
         value={body}
         autoFocus={autoFocus}
         onChange={(event) => setBody(event.target.value)}
@@ -305,26 +558,29 @@ function CommentForm({
         </p>
       )}
 
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <span className="text-xs text-ink-400">Entrée pour publier</span>
-        <div className="flex gap-2">
-          {onDone && (
-            <button
-              type="button"
-              onClick={onDone}
-              className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
-            >
-              Annuler
-            </button>
-          )}
+      {/* Une seule rangée alignée à droite. Le formulaire ne porte plus de
+          légende : sous une photo, la place se prend sur la conversation, et
+          « Entrée pour publier » se découvre en appuyant sur Entrée. Ce qui
+          restait vraiment à dire — que « :) » devient un emoji — tient dans
+          l'infobulle du bouton qui en parle. */}
+      <div className="mt-2 flex items-center justify-end gap-2">
+        {onDone && (
           <button
-            type="submit"
-            disabled={!body.trim() || create.isPending}
-            className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+            type="button"
+            onClick={onDone}
+            className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
           >
-            {create.isPending ? 'Envoi…' : 'Publier'}
+            Annuler
           </button>
-        </div>
+        )}
+        <EmojiPicker onPick={addEmoji} />
+        <button
+          type="submit"
+          disabled={!body.trim() || create.isPending}
+          className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {create.isPending ? 'Envoi…' : 'Publier'}
+        </button>
       </div>
     </form>
   );

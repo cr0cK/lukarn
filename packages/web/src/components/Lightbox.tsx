@@ -1,8 +1,9 @@
 import type { MediaItem } from '@gdv/shared';
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
-import { useMediaDetail } from '../api/hooks';
+import { useCommentCounts, useMediaDetail } from '../api/hooks';
 import { formatDateTime } from '../lib/format';
+import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { useSwipe } from '../lib/useSwipe';
 import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
@@ -54,10 +55,60 @@ export function Lightbox({
 
   const { data: detail } = useMediaDetail(albumId, panel && item ? item.id : null);
 
+  /**
+   * Pastille du bouton « Commentaires ». Le total vient d'un appel unique pour
+   * l'album, le repère de lecture du navigateur : voir `lib/seenComments.ts`.
+   */
+  const { data: commentCounts } = useCommentCounts(albumId);
+  const { seen, markSeen } = useSeenComments(albumId);
+  const mediaId = item?.id;
+  const commentTotal = (mediaId && commentCounts?.counts[mediaId]) || 0;
+  const unread = unreadCount(commentTotal, mediaId ? seen[mediaId] : 0);
+
+  useEffect(() => {
+    // Tant que les compteurs ne sont pas là, tout vaut zéro : marquer ici
+    // effacerait le repère de lecture pour le reconstituer faux à l'arrivée
+    // des vrais totaux.
+    if (!mediaId || commentCounts === undefined) return;
+
+    // Le panneau ouvert vaut lecture. Et un total retombé **sous** le repère
+    // — suppression, masquage par la modération — doit le faire redescendre :
+    // sinon le message suivant resterait invisible tant qu'il n'aurait pas
+    // comblé l'écart.
+    if (panel === 'comments' || commentTotal < (seen[mediaId] ?? 0)) {
+      markSeen(mediaId, commentTotal);
+    }
+  }, [panel, mediaId, commentTotal, commentCounts, seen, markSeen]);
+
   /** Ouvre le panneau sur cet onglet, ou le referme s'il y est déjà. */
   const togglePanel = useCallback((tab: PanelTab) => {
     setPanel((current) => (current === tab ? null : tab));
   }, []);
+
+  /**
+   * Un clic hors du panneau le referme, comme n'importe quel tiroir.
+   *
+   * Posé en **capture** et non en bulle : le basculement du zoom se décide au
+   * relâchement du pointeur dans `ZoomableImage`, plus bas dans l'arbre. En
+   * bulle, les deux gestes se déclencheraient ensemble — le panneau se fermerait
+   * *et* la photo zoomerait. Interrompre dès la descente laisse le premier clic
+   * à la fermeture ; le suivant zoome normalement.
+   *
+   * Les boutons de cette zone sont exclus. Les flèches de navigation y vivent,
+   * et les traiter comme un « dehors » refermerait le panneau à chaque photo :
+   * précisément ce qu'on venait de corriger en lui donnant sa propre colonne.
+   * Le repère de position du zoom porte `role="img"` et s'exclut de même — il ne
+   * peut pas se défendre lui-même, une capture s'exécutant avant sa cible.
+   */
+  const dismissPanelOnOutsideClick = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!panel) return;
+      if ((event.target as HTMLElement).closest('button, [role="img"]')) return;
+      setPanel(null);
+      event.stopPropagation();
+    },
+    [panel],
+  );
 
   const goTo = useCallback(
     (next: number) => {
@@ -255,122 +306,134 @@ export function Lightbox({
       role="dialog"
       aria-modal="true"
       aria-label={item.name}
-      className="fixed inset-0 z-50 flex flex-col bg-ink-950 outline-none"
+      className="fixed inset-0 z-50 flex bg-ink-950 outline-none"
     >
-      <header className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-black/70 to-transparent px-4 py-3">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full p-2 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Fermer (Échap)"
-          title="Fermer (Échap)"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="size-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
+      {/* Colonne de la photo. Elle **rétrécit** quand le panneau entre dans le
+          flux (à partir de `md`) : posé en surimpression, celui-ci recouvrait la
+          flèche « Suivant », si bien qu'il fallait le refermer à chaque photo.
+          `min-w-0` est indispensable — sans lui, le contenu impose sa largeur
+          et c'est le panneau qui déborde de l'écran. */}
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <header className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-black/70 to-transparent px-4 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Fermer (Échap)"
+            title="Fermer (Échap)"
           >
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              className="size-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-ink-100">{item.name}</p>
-          <p className="text-xs text-ink-400">
-            {formatDateTime(item.takenAt)} · {index + 1} / {items.length}
-          </p>
-        </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-ink-100">{item.name}</p>
+            <p className="text-xs text-ink-400">
+              {formatDateTime(item.takenAt)} · {index + 1} / {items.length}
+            </p>
+          </div>
 
-        <IconButton
-          label="Informations (i)"
-          active={panel === 'info'}
-          onClick={() => togglePanel('info')}
-        >
-          <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v5M12 7.5v.5" />
-        </IconButton>
-
-        <IconButton
-          label="Commentaires (c)"
-          active={panel === 'comments'}
-          onClick={() => togglePanel('comments')}
-        >
-          <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-        </IconButton>
-
-        {!isVideo && (
           <IconButton
-            label={zoomed ? 'Revenir à la taille écran (z)' : 'Zoomer (z)'}
-            active={zoomed}
-            onClick={() => setZoomed((value) => !value)}
+            label="Informations (i)"
+            active={panel === 'info'}
+            onClick={() => togglePanel('info')}
           >
-            <circle cx="11" cy="11" r="7" />
-            <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 11v5M12 7.5v.5" />
           </IconButton>
-        )}
 
-        <IconButton label="Télécharger l'original (d)" onClick={download}>
-          <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
-        </IconButton>
+          <IconButton
+            label={commentsLabel(commentTotal, unread)}
+            active={panel === 'comments'}
+            onClick={() => togglePanel('comments')}
+            badge={<CommentBadge total={commentTotal} unread={unread} />}
+          >
+            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+          </IconButton>
 
-        <IconButton label="Plein écran (f)" onClick={toggleFullscreen}>
-          <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-        </IconButton>
-      </header>
+          {!isVideo && (
+            <IconButton
+              label={zoomed ? 'Revenir à la taille écran (z)' : 'Zoomer (z)'}
+              active={zoomed}
+              onClick={() => setZoomed((value) => !value)}
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
+            </IconButton>
+          )}
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden" {...swipe}>
-        {isVideo ? (
-          <video
-            ref={videoRef}
-            key={item.id}
-            src={mediaUrl.original(item.id, item.version)}
-            controls
-            autoPlay
-            playsInline
-            className="max-h-full max-w-full"
-            onLoadedData={() => setLoaded(true)}
-          />
-        ) : (
-          <ZoomableImage
-            // Remonter le composant à chaque photo réinitialise zoom et cadrage
-            // sans avoir à les remettre à zéro à la main.
-            key={item.id}
-            src={mediaUrl.full(item.id, item.version)}
-            hdSrc={mediaUrl.hd(item.id, item.version)}
-            placeholderSrc={mediaUrl.thumb(item.id, 320, item.version)}
-            alt={item.name}
-            naturalWidth={item.width}
-            naturalHeight={item.height}
-            zoomed={zoomed}
-            onZoomedChange={setZoomed}
-            onLoadedChange={setLoaded}
-          />
-        )}
+          <IconButton label="Télécharger l'original (d)" onClick={download}>
+            <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+          </IconButton>
 
-        {!loaded && isVideo && (
-          <span className="absolute size-8 animate-spin rounded-full border-2 border-ink-700 border-t-accent" />
-        )}
+          <IconButton label="Plein écran (f)" onClick={toggleFullscreen}>
+            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+          </IconButton>
+        </header>
 
-        {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
+        <div
+          className="relative flex flex-1 items-center justify-center overflow-hidden"
+          {...swipe}
+          onPointerDownCapture={dismissPanelOnOutsideClick}
+        >
+          {isVideo ? (
+            <video
+              ref={videoRef}
+              key={item.id}
+              src={mediaUrl.original(item.id, item.version)}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-full max-w-full"
+              onLoadedData={() => setLoaded(true)}
+            />
+          ) : (
+            <ZoomableImage
+              // Remonter le composant à chaque photo réinitialise zoom et cadrage
+              // sans avoir à les remettre à zéro à la main.
+              key={item.id}
+              src={mediaUrl.full(item.id, item.version)}
+              hdSrc={mediaUrl.hd(item.id, item.version)}
+              placeholderSrc={mediaUrl.thumb(item.id, 320, item.version)}
+              alt={item.name}
+              naturalWidth={item.width}
+              naturalHeight={item.height}
+              zoomed={zoomed}
+              onZoomedChange={setZoomed}
+              onLoadedChange={setLoaded}
+            />
+          )}
+
+          {!loaded && isVideo && (
+            <span className="absolute size-8 animate-spin rounded-full border-2 border-ink-700 border-t-accent" />
+          )}
+
+          {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
             l'image, et les flèches tomberaient sous le curseur. */}
-        {!zoomed && (
-          <NavButton
-            side="left"
-            disabled={index === 0}
-            onClick={() => goTo(index - 1)}
-            label="Précédent (←)"
-          />
-        )}
-        {!zoomed && (
-          <NavButton
-            side="right"
-            disabled={index === items.length - 1}
-            onClick={() => goTo(index + 1)}
-            label="Suivant (→)"
-          />
-        )}
+          {!zoomed && (
+            <NavButton
+              side="left"
+              disabled={index === 0}
+              onClick={() => goTo(index - 1)}
+              label="Précédent (←)"
+            />
+          )}
+          {!zoomed && (
+            <NavButton
+              side="right"
+              disabled={index === items.length - 1}
+              onClick={() => goTo(index + 1)}
+              label="Suivant (→)"
+            />
+          )}
+        </div>
       </div>
 
       {panel && (
@@ -392,11 +455,15 @@ function IconButton({
   label,
   onClick,
   active = false,
+  badge,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
+  /** Pastille superposée à l'icône. Elle doit rester `aria-hidden` : ce qu'elle
+      dit appartient à `label`, sinon un lecteur d'écran annonce un chiffre nu. */
+  badge?: React.ReactNode;
   children: React.ReactNode;
 }): ReactElement {
   return (
@@ -406,7 +473,7 @@ function IconButton({
       aria-label={label}
       title={label}
       aria-pressed={active}
-      className={`rounded-full p-2 transition-colors hover:bg-white/10 hover:text-white ${
+      className={`relative rounded-full p-2 transition-colors hover:bg-white/10 hover:text-white ${
         active ? 'bg-white/15 text-white' : 'text-ink-200'
       }`}
     >
@@ -421,8 +488,51 @@ function IconButton({
       >
         {children}
       </svg>
+      {badge}
     </button>
   );
+}
+
+/**
+ * Pastille du bouton « Commentaires ».
+ *
+ * Deux états distincts, parce qu'ils répondent à deux questions différentes :
+ * un point sobre dit « il y a une conversation ici », un chiffre en couleur dit
+ * « elle a bougé depuis ton dernier passage ». Les confondre reviendrait à
+ * réclamer l'attention pour une photo dont on a déjà tout lu.
+ */
+function CommentBadge({ total, unread }: { total: number; unread: number }): ReactElement | null {
+  if (total === 0) return null;
+
+  if (unread === 0) {
+    return (
+      <span
+        aria-hidden="true"
+        className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-ink-300"
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      // Plafonné à « 9+ » : au-delà, le chiffre déborde de l'icône, et savoir
+      // s'il y a douze ou dix-sept messages non lus ne change aucun geste.
+      className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
+    >
+      {unread > 9 ? '9+' : unread}
+    </span>
+  );
+}
+
+/**
+ * Libellé accessible du bouton : c'est lui qui porte l'information de la
+ * pastille, celle-ci étant purement visuelle.
+ */
+function commentsLabel(total: number, unread: number): string {
+  if (total === 0) return 'Commentaires (c)';
+  if (unread === 0) return `Commentaires : ${total} (c)`;
+  return `Commentaires : ${total}, dont ${unread} non ${unread > 1 ? 'lus' : 'lu'} (c)`;
 }
 
 function NavButton({

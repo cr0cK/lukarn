@@ -70,6 +70,25 @@ export class DriveRevokedError extends Error {
 }
 
 /**
+ * Drive n'a pas répondu à temps, ou limite le débit au-delà de nos réessais.
+ *
+ * **Transitoire, et c'est tout l'intérêt de la distinguer** : un fichier au
+ * format illisible échouera pareil dans une heure, celui-ci non. Le client doit
+ * pouvoir revenir, d'où le 503 et l'en-tête `Retry-After` que la route en tire —
+ * un 500 lui dirait « cassé », ce qui est faux et le ferait renoncer.
+ */
+export class DriveUnavailableError extends Error {
+  constructor(
+    label: string,
+    readonly retryAfterSeconds: number,
+    cause: string,
+  ) {
+    super(`Drive n'a pas pu servir ${label} (${cause}). Réessaie dans un instant.`);
+    this.name = 'DriveUnavailableError';
+  }
+}
+
+/**
  * Google répond `invalid_grant` quand le refresh token n'est plus échangeable :
  * accès retiré depuis myaccount.google.com, six mois sans utilisation, ou
  * application repassée en statut « Test » (les jetons y expirent à 7 jours).
@@ -89,6 +108,25 @@ function isRevocation(error: unknown): boolean {
   if (candidate.response?.data?.error === 'invalid_grant') return true;
   return typeof candidate.message === 'string' && candidate.message.includes('invalid_grant');
 }
+
+/**
+ * Échéance d'un téléchargement de contenu, en millisecondes.
+ *
+ * Le chiffre importe moins que son existence : sans elle, `fetch` hérite du
+ * défaut d'undici — **cinq minutes** —, et une place du limiteur de rendu est
+ * prise *avant* le téléchargement. Deux téléchargements figés sur un VPS bicœur
+ * gèlent donc tous les rendus pendant tout ce temps, ce qui, vu du navigateur,
+ * ne se distingue pas d'un blocage définitif.
+ *
+ * 120 s est dimensionné sur `MAX_DECODE_BYTES` (80 Mo) tiré sur une ligne lente,
+ * et laisse une marge considérable au cas courant — un original d'appareil pèse
+ * une dizaine de mégaoctets. Le pire cas devient 240 s quand le repli sur
+ * l'aperçu Drive se fige à son tour, contre 600 s auparavant.
+ */
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/** Ce qu'on demande au client d'attendre avant de revenir, sur un échec transitoire. */
+const RETRY_AFTER_SECONDS = 5;
 
 /** Réessais avant d'abandonner sur une limite de débit. */
 const RATE_LIMIT_ATTEMPTS = 4;
@@ -363,6 +401,13 @@ export class DriveService {
         continue;
       }
 
+      // Réessais épuisés sur une limite de débit : l'échec reste **transitoire**,
+      // et le dire vaut mieux qu'un 500 qui ferait renoncer le client. C'est le
+      // cas d'une grande grille froide qui sature le quota Drive.
+      if (isRateLimited(response.status, body)) {
+        throw new DriveUnavailableError(label, RETRY_AFTER_SECONDS, `Drive ${response.status}`);
+      }
+
       throw new Error(`Drive a répondu ${response.status} pour ${label}: ${body.slice(0, 200)}`);
     }
   }
@@ -394,10 +439,25 @@ export class DriveService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private send(url: string, token: string, range?: string): Promise<Response> {
+  private async send(url: string, token: string, range?: string): Promise<Response> {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (range) headers.Range = range;
-    return fetch(url, { headers });
+
+    // **Aucune échéance sur une requête `Range`.** C'est le relais d'une vidéo
+    // vers le navigateur, qui la consomme à son rythme : une échéance *totale*
+    // couperait la lecture en cours de visionnage, pas une panne.
+    if (range) return fetch(url, { headers });
+
+    try {
+      return await fetch(url, { headers, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+    } catch (error) {
+      // `AbortSignal.timeout` rejette avec un `TimeoutError` ; tout le reste est
+      // une panne réseau ordinaire, qui a déjà ses propres chemins.
+      if (error instanceof Error && error.name === 'TimeoutError') {
+        throw new DriveUnavailableError(url, RETRY_AFTER_SECONDS, 'délai dépassé');
+      }
+      throw error;
+    }
   }
 
   /**

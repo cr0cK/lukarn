@@ -20,7 +20,9 @@ const root = mkdtempSync(join(tmpdir(), 'gdv-headers-'));
 const webDir = join(root, 'web');
 
 /** Monte une instance dont seule `PUBLIC_URL` varie. */
-async function monter(publicUrl: string): Promise<{ server: FastifyInstance; context: AppContext }> {
+async function monter(
+  publicUrl: string,
+): Promise<{ server: FastifyInstance; context: AppContext }> {
   const hash = await argon2.hash('x', { type: argon2.argon2id });
   const configPath = join(root, `albums-${encodeURIComponent(publicUrl)}.yaml`);
   writeFileSync(

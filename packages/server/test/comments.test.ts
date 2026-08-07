@@ -3,7 +3,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS, type Comment, type CommentsPage, type MediaDetail } from '@gdv/shared';
+import {
+  ALL_ALBUMS,
+  type AlbumCommentCounts,
+  type Comment,
+  type CommentsPage,
+  type MediaDetail,
+} from '@gdv/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -490,5 +496,145 @@ describe('compteur servi avec le détail du média', () => {
 
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
     assert.equal(detail.json<MediaDetail>().commentCount, page.total);
+  });
+});
+
+describe('correction dans la fenêtre qui suit la publication', () => {
+  async function patch(cookie: string, id: number, body: string) {
+    return server.inject({
+      method: 'PATCH',
+      url: `/api/comments/${id}`,
+      headers: { cookie },
+      payload: { body },
+    });
+  }
+
+  it('accepte la correction de son auteur', async () => {
+    const publie = await post(familleCookie, 'vacances', 'photo-partagee', 'Boujour');
+    const corrige = await patch(familleCookie, publie.id, 'Bonjour');
+
+    assert.equal(corrige.statusCode, 200, corrige.body);
+    assert.equal(corrige.json<Comment>().body, 'Bonjour');
+
+    const page = await read(familleCookie, 'vacances', 'photo-partagee');
+    const relu = page.threads.find((thread) => thread.root.id === publie.id);
+    assert.equal(relu?.root.body, 'Bonjour');
+    // La date de publication ne bouge pas : le message doit rester à sa place
+    // dans un fil que d'autres lisaient déjà.
+    assert.equal(relu?.root.createdAt, publie.createdAt);
+  });
+
+  it('refuse une fois le délai passé, et le dit', async () => {
+    // La fenêtre se lit sur `created_at` : antidater le commentaire la franchit
+    // sans faire attendre le test trente secondes.
+    const vieux = await post(familleCookie, 'vacances', 'photo-partagee', 'Trop tard');
+    context.db
+      .prepare('UPDATE comments SET created_at = ? WHERE id = ?')
+      .run('2020-01-01T00:00:00.000Z', vieux.id);
+
+    const tentative = await patch(familleCookie, vieux.id, 'Corrigé');
+
+    // 409 et non 404 : le refus porte sur l'état du message, pas sur un droit
+    // d'accès — son auteur le voit déjà, il n'y a rien à lui cacher.
+    assert.equal(tentative.statusCode, 409);
+    assert.equal(tentative.json<{ error: string }>().error, 'edit_window_closed');
+
+    const page = await read(familleCookie, 'vacances', 'photo-partagee');
+    const inchange = page.threads.find((thread) => thread.root.id === vieux.id);
+    assert.equal(inchange?.root.body, 'Trop tard');
+    assert.equal(inchange?.root.canEdit, false);
+  });
+
+  it('refuse la correction du commentaire de quelqu’un d’autre', async () => {
+    const dautrui = await post(adminCookie, 'vacances', 'photo-partagee', 'À moi');
+    const tentative = await patch(familleCookie, dautrui.id, 'Volé');
+
+    // 404 et non 403 : rien ne doit distinguer « pas à toi » de « n'existe pas ».
+    assert.equal(tentative.statusCode, 404);
+
+    const page = await read(adminCookie, 'vacances', 'photo-partagee');
+    assert.ok(
+      page.threads.some((thread) => thread.root.body === 'À moi'),
+      'le commentaire a été réécrit par quelqu’un d’autre',
+    );
+  });
+
+  it('ne donne aucun privilège de réécriture à l’administrateur', async () => {
+    // Modérer, c'est masquer ou supprimer. Mettre d'autres mots sous le nom de
+    // quelqu'un est un pouvoir d'une autre nature.
+    const deMamie = await post(familleCookie, 'vacances', 'photo-partagee', 'Mot de Mamie');
+    const tentative = await patch(adminCookie, deMamie.id, 'Mot réécrit');
+
+    assert.equal(tentative.statusCode, 404);
+  });
+
+  it('refuse un corps vide', async () => {
+    const publie = await post(familleCookie, 'vacances', 'photo-partagee', 'Quelque chose');
+    const vide = await patch(familleCookie, publie.id, '   ');
+
+    assert.equal(vide.statusCode, 400);
+  });
+
+  it('n’annonce pas la correction sur le message d’un autre', async () => {
+    const deMamie = await post(familleCookie, 'vacances', 'photo-partagee', 'Frais');
+    const vuParAlexis = await read(adminCookie, 'vacances', 'photo-partagee');
+    const trouve = vuParAlexis.threads.find((thread) => thread.root.id === deMamie.id);
+
+    assert.equal(trouve?.root.canEdit, false);
+    // Il peut en revanche le supprimer : les deux droits ne se confondent pas.
+    assert.equal(trouve?.root.canDelete, true);
+  });
+});
+
+describe('compteurs de tout un album', () => {
+  async function counts(cookie: string, albumId: string): Promise<AlbumCommentCounts> {
+    const response = await server.inject({
+      method: 'GET',
+      url: `/api/comments/${albumId}`,
+      headers: { cookie },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json<AlbumCommentCounts>();
+  }
+
+  it('dit la même chose que le fil, photo par photo', async () => {
+    const page = await read(familleCookie, 'vacances', 'photo-partagee');
+    const groupe = await counts(familleCookie, 'vacances');
+
+    // L'invariant qui compte : la pastille et le fil ne peuvent pas diverger,
+    // sinon on annonce des commentaires que le panneau ne montre pas.
+    assert.equal(groupe.counts['photo-partagee'], page.total);
+  });
+
+  it('n’expose pas les commentaires d’un album qu’on ne voit pas', async () => {
+    // `photo-partagee` est indexée dans les deux albums : si le cloisonnement
+    // cédait ici, le compte de l'album privé fuirait sous la même clé.
+    const groupe = await counts(familleCookie, 'vacances');
+    const prive = await read(adminCookie, 'prive', 'photo-partagee');
+
+    assert.ok(prive.total > 0, 'le fil privé est vide, le test ne prouve rien');
+    assert.notEqual(groupe.counts['photo-partagee'], prive.total);
+
+    const refus = await server.inject({
+      method: 'GET',
+      url: '/api/comments/prive',
+      headers: { cookie: familleCookie },
+    });
+    assert.equal(refus.statusCode, 404);
+  });
+
+  it('omet les photos sans commentaire', async () => {
+    context.media.upsertMany([media('vacances', 'photo-muette')], '2025-01-01T00:00:00.000Z');
+
+    const groupe = await counts(familleCookie, 'vacances');
+    assert.equal(groupe.counts['photo-muette'], undefined);
+  });
+
+  it('laisse passer le désabonnement malgré la route paramétrique', async () => {
+    // `/:albumId` et `/unsubscribe` cohabitent sous le même préfixe. Si le
+    // paramètre l'emportait, le lien des emails déjà partis répondrait 401 —
+    // impossible à rattraper une fois les messages envoyés.
+    const response = await server.inject({ method: 'GET', url: '/api/comments/unsubscribe' });
+    assert.equal(response.statusCode, 400, 'la route sans session n’est plus atteinte');
   });
 });

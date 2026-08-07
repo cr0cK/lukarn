@@ -37,6 +37,12 @@ export const queryKeys = {
   days: (id: string) => ['days', id] as const,
   detail: (albumId: string, mediaId: string) => ['detail', albumId, mediaId] as const,
   comments: (albumId: string, mediaId: string) => ['comments', albumId, mediaId] as const,
+  // Sous le même préfixe `comments` que les fils : une invalidation large
+  // (changement d'identité, modération) doit emporter les compteurs avec eux.
+  // Le littéral est placé **après** l'album et non avant : devant, il entrerait
+  // en collision avec le fil d'un album qui s'appellerait « counts », un
+  // identifiant que rien n'interdit.
+  commentCounts: (albumId: string) => ['comments', albumId, 'counts'] as const,
   adminComments: (filter: ModerationFilter) => ['admin', 'comments', filter] as const,
   adminStatus: ['admin', 'status'] as const,
   adminUsers: ['admin', 'users'] as const,
@@ -232,6 +238,28 @@ export function useComments(albumId: string, mediaId: string | null, enabled: bo
 }
 
 /**
+ * Compteurs de commentaires de l'album, photo par photo.
+ *
+ * Chargé une fois pour l'album entier plutôt qu'à chaque photo atteinte : la
+ * pastille de la visionneuse doit être là avant qu'on ouvre quoi que ce soit, et
+ * parcourir un album à la flèche déclencherait sinon une requête par photo.
+ */
+export function useCommentCounts(albumId: string) {
+  return useQuery({
+    queryKey: queryKeys.commentCounts(albumId),
+    queryFn: () => api.commentCounts(albumId),
+    // Plus court que les 60 s par défaut : une conversation qui démarre pendant
+    // qu'on regarde l'album est le cas même que la pastille sert à signaler.
+    //
+    // Ne borne pas pour autant le retard à 30 s : `refetchOnWindowFocus` est à
+    // `false`, aucun `refetchInterval` n'est posé, et ce hook ne vit que dans la
+    // visionneuse — tant qu'elle reste ouverte, rien ne repart. Ce réglage n'agit
+    // donc qu'au remontage, c'est-à-dire à la réouverture de la visionneuse.
+    staleTime: 30 * 1000,
+  });
+}
+
+/**
  * Poste un commentaire. Le fil **et** le détail du média sont invalidés :
  * le second porte le compteur affiché sur l'onglet, qui resterait sinon en
  * retard d'une unité jusqu'à la réouverture de la photo.
@@ -241,6 +269,21 @@ export function useCreateComment(albumId: string, mediaId: string) {
   return useMutation({
     mutationFn: (body: CreateCommentRequest) => api.createComment(albumId, mediaId, body),
     onSuccess: () => invalidateThread(queryClient, albumId, mediaId),
+  });
+}
+
+/**
+ * Corrige un commentaire. Seul le fil est invalidé, pas les compteurs : une
+ * correction ne change ni le nombre de messages ni ce qui reste à lire.
+ */
+export function useUpdateComment(albumId: string, mediaId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId, body }: { commentId: number; body: string }) =>
+      api.updateComment(commentId, { body }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.comments(albumId, mediaId) });
+    },
   });
 }
 
@@ -255,6 +298,10 @@ export function useDeleteComment(albumId: string, mediaId: string) {
 function invalidateThread(queryClient: QueryClient, albumId: string, mediaId: string): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.comments(albumId, mediaId) });
   void queryClient.invalidateQueries({ queryKey: queryKeys.detail(albumId, mediaId) });
+  // Les compteurs de l'album portent la pastille de la visionneuse : sans cette
+  // invalidation, publier depuis le panneau laisserait la pastille annoncer
+  // l'état d'avant, y compris sur la photo qu'on a sous les yeux.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.commentCounts(albumId) });
 }
 
 /** File de modération, paginée à la demande depuis /admin. */

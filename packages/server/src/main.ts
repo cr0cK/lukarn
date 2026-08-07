@@ -86,7 +86,7 @@ function startScheduler(context: AppContext): () => void {
     periodic = setInterval(
       () => {
         if (!context.drive.connected) return;
-        void context.syncer.syncAll(context.albums).catch((error: unknown) => {
+        void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
           context.log.error({ err: error }, 'Synchronisation périodique en échec');
         });
       },
@@ -114,20 +114,27 @@ async function main(): Promise<void> {
 
   const stopScheduler = startScheduler(context);
 
-  if (context.settings.syncOnStartup && context.drive.connected) {
-    // Sans `await` : le serveur doit accepter des requêtes pendant que l'index
-    // se remplit, l'ancien index restant servi entre-temps.
-    void context.syncer.syncAll(context.albums).catch((error: unknown) => {
-      context.log.error({ err: error }, 'Synchronisation de démarrage en échec');
-    });
-  }
-
   // Sans ce premier passage, le cache attendrait le ménage horaire pour
   // commencer à se remplir : une heure pendant laquelle chaque première
   // ouverture se paie plein tarif, juste après un redémarrage.
-  void context.prewarmer.run().catch((error: unknown) => {
-    context.log.error({ err: error }, 'Préchauffage du cache en échec');
-  });
+  //
+  // Les deux branches s'excluent, et c'est délibéré : lancées ensemble, le
+  // préchauffage partirait sur l'index d'avant pendant que la sync le remplit,
+  // et celui qui doit suivre la sync se ferait refuser comme passage concurrent
+  // — les photos qui viennent d'arriver, précisément celles qu'on va ouvrir,
+  // attendraient le ménage horaire.
+  //
+  // Sans `await` : le serveur doit accepter des requêtes pendant que l'index se
+  // remplit, l'ancien index restant servi entre-temps.
+  if (context.settings.syncOnStartup && context.drive.connected) {
+    void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
+      context.log.error({ err: error }, 'Synchronisation de démarrage en échec');
+    });
+  } else {
+    void context.prewarmer.run().catch((error: unknown) => {
+      context.log.error({ err: error }, 'Préchauffage du cache en échec');
+    });
+  }
 
   // Même raison pour les lieux : une instance qu'on vient de mettre à jour a
   // ses journées à agréger, et personne n'attendra une heure pour les voir.

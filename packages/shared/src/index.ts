@@ -253,6 +253,15 @@ export interface Comment {
    * par le serveur : le front n'a pas à rejouer la règle d'autorisation.
    */
   canDelete: boolean;
+  /**
+   * `true` si le serveur accepterait une correction **à l'instant où il a rendu
+   * cette réponse** : son auteur, et `COMMENT_EDIT_WINDOW_MS` non écoulées.
+   *
+   * Contrairement à `canDelete`, cette valeur **périme toute seule**. Le front
+   * doit donc la recouper avec `createdAt` plutôt que s'y fier seule : un fil
+   * resté ouvert une heure la porterait encore à `true`.
+   */
+  canEdit: boolean;
 }
 
 /**
@@ -274,6 +283,49 @@ export interface CreateCommentRequest {
   body: string;
   /** Répondre à ce commentaire. Absent ou `null` pour ouvrir un nouveau fil. */
   parentId?: number | null;
+}
+
+/**
+ * Nombre de commentaires visibles par photo, sur un album entier.
+ *
+ * Servi d'un bloc plutôt que photo par photo : la visionneuse doit pouvoir
+ * marquer d'une pastille la photo qu'on vient d'atteindre, et demander ce compte
+ * à chaque flèche coûterait une requête par photo traversée.
+ *
+ * Seules les photos commentées figurent dans `counts` — sur un album de
+ * milliers de vues dont une dizaine porte une conversation, la réponse tient en
+ * quelques centaines d'octets. Une photo absente vaut donc zéro.
+ */
+export interface AlbumCommentCounts {
+  counts: Record<string, number>;
+}
+
+/** Ce qu'on renvoie pour corriger un commentaire. Le fil de rattachement ne bouge pas. */
+export interface UpdateCommentRequest {
+  body: string;
+}
+
+/**
+ * Délai pendant lequel son auteur peut corriger un commentaire.
+ *
+ * C'est une fenêtre de rattrapage de faute de frappe, pas un droit d'édition :
+ * assez pour relire ce qu'on vient d'envoyer, trop court pour réécrire l'histoire
+ * d'une conversation que d'autres ont déjà lue (voir `08-decisions.md`, D57).
+ */
+export const COMMENT_EDIT_WINDOW_MS = 30_000;
+
+/**
+ * Millisecondes restantes pour corriger, `0` une fois la fenêtre fermée.
+ *
+ * Partagée parce que les deux côtés doivent trancher **à l'identique** : le
+ * serveur pour refuser, le front pour cesser de proposer. Deux calculs séparés
+ * finiraient par diverger d'une seconde, et c'est exactement l'écart où l'on
+ * clique sur un bouton qui répond non.
+ */
+export function remainingEditMs(createdAt: string, now: number): number {
+  const started = Date.parse(createdAt);
+  if (Number.isNaN(started)) return 0;
+  return Math.max(0, started + COMMENT_EDIT_WINDOW_MS - now);
 }
 
 /** Longueur maximale d'un commentaire, contrôlée des deux côtés à l'identique. */

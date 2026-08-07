@@ -258,7 +258,7 @@ en `preHandler` de préfixe : l'album n'occupe pas ici un segment fixe de l'URL.
 La règle reste celle des albums — 404 sur un album inconnu comme sur un album
 interdit.
 
-Trois points qui tiennent ce cloisonnement :
+Les points qui tiennent ce cloisonnement :
 
 - **Un fil appartient au couple `(albumId, mediaId)`.** Le même fichier Drive
   indexé sous deux albums porte deux conversations distinctes. Sans cela, un
@@ -270,7 +270,14 @@ Trois points qui tiennent ce cloisonnement :
   suffirait à greffer un message dans un fil qu'on ne peut pas lire.
 - **Supprimer exige de voir encore l'album.** Un visiteur dont l'accès vient
   d'être retiré conserverait sinon un droit d'écriture sur un contenu qu'il ne
-  peut plus consulter.
+  peut plus consulter. La même garde vaut pour la correction.
+- **Corriger est réservé à l'auteur, et à lui seul.** Un administrateur peut
+  masquer ou supprimer, jamais réécrire : mettre d'autres mots dans la bouche de
+  quelqu'un sous son nom est un pouvoir d'une autre nature que celui de retirer
+  un propos. La fenêtre de `COMMENT_EDIT_WINDOW_MS` (30 s) est contrôlée **côté
+  serveur** — une règle que seul le front applique n'est pas une règle. Un délai
+  dépassé répond **409 `edit_window_closed`**, ni 403 ni 404 : le refus porte sur
+  l'état du message, pas sur un droit d'accès, et son auteur le voit déjà.
 - **Commenter exige une identité vérifiée**, faute de quoi la route répond
   **403 `identity_required`**. C'est la seconde exception assumée au « 404 et
   jamais 403 » : ce refus ne porte pas sur une ressource d'autrui dont il
@@ -279,7 +286,7 @@ Trois points qui tiennent ce cloisonnement :
 - **L'adresse email n'apparaît jamais dans un fil.** Elle identifie et notifie ;
   seuls le nom déclaré et la modération y ont accès.
 
-`packages/server/test/comments.test.ts` verrouille ces trois points, ainsi que
+`packages/server/test/comments.test.ts` verrouille ces points, ainsi que
 l'indistinguabilité des réponses 404 entre album interdit et album inexistant.
 
 **Modération.** Un commentaire masqué disparaît de la lecture pour tout le monde,
@@ -395,8 +402,9 @@ retarder l'échec. `downloadQuotaExceeded` est exclu pour la même raison — ce
 quota-là se compte en heures, attendre trente secondes n'y change rien.
 
 Sans ce repli, chaque refus laisserait une vignette cassée qu'aucun mécanisme ne
-rattrape. Il compte d'autant plus depuis le préchauffage (D45), qui concentre
-les téléchargements au lieu de les étaler sur les clics.
+rattrape. Il compte d'autant plus depuis le préchauffage (D45, dont D58 a
+redéfini ce qui est téléchargé et quand), qui concentre les téléchargements au
+lieu de les étaler sur les clics.
 
 ## Compte de service, en alternative au consentement
 

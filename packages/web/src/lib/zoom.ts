@@ -168,3 +168,26 @@ export function offsetForCenter(
     y: (0.5 - center.y) * displayed.height * scale,
   };
 }
+
+/**
+ * Tolérance de déplacement, en pixels, sous laquelle un pointeur relâché compte
+ * encore comme un clic.
+ *
+ * Zéro ne conviendrait pas : une main tremble, et un pointeur fin — stylet,
+ * doigt — bouge toujours d'un ou deux pixels entre l'appui et le relâchement,
+ * si bien qu'aucun clic ne serait jamais reconnu. Trop large, un début de
+ * déplacement délibéré finirait par basculer le zoom.
+ */
+export const TAP_SLOP_PX = 5;
+
+/**
+ * Distingue le clic du glisser, d'après le seul déplacement parcouru depuis
+ * l'appui.
+ *
+ * La durée ne sert pas de critère : un glisser lent et court reste un glisser,
+ * et un doigt posé longuement sans bouger reste un clic. C'est le déplacement,
+ * pas le temps, qui sépare l'intention de désigner de celle de déplacer.
+ */
+export function isTap(origin: Point, release: Point, slop: number = TAP_SLOP_PX): boolean {
+  return Math.hypot(release.x - origin.x, release.y - origin.y) <= slop;
+}

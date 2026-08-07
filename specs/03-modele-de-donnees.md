@@ -169,16 +169,18 @@ donc jamais l'accès aux albums, qui ne vient que de la clé d'accès.
 
 Un fil de discussion par média **et par album**.
 
-| Colonne                  | Rôle                                                                  |
-| ------------------------ | --------------------------------------------------------------------- |
-| `id`                     | PK, `AUTOINCREMENT`                                                   |
-| `album_id`, `media_id`   | Le couple auquel le fil appartient                                    |
-| `parent_id`              | `NULL` pour une racine, sinon l'id de la racine — jamais plus profond |
-| `username`               | Auteur, `COLLATE NOCASE`, FK `ON DELETE CASCADE`                      |
-| `body`, `created_at`     | Le message et sa date                                                 |
-| `hidden_at`, `hidden_by` | Modération a posteriori                                               |
+| Colonne                  | Rôle                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | PK, `AUTOINCREMENT`                                                                                                                           |
+| `album_id`, `media_id`   | Le couple auquel le fil appartient                                                                                                            |
+| `parent_id`              | `NULL` pour une racine, sinon l'id de la racine — jamais plus profond                                                                         |
+| `commenter_id`           | L'**auteur**, FK vers `commenters` `ON DELETE CASCADE` — une personne, pas une clé d'accès                                                    |
+| `account`                | La clé d'accès utilisée pour écrire, `COLLATE NOCASE`, FK vers `users` `ON DELETE SET NULL` — gardée pour la modération                       |
+| `body`                   | Le message. **Seule colonne réécrite après coup**, et seulement par son auteur dans les 30 s (D57)                                            |
+| `created_at`             | Date de publication. Ne bouge **jamais**, y compris après correction : le message doit garder sa place dans un fil que d'autres lisaient déjà |
+| `hidden_at`, `hidden_by` | Modération a posteriori                                                                                                                       |
 
-Cinq choix structurants :
+Les choix structurants :
 
 - **`AUTOINCREMENT` plutôt que le rowid ordinaire.** SQLite réattribue sinon
   l'identifiant d'une ligne supprimée. Les emails de notification portent un lien
@@ -278,16 +280,16 @@ instantané périmé.
 
 ## Index
 
-| Index                                                      | Ce qu'il sert                                                                                                                                                    |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `idx_media_album_taken (album_id, taken_at DESC, id DESC)` | Le tri chronologique de la grille et la reprise par curseur. SQLite parcourt le même index à l'envers pour `order=asc`, donc un seul index couvre les deux sens. |
-| `idx_media_id (id)`                                        | `albumsContaining(mediaId)`, appelé à **chaque** requête média pour le contrôle d'accès. Sans lui, chaque vignette provoquerait un scan complet.                 |
-| `idx_sessions_expires (expires_at)`                        | La purge horaire des sessions expirées.                                                                                                                          |
-| `idx_user_albums_album (album_id)`                         | « Qui a accès à cet album », affiché par `GET /api/admin/albums`. Le sens inverse est déjà couvert par la clé primaire `(username, album_id)`.                   |
-| `idx_comments_thread (album_id, media_id, id)`             | La lecture d'un fil et le compteur servi avec le détail d'un média. Trier sur `id` suffit — il croît avec le temps —, d'où l'absence d'index sur `created_at`.   |
-| `idx_comments_parent (parent_id)`                          | Le rattachement des réponses à leur racine, et leur remontée en tête de fil quand le parent disparaît.                                                           |
-| `idx_comments_commenter (commenter_id)`                    | « Mes commentaires » : ceux que le lecteur courant peut supprimer.                                                                                               |
-| `idx_album_subscriptions_album (album_id)`                 | « Qui est abonné à cet album », seule lecture du notifieur. Le sens inverse est déjà couvert par la clé primaire `(commenter_id, album_id)`.                     |
+| Index                                                      | Ce qu'il sert                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idx_media_album_taken (album_id, taken_at DESC, id DESC)` | Le tri chronologique de la grille et la reprise par curseur. SQLite parcourt le même index à l'envers pour `order=asc`, donc un seul index couvre les deux sens.                                                                                                                                   |
+| `idx_media_id (id)`                                        | `albumsContaining(mediaId)`, appelé à **chaque** requête média pour le contrôle d'accès. Sans lui, chaque vignette provoquerait un scan complet.                                                                                                                                                   |
+| `idx_sessions_expires (expires_at)`                        | La purge horaire des sessions expirées.                                                                                                                                                                                                                                                            |
+| `idx_user_albums_album (album_id)`                         | « Qui a accès à cet album », affiché par `GET /api/admin/albums`. Le sens inverse est déjà couvert par la clé primaire `(username, album_id)`.                                                                                                                                                     |
+| `idx_comments_thread (album_id, media_id, id)`             | La lecture d'un fil, le compteur servi avec le détail d'un média, et le `GROUP BY media_id` qui rend les compteurs de tout un album (D54) — SQLite y lit la tranche de l'album déjà ordonnée par média. Trier sur `id` suffit — il croît avec le temps —, d'où l'absence d'index sur `created_at`. |
+| `idx_comments_parent (parent_id)`                          | Le rattachement des réponses à leur racine, et leur remontée en tête de fil quand le parent disparaît.                                                                                                                                                                                             |
+| `idx_comments_commenter (commenter_id)`                    | « Mes commentaires » : ceux que le lecteur courant peut supprimer.                                                                                                                                                                                                                                 |
+| `idx_album_subscriptions_album (album_id)`                 | « Qui est abonné à cet album », seule lecture du notifieur. Le sens inverse est déjà couvert par la clé primaire `(commenter_id, album_id)`.                                                                                                                                                       |
 
 Pas d'index sur `(album_id, added_at)` : le comptage des nouveautés a lieu une
 fois par heure et par album, et la clé primaire `(album_id, id)` borne déjà le

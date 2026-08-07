@@ -1,10 +1,11 @@
-import type {
-  AdminComment,
-  AdminCommentsPage,
-  Comment,
-  CommentThread,
-  CommentsPage,
-  ModerationFilter,
+import {
+  remainingEditMs,
+  type AdminComment,
+  type AdminCommentsPage,
+  type Comment,
+  type CommentThread,
+  type CommentsPage,
+  type ModerationFilter,
 } from '@gdv/shared';
 import type { Db } from './db.js';
 
@@ -60,6 +61,18 @@ export class UnknownParentError extends Error {
   }
 }
 
+/**
+ * La fenêtre de correction s'est refermée. Distinct d'un refus d'accès : le
+ * commentaire est bien celui du demandeur, c'est son **état** qui ne s'y prête
+ * plus. D'où un 409 côté route, et non le 404 des refus d'accès.
+ */
+export class EditWindowClosedError extends Error {
+  constructor() {
+    super('Le délai pour corriger ce commentaire est passé.');
+    this.name = 'EditWindowClosedError';
+  }
+}
+
 interface CommentRow {
   id: number;
   parent_id: number | null;
@@ -70,7 +83,8 @@ interface CommentRow {
   hidden_at: string | null;
 }
 
-function toComment(row: CommentRow, viewer: Viewer): Comment {
+function toComment(row: CommentRow, viewer: Viewer, now = Date.now()): Comment {
+  const mine = row.commenter_id === viewer.commenterId;
   return {
     id: row.id,
     parentId: row.parent_id,
@@ -78,7 +92,11 @@ function toComment(row: CommentRow, viewer: Viewer): Comment {
     body: row.body,
     createdAt: row.created_at,
     // L'administrateur peut tout retirer ; chacun peut retirer ce qu'il a écrit.
-    canDelete: viewer.admin || row.commenter_id === viewer.commenterId,
+    canDelete: viewer.admin || mine,
+    // Corriger n'est pas modérer : l'administrateur peut masquer ou supprimer,
+    // jamais réécrire. Mettre d'autres mots dans la bouche de quelqu'un sous son
+    // nom serait un pouvoir d'une autre nature que celui de retirer un propos.
+    canEdit: mine && remainingEditMs(row.created_at, now) > 0,
   };
 }
 
@@ -135,6 +153,29 @@ export class CommentRepo {
     }
 
     return { threads, total: rows.length };
+  }
+
+  /**
+   * Compteurs de tout un album, masqués exclus, photos sans commentaire omises.
+   *
+   * Le regroupement se fait en base et non en mémoire : `idx_comments_thread`
+   * porte `(album_id, media_id, id)`, donc SQLite lit la tranche de l'album déjà
+   * ordonnée par média. Rendre les lignes une à une pour les compter côté
+   * serveur ferait traverser tout le fil de chaque photo pour n'en garder qu'un
+   * entier.
+   */
+  countsByAlbum(albumId: string): Record<string, number> {
+    const rows = this.db
+      .prepare(
+        `SELECT media_id, COUNT(*) AS count FROM comments
+          WHERE album_id = ? AND hidden_at IS NULL
+          GROUP BY media_id`,
+      )
+      .all(albumId) as { media_id: string; count: number }[];
+
+    const counts: Record<string, number> = {};
+    for (const row of rows) counts[row.media_id] = row.count;
+    return counts;
   }
 
   /** Compteur affiché avec le détail d'un média, masqués exclus. */
@@ -196,11 +237,41 @@ export class CommentRepo {
     return parent.parent_id ?? parent.id;
   }
 
+  /**
+   * Corrige un commentaire dans la fenêtre qui suit sa publication.
+   *
+   * Réservé à son auteur, administrateur compris — et l'administrateur n'y a
+   * aucun privilège : il modère en masquant, pas en réécrivant.
+   *
+   * Rend `false` si le commentaire n'existe pas, n'est pas celui du demandeur,
+   * ou a été masqué depuis. Ces trois cas sont indistinguables pour la même
+   * raison que dans `remove`. La fenêtre écoulée, elle, **lève** : c'est le seul
+   * refus que l'auteur doit pouvoir comprendre, puisqu'il porte sur son propre
+   * message et qu'il ne révèle rien.
+   */
+  edit(id: number, viewer: Viewer, body: string, now = Date.now()): Comment | null {
+    if (viewer.commenterId === null) return null;
+
+    const row = this.db
+      .prepare(
+        'SELECT created_at FROM comments WHERE id = ? AND commenter_id = ? AND hidden_at IS NULL',
+      )
+      .get(id, viewer.commenterId) as { created_at: string } | undefined;
+
+    if (!row) return null;
+    if (remainingEditMs(row.created_at, now) <= 0) throw new EditWindowClosedError();
+
+    // `created_at` reste celui de la publication : la place du message dans le
+    // fil ne doit pas bouger sous les yeux de ceux qui le lisaient déjà.
+    this.db.prepare('UPDATE comments SET body = ? WHERE id = ?').run(body, id);
+    return this.byId(id, viewer, now);
+  }
+
   /** Rend le commentaire tel que ce lecteur le verrait, masqués compris. */
-  byId(id: number, viewer: Viewer): Comment | null {
+  byId(id: number, viewer: Viewer, now = Date.now()): Comment | null {
     const row = this.db.prepare(`${SELECT_COMMENT} WHERE c.id = ?`).get(id) as
       CommentRow | undefined;
-    return row ? toComment(row, viewer) : null;
+    return row ? toComment(row, viewer, now) : null;
   }
 
   /** Album et média porteurs de ce commentaire, pour recomposer un lien. */

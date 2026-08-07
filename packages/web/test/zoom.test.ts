@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 import {
   computeZoomScale,
   HD_MAX_EDGE,
+  isTap,
   offsetForCenter,
+  TAP_SLOP_PX,
   viewCenter,
   visibleFraction,
   zoomPercent,
@@ -151,5 +153,49 @@ describe('repère de position', () => {
 
   it('ne bouge pas pour un clic au centre', () => {
     assert.deepEqual(offsetForCenter({ x: 0.5, y: 0.5 }, displayed, 3), { x: 0, y: 0 });
+  });
+});
+
+describe('clic ou glisser', () => {
+  const origin = { x: 400, y: 300 };
+
+  it('reconnaît un pointeur strictement immobile', () => {
+    assert.equal(isTap(origin, { x: 400, y: 300 }), true);
+  });
+
+  it('tolère le tremblement de la main sous le seuil', () => {
+    // Le défaut à corriger : sans cette tolérance, aucun clic ne serait jamais
+    // reconnu au doigt ni au stylet, qui bougent toujours d'un pixel ou deux.
+    assert.equal(isTap(origin, { x: 402, y: 299 }), true);
+  });
+
+  it('mesure la distance parcourue, pas chaque axe séparément', () => {
+    // 3 et 4 pixels font 5 en diagonale : pile le seuil, donc encore un clic.
+    // Pris axe par axe, un déplacement de 4 sur chaque axe passerait aussi,
+    // alors qu'il fait 5,66 — un glisser.
+    assert.equal(isTap(origin, { x: origin.x + 3, y: origin.y + 4 }), true);
+    assert.equal(isTap(origin, { x: origin.x + 4, y: origin.y + 4 }), false);
+  });
+
+  it('tient un glisser court et lent pour un glisser', () => {
+    // La durée n'entre pas en compte : seul le déplacement décide, sinon un
+    // déplacement posément amorcé finirait par dézoomer.
+    assert.equal(isTap(origin, { x: origin.x + TAP_SLOP_PX + 1, y: origin.y }), false);
+  });
+
+  it('accepte un seuil imposé par l’appelant', () => {
+    assert.equal(isTap(origin, { x: origin.x + 10, y: origin.y }, 12), true);
+    assert.equal(isTap(origin, { x: origin.x + 10, y: origin.y }, 8), false);
+  });
+
+  it('ignore le sens du déplacement', () => {
+    for (const [dx, dy] of [
+      [TAP_SLOP_PX + 1, 0],
+      [-TAP_SLOP_PX - 1, 0],
+      [0, TAP_SLOP_PX + 1],
+      [0, -TAP_SLOP_PX - 1],
+    ] as const) {
+      assert.equal(isTap(origin, { x: origin.x + dx, y: origin.y + dy }), false, `${dx}, ${dy}`);
+    }
   });
 });
