@@ -10,6 +10,12 @@ services:
       - '8080'
     environment:
       PUBLIC_URL: ${PUBLIC_URL:?définis PUBLIC_URL dans .env}
+      # Les deux suivantes emploient `-` et non `:-`, et la nuance porte tout
+      # leur sens : `:-` substituerait le défaut à une valeur **vide**, or vide
+      # veut dire quelque chose ici. Pour `GEOCODING_URL`, c'est « n'appelle
+      # aucun service de géocodage » ; pour `APP_NAME`, c'est une erreur que le
+      # schéma zod doit pouvoir refuser au lieu qu'on la masque.
+      APP_NAME: ${APP_NAME-Photos}
       SESSION_SECRET: ${SESSION_SECRET:?génère-le avec openssl rand -hex 32}
       TOKEN_KEY: ${TOKEN_KEY:?génère-le avec openssl rand -hex 32}
       # Chemin **dans le conteneur** : la clé est lue sous /app/config, monté
@@ -21,6 +27,10 @@ services:
       # vérification d'adresse ne peut pas partir.
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # Vide ⇒ aucune coordonnée ne sort de la machine, et les journées gardent
+      # leurs grappes sans libellé. C'est le seul réglage de confidentialité de
+      # l'application : il doit atteindre le conteneur pour exister.
+      GEOCODING_URL: ${GEOCODING_URL-https://nominatim.openstreetmap.org}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # Configuration en lecture seule : l'application ne la modifie jamais.
