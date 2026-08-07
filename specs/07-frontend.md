@@ -506,6 +506,27 @@ suivante ou précédente. Trois conditions, chacune pour une raison :
   respectivement à se déplacer dans l'image et à atteindre les contrôles natifs
   de lecture.
 
+#### Aucun geste au doigt n'aboutit sans `touch-action`
+
+La colonne photo de la visionneuse porte `touch-pinch-zoom`, et c'est ce qui
+rend possibles ses deux gestes : le balayage d'une photo à l'autre, et le
+déplacement dans une photo agrandie. Avec la valeur par défaut `auto`, le
+navigateur garde le droit de lire un glissement d'un doigt comme un défilement ;
+il tranche en ce sens au bout d'un ou deux `pointermove`, émet `pointercancel`,
+et les gestionnaires abandonnent le geste. Le balayage n'atteignait alors jamais
+son `pointerup`, et la photo agrandie s'arrêtait après une vingtaine de pixels —
+ce qui se ressent comme une lenteur, pas comme une interruption.
+`setPointerCapture` ne protège pas de ça : il garantit de recevoir la suite des
+événements, il n'empêche pas le navigateur d'annuler le geste.
+
+`pinch-zoom` plutôt que `none` : il ne retire que le défilement à un doigt et
+laisse le pincement à deux doigts, dont la visionneuse a besoin (voir la section
+Zoom). La déclaration vit sur la colonne, pas sur le conteneur de
+`ZoomableImage` : la règle est la même pour tout ce qui s'y trouve, et un
+descendant en hérite par intersection — le repère de position n'a donc rien à
+déclarer. Une vidéo en est exclue, ses contrôles natifs de lecture ayant leur
+propre traitement du toucher (D77).
+
 `moveSelection` (`useGridLayout.ts`) est le point délicat : les déplacements
 verticaux suivent les **lignes réelles** du layout, dont le nombre de vignettes
 varie, et visent la photo dont le centre horizontal est le plus proche. Un
@@ -724,6 +745,10 @@ pour revenir au cadrage. `isTap` (`lib/zoom.ts`) tranche sur la **distance**
 parcourue, `TAP_SLOP_PX = 5` : zéro ne conviendrait pas, un pointeur fin bouge
 toujours d'un pixel ou deux. La durée n'entre pas en compte — un glisser lent et
 court reste un glisser, un doigt posé longuement sans bouger reste un clic.
+
+Au doigt, ce départage suppose que le geste aille jusqu'à son `pointerup` : c'est
+le `touch-action` de la colonne photo qui le garantit, décrit plus haut avec le
+balayage. Sans lui, le déplacement d'une photo agrandie meurt en route.
 
 Deux échelles à ne pas confondre : l'**échelle 1** est l'image ajustée au cadre ;
 l'**échelle 100 %** (`pixelScale`) est celle où un pixel **du rendu disponible**
