@@ -282,7 +282,7 @@ export function escapeHtml(value: string): string {
 /**
  * Code de vérification d'une adresse.
  *
- * Le sujet nomme l'instance, pas le code (D60) : c'est l'hôte qui dit pourquoi
+ * Le sujet nomme l'instance, pas le code (D65) : c'est l'hôte qui dit pourquoi
  * ce message est arrivé, alors qu'un code dans le sujet se lit par-dessus une
  * épaule et reste en clair dans l'historique des notifications.
  *

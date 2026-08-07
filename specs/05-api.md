@@ -560,7 +560,8 @@ Monté hors du préfixe `/admin` parce que son URL est figée dans la console
 Google Cloud, mais protégé par le même `requireAdmin`. Paramètres `code`,
 `state`, `error` posés par Google.
 
-Ne renvoie jamais de JSON : redirige toujours vers `/admin?oauth=<raison>`.
+Ne renvoie jamais de JSON : redirige toujours vers `/admin/serveur?oauth=<raison>`
+— la rubrique qui porte le bouton de connexion (D66).
 
 | `oauth=`         | Cause                                              |
 | ---------------- | -------------------------------------------------- |

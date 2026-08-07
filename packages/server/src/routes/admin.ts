@@ -597,6 +597,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 /**
  * Callback OAuth. Monté hors du préfixe `/admin` parce que son URL est figée
  * dans la console Google — mais il exige la même session administrateur.
+ *
+ * Les retours visent `/admin/serveur`, la rubrique qui porte le bouton de
+ * connexion : c'est de là qu'on est parti, et le message y répond à un geste
+ * encore en tête (D66).
  */
 export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsync {
   return async (app) => {
@@ -604,17 +608,17 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       const query = request.query as { code?: string; state?: string; error?: string };
 
       if (query.error) {
-        return reply.redirect(`/admin?oauth=denied`);
+        return reply.redirect(`/admin/serveur?oauth=denied`);
       }
       if (!query.code || !query.state) {
-        return reply.redirect(`/admin?oauth=invalid`);
+        return reply.redirect(`/admin/serveur?oauth=invalid`);
       }
 
       const cookie = request.cookies[OAUTH_STATE_COOKIE];
       const unsigned = cookie ? request.unsignCookie(cookie) : null;
       if (!unsigned?.valid || unsigned.value !== query.state) {
         request.log.warn('State OAuth invalide, callback rejeté');
-        return reply.redirect(`/admin?oauth=state_mismatch`);
+        return reply.redirect(`/admin/serveur?oauth=state_mismatch`);
       }
 
       reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api' });
@@ -623,7 +627,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
         await context.drive.completeAuth(query.code);
       } catch (error) {
         request.log.error({ err: error }, 'Connexion Drive en échec');
-        return reply.redirect(`/admin?oauth=error`);
+        return reply.redirect(`/admin/serveur?oauth=error`);
       }
 
       // Première connexion : l'index est vide, autant le remplir sans attendre
@@ -632,7 +636,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
         request.log.error({ err: error }, 'Synchronisation initiale en échec');
       });
 
-      return reply.redirect(`/admin?oauth=connected`);
+      return reply.redirect(`/admin/serveur?oauth=connected`);
     });
   };
 }

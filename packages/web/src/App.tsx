@@ -61,8 +61,11 @@ export default function App(): ReactElement {
           </RequireAuth>
         }
       />
+      {/* `/admin` sans rubrique reste un lien valide : les signets et la barre
+          supérieure y mènent encore. */}
+      <Route path="/admin" element={<Navigate to="/admin/albums" replace />} />
       <Route
-        path="/admin"
+        path="/admin/:tab"
         element={
           <RequireAuth admin>
             <AdminPage />
