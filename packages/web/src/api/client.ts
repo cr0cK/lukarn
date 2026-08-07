@@ -8,6 +8,7 @@ import {
   type AlbumCommentCounts,
   type AlbumDay,
   type AppSettings,
+  type BulkModerationResult,
   type Comment,
   type CommentsPage,
   type CreateAlbumRequest,
@@ -65,6 +66,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/**
+ * Ce que la file de modération demande au serveur.
+ *
+ * Reprend `ModerationQuery` de `@gdv/shared`, au curseur près : il voyage en
+ * texte dans l'URL, et n'est reconverti en entier qu'à l'arrivée.
+ */
+export interface AdminCommentsQuery {
+  filter: ModerationFilter;
+  albumId: string | null;
+  q: string | null;
+  limit: number;
+  cursor: string | null;
 }
 
 export const api = {
@@ -145,9 +160,11 @@ export const api = {
   deleteComment: (commentId: number) =>
     request<void>(`/comments/${commentId}`, { method: 'DELETE' }),
 
-  adminComments: (filter: ModerationFilter, cursor: string | null) => {
-    const params = new URLSearchParams({ filter });
-    if (cursor) params.set('cursor', cursor);
+  adminComments: (query: AdminCommentsQuery) => {
+    const params = new URLSearchParams({ filter: query.filter, limit: String(query.limit) });
+    if (query.albumId) params.set('albumId', query.albumId);
+    if (query.q) params.set('q', query.q);
+    if (query.cursor) params.set('cursor', query.cursor);
     return request<AdminCommentsPage>(`/admin/comments?${params}`);
   },
 
@@ -156,6 +173,12 @@ export const api = {
 
   showComment: (commentId: number) =>
     request<{ ok: true }>(`/admin/comments/${commentId}/show`, { method: 'POST' }),
+
+  hideCommenter: (commenterId: number) =>
+    request<BulkModerationResult>(`/admin/commenters/${commenterId}/hide`, { method: 'POST' }),
+
+  showCommenter: (commenterId: number) =>
+    request<BulkModerationResult>(`/admin/commenters/${commenterId}/show`, { method: 'POST' }),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 

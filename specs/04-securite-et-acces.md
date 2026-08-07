@@ -284,7 +284,10 @@ Les points qui tiennent ce cloisonnement :
   faudrait cacher l'existence, mais sur l'état de son propre compte — il ne
   révèle rien.
 - **L'adresse email n'apparaît jamais dans un fil.** Elle identifie et notifie ;
-  seuls le nom déclaré et la modération y ont accès.
+  seuls le nom déclaré et la modération y ont accès. Il en va de même de
+  l'identifiant d'identité : `AdminComment` le porte pour que la modération
+  puisse viser tous les messages d'une personne, `Comment` non — une clé stable
+  dans un fil public permettrait de recoller ses messages d'un album à l'autre.
 
 `packages/server/test/comments.test.ts` verrouille ces points, ainsi que
 l'indistinguabilité des réponses 404 entre album interdit et album inexistant.
@@ -294,6 +297,17 @@ l'indistinguabilité des réponses 404 entre album interdit et album inexistant.
 un mensonge par omission, et c'est ce qui sépare une modération assumée d'un
 bannissement furtif. Masquer est réversible ; la suppression, elle, est
 définitive et reste offerte à l'auteur comme à l'administrateur.
+
+**Modération groupée.** `POST /api/admin/commenters/:commenterId/hide` retire
+d'un coup tous les messages d'une identité, tous albums confondus — le geste
+d'après une clé d'accès qui a trop circulé. Il ne crée aucun pouvoir nouveau :
+c'est le même masquage, à la main duquel personne ne le ferait quinze fois. Il
+reste réversible par le `show` symétrique, et **ne bannit pas** — l'identité peut
+toujours écrire, ce qui est cohérent avec le refus du bannissement furtif
+ci-dessus. Fermer la porte se fait en changeant la clé d'accès, que la file
+affiche à côté de chaque message. `packages/server/test/moderation.test.ts`
+vérifie que l'action ne déborde pas sur les autres identités et qu'elle répond
+403 à un visiteur, jamais 404.
 
 ## Abonnement aux nouveautés d'un album
 

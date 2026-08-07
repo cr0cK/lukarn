@@ -75,7 +75,11 @@ const updateUserSchema = z.object({
 });
 
 const moderationQuerySchema = z.object({
-  filter: z.enum(['all', 'hidden']).default('all'),
+  filter: z.enum(['all', 'visible', 'hidden']).default('all'),
+  albumId: albumId.optional(),
+  // Borné à 200 caractères comme le reste des saisies libres : au-delà, ce
+  // n'est plus une recherche mais un corps de commentaire recollé.
+  q: z.string().trim().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.coerce.number().int().positive().optional(),
 });
@@ -122,6 +126,12 @@ const updateSettingsSchema = z.object({
   prewarmCache: z.boolean().optional(),
   moderationEmail,
 });
+
+/** Identité visée par une modération groupée, ou `null` si le segment n'en est pas une. */
+function commenterIdOf(params: unknown): number | null {
+  const id = Number((params as { commenterId: string }).commenterId);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
 
 /** Message d'erreur lisible : le chemin du champ fautif, puis la raison. */
 function badRequest(reply: FastifyReply, error: z.ZodError): FastifyReply {
@@ -315,9 +325,17 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/comments', async (request, reply) => {
       const parsed = moderationQuerySchema.safeParse(request.query);
       if (!parsed.success) return badRequest(reply, parsed.error);
-      const { filter, limit, cursor } = parsed.data;
+      const { filter, albumId: album, q, limit, cursor } = parsed.data;
 
-      return reply.send(context.comments.listForModeration(filter, limit, cursor ?? null));
+      return reply.send(
+        context.comments.listForModeration({
+          filter,
+          albumId: album ?? null,
+          q: q ?? null,
+          limit,
+          cursor: cursor ?? null,
+        }),
+      );
     });
 
     app.post('/comments/:commentId/hide', async (request, reply) => {
@@ -351,6 +369,52 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       request.log.info(`Commentaire ${id} rendu visible par "${request.user!.username}"`);
       return reply.send({ ok: true });
+    });
+
+    /**
+     * Modération groupée : tous les messages d'une même identité, d'un coup.
+     *
+     * Le geste d'après une clé d'accès qui a trop circulé, ou d'un commentateur
+     * devenu insistant. Retirer quinze messages un par un est un travail que
+     * personne ne fait — et laisser ce travail non fait est le vrai risque.
+     *
+     * L'identité et non la clé d'accès : c'est la personne qu'on modère. La clé
+     * reste affichée à côté de chaque message, parce que c'est elle qu'on change
+     * ensuite.
+     */
+    app.post('/commenters/:commenterId/hide', async (request, reply) => {
+      const id = commenterIdOf(request.params);
+      if (id === null) {
+        return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+      }
+      // Sans cette vérification, un identifiant inventé rendrait
+      // « 0 message touché » — indiscernable d'une identité qui n'a rien écrit.
+      if (!context.commenters.byId(id)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Identité introuvable' });
+      }
+
+      const affected = context.comments.hideAllFrom(id, request.user!.username);
+      request.log.info(
+        `${affected} commentaire(s) de l'identité ${id} masqués par "${request.user!.username}"`,
+      );
+      return reply.send({ affected });
+    });
+
+    app.post('/commenters/:commenterId/show', async (request, reply) => {
+      const id = commenterIdOf(request.params);
+      if (id === null) {
+        return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+      }
+      if (!context.commenters.byId(id)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Identité introuvable' });
+      }
+
+      const affected = context.comments.showAllFrom(id);
+      request.log.info(
+        `${affected} commentaire(s) de l'identité ${id} rendus visibles par ` +
+          `"${request.user!.username}"`,
+      );
+      return reply.send({ affected });
     });
 
     /* -------------------------------------------------------------- albums */

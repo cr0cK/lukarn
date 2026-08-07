@@ -426,6 +426,37 @@ Le tri secondaire sur `id` n'est pas décoratif : sans lui, deux photos de même
 `taken_at` (rafale, import en masse) auraient un ordre indéterminé, et le
 curseur ne saurait pas laquelle a déjà été servie.
 
+### La file de modération
+
+`CommentRepo.listForModeration(query)` pagine sur le même principe, avec un
+curseur réduit à l'identifiant : `AUTOINCREMENT` fait de l'ordre des id l'ordre
+d'écriture, il n'y a pas de second champ à départager.
+
+`query` porte un filtre (`all`, `visible`, `hidden`), un album, une recherche et
+les bornes. Les conditions sont construites **une fois** et servies à deux
+requêtes : la page, et un `COUNT(*)` qui rend `total`. Les écrire deux fois les
+ferait diverger, et le total annoncerait un corpus qui n'est pas celui qu'on
+liste. Le comptage omet le curseur — c'est la taille du corpus filtré, pas celle
+du reste — et se passe des `LEFT JOIN` d'album et de média, qui ne changent pas
+le nombre de lignes.
+
+La recherche est un `LIKE '%…%'` sur le corps, le nom déclaré et l'adresse, avec
+`ESCAPE`. **L'échappement n'est pas décoratif** : `%` et `_` sont les jokers de
+`LIKE`, et sans lui une recherche contenant un `%` ramènerait tout le corpus
+pendant qu'un `_` remplacerait n'importe quel caractère — on chercherait autre
+chose que ce qu'on a tapé, sans que rien ne le signale.
+
+`hideAllFrom(commenterId, by)` et `showAllFrom(commenterId)` traitent tous les
+messages d'une identité d'un coup et rendent le nombre de lignes touchées. La
+clause `AND hidden_at IS NULL` (respectivement `IS NOT NULL`) préserve la date
+d'un message déjà masqué : c'est celle de la décision d'origine qui compte, même
+règle qu'à l'unité.
+
+**Aucun index n'a été ajouté pour ces requêtes** (D67). Une recherche
+`LIKE '%…%'` est un parcours qu'aucun index ne sert, le corpus est borné par ce
+que des humains écrivent, et `idx_comments_thread` continue de couvrir le chemin
+chaud de la galerie. À revoir au-delà de la dizaine de milliers de commentaires.
+
 ## Ce qui n'est pas dans la base
 
 - Les dérivés d'images : fichiers sur disque sous `CACHE_DIR`, inventoriés en
