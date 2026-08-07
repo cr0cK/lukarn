@@ -465,8 +465,17 @@ que `?group=` contredit. Le changer ne touche **pas** à l'index : contrairement
 mise en page.
 
 `AdminAlbum` complète la configuration par l'état réel : `itemCount`,
-`lastSyncAt`, `syncStatus`, `syncError`, et `members` — les comptes ayant un
-accès **explicite**, les détenteurs du joker n'y figurant pas.
+`lastSyncAt`, `syncStatus`, `syncError`, `coverId`, et `members` — les comptes
+ayant un accès **explicite**, les détenteurs du joker n'y figurant pas.
+
+`coverId` de `UpdateAlbumRequest` désigne la photo de couverture ; `null` rend le
+choix automatique. La photo doit être indexée **dans cet album** et ne pas être
+une vidéo, sinon `400 unknown_cover` : elle ne s'afficherait jamais, et un repli
+silencieux ferait découvrir le problème depuis la page d'accueil. Deux champs
+homonymes à ne pas confondre — `AdminAlbum.coverId` est le **choix** (`null` =
+automatique), `Album.coverId` la couverture **effectivement servie**, qui retombe
+sur la photo la plus récente quand la photo choisie a quitté l'index sans que le
+choix soit effacé (D80).
 
 Deux effets de bord assumés :
 
@@ -492,6 +501,12 @@ si l'album est inconnu. La réponse est l'`AlbumDay` à jour.
 voyant ses photos, donc le crayon est dans la grille ; mais l'écriture passe par
 `/api/admin`, seul préfixe qui répond **403**. Partout ailleurs un refus d'accès
 répond 404, et cette route ne déplace pas cet invariant (D50).
+
+La **couverture** suit la même règle, et pour la même raison : on choisit une
+photo en la regardant, donc l'action est dans la visionneuse ; l'écriture passe
+par `PATCH /api/admin/albums/:id`, avec le champ `coverId`. Le retour à
+l'automatique (`coverId: null`), lui, est un bouton de `/admin` : c'est le seul
+endroit qui sache distinguer une couverture choisie d'une couverture par défaut.
 
 La **description de l'album** suit exactement la même règle : son crayon vit sur
 la page de l'album, son écriture passe par `PATCH /api/admin/albums/:id`, avec le

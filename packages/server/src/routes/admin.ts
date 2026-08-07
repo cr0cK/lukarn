@@ -102,6 +102,9 @@ const updateAlbumSchema = z.object({
   folderId: z.string().min(1).max(256).optional(),
   recursive: z.boolean().optional(),
   groupBy: groupBy.optional(),
+  // Un identifiant de fichier Drive, borné comme celui d'un dossier. `null`
+  // rend la couverture au choix automatique — la photo la plus récente.
+  coverId: z.string().min(1).max(256).nullable().optional(),
 });
 
 /** `YYYY-MM-DD`, la clé de journée du découpage par jour. */
@@ -160,6 +163,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       syncStatus: state.status,
       syncError: state.error,
       members: context.config.members(album.id),
+      coverId: album.coverMediaId,
       createdAt: album.createdAt,
       updatedAt: album.updatedAt,
     };
@@ -459,9 +463,25 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       const parsed = updateAlbumSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error);
-      const patch = parsed.data;
+      const { coverId, ...patch } = parsed.data;
 
-      const album = context.config.updateAlbum(id, patch);
+      /**
+       * Une couverture prise hors de cet album, ou posée sur une vidéo, ne
+       * s'afficherait jamais : `stats` la refuse et l'album retomberait
+       * silencieusement sur sa photo la plus récente. Le refus dit tout de
+       * suite ce que ce silence ferait découvrir depuis la page d'accueil.
+       */
+      if (coverId) {
+        const chosen = context.media.getDetail(id, coverId);
+        if (!chosen || chosen.kind !== 'photo') {
+          return reply.code(400).send({
+            error: 'unknown_cover',
+            message: "Cette couverture n'est pas une photo indexée dans cet album.",
+          });
+        }
+      }
+
+      const album = context.config.updateAlbum(id, { ...patch, coverMediaId: coverId });
 
       /**
        * Changer le périmètre change le contenu de l'album : les médias indexés

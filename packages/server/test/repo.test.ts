@@ -218,6 +218,36 @@ describe('statistiques', () => {
     assert.equal(stats.oldestAt, '2024-05-05T10:00:00.000Z');
     assert.equal(stats.coverId, 'shared');
   });
+
+  it('sert la couverture choisie, et retombe sur la plus récente sans elle', () => {
+    // Une photo qui n'est ni la plus récente ni la plus ancienne : sans le
+    // choix, rien ne la ferait remonter.
+    assert.equal(repo.stats('prive', 'p01').coverId, 'p01');
+
+    // Le repli est permanent, et c'est ce qui compte : une photo retirée de
+    // l'index par une synchronisation — corbeille Drive, dossier renommé —
+    // laisserait sinon l'album sans vignette sur la page d'accueil.
+    assert.equal(repo.stats('prive', 'disparue').coverId, 'shared');
+    // Une photo bien indexée, mais dans un autre album : même repli.
+    assert.equal(repo.stats('prive', 'v00').coverId, 'shared');
+  });
+
+  it('refuse une vidéo en couverture, dont le pipeline ne rend pas de vignette', () => {
+    // Album à part : ajouter une ligne à « prive » fausserait les comptes des
+    // tests de nettoyage, qui s'appuient sur son contenu exact.
+    const clip: MediaUpsert = {
+      ...media('fete', 'clip', '2024-07-07T10:00:00.000Z'),
+      kind: 'video',
+      mimeType: 'video/mp4',
+      durationMs: 4000,
+    };
+    repo.upsertMany([media('fete', 'f01', '2024-07-06T10:00:00.000Z'), clip], seenAt);
+
+    // Ni par choix explicite — la route le refuse déjà, le dépôt ne s'y fie
+    // pas — ni par le repli, où elle serait pourtant la plus récente.
+    assert.equal(repo.stats('fete', 'clip').coverId, 'f01');
+    assert.equal(repo.stats('fete').coverId, 'f01');
+  });
 });
 
 describe('nettoyage', () => {

@@ -85,12 +85,12 @@ jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
 La configuration : qui se connecte, quels dossiers Drive sont exposés, et les
 réglages. Écrites **uniquement** par `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Colonnes                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                          |
-| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `position`, `created_at`, `updated_at`                |
-| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                 |
-| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail` |
+| Table         | Colonnes                                                                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                             |
+| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `cover_media_id`, `position`, `created_at`, `updated_at` |
+| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                    |
+| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`    |
 
 Quatre choix à connaître :
 
@@ -114,6 +114,15 @@ Quatre choix à connaître :
   d'enfants par mois, et rouvrir l'album redonnait le défaut global à chaque
   fois. Le paramètre `?group=` continue de primer — c'est une préférence, pas
   une contrainte.
+- **`cover_media_id`** est la photo choisie comme couverture, `NULL` pour la plus
+  récente automatiquement. Aucune clé étrangère vers `media`, pour la même raison
+  que `comments.media_id` : `deleteStale` retire une ligne dès qu'une
+  synchronisation ne la revoit pas, et une cascade effacerait le choix sur un
+  contretemps d'indexation. Le repli est donc calculé à la lecture, par
+  `MediaRepo.stats(albumId, chosenId)` : la photo absente de l'index — ou qui est
+  une vidéo, dont le pipeline ne rend pas de vignette — rend la main à la plus
+  récente sans que le choix soit effacé. L'identifiant Drive étant stable, la
+  photo revenue redevient la couverture.
 - **`created_at` / `updated_at` sont écrits par l'application**, en ISO 8601 UTC,
   pas par `CURRENT_TIMESTAMP` qui produirait un format différent du reste de la
   base.
@@ -359,6 +368,11 @@ reparte de la même étape.
 | 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.   |
 | 6       | `commenters.pending_display_name`.                                                  |
 | 7       | `album_days`, `geo_places` ; `albums.group_by`.                                     |
+| 8       | `albums.cover_media_id`.                                                            |
+
+La migration 8 ajoute la couverture choisie. Elle arrive à `NULL` sur toutes les
+lignes, c'est-à-dire au comportement d'avant : chaque album continue d'afficher
+sa photo la plus récente jusqu'à ce qu'un administrateur en désigne une autre.
 
 La migration 7 ajoute de quoi annoter une journée et nommer le lieu que ses
 photos portent déjà. Elle ne touche à aucune donnée existante : les deux tables

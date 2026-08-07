@@ -342,6 +342,8 @@ export default function AlbumPage(): ReactElement {
           index={openedIndex}
           total={album.data?.itemCount ?? items.length}
           days={byDay}
+          coverId={album.data?.coverId ?? null}
+          canSetCover={Boolean(me?.admin)}
           onIndexChange={showAt}
           onClose={closeLightbox}
           onNeedMore={loadMore}
