@@ -520,6 +520,13 @@ index and the **encrypted** refresh token, which only `TOKEN_KEY` decrypts. A
 backup of the volume without the `.env` yields an unreadable token and forces a
 new Google consent. `backup.sh` takes both.
 
+It does **not** take `config/service-account.json`, which is not recoverable
+either: Google hands that file over once and never again. On a service-account
+install, keep a copy of it wherever the crypt passphrase and the other secrets
+already live. Losing it costs a new key in the console — **Keys → Add key**, then
+revoke the old one — and no album has to be re-shared, since sharing is granted
+to the account, not to the key.
+
 ```bash
 ./deploy/backup.sh            # local archive, then upload through rclone
 ./deploy/backup.sh --local    # local archive only
@@ -541,11 +548,57 @@ rclone config     # any backend: S3 and compatibles, B2, SFTP…
 # GDV_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
 ```
 
-**Automating.** One `crontab -e` line is enough for a personal install — no
-systemd unit to write:
+**Automating.** Two units, and nothing to install: Debian and Ubuntu cloud
+images ship systemd but frequently **no `cron` at all** — `crontab` is simply not
+a command there.
+
+```ini
+# /etc/systemd/system/gdv-backup.service
+[Unit]
+Description=Gallery backup (gdv-data volume and its .env)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/home/deploy/googledrive-viewer
+# rclone reads ~/.config/rclone/rclone.conf. Without HOME it finds no remote,
+# and the off-machine copy fails while the local archive succeeds — the kind of
+# half-failure that goes unnoticed until a restore.
+Environment=HOME=/home/deploy
+ExecStart=/home/deploy/googledrive-viewer/deploy/backup.sh
+TimeoutStartSec=30min
+```
+
+```ini
+# /etc/systemd/system/gdv-backup.timer
+[Unit]
+Description=Daily gallery backup
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+# Runs a missed occurrence at the next boot. cron does not.
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now gdv-backup.timer
+systemctl list-timers gdv-backup.timer   # when it next fires
+sudo systemctl start gdv-backup.service  # run one now, without waiting
+journalctl -u gdv-backup.service         # what it did
+```
+
+The output goes to the journal, so there is no log file to rotate and nothing
+appended to a file nobody reads. Where `cron` **is** installed, one `crontab -e`
+line does the same job, minus the catch-up after downtime:
 
 ```cron
-# Daily backup at 4am, log in /home/deploy/sauvegarde.log
 0 4 * * * cd /home/deploy/googledrive-viewer && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
 ```
 
