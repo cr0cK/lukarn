@@ -3,17 +3,31 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'reac
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 
 export const GRID_GAP = 4;
-export const GRID_HEADER_HEIGHT = 56;
 export const GRID_SECTION_GAP = 28;
+
 /**
- * En-tête d'une section repliée : juste sa ligne de titre.
+ * Retrait au-dessus du titre d'une section. **Invariant, replié ou non.**
  *
- * `GRID_HEADER_HEIGHT` réserve une trentaine de pixels au-dessus du titre pour
- * le décoller des photos de la section précédente. Repliée, la section n'a plus
- * de photos, et cette respiration devient un vide : un album entièrement replié
- * s'étirait sur des blancs qui lui ôtaient tout son intérêt de sommaire.
+ * C'est lui qui fixe l'ordonnée du titre : `section.y + GRID_HEADER_PAD_TOP`.
+ * Le contenu de l'en-tête est donc aligné **en haut** de sa boîte, et la
+ * hauteur variable se consomme en bas. Aligné en bas, comme il l'était,
+ * réduire la boîte au repli faisait remonter le titre de la différence — le
+ * libellé sautait sous le curseur à chaque clic, ce qui est exactement ce
+ * qu'un bouton de repli ne doit pas faire.
  */
-export const GRID_COLLAPSED_HEADER_HEIGHT = 36;
+export const GRID_HEADER_PAD_TOP = 20;
+/** Ligne du titre. Le composant la tient par `leading-6`. */
+export const GRID_HEADER_TITLE_HEIGHT = 24;
+/** Respiration entre l'en-tête et les vignettes de sa propre section. */
+export const GRID_HEADER_PAD_BOTTOM = 12;
+
+export const GRID_HEADER_HEIGHT =
+  GRID_HEADER_PAD_TOP + GRID_HEADER_TITLE_HEIGHT + GRID_HEADER_PAD_BOTTOM;
+/**
+ * En-tête d'une section repliée : le même retrait en haut, le même titre, mais
+ * plus rien en bas — il n'y a plus de vignettes dont le séparer.
+ */
+export const GRID_COLLAPSED_HEADER_HEIGHT = GRID_HEADER_PAD_TOP + GRID_HEADER_TITLE_HEIGHT;
 
 /**
  * Ce que coûte un lieu, puis une note, dans un en-tête de section. Ces deux

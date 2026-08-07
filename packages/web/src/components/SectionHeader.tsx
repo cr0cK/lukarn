@@ -49,10 +49,18 @@ export function SectionHeader({
 
   return (
     <div
-      className="group/section absolute left-0 flex w-full flex-col justify-end pb-3"
+      // Aligné **en haut** : le titre se cale sur `GRID_HEADER_PAD_TOP` quoi
+      // qu'il arrive, et c'est la place restante en bas qui absorbe la
+      // variation de hauteur. Aligné en bas, replier une section la raccourcit
+      // et fait donc remonter son titre — il sautait de 20 px à chaque clic.
+      className="group/section absolute left-0 flex w-full flex-col pt-5"
       style={{ top: section.y, height: section.headerHeight }}
     >
-      <div className="flex items-center gap-0.5">
+      {/* Hauteur déclarée et centrage simple : cette rangée-ci ne porte que le
+          titre et le crayon. L'alignement par ligne de base ne vaut qu'entre le
+          titre et son compte, un cran plus bas — appliqué ici, il décalait la
+          rangée entière de deux pixels. */}
+      <div className="flex h-6 items-center gap-0.5">
         {/* Le bouton dans le titre, et non l'inverse : `h2` est du contenu de
             flux, qu'un `button` n'a pas le droit de contenir. C'est aussi le
             motif d'accordéon attendu par les lecteurs d'écran. */}
@@ -63,11 +71,16 @@ export function SectionHeader({
             aria-expanded={!section.collapsed}
             aria-label={`${section.label}, ${section.count} ${unit}`}
             title={section.collapsed ? 'Déplier' : 'Replier'}
-            className="-ml-1.5 flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left transition-colors hover:bg-white/5"
+            // `h-6` explicite : aligner sur la ligne de base décale la boîte du
+            // compte (12 px) par rapport à celle du titre (16 px), ce qui
+            // grandit la rangée de deux pixels. Sur une section repliée, dont
+            // la boîte vaut exactement `PAD_TOP + TITLE_HEIGHT`, ces deux
+            // pixels débordent. La hauteur est déclarée, comme tout le reste.
+            className="-ml-1.5 flex h-6 min-w-0 items-baseline gap-1.5 rounded-lg px-1.5 text-left transition-colors hover:bg-white/5"
           >
             <svg
               viewBox="0 0 24 24"
-              className={`size-4 shrink-0 text-ink-400 transition-transform ${
+              className={`size-4 shrink-0 self-center text-ink-400 transition-transform ${
                 section.collapsed ? '' : 'rotate-90'
               }`}
               fill="none"
@@ -79,11 +92,20 @@ export function SectionHeader({
             >
               <path d="m9 18 6-6-6-6" />
             </svg>
-            <span className="truncate text-base font-semibold text-ink-100">{section.label}</span>
+            <span className="truncate text-base leading-6 font-semibold text-ink-100">
+              {section.label}
+            </span>
             {/* L'unité tombe sous `sm` faute de place ; le nombre, lui, reste —
                 c'est lui qui dit ce qu'une section repliée contient. Le nom
                 accessible du bouton la porte de toute façon en entier. */}
-            <span aria-hidden="true" className="shrink-0 text-xs text-ink-400 tabular-nums">
+            {/* `leading-none` : c'est le titre qui donne sa hauteur à la
+                rangée. Un interligne de 24 px ici donne au compte une boîte
+                aussi haute, que l'alignement sur la ligne de base descend de
+                deux pixels — et elle pendait sous l'en-tête. */}
+            <span
+              aria-hidden="true"
+              className="shrink-0 text-xs leading-none text-ink-400 tabular-nums"
+            >
               {section.count}
               <span className="hidden sm:inline"> {unit}</span>
             </span>
@@ -105,7 +127,9 @@ export function SectionHeader({
             // `(hover: hover)`, si bien qu'un `opacity-0` sec laissait le
             // crayon définitivement hors d'atteinte au doigt : un
             // administrateur sur téléphone ne pouvait annoter aucune journée.
-            className="rounded p-1 text-ink-500 transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover/section:opacity-100 hover:bg-white/5 hover:text-ink-200 focus-visible:opacity-100"
+            // `self-center` : sans texte, sa ligne de base est son bord bas, et
+            // il pendrait sous le titre dans un conteneur `items-baseline`.
+            className="self-center rounded p-1 text-ink-500 transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover/section:opacity-100 hover:bg-white/5 hover:text-ink-200 focus-visible:opacity-100"
           >
             <svg
               viewBox="0 0 24 24"
@@ -122,8 +146,13 @@ export function SectionHeader({
         )}
       </div>
 
+      {/* `pl-[22px]` = chevron (16) + gouttière (6) : le lieu et la note se calent
+          sur le **texte** du titre, pas sur le bord du bouton. Sans ça, les
+          trois lignes de l'en-tête partaient de deux abscisses différentes. Le
+          chevron reste seul dans sa gouttière, comme la flèche d'une
+          arborescence. */}
       {place && (
-        <p className="truncate text-sm leading-5 text-ink-300" title={place}>
+        <p className="truncate pl-[22px] text-sm leading-5 text-ink-300" title={place}>
           {place}
         </p>
       )}
@@ -132,7 +161,7 @@ export function SectionHeader({
         // `title` porte le texte entier : deux lignes clampées suffisent à se
         // repérer, mais une note tronquée doit rester lisible en entier.
         <p
-          className="line-clamp-2 max-w-3xl text-sm leading-5 text-ink-200"
+          className="line-clamp-2 max-w-3xl pl-[22px] text-sm leading-5 text-ink-200"
           title={day.description}
         >
           {day.description}

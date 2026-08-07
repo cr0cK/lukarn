@@ -194,13 +194,25 @@ collapsedKeys)` le reçoit sous forme d'ensemble de clés, tenu en mémoire par
 `AlbumPage` — ni URL ni `localStorage` (D65).
 
 **Une section repliée change aussi de hauteur de base**
-(`GRID_COLLAPSED_HEADER_HEIGHT`, 36 px contre 56). Les 20 px que
-`GRID_HEADER_HEIGHT` réserve au-dessus du titre servent à le décoller des
-photos de la section précédente ; repliée, il n'y a plus de photos, et cette
-respiration devient un vide. Sans cet ajustement, sept journées repliées
-d'affilée s'étiraient sur des blancs — exactement ce que le repli venait
-supprimer. Le lieu et la note gardent leur coût, eux, puisqu'ils restent
-affichés : c'est tout l'intérêt d'une journée repliée.
+(`GRID_COLLAPSED_HEADER_HEIGHT`, 44 px contre 56). La hauteur d'en-tête se
+décompose en trois constantes, et c'est la dernière seule qui tombe au repli :
+
+| Constante                  | Valeur | Rôle                                             |
+| -------------------------- | ------ | ------------------------------------------------ |
+| `GRID_HEADER_PAD_TOP`      | 20     | Retrait au-dessus du titre. **Invariant.**       |
+| `GRID_HEADER_TITLE_HEIGHT` | 24     | La ligne du titre (`leading-6`, `h-6`).          |
+| `GRID_HEADER_PAD_BOTTOM`   | 12     | Respiration avant les vignettes. Nulle au repli. |
+
+**Le contenu de l'en-tête est aligné en haut de sa boîte, jamais en bas**, et
+c'est ce qui rend le repli utilisable : le titre se cale sur
+`section.y + GRID_HEADER_PAD_TOP` quel que soit l'état, et la variation de
+hauteur se consomme en bas, là où il n'y a plus rien. Aligné en bas — comme il
+l'était — raccourcir la boîte remontait le titre d'autant, et le libellé
+sautait de 20 px sous le curseur à chaque clic. Un bouton de repli qui déplace
+sa propre étiquette est inutilisable.
+
+Le lieu et la note gardent leur coût, eux, puisqu'ils restent affichés : c'est
+tout l'intérêt d'une journée repliée.
 
 ### Par mois ou par jour — `GroupBy`
 
@@ -334,6 +346,18 @@ d'édition pour un administrateur en découpage par jour.
   lisible déplié, et lui qui dit ce qu'une section repliée contient. L'unité
   (« éléments ») tombe sous `sm` faute de place ; le nombre reste, et le nom
   accessible du bouton porte l'ensemble.
+
+- **Trois détails d'alignement, chacun réglant un défaut mesuré.** Le titre
+  (16 px) et le compte (12 px) sont alignés sur leur **ligne de base** : centrés
+  par leurs boîtes, leurs lettres ne tombaient pas au même niveau. Le compte
+  prend `leading-none`, parce qu'un interligne égal à celui du titre lui donne
+  une boîte aussi haute que l'alignement descend de deux pixels — elle pendait
+  sous une section repliée, dont la boîte vaut exactement
+  `PAD_TOP + TITLE_HEIGHT`. Enfin le lieu et la note prennent `pl-[22px]`, la
+  largeur du chevron et de sa gouttière, pour partir de la même abscisse que le
+  **texte** du titre ; sans quoi les trois lignes de l'en-tête s'alignaient sur
+  deux bords différents. Le chevron reste seul dans sa gouttière, comme la
+  flèche d'une arborescence.
 - **Le lieu affiché** est `place ?? autoPlaces.join(' · ')` — la saisie prime sur
   la déduction. Le calcul vit dans `placeLabelOf`, partagé avec le calcul de
   hauteur **et avec la visionneuse** : un lieu compté d'un côté et pas affiché
@@ -433,24 +457,30 @@ focus ou qu'un modificateur est enfoncé.
 
 ## Visionneuse — `components/Lightbox.tsx`
 
-- **L'en-tête porte le contexte de la journée, pas le nom du fichier** : la
-  date, le lieu, la note. Ouvrir une photo faisait jusque-là perdre ce que son
-  en-tête de section disait, alors que c'est lui qui donne son sens à l'image.
-  Le nom du fichier et l'horodatage exact n'ont pas disparu — ils sont à une
-  touche, dans le panneau `i`, où ils vivaient déjà.
+- **L'en-tête empile trois informations de portée décroissante** : le nom du
+  fichier, puis la journée et son lieu, puis la note. Ouvrir une photo faisait
+  jusque-là perdre ce que son en-tête de section disait, alors que c'est lui qui
+  donne son sens à l'image. L'horodatage exact reste, lui, dans le panneau `i`,
+  où il vivait déjà.
 
-  Les libellés viennent de `dayKey`, `dayLabel` et `placeLabelOf`, **les mêmes
-  fonctions que la grille**. Une visionneuse qui calculerait sa date de son côté
-  finirait par annoncer autre chose que l'en-tête d'où l'on vient de cliquer.
-  `AlbumPage` active donc `useAlbumDays` dès qu'une photo est ouverte, et plus
-  seulement en découpage par jour ; la `queryKey` étant la même, un album déjà
-  par jour ne relance aucune requête.
+  Les libellés de journée viennent de `dayKey`, `dayLabel` et `placeLabelOf`,
+  **les mêmes fonctions que la grille**. Une visionneuse qui calculerait sa date
+  de son côté finirait par annoncer autre chose que l'en-tête d'où l'on vient de
+  cliquer. `AlbumPage` active donc `useAlbumDays` dès qu'une photo est ouverte,
+  et plus seulement en découpage par jour ; la `queryKey` étant la même, un
+  album déjà par jour ne relance aucune requête.
 
-- **La progression est une barre, doublée du rapport chiffré**, comptée sur
-  `album.itemCount` et non sur la liste paginée, qui grandit en cours de
-  parcours (D66). Elle vit sous les icônes : c'est la première ligne qui manque
-  de place sur un téléphone, où cinq icônes plus la croix ne laissaient qu'une
-  quarantaine de pixels à la date.
+  Tout se cale sur la **première ligne** : les retraits hauts du bloc de texte
+  et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
+  au centre des boutons d'icône, hauts de 32 puis 36 px.
+
+- **La progression est une barre collée au bord haut**, sur toute la largeur et
+  épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
+  Plus bas, elle traversait la photo d'un trait de couleur. Le rapport chiffré
+  la double sur la première ligne, avant les icônes.
+
+  Elle est comptée sur `album.itemCount` et non sur la liste paginée, qui
+  grandit en cours de parcours (D66).
 
 - Gèle `document.body.style.overflow` à l'ouverture, sinon la molette ferait
   défiler la grille sous l'image.
@@ -799,6 +829,16 @@ ses lignes ; le cadre appartient à `SidePanel`.
 
 L'état est un `PanelTab | null` — `null` valant « fermé ». `i` et `c` ouvrent
 l'onglet correspondant et le referment s'il est déjà affiché.
+
+**Le panneau est en `ink-850`, un cran au-dessus du fond.** La visionneuse est
+en `ink-950` ; en `ink-900`, le panneau ouvert ne se distinguait pas d'elle —
+seule sa bordure le trahissait, et on ne savait plus où l'on était. Trois
+conséquences dans ce qu'il contient, sans quoi le changement en aurait effacé
+une partie : les séparateurs d'`ExifPanel` et de `CommentsPanel` passent en
+`ink-800`, désormais **plus clairs** que leur fond ; et les champs de saisie de
+`CommentsPanel` et d'`IdentityForm` passent en `ink-900`, plus sombres que le
+panneau, pour continuer de se lire comme des creux. Un champ de la couleur
+exacte de son panneau n'est plus un champ.
 
 **Deux régimes de position selon la largeur.** À partir de `md`, le panneau est
 un élément du flux (`md:relative md:w-80 lg:w-96 md:shrink-0`) : la zone photo

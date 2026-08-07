@@ -44,7 +44,10 @@ export function SidePanel({
       // navigation restent atteignables, et le panneau peut donc rester ouvert
       // d'une photo à l'autre. En dessous, il reprend la surimpression — 320 px
       // prélevés sur un écran de téléphone ne laisseraient rien à voir.
-      className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-900/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-900 md:backdrop-blur-none lg:w-96"
+      // `ink-850` et non `ink-900` : la visionneuse est en `ink-950`, et deux
+      // noirs séparés de trois points de luminance se confondaient — le panneau
+      // ouvert ne se distinguait pas du reste, seule sa bordure le trahissait.
+      className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-850/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-850 md:backdrop-blur-none lg:w-96"
       aria-label="Informations et commentaires"
     >
       <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
