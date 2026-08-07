@@ -507,23 +507,23 @@ son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
 
 ### Modération des commentaires
 
-| Méthode | Chemin                                    | Réponse                 |
-| ------- | ----------------------------------------- | ----------------------- |
-| GET     | `/api/admin/comments`                     | `AdminCommentsPage`     |
-| POST    | `/api/admin/comments/:id/hide`            | `{ ok: true }`          |
-| POST    | `/api/admin/comments/:id/show`            | `{ ok: true }`          |
-| POST    | `/api/admin/commenters/:commenterId/hide` | `BulkModerationResult`  |
-| POST    | `/api/admin/commenters/:commenterId/show` | `BulkModerationResult`  |
+| Méthode | Chemin                                    | Réponse                |
+| ------- | ----------------------------------------- | ---------------------- |
+| GET     | `/api/admin/comments`                     | `AdminCommentsPage`    |
+| POST    | `/api/admin/comments/:id/hide`            | `{ ok: true }`         |
+| POST    | `/api/admin/comments/:id/show`            | `{ ok: true }`         |
+| POST    | `/api/admin/commenters/:commenterId/hide` | `BulkModerationResult` |
+| POST    | `/api/admin/commenters/:commenterId/show` | `BulkModerationResult` |
 
 Paramètres de `GET` :
 
-| Paramètre | Valeurs                                | Défaut |
-| --------- | -------------------------------------- | ------ |
-| `filter`  | `all`, `visible`, `hidden`             | `all`  |
-| `albumId` | un identifiant d'album                 | tous   |
-| `q`       | 1 à 200 caractères, coupés aux bords   | —      |
-| `limit`   | 1 à 200                                | 50     |
-| `cursor`  | entier positif                         | —      |
+| Paramètre | Valeurs                              | Défaut |
+| --------- | ------------------------------------ | ------ |
+| `filter`  | `all`, `visible`, `hidden`           | `all`  |
+| `albumId` | un identifiant d'album               | tous   |
+| `q`       | 1 à 200 caractères, coupés aux bords | —      |
+| `limit`   | 1 à 200                              | 50     |
+| `cursor`  | entier positif                       | —      |
 
 Le curseur est un **simple entier**, l'identifiant du dernier commentaire rendu :
 `AUTOINCREMENT` garantit que l'ordre des id est l'ordre d'écriture, ce qui évite

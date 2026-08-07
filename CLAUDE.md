@@ -20,10 +20,17 @@ Cette règle **est contrôlée**, elle ne repose pas sur la mémoire :
 d'environnement, migrations, modules — à ce que les specs mentionnent, et échoue
 sur l'écart. Il tourne dans `pnpm verify`, dans la CI, et sur `pre-push`.
 
-`pnpm check:links` complète le premier sur l'autre défaut silencieux : un renvoi
-entre les trois documents qui ne mène plus nulle part. Il résout chaque lien
-relatif et chaque ancre, et n'appelle pas le réseau — un contrôle qui échoue
-parce qu'un site tiers est lent finit désactivé.
+`check:specs` contrôle aussi la **numérotation des décisions** : aucun numéro
+défini deux fois dans `08-decisions.md`, et aucun renvoi `(Dxx)` — dans les
+specs comme dans le code — vers une entrée qui n'existe pas. Les deux défauts
+sont arrivés (D75). Quand tu ajoutes une décision, prends le numéro qui suit le
+dernier **de `main`**, pas celui de ta branche : deux branches parallèles
+partent sinon du même numéro sans se voir, et git ne le signale pas.
+
+`pnpm check:links` complète les précédents sur l'autre défaut silencieux : un
+renvoi entre les trois documents qui ne mène plus nulle part. Il résout chaque
+lien relatif et chaque ancre, et n'appelle pas le réseau — un contrôle qui
+échoue parce qu'un site tiers est lent finit désactivé.
 
 Le contrôle vérifie l'**existence** d'une mention, pas sa qualité : il attrape
 la route ajoutée sans un mot dans `05-api.md`, jamais un paragraphe devenu faux.
@@ -82,9 +89,10 @@ pnpm typecheck
 pnpm lint                          # eslint .
 pnpm format                        # prettier --write .
 pnpm test                          # runner natif de Node, tous les packages
+pnpm check:format                  # prettier --check . — le formatage est-il celui du dépôt ?
 pnpm check:specs                   # les specs ont-elles décroché du code ?
 pnpm check:links                   # les renvois entre documents mènent-ils quelque part ?
-pnpm verify                        # les cinq d'un coup — la porte avant de publier
+pnpm verify                        # les six d'un coup — la porte avant de publier
 
 pnpm create-admin <identifiant>    # premier administrateur d'une base vide
 pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
@@ -93,9 +101,15 @@ pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compt
 ```
 
 Avant de déclarer un travail terminé : **`pnpm verify`** — typecheck, lint,
-tests, contrôle des specs et contrôle des liens. C'est ce que lance la CI, et
-les deux contrôles de documentation tournent aussi sur `pre-push` : une
-divergence bloque la publication avant d'atteindre le dépôt distant.
+formatage, tests, contrôle des specs et contrôle des liens. C'est ce que lance
+la CI, et les deux contrôles de documentation tournent aussi sur `pre-push` :
+une divergence bloque la publication avant d'atteindre le dépôt distant.
+
+`pnpm format` réécrit, `pnpm check:format` constate. Le second est dans
+`verify` parce que le premier ne s'exécute que si on y pense : tant que rien ne
+le vérifiait, du code non formaté atteignait `main`, et la personne suivante qui
+lançait `pnpm format` reformatait au passage le travail de quelqu'un d'autre —
+un diff brouillé pour un correctif qui n'était pas le sien (D75).
 
 ## Conventions de code
 

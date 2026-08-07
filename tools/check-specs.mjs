@@ -140,10 +140,67 @@ for (const chemin of sources) {
   }
 }
 
+/* ------------------------------------------------------------- Décisions */
+
+/**
+ * Les décisions se numérotent à la main, et jusqu'ici rien ne l'arbitrait.
+ *
+ * Deux défauts en découlent, qu'aucun des contrôles ci-dessus n'attrape. Le
+ * premier : deux entrées portant le même numéro, ce qui arrive dès que des
+ * branches parallèles ajoutent chacune la suivante — elles partent toutes du
+ * même dernier numéro et ne se voient pas. Le second, plus coûteux : un renvoi
+ * `(Dxx)` vers un numéro qui n'existe pas, ou qui a changé de sens depuis. Un
+ * tel renvoi ne casse rien, se lit sans accroc, et envoie le lecteur sur une
+ * décision qui parle d'autre chose.
+ *
+ * `check-links.mjs` ne peut pas les voir : un renvoi `(D67)` en texte brut
+ * n'est pas un lien markdown, et un `[D67](./08-decisions.md)` pointe le
+ * fichier, jamais l'entrée.
+ */
+const specDecisions = lire(join(SPECS, '08-decisions.md'));
+const numerosDefinis = [...specDecisions.matchAll(/^## D(\d+)\s/gm)].map((m) => Number(m[1]));
+const definies = new Set(numerosDefinis);
+
+const dejaVus = new Set();
+for (const numero of numerosDefinis) {
+  if (dejaVus.has(numero)) {
+    manques.push(`Décision « D${numero} » définie deux fois dans specs/08-decisions.md`);
+  }
+  dejaVus.add(numero);
+}
+
+// Les renvois vivent autant dans le code que dans les specs : un commentaire
+// qui justifie une ligne par une décision est la forme la plus utile du renvoi,
+// et la plus facile à laisser pourrir.
+const porteursDeRenvois = [
+  ...fichiers(SPECS, (n) => n.endsWith('.md')),
+  ...fichiers(join(RACINE, 'packages/shared/src'), (n) => n.endsWith('.ts')),
+  ...fichiers(join(RACINE, 'packages/server/src'), (n) => n.endsWith('.ts')),
+  ...fichiers(join(RACINE, 'packages/server/test'), (n) => n.endsWith('.ts')),
+  ...fichiers(join(RACINE, 'packages/web/src'), (n) => /\.tsx?$/.test(n)),
+  ...fichiers(join(RACINE, 'packages/web/test'), (n) => /\.tsx?$/.test(n)),
+  ...fichiers(join(RACINE, 'packages/web/public'), (n) => n.endsWith('.js')),
+];
+
+for (const chemin of porteursDeRenvois) {
+  lire(chemin)
+    .split('\n')
+    .forEach((ligne, index) => {
+      for (const [, numero] of ligne.matchAll(/\bD(\d+)\b/g)) {
+        if (definies.has(Number(numero))) continue;
+        manques.push(
+          `${relative(RACINE, chemin)}:${index + 1} renvoie à « D${numero} », qui n'existe pas`,
+        );
+      }
+    });
+}
+
 /* --------------------------------------------------------------- Verdict */
 
 if (manques.length === 0) {
-  console.log('specs : à jour (routes, variables, migrations, modules)');
+  console.log(
+    `specs : à jour (routes, variables, migrations, modules, ${definies.size} décisions)`,
+  );
   process.exit(0);
 }
 

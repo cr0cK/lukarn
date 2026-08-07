@@ -1,6 +1,11 @@
 #!/bin/sh
 # Empêche de publier une documentation qui ment : une divergence entre le code et
-# les specs, ou un renvoi interne qui ne mène nulle part.
+# les specs, une décision numérotée deux fois ou un renvoi — `(Dxx)` comme lien
+# relatif — qui ne mène nulle part.
+#
+# Le formatage n'est pas contrôlé ici (D75) : il l'est dans `pnpm verify` et dans
+# la CI. Bloquer une publication sur un espacement, quand la correction tient en
+# un `pnpm format`, coûterait plus d'agacement que la dérive qu'il évite.
 #
 # Posé sur `pre-push` et non `pre-commit` : commiter une étape intermédiaire est
 # légitime, publier un état où la documentation ment ne l'est pas. Les deux
