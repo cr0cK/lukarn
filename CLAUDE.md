@@ -20,6 +20,11 @@ Cette règle **est contrôlée**, elle ne repose pas sur la mémoire :
 d'environnement, migrations, modules — à ce que les specs mentionnent, et échoue
 sur l'écart. Il tourne dans `pnpm verify`, dans la CI, et sur `pre-push`.
 
+`pnpm check:links` complète le premier sur l'autre défaut silencieux : un renvoi
+entre les trois documents qui ne mène plus nulle part. Il résout chaque lien
+relatif et chaque ancre, et n'appelle pas le réseau — un contrôle qui échoue
+parce qu'un site tiers est lent finit désactivé.
+
 Le contrôle vérifie l'**existence** d'une mention, pas sa qualité : il attrape
 la route ajoutée sans un mot dans `05-api.md`, jamais un paragraphe devenu faux.
 Ce dernier cas reste à ta charge — c'est d'ailleurs le plus fréquent quand on
@@ -41,7 +46,7 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                     |
 | `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`               |
 | `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                     |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et le `README.md` de la racine     |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et `deploy/README.md`              |
 | `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, règles d'accès | `specs/04-securite-et-acces.md`                                                |
 | `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                               |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                      | `specs/02-architecture.md`, et `08` si un compromis change                     |
@@ -50,9 +55,17 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/08-decisions.md` — **nouvelle entrée**, on ne réécrit pas les anciennes |
 | Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                              |
 
-Le `README.md` de la racine s'adresse à l'installateur (installer, exploiter,
-sauvegarder). Les specs s'adressent au développeur (pourquoi c'est fait ainsi).
-Ne duplique pas l'un dans l'autre.
+Trois documentations, trois lecteurs, aucune duplication entre elles :
+
+| Fichier            | Lecteur                 | Répond à                                           |
+| ------------------ | ----------------------- | -------------------------------------------------- |
+| `README.md`        | Qui découvre le projet  | Qu'est-ce que c'est, et comment le lancer en local |
+| `deploy/README.md` | Qui exploite un serveur | Installer, mettre à jour, sauvegarder, restaurer   |
+| `specs/`           | Qui reprend le code     | Pourquoi c'est fait ainsi                          |
+
+Le `README.md` de la racine reste **court** : ce qu'est l'application, ce qu'elle
+fait, comment la lancer en local, et trois liens. Toute procédure serveur va dans
+`deploy/README.md`, à côté des scripts qu'elle décrit (D64).
 
 ## Commandes
 
@@ -69,7 +82,8 @@ pnpm lint                          # eslint .
 pnpm format                        # prettier --write .
 pnpm test                          # runner natif de Node, tous les packages
 pnpm check:specs                   # les specs ont-elles décroché du code ?
-pnpm verify                        # les quatre d'un coup — la porte avant de publier
+pnpm check:links                   # les renvois entre documents mènent-ils quelque part ?
+pnpm verify                        # les cinq d'un coup — la porte avant de publier
 
 pnpm create-admin <identifiant>    # premier administrateur d'une base vide
 pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
@@ -78,9 +92,9 @@ pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compt
 ```
 
 Avant de déclarer un travail terminé : **`pnpm verify`** — typecheck, lint,
-tests et contrôle des specs. C'est ce que lance la CI, et `check:specs` tourne
-aussi sur `pre-push` : une divergence bloque la publication avant d'atteindre
-le dépôt distant.
+tests, contrôle des specs et contrôle des liens. C'est ce que lance la CI, et
+les deux contrôles de documentation tournent aussi sur `pre-push` : une
+divergence bloque la publication avant d'atteindre le dépôt distant.
 
 ## Conventions de code
 
@@ -102,6 +116,56 @@ le dépôt distant.
 - **Formatage** : Prettier, 100 colonnes, guillemets simples, virgules finales.
 - Le contrat d'API vit dans `packages/shared` ; le front ne redéclare jamais une
   forme de réponse de son côté.
+
+## Ton de la documentation et des PR
+
+Ce dépôt part en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
+l'équipe qui l'a écrit.
+
+**Ce qui se lit depuis GitHub est en anglais** — `README.md`, commits et pull
+requests, titre compris. C'est la seule exception à la règle « français
+partout » ci-dessus, et la ligne de partage est l'audience :
+
+| En anglais                      | En français                                     |
+| ------------------------------- | ----------------------------------------------- |
+| `README.md`, `deploy/README.md` | `specs/` — conception, pour qui reprend le code |
+| Commits, PR (titre et corps)    | `CLAUDE.md` — instructions internes             |
+|                                 | Code, commentaires, tests, interface, journaux  |
+
+Les deux README s'adressent à qui découvre ou installe, souvent sans parler
+français ; les `specs/` s'adressent au développeur qui reprend le projet, et
+restent cohérentes avec le code et les tests. Un exemple qui apparaît des deux
+côtés peut donc diverger — les README disent `photos.example.com`, les specs
+`photos.exemple.fr` : c'est sans conséquence, chacun est idiomatique dans sa
+langue.
+
+> **Les PR #1 à #11 ont été retitrées en anglais le 2026-08-07, mais les commits
+> correspondants restent en français dans `main`.** La liste des PR et
+> `git log` divergent donc sur ces onze entrées, et c'est **voulu** : les
+> réaligner supposerait de réécrire l'historique de la branche principale, ce
+> qui casse tous les clones existants pour un gain cosmétique. Ne pas « corriger »
+> cette divergence. Elle s'éteint d'elle-même : tout ce qui est écrit à partir
+> de maintenant est en anglais des deux côtés.
+
+**Une PR dit ce qu'elle apporte ou corrige, pas ce que son auteur a vécu.**
+Concrètement :
+
+- Pas de `I`, pas de `we`, pas de récit de la session. Le sujet grammatical est
+  le code, le comportement, l'utilisateur — jamais celui qui a tapé.
+- **Court.** L'intention en tête, en une phrase ; le problème puis le correctif ;
+  deux à quatre puces à l'échelle du sous-système. La profondeur — alternatives
+  écartées, vérifications, chiffres — va dans un unique `<details>` replié.
+- Pas de restitution fichier par fichier du diff : l'onglet Files le fait mieux.
+
+**Aucun hébergeur, aucun service tiers n'est présenté comme le bon choix** (D63).
+La documentation énonce ce qu'il faut obtenir ; les commandes propres à un
+fournisseur vivent dans un bloc replié, à égalité avec les autres. Un composant
+nommé dans le corps du texte — Tailscale, Caddy, Let's Encrypt — doit être un
+choix d'architecture assumé et documenté comme remplaçable, pas une habitude.
+
+**Rien de nominatif dans ce qui s'exécute.** Un compte système porte un rôle
+(`deploy`), pas un prénom. Les identifiants d'exemple des specs et des tests
+sont une autre affaire : ils restent tels quels.
 
 ## Pièges à connaître
 

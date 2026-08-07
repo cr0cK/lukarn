@@ -17,7 +17,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 DESTINATION=${GDV_BACKUP_DIR:-$PWD/sauvegardes}
-REMOTE=${GDV_BACKUP_REMOTE:-scaleway:gdv-sauvegardes}
+# N'importe quel remote rclone convient — S3 et compatibles, Backblaze B2, un
+# disque distant en SFTP. `rclone config` le nomme, GDV_BACKUP_REMOTE le
+# désigne ; le dépôt n'en privilégie aucun et n'en connaît aucun secret.
+REMOTE=${GDV_BACKUP_REMOTE:-sauvegardes:gdv}
 RETENTION=7
 
 local_seulement=false

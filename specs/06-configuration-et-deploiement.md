@@ -221,7 +221,7 @@ qui ne sauvegarde rien et ne le dit pas ne se découvre qu'à la restauration
 (D53). Le nom explicite rend ces commandes justes quel que soit le répertoire de
 clonage ; la migration d'une instance déjà en service — recopier
 `<projet>_gdv-data` vers `gdv-data` **avant** le premier `up` — est décrite dans
-le `README.md`.
+`deploy/README.md`.
 
 | Montage                   | Contenu                                                                                                                          | Sauvegarde                                                                                                  |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -235,19 +235,33 @@ le `README.md`.
 Sauvegarder `gdv-data` ne suffit pas seul : sans `TOKEN_KEY`, le refresh token
 qu'il contient est indéchiffrable. Sauvegarde le `.env` avec. La procédure
 complète — arrêt de `app` pour que SQLite soit au repos, `tar` du volume, copie
-hors du VPS — est dans le `README.md`, qui s'adresse à l'installateur.
+hors du VPS — est dans `deploy/README.md`, qui s'adresse à l'installateur.
 
 Les logs des deux services sont plafonnés (`json-file`, 10 Mo × 3).
 
 ## Durcissement de la machine
 
-Le dépôt en porte l'amorçage : `deploy/cloud-init.yaml`, passé à
-`scw instance server create … cloud-init=@…`, monte une machine Debian/Ubuntu
-avec un compte `alexis` sudo par clé seule, `PasswordAuthentication no`,
-`unattended-upgrades` activé sans son `dpkg-reconfigure` interactif, Docker,
-`rclone`, Tailscale, et `ufw` ouvert sur 22, 80, 443/tcp et 443/udp. Le compose
-en tire parti : l'application ne publie aucun port sur l'hôte, il n'y a donc
-rien d'autre à ouvrir.
+Le dépôt en porte l'amorçage : `deploy/cloud-init.yaml`, passé en « user data »
+à la création de la machine, monte un système Debian/Ubuntu avec un compte
+`deploy` sudo par clé seule, `PasswordAuthentication no`, `unattended-upgrades`
+activé sans son `dpkg-reconfigure` interactif, Docker, `rclone`, Tailscale, et
+`ufw` ouvert sur 22, 80, 443/tcp et 443/udp. Le compose en tire parti :
+l'application ne publie aucun port sur l'hôte, il n'y a donc rien d'autre à
+ouvrir.
+
+**Le fichier ne suppose aucun hébergeur** (D63). Cloud-init est un standard _de
+facto_ — une implémentation open source unique, que la quasi-totalité des images
+cloud Linux embarquent et que tous les grands fournisseurs alimentent sous le nom
+de « user data ». Pas une norme publiée : il n'y a ni RFC ni comité, et les
+exceptions existent (Fedora CoreOS et Flatcar utilisent **Ignition**, Windows
+**cloudbase-init**, et une image minimale peut ne pas embarquer le paquet). Le
+`deploy/README.md` les nomme et renvoie à la procédure manuelle, plutôt que de laisser
+quelqu'un chercher pourquoi rien ne se passe.
+
+`deploy/README.md` illustre l'opération avec trois CLI différents, dans un bloc
+replié et à égalité, précisément pour qu'aucun ne se lise comme le chemin
+recommandé. Le compte s'appelle `deploy` et non du prénom de quelqu'un : c'est
+un rôle, et un dépôt public ne crée pas un compte système au nom de son auteur.
 
 **L'accès d'administration passe par Tailscale, et le séquencement est la seule
 difficulté.** Le fichier installe Tailscale mais ne l'authentifie pas :
@@ -255,20 +269,38 @@ difficulté.** Le fichier installe Tailscale mais ne l'authentifie pas :
 humaine. Tant qu'elle n'a pas eu lieu, SSH sur l'IP publique est l'unique chemin
 vers la machine — le fermer depuis le cloud-init la rendrait inatteignable. Le
 port 22 reste donc ouvert à l'amorçage, et se ferme à la main **après** avoir
-vérifié `ssh alexis@<nom-tailnet>` depuis un second terminal (`ufw delete allow
-OpenSSH`, `PermitRootLogin no`, retrait de la règle 22 du groupe de sécurité).
+vérifié `ssh deploy@<nom-tailnet>` depuis un second terminal (`ufw delete allow
+OpenSSH`, `PermitRootLogin no`, retrait de la règle 22 du pare-feu amont, quand
+l'hébergeur en propose un).
 `disable_root: false` et `PermitRootLogin prohibit-password` gardent le compte
 root par clé accessible pendant cet intervalle ; la console série de
 l'hébergeur, hors réseau de l'instance, est le filet de dernier recours. Tout
-cela est répété en tête de `deploy/cloud-init.yaml` et dans le `README.md` :
+cela est répété en tête de `deploy/cloud-init.yaml` et dans `deploy/README.md` :
 c'est le seul endroit de l'installation où une erreur coûte une réinstallation.
 
 Tailscale ne demande aucune ouverture entrante — il sort en UDP 41641 et se
 rabat sur un relais DERP.
 
+**Le poste d'administration doit être sur le tailnet, lui aussi.** Un tailnet
+n'a d'intérêt qu'à deux nœuds au moins : `ssh deploy@<nom-tailnet>`, qui devient
+l'unique porte une fois le 22 fermé, ne résout que depuis une machine qui a
+elle-même rejoint le réseau. Le cloud-init ne peut rien pour ce côté-là, et
+c'est le genre d'omission qu'on ne constate qu'au pire moment — juste après
+avoir fermé le port 22. `deploy/README.md` en fait donc son § 0, avant même la
+création de la machine.
+
+**La machine n'a ni Node ni pnpm**, et c'est délibéré : le `docker compose
+up --build` construit tout dans l'image, il n'y a pas de second runtime à tenir
+à jour sur l'hôte. Conséquence à ne pas oublier en documentant : les commandes
+d'administration hors application — `create-admin`, `reset-password` — n'ont pas
+d'invocation `pnpm` sur un serveur. Elles se lancent dans le conteneur, sur leur
+forme compilée (voir « Scripts » plus bas).
+
 Restent hors du dépôt, parce qu'ils tiennent à un compte et non à du code :
-`scw init`, la création du tailnet, l'enregistrement DNS `A`/`AAAA`, et la
-configuration du remote `rclone` des sauvegardes.
+l'authentification auprès de l'hébergeur, la création du tailnet **et
+l'installation du client Tailscale sur le poste d'administration**,
+l'enregistrement DNS `A`/`AAAA`, et la configuration du remote `rclone` des
+sauvegardes.
 
 ## Scripts de déploiement — `deploy/`
 
@@ -345,14 +377,44 @@ serveur** ensuite, puisque le cache n'est inventorié qu'au démarrage ; et il n
 faut pas le lancer sur une instance réelle — la prochaine synchronisation
 supprimerait ces entrées, mais elles pollueraient les albums entre-temps.
 
+**Ces invocations `pnpm` supposent un poste de développement.** Sur un serveur
+monté par `deploy/cloud-init.yaml`, il n'y a pas de pnpm — seulement Docker. Les
+deux commandes qui ont un sens en production s'y lancent donc sur leur forme
+compilée, celle que `tsc` a écrite dans `dist/` et que le `Dockerfile` copie
+dans l'image :
+
+```bash
+docker compose exec app node packages/server/dist/scripts/create-admin.js <identifiant>
+docker compose exec app node packages/server/dist/scripts/reset-password.js <identifiant>
+```
+
+`exec` demande que `app` tourne ; `docker compose run --rm app node …` fait la
+même chose avant le premier démarrage, ce qui permet de créer l'administrateur
+sur une base encore inexistante. Les deux passent par un **processus distinct**
+de celui du serveur, et c'est ce qui les rend sûrs : l'instantané mémoire de
+`ConfigRepo` se reconstruit sur `PRAGMA data_version`, qui ne bouge que pour les
+écritures venues d'ailleurs (voir [03](./03-modele-de-donnees.md)).
+
+`hash-password` n'a pas d'équivalent conteneur, et n'en a pas besoin : il ne
+sert qu'à préparer un `albums.yaml` d'amorçage, ce qui se fait avant le
+déploiement.
+
 ## Vérifications
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test
+pnpm verify   # typecheck, lint, tests, check:specs, check:links
 ```
 
 Les tests serveur tournent avec le runner natif de Node (`node --import tsx
 --test`) : pas de framework de test dans les dépendances.
+
+Deux contrôles portent sur la documentation, et aucun ne juge la prose :
+`tools/check-specs.mjs` compare ce que le code expose à ce que les specs
+mentionnent ; `tools/check-links.mjs` résout les liens relatifs et les ancres
+des trois documents qui se renvoient l'un à l'autre (D64). Les deux tournent
+aussi sur `pre-push`. Les liens externes ne sont pas suivis : cela demanderait
+le réseau, et un contrôle qui échoue parce qu'un site tiers est lent finit
+désactivé.
 
 ### Voir les emails pour de vrai
 

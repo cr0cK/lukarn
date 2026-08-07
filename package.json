@@ -18,7 +18,8 @@
     "create-admin": "pnpm --filter @gdv/server create-admin",
     "reset-password": "pnpm --filter @gdv/server reset-password",
     "check:specs": "node tools/check-specs.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm check:specs",
+    "check:links": "node tools/check-links.mjs",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm check:specs && pnpm check:links",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {

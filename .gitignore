@@ -18,6 +18,10 @@ config/*.json
 # Cache du plugin de design impeccable, propre à chaque poste
 .impeccable/
 
+# Worktrees git montées par l'outillage d'agents : des branches du dépôt, pas
+# du contenu à y committer.
+.claude/worktrees/
+
 # Divers
 .DS_Store
 *.log

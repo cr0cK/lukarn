@@ -1819,3 +1819,120 @@ boucle stérile au lieu de l'éviter.
 horaire, démarrage, ou fin de synchronisation (D58). Reconnecter Drive ne relance
 donc pas le préchauffage dans la seconde ; en pratique le retour d'OAuth
 enchaîne une synchronisation, qui le déclenche.
+
+## D62 — Les commandes d'administration se lancent dans le conteneur, pas sur l'hôte
+
+**Contexte.** `deploy/cloud-init.yaml` (D52) monte une machine avec Docker,
+`rclone`, Tailscale et `ufw` — et rien d'autre. Le `README.md`, lui, faisait
+créer le premier administrateur par `pnpm install && pnpm create-admin alexis`
+sur le serveur. Les deux ne pouvaient pas être vrais en même temps : il n'y a ni
+Node ni pnpm sur cette machine, et l'installation s'arrêtait donc sur une base
+sans aucun compte, à l'étape qui devait la rendre utilisable.
+
+**Choix.** Ne rien ajouter à la machine, et documenter la forme compilée du
+script, celle que `tsc` écrit dans `dist/scripts/` et que le `Dockerfile` copie
+dans l'image :
+
+```bash
+docker compose exec app node packages/server/dist/scripts/create-admin.js <identifiant>
+```
+
+`docker compose run --rm app node …` rend le même service avant le premier
+démarrage — utile pour créer l'administrateur sur une base qui n'existe pas
+encore. `pnpm create-admin` reste la forme du développement local, où pnpm est
+là par construction.
+
+**Écarté.** Installer Node et pnpm dans le cloud-init : c'est un second runtime
+à tenir à jour sur l'hôte, une divergence de version possible avec celle de
+l'image, et l'obligation d'un `pnpm install` sur le serveur — pour une commande
+qu'on lance deux fois dans la vie d'une instance. Écarté aussi un
+`deploy/create-admin.sh` enveloppant le `docker compose exec` : il cache un
+chemin qu'il faut de toute façon connaître le jour où l'on veut lancer un autre
+script, et ajoute un fichier à maintenir pour économiser une ligne.
+
+**Ce qui rend l'appel sûr.** L'écriture vient d'un **processus distinct** de
+celui du serveur. L'instantané mémoire de `ConfigRepo` se reconstruit sur
+`PRAGMA data_version`, qui ne bouge que pour les écritures venues d'ailleurs :
+un compte créé pendant que l'application tourne est donc visible sans
+redémarrage. La même commande exécutée _dans_ le processus serveur, elle,
+servirait un état périmé — c'est la raison pour laquelle il n'existe pas de
+route d'administration équivalente.
+
+**Conséquences.** Toute commande de `packages/server/src/scripts/` ajoutée plus
+tard hérite de cette contrainte : si elle a un sens en production, son invocation
+`pnpm` ne suffit pas à la documenter. `hash-password` fait exception sans effort
+— il ne sert qu'à préparer un `albums.yaml` d'amorçage, donc avant tout
+déploiement.
+
+## D63 — Le dépôt ne privilégie aucun hébergeur, et ne crée pas de compte nominatif
+
+**Contexte.** D52 a doté le dépôt d'un cloud-init et de deux scripts, mais les a
+écrits pour la machine qu'on avait sous la main : le `README.md` déroulait une
+procédure Scaleway comme s'il n'y avait qu'elle, le cloud-init citait `scw` en
+en-tête, la console de secours était nommée « console série Scaleway », le
+remote de sauvegarde par défaut s'appelait `scaleway:`, et le compte système
+portait le prénom de l'auteur. Rien de tout cela n'est faux ; tout cela devient
+gênant dès que le dépôt est public, où un lecteur lit un choix par défaut là où
+il n'y avait qu'une habitude.
+
+**Choix.** Le corps de la procédure ne nomme aucun fournisseur. Il énonce ce
+qu'il faut obtenir — une image Debian 12+ ou Ubuntu LTS, un cloud-init passé en
+« user data », les ports 80/443 ouverts et le 22 le temps de l'amorçage, un
+enregistrement DNS — et les CLI de trois hébergeurs figurent dans un bloc
+`<details>`, à égalité, présentés comme des illustrations de la même opération.
+Le compte système devient `deploy` : un rôle, pas une personne. Le remote de
+sauvegarde par défaut devient `sauvegardes:gdv`, sans marque.
+
+**Écarté.** Ne garder aucune commande d'hébergeur : le plus neutre, mais on perd
+le chemin prêt-à-coller, y compris pour qui déploie pour la première fois — et
+une documentation qu'il faut compléter ailleurs est une documentation qu'on ne
+suit pas. Écarté aussi un exemple à fournisseur générique (`<provider-cli>`) :
+neutre en apparence, mais inexécutable, donc jamais vérifié.
+
+**Ce que ça n'entraîne pas.** Tailscale reste nommé, et c'est assumé : ce n'est
+pas un hébergeur mais un choix d'architecture d'accès, celui qui permet de
+fermer le port 22 sans rien ouvrir en échange. Le `README.md` dit explicitement
+qu'un WireGuard nu, un bastion ou un filtrage par IP source rendent le même
+service, et que seule l'étape 2 change alors.
+
+**Conséquences.** Une instance déjà amorcée par la version précédente du
+cloud-init tourne sous le compte `alexis` : le renommage ne vaut que pour les
+machines créées ensuite, et il n'y a rien à migrer — les chemins de
+`deploy/backup.sh` et de `deploy/deploy.sh` sont relatifs au dépôt, pas au
+répertoire personnel. Seule la ligne de `crontab` du `README.md`, qui cite un
+chemin absolu, est à lire avec le nom de compte réel de la machine.
+
+## D64 — La procédure de déploiement vit à côté des scripts, pas dans le README racine
+
+**Contexte.** À force d'y ajouter ce qui manquait — durcissement (D47), scripts
+et cloud-init (D52), neutralité vis-à-vis de l'hébergeur (D63) —, le `README.md`
+de la racine avait atteint sept cents lignes, dont plus des trois quarts ne
+concernaient que l'installation d'un serveur. Quelqu'un qui découvre le projet
+devait traverser une procédure Let's Encrypt, une console Google Cloud et une
+restauration de volume pour trouver `pnpm dev`.
+
+**Choix.** Le `README.md` de la racine dit ce qu'est l'application, ce qu'elle
+fait, comment la lancer en local, et rien d'autre — plus trois liens. Toute la
+procédure serveur, l'exploitation et la sauvegarde partent dans
+`deploy/README.md`, dans le répertoire des scripts qu'elle décrit. Trois
+documents, trois lecteurs : celui qui découvre, celui qui exploite, celui qui
+reprend le code (`specs/`).
+
+**Écarté.** Garder un seul fichier et se contenter d'une table des matières : le
+problème n'est pas la navigation mais le poids — un README long se lit comme un
+projet compliqué, quelle que soit sa table des matières. Écarté aussi un
+répertoire `docs/` : il éloigne la procédure des scripts qu'elle décrit, alors
+que le point de `deploy/README.md` est justement d'être lu en même temps que
+`cloud-init.yaml` et `backup.sh`, et mis à jour dans le même geste.
+
+**Conséquences.** La règle de mise à jour du `CLAUDE.md` change de cible : une
+modification de `deploy/` met à jour `specs/06` **et `deploy/README.md`**, plus
+la racine. Les renvois de `deploy/cloud-init.yaml` et de `specs/06` pointent
+désormais vers `deploy/README.md`. `tools/check-specs.mjs` n'est pas concerné :
+il ne lit aucun README, il compare le code aux specs.
+
+Le coût annoncé de la scission était qu'un lien mort ne serait signalé par rien.
+Il ne l'est plus : `tools/check-links.mjs` résout chaque lien relatif et chaque
+ancre des trois documents, et tourne dans `pnpm verify` comme sur `pre-push`.
+Les renvois restent néanmoins peu nombreux et tous relatifs — un contrôle qui
+attrape les liens cassés ne rend pas souhaitable d'en écrire davantage.
