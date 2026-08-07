@@ -393,12 +393,24 @@ export function Lightbox({
               {day?.description && (
                 // Deux lignes clampées, comme dans la grille : la note est un
                 // repère, pas un récit, et elle est posée sur la photo.
-                <p
-                  className="mt-0.5 line-clamp-2 max-w-prose text-xs leading-4 text-ink-400"
-                  title={day.description}
-                >
-                  {day.description}
-                </p>
+                //
+                // **Desktop seulement** (D70). Le seuil est `md`, celui où
+                // `SidePanel` cesse d'être un tiroir en surimpression pour se
+                // docker : c'est la largeur à partir de laquelle la mise en
+                // page n'est plus celle d'un téléphone.
+                //
+                // L'enveloppe porte le `hidden` plutôt que le paragraphe :
+                // `line-clamp-2` pose `display: -webkit-box`, et deux
+                // utilitaires de `display` sur le même élément se départagent
+                // par l'ordre de la feuille, pas par celui des classes.
+                <div className="hidden md:block">
+                  <p
+                    className="mt-0.5 line-clamp-2 max-w-prose text-xs leading-4 text-ink-400"
+                    title={day.description}
+                  >
+                    {day.description}
+                  </p>
+                </div>
               )}
             </div>
 

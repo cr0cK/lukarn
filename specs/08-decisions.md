@@ -2143,3 +2143,42 @@ collée au **bord haut** de la visionneuse, sur toute la largeur et épaisse de
 deux pixels : posée plus bas, dans le flux de l'en-tête, elle barrait la photo
 d'un trait de couleur. Au bord, elle se lit comme une barre de chargement et ne
 dispute rien à l'image.
+
+## D70 — La note d'une journée quitte l'en-tête de la visionneuse sur mobile
+
+**Contexte.** La note d'une journée s'affiche à deux endroits : l'en-tête de sa
+section dans la grille, et l'en-tête de la visionneuse, pour qu'ouvrir une photo
+ne fasse pas perdre ce qui lui donne son sens (D68 en décrit le voisin, le
+repli). Sur un téléphone, ce second emplacement empile au-dessus de l'image le
+nom du fichier, la journée, son lieu, puis jusqu'à deux lignes de note — sur un
+écran où la photo est déjà à l'étroit.
+
+Deux réglages pris par ailleurs changent l'arbitrage : la grille affiche
+désormais la note à **toutes** les largeurs, et le panneau « Infos » est fermé
+par défaut. La note n'est donc plus une information qu'on risque de ne jamais
+voir si la visionneuse ne la porte pas.
+
+**Choix.** La note reste dans l'en-tête de la visionneuse à partir de `md`, et
+en disparaît en dessous. Le seuil n'est pas choisi au jugé : `md` est la largeur
+où `SidePanel` cesse d'être un tiroir en surimpression pour se docker dans le
+flux — la frontière déjà établie entre « mise en page de téléphone » et le
+reste.
+
+**Écarté.** Masquer toute la ligne de contexte, lieu et date compris. Elle tient
+sur une ligne courte, là où la note en prend deux, et c'est précisément ce qu'on
+perd en ouvrant une photo depuis la grille : la masquer annulerait la raison
+d'avoir porté ce contexte jusqu'ici. Le gain de place aurait été marginal, la
+perte entière.
+
+Écarté aussi un dépliement au toucher — un geste de plus sur l'appareil où les
+gestes sont les plus rares, pour un texte que la grille montre déjà.
+
+**Conséquences.** Sur mobile, la note n'est atteignable **que depuis la
+grille** : `ExifPanel` ne liste que l'EXIF et ne porte pas la note de journée.
+Si l'on veut que le panneau « Infos » serve de recours sur mobile, c'est un
+ajout à faire — il n'existe pas aujourd'hui.
+
+L'enveloppe du paragraphe porte le `hidden md:block`, et non le paragraphe
+lui-même : `line-clamp-2` pose `display: -webkit-box`, et deux utilitaires de
+`display` sur un même élément se départagent par l'ordre de la feuille de style,
+pas par celui des classes de l'attribut.

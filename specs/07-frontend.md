@@ -172,7 +172,7 @@ ligne, est sauté. Les sections suivantes remontent d'autant.
 Le repli passe par le calcul et non par un `display: none` au rendu, pour la
 même raison que les hauteurs d'en-tête : `totalHeight` gouverne la barre de
 défilement et la virtualisation. Masquer les vignettes après coup laisserait la
-page haute de tout ce qu'elle n'affiche plus (D65).
+page haute de tout ce qu'elle n'affiche plus (D68).
 
 `LayoutSection` porte donc deux champs de plus :
 
@@ -191,7 +191,7 @@ Le repli vaut pour les deux découpages, mois compris : le restreindre au jour
 aurait demandé une condition de plus pour rien, et les clés ne se confondent
 pas (`2026-07` contre `2026-07-14`). `useGridLayout(items, groupBy, days,
 collapsedKeys)` le reçoit sous forme d'ensemble de clés, tenu en mémoire par
-`AlbumPage` — ni URL ni `localStorage` (D65).
+`AlbumPage` — ni URL ni `localStorage` (D68).
 
 **Une section repliée change aussi de hauteur de base**
 (`GRID_COLLAPSED_HEADER_HEIGHT`, 44 px contre 56). La hauteur d'en-tête se
@@ -463,7 +463,7 @@ celui des index de la liste d'origine — y compris `gauche`, `droite`, `Début`
 `Fin`, qui valaient autrefois un simple `± 1`. Les deux espaces coïncidaient
 tant que la grille montrait tout ; une section repliée les sépare, et un
 `currentIndex + 1` enverrait la sélection sur une vignette absente du layout :
-plus rien à mettre en évidence, et `scrollSelectionIntoView` sans cible (D65).
+plus rien à mettre en évidence, et `scrollSelectionIntoView` sans cible (D68).
 Une sélection introuvable — la journée qu'on vient de replier sous le curseur —
 repart de la première vignette encore visible.
 
@@ -494,13 +494,22 @@ focus ou qu'un modificateur est enfoncé.
   et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
   au centre des boutons d'icône, hauts de 32 puis 36 px.
 
+  **La note est la seule des trois à disparaître sous `md`** (D70) : elle prend
+  deux lignes sur la photo, la grille la montre à toutes les largeurs, et `md`
+  est le seuil où `SidePanel` se docke — la frontière déjà tracée entre la mise
+  en page d'un téléphone et le reste. Le nom du fichier, la journée et son lieu
+  restent, eux, à toutes les largeurs : c'est ce qu'on perd en ouvrant une photo
+  depuis la grille, et le masquer annulerait la raison d'avoir porté ce contexte
+  jusqu'ici. Conséquence à connaître : sur mobile la note n'est plus atteignable
+  que depuis la grille, `ExifPanel` ne la portant pas.
+
 - **La progression est une barre collée au bord haut**, sur toute la largeur et
   épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
   Plus bas, elle traversait la photo d'un trait de couleur. Le rapport chiffré
   la double sur la première ligne, avant les icônes.
 
   Elle est comptée sur `album.itemCount` et non sur la liste paginée, qui
-  grandit en cours de parcours (D66).
+  grandit en cours de parcours (D69).
 
 - Gèle `document.body.style.overflow` à l'ouverture, sinon la molette ferait
   défiler la grille sous l'image.
@@ -725,12 +734,12 @@ Les comptes, les albums et les réglages s'administrent depuis `/admin` :
 
 L'administration se navigue par **rubriques, une par URL** (D66) :
 
-| Rubrique       | URL                   | Contenu                                                  |
-| -------------- | --------------------- | -------------------------------------------------------- |
-| Albums         | `/admin/albums`       | `AlbumsSection`                                          |
-| Comptes        | `/admin/comptes`      | `UsersSection`                                           |
-| Commentaires   | `/admin/commentaires` | `CommentsSection`                                        |
-| Serveur        | `/admin/serveur`      | `DriveSection`, `SettingsSection`, `MaintenanceSection`  |
+| Rubrique     | URL                   | Contenu                                                 |
+| ------------ | --------------------- | ------------------------------------------------------- |
+| Albums       | `/admin/albums`       | `AlbumsSection`                                         |
+| Comptes      | `/admin/comptes`      | `UsersSection`                                          |
+| Commentaires | `/admin/commentaires` | `CommentsSection`                                       |
+| Serveur      | `/admin/serveur`      | `DriveSection`, `SettingsSection`, `MaintenanceSection` |
 
 `ADMIN_TABS`, dans `AdminNav`, est la source unique : la navigation la rend, et
 `AdminPage` valide contre elle le paramètre `:tab`. Une rubrique inconnue
