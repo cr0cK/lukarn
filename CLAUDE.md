@@ -41,7 +41,7 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                     |
 | `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`               |
 | `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                     |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et le `README.md` de la racine     |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et `deploy/README.md`              |
 | `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, règles d'accès | `specs/04-securite-et-acces.md`                                                |
 | `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                               |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                      | `specs/02-architecture.md`, et `08` si un compromis change                     |
@@ -50,9 +50,17 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/08-decisions.md` — **nouvelle entrée**, on ne réécrit pas les anciennes |
 | Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                              |
 
-Le `README.md` de la racine s'adresse à l'installateur (installer, exploiter,
-sauvegarder). Les specs s'adressent au développeur (pourquoi c'est fait ainsi).
-Ne duplique pas l'un dans l'autre.
+Trois documentations, trois lecteurs, aucune duplication entre elles :
+
+| Fichier            | Lecteur                 | Répond à                                           |
+| ------------------ | ----------------------- | -------------------------------------------------- |
+| `README.md`        | Qui découvre le projet  | Qu'est-ce que c'est, et comment le lancer en local |
+| `deploy/README.md` | Qui exploite un serveur | Installer, mettre à jour, sauvegarder, restaurer   |
+| `specs/`           | Qui reprend le code     | Pourquoi c'est fait ainsi                          |
+
+Le `README.md` de la racine reste **court** : ce qu'est l'application, ce qu'elle
+fait, comment la lancer en local, et trois liens. Toute procédure serveur va dans
+`deploy/README.md`, à côté des scripts qu'elle décrit (D56).
 
 ## Commandes
 
@@ -112,17 +120,18 @@ l'équipe qui l'a écrit.
 requests, titre compris. C'est la seule exception à la règle « français
 partout » ci-dessus, et la ligne de partage est l'audience :
 
-| En anglais                   | En français                                     |
-| ---------------------------- | ----------------------------------------------- |
-| `README.md`                  | `specs/` — conception, pour qui reprend le code |
-| Commits, PR (titre et corps) | `CLAUDE.md` — instructions internes             |
-|                              | Code, commentaires, tests, interface, journaux  |
+| En anglais                      | En français                                     |
+| ------------------------------- | ----------------------------------------------- |
+| `README.md`, `deploy/README.md` | `specs/` — conception, pour qui reprend le code |
+| Commits, PR (titre et corps)    | `CLAUDE.md` — instructions internes             |
+|                                 | Code, commentaires, tests, interface, journaux  |
 
-Le `README.md` s'adresse à qui installe, souvent sans parler français ; les
-`specs/` s'adressent au développeur qui reprend le projet, et restent cohérentes
-avec le code et les tests. Un exemple qui apparaît des deux côtés peut donc
-diverger — le README dit `photos.example.com`, les specs `photos.exemple.fr` :
-c'est sans conséquence, chacun est idiomatique dans sa langue.
+Les deux README s'adressent à qui découvre ou installe, souvent sans parler
+français ; les `specs/` s'adressent au développeur qui reprend le projet, et
+restent cohérentes avec le code et les tests. Un exemple qui apparaît des deux
+côtés peut donc diverger — les README disent `photos.example.com`, les specs
+`photos.exemple.fr` : c'est sans conséquence, chacun est idiomatique dans sa
+langue.
 
 > **Les PR #1 à #11 ont été retitrées en anglais le 2026-08-07, mais les commits
 > correspondants restent en français dans `main`.** La liste des PR et

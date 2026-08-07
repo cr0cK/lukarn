@@ -1,0 +1,582 @@
+# Deploying and operating
+
+Everything needed to get from nothing to a running instance, and to keep it
+running. For what the application is and how to run it locally, see the
+[root README](../README.md); for why it is built this way, see
+[`specs/06`](../specs/06-configuration-et-deploiement.md).
+
+| File              | Role                                                                     |
+| ----------------- | ------------------------------------------------------------------------ |
+| `cloud-init.yaml` | Provisions a fresh machine: account, security updates, Docker, ufw, VPN  |
+| `deploy.sh`       | Updates a live instance and waits for it to come back healthy            |
+| `backup.sh`       | Archives the `gdv-data` volume and its `.env`, then ships it off-machine |
+
+---
+
+This needs a Debian or Ubuntu VPS and a domain name whose `A` record — and
+`AAAA` if the VPS has IPv6 — already points at its address. The TLS certificate
+is obtained automatically from that name: without DNS in place, step 5 fails.
+
+**Sizing: 2 vCPU, 4 GB RAM, 60 GB disk.** This is not a demo machine, and two
+items explain the gap:
+
+- **The build runs on the machine.** `docker compose up --build` runs `tsc` and,
+  when no prebuilt binary fits, compiles `better-sqlite3`, `argon2` and `sharp`.
+  With 1 GB the build is killed by the OOM killer before it finishes. Building
+  elsewhere and pushing an image is possible, but that is no longer the procedure
+  described here.
+- **The disk cache targets 20 GB by default** (`cache.maxSizeGB`, adjustable in
+  `/admin`), on top of the Docker image and the system. 60 GB leaves room; a
+  20 GB disk keeps LRU eviction running permanently.
+
+## 0. On the administration workstation
+
+One key and one VPN client, to put in place **before** creating anything.
+
+```bash
+# 1. An ed25519 key — the one cloud-init will install on the server.
+ssh-keygen -t ed25519
+
+# 2. Tailscale — on the workstation TOO, not only on the server.
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo systemctl enable --now tailscaled
+sudo tailscale up          # opens a URL: this is where the account is created
+```
+
+**Tailscale on both sides, or step 2 cannot complete.** It is a mesh VPN: every
+machine that connects joins the same private network, receives a stable
+`100.x.y.z` address and a name (`galerie.<tailnet>.ts.net`). The
+`ssh deploy@<tailnet-name>` that serves as the administration door works only if
+**both** machines are on that network — a server alone on it can be reached from
+nowhere. Nothing has to be opened inbound for it: Tailscale goes out over UDP
+41641 and falls back to a DERP relay when NAT prevents that.
+
+Tailscale is not a dependency of the application: it is this repository's choice
+for administrative access, because it closes port 22 without opening anything in
+exchange. Bare WireGuard, a bastion host, or port 22 filtered by source IP serve
+the same purpose — step 2 then has to be adapted, and nothing else changes.
+
+Finally, **copy the public key into `cloud-init.yaml`**, replacing the
+`ssh-ed25519 AAAA_REMPLACER…` line:
+
+```bash
+cat ~/.ssh/id_ed25519.pub
+```
+
+Left as it is, the server's `deploy` account will accept no connection at all.
+
+## 1. Create the machine
+
+Any provider will do, as long as it offers a **Debian 12+ or Ubuntu LTS** image
+and accepts **cloud-init** — exposed as "user data" or "cloud-config" depending
+on the interface.
+
+Cloud-init is a de facto standard rather than a published one: a single
+open-source implementation that virtually every Linux cloud image ships and that
+every major provider feeds. The same file therefore works from one host to the
+next. The exceptions are worth knowing: Fedora CoreOS and Flatcar use
+**Ignition** instead, Windows uses **cloudbase-init**, and a minimal or custom
+image may simply not include the package. In those cases, follow the
+"Without cloud-init" section under step 2.
+
+Three things to obtain, whatever console is used:
+
+| To do                                                               | Why                                                                      |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Pass `deploy/cloud-init.yaml` as "user data"                        | It performs the whole of step 2: account, firewall, Docker, Tailscale    |
+| Open **80/tcp, 443/tcp, 443/udp**, and **22/tcp for the bootstrap** | 80 serves the ACME challenge, 443/udp serves HTTP/3. 22 closes in step 2 |
+| Note the public IP and **create the `A` record straight away**      | Let's Encrypt checks the name at first startup, not later                |
+
+The file is read **from a local clone** of the repository, not from the server,
+which does not exist yet:
+
+```bash
+git clone <this-repo> && cd googledrive-viewer
+```
+
+<details>
+<summary>Example with a provider CLI</summary>
+
+None of these providers is required or recommended — they are illustrations of
+the same operation. Instance ranges, prices and image names change: check them at
+provisioning time.
+
+**Hetzner** (`hcloud`):
+
+```bash
+hcloud server create --name galerie --type cx22 --image debian-12 \
+  --ssh-key <key-name> --user-data-from-file deploy/cloud-init.yaml
+hcloud firewall create --name galerie
+# then open 22, 80, 443/tcp and 443/udp on that firewall
+```
+
+**DigitalOcean** (`doctl`):
+
+```bash
+doctl compute droplet create galerie --image debian-12-x64 --size s-2vcpu-4gb \
+  --ssh-keys <fingerprint> --user-data-file deploy/cloud-init.yaml
+```
+
+**Scaleway** (`scw`):
+
+```bash
+scw instance security-group create name=galerie zone=fr-par-2 \
+  inbound-default-policy=drop outbound-default-policy=accept
+SG=$(scw instance security-group list name=galerie zone=fr-par-2 -o json | jq -r '.[0].id')
+for p in 22 80 443; do
+  scw instance security-group create-rule security-group-id=$SG zone=fr-par-2 \
+    direction=inbound action=accept protocol=TCP dest-port-from=$p
+done
+scw instance security-group create-rule security-group-id=$SG zone=fr-par-2 \
+  direction=inbound action=accept protocol=UDP dest-port-from=443   # HTTP/3
+
+scw instance server create name=galerie zone=fr-par-2 \
+  type=PLAY2-NANO image=debian_bookworm \
+  root-volume=b_ssd:60G ip=new security-group-id=$SG \
+  cloud-init=@deploy/cloud-init.yaml
+```
+
+A web console does the same thing: the "user data" or "cloud-config" field
+expects the contents of `deploy/cloud-init.yaml`, and the firewall is configured
+alongside it.
+
+</details>
+
+## 2. Join the tailnet, then close SSH
+
+The cloud-init passed at creation time has already set everything up: the
+`deploy` account (sudo, key-only, no password), automatic security updates,
+Docker, `rclone`, Tailscale, and a `ufw` that lets through only 22, 80 and 443.
+It installs **neither Node nor pnpm** — everything that runs on this machine runs
+in a container, and administrative commands go through `docker compose`.
+
+**What remains is authenticating Tailscale, then closing SSH on the public
+interface.** Cloud-init installs Tailscale but does not authenticate it: that
+means approving a URL in a browser, which is a human action. Until it has
+happened there is only one path to the machine, and closing it makes the machine
+unreachable. The order:
+
+```bash
+ssh deploy@<public-ip>
+sudo tailscale up                      # opens a URL to approve
+
+# In a SECOND terminal, without closing the first. Assumes the workstation is on
+# the tailnet (§ 0): otherwise this name resolves nowhere.
+ssh deploy@<tailnet-name>              # must work
+
+# Only then, in the first one:
+sudo ufw delete allow OpenSSH
+sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
+  /etc/ssh/sshd_config.d/99-durcissement.conf
+sudo systemctl reload ssh
+```
+
+Then remove the port 22 rule from the provider's firewall, if it offers one in
+front of the machine — most do, under the name security group, firewall or
+network rules. `ufw` alone is enough to block the port; the upstream rule merely
+keeps the packet from arriving at all.
+
+> **Do not close the door you came in through before having walked through the
+> other one**, from a separate terminal. This is the one moment of the install
+> where a typo costs a reinstall. Safety net: the provider's out-of-band
+> console — serial, KVM or VNC depending on the case. **Check that it exists and
+> that it opens before closing anything**: not every provider offers one.
+
+Tailscale needs **no inbound opening**: it goes out over UDP 41641 and falls back
+to a DERP relay when NAT prevents that. The provider firewall and `ufw` can stay
+at "everything closed except 80 and 443".
+
+<details>
+<summary>Without cloud-init — another provider, or a machine already created</summary>
+
+The same content, by hand, as root on first connection.
+
+**An account of one's own, a key, and no more passwords.** An exposed server
+receives SSH login attempts continuously, a few thousand a day. They become
+pointless as soon as no password is accepted.
+
+```bash
+adduser deploy && adduser deploy sudo
+rsync --archive --chown=deploy:deploy ~/.ssh /home/deploy   # reuses the key
+```
+
+```bash
+# /etc/ssh/sshd_config
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+```
+
+```bash
+systemctl restart ssh
+```
+
+> **Keep the root session open** and check in a **second** terminal that
+> `ssh deploy@…` works before closing it.
+
+**The firewall.** Three ports open, nothing else. The application listens on no
+public interface — only Caddy is reachable — but a firewall also covers whatever
+gets installed later without thinking about it.
+
+```bash
+apt install ufw
+ufw default deny incoming && ufw default allow outgoing
+ufw allow OpenSSH && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp
+ufw enable
+```
+
+`443/udp` serves HTTP/3; omitting it breaks nothing, browsers fall back to TCP.
+
+**Security updates, without thinking about them.** This is the highest-return
+measure of the five: opportunistic intrusions target vulnerabilities published
+months ago.
+
+```bash
+apt install unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+```
+
+**Docker.**
+
+```bash
+curl -fsSL https://get.docker.com | sh
+usermod -aG docker deploy   # log out and back in for this to take effect
+```
+
+Adding `deploy` to the `docker` group amounts to granting root on the machine —
+which it already has, being `sudo`. On a server shared with someone who should
+not have it, prefer `sudo docker`.
+
+</details>
+
+Everything that follows is done with the `deploy` account.
+
+## 3. Give the server access to the Drive
+
+Two ways, take either. The first avoids Google's warning screen and has nothing
+to renew: it is the one to prefer for a new install.
+
+|                                          | Service account             | OAuth                               |
+| ---------------------------------------- | --------------------------- | ----------------------------------- |
+| "Google hasn't verified this app" screen | Never                       | On every consent                    |
+| To renew                                 | Nothing                     | Token expires after six months idle |
+| What the server can read                 | The folders that are shared | **All** of the Drive                |
+| Per new album                            | Share its folder            | Nothing                             |
+
+### Option A — service account (recommended)
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a
+   project, then **APIs & Services → Library**: enable **Google Drive API**.
+2. **IAM & Admin → Service Accounts → Create**. No role to grant: this account
+   touches nothing in the project, it only serves as an identity.
+3. On the created account: **Keys → Add key → Create → JSON**. The file
+   downloads once and only once.
+4. Place it outside the repository, for instance `./config/service-account.json`,
+   and set `GOOGLE_SERVICE_ACCOUNT_FILE` in `.env`. It contains a private key:
+   protect it like a password (`chmod 600`).
+5. **Share the folder with the service account.** This is what replaces consent,
+   and the only step to repeat for each new album:
+
+   - get the service account address — `/admin` shows it at the top, it looks
+     like `galerie@my-project.iam.gserviceaccount.com`;
+   - in **Google Drive**, right-click the album folder → **Share**;
+   - paste the address, leave the role at **Viewer**, untick "Notify people"
+     (that mailbox does not exist), then **Share**.
+
+   Sharing is **inherited**: a shared folder grants access to everything it
+   contains, subfolders included. A `recursive: true` album therefore needs a
+   single share at the root — and a photo added later inherits it too.
+
+   **The trap to know about**: a forgotten folder produces no error, neither in
+   `/admin` nor in the logs. Only an empty album. If an album stays at zero items
+   after an "ok" sync, sharing is the first thing to check.
+
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` become unnecessary, as does the
+"Connect Google Drive" button in `/admin`, which gives way to the address to
+share with.
+
+### Option B — OAuth
+
+Everything happens in the [Google Cloud console](https://console.cloud.google.com/),
+in a **dedicated project** rather than a catch-all one: the consent screen is
+unique per project and carries the displayed name, the scopes and the publication
+status. Hosting several applications in one mixes them into a single
+authorisation request.
+
+1. Create a project, then **APIs & Services → Library**: enable **Google Drive
+   API**.
+2. **OAuth consent screen** (also presented as _Google Auth Platform_): type
+   **External**, application name and support address.
+3. **Publish the application.** This step is required: while it stays in
+   "Testing" status, Google **expires the refresh token after 7 days** and
+   reconnection is needed every week.
+
+   Publishing triggers no verification process unless one is requested. The
+   application stays "published, unverified", capped at 100 users. The only
+   consequence is a "Google hasn't verified this app" screen at consent time —
+   go through **Advanced → Go to**. Once, and only for the owner.
+
+   _(With a Google Workspace account, the "Internal" type avoids that screen. It
+   is not offered to `gmail.com` addresses.)_
+
+4. **Credentials → Create → OAuth client ID**, type **Web application**.
+5. Under "Authorised redirect URIs", add exactly `PUBLIC_URL` followed by
+   `/api/oauth/callback`, for example:
+   `https://photos.example.com/api/oauth/callback`
+
+## 4. Configuration
+
+**On the server**, with the `deploy` account — the clone from step 1 was on the
+administration workstation, for cloud-init.
+
+```bash
+git clone <this-repo> && cd googledrive-viewer
+
+cp .env.example .env
+# Generate both secrets and paste them into .env
+openssl rand -hex 32   # SESSION_SECRET
+openssl rand -hex 32   # TOKEN_KEY
+# Also set PUBLIC_URL, then, depending on the option chosen in step 3:
+#   GOOGLE_SERVICE_ACCOUNT_FILE  (service account)
+#   GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET  (OAuth)
+# SMTP_URL and MAIL_FROM: required for comments — see step 6
+```
+
+There is **no `pnpm install` here**: the machine has neither Node nor pnpm, and
+needs neither. The `docker compose up --build` of the next step builds everything
+inside the image, and the first administrator is created from the container.
+
+Accounts, albums and settings are then administered **from `/admin`**, with no
+file to edit and no restart.
+
+`config/albums.example.yaml` remains usable to **bootstrap** a fresh install in
+one go: copied to `config/albums.yaml` (with hashes produced by
+`pnpm hash-password`, **from a development workstation** — that command needs
+pnpm), it is imported into the database at first startup and never read again.
+Unnecessary when going through `create-admin`.
+
+Each album points at a Drive folder by its `folderId`: the segment after
+`/folders/` in the folder URL.
+
+```
+https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
+                                       ^--------- folderId ------^
+```
+
+A path (`/Holidays/photos/2026-07-Germany`) will not do: the Drive API only
+handles identifiers. Open the wanted folder — the deepest one for an album per
+trip, since `recursive: true` pulls in every subfolder — and copy the segment
+from its URL. That identifier survives renames and moves.
+
+## 5. Startup and first administrator
+
+```bash
+docker compose up -d --build
+```
+
+Two containers start: the application, and **Caddy**, which handles TLS. The
+Let's Encrypt certificate is requested at first startup and renewed on its own —
+there is no scheduled task to write and no certificate to watch.
+
+The application **publishes no port**: it is reachable only through Caddy, on the
+compose-internal network. The single setting is `PUBLIC_URL`, which gives Caddy
+the domain to serve at the same time as it builds the OAuth redirect URI, so the
+two cannot diverge. It must be exactly `https://photos.example.com`, with no
+trailing `/`.
+
+```bash
+docker compose logs -f caddy    # "certificate obtained successfully"
+```
+
+When the certificate does not arrive it is almost always DNS: the name must point
+at the VPS IP **before** first startup, and port 80 must be open (Let's Encrypt
+uses it for validation).
+
+Is a proxy already running on the machine — nginx, Traefik, another application
+on 443? Remove the `caddy` service from `docker-compose.yml` and give `app` its
+local publication back — `ports: ['127.0.0.1:8080:8080']` — then proxy to it.
+Security headers are set by the application, so they hold whatever the front end
+is.
+
+**The first administrator**, once the containers are up. The `pnpm create-admin`
+of local development has no equivalent here: there is no pnpm on the machine. The
+script lives in the image, compiled, and runs inside the container:
+
+```bash
+docker compose exec app node packages/server/dist/scripts/create-admin.js alexis
+```
+
+The password is prompted without being displayed. Passing it as an argument
+(`… create-admin.js alexis someSecret`) also works but leaves it in the shell
+history.
+
+Writing to the database while the application runs is safe: `ConfigRepo` watches
+`PRAGMA data_version` and rebuilds its snapshot as soon as a write comes from
+elsewhere. That holds for **separate** processes only — which is exactly what
+`docker compose exec` provides.
+
+To create the account before the first startup instead, `run` does the same thing
+without `app` running:
+
+```bash
+docker compose run --rm app node packages/server/dist/scripts/create-admin.js alexis
+```
+
+## 6. Email — optional, but required for comments
+
+Without a sending server nobody can comment: the code that verifies an address
+travels by email. New-photo announcements will not go out either. `SMTP_URL` and
+`MAIL_FROM` go together — setting only one prevents startup.
+
+### With Gmail
+
+Google has refused account passwords since "less secure app access" ended. An
+**app password** is required, which serves only for sending and can be revoked on
+its own:
+
+1. Enable **two-step verification** on the Google account — without it, the
+   option does not appear.
+2. Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords),
+   name the application ("Galerie"), confirm.
+3. Google displays **16 letters in four groups**: copy them **without the
+   spaces**.
+
+```bash
+# The @ in the address must be encoded as %40: without that, the URL is cut at
+# the wrong place and the host becomes anything at all.
+SMTP_URL=smtps://first.last%40gmail.com:abcdefghijklmnop@smtp.gmail.com:465
+MAIL_FROM=Galerie <first.last@gmail.com>
+```
+
+- `smtps://` and port **465**: TLS from the start of the connection. Port **587**
+  with `smtp://` works too (STARTTLS).
+- `MAIL_FROM` must carry **the account address** or a verified alias: Gmail
+  rewrites or rejects any other sender.
+- Gmail caps sending at a few hundred recipients a day. Irrelevant for a family
+  gallery.
+- **A password containing `/`, `?` or `#` cuts the URL** in the middle of the
+  credentials. The server then refuses to start and says so: encode those
+  characters (`%2F`, `%3F`, `%23`), as with `@` → `%40`. Google app passwords
+  contain none of them. `+`, `:` and spaces pass through unencoded.
+
+### Checking rendering before writing to anyone
+
+A local stub relay avoids sending real messages during trials:
+
+```bash
+docker run -d --rm -p 1025:1025 -p 8025:8025 axllent/mailpit
+# then in .env: SMTP_URL=smtp://localhost:1025
+```
+
+Mailpit accepts everything, relays nothing, and displays messages at
+`http://localhost:8025`.
+
+## 7. Connect the Drive
+
+With a **service account** there is nothing to do here: access comes from sharing
+the folder (step 3). This step concerns **option B** only, and happens once, done
+by the Drive owner:
+
+1. Open `https://photos.example.com` and sign in with an administrator account.
+2. Go to **/admin** → **Connect Google Drive**.
+3. Pick the Google account and accept. Get past the "Google hasn't verified this
+   app" screen through **Advanced → Go to**.
+
+On return, the first sync starts by itself and albums fill within seconds. From
+then on, visitors sign in with their username and password, never going through
+Google.
+
+## Operating
+
+| Action                         | How                                                                                                                                                                           |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add an album or a user         | `/admin`, effective immediately                                                                                                                                               |
+| Add an album (service account) | `/admin`, **then share its Drive folder** with the account address — otherwise the album stays empty, with no error                                                           |
+| Change an interval or a limit  | `/admin`, applied without restart                                                                                                                                             |
+| Force a sync                   | **Resynchronise** in `/admin`                                                                                                                                                 |
+| See sync status                | `/admin`                                                                                                                                                                      |
+| Moderate a comment             | `/admin`, **Comments** section: hide, or make visible again                                                                                                                   |
+| Enable comments                | `SMTP_URL` and `MAIL_FROM` in `.env` (see step 6) — without a sending server nobody can identify themselves                                                                   |
+| Get notified of comments       | Set the moderation address in `/admin`                                                                                                                                        |
+| Annotate a day                 | Open the album **grouped by day**, hover the date, click the pencil. The default grouping is set per album in `/admin`                                                        |
+| Turn off place geocoding       | `GEOCODING_URL=` (empty) in `.env`. By default, coordinates rounded to the kilometre go to Nominatim/OSM to name days; a private Nominatim instance goes in the same variable |
+| Administrator password lost    | `docker compose exec app node packages/server/dist/scripts/reset-password.js <username>` — also closes that account's open sessions                                           |
+| Update                         | `./deploy/deploy.sh` — backs up, rebuilds, and **waits** for the health check to go green again                                                                               |
+| Back up                        | `./deploy/backup.sh` — the `gdv-data` volume **and** the `.env`, see below. `gdv-cache` is regenerable                                                                        |
+| Read the logs                  | `docker compose logs -f` (or `logs -f caddy` for the certificate)                                                                                                             |
+
+Updating an instance that was running on `config/albums.yaml`: nothing to do. At
+first startup its accounts, albums, rights and settings are imported into the
+database as they are, with no reindexing and no new Google consent. The file is
+never read again afterwards — `/admin` is the source of truth.
+
+Albums are resynchronised automatically at the interval set in `/admin`. Nothing
+is ever written to Drive: the requested scope is read-only.
+
+## Backup
+
+Two things, and they go together: the `gdv-data` volume holds the accounts, the
+index and the **encrypted** refresh token, which only `TOKEN_KEY` decrypts. A
+backup of the volume without the `.env` yields an unreadable token and forces a
+new Google consent. `backup.sh` takes both.
+
+```bash
+./deploy/backup.sh            # local archive, then upload through rclone
+./deploy/backup.sh --local    # local archive only
+```
+
+The script stops `app` for the duration of the `tar` — a few seconds, the price
+of a SQLite at rest rather than a file copied with a WAL in flight — writes
+`sauvegardes/gdv-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
+**last 7** and deletes the older ones. It checks that the archive really contains
+`gdv.db`: an empty archive would otherwise go unnoticed until restore time.
+
+**Off the machine.** A backup that lives on the machine it protects protects
+nothing. Without `--local`, the script copies the archive through `rclone` to a
+remote configured **outside the repository**:
+
+```bash
+rclone config     # any backend: S3 and compatibles, B2, SFTP…
+# The default remote is `sauvegardes:gdv`. Another name?
+# GDV_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
+```
+
+**Automating.** One `crontab -e` line is enough for a personal install — no
+systemd unit to write:
+
+```cron
+# Daily backup at 4am, log in /home/deploy/sauvegarde.log
+0 4 * * * cd /home/deploy/googledrive-viewer && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
+```
+
+`gdv-cache` does not need backing up: it regenerates.
+
+**Restoring**, on a fresh machine: put the `.env` back, then, **before** the first
+`docker compose up`:
+
+```bash
+docker volume create gdv-data
+docker run --rm -v gdv-data:/data -v "$PWD:/e" alpine \
+  tar xzf /e/gdv-<timestamp>.tar.gz -C /data
+```
+
+> **Updating an instance older than these scripts.** Volumes now carry an
+> explicit name. Before that, compose prefixed them with the working directory
+> name, so the volume is called `<directory>_gdv-data` —
+> `googledrive-viewer_gdv-data` when cloned under that name. Copy it to
+> `gdv-data` **before** the first `docker compose up` on this version, otherwise
+> the application starts on an empty database (accounts and index included).
+>
+> ```bash
+> docker compose down
+> docker volume create gdv-data
+> docker run --rm -v googledrive-viewer_gdv-data:/old -v gdv-data:/new alpine \
+>   sh -c 'cp -a /old/. /new/'
+> docker run --rm -v googledrive-viewer_caddy-data:/old -v caddy-data:/new alpine \
+>   sh -c 'cp -a /old/. /new/'   # avoids a certificate reissue
+> docker compose up -d --build
+> ```
+>
+> `docker volume ls` gives the exact name. `gdv-cache` is not worth copying: it
+> regenerates. Once the instance is verified, the old volumes can be removed with
+> `docker volume rm`.

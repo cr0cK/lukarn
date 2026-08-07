@@ -6,7 +6,7 @@
 # fait, sous ce nom ou sous celui de « cloud-config ». C'est un standard *de
 # facto*, pas une norme publiée : Fedora CoreOS et Flatcar utilisent Ignition,
 # Windows cloudbase-init, et une image minimale peut ne pas embarquer le paquet.
-# Dans ces cas-là, le README décrit la même mise en place à la main.
+# Dans ces cas-là, deploy/README.md décrit la même mise en place à la main.
 #
 # À la fin de ce fichier, la machine a : un compte `deploy` sudo par clé, les
 # mises à jour de sécurité automatiques, Docker, Tailscale installé mais **non
@@ -30,8 +30,8 @@
 #          /etc/ssh/sshd_config.d/99-durcissement.conf
 #        sudo systemctl reload ssh
 #
-# Même précaution qu'au § 0 du README : on ne ferme jamais la porte par
-# laquelle on est entré avant d'avoir franchi l'autre, depuis un terminal
+# Même précaution qu'au § 0 de deploy/README.md : on ne ferme jamais la porte
+# par laquelle on est entré avant d'avoir franchi l'autre, depuis un terminal
 # distinct. Si malgré tout la machine devient injoignable, le filet est la
 # **console de secours de l'hébergeur** — console série, KVM ou VNC selon les
 # cas —, qui ne passe pas par le réseau de l'instance. Vérifier qu'elle existe
@@ -76,7 +76,7 @@ packages:
   - rclone
 
 write_files:
-  # Équivaut au `dpkg-reconfigure -plow unattended-upgrades` du README, qui est
+  # Équivaut au `dpkg-reconfigure -plow unattended-upgrades` de deploy/README.md,
   # interactif et n'a donc pas sa place ici.
   - path: /etc/apt/apt.conf.d/20auto-upgrades
     content: |

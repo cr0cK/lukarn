@@ -221,7 +221,7 @@ qui ne sauvegarde rien et ne le dit pas ne se découvre qu'à la restauration
 (D53). Le nom explicite rend ces commandes justes quel que soit le répertoire de
 clonage ; la migration d'une instance déjà en service — recopier
 `<projet>_gdv-data` vers `gdv-data` **avant** le premier `up` — est décrite dans
-le `README.md`.
+`deploy/README.md`.
 
 | Montage                   | Contenu                                                                                                                          | Sauvegarde                                                                                                  |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -235,7 +235,7 @@ le `README.md`.
 Sauvegarder `gdv-data` ne suffit pas seul : sans `TOKEN_KEY`, le refresh token
 qu'il contient est indéchiffrable. Sauvegarde le `.env` avec. La procédure
 complète — arrêt de `app` pour que SQLite soit au repos, `tar` du volume, copie
-hors du VPS — est dans le `README.md`, qui s'adresse à l'installateur.
+hors du VPS — est dans `deploy/README.md`, qui s'adresse à l'installateur.
 
 Les logs des deux services sont plafonnés (`json-file`, 10 Mo × 3).
 
@@ -255,10 +255,10 @@ cloud Linux embarquent et que tous les grands fournisseurs alimentent sous le no
 de « user data ». Pas une norme publiée : il n'y a ni RFC ni comité, et les
 exceptions existent (Fedora CoreOS et Flatcar utilisent **Ignition**, Windows
 **cloudbase-init**, et une image minimale peut ne pas embarquer le paquet). Le
-`README.md` les nomme et renvoie à la procédure manuelle, plutôt que de laisser
+`deploy/README.md` les nomme et renvoie à la procédure manuelle, plutôt que de laisser
 quelqu'un chercher pourquoi rien ne se passe.
 
-Le `README.md` illustre l'opération avec trois CLI différents, dans un bloc
+`deploy/README.md` illustre l'opération avec trois CLI différents, dans un bloc
 replié et à égalité, précisément pour qu'aucun ne se lise comme le chemin
 recommandé. Le compte s'appelle `deploy` et non du prénom de quelqu'un : c'est
 un rôle, et un dépôt public ne crée pas un compte système au nom de son auteur.
@@ -275,7 +275,7 @@ l'hébergeur en propose un).
 `disable_root: false` et `PermitRootLogin prohibit-password` gardent le compte
 root par clé accessible pendant cet intervalle ; la console série de
 l'hébergeur, hors réseau de l'instance, est le filet de dernier recours. Tout
-cela est répété en tête de `deploy/cloud-init.yaml` et dans le `README.md` :
+cela est répété en tête de `deploy/cloud-init.yaml` et dans `deploy/README.md` :
 c'est le seul endroit de l'installation où une erreur coûte une réinstallation.
 
 Tailscale ne demande aucune ouverture entrante — il sort en UDP 41641 et se
@@ -286,7 +286,7 @@ n'a d'intérêt qu'à deux nœuds au moins : `ssh deploy@<nom-tailnet>`, qui dev
 l'unique porte une fois le 22 fermé, ne résout que depuis une machine qui a
 elle-même rejoint le réseau. Le cloud-init ne peut rien pour ce côté-là, et
 c'est le genre d'omission qu'on ne constate qu'au pire moment — juste après
-avoir fermé le port 22. Le `README.md` en fait donc son § 0, avant même la
+avoir fermé le port 22. `deploy/README.md` en fait donc son § 0, avant même la
 création de la machine.
 
 **La machine n'a ni Node ni pnpm**, et c'est délibéré : le `docker compose
