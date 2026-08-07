@@ -1,11 +1,13 @@
 /**
- * Ce que la visionneuse montre pendant qu'une photo se prépare.
+ * Ce que la visionneuse montre pendant qu'un média se prépare — photo comme
+ * vidéo, cette dernière passant `measured: false` faute d'aperçu à afficher.
  *
  * Isolé ici parce que la règle est facile à casser sans que rien n'échoue : une
- * combinaison fausse ne produit pas d'erreur, seulement un écran trompeur. Le
- * cas qui a déjà été manqué est l'aperçu flou affiché **sans** indicateur — on
- * ne voit alors pas une photo qui charge, mais une photo floue, et on conclut
- * que l'application est cassée.
+ * combinaison fausse ne produit pas d'erreur, seulement un écran trompeur. Deux
+ * cas ont déjà été manqués : l'aperçu flou affiché **sans** indicateur — on ne
+ * voit alors pas une photo qui charge, mais une photo floue, et on conclut que
+ * l'application est cassée — et la vidéo illisible dont l'indicateur tournait
+ * indéfiniment, faute d'un échec qui l'arrête (D79).
  */
 
 export interface PreviewInput {

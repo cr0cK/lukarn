@@ -3,6 +3,7 @@ import { type ReactElement, type ReactNode, useCallback, useEffect, useRef, useS
 import { mediaUrl } from '../api/client';
 import { useCommentCounts, useMediaDetail } from '../api/hooks';
 import { dayKey, dayLabel } from '../lib/justify';
+import { previewOverlay } from '../lib/preview';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { placeLabelOf } from '../lib/useGridLayout';
 import { useSwipe } from '../lib/useSwipe';
@@ -65,6 +66,14 @@ export function Lightbox({
   const [panel, setPanel] = useState<PanelTab | null>(null);
   const [zoomed, setZoomed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  /**
+   * Lecture impossible. Propre à la vidéo : la photo tient son propre échec
+   * dans `ZoomableImage`. Sans cet état, une vidéo qui n'arrive pas — Drive
+   * indisponible, jeton révoqué, ou codec que le navigateur ne décode pas —
+   * laisse `loaded` à `false` et le tourniquet tourne indéfiniment sur un écran
+   * noir muet.
+   */
+  const [failed, setFailed] = useState(false);
   /** Sens du dernier déplacement : oriente le préchargement. */
   const [direction, setDirection] = useState(1);
 
@@ -139,6 +148,7 @@ export function Lightbox({
       setDirection(next >= index ? 1 : -1);
       setZoomed(false);
       setLoaded(false);
+      setFailed(false);
       onIndexChange(next);
     },
     [index, items.length, onIndexChange],
@@ -316,6 +326,15 @@ export function Lightbox({
   }, [index, items.length, zoomed, panel, goTo, onClose, toggleFullscreen, download, togglePanel]);
 
   if (!item) return null;
+
+  /**
+   * Même règle que la photo, sans l'aperçu flou : une vidéo n'a pas de rendu
+   * serveur, donc rien à montrer en attendant — d'où `measured: false`. La
+   * combinaison est décidée là plutôt qu'en JSX parce qu'elle échoue en
+   * silence : un tourniquet laissé sur un échec ne casse rien, il fait
+   * seulement croire que ça charge encore.
+   */
+  const videoOverlay = previewOverlay({ loaded, failed, measured: false });
 
   // Les mêmes fonctions que la grille, délibérément : une visionneuse qui
   // calculerait son libellé de jour de son côté finirait par annoncer une autre
@@ -564,7 +583,26 @@ export function Lightbox({
           {...swipe}
           onPointerDownCapture={dismissPanelOnOutsideClick}
         >
-          {isVideo ? (
+          {isVideo && videoOverlay.error ? (
+            <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
+              <p className="text-sm text-ink-300">Cette vidéo n'a pas pu être lue.</p>
+              {/* Le format en cause plutôt qu'un « une erreur est survenue » :
+                  c'est presque toujours un codec que ce navigateur ne décode
+                  pas (D79), et le fichier reste parfaitement lisible ailleurs.
+                  Sans le téléchargement, la vidéo serait simplement perdue. */}
+              <p className="text-xs text-ink-400">
+                Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste
+                téléchargeable.
+              </p>
+              <button
+                type="button"
+                onClick={download}
+                className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
+              >
+                Télécharger
+              </button>
+            </div>
+          ) : isVideo ? (
             <video
               ref={videoRef}
               key={item.id}
@@ -574,6 +612,7 @@ export function Lightbox({
               playsInline
               className="max-h-full max-w-full"
               onLoadedData={() => setLoaded(true)}
+              onError={() => setFailed(true)}
             />
           ) : (
             <ZoomableImage
@@ -592,7 +631,7 @@ export function Lightbox({
             />
           )}
 
-          {!loaded && isVideo && (
+          {isVideo && videoOverlay.spinner && (
             <span className="absolute size-8 animate-spin rounded-full border-2 border-ink-700 border-t-accent" />
           )}
 
