@@ -241,10 +241,13 @@ clonage ; la migration d'une instance déjà en service — recopier
 | `caddy-data`              | Certificats et clé de compte ACME                                                                                                | Souhaitable — sinon réémission à chaque redéploiement, et Let's Encrypt plafonne par domaine et par semaine |
 | `caddy-config`            | État interne de Caddy                                                                                                            | Non                                                                                                         |
 
-Sauvegarder `gdv-data` ne suffit pas seul : sans `TOKEN_KEY`, le refresh token
-qu'il contient est indéchiffrable. Sauvegarde le `.env` avec. La procédure
-complète — arrêt de `app` pour que SQLite soit au repos, `tar` du volume, copie
-hors du VPS — est dans `deploy/README.md`, qui s'adresse à l'installateur.
+Sauvegarder `gdv-data` ne suffit pas seul, et pour deux raisons distinctes. Sans
+`TOKEN_KEY`, le refresh token qu'il contient est indéchiffrable : le `.env` part
+donc avec. Et sur une instance en compte de service, l'accès à Drive ne vit ni
+dans le volume ni dans le `.env` mais dans `config/`, que Google ne redélivre
+pas : il part avec aussi. `backup.sh` prend les trois. La procédure complète —
+arrêt de `app` pour que SQLite soit au repos, `tar` du volume, copie hors du
+VPS — est dans `deploy/README.md`, qui s'adresse à l'installateur.
 
 Les logs des deux services sont plafonnés (`json-file`, 10 Mo × 3).
 
@@ -316,10 +319,10 @@ sauvegardes.
 Deux scripts bash, lancés depuis la machine, qui se replacent seuls à la racine
 du dépôt depuis `$0`.
 
-| Script             | Effet                                                                                                                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `gdv-data`, redémarrage, copie du `.env` à côté, rétention des 7 dernières archives. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `GDV_BACKUP_REMOTE`. |
-| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, `docker compose up -d --build`, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul.                   |
+| Script             | Effet                                                                                                                                                                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `gdv-data`, redémarrage, copie du `.env` et archive de `config/` à côté, rétention des 7 derniers de chaque. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `GDV_BACKUP_REMOTE`. |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, `docker compose up -d --build`, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul.                                           |
 
 **Pourquoi arrêter `app` pour sauvegarder.** SQLite est en WAL : copier le
 fichier pendant une écriture donne une base à recomposer. L'arrêt dure quelques
