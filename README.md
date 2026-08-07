@@ -41,6 +41,9 @@ single token — the owner's — and serves every photo through it.
   restore comments from `/admin`.
 - **Email notifications** for new comments, replies, and an album's new photos.
   Every message carries an unsubscribe link.
+- **Installable on a phone**: added to the home screen, it opens full-screen
+  with no address bar and no password to type again. The service worker caches
+  the application shell only — never a photo, never an API response.
 - **Everything goes through the server**: no Google URL is ever exposed to the
   browser. Thumbnails are generated as WebP and cached on disk.
 

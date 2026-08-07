@@ -75,8 +75,12 @@ export function CommentsPanel({
 
       {/* Le formulaire d'ouverture de fil reste en bas, hors de la zone qui
           défile : sur une photo très commentée, il faudrait sinon parcourir
-          toute la conversation pour trouver où écrire. */}
-      <div className="border-t border-ink-800 px-5 py-4">
+          toute la conversation pour trouver où écrire.
+
+          La marge basse s'ajoute à celle de l'appareil : posée sur l'écran
+          d'accueil, l'application occupe toute la hauteur et le champ de
+          saisie passerait sous la barre d'accueil de l'iPhone. */}
+      <div className="border-t border-ink-800 px-5 pt-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))]">
         <Composer albumId={albumId} mediaId={mediaId} />
       </div>
     </div>

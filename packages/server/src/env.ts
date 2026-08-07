@@ -23,6 +23,14 @@ const schema = z.object({
   HOST: z.string().default('0.0.0.0'),
   PUBLIC_URL: z.string().url().default('http://localhost:8080'),
 
+  /**
+   * Nom de l'instance : onglet, écran de connexion, et surtout l'icône posée
+   * sur un écran d'accueil. Une variable d'environnement plutôt qu'un réglage
+   * en base, parce qu'elle doit valoir avant qu'un compte existe — la première
+   * page servie est l'écran de connexion, et elle porte déjà ce nom.
+   */
+  APP_NAME: z.string().trim().min(1).default('Photos'),
+
   SESSION_SECRET: secret,
   TOKEN_KEY: secret,
 
@@ -63,6 +71,8 @@ export interface Env {
   port: number;
   host: string;
   publicUrl: string;
+  /** Nom affiché de l'instance, et nom de l'application une fois installée. */
+  appName: string;
   sessionSecret: string;
   tokenKey: string;
   google: { clientId: string; clientSecret: string } | null;
@@ -210,6 +220,7 @@ export function loadEnv(
     port: env.PORT,
     host: env.HOST,
     publicUrl,
+    appName: env.APP_NAME,
     sessionSecret: env.SESSION_SECRET,
     tokenKey: env.TOKEN_KEY,
     google:

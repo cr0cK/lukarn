@@ -613,12 +613,29 @@ Ne renvoie jamais de JSON : redirige toujours vers `/admin/serveur?oauth=<raison
 
 Servies par `registerFrontend` (`app.ts`) quand `WEB_DIR/index.html` existe.
 
-| Chemin        | Comportement                                                                                                    |
-| ------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/`           | `index.html`, `Cache-Control: no-cache`                                                                         |
-| `/assets/*`   | Fichier réel, `Cache-Control: public, max-age=31536000, immutable`. Absent ⇒ **404 JSON**, jamais `index.html`. |
-| `/api/*`      | Inconnu ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                               |
-| tout le reste | `index.html` — le routage vit dans le front, un rechargement sur `/album/x` doit fonctionner                    |
+| Chemin                  | Comportement                                                                                                    |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/`                     | `index.html`, `Cache-Control: no-cache`                                                                         |
+| `/manifest.webmanifest` | Le manifeste, `application/manifest+json`, `Cache-Control: no-cache`                                            |
+| `/sw.js`, `/icons/*`    | Fichiers réels de `public/`. Hors `/assets/`, donc `Cache-Control: no-cache` — voulu pour le service worker.    |
+| `/assets/*`             | Fichier réel, `Cache-Control: public, max-age=31536000, immutable`. Absent ⇒ **404 JSON**, jamais `index.html`. |
+| `/api/*`                | Inconnu ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                               |
+| tout le reste           | `index.html` — le routage vit dans le front, un rechargement sur `/album/x` doit fonctionner                    |
+
+**`/` et `/manifest.webmanifest` ne sont pas servis depuis le disque** : les deux
+portent `APP_NAME`, substitué une fois au démarrage et rendu depuis la mémoire
+(`shell.ts`, voir [07](./07-frontend.md)). Ce sont des routes exactes, donc
+prioritaires sur la route générique de `@fastify/static` qui servirait sinon les
+fichiers bruts. Un manifeste absent du build n'est qu'un avertissement au
+démarrage ; présent mais illisible, il arrête le démarrage.
+
+**Conséquence à connaître : rebuilder le front sous un serveur qui tourne ne
+suffit pas.** Il continue de servir l'`index.html` d'avant, qui référence des
+bundles que le build vient de supprimer — la page se charge et reste blanche.
+Il faut le redémarrer. En production c'est sans objet (une image se construit
+puis se lance) et en développement non plus (Vite sert le front lui-même) ; le
+cas se produit exactement quand on fait tourner le serveur buildé en rebuildant
+à côté.
 
 Sans build du front, toutes les routes non-`/api` répondent un 404 JSON invitant
 à lancer `pnpm dev` ou `pnpm build`. `packages/server/test/static.test.ts`

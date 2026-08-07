@@ -58,14 +58,67 @@ Ouvrir une photo pousse une entrée d'historique ; naviguer d'une photo à l'aut
 aux flèches utilise `replace`, sinon parcourir 50 photos empilerait 50 entrées et
 le bouton Retour ne ramènerait plus à la grille.
 
-`order` et `group` se pilotent depuis deux bascules de la `TopBar` (`children`),
-bâties sur le même patron : **le libellé annonce l'état courant** (« Par mois »),
-**l'infobulle annonce ce que le clic fera** (« Regrouper par jour »), et
-l'`aria-label` réunit les deux — le libellé disparaît sous `sm` faute de place,
-le nom accessible doit rester complet. Changer l'un ou l'autre remet la sélection
+`order` et `group` se pilotent depuis deux bascules de la `TopBar`, déclarées en
+`actions` (voir « Barre supérieure » plus bas) et bâties sur le même patron :
+**le libellé annonce l'état courant** (« Par mois »), **l'action annonce ce que
+le clic fera** (« Regrouper par jour »), et l'`aria-label` réunit les deux — le
+libellé disparaît sous `lg` faute de place, le nom accessible doit rester
+complet. Changer l'un ou l'autre remet la sélection
 clavier à `-1` et remonte la page : inverser le tri renumérote l'album, changer
 le regroupement recalcule toutes les hauteurs, et dans les deux cas la position
 conservée désignerait autre chose.
+
+## Barre supérieure — `components/TopBar.tsx`
+
+Une seule rangée, à toutes les largeurs — 65 px, mesurés. Ce qu'elle contient au
+maximum : le retour, le titre et son sous-titre, les contrôles de vue de la page,
+puis Admin, Déconnexion et Installer.
+
+| Largeur       | Ce qui est visible                                       |
+| ------------- | -------------------------------------------------------- |
+| `< sm` (640)  | Retour, titre, **un menu kebab** qui porte tout le reste |
+| `sm` – `lg`   | Tout dans la barre, **icônes seules**                    |
+| `≥ lg` (1024) | Tout dans la barre, avec les libellés                    |
+
+Les seuils sortent de mesures, pas d'un choix d'esthétique. À 393 px, cinq
+contrôles alignés poussaient les bascules de vue sur **une seconde rangée à
+elles seules** — 101 px d'en-tête, le titre d'album réduit à `D.` et le
+sous-titre à `120 éléments · févri…`. Et à 768 px, afficher les cinq libellés
+ramenait le titre de 456 à 144 px en tronquant le sous-titre : c'est pourquoi
+les libellés n'arrivent qu'à `lg`, et non à `md`. Après : 277 px de titre à
+393 px, aucune troncature nulle part.
+
+**Les contrôles de page sont décrits, pas rendus.** `TopBar` ne prend plus de
+`children` mais un tableau d'`actions` :
+
+```ts
+interface TopBarAction {
+  label: string; // l'état courant, dans la barre : « Par mois »
+  action: string; // ce que le clic fera, dans le menu : « Regrouper par jour »
+  icon: ReactNode;
+  onSelect: () => void;
+}
+```
+
+C'est la seule forme qui permet au **même** contrôle de se rendre en icône dans
+la barre et en ligne libellée dans le menu. Avec des `children`, la page
+fournissait du JSX dont la barre ne savait rien : le libellé ne pouvait qu'être
+masqué, et les icônes se retrouvaient anonymes.
+
+**Installer est en dernier, après Déconnexion**, dans la barre comme dans le
+menu. La proposition apparaît et disparaît selon le navigateur et selon qu'on a
+déjà installé ; la placer ailleurs ferait bouger la position des contrôles
+permanents d'une visite à l'autre.
+
+Le menu lui-même vit dans `components/ActionMenu.tsx`, partagé avec la
+visionneuse. Il se referme au clic dehors, à `Échap` — en rendant le focus à
+son bouton — et **avant** d'exécuter l'action choisie, celle-ci pouvant naviguer
+ou ouvrir un panneau. Son écoute de `Échap` est en **capture** et arrête la
+propagation : dans la visionneuse, la même touche ferme aussi la photo, et un
+seul appui ne doit pas faire les deux.
+
+Un composant partagé plutôt qu'un menu par emplacement : ce sont ces trois
+règles de fermeture qui se réécriraient de travers la deuxième fois.
 
 ## Gestion d'état — `api/hooks.ts`
 
@@ -536,6 +589,39 @@ focus ou qu'un modificateur est enfoncé.
   n'est pas décoratif : sans lui, l'image impose sa largeur et c'est le panneau
   qui déborde de l'écran. L'en-tête vit **dans** la colonne photo, sinon il
   passerait sous le panneau.
+- **Les deux lignes de l'en-tête sont tronquées, et le rang passe devant la
+  date.** La ligne de date, seule à ne pas porter `truncate`, s'enroulait sur
+  trois lignes et l'en-tête montait à 92 px — il recouvrait le haut de la photo
+  qu'il annonce. `1 / 120` précède la date parce que c'est le repère utile quand
+  on parcourt un album, et donc la date qui doit être rognée la première.
+- **Sous `sm`, les actions passent dans un `ActionMenu`** — Informations,
+  Zoomer, Télécharger, Plein écran — avec leurs libellés en clair et sans le
+  rappel du raccourci clavier, qui n'a pas de sens au toucher. À partir de `sm`
+  elles s'alignent toutes dans la barre. Comme pour la `TopBar`, elles sont
+  **décrites une fois** (libellé, raccourci, icône, état actif) et rendues des
+  deux façons : dupliquées, une icône ou un état finirait par se désaccorder
+  entre la barre et le menu.
+- **`Commentaires` reste en ligne à toutes les largeurs.** Son icône porte la
+  pastille des non-lus, seul signe qu'une photo a été commentée ; rangée dans le
+  menu, elle ne signalerait plus rien. Conséquence assumée : sur grand écran,
+  elle passe **devant** `Informations` au lieu de la suivre — la seule action à
+  position fixe est celle qui doit rester repérable.
+- Mesuré après : en-tête à 60 px au lieu de 92, bloc titre à 235 px au lieu de
+  73, et `1 / 120 · 7 août 2026 à 17:21` affiché **en entier** sur un écran de
+  393 px.
+- **Le panneau Infos s'ouvre sur la journée**, avant l'EXIF : « Lieu » puis
+  « Ce jour-là ». C'est le seul texte écrit par un humain sur cette photo, et il
+  dit ce que ni le nom de fichier ni l'EXIF ne diront jamais. **La note a donc
+  deux chemins, selon la largeur** : l'en-tête de la visionneuse à partir de
+  `md`, le panneau Infos partout ([D70](./08-decisions.md)). Les deux lignes
+  d'`ExifPanel` sont **sans condition de largeur**, et c'est ce qui les rend
+  indispensables : sous `md`, elles sont le seul accès à la note depuis une
+  photo ouverte. `place` prime sur `autoPlaces`, comme partout ailleurs
+  ([D51](./08-decisions.md)).
+  `useAlbumDays` est appelé dès que la grille est par jour **ou** que la
+  visionneuse est ouverte (`groupBy === 'day' || isOpen`) : la note doit être là
+  quelle que soit la façon dont on est arrivé sur la photo, sans payer la
+  requête pour une grille par mois qu'on se contente de faire défiler.
 - **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
   le dernier, une flèche à une extrémité : la cible est l'index courant, aucun
   élément n'est remonté, donc aucun `loadeddata` n'est émis. Remettre `loaded` à
@@ -1095,3 +1181,193 @@ rarement et reste en cache navigateur d'un déploiement à l'autre.
 En développement, Vite sert le front sur `:5173` et proxie `/api` vers
 `:8080` **sans** `changeOrigin` : les cookies de session et le callback OAuth
 restent sur une seule origine.
+
+`packages/web/public/` est recopié tel quel à la racine de `dist/` : le
+manifeste, les icônes et le service worker y arrivent sans passer par Rollup,
+donc **sans hash dans leur nom** — c'est indispensable, une URL de service
+worker qui change à chaque build ne serait jamais reconnue comme la même. Le
+`Dockerfile` copie `packages/web/dist` en entier, il n'a rien à savoir de tout
+cela.
+
+## Application installable
+
+La visionneuse s'ajoute à l'écran d'accueil et s'ouvre sans barre d'adresse.
+L'intérêt n'est pas technique : un proche retient une icône, pas une URL, et la
+session dure déjà un an (`SESSION_TTL_MS`), si bien qu'ouvrir l'application ne
+redemande rien. Trois pièces suffisent — un manifeste, des icônes, un service
+worker.
+
+### Le manifeste — `public/manifest.webmanifest`
+
+`display: standalone`, `start_url` et `scope` à `/`. `background_color` et
+`theme_color` valent `#0b0b0d`, c'est-à-dire `--color-ink-900` : l'écran de
+démarrage prolonge le fond de l'application au lieu de clignoter en blanc avant
+elle. Ces valeurs sont **reprises** de `styles.css`, pas choisies à part ; un
+test les compare.
+
+`index.html` déclare en plus ce qu'iOS ne lit pas dans le manifeste : le
+`apple-touch-icon`, `apple-mobile-web-app-title`, et
+`apple-mobile-web-app-status-bar-style: black`. **`black`, pas
+`black-translucent`** — le second fait passer le contenu sous la barre d'état,
+et l'en-tête de la visionneuse, posé en `absolute` tout en haut, s'y
+retrouverait.
+
+### Le nom de l'instance — `APP_NAME` et `shell.ts`
+
+Le fichier statique porte `Photos`, et le serveur y substitue `APP_NAME` au
+démarrage. Deux fichiers, quatre emplacements :
+
+| Fichier                | Emplacement                  | Ce qu'il nomme                     |
+| ---------------------- | ---------------------------- | ---------------------------------- |
+| `index.html`           | `<title>`                    | L'onglet                           |
+| `index.html`           | `apple-mobile-web-app-title` | L'icône d'accueil iOS              |
+| `index.html`           | `application-name`           | Ce que le front relit (ci-dessous) |
+| `manifest.webmanifest` | `name`, `short_name`         | L'icône d'accueil Android          |
+
+Une variable d'environnement plutôt qu'une constante de build : **une seule
+image sert toutes les installations**, et personne ne reconstruit un conteneur
+pour appeler sa galerie autrement. Un redémarrage suffit, comme pour le reste
+du `.env`. Le raisonnement complet est en [D72](./08-decisions.md).
+
+Le manifeste n'est surchargé que sur ses deux champs de nom : les icônes, les
+couleurs et `display` restent déclarés dans le seul fichier qui les liste, sans
+quoi ils divergeraient au premier ajout de taille. Un manifeste **absent** du
+front buildé ne fait qu'écrire un avertissement au démarrage — l'application
+reste utilisable, elle ne s'installe simplement plus, même arbitrage que pour un
+front absent. Un manifeste **présent mais illisible** arrête le démarrage : c'est
+un fichier du dépôt, s'il ne parse pas le build est cassé.
+
+`shell.ts` porte la substitution, et `test/shell.test.ts` la fait tourner sur le
+**vrai** `index.html`. C'est l'invariant qui compte : ajouter un attribut à la
+balise `<title>` ou intervertir `name` et `content` dans une `<meta>` ne casse
+rien de visible — le serveur démarre, la page s'affiche, elle porte simplement
+le mauvais nom.
+
+### `lib/appName.ts`
+
+Le front lit le nom dans la balise `application-name` du DOM, pas dans une
+réponse d'API. Il est là dès le premier octet de JavaScript, alors qu'un appel
+réseau ferait afficher un titre vide le temps de la réponse — et c'est le seul
+moyen d'en disposer sur l'écran de connexion, qui s'affiche précisément quand
+aucune route authentifiée ne répond.
+
+### Les icônes — `public/icons/`
+
+`icon.svg` est la source, et sert aussi de favicon (il n'y en avait aucune).
+Six tuiles de largeurs inégales sur deux rangées, en `--color-accent` et
+`--color-accent-dim` sur un fond `--color-ink-900` : **c'est la grille justifiée
+que l'application rend vraiment à l'écran**, et non un pictogramme d'image
+générique — le premier essai, un cadre au trait fin, disparaissait à la taille
+où une icône est réellement regardée.
+
+Deux aplats plutôt que des opacités, parce qu'une opacité se compose avec ce
+qu'il y a derrière et qu'Android pose la variante masquable sur son propre
+fond. Gouttières à 16 unités sur 512, soit 1,75 px sur un lanceur à 56 px : en
+dessous elles se referment et les six tuiles deviennent une tache.
+
+Les PNG sont dérivés une fois pour toutes, avec `sharp` — déjà dépendance du
+serveur :
+
+```bash
+cd packages/web/public/icons && pnpm --filter @gdv/server exec node -e "
+const sharp = require('sharp'); const s = () => sharp('icon.svg', { density: 384 });
+Promise.all([
+  s().resize(192).png().toFile('icon-192.png'),
+  s().resize(512).png().toFile('icon-512.png'),
+  s().resize(512).flatten({ background: '#0b0b0d' }).png().toFile('icon-maskable-512.png'),
+  s().resize(180).flatten({ background: '#0b0b0d' }).png().toFile('apple-touch-icon.png'),
+]);"
+```
+
+Deux détails portent tout le reste. Le `flatten` remplit les angles
+transparents du fond sombre : c'est ce qui distingue la variante **masquable**,
+qu'Android recadre dans la forme du système et qui doit donc déborder, de la
+variante `any`, qu'il affiche telle quelle avec ses coins arrondis. Et la
+mosaïque occupe 59 % de la toile en largeur, 50 % en hauteur, ce qui la laisse
+dans la zone sûre — le cercle de 80 % du côté — quel que soit le masque
+appliqué.
+
+Pas de script permanent : la recette tient dans le bloc ci-dessus, et un script
+de plus serait un module de plus à documenter pour quatre fichiers qui ne
+changeront pas.
+
+### Le service worker — `public/sw.js`
+
+Trois règles, dans cet ordre :
+
+| Requête                          | Stratégie                                        |
+| -------------------------------- | ------------------------------------------------ |
+| `/api/…`, non-GET, autre origine | **Ignorée** — passe au réseau, sans interception |
+| Navigation (`request.mode`)      | Réseau d'abord, repli sur la coquille en cache   |
+| `/assets/…`                      | Cache d'abord — noms hashés, donc immuables      |
+
+**Il ne met en cache que la coquille** — l'HTML, le JS, le CSS. Jamais une
+photo, jamais une réponse d'API. Le pourquoi est dans
+[D71](./08-decisions.md) : sur un téléphone partagé, une photo mise en cache
+par l'application survivrait à un changement de compte, et le cache HTTP privé
+posé par le serveur les garde déjà rapides sans ce risque.
+
+`install` met `/` en cache immédiatement, sans attendre qu'une navigation la
+traverse : sinon la première ouverture hors réseau, juste après l'ajout à
+l'écran d'accueil, ne trouverait rien.
+
+`activate` refetch `/`, y relève les `/assets/…` référencés, remplace la
+coquille en cache et supprime les bundles absents de la nouvelle. Sans cette
+purge, le cache grossit d'un build à chaque déploiement, indéfiniment — les
+noms portent un hash, rien n'écrase jamais rien. Tout est enveloppé dans un
+`try` : hors réseau, on ne purge simplement pas.
+
+**Pas de `skipWaiting()`.** Un onglet ouvert continue de tourner sur les
+bundles qu'il a chargés ; la nouvelle version prend la main au lancement
+suivant.
+
+### `lib/registerServiceWorker.ts`
+
+Enregistre `/sw.js` sur `load`, et **uniquement si `import.meta.env.PROD`** :
+en développement, un service worker qui garde la coquille rendrait des fichiers
+périmés à chaque rechargement, et il faudrait le désinscrire à la main pour
+comprendre pourquoi une modification ne prend pas. L'échec de l'enregistrement
+est avalé — l'application marche sans lui.
+
+Appelé depuis `main.tsx`.
+
+### `lib/useInstallPrompt.ts` et `components/InstallInstructions.tsx`
+
+La proposition d'installation apparaît **à deux endroits selon la largeur** — un
+bouton dans la barre, une ligne dans le menu. Son état vit donc dans un hook,
+pas dans un composant : dupliqué entre les deux rendus, il finirait par diverger
+(le bouton disparaîtrait après `appinstalled`, la ligne de menu non).
+
+- **Android, Chrome** : `beforeinstallprompt` est capté avec `preventDefault()`
+  — sans quoi le navigateur affiche sa propre bannière et l'événement n'est plus
+  rejouable — puis `installer()` appelle `prompt()`.
+- **iOS** : aucune API, `manuel` vaut vrai, et la `TopBar` ouvre
+  `InstallInstructions` — un mode d'emploi en trois étapes, calqué sur
+  `ShortcutsOverlay` pour ne pas inventer un second style de surcouche. C'est
+  nécessaire parce que le chemin (Partager → Sur l'écran d'accueil) ne se devine
+  pas.
+- **Ailleurs** : `disponible` vaut faux et rien ne s'affiche — une invitation
+  inerte vaut moins que pas de bouton. De même dès que l'application tourne en
+  `display-mode: standalone`, que `navigator.standalone` le dit, ou
+  qu'`appinstalled` est reçu.
+
+**`InstallInstructions` est rendu dans `document.body`, par `createPortal`.**
+L'en-tête de la `TopBar` porte un `backdrop-blur`, et un filtre fait de
+l'élément le bloc conteneur de ses descendants positionnés : l'`inset-0` de la
+surcouche se rapportait à la barre, et le dialogue s'y trouvait centré puis
+rogné par le haut. `ShortcutsOverlay` n'a pas ce problème — il est monté depuis
+une page, pas depuis la barre. Le menu, lui, **profite** de ce même mécanisme :
+étant `absolute`, il s'ancre naturellement sous son bouton.
+
+### Zones sûres
+
+Deux endroits seulement, là où le mode standalone casse réellement quelque
+chose. Ailleurs, l'application ne touche pas les bords.
+
+- `CommentsPanel` — le formulaire ancré en bas passerait sous la barre
+  d'accueil de l'iPhone : `pb-[calc(1rem_+_env(safe-area-inset-bottom))]`.
+- `Lightbox` — en paysage, l'encoche recouvre exactement le bouton Fermer :
+  `env(safe-area-inset-left/right)` sur les marges de l'en-tête. Le dégradé, lui,
+  va bien jusqu'au bord.
+
+`index.html` porte déjà `viewport-fit=cover`, sans quoi `env()` vaudrait zéro.

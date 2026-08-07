@@ -237,53 +237,51 @@ export default function AlbumPage(): ReactElement {
 
   return (
     <div className="min-h-full">
-      <TopBar title={album.data?.title ?? 'Album'} subtitle={subtitle} back>
-        <button
-          type="button"
-          onClick={toggleOrder}
-          title={orderAction}
-          // Le libellé disparaît sous `sm` faute de place : le nom accessible
-          // doit rester complet, et dire aussi l'effet du clic.
-          aria-label={`Tri : ${orderLabel}. ${orderAction}.`}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="size-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <path d="M12 5v14" />
-            <path d={order === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
-          </svg>
-          <span className="hidden sm:inline">{orderLabel}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={toggleGroupBy}
-          title={groupAction}
-          aria-label={`Regroupement : ${groupLabel}. ${groupAction}.`}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="size-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            aria-hidden="true"
-          >
-            <rect x="3" y="5" width="18" height="16" rx="2" />
-            <path d="M3 10h18M8 3v4M16 3v4" />
-            {/* Plusieurs traits pour le mois, un seul repère pour le jour. */}
-            <path d={groupBy === 'month' ? 'M7 14h10M7 17.5h6' : 'M11 14h2v3h-2z'} />
-          </svg>
-          <span className="hidden sm:inline">{groupLabel}</span>
-        </button>
-      </TopBar>
+      <TopBar
+        title={album.data?.title ?? 'Album'}
+        subtitle={subtitle}
+        back
+        actions={[
+          {
+            label: orderLabel,
+            action: orderAction,
+            onSelect: toggleOrder,
+            icon: (
+              <svg
+                viewBox="0 0 24 24"
+                className="size-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M12 5v14" />
+                <path d={order === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
+              </svg>
+            ),
+          },
+          {
+            label: groupLabel,
+            action: groupAction,
+            onSelect: toggleGroupBy,
+            icon: (
+              <svg
+                viewBox="0 0 24 24"
+                className="size-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <rect x="3" y="5" width="18" height="16" rx="2" />
+                <path d="M3 10h18M8 3v4M16 3v4" />
+                {/* Plusieurs traits pour le mois, un seul repère pour le jour. */}
+                <path d={groupBy === 'month' ? 'M7 14h10M7 17.5h6' : 'M11 14h2v3h-2z'} />
+              </svg>
+            ),
+          },
+        ]}
+      />
 
       <main className="mx-auto max-w-[2000px] px-4 py-4 sm:px-6">
         {album.data && (

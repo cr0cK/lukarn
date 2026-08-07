@@ -1,11 +1,12 @@
 import type { AlbumDay, MediaItem } from '@gdv/shared';
-import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactElement, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { useCommentCounts, useMediaDetail } from '../api/hooks';
 import { dayKey, dayLabel } from '../lib/justify';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { placeLabelOf } from '../lib/useGridLayout';
 import { useSwipe } from '../lib/useSwipe';
+import { ActionMenu } from './ActionMenu';
 import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
 
@@ -325,6 +326,59 @@ export function Lightbox({
   // qu'on le feuillette : le compteur ne doit jamais afficher « 60 / 50 ».
   const count = Math.max(total, items.length);
 
+  // Les actions sont décrites une fois et rendues de deux façons : en icônes
+  // alignées à partir de `sm`, en lignes libellées dans le menu en dessous. Les
+  // dupliquer laisserait un raccourci, une icône ou un état actif se désaccorder
+  // entre les deux.
+  const actions: {
+    label: string;
+    shortcut: string;
+    icon: ReactNode;
+    active?: boolean;
+    onSelect: () => void;
+  }[] = [
+    {
+      label: 'Informations',
+      shortcut: 'i',
+      active: panel === 'info',
+      onSelect: () => togglePanel('info'),
+      icon: (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 7.5v.5" />
+        </>
+      ),
+    },
+    ...(isVideo
+      ? []
+      : [
+          {
+            label: zoomed ? 'Revenir à la taille écran' : 'Zoomer',
+            shortcut: 'z',
+            active: zoomed,
+            onSelect: () => setZoomed((value) => !value),
+            icon: (
+              <>
+                <circle cx="11" cy="11" r="7" />
+                <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
+              </>
+            ),
+          },
+        ]),
+    {
+      label: "Télécharger l'original",
+      shortcut: 'd',
+      onSelect: download,
+      icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
+    },
+    {
+      label: 'Plein écran',
+      shortcut: 'f',
+      onSelect: toggleFullscreen,
+      icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+    },
+  ];
+
   return (
     <div
       ref={containerRef}
@@ -364,8 +418,13 @@ export function Lightbox({
           {/* `items-start` : tout se cale sur la **première ligne** de texte.
               Les retraits hauts ci-dessous sont calculés pour que le nom du
               fichier, le compteur et le centre des icônes tombent sur la même
-              horizontale — 6 px sous `sm` (bouton de 32), 8 px au-delà (36). */}
-          <div className="flex items-start gap-1 px-2 py-2 sm:gap-2 sm:px-4 sm:py-3">
+              horizontale — 6 px sous `sm` (bouton de 32), 8 px au-delà (36).
+
+              Les marges latérales tiennent compte de l'encoche : en paysage, sur
+              un iPhone posé sur l'écran d'accueil, elle recouvre exactement le
+              bouton Fermer. Elles sont posées ici et non sur l'en-tête, pour que
+              le dégradé et la barre de progression aillent bien jusqu'au bord. */}
+          <div className="flex items-start gap-1 py-2 pl-[calc(0.5rem_+_env(safe-area-inset-left))] pr-[calc(0.5rem_+_env(safe-area-inset-right))] sm:gap-2 sm:py-3 sm:pl-[calc(1rem_+_env(safe-area-inset-left))] sm:pr-[calc(1rem_+_env(safe-area-inset-right))]">
             <button
               type="button"
               onClick={onClose}
@@ -397,7 +456,9 @@ export function Lightbox({
                 // **Desktop seulement** (D70). Le seuil est `md`, celui où
                 // `SidePanel` cesse d'être un tiroir en surimpression pour se
                 // docker : c'est la largeur à partir de laquelle la mise en
-                // page n'est plus celle d'un téléphone.
+                // page n'est plus celle d'un téléphone. Sous ce seuil, la note
+                // reste atteignable par le panneau `i`, où `ExifPanel` la rend
+                // sans condition de largeur.
                 //
                 // L'enveloppe porte le `hidden` plutôt que le paragraphe :
                 // `line-clamp-2` pose `display: -webkit-box`, et deux
@@ -420,16 +481,11 @@ export function Lightbox({
               {index + 1} / {count}
             </span>
 
-            <div className="flex shrink-0 items-center">
-              <IconButton
-                label="Informations (i)"
-                active={panel === 'info'}
-                onClick={() => togglePanel('info')}
-              >
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 11v5M12 7.5v.5" />
-              </IconButton>
-
+            {/* Les commentaires restent **toujours** en ligne, contrairement aux
+                autres actions : leur icône porte la pastille des non-lus, et
+                c'est le seul signe qu'une photo a été commentée. Rangée dans le
+                menu, elle ne signalerait plus rien. */}
+            <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
               <IconButton
                 label={commentsLabel(commentTotal, unread)}
                 active={panel === 'comments'}
@@ -439,24 +495,46 @@ export function Lightbox({
                 <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
               </IconButton>
 
-              {!isVideo && (
-                <IconButton
-                  label={zoomed ? 'Revenir à la taille écran (z)' : 'Zoomer (z)'}
-                  active={zoomed}
-                  onClick={() => setZoomed((value) => !value)}
-                >
-                  <circle cx="11" cy="11" r="7" />
-                  <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
-                </IconButton>
-              )}
+              {/* À partir de `sm`, la place est là : tout s'aligne. */}
+              <div className="hidden items-center gap-0.5 sm:flex sm:gap-2">
+                {actions.map((action) => (
+                  <IconButton
+                    key={action.label}
+                    label={`${action.label} (${action.shortcut})`}
+                    active={action.active}
+                    onClick={action.onSelect}
+                  >
+                    {action.icon}
+                  </IconButton>
+                ))}
+              </div>
 
-              <IconButton label="Télécharger l'original (d)" onClick={download}>
-                <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
-              </IconButton>
-
-              <IconButton label="Plein écran (f)" onClick={toggleFullscreen}>
-                <path d="M4 9V4h5M20 9V4h-5M20 15v5h-5M4 15v5h5" />
-              </IconButton>
+              <div className="sm:hidden">
+                <ActionMenu
+                  label="Actions de la photo"
+                  triggerClassName="rounded-full p-1.5 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
+                  groupes={[
+                    actions.map((action) => ({
+                      // Sans le raccourci clavier : ce menu ne s'ouvre qu'au
+                      // toucher, où « (i) » n'est qu'une syllabe de plus à lire.
+                      label: action.label,
+                      icon: (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="size-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
+                        >
+                          {action.icon}
+                        </svg>
+                      ),
+                      onSelect: action.onSelect,
+                    })),
+                  ]}
+                />
+              </div>
             </div>
           </div>
         </header>
@@ -525,6 +603,7 @@ export function Lightbox({
           mediaId={item.id}
           mediaName={item.name}
           detail={detail}
+          day={days.get(dayKey(item.takenAt))}
           tab={panel}
           onTabChange={setPanel}
           onClose={() => setPanel(null)}

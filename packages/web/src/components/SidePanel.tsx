@@ -1,4 +1,4 @@
-import type { MediaDetail } from '@gdv/shared';
+import type { AlbumDay, MediaDetail } from '@gdv/shared';
 import type { ReactElement } from 'react';
 import { CommentsPanel } from './CommentsPanel';
 import { ExifPanel } from './ExifPanel';
@@ -25,6 +25,7 @@ export function SidePanel({
   mediaId,
   mediaName,
   detail,
+  day,
   tab,
   onTabChange,
   onClose,
@@ -33,6 +34,8 @@ export function SidePanel({
   mediaId: string;
   mediaName: string;
   detail: MediaDetail | undefined;
+  /** Journée de la photo, si elle porte une note ou un lieu. */
+  day: AlbumDay | undefined;
   tab: PanelTab;
   onTabChange: (tab: PanelTab) => void;
   onClose: () => void;
@@ -92,7 +95,7 @@ export function SidePanel({
 
       {tab === 'info' ? (
         <div id="panel-info" role="tabpanel" className="flex-1 overflow-y-auto">
-          <ExifPanel detail={detail} />
+          <ExifPanel detail={detail} day={day} />
         </div>
       ) : (
         // Pas de `overflow-y-auto` ici : le panneau de commentaires gère
