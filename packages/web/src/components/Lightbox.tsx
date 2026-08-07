@@ -539,8 +539,28 @@ export function Lightbox({
           </div>
         </header>
 
+        {/* `touch-action` décide si les deux gestes au doigt de cette colonne
+            aboutissent : le balayage d'une photo à l'autre, et le déplacement
+            dans une photo agrandie. Avec la valeur par défaut `auto`, le
+            navigateur garde le droit de lire le glissement comme un
+            défilement ; il tranche en ce sens au bout d'un ou deux
+            `pointermove`, émet `pointercancel`, et les deux gestes meurent en
+            route — ce qui se ressent comme une lenteur plutôt que comme une
+            interruption. `setPointerCapture` n'y change rien : il garantit de
+            recevoir la suite des événements, pas que le geste survive.
+
+            `pinch-zoom` plutôt que `none` : il ne retire que le défilement à un
+            doigt, et laisse le pincement à deux doigts, qui reste le geste de
+            zoom spontané sur téléphone. Posé ici plutôt que dans
+            `ZoomableImage` parce que la règle est la même pour toute la colonne
+            et qu'un descendant en hérite par intersection (D77).
+
+            Sauf sur une vidéo, dont les contrôles natifs de lecture ont leur
+            propre traitement du toucher — le balayage y est déjà désactivé. */}
         <div
-          className="relative flex flex-1 items-center justify-center overflow-hidden"
+          className={`relative flex flex-1 items-center justify-center overflow-hidden ${
+            isVideo ? '' : 'touch-pinch-zoom'
+          }`}
           {...swipe}
           onPointerDownCapture={dismissPanelOnOutsideClick}
         >
