@@ -450,7 +450,7 @@ recopie dans le partage Drive.
 - `GET /api/oauth/callback` **exige la même session administrateur** et compare
   le `state` reçu au cookie. Sans cette double vérification, un tiers pourrait
   faire aboutir un callback avec un code obtenu ailleurs et connecter _son_ Drive
-  à cette instance. Les échecs redirigent vers `/admin?oauth=<raison>` plutôt que
+  à cette instance. Les échecs redirigent vers `/admin/serveur?oauth=<raison>` plutôt que
   d'afficher une erreur brute.
 
 Les scopes demandés sont `drive.readonly` (lecture de tout le Drive — nécessaire

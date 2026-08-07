@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { UserForm } from './UserForm';
 import { Button, FormError, Section, type Notify } from './ui';
 
-/** Section « Utilisateurs » : liste des comptes, création, modification, suppression. */
+/** Rubrique « Comptes » : liste des comptes, création, modification, suppression. */
 export function UsersSection({
   albums,
   notify,
@@ -41,7 +41,7 @@ export function UsersSection({
 
   return (
     <Section
-      title="Utilisateurs"
+      title="Comptes"
       description="Qui peut se connecter, et à quels albums."
       action={
         <Button

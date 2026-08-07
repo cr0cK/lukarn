@@ -58,7 +58,7 @@ synchronisation **réussie** est calme depuis une heure ; le délai entre l'arri
 des photos et l'email est donc de une à deux heures.
 
 **Le mail de code fait exception aux deux autres.** Son sujet nomme l'hôte de
-`PUBLIC_URL` et **jamais le code** ([D60](./08-decisions.md)), et il ne porte
+`PUBLIC_URL` et **jamais le code** ([D65](./08-decisions.md)), et il ne porte
 aucun lien cliquable : l'hôte y figure en texte seulement, parce qu'un lien
 ouvrirait une seconde session dans un autre navigateur alors que le code est
 attendu dans l'onglet resté ouvert. Le corps rappelle le geste qui a déclenché

@@ -13,7 +13,8 @@ vue vit dans l'URL, le reste est du `useState` local.
 | `/login`          | `LoginPage`  | aucune (redirige si déjà connecté) |
 | `/`               | `AlbumsPage` | `RequireAuth`                      |
 | `/album/:albumId` | `AlbumPage`  | `RequireAuth`                      |
-| `/admin`          | `AdminPage`  | `RequireAuth admin`                |
+| `/admin`          | —            | `Navigate to="/admin/albums"`      |
+| `/admin/:tab`     | `AdminPage`  | `RequireAuth admin`                |
 | `*`               | —            | `Navigate to="/"`                  |
 
 `RequireAuth` s'appuie sur `useMe()`. **Ce n'est pas un contrôle de sécurité** :
@@ -584,12 +585,41 @@ Les comptes, les albums et les réglages s'administrent depuis `/admin` :
 `config/albums.yaml` ne sert plus qu'à amorcer une installation neuve. Le bouton
 « Recharger albums.yaml » a donc disparu avec la route `POST /api/admin/reload`.
 
-`AdminPage` ne fait qu'assembler cinq sections et porter le bandeau de message,
-collé sous la barre supérieure : la page est longue, un message affiché tout en
-haut passerait inaperçu depuis le bas.
+L'administration se navigue par **rubriques, une par URL** (D66) :
+
+| Rubrique       | URL                   | Contenu                                                  |
+| -------------- | --------------------- | -------------------------------------------------------- |
+| Albums         | `/admin/albums`       | `AlbumsSection`                                          |
+| Comptes        | `/admin/comptes`      | `UsersSection`                                           |
+| Commentaires   | `/admin/commentaires` | `CommentsSection`                                        |
+| Serveur        | `/admin/serveur`      | `DriveSection`, `SettingsSection`, `MaintenanceSection`  |
+
+`ADMIN_TABS`, dans `AdminNav`, est la source unique : la navigation la rend, et
+`AdminPage` valide contre elle le paramètre `:tab`. Une rubrique inconnue
+redirige vers Albums plutôt que d'afficher une page vide, et `/admin` sans
+rubrique reste un lien valide — c'est encore ce que vise la barre supérieure.
+
+**La rubrique vit dans l'URL, pas dans un état local.** Un lien vers la file de
+modération se partage, le retour du navigateur revient à la rubrique
+précédente, un rechargement ne ramène pas à la première, et le retour de
+consentement Google a une destination à nommer : le serveur redirige vers
+`/admin/serveur`, la rubrique qui porte le bouton de connexion (voir
+[05](./05-api.md)).
+
+`AdminPage` monte la rubrique demandée **et les seules attentes qui la
+concernent** : la file de modération n'affiche ni le chargement des albums ni
+une erreur sur l'état du serveur, qui ne changeraient rien à ce qu'elle montre.
+Les requêtes, elles, restent lancées en tête du composant — la règle des hooks
+ne permet pas de les conditionner, et TanStack Query les partage de toute façon
+d'une rubrique à l'autre.
+
+Le bandeau de message reste dans la colonne de contenu, collé sous la barre
+supérieure : la rubrique des commentaires défile toujours, et un message affiché
+tout en haut passerait inaperçu depuis le bas de la file.
 
 | Composant                     | Rôle                                                                                    |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
+| `AdminNav`                    | Navigation entre les quatre rubriques, en `NavLink`                                     |
 | `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                                   |
 | `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée                        |
 | `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, découpage par défaut, création, modification |
@@ -602,6 +632,14 @@ haut passerait inaperçu depuis le bas.
 Chaque section porte ses propres mutations, et `ui.tsx` existe pour que les
 formulaires ne réinventent ni les classes ni le lien `label` /
 `aria-describedby`.
+
+`AdminNav` a **deux régimes selon la largeur**, comme `SidePanel` : à partir de
+`md`, une colonne collante de 12 rem, qui reste sous les yeux pendant qu'on fait
+défiler la file de modération ; en dessous, une rangée qui défile
+horizontalement, en débord des marges de la page — les mêmes 12 rem prélevées
+sur un écran de téléphone ne laisseraient rien au contenu. L'état actif vient du
+routeur : `NavLink` pose `aria-current="page"` et passe `isActive` à sa classe,
+plutôt que de comparer des chemins à la main.
 
 **Les notes de journée ne s'administrent pas ici.** Elles se saisissent dans
 l'album, en face des photos qu'elles décrivent — c'est le seul endroit où l'on
