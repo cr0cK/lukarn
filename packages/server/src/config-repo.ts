@@ -31,6 +31,12 @@ export interface StoredAlbum {
   recursive: boolean;
   /** Découpage de la grille à l'ouverture. Une préférence, pas une contrainte. */
   groupBy: GroupBy;
+  /**
+   * Média choisi comme couverture, `null` pour la plus récente automatiquement.
+   * Le choix seul : la couverture réellement servie est calculée par
+   * `MediaRepo.stats`, qui replie sur l'automatique si la photo a quitté l'index.
+   */
+  coverMediaId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -78,6 +84,8 @@ export interface UpdateAlbumInput {
   folderId?: string;
   recursive?: boolean;
   groupBy?: GroupBy;
+  /** `null` rend la couverture au choix automatique. */
+  coverMediaId?: string | null;
 }
 
 /** Valeurs appliquées tant qu'aucun réglage n'a été enregistré. */
@@ -104,6 +112,7 @@ interface AlbumRow {
   folder_id: string;
   recursive: number;
   group_by: GroupBy;
+  cover_media_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -136,6 +145,7 @@ function toAlbum(row: AlbumRow): StoredAlbum {
     folderId: row.folder_id,
     recursive: row.recursive === 1,
     groupBy: row.group_by,
+    coverMediaId: row.cover_media_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -318,6 +328,7 @@ export class ConfigRepo {
       folderId: patch.folderId ?? stored.folderId,
       recursive: patch.recursive ?? stored.recursive,
       groupBy: patch.groupBy ?? stored.groupBy,
+      coverMediaId: patch.coverMediaId === undefined ? stored.coverMediaId : patch.coverMediaId,
       updatedAt: new Date().toISOString(),
     };
 
@@ -325,7 +336,7 @@ export class ConfigRepo {
       .prepare(
         `UPDATE albums
             SET title = ?, description = ?, folder_id = ?, recursive = ?, group_by = ?,
-                updated_at = ?
+                cover_media_id = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
@@ -334,6 +345,7 @@ export class ConfigRepo {
         next.folderId,
         next.recursive ? 1 : 0,
         next.groupBy,
+        next.coverMediaId,
         next.updatedAt,
         albumId,
       );
@@ -434,7 +446,8 @@ export class ConfigRepo {
   private build(): Snapshot {
     const albumRows = this.db
       .prepare(
-        `SELECT id, title, description, folder_id, recursive, group_by, created_at, updated_at
+        `SELECT id, title, description, folder_id, recursive, group_by, cover_media_id,
+                created_at, updated_at
            FROM albums ORDER BY position, id`,
       )
       .all() as AlbumRow[];

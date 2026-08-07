@@ -347,6 +347,19 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE albums ADD COLUMN group_by TEXT NOT NULL DEFAULT 'month'
     CHECK (group_by IN ('month', 'day'));
   `,
+
+  // 8 — la couverture d'un album se choisit, au lieu d'être toujours sa photo
+  // la plus récente. NULL vaut « automatique », et reste le repli permanent.
+  //
+  // Aucune clé étrangère vers media, pour la même raison que comments.media_id :
+  // deleteStale retire une photo dès qu'une synchronisation ne la revoit pas —
+  // corbeille Drive le temps d'un retour en arrière, dossier renommé, sync
+  // interrompue. Une cascade effacerait le choix sur un contretemps
+  // d'indexation, alors que l'identifiant Drive est stable : la photo revenue
+  // redevient la couverture, et l'album montre la plus récente entre-temps.
+  `
+  ALTER TABLE albums ADD COLUMN cover_media_id TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

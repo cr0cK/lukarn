@@ -358,6 +358,62 @@ describe('albums', () => {
     assert.equal(context.findAlbum('sejour')!.groupBy, 'month');
   });
 
+  it('choisit une couverture, la refuse hors de l’album, et y replie sans elle', async () => {
+    await post('/api/admin/albums', {
+      id: 'vacances',
+      title: 'Vacances',
+      folderId: 'folder-vacances',
+    });
+    await post('/api/admin/albums', {
+      id: 'ailleurs',
+      title: 'Ailleurs',
+      folderId: 'folder-ailleurs',
+    });
+    context.media.upsertMany(
+      [
+        { ...media('vacances', 'ancienne'), takenAt: '2026-06-01T12:00:00.000Z' },
+        { ...media('vacances', 'recente'), takenAt: '2026-08-01T12:00:00.000Z' },
+        { ...media('ailleurs', 'etrangere'), takenAt: '2026-07-01T12:00:00.000Z' },
+      ],
+      '2026-08-02T00:00:00.000Z',
+    );
+
+    const vue = async (): Promise<string | null> => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/api/albums/vacances',
+        headers: { cookie },
+      });
+      return (response.json() as { coverId: string | null }).coverId;
+    };
+
+    // Sans choix, la plus récente — le comportement d'avant la colonne.
+    assert.equal(await vue(), 'recente');
+
+    const choisie = await patch('/api/admin/albums/vacances', { coverId: 'ancienne' });
+    assert.equal(choisie.statusCode, 200);
+    assert.equal((choisie.json() as AdminAlbum).coverId, 'ancienne');
+    assert.equal(await vue(), 'ancienne');
+
+    // Une photo d'un autre album ne s'afficherait jamais : la refuser dit tout
+    // de suite ce qu'un repli silencieux ferait découvrir depuis l'accueil.
+    const etrangere = await patch('/api/admin/albums/vacances', { coverId: 'etrangere' });
+    assert.equal(etrangere.statusCode, 400);
+    assert.equal((etrangere.json() as { error: string }).error, 'unknown_cover');
+    assert.equal(context.findAlbum('vacances')!.coverMediaId, 'ancienne', 'choix préservé');
+
+    // La photo quitte l'index — corbeille Drive, dossier renommé : l'album
+    // reprend la plus récente sans perdre le choix, qui revaudra au retour.
+    context.db.prepare("DELETE FROM media WHERE album_id = 'vacances' AND id = 'ancienne'").run();
+    assert.equal(await vue(), 'recente');
+    assert.equal(context.findAlbum('vacances')!.coverMediaId, 'ancienne');
+
+    // `null` rend la couverture à l'automatique : c'est le bouton de /admin.
+    const rendue = await patch('/api/admin/albums/vacances', { coverId: null });
+    assert.equal((rendue.json() as AdminAlbum).coverId, null);
+    assert.equal(context.findAlbum('vacances')!.coverMediaId, null);
+  });
+
   it('liste les comptes ayant explicitement accès', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',

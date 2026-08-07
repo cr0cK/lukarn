@@ -1,7 +1,7 @@
 import type { AdminAlbum, SyncStatus } from '@gdv/shared';
 import { type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
-import { useDeleteAlbum, useResync } from '../../api/hooks';
+import { useDeleteAlbum, useResync, useUpdateAlbum } from '../../api/hooks';
 import { formatRelative } from '../../lib/format';
 import { AlbumForm } from './AlbumForm';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -29,6 +29,7 @@ export function AlbumsSection({
 }: AlbumsSectionProps): ReactElement {
   const resync = useResync();
   const remove = useDeleteAlbum();
+  const update = useUpdateAlbum();
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -48,6 +49,27 @@ export function AlbumsSection({
     });
   };
 
+  /**
+   * Rend la couverture au choix automatique. Le geste inverse — désigner une
+   * photo — se fait dans l'album, sur la photo elle-même : un sélecteur ici
+   * rejouerait la grille sans rien apporter, et on choisit une couverture en la
+   * regardant en grand.
+   */
+  const clearCover = (album: AdminAlbum): void => {
+    update.mutate(
+      { albumId: album.id, body: { coverId: null } },
+      {
+        onSuccess: () =>
+          notify({
+            tone: 'ok',
+            text: `L'album « ${album.title} » reprend sa photo la plus récente en couverture.`,
+          }),
+        onError: (error) =>
+          notify({ tone: 'error', text: errorText(error, 'Modification impossible.') }),
+      },
+    );
+  };
+
   const confirmDelete = (album: AdminAlbum): void => {
     remove.mutate(album.id, {
       onSuccess: () => {
@@ -64,7 +86,7 @@ export function AlbumsSection({
   return (
     <Section
       title="Albums"
-      description="Un album = un dossier Google Drive indexé."
+      description="Un album = un dossier Google Drive indexé. Sa couverture se choisit sur la photo, depuis l'album."
       action={
         <div className="flex gap-2">
           <Button
@@ -138,6 +160,20 @@ export function AlbumsSection({
             >
               Resynchroniser
             </Button>
+
+            {/* Sa seule présence dit qu'une couverture a été choisie : la ligne
+                de métadonnées au-dessus est tronquée dès que la fenêtre se
+                resserre, et un indicateur qu'on ne voit pas n'en est pas un. */}
+            {album.coverId && (
+              <Button
+                onClick={() => clearCover(album)}
+                disabled={update.isPending}
+                title="Une photo a été choisie comme couverture. Rendre à l'album sa photo la plus récente."
+                ariaLabel={`Rendre automatique la couverture de l'album ${album.title}`}
+              >
+                Couverture automatique
+              </Button>
+            )}
 
             <Button
               onClick={() => {

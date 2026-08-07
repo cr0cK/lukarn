@@ -618,9 +618,20 @@ focus ou qu'un modificateur est enfoncé.
   trois lignes et l'en-tête montait à 92 px — il recouvrait le haut de la photo
   qu'il annonce. `1 / 120` précède la date parce que c'est le repère utile quand
   on parcourt un album, et donc la date qui doit être rognée la première.
+- **Définir comme couverture** n'apparaît que pour un administrateur, et jamais
+  sur une vidéo : le pipeline n'en rend pas de vignette, l'album resterait sans
+  image. C'est la seule action sans raccourci clavier — on la fait une fois par
+  album, et l'aide-mémoire `?` s'adresse à tout le monde. Elle s'allume quand la
+  photo ouverte est déjà la couverture ; la resélectionner n'est pas un clic
+  perdu : elle l'était peut-être par défaut, et cela la fixe. Le retour à
+  l'automatique est un bouton de `/admin`, seul endroit qui distingue les deux
+  cas (D80). Un refus — session expirée, rôle retiré entre-temps — s'affiche en
+  bas de la photo : sans ce message, rien ne distinguerait l'échec de l'absence
+  de clic. Il part au changement de photo.
 - **Sous `sm`, les actions passent dans un `ActionMenu`** — Informations,
-  Zoomer, Télécharger, Plein écran — avec leurs libellés en clair et sans le
-  rappel du raccourci clavier, qui n'a pas de sens au toucher. À partir de `sm`
+  Zoomer, Télécharger, Plein écran, et la couverture pour un administrateur —
+  avec leurs libellés en clair et sans le rappel du raccourci clavier, qui n'a
+  pas de sens au toucher. À partir de `sm`
   elles s'alignent toutes dans la barre. Comme pour la `TopBar`, elles sont
   **décrites une fois** (libellé, raccourci, icône, état actif) et rendues des
   deux façons : dupliquées, une icône ou un état finirait par se désaccorder
@@ -886,21 +897,28 @@ Le bandeau de message reste dans la colonne de contenu, collé sous la barre
 supérieure : la rubrique des commentaires défile toujours, et un message affiché
 tout en haut passerait inaperçu depuis le bas de la file.
 
-| Composant                     | Rôle                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| `AdminNav`                    | Navigation entre les quatre rubriques, en `NavLink`                                     |
-| `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                                   |
-| `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée                        |
-| `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, découpage par défaut, création, modification |
-| `SettingsSection`             | Intervalle de synchronisation, synchronisation au démarrage, cache                      |
-| `MaintenanceSection`          | Occupation du cache et purge                                                            |
-| `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                                      |
-| `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                                |
-| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section                 |
+| Composant                     | Rôle                                                                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `AdminNav`                    | Navigation entre les quatre rubriques, en `NavLink`                                                                         |
+| `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                                                                       |
+| `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée                                                            |
+| `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, découpage par défaut, retour à la couverture automatique, création, modification |
+| `SettingsSection`             | Intervalle de synchronisation, synchronisation au démarrage, cache                                                          |
+| `MaintenanceSection`          | Occupation du cache et purge                                                                                                |
+| `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                                                                          |
+| `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                                                                    |
+| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section                                                     |
 
 Chaque section porte ses propres mutations, et `ui.tsx` existe pour que les
 formulaires ne réinventent ni les classes ni le lien `label` /
 `aria-describedby`.
+
+**Le bouton « Couverture automatique » d'une ligne d'album est son propre
+indicateur** : il n'apparaît que si une photo a été choisie. La ligne de
+métadonnées au-dessus aurait pu le dire, mais elle porte `truncate` et une
+rangée à cinq boutons la réduit à quelques caractères dès que la fenêtre se
+resserre — un indicateur qu'on ne voit pas n'en est pas un. Le `title` lève
+l'ambiguïté du libellé, qui décrit l'état visé et non l'état courant.
 
 `AdminNav` a **deux régimes selon la largeur**, comme `SidePanel` : à partir de
 `md`, une colonne collante de 12 rem, qui reste sous les yeux pendant qu'on fait

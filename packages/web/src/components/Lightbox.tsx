@@ -1,7 +1,7 @@
 import type { AlbumDay, MediaItem } from '@gdv/shared';
 import { type ReactElement, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { mediaUrl } from '../api/client';
-import { useCommentCounts, useMediaDetail } from '../api/hooks';
+import { errorText, mediaUrl } from '../api/client';
+import { useCommentCounts, useMediaDetail, useUpdateAlbum } from '../api/hooks';
 import { dayKey, dayLabel } from '../lib/justify';
 import { previewOverlay } from '../lib/preview';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
@@ -31,6 +31,10 @@ interface LightboxProps {
   total: number;
   /** Journées annotées, pour porter le contexte du jour jusque dans l'image. */
   days: Map<string, AlbumDay>;
+  /** Couverture actuelle de l'album, pour signaler la photo qui l'est déjà. */
+  coverId: string | null;
+  /** Administrateur : lui seul peut désigner la couverture. */
+  canSetCover: boolean;
   onIndexChange: (index: number) => void;
   onClose: () => void;
   /** Appelé près de la fin de la liste, pour charger la page suivante. */
@@ -56,6 +60,8 @@ export function Lightbox({
   index,
   total,
   days,
+  coverId,
+  canSetCover,
   onIndexChange,
   onClose,
   onNeedMore,
@@ -81,6 +87,12 @@ export function Lightbox({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const { data: detail } = useMediaDetail(albumId, panel && item ? item.id : null);
+
+  const setCover = useUpdateAlbum();
+  // L'échec ne doit pas suivre jusqu'à la photo suivante : le message y
+  // désignerait une image qui n'a rien à voir avec l'action qui a échoué.
+  const resetCoverError = setCover.reset;
+  useEffect(() => resetCoverError(), [index, resetCoverError]);
 
   /**
    * Pastille du bouton « Commentaires ». Le total vient d'un appel unique pour
@@ -349,9 +361,12 @@ export function Lightbox({
   // alignées à partir de `sm`, en lignes libellées dans le menu en dessous. Les
   // dupliquer laisserait un raccourci, une icône ou un état actif se désaccorder
   // entre les deux.
+  const isCover = item.id === coverId;
+
   const actions: {
     label: string;
-    shortcut: string;
+    /** Absent pour une action sans raccourci : voir « Définir comme couverture ». */
+    shortcut?: string;
     icon: ReactNode;
     active?: boolean;
     onSelect: () => void;
@@ -396,6 +411,32 @@ export function Lightbox({
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
+    // Réservée à l'administrateur, et jamais sur une vidéo : le pipeline ne
+    // décode pas de vignette vidéo, un album en couverture resterait vide.
+    //
+    // Pas de raccourci clavier, contrairement aux quatre autres : c'est un
+    // geste qu'on fait une fois par album, pas une commande de lecture, et
+    // l'aide-mémoire `?` s'adresse à tout le monde.
+    //
+    // Aucun raccourci non plus pour revenir à l'automatique — c'est le bouton
+    // de /admin. Reconfirmer la photo déjà en couverture n'est donc pas un
+    // clic perdu : elle l'était peut-être par défaut, et cela la fixe, si bien
+    // que la prochaine photo synchronisée ne la remplacera plus.
+    ...(canSetCover && !isVideo
+      ? [
+          {
+            label: isCover ? "Couverture de l'album" : 'Définir comme couverture',
+            active: isCover,
+            onSelect: () => setCover.mutate({ albumId, body: { coverId: item.id } }),
+            icon: (
+              <>
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="m6 16 4-4 3 3 2-2 3 3" />
+              </>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -519,7 +560,7 @@ export function Lightbox({
                 {actions.map((action) => (
                   <IconButton
                     key={action.label}
-                    label={`${action.label} (${action.shortcut})`}
+                    label={action.shortcut ? `${action.label} (${action.shortcut})` : action.label}
                     active={action.active}
                     onClick={action.onSelect}
                   >
@@ -652,6 +693,19 @@ export function Lightbox({
               onClick={() => goTo(index + 1)}
               label="Suivant (→)"
             />
+          )}
+
+          {/* Une couverture refusée — session expirée, rôle retiré entre-temps —
+              doit se voir : le bouton reprend son état d'origine, et sans ce
+              message rien ne distinguerait l'échec de l'absence de clic. Il
+              part à la photo suivante, ou à la tentative suivante. */}
+          {setCover.isError && (
+            <p
+              role="alert"
+              className="absolute inset-x-4 bottom-6 mx-auto max-w-md rounded-lg bg-red-950/90 px-3 py-2 text-center text-xs text-red-200 shadow-lg"
+            >
+              {errorText(setCover.error, "La couverture n'a pas pu être enregistrée.")}
+            </p>
           )}
         </div>
       </div>

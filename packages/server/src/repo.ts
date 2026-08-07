@@ -260,7 +260,19 @@ export class MediaRepo {
     };
   }
 
-  stats(albumId: string): {
+  /**
+   * Compteur, bornes chronologiques et couverture effective de l'album.
+   *
+   * `chosenId` est le choix d'un administrateur, et il ne vaut que tant que la
+   * photo est dans l'index : un fichier passé à la corbeille Drive le temps
+   * d'un retour en arrière laisserait sinon l'album sans vignette sur la page
+   * d'accueil, sans que rien ne dise pourquoi. Le repli est donc permanent, et
+   * le choix reste stocké — la photo revenue redevient la couverture.
+   */
+  stats(
+    albumId: string,
+    chosenId: string | null = null,
+  ): {
     itemCount: number;
     coverId: string | null;
     coverVersion: string | null;
@@ -274,15 +286,24 @@ export class MediaRepo {
       )
       .get(albumId) as { count: number; newest: string | null; oldest: string | null };
 
-    // La couverture est la photo la plus récente — jamais une vidéo, dont la
-    // vignette demanderait un décodage que le pipeline ne fait pas.
-    const cover = this.db
-      .prepare(
-        `SELECT id, md5 FROM media
+    // `kind = 'photo'` des deux côtés : jamais une vidéo, dont la vignette
+    // demanderait un décodage que le pipeline ne fait pas.
+    const chosen = chosenId
+      ? (this.db
+          .prepare(`SELECT id, md5 FROM media WHERE album_id = ? AND id = ? AND kind = 'photo'`)
+          .get(albumId, chosenId) as { id: string; md5: string | null } | undefined)
+      : undefined;
+
+    // À défaut de choix utilisable, la photo la plus récente.
+    const cover =
+      chosen ??
+      (this.db
+        .prepare(
+          `SELECT id, md5 FROM media
          WHERE album_id = ? AND kind = 'photo'
          ORDER BY taken_at DESC, id DESC LIMIT 1`,
-      )
-      .get(albumId) as { id: string; md5: string | null } | undefined;
+        )
+        .get(albumId) as { id: string; md5: string | null } | undefined);
 
     return {
       itemCount: row.count,
@@ -475,11 +496,17 @@ export class SyncStateRepo {
 
 /** Assemble la vue album exposée par l'API à partir de la config et de l'index. */
 export function buildAlbum(
-  config: { id: string; title: string; description?: string | null; groupBy?: GroupBy },
+  config: {
+    id: string;
+    title: string;
+    description?: string | null;
+    groupBy?: GroupBy;
+    coverMediaId?: string | null;
+  },
   media: MediaRepo,
   sync: SyncStateRepo,
 ): Album {
-  const stats = media.stats(config.id);
+  const stats = media.stats(config.id, config.coverMediaId ?? null);
   const state = sync.get(config.id);
   return {
     id: config.id,

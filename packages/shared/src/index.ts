@@ -109,7 +109,11 @@ export interface Album {
    */
   groupBy: GroupBy;
   itemCount: number;
-  /** Id du média utilisé comme couverture, `null` si l'album est vide. */
+  /**
+   * Id du média affiché en couverture : celui qu'un administrateur a choisi, ou
+   * la photo la plus récente à défaut — y compris quand la photo choisie a
+   * quitté l'index. `null` si l'album n'a aucune photo.
+   */
   coverId: string | null;
   /** Empreinte de la couverture, à joindre à son URL. Voir `MediaItem.version`. */
   coverVersion: string | null;
@@ -425,6 +429,13 @@ export interface AdminAlbum {
   syncError: string | null;
   /** Comptes ayant explicitement accès, hors détenteurs du joker. */
   members: string[];
+  /**
+   * Photo **choisie** comme couverture, `null` si l'album prend automatiquement
+   * la plus récente. À ne pas confondre avec `Album.coverId`, qui est la
+   * couverture effectivement servie : celle-ci retombe sur l'automatique quand
+   * la photo choisie n'est plus indexée, sans que ce choix soit effacé.
+   */
+  coverId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -444,6 +455,11 @@ export interface UpdateAlbumRequest {
   folderId?: string;
   recursive?: boolean;
   groupBy?: GroupBy;
+  /**
+   * Photo à afficher en couverture. Elle doit être indexée dans cet album et
+   * ne pas être une vidéo. `null` rend le choix automatique.
+   */
+  coverId?: string | null;
 }
 
 /**
