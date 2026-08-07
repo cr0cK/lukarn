@@ -6,7 +6,6 @@ import {
   type IdentityRequest,
   type CreateUserRequest,
   type MediaItem,
-  type ModerationFilter,
   type SortOrder,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
@@ -16,13 +15,14 @@ import {
 } from '@gdv/shared';
 import {
   type QueryClient,
+  keepPreviousData,
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { ApiError, api } from './client';
+import { ApiError, api, type AdminCommentsQuery } from './client';
 
 export const queryKeys = {
   me: ['me'] as const,
@@ -43,7 +43,12 @@ export const queryKeys = {
   // en collision avec le fil d'un album qui s'appellerait « counts », un
   // identifiant que rien n'interdit.
   commentCounts: (albumId: string) => ['comments', albumId, 'counts'] as const,
-  adminComments: (filter: ModerationFilter) => ['admin', 'comments', filter] as const,
+  // Tout ce qui restreint la file entre dans la clé, curseur compris : deux
+  // pages voisines sont deux entrées de cache distinctes, ce qui rend le retour
+  // à la page précédente immédiat. L'invalidation reste large — le préfixe
+  // `['admin','comments']` les emporte toutes.
+  adminComments: (query: AdminCommentsQuery) =>
+    ['admin', 'comments', query.filter, query.albumId, query.q, query.cursor] as const,
   adminStatus: ['admin', 'status'] as const,
   adminUsers: ['admin', 'users'] as const,
   adminAlbums: ['admin', 'albums'] as const,
@@ -304,33 +309,54 @@ function invalidateThread(queryClient: QueryClient, albumId: string, mediaId: st
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentCounts(albumId) });
 }
 
-/** File de modération, paginée à la demande depuis /admin. */
-export function useAdminComments(filter: ModerationFilter) {
-  return useInfiniteQuery({
-    queryKey: queryKeys.adminComments(filter),
-    queryFn: ({ pageParam }) => api.adminComments(filter, pageParam),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+/**
+ * Une page de la file de modération.
+ *
+ * Une page à la fois, et non un `useInfiniteQuery` : chaque masquage invalide la
+ * file, et une requête infinie recharge alors **toutes** les pages accumulées —
+ * après quatre « Charger plus », un seul clic redemandait 200 lignes (D67).
+ *
+ * `keepPreviousData` garde la page précédente affichée le temps de la suivante :
+ * sans lui, la liste disparaît à chaque changement de page et la section se
+ * replie sous le curseur.
+ */
+export function useAdminComments(query: AdminCommentsQuery) {
+  return useQuery({
+    queryKey: queryKeys.adminComments(query),
+    queryFn: () => api.adminComments(query),
+    placeholderData: keepPreviousData,
   });
 }
 
 /**
- * Masque ou démasque. Les deux filtres de la file sont invalidés, puisque le
- * commentaire traité passe de l'un à l'autre ; le tableau de bord l'est aussi,
- * pour sa pastille de commentaires masqués.
+ * Masque ou démasque. Toute la file est invalidée, puisque le commentaire traité
+ * change de filtre ; le tableau de bord l'est aussi, pour sa pastille de
+ * commentaires masqués.
  */
 export function useModerateComment() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ commentId, hide }: { commentId: number; hide: boolean }) =>
       hide ? api.hideComment(commentId) : api.showComment(commentId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['admin', 'comments'] });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
-      // Le fil vu côté galerie change aussi : un commentaire masqué en disparaît.
-      void queryClient.invalidateQueries({ queryKey: ['comments'] });
-    },
+    onSuccess: () => invalidateModeration(queryClient),
   });
+}
+
+/** Masque ou démasque tous les messages d'une identité, d'un coup. */
+export function useModerateCommenter() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commenterId, hide }: { commenterId: number; hide: boolean }) =>
+      hide ? api.hideCommenter(commenterId) : api.showCommenter(commenterId),
+    onSuccess: () => invalidateModeration(queryClient),
+  });
+}
+
+function invalidateModeration(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ['admin', 'comments'] });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
+  // Le fil vu côté galerie change aussi : un commentaire masqué en disparaît.
+  void queryClient.invalidateQueries({ queryKey: ['comments'] });
 }
 
 export function useAdminStatus() {

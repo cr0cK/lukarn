@@ -5,7 +5,7 @@ import {
   type Comment,
   type CommentThread,
   type CommentsPage,
-  type ModerationFilter,
+  type ModerationQuery,
 } from '@gdv/shared';
 import type { Db } from './db.js';
 
@@ -325,20 +325,30 @@ export class CommentRepo {
    * Le curseur est un simple identifiant : `AUTOINCREMENT` garantit que l'ordre
    * des id est l'ordre d'écriture, ce qui évite le curseur composite dont la
    * pagination des médias a besoin (voir `repo.ts`).
+   *
+   * Modérer n'est pas parcourir : on arrive avec une intention — un message
+   * signalé, une journée, une adresse. D'où le filtre, l'album et la recherche,
+   * et d'où `total`, qui dit ce que le filtre retient en tout (D67).
    */
-  listForModeration(
-    filter: ModerationFilter,
-    limit: number,
-    cursor: number | null,
-  ): AdminCommentsPage {
-    const conditions: string[] = [];
-    const params: (string | number)[] = [];
-    if (filter === 'hidden') conditions.push('c.hidden_at IS NOT NULL');
-    if (cursor !== null) {
+  listForModeration(query: ModerationQuery): AdminCommentsPage {
+    const { conditions, params } = moderationConditions(query);
+
+    // Le total ignore le curseur : c'est la taille du corpus filtré, pas celle
+    // du reste à parcourir. Les `LEFT JOIN` d'album et de média sont inutiles
+    // ici — ils ne changent pas le nombre de lignes.
+    const totalRow = this.db
+      .prepare(
+        `SELECT COUNT(*) AS count
+           FROM comments c
+           JOIN commenters a ON a.id = c.commenter_id
+           ${where(conditions)}`,
+      )
+      .get(...params) as { count: number };
+
+    if (query.cursor !== null) {
       conditions.push('c.id < ?');
-      params.push(cursor);
+      params.push(query.cursor);
     }
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = this.db
       .prepare(
@@ -351,11 +361,11 @@ export class CommentRepo {
            -- LEFT JOIN : un commentaire survit à la disparition de sa photo de
            -- l'index (voir la migration 4). Il doit rester modérable.
            LEFT JOIN media m ON m.album_id = c.album_id AND m.id = c.media_id
-           ${where}
+           ${where(conditions)}
            ORDER BY c.id DESC
            LIMIT ?`,
       )
-      .all(...params, limit + 1) as (CommentRow & {
+      .all(...params, query.limit + 1) as (CommentRow & {
       email: string;
       hidden_by: string | null;
       album_id: string;
@@ -365,8 +375,8 @@ export class CommentRepo {
       media_name: string | null;
     })[];
 
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
 
     // L'administrateur peut tout supprimer : `canDelete` est vrai partout ici.
     const viewer: Viewer = { commenterId: null, admin: true };
@@ -377,12 +387,46 @@ export class CommentRepo {
       mediaId: row.media_id,
       mediaName: row.media_name,
       authorEmail: row.email,
+      commenterId: row.commenter_id,
       account: row.account,
       hiddenAt: row.hidden_at,
       hiddenBy: row.hidden_by,
     }));
 
-    return { comments, nextCursor: hasMore ? String(page.at(-1)!.id) : null };
+    return {
+      comments,
+      nextCursor: hasMore ? String(page.at(-1)!.id) : null,
+      total: totalRow.count,
+    };
+  }
+
+  /**
+   * Masque tous les messages encore en ligne d'une identité, et rend leur
+   * nombre.
+   *
+   * C'est le geste d'après une clé d'accès qui a trop circulé, ou d'un
+   * commentateur devenu insistant : les retirer un par un est un travail que
+   * personne ne fait. `AND hidden_at IS NULL` préserve la date d'un message
+   * déjà masqué — c'est celle de la décision d'origine qui compte, même règle
+   * qu'à l'unité.
+   */
+  hideAllFrom(commenterId: number, by: string): number {
+    return this.db
+      .prepare(
+        `UPDATE comments SET hidden_at = ?, hidden_by = ?
+          WHERE commenter_id = ? AND hidden_at IS NULL`,
+      )
+      .run(new Date().toISOString(), by, commenterId).changes;
+  }
+
+  /** Rend visibles tous les messages masqués d'une identité, et rend leur nombre. */
+  showAllFrom(commenterId: number): number {
+    return this.db
+      .prepare(
+        `UPDATE comments SET hidden_at = NULL, hidden_by = NULL
+          WHERE commenter_id = ? AND hidden_at IS NOT NULL`,
+      )
+      .run(commenterId).changes;
   }
 
   /** Nombre de commentaires masqués, pour la pastille de la section modération. */
@@ -392,4 +436,52 @@ export class CommentRepo {
       .get() as { count: number };
     return row.count;
   }
+}
+
+/**
+ * Échappe les jokers de `LIKE`.
+ *
+ * Sans cela, un `%` saisi dans la recherche ramènerait tout le corpus et un `_`
+ * remplacerait n'importe quel caractère : on chercherait autre chose que ce
+ * qu'on a tapé, sans que rien ne le signale.
+ */
+function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+function where(conditions: string[]): string {
+  return conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+}
+
+/**
+ * Conditions communes au comptage et à la page — le curseur excepté, qui ne
+ * concerne que la seconde. Les écrire deux fois les ferait diverger, et le
+ * total annoncerait un corpus qui n'est pas celui qu'on liste.
+ */
+function moderationConditions(query: ModerationQuery): {
+  conditions: string[];
+  params: (string | number)[];
+} {
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (query.filter === 'hidden') conditions.push('c.hidden_at IS NOT NULL');
+  if (query.filter === 'visible') conditions.push('c.hidden_at IS NULL');
+
+  if (query.albumId !== null) {
+    conditions.push('c.album_id = ?');
+    params.push(query.albumId);
+  }
+
+  if (query.q !== null) {
+    // Le nom et l'adresse autant que le corps : on cherche aussi bien un mot
+    // qu'on nous a rapporté que la personne qui l'a écrit.
+    conditions.push(
+      `(c.body LIKE ? ESCAPE '\\' OR a.display_name LIKE ? ESCAPE '\\' OR a.email LIKE ? ESCAPE '\\')`,
+    );
+    const motif = `%${escapeLike(query.q)}%`;
+    params.push(motif, motif, motif);
+  }
+
+  return { conditions, params };
 }

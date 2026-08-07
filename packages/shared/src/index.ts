@@ -487,6 +487,13 @@ export interface AdminComment extends Comment {
    */
   authorEmail: string;
   /**
+   * Identité de l'auteur, cible de la modération groupée. Absente de `Comment`
+   * pour la même raison qu'`authorEmail` : le fil public n'a pas à désigner une
+   * personne par une clé stable, qui permettrait de recoller ses messages d'un
+   * album à l'autre.
+   */
+  commenterId: number;
+  /**
    * Clé d'accès utilisée pour écrire, `null` si elle a été supprimée depuis.
    * C'est elle qu'on change quand un mot de passe partagé a trop circulé.
    */
@@ -497,13 +504,39 @@ export interface AdminComment extends Comment {
   hiddenBy: string | null;
 }
 
-/** Ce que la section de modération demande : tout, ou seulement ce qui est masqué. */
-export type ModerationFilter = 'all' | 'hidden';
+/**
+ * Ce que la file de modération demande : tout, ce qui est encore en ligne, ou
+ * ce qui a été retiré. Les deux derniers partitionnent le premier.
+ */
+export type ModerationFilter = 'all' | 'visible' | 'hidden';
+
+/** Ce que la file de modération sait restreindre, en plus du filtre. */
+export interface ModerationQuery {
+  filter: ModerationFilter;
+  /** Restreint à un album, `null` pour tous. */
+  albumId: string | null;
+  /** Cherché dans le corps, le nom déclaré et l'adresse. `null` pour ne pas chercher. */
+  q: string | null;
+  limit: number;
+  /** Identifiant de la dernière ligne de la page précédente. `null` pour la première. */
+  cursor: number | null;
+}
 
 export interface AdminCommentsPage {
   comments: AdminComment[];
   /** À repasser en `?cursor=`. `null` = fin de la liste. */
   nextCursor: string | null;
+  /**
+   * Nombre de commentaires que le filtre retient, **curseur exclu** : c'est la
+   * taille du corpus, pas celle du reste. Sans lui, une page ne dit pas si elle
+   * est tout ce qu'il y a à modérer ou le centième.
+   */
+  total: number;
+}
+
+/** Ce que rend une modération groupée : le nombre de messages réellement touchés. */
+export interface BulkModerationResult {
+  affected: number;
 }
 
 /** Contraintes de saisie, partagées pour valider des deux côtés à l'identique. */

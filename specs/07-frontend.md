@@ -609,9 +609,10 @@ consentement Google a une destination à nommer : le serveur redirige vers
 `AdminPage` monte la rubrique demandée **et les seules attentes qui la
 concernent** : la file de modération n'affiche ni le chargement des albums ni
 une erreur sur l'état du serveur, qui ne changeraient rien à ce qu'elle montre.
-Les requêtes, elles, restent lancées en tête du composant — la règle des hooks
-ne permet pas de les conditionner, et TanStack Query les partage de toute façon
-d'une rubrique à l'autre.
+Son sélecteur d'album lit bien la même liste, mais ne la fait pas attendre — il
+se remplit quand elle arrive. Les requêtes, elles, restent lancées en tête du
+composant — la règle des hooks ne permet pas de les conditionner, et TanStack
+Query les partage de toute façon d'une rubrique à l'autre.
 
 Le bandeau de message reste dans la colonne de contenu, collé sous la barre
 supérieure : la rubrique des commentaires défile toujours, et un message affiché
@@ -830,12 +831,44 @@ parle, désormais le seul endroit où la substitution s'apprend. La palette
 s'ouvre vers le haut et **ancrée à droite** : le formulaire est en bas du
 panneau, et 16 rem alignées à gauche déborderaient de celui-ci.
 
-### Modération — `components/admin/CommentsSection.tsx`
+### Modération — `components/admin/CommentsSection.tsx` et `lib/moderation.ts`
 
-File paginée, filtrable sur « tous » ou « masqués ». Chaque ligne renvoie vers la
-photo commentée (`/album/:id?photo=<mediaId>`) : modérer sans voir l'image qui a
-suscité le message revient à juger un propos hors contexte. Un média disparu de
-l'index laisse le commentaire modérable, sans lien.
+**Une liste de travail, pas un flux** (D67). On arrive avec une intention — un
+message signalé, une journée, une adresse —, et la file répond à ces trois
+entrées : une barre de filtres (onglets `Tous` / `Visibles` / `Masqués`,
+sélecteur d'album, champ de recherche) et une pagination page par page.
+
+La barre est dans le corps de la section et non dans l'`action` de son en-tête :
+trois onglets, un sélecteur et un champ de saisie ne tiennent pas à côté d'un
+titre. Le sélecteur d'album est un `<select>` en clair — le seul de
+l'application, en extraire une primitive pour un usage unique serait spéculatif.
+La file ne l'attend pas : elle s'affiche pendant que la liste des albums charge.
+La recherche est reportée de 300 ms, sans quoi chaque frappe partirait au
+serveur.
+
+**Une page à la fois**, 25 lignes, et non une accumulation : chaque masquage
+invalide la file, et une requête infinie rechargeait alors toutes les pages
+déjà chargées. Une pile de curseurs tient le chemin parcouru — c'est le seul
+moyen de revenir en arrière avec une pagination par curseur — et se vide dès
+qu'un filtre change. `keepPreviousData` garde la page affichée le temps de la
+suivante, faute de quoi la section se replie sous le curseur à chaque clic.
+Le pied annonce `x–y sur total`, où `total` vient du serveur.
+
+`lib/moderation.ts` range la page **par journée, puis par photo**. Deux
+répétitions disparaissent : la date, inutile sur chaque ligne quand vingt
+messages se suivent le même jour, et le couple photo / album, réécrit à
+l'identique sous chaque message d'un même fil. La journée est celle du lecteur
+et **non UTC**, à l'inverse de la grille — la raison est plus bas, section
+« Dates ». Le rangement ne porte que sur la page reçue : une photo dont les
+commentaires enjambent une frontière de page apparaît des deux côtés.
+
+Chaque bloc renvoie vers la photo commentée (`/album/:id?photo=<mediaId>`) :
+modérer sans voir l'image qui a suscité le message revient à juger un propos hors
+contexte. Un média disparu de l'index laisse le commentaire modérable, sans lien.
+
+L'adresse de l'auteur porte l'**action groupée** : la cliquer propose de masquer
+tous ses messages d'un coup, derrière un `ConfirmDialog` qui dit ce qui est en
+jeu — tous les albums, pas seulement la page affichée.
 
 ## Dates : tout en UTC
 
@@ -849,8 +882,8 @@ cette valeur dans le fuseau du navigateur décalerait la photo — une photo pri
 par mois ou par jour basculerait pour les prises de vue de fin de mois ou de fin
 de soirée. **Toute nouvelle date affichée doit passer par `lib/format.ts`.**
 
-**Deux exceptions**, et elles portent sur des instants réels, pas sur des heures
-d'appareil.
+**Trois exceptions**, et elles portent toutes sur des instants réels, pas sur des
+heures d'appareil.
 
 - Le « aujourd'hui » auquel `dayLabel` compare une clé de jour est pris sur le
   calendrier **local** du navigateur. Voir [D31](./08-decisions.md) — ce n'est pas
@@ -862,6 +895,10 @@ d'appareil.
   instant réel, celui où quelqu'un a appuyé sur « Publier ». L'afficher en UTC
   montrerait 19:14 à qui vient d'écrire à 21:14 depuis Paris. Les fils affichent
   `formatRelative` (« il y a 5 min ») et gardent la date complète en infobulle.
+- **Les journées de la file de modération** se calculent sur le calendrier local,
+  par `localDayKey` (`lib/justify.ts`), pour la même raison que la précédente :
+  ce sont des `created_at`. Grouper en UTC rangerait sous la veille un message
+  écrit à 0 h 30 à Paris.
 
 ## Thème sombre — `styles.css`
 

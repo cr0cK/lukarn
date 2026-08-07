@@ -108,15 +108,18 @@ export function monthLabel(key: string, locale = 'fr-FR'): string {
 }
 
 /**
- * Jour courant sur l'horloge de celui qui regarde, en `YYYY-MM-DD`.
+ * Jour d'un instant sur l'horloge de celui qui regarde, en `YYYY-MM-DD`.
  *
  * Volontairement le calendrier **local** et non le jour UTC, à l'inverse de
  * tout le reste : `taken_at` est l'heure qu'affichait l'appareil, c'est-à-dire
  * la même horloge murale que celle du navigateur. Comparer au jour UTC
  * refuserait « Aujourd'hui » à un après-midi encore en cours à Montréal, et
  * l'accorderait à Auckland avant que la journée n'ait commencé.
+ *
+ * Sert aussi à grouper la file de modération, pour une raison voisine : la date
+ * d'un commentaire est un instant réel, pas une heure murale (voir `format.ts`).
  */
-function localDayKey(now: Date): string {
+export function localDayKey(now: Date): string {
   const pad = (value: number): string => String(value).padStart(2, '0');
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }

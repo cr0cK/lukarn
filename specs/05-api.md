@@ -499,22 +499,44 @@ son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
 
 ### Modération des commentaires
 
-| Méthode | Chemin                         | Réponse             |
-| ------- | ------------------------------ | ------------------- |
-| GET     | `/api/admin/comments`          | `AdminCommentsPage` |
-| POST    | `/api/admin/comments/:id/hide` | `{ ok: true }`      |
-| POST    | `/api/admin/comments/:id/show` | `{ ok: true }`      |
+| Méthode | Chemin                                    | Réponse                 |
+| ------- | ----------------------------------------- | ----------------------- |
+| GET     | `/api/admin/comments`                     | `AdminCommentsPage`     |
+| POST    | `/api/admin/comments/:id/hide`            | `{ ok: true }`          |
+| POST    | `/api/admin/comments/:id/show`            | `{ ok: true }`          |
+| POST    | `/api/admin/commenters/:commenterId/hide` | `BulkModerationResult`  |
+| POST    | `/api/admin/commenters/:commenterId/show` | `BulkModerationResult`  |
 
-Paramètres de `GET` : `filter` (`all` par défaut, ou `hidden`), `limit` (1 à 200,
-50 par défaut) et `cursor`. Le curseur est un **simple entier**, l'identifiant du
-dernier commentaire rendu : `AUTOINCREMENT` garantit que l'ordre des id est
-l'ordre d'écriture, ce qui évite le curseur composite dont la pagination des
-médias a besoin.
+Paramètres de `GET` :
+
+| Paramètre | Valeurs                                | Défaut |
+| --------- | -------------------------------------- | ------ |
+| `filter`  | `all`, `visible`, `hidden`             | `all`  |
+| `albumId` | un identifiant d'album                 | tous   |
+| `q`       | 1 à 200 caractères, coupés aux bords   | —      |
+| `limit`   | 1 à 200                                | 50     |
+| `cursor`  | entier positif                         | —      |
+
+Le curseur est un **simple entier**, l'identifiant du dernier commentaire rendu :
+`AUTOINCREMENT` garantit que l'ordre des id est l'ordre d'écriture, ce qui évite
+le curseur composite dont la pagination des médias a besoin.
+
+`q` est cherché dans le corps, le nom déclaré **et** l'adresse — on cherche aussi
+bien un mot qu'on nous a rapporté que la personne qui l'a écrit. Les jokers de
+`LIKE` sont échappés : taper `%` cherche un pourcent, il ne ramène pas tout le
+corpus. La casse n'est repliée que sur l'ASCII, limite de `LIKE` en SQLite
+(D67).
+
+`AdminCommentsPage` = `{ comments, nextCursor, total }`. **`total` ignore le
+curseur** : c'est la taille du corpus que le filtre retient, pas celle du reste à
+parcourir — sans quoi « 3 sur 6 » deviendrait « 3 sur 4 » en tournant la page.
 
 `AdminComment` ajoute au `Comment` de quoi savoir de quelle photo on parle et
 qui écrit — `albumId`, `albumTitle`, `mediaId`, `mediaName`, `authorEmail`,
-`account`, `hiddenAt`, `hiddenBy`. `authorEmail` n'apparaît **qu'ici** : la
-modération a besoin de savoir qui parle derrière un nom déclaré, le fil non.
+`commenterId`, `account`, `hiddenAt`, `hiddenBy`. `authorEmail` et `commenterId`
+n'apparaissent **qu'ici** : la modération a besoin de savoir qui parle derrière
+un nom déclaré, et de pouvoir viser tous ses messages ; le fil public n'a ni
+l'un ni l'autre à révéler.
 `account` est la clé d'accès employée pour écrire, ce qui dit quel mot de passe
 partagé changer.
 `mediaName` vaut `null` si le média a disparu de l'index depuis : le commentaire
@@ -529,6 +551,14 @@ pourrait traiter.
 réversible. Masquer deux fois n'est pas une erreur et ne réécrit pas `hiddenAt`,
 qui doit garder la date de la décision d'origine. La suppression définitive passe
 par `DELETE /api/comments/:commentId`, où l'administrateur a tous les droits.
+
+**`/commenters/:commenterId/hide|show`** — la même décision, sur **tous les
+messages d'une identité à la fois**, tous albums confondus. Le geste d'après une
+clé d'accès qui a trop circulé : retirer quinze messages un par un est un travail
+que personne ne fait. `BulkModerationResult` = `{ affected }`, le nombre de
+messages réellement touchés — les déjà-masqués n'en font pas partie, pour la même
+raison qu'à l'unité. Une identité inconnue répond **404** et non `{affected: 0}`,
+qui serait indiscernable d'une identité sans message.
 
 `AdminStatus` porte `hiddenComments` (pastille de la file) et `mailConfigured` —
 sans SMTP, renseigner une adresse ne produit rien, et l'écran d'administration
