@@ -120,7 +120,7 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
                 </h3>
                 {day.photos.map((photo) => (
                   <PhotoBlock
-                    key={`${photo.albumId} ${photo.mediaId}`}
+                    key={photo.key}
                     photo={photo}
                     notify={notify}
                     onBulk={setBulkTarget}
