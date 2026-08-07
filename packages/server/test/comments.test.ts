@@ -95,8 +95,9 @@ async function identify(cookie: string, email: string, displayName: string): Pro
 
   const message = envoyes.at(-1);
   assert.ok(message, 'aucun code envoyé');
-  const code = /\b(\d{6})\b/.exec(message.subject)?.[1];
-  assert.ok(code, `code introuvable dans « ${message.subject} »`);
+  // Le code est dans le corps, pas dans le sujet — voir D60.
+  const code = /\b(\d{6})\b/.exec(message.text)?.[1];
+  assert.ok(code, `code introuvable dans le corps du message « ${message.subject} »`);
 
   const verified = await server.inject({
     method: 'POST',
