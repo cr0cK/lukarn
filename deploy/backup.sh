@@ -53,6 +53,10 @@ DESTINATION=$(cd "$DESTINATION" && pwd)
 horodatage=$(date +%F-%H%M%S)
 archive="$DESTINATION/gdv-$horodatage.tar.gz"
 secrets="$DESTINATION/gdv-$horodatage.env"
+# `.tgz` et non `.tar.gz`, et ce n'est pas une coquetterie : l'élagage distingue
+# les archives par motif, et `gdv-*.tar.gz` engloberait celle-ci. La rétention
+# tomberait à trois sauvegardes réelles au lieu de sept, sans un message.
+configuration="$DESTINATION/gdv-$horodatage.config.tgz"
 
 # L'arrêt dure quelques secondes, et c'est le prix d'un SQLite au repos : pas de
 # WAL en vol au moment du `tar`. Le compromis est assumé face à un `db.backup()`
@@ -90,6 +94,18 @@ fi
 cp .env "$secrets"
 chmod 600 "$secrets"
 
+# `config/` est monté depuis l'hôte : ni le tar du volume ni le `.env` ne
+# l'emportent. Il porte la clé du compte de service, que Google ne délivre
+# **qu'une fois** — une restauration sans elle rend la base et les comptes, mais
+# aucun accès à Drive, et la panne n'apparaît qu'à la première synchronisation.
+# Le répertoire entier plutôt qu'une liste : filtrer supposerait un motif à tenir
+# en phase avec `.gitignore`, et l'exemple suivi par git qui voyage avec pèse
+# deux kilo-octets.
+if [[ -d config ]]; then
+  tar czf "$configuration" config
+  chmod 600 "$configuration"
+fi
+
 docker compose start app >/dev/null
 trap - EXIT
 echo "→ application redémarrée"
@@ -108,8 +124,11 @@ elaguer() {
 }
 elaguer 'gdv-*.tar.gz'
 elaguer 'gdv-*.env'
+elaguer 'gdv-*.config.tgz'
 
-echo "✓ $(basename "$archive") ($(du -h "$archive" | cut -f1)) et son .env"
+echo "✓ $(basename "$archive") ($(du -h "$archive" | cut -f1)), son .env$(
+  [[ -f $configuration ]] && echo ' et son config/'
+)"
 
 if [[ $local_seulement == true ]]; then
   exit 0
@@ -124,4 +143,10 @@ fi
 echo "→ envoi vers $REMOTE"
 rclone copy "$archive" "$REMOTE"
 rclone copy "$secrets" "$REMOTE"
+# `if` et non `[[ … ]] &&` : sous `set -e`, un test faux en dernière position du
+# script le ferait sortir en erreur alors qu'une absence de `config/` est un cas
+# normal — une instance en OAuth n'en a pas.
+if [[ -f $configuration ]]; then
+  rclone copy "$configuration" "$REMOTE"
+fi
 echo "✓ envoyé"

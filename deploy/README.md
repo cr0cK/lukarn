@@ -573,12 +573,18 @@ index and the **encrypted** refresh token, which only `TOKEN_KEY` decrypts. A
 backup of the volume without the `.env` yields an unreadable token and forces a
 new Google consent. `backup.sh` takes both.
 
-It does **not** take `config/service-account.json`, which is not recoverable
-either: Google hands that file over once and never again. On a service-account
-install, keep a copy of it wherever the crypt passphrase and the other secrets
-already live. Losing it costs a new key in the console — **Keys → Add key**, then
-revoke the old one — and no album has to be re-shared, since sharing is granted
-to the account, not to the key.
+A third piece rides along, `config/`, because it lives on the host rather than in
+the volume: it carries `service-account.json`, which Google hands over once and
+never again. Without it a restore returns the database and the accounts, and no
+access to Drive at all — a failure that only shows up at the first sync.
+
+Three files per run, then:
+
+| File                         | Holds                                          |
+| ---------------------------- | ---------------------------------------------- |
+| `gdv-<timestamp>.tar.gz`     | the `gdv-data` volume — accounts, index, token |
+| `gdv-<timestamp>.env`        | the secrets, `TOKEN_KEY` first among them      |
+| `gdv-<timestamp>.config.tgz` | `config/`, absent on an OAuth-only install     |
 
 ```bash
 ./deploy/backup.sh            # local archive, then upload through rclone
@@ -657,14 +663,24 @@ line does the same job, minus the catch-up after downtime:
 
 `gdv-cache` does not need backing up: it regenerates.
 
-**Restoring**, on a fresh machine: put the `.env` back, then, **before** the first
-`docker compose up`:
+**Restoring**, on a fresh machine, from a clone of the repository and **before**
+the first `docker compose up`:
 
 ```bash
+cp gdv-<timestamp>.env .env          # the secrets, TOKEN_KEY included
+tar xzf gdv-<timestamp>.config.tgz   # recreates config/, service account key and all
+
 docker volume create gdv-data
 docker run --rm -v gdv-data:/data -v "$PWD:/e" alpine \
   tar xzf /e/gdv-<timestamp>.tar.gz -C /data
 ```
+
+The volume archive keeps the layout it has always had — the files sit at its
+root, not under a directory — so an archive produced before `config/` was
+included restores with the very same command. What is missing from those older
+ones is the key, and a new one costs three clicks in the console
+(**Keys → Add key**, then revoke the old one). No album has to be re-shared:
+folders are shared with the service account, never with one of its keys.
 
 > **Updating an instance older than these scripts.** Volumes now carry an
 > explicit name. Before that, compose prefixed them with the working directory
