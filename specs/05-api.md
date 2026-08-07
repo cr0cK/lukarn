@@ -185,12 +185,14 @@ réécrire la signature de tous les messages d'un tiers.
 
 ## Commentaires — `routes/comments.ts`
 
-| Méthode | Chemin                            | Accès     | Réponse        |
-| ------- | --------------------------------- | --------- | -------------- |
-| GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage` |
-| POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`      |
-| DELETE  | `/api/comments/:commentId`        | session   | `204`          |
-| GET     | `/api/comments/unsubscribe`       | **aucun** | page HTML      |
+| Méthode | Chemin                            | Accès     | Réponse              |
+| ------- | --------------------------------- | --------- | -------------------- |
+| GET     | `/api/comments/:albumId`          | session   | `AlbumCommentCounts` |
+| GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage`       |
+| POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`            |
+| PATCH   | `/api/comments/:commentId`        | session   | `Comment`            |
+| DELETE  | `/api/comments/:commentId`        | session   | `204`                |
+| GET     | `/api/comments/unsubscribe`       | **aucun** | page HTML            |
 
 Le contrôle d'accès est refait dans chaque handler plutôt que posé en
 `preHandler` de préfixe comme pour les médias : ici l'album n'occupe pas un
@@ -198,7 +200,30 @@ segment fixe de l'URL. Il reste identique à celui des albums — **404 et jamai
 403** sur un album inconnu ou non attribué (voir
 [04](./04-securite-et-acces.md)).
 
-**`GET`** — `CommentsPage` = `{ threads: CommentThread[], total: number }`, où
+**`GET /api/comments/:albumId`** — `AlbumCommentCounts` = `{ counts: Record<mediaId, number> }`,
+masqués exclus. Les photos sans commentaire **n'y figurent pas** : sur un album
+de milliers de vues dont une dizaine porte une conversation, la réponse tient en
+quelques centaines d'octets. Une photo absente vaut donc zéro.
+
+Un appel pour l'album entier, et non un par photo : la pastille de la visionneuse
+doit être là dès qu'on atteint une photo, et parcourir un album à la flèche
+déclencherait sinon une requête par photo traversée (voir
+[08](./08-decisions.md), D54). Le compteur de `MediaDetail.commentCount` reste :
+il sert l'onglet du panneau ouvert, sur une photo précise.
+
+Cette route paramétrique **ne masque pas `/api/comments/unsubscribe`** : la table
+de routage de Fastify fait passer un segment littéral avant un paramètre. C'est
+vérifié par un test — l'inverse ferait répondre 401 aux liens de désabonnement
+des emails déjà partis, sans rattrapage possible.
+
+Le revers est vrai depuis cette route, et il faut le savoir : `ALBUM_ID_PATTERN`
+autorise l'identifiant `unsubscribe`, créable depuis `/admin`. Un tel album
+n'obtiendrait **jamais** ses compteurs — `GET /api/comments/unsubscribe` rendrait
+la page HTML de désabonnement, hors session. C'est une collision assumée : la
+précédence protège le lien des emails déjà partis, ce qui est le cas irréparable,
+contre un identifiant d'album que son créateur peut renommer.
+
+**`GET /api/comments/:albumId/:mediaId`** — `CommentsPage` = `{ threads: CommentThread[], total: number }`, où
 `CommentThread` = `{ root, replies }`. Les commentaires masqués par la modération
 n'y figurent pas, **y compris pour leur auteur**. Une réponse dont la racine
 vient d'être masquée remonte en tête de fil, `parentId` remis à `null` : la
@@ -220,6 +245,42 @@ découpé aux espaces avant contrôle : 1 à `COMMENT_MAX_LENGTH` (2000) caract�
   fil qu'il n'a pas le droit de lire en devinant un identifiant.
 - Répondre à une réponse **n'échoue pas** : le message est rattaché à la racine
   du fil (voir [08](./08-decisions.md), D35).
+
+**`PATCH`** — corps `UpdateCommentRequest` = `{ body }`, mêmes bornes que le
+`POST`. **Son auteur seulement**, et seulement pendant `COMMENT_EDIT_WINDOW_MS`
+(30 s) après la publication. `parentId` est **ignoré** : le schéma ne retient que
+`body`, et Zod écarte silencieusement les clés inconnues — un `PATCH` qui en
+enverrait un répond `200` sans avoir déplacé le message, il ne répond pas `400`.
+Corriger une faute de frappe ne doit pas permettre de changer de conversation.
+`created_at` ne bouge
+pas non plus — le message reste à sa place dans un fil que d'autres lisaient
+déjà. Voir [08](./08-decisions.md), D57.
+
+- **`409 edit_window_closed`** quand le délai est passé. Ni 403 ni 404 : le refus
+  porte sur l'**état** du message et non sur un droit d'accès — son auteur le
+  voit déjà, il n'y a rien à lui cacher. La doctrine du 404 (D12) ne s'y applique
+  donc pas.
+- `404` si le commentaire n'existe pas, appartient à quelqu'un d'autre, a été
+  masqué depuis, ou vit dans un album qu'on ne voit plus. Ces cas restent
+  indistinguables, comme pour `DELETE`.
+- **L'administrateur n'y a aucun privilège.** Il modère en masquant ou en
+  supprimant ; réécrire sous le nom d'un autre est un pouvoir d'une autre nature.
+
+Le contrôle du délai est **côté serveur**, pas seulement dans l'interface : une
+règle que seul le front applique n'est pas une règle.
+
+Un `Comment` porte donc **deux droits calculés par le serveur**, et leur
+asymétrie est la décision de D57 :
+
+- `canDelete` — son propre commentaire, ou n'importe lequel si l'on est
+  administrateur. Stable tant que la session ne change pas.
+- `canEdit` — son propre commentaire, et seulement dans la fenêtre. Aucun
+  privilège d'administrateur. C'est une valeur qui **périme toute seule** : elle
+  dit ce que le serveur accepterait à l'instant de la réponse, et le front doit
+  la recouper avec `createdAt` via `remainingEditMs`, partagée pour que les deux
+  côtés tranchent à l'identique.
+
+Le front ne rejoue jamais ces règles d'autorisation lui-même.
 
 **`DELETE`** — l'auteur son propre commentaire, un administrateur n'importe
 lequel. `404` dans tous les cas de refus, sans distinguer « inexistant » de
@@ -311,6 +372,11 @@ cache disque.
   le lecteur attend un code qu'il sait interpréter.
 - `502 bad_gateway` si Drive répond sans corps ; `404` si le média n'est pas
   indexé ; `503` sur Drive non connecté ou révoqué.
+- **`503 drive_unavailable`, avec `Retry-After`**, sur un échec **transitoire** :
+  délai de téléchargement dépassé, ou débit limité par Google au-delà des
+  réessais. À distinguer d'un 500, que le navigateur traite comme définitif :
+  ici la vignette doit revenir, et elle le fait d'elle-même (D60). Aucun en-tête
+  de cache n'accompagne cette réponse — un échec ne se mémorise jamais.
 - Un `401` de Drive n'est jamais relayé : le jeton d'accès est renouvelé et la
   requête retentée une fois. Si Google refuse aussi le renouvellement, la
   connexion est marquée révoquée et la réponse est `503 drive_revoked`.
@@ -471,9 +537,11 @@ doit le dire plutôt que de laisser espérer des notifications.
 ### Réglages
 
 `AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB,
-moderationEmail }`. `PATCH`
+prewarmCache, moderationEmail }`. `PATCH`
 accepte un sous-ensemble (`UpdateSettingsRequest`) et renvoie l'état complet.
-Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0.
+Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0,
+`prewarmCache` booléen (défaut `true`, relu à chaque photo par le préchauffage —
+le décocher arrête le passage en cours, pas seulement le suivant).
 `moderationEmail` accepte une adresse valide, `null` ou la chaîne vide — les deux
 dernières valant « aucune alerte », `ConfigRepo` les ramenant au même `NULL`.
 

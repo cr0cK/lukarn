@@ -81,7 +81,7 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 | `useAlbum`       | `['album', id]`           |                                                                                                                                                                                                                                                                                     |
 | `useAlbumItems`  | `['items', id, order]`    | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                |
 | `useAlbumDays`   | `['days', id]`            | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout. |
-| `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée seulement quand le panneau EXIF est ouvert.                                                                                                                                                                                                          |
+| `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                             |
 | `useAdminStatus` | `['admin','status']`      | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                       |
 | `useAdminUsers`  | `['admin','users']`       | Liste d'administration des comptes.                                                                                                                                                                                                                                                 |
 | `useAdminAlbums` | `['admin','albums']`      | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                                                                                                                   |
@@ -217,9 +217,13 @@ case mal proportionnée que l'image ne remplirait pas.
 
 ## Virtualisation — `lib/useGridLayout.ts` et `components/JustifiedGrid.tsx`
 
-`useGridLayout(items, groupBy)` mesure le conteneur (`ResizeObserver` +
+`useGridLayout(items, groupBy, days)` mesure le conteneur (`ResizeObserver` +
 `resize`), suit le défilement (`scroll` passif) et mémoïse `computeLayout` sur
-`[items, width, groupBy]`. Il expose une fenêtre `[visibleFrom, visibleTo]`
+`[items, width, groupBy, headerHeightFor]` — cette dernière dépendance étant
+dérivée de `days`. Ce n'est pas un détail : c'est elle qui fait recalculer la mise
+en page quand une note de journée change de hauteur, l'invariant même que
+`useUpdateAlbumDay` protège en écrivant dans le cache plutôt qu'en invalidant. Il
+expose une fenêtre `[visibleFrom, visibleTo]`
 élargie de `OVERSCAN_PX = 900` de chaque côté, pour qu'un défilement rapide reste
 plein.
 
@@ -232,6 +236,35 @@ positionne en absolu **uniquement** les sections et lignes qui croisent la
 fenêtre. Un album de 10 000 photos tient ainsi dans quelques dizaines de nœuds
 DOM. Le chargement de la page suivante se déclenche quand `visibleTo + 1500 px`
 dépasse la hauteur totale.
+
+**Démonter une vignette n'annule pas sa requête** — et c'est le piège qui a
+coûté le plus cher ici. Retirer un `<img>` du DOM laisse le navigateur mener son
+téléchargement à terme : une vignette que plus personne ne regarde continue
+d'occuper l'une des **six** connexions que HTTP/1.1 accorde à une origine. Une
+grille froide en met plusieurs dizaines en file, et tout ce qui part ensuite
+passe derrière — y compris le `GET /items` dont dépend l'affichage. Le cas le
+plus net est l'inversion du tri, qui relance `/items` derrière les vignettes de
+l'ordre précédent, devenues inutiles mais toujours en cours : l'album reste sur
+« Chargement des photos » le temps qu'elles se vident. C'est ce qui faisait
+passer une première ouverture à froid pour un blocage.
+
+**Une vignette en échec réessaie deux fois** avant de laisser la tuile sobre. Le
+serveur distingue le transitoire — délai Drive dépassé, débit limité — par un
+**503**, sans en-tête de cache, donc rien n'est mémorisé et la requête suivante
+repart réellement (D60). Un `<img>` ne réessaie pas tout seul : sans ce
+mécanisme, une saturation passagère laisserait une tuile vide jusqu'au prochain
+rechargement de page. Le délai double et **une part aléatoire le disperse** —
+trente vignettes échouent ensemble sur une grille froide, et des réessais
+synchrones repartiraient saturer les six mêmes connexions. Le réessai remonte
+l'`<img>` par sa `key` : l'URL ne change pas, c'est le remontage qui relance la
+requête.
+
+`Thumb` efface donc son `src` au démontage (`releaseIfDetached`), seul geste qui
+coupe réellement la requête. Le contrôle sur `isConnected` n'est pas une
+précaution de style : `StrictMode` rejoue montage et démontage **sans toucher au
+DOM**, et sans lui les vignettes du premier écran perdaient leur `src` à
+l'instant où elles s'affichaient — React ne le réécrit pas, sa vue du DOM le
+croyant inchangé.
 
 Le filtrage des sections est un balayage linéaire de `layout.sections`, refait à
 chaque événement de défilement. Le découpage par jour multiplie ce tableau, ce
@@ -297,8 +330,10 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 | Partout     | `?`             | Aide-mémoire des raccourcis                                             |
 
 À la souris dans la visionneuse : molette pour un zoom progressif centré sur le
-curseur, clic pour basculer au niveau natif à l'endroit visé, glisser pour se
-déplacer dans l'image agrandie.
+curseur, **clic bref** pour basculer au niveau natif à l'endroit visé — et pour
+en revenir —, glisser pour se déplacer dans l'image agrandie. « Bref » veut dire
+moins de `TAP_SLOP_PX` (5 px) de déplacement entre l'appui et le relâchement :
+au-delà, c'est un glisser, et il ne bascule rien. Voir la section Zoom.
 
 **Au doigt** (`lib/useSwipe.ts`) : un balayage horizontal passe à la photo
 suivante ou précédente. Trois conditions, chacune pour une raison :
@@ -348,11 +383,69 @@ focus ou qu'un modificateur est enfoncé.
   qui écoute, plutôt qu'en `stopPropagation` dispersé dans les formulaires.
 - Les flèches de navigation sont masquées pendant le zoom : le glisser sert alors
   à se déplacer dans l'image, et elles tomberaient sous le curseur.
+- **La visionneuse est une rangée, pas une colonne.** La photo occupe une colonne
+  `flex-1 min-w-0`, le panneau latéral la suivante à partir de `md`. `min-w-0`
+  n'est pas décoratif : sans lui, l'image impose sa largeur et c'est le panneau
+  qui déborde de l'écran. L'en-tête vit **dans** la colonne photo, sinon il
+  passerait sous le panneau.
 - **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
   le dernier, une flèche à une extrémité : la cible est l'index courant, aucun
   élément n'est remonté, donc aucun `loadeddata` n'est émis. Remettre `loaded` à
   `false` dans ce cas laisserait le tourniquet de chargement d'une vidéo tourner
   indéfiniment.
+- **Un clic dans la zone photo referme le panneau ouvert**, comme n'importe quel
+  tiroir. Le gestionnaire est posé en **capture** et non en bulle : le zoom se
+  décide au relâchement du pointeur dans `ZoomableImage`, plus bas dans l'arbre,
+  et en bulle les deux gestes partiraient ensemble — le panneau se fermerait _et_
+  la photo zoomerait. Interrompre à la descente laisse le premier clic à la
+  fermeture, le suivant zoome normalement.
+
+  Les `button` de cette zone sont **exclus** : les flèches de navigation y vivent,
+  et les compter comme un « dehors » refermerait le panneau à chaque photo —
+  exactement le défaut que sa mise en colonne venait de corriger. Le repère de
+  position du zoom (`role="img"`) est exclu de même : une capture s'exécutant
+  avant sa cible, son `stopPropagation` ne peut pas le protéger.
+
+  **Le balayage tactile est avalé de la même façon**, et c'est une conséquence
+  qu'il faut connaître : `useSwipe` pose son `onPointerDown` en phase bulle sur
+  ce même nœud, or un `stopPropagation()` émis en capture interrompt toute la
+  file de dispatch, gestionnaires de bulle du même élément compris. Sur une
+  tablette au-delà de `md`, panneau ouvert, le premier balayage referme donc le
+  panneau sans changer de photo ; le suivant navigue. C'est cohérent avec « le
+  premier geste ferme, le suivant agit », mais ce n'est pas gratuit.
+
+  Sous `md` la question ne se pose pas — le panneau occupe tout l'écran, il n'y a
+  pas de dehors.
+
+### Pastille des commentaires — `lib/seenComments.ts`
+
+Le bouton « Commentaires » de l'en-tête porte deux états visuels distincts, parce
+qu'ils répondent à deux questions différentes : un **point sobre** dit qu'une
+conversation existe ici, un **chiffre en couleur** dit qu'elle a bougé depuis le
+dernier passage. Les confondre reviendrait à réclamer l'attention pour une photo
+dont on a déjà tout lu. Le chiffre est plafonné à « 9+ » : au-delà il déborde de
+l'icône, et savoir s'il y en a douze ou dix-sept ne change aucun geste.
+
+La pastille est `aria-hidden` ; ce qu'elle dit est porté par l'`aria-label` du
+bouton, sinon un lecteur d'écran annoncerait un chiffre nu.
+
+**Le total vient du serveur, le repère de lecture du navigateur.** Le premier est
+`GET /api/comments/:albumId`, chargé une fois pour l'album. Le second est un
+nombre de commentaires vus par photo, dans `localStorage` sous
+`gdv:comments-seen:<albumId>` — un nombre et non une date : comparer deux entiers
+suffit à répondre à « y a-t-il du nouveau ? », là où une date obligerait le
+serveur à transporter l'horodatage de chaque fil. Le choix du navigateur plutôt
+que de la base est motivé en [08](./08-decisions.md), D55.
+
+Trois bords que le calcul doit tenir :
+
+- `unreadCount` a un **plancher à zéro**. Une suppression ou un masquage fait
+  retomber le total sous le repère, et un « -2 » s'afficherait tel quel.
+- Le repère **redescend** quand le total passe sous lui, sans quoi le message
+  suivant resterait invisible tant qu'il n'aurait pas comblé l'écart.
+- Rien n'est marqué tant que les compteurs ne sont pas chargés : marquer à ce
+  moment effacerait le repère pour le reconstituer faux à l'arrivée des vrais
+  totaux.
 
 ### Préchargement asymétrique
 
@@ -375,6 +468,28 @@ rasterisés. Au premier agrandissement, le composant charge la variante `hd`
 (4096 px) hors écran et ne bascule qu'une fois l'image prête — puis la garde,
 parce que rebasculer sur `full` en revenant au cadre ferait clignoter l'image à
 chaque aller-retour.
+
+**Le pincement natif de la page compte aussi comme un agrandissement.** Sur
+téléphone, personne n'utilise le zoom de l'application : on pince l'écran à deux
+doigts, et c'est le bon geste — l'intercepter par un gestionnaire maison
+entrerait en conflit avec le balayage de navigation, pour refaire moins bien ce
+que le système fait déjà. Mais le navigateur re-rasterise alors à partir du rendu
+`full` (2560 px), qui devient mou au-delà de ~2×. Un effet surveille donc
+`window.visualViewport` et déclenche le chargement de `hd` dès que
+`viewport.scale > 1` : l'échelle est lue une première fois à l'ouverture (la page
+peut déjà être pincée), puis sur `resize` **et** `scroll`, les moteurs ne
+signalant pas le pincement de la même façon. Rien n'est téléchargé tant qu'on n'a
+pas pincé — `hd` est lourd, et sur données mobiles le coût est réel.
+
+**Clic et glisser se départagent au relâchement**, dans `onPointerUp` du
+conteneur, et non par un `onClick` sur l'image. La raison est mécanique : dès que
+l'image est agrandie, le conteneur capture le pointeur pour suivre le
+déplacement, et le navigateur adresse alors le `click` au capteur et non à
+l'image — le gestionnaire n'était jamais atteint, si bien qu'il fallait `Échap`
+pour revenir au cadrage. `isTap` (`lib/zoom.ts`) tranche sur la **distance**
+parcourue, `TAP_SLOP_PX = 5` : zéro ne conviendrait pas, un pointeur fin bouge
+toujours d'un pixel ou deux. La durée n'entre pas en compte — un glisser lent et
+court reste un glisser, un doigt posé longuement sans bouger reste un clic.
 
 Deux échelles à ne pas confondre : l'**échelle 1** est l'image ajustée au cadre ;
 l'**échelle 100 %** (`pixelScale`) est celle où un pixel **du rendu disponible**
@@ -558,6 +673,19 @@ ses lignes ; le cadre appartient à `SidePanel`.
 L'état est un `PanelTab | null` — `null` valant « fermé ». `i` et `c` ouvrent
 l'onglet correspondant et le referment s'il est déjà affiché.
 
+**Deux régimes de position selon la largeur.** À partir de `md`, le panneau est
+un élément du flux (`md:relative md:w-80 lg:w-96 md:shrink-0`) : la zone photo
+rétrécit d'autant, et c'est ce qui permet de le laisser ouvert d'une photo à
+l'autre. En surimpression, il recouvrait la flèche « Suivant », ce qui obligeait
+à l'ouvrir et le refermer sans arrêt. En dessous de `md` il reprend la
+surimpression — 320 px prélevés sur un écran de téléphone ne laisseraient rien à
+voir — et retrouve alors son `backdrop-blur`, inutile dès qu'il est opaque.
+
+Le zoom n'a rien à savoir de ce rétrécissement : `ZoomableImage` mesure son
+conteneur par `ResizeObserver`, donc l'échelle d'ajustement et le bornage du
+cadrage se recalculent seuls. C'est ce qui a permis de régler le recouvrement
+sans toucher au calcul du zoom.
+
 Le compteur de la pastille vient de `MediaDetail.commentCount`, déjà chargé avec
 le détail : afficher « 3 » avant même d'ouvrir l'onglet est ce qui donne envie de
 le lire, et le fil lui-même n'est demandé qu'à l'ouverture — la plupart des
@@ -566,7 +694,8 @@ photos sont regardées sans qu'on lise les commentaires.
 ### Commentaires — `components/CommentsPanel.tsx`
 
 Volontairement pauvre en fonctions : un fil, une réponse par fil, la suppression
-de ses propres messages. Pas d'édition, pas de réactions, pas de mentions — c'est
+de ses propres messages, et une correction de faute de frappe dans les trente
+secondes. Pas d'édition **libre**, pas de réactions, pas de mentions — c'est
 ce qui sépare une conversation sous une photo d'un forum.
 
 - **L'identité se déclare au moment d'écrire**, dans le bas du panneau
@@ -598,6 +727,70 @@ ce qui sépare une conversation sous une photo d'un forum.
   réouverture de la photo.
 - Le corps est rendu en `whitespace-pre-wrap` : les retours à la ligne saisis
   sont conservés, et React échappe le texte — aucun HTML n'est interprété.
+- **Poster invalide aussi les compteurs de l'album** (`queryKeys.commentCounts`),
+  qui portent la pastille de la visionneuse. Sans ça, elle annoncerait l'état
+  d'avant sur la photo qu'on a sous les yeux. Une **correction**, elle,
+  n'invalide que le fil : elle ne change ni le nombre de messages, ni ce qui
+  reste à lire.
+
+#### Correction dans les trente secondes
+
+Un bouton « Modifier (N s) » sous ses propres messages, le temps de
+`COMMENT_EDIT_WINDOW_MS`. Le décompte est affiché : un bouton qui disparaît sans
+prévenir se lit comme un bug, alors qu'ici la disparition est la règle. Il coûte
+un rendu par seconde, sur un commentaire à la fois.
+
+`Comment.canEdit` ne suffit pas à décider seul — c'est une valeur qui **périme
+d'elle-même**, et un fil resté ouvert la porterait encore à `true` une heure plus
+tard. `useEditWindow` la recoupe donc avec `createdAt` via `remainingEditMs`, la
+fonction que le serveur utilise pour refuser : deux calculs séparés finiraient
+par diverger d'une seconde, et c'est exactement l'écart où l'on clique sur un
+bouton qui répond non.
+
+Deux choix de comportement qui ne se devinent pas :
+
+- Le champ de correction est prérempli avec le **texte saisi**, pas le texte
+  rendu : corriger un message ne doit pas remplacer « :) » par l'emoji dans ce
+  qui est stocké.
+- Le formulaire **reste ouvert** si la fenêtre se referme pendant la saisie. Le
+  serveur tranche et son refus s'affiche ; le fermer d'autorité ferait
+  disparaître sans prévenir le texte en cours de frappe.
+
+#### Emoji — `lib/emoji.ts`
+
+Deux chemins, un seul stockage. Sur mobile, les gens tapent de vrais caractères
+emoji au clavier système : ils traversent l'API et SQLite sans traitement, il n'y
+a rien à faire pour eux. Sur clavier physique, on écrit « :) » — c'est ce
+raccourci qu'`emojify` traduit, et le sélecteur de la palette qui comble le
+reste.
+
+**La traduction se fait à l'affichage, jamais à l'écriture.** Le corps stocké
+reste celui qui a été saisi : une substitution faite au `POST` serait
+irréversible, et la liste des raccourcis ne pourrait plus évoluer sans réécrire
+les commentaires déjà publiés. La sortie est du texte pur, jamais une balise —
+l'échappement de React reste l'unique rempart, au lieu d'un second qu'il faudrait
+vérifier.
+
+Un raccourci n'est reconnu qu'**isolé** : précédé du début du texte ou d'un
+blanc, suivi de la fin ou d'un caractère qui n'est ni lettre ni chiffre. Les deux
+bornes sont indispensables, pour des raisons différentes — sans celle de gauche
+`https://exemple.fr` deviendrait `https😕/exemple.fr`, sans celle de droite
+« :pizza » deviendrait « 😛izza ». La borne gauche est un groupe capturant et non
+un `lookbehind` : Safari ne l'a implémenté qu'en 16.4.
+
+La palette compte trente-deux entrées et **aucune recherche** : ce n'est pas un
+clavier de rechange mais un raccourci pour ce qu'on écrit sous une photo de
+famille. Une palette exhaustive demanderait un index, donc une dépendance, pour
+un panneau où l'on tape une phrase. La remise du curseur après insertion est
+différée d'une image (`requestAnimationFrame`) : React réécrit la valeur du
+`textarea` au rendu suivant, ce qui replacerait le curseur à la fin du texte.
+
+Le bouton est posé **à gauche de « Publier »**, et le formulaire ne porte aucune
+légende : sous une photo, la place se prend sur la conversation. Ce qui restait à
+dire — que « :) » devient un emoji — tient dans l'infobulle du bouton qui en
+parle, désormais le seul endroit où la substitution s'apprend. La palette
+s'ouvre vers le haut et **ancrée à droite** : le formulaire est en bas du
+panneau, et 16 rem alignées à gauche déborderaient de celui-ci.
 
 ### Modération — `components/admin/CommentsSection.tsx`
 
@@ -651,6 +844,15 @@ défilement discrètes, anneau de focus `:focus-visible` uniquement (l'app se
 pilote aux flèches, la cible active doit rester repérable), et deux animations —
 `fade-in` des vignettes décodées, `lightbox-enter` — toutes deux neutralisées
 sous `prefers-reduced-motion: reduce`.
+
+**`cursor: pointer` est remis en base sur les éléments cliquables.** Tailwind 4 a
+retiré la règle que sa v3 posait sur les `button`, pour s'aligner sur le défaut
+du navigateur. Ici le résultat était qu'au survol, plus rien n'annonçait qu'un
+élément était cliquable — cette interface est faite de boutons sans bordure posés
+sur des photos, où le curseur était le seul indice. La règle vit dans
+`@layer base` et non en classe sur chaque bouton, qu'on oublierait au premier
+composant ajouté ; les éléments désactivés en sont exclus, leur curseur devant
+dire qu'il ne se passera rien.
 
 ## Build
 

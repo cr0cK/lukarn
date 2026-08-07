@@ -4,7 +4,11 @@ import { isThumbSize } from '@gdv/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { DriveNotConnectedError, DriveRevokedError } from '../drive/service.js';
+import {
+  DriveNotConnectedError,
+  DriveRevokedError,
+  DriveUnavailableError,
+} from '../drive/service.js';
 import { formatRange, parseRange } from '../media/range.js';
 import type { Variant } from '../media/renderer.js';
 import { requireAuth } from '../plugins/auth.js';
@@ -112,6 +116,16 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       }
       if (error instanceof DriveNotConnectedError) {
         return reply.code(503).send({ error: 'drive_disconnected', message: error.message });
+      }
+      // Délai dépassé ou débit limité : **transitoire**. Le 503 et le
+      // `Retry-After` disent au client de revenir, là où le 500 par défaut lui
+      // ferait abandonner la vignette jusqu'au prochain rechargement de page.
+      // Aucun en-tête de cache n'est posé : un échec ne doit jamais être gardé.
+      if (error instanceof DriveUnavailableError) {
+        return reply
+          .code(503)
+          .header('Retry-After', String(error.retryAfterSeconds))
+          .send({ error: 'drive_unavailable', message: error.message });
       }
       throw error;
     });

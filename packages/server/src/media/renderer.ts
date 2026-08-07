@@ -23,8 +23,9 @@ const HD_MAX_EDGE = 4096;
  * repli par l'aperçu Drive.
  *
  * Le limiteur borne le **nombre** de rendus, pas leur taille — et chaque rendu
- * charge son original entier en mémoire pour le donner à sharp. Trois places
- * occupées par des fichiers de 300 Mo suffisent à faire tomber le processus,
+ * charge son original entier en mémoire pour le donner à sharp. Ses quatre
+ * places au maximum (`renderConcurrencyFor`), occupées par des
+ * fichiers de 300 Mo, suffisent à faire tomber le processus,
  * emportant la galerie entière pour une poignée de photos. 80 Mo laisse passer
  * tout ce qu'un appareil produit, RAW compris, et arrête ce qui n'est plus une
  * photo : un panorama assemblé, un scan de très grand format, une vidéo mal
@@ -134,10 +135,11 @@ export class MediaRenderer {
   }
 
   /**
-   * Ce dérivé est-il déjà en cache ? Sert au préchauffage, qui a besoin de
-   * sauter ce qui existe sans le rendre ni le marquer comme consulté. La clé
-   * de variante ne sort pas de ce module : c'est ici qu'on sait qu'elle
-   * contient l'empreinte du contenu.
+   * Ce dérivé est-il déjà en cache ? C'est ainsi que `prepare` saute ce qui
+   * existe sans le marquer comme consulté — sans quoi le préchauffage
+   * protégerait de l'éviction ce que personne n'a jamais ouvert. La clé de
+   * variante ne sort pas de ce module : c'est ici qu'on sait qu'elle contient
+   * l'empreinte du contenu.
    */
   isCached(fileId: string, variant: Variant, md5: string | null): boolean {
     return this.cache.has(variantKey(fileId, variant, md5));
@@ -164,12 +166,73 @@ export class MediaRenderer {
   }
 
   /**
+   * Prépare plusieurs variantes d'un même fichier et rend le nombre de dérivés
+   * réellement produits — zéro si tout était déjà en cache.
+   *
+   * Chemin distinct de `render()` pour une raison mesurée : produire un dérivé
+   * coûte environ deux secondes de téléchargement Drive pour cinquante
+   * millisecondes de rendu. Enchaîner trois `render()` pour les trois tailles de
+   * vignette d'une même photo téléchargerait donc trois fois le même original —
+   * trois fois le trafic Drive, trois fois la durée du passage — là où un seul
+   * téléchargement suffit.
+   *
+   * Une seule place du limiteur est prise pour l'ensemble : c'est l'original en
+   * mémoire qui pèse, et il est le même pour toutes les variantes. Ces rendus ne
+   * passent pas par `inFlight` : la déduplication sert aux rafales de la grille
+   * sur une même vignette, pas à un passage de fond qui ne visite chaque photo
+   * qu'une fois.
+   */
+  async prepare(fileId: string, variants: Variant[], md5: string | null = null): Promise<number> {
+    // Du plus grand au plus petit : c'est la première variante qui sert de
+    // gabarit au repli sur l'aperçu Drive, et `withoutEnlargement` figerait
+    // toutes les suivantes à sa taille si on commençait par la plus petite.
+    const manquantes = variants
+      .filter((variant) => !this.isCached(fileId, variant, md5))
+      .sort((a, b) => encodingFor(b).edge - encodingFor(a).edge);
+    if (manquantes.length === 0) return 0;
+
+    return this.places.run(async () => {
+      const premiere = manquantes[0]!;
+      let source: Buffer;
+
+      try {
+        source = await this.download(fileId);
+        // Cette première conversion vaut test de décodage : c'est elle qui fait
+        // basculer sur l'aperçu Drive les formats que la libvips embarquée ne
+        // lit pas, exactement comme pour un rendu demandé.
+        await this.store(fileId, premiere, md5, source);
+      } catch (error) {
+        this.log.warn(
+          `Décodage local impossible pour ${fileId} (${(error as Error).message}), ` +
+            'repli sur la vignette Drive',
+        );
+        source = await this.downloadDriveThumbnail(fileId, premiere);
+        await this.store(fileId, premiere, md5, source);
+      }
+
+      for (const variant of manquantes.slice(1)) {
+        await this.store(fileId, variant, md5, source);
+      }
+      return manquantes.length;
+    });
+  }
+
+  /**
    * La place est prise **avant** le téléchargement, pas seulement autour du
    * décodage : c'est l'original en mémoire qui pèse le plus lourd, et attendre
    * son tour avec neuf mégaoctets déjà chargés reviendrait à ne rien limiter.
    */
   private produce(fileId: string, variant: Variant, key: string): Promise<Rendered> {
     return this.places.run(() => this.build(fileId, variant, key));
+  }
+
+  private async store(
+    fileId: string,
+    variant: Variant,
+    md5: string | null,
+    source: Buffer,
+  ): Promise<void> {
+    await this.cache.put(variantKey(fileId, variant, md5), await this.transform(source, variant));
   }
 
   private async build(fileId: string, variant: Variant, key: string): Promise<Rendered> {

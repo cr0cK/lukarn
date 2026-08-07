@@ -572,7 +572,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // La sync tourne en tâche de fond : sur un gros album elle dépasse
       // largement le timeout d'une requête HTTP. L'avancement se suit via
       // `syncStatus` dans /status.
-      void context.syncer.syncAll(targets).catch((error: unknown) => {
+      void context.syncThenPrewarm(targets).catch((error: unknown) => {
         request.log.error({ err: error }, 'Synchronisation en échec');
       });
 
@@ -588,7 +588,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   /** Indexation en tâche de fond, silencieuse tant que Drive n'est pas connecté. */
   function startSync(album: StoredAlbum, log: FastifyBaseLogger): void {
     if (!context.drive.connected) return;
-    void context.syncer.syncAll([album]).catch((error: unknown) => {
+    void context.syncThenPrewarm([album]).catch((error: unknown) => {
       log.error({ err: error }, `Synchronisation de l'album "${album.id}" en échec`);
     });
   }
@@ -628,7 +628,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
 
       // Première connexion : l'index est vide, autant le remplir sans attendre
       // que l'administrateur clique sur « resynchroniser ».
-      void context.syncer.syncAll(context.albums).catch((error: unknown) => {
+      void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
         request.log.error({ err: error }, 'Synchronisation initiale en échec');
       });
 

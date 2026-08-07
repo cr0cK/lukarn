@@ -64,23 +64,29 @@ class PrechauffeurInstantane extends CachePrewarmer {
 
 interface FauxRenderer {
   rendus: string[];
+  /** Variantes réclamées à chaque appel, dans l'ordre. */
+  demandes: Variant[][];
   enCache: Set<string>;
   renderer: MediaRenderer;
 }
 
 function fauxRenderer(options: { echoue?: Set<string> } = {}): FauxRenderer {
   const rendus: string[] = [];
+  const demandes: Variant[][] = [];
   const enCache = new Set<string>();
   const renderer = {
-    isCached: (fileId: string) => enCache.has(fileId),
-    render: (fileId: string, _variant: Variant) => {
+    // `prepare` porte lui-même le court-circuit du cache : c'est là que vit la
+    // clé de variante, et le préchauffage n'a pas à la connaître.
+    prepare: (fileId: string, variants: Variant[]) => {
       if (options.echoue?.has(fileId)) return Promise.reject(new Error('illisible'));
+      demandes.push(variants);
+      if (enCache.has(fileId)) return Promise.resolve(0);
       rendus.push(fileId);
       enCache.add(fileId);
-      return Promise.resolve({ path: `/faux/${fileId}`, contentType: 'image/webp' });
+      return Promise.resolve(variants.length);
     },
   } as unknown as MediaRenderer;
-  return { rendus, enCache, renderer };
+  return { rendus, demandes, enCache, renderer };
 }
 
 function deps(
@@ -129,7 +135,7 @@ describe('préchauffage du cache', () => {
     assert.deepEqual(prechauffeur.attentes, [1000, 1000]);
   });
 
-  it('saute ce qui est déjà en cache sans le marquer comme consulté', async () => {
+  it('saute ce qui est déjà en cache', async () => {
     media.upsertMany([photo('deja', 'x', 1), photo('deja', 'y', 2)], '2026-07-02T12:00:00.000Z');
     const { rendus, enCache, renderer } = fauxRenderer();
     enCache.add('y');
@@ -138,6 +144,39 @@ describe('préchauffage du cache', () => {
 
     assert.deepEqual(rendus, ['x']);
     assert.equal(resultat.skipped, 1);
+  });
+
+  it('ne prépare pas non plus la pause pour une photo déjà en cache', async () => {
+    media.upsertMany([photo('sanspause', 's1', 1)], '2026-07-01T12:00:00.000Z');
+    const { enCache, renderer } = fauxRenderer();
+    enCache.add('s1');
+
+    const prechauffeur = new PrechauffeurInstantane(deps('sanspause', renderer));
+    await prechauffeur.run();
+
+    // Une seconde par photo déjà prête, c'est un passage entier — quinze
+    // minutes sur mille photos — passé à ne rien faire, alors que rien
+    // n'attend : la pause ne protège que du travail réel.
+    assert.deepEqual(prechauffeur.attentes, []);
+  });
+
+  it('ne prépare que les vignettes, jamais le rendu pleine page', async () => {
+    media.upsertMany([photo('tailles', 't1', 1)], '2026-07-01T12:00:00.000Z');
+    const { demandes, renderer } = fauxRenderer();
+
+    await new PrechauffeurInstantane(deps('tailles', renderer)).run();
+
+    // C'est la grille qui fait attendre, et elle ne demande que ces trois
+    // tailles. Le plein écran pèse une dizaine de fois une vignette pour un
+    // besoin que le préchargement des voisines de la visionneuse couvre déjà :
+    // le préparer remplirait le cache au détriment de ce qu'on regarde.
+    assert.deepEqual(demandes, [
+      [
+        { kind: 'thumb', size: 320 },
+        { kind: 'thumb', size: 640 },
+        { kind: 'thumb', size: 1280 },
+      ],
+    ]);
   });
 
   it('s’arrête quand le cache atteint sa part', async () => {

@@ -1,22 +1,38 @@
+import { THUMB_SIZES } from '@gdv/shared';
 import type { MediaRepo } from '../repo.js';
 import type { MediaCache } from './cache.js';
-import type { MediaRenderer } from './renderer.js';
+import type { MediaRenderer, Variant } from './renderer.js';
 
 /**
- * Rend les photos avant qu'on les ouvre.
+ * Prépare les vignettes des photos avant qu'on ouvre l'album.
  *
- * Le constat qui le justifie : une photo jamais ouverte coûte environ trois
- * secondes et demie au premier clic — deux de téléchargement Drive, une et
- * demie de décodage et d'encodage WebP — contre cinq millisecondes une fois en
- * cache. Le préchauffage déplace cette attente hors de la présence de
- * quelqu'un ; il ne consomme pas plus de quota Drive, il le consomme plus tôt.
+ * Le constat qui le justifie : une photo jamais rendue coûte environ deux
+ * secondes au premier affichage — presque tout en téléchargement de l'original
+ * depuis Drive, le rendu d'une vignette étant négligeable devant lui — contre
+ * cinq millisecondes une fois en cache. Une grille froide en demande plusieurs
+ * dizaines d'un coup, et le limiteur n'en sert que deux à quatre à la fois selon
+ * le nombre de cœurs : l'album met alors des dizaines de secondes à s'afficher.
+ * Le préchauffage déplace cette attente hors de la présence de quelqu'un ; il ne
+ * consomme pas plus de quota Drive, il le consomme plus tôt.
  *
- * Trois précautions le rendent acceptable, et ce sont elles qui expliquent sa
- * lenteur volontaire — voir D45.
+ * Les précautions qui le rendent acceptable expliquent sa lenteur volontaire —
+ * voir D45.
  */
 
 /**
- * Une seule photo à la fois. Le limiteur de rendu a quatre places : en
+ * Ce que le préchauffage prépare : les trois tailles de vignette, et **rien
+ * d'autre**.
+ *
+ * C'est la grille qui fait attendre, et elle ne demande que celles-ci — laquelle
+ * dépend de la largeur de la case et de la densité de l'écran, donc les trois
+ * doivent être prêtes. Le rendu pleine page ne vient jamais ici : il pèse une
+ * dizaine de fois une vignette et le préchargement des voisines dans la
+ * visionneuse couvre déjà le feuilletage.
+ */
+const VARIANTS: Variant[] = THUMB_SIZES.map((size) => ({ kind: 'thumb', size }));
+
+/**
+ * Une seule photo à la fois. Le limiteur de rendu a deux à quatre places : en
  * n'occupant jamais qu'une seule, le préchauffage laisse toujours passer
  * quelqu'un qui navigue.
  */
@@ -24,9 +40,8 @@ const PAUSE_MS = 1_000;
 
 /**
  * Part du cache que le préchauffage s'autorise à occuper. L'éviction est LRU
- * **globale**, pas par album : remplir le cache de rendus pleine page
- * (~1 Mo pièce) évincerait les vignettes de la grille (~15 Ko), c'est-à-dire ce
- * qu'on regarde le plus, pour des photos que personne n'a demandées.
+ * **globale**, pas par album : sans cette part réservée, préparer un album
+ * entier évincerait les vignettes des albums qu'on regarde vraiment.
  */
 const BUDGET_RATIO = 0.7;
 
@@ -108,18 +123,23 @@ export class CachePrewarmer {
             const { bytes, maxBytes } = this.deps.cache.stats();
             if (bytes >= maxBytes * BUDGET_RATIO) return { ...result, stopped: 'budget' };
 
-            // Les vidéos n'ont pas de rendu, et `hd` ne sert qu'au zoom : seule
-            // la variante du premier clic vaut d'être payée d'avance.
+            // Les vidéos n'ont pas de rendu image.
             if (item.kind !== 'photo') continue;
 
             const md5 = this.deps.media.getFileMeta(item.id)?.md5 ?? null;
-            if (this.deps.renderer.isCached(item.id, { kind: 'full' }, md5)) {
-              result.skipped++;
-              continue;
-            }
 
             try {
-              await this.deps.renderer.render(item.id, { kind: 'full' }, md5);
+              // Les trois tailles en un seul téléchargement : c'est lui qui
+              // coûte, et le payer une fois par variante triplerait le trafic
+              // Drive comme la durée du passage.
+              const produits = await this.deps.renderer.prepare(item.id, VARIANTS, md5);
+              // Rien à faire : la photo était déjà prête, et la pause n'a pas
+              // lieu d'être — sans quoi un album déjà préchauffé occuperait un
+              // passage entier à ne rien faire, une seconde par photo.
+              if (produits === 0) {
+                result.skipped++;
+                continue;
+              }
               result.rendered++;
             } catch (error) {
               // Un fichier illisible ou un refus de Drive ne doit pas arrêter

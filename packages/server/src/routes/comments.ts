@@ -1,7 +1,13 @@
-import { COMMENT_MAX_LENGTH, EMAIL_MAX_LENGTH, type Comment, type CommentsPage } from '@gdv/shared';
+import {
+  COMMENT_MAX_LENGTH,
+  EMAIL_MAX_LENGTH,
+  type AlbumCommentCounts,
+  type Comment,
+  type CommentsPage,
+} from '@gdv/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { UnknownParentError } from '../comments.js';
+import { EditWindowClosedError, UnknownParentError } from '../comments.js';
 import type { AppContext } from '../context.js';
 import { verifyUnsubscribeToken } from '../crypto.js';
 import { buildCommentMail, type Recipient } from '../mail.js';
@@ -13,6 +19,11 @@ const createSchema = z.object({
   parentId: z.number().int().positive().nullable().optional(),
 });
 
+// Une correction ne déplace pas le message dans le fil : `parentId` n'est pas
+// acceptée ici, sans quoi corriger une faute de frappe permettrait de changer
+// de conversation.
+const updateSchema = createSchema.pick({ body: true });
+
 const unsubscribeSchema = z.object({
   // L'adresse elle-même : c'est elle qui identifie une personne, le compte
   // d'accès pouvant être partagé par plusieurs.
@@ -21,7 +32,8 @@ const unsubscribeSchema = z.object({
 });
 
 /**
- * Commentaires : lecture et écriture d'un fil, suppression, désabonnement.
+ * Commentaires : compteurs d'un album, lecture et écriture d'un fil, correction,
+ * suppression, désabonnement.
  *
  * L'accès suit exactement celui des albums : un album qu'on n'a pas le droit de
  * voir répond 404, jamais 403 — sans quoi sonder des identifiants apprendrait
@@ -60,6 +72,31 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 
     await app.register(async (scoped) => {
       scoped.addHook('preHandler', requireAuth);
+
+      /**
+       * Compteurs de l'album entier, pour la pastille de la visionneuse.
+       *
+       * Un appel par album, et non un par photo : la pastille doit être là dès
+       * qu'on atteint une photo, or parcourir un album à la flèche traverse des
+       * centaines de vues. Le fil lui-même reste chargé à l'ouverture du
+       * panneau.
+       *
+       * Cette route paramétrique ne masque pas `/unsubscribe`, déclaré hors du
+       * scope authentifié : la table de routage de Fastify fait toujours passer
+       * un segment littéral avant un paramètre. C'est vérifié par un test —
+       * l'inverse rendrait le lien de désabonnement des emails déjà envoyés
+       * impossible à honorer.
+       */
+      scoped.get('/:albumId', async (request, reply) => {
+        const { albumId } = request.params as { albumId: string };
+        const account = request.user!;
+        if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
+          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        }
+
+        const counts: AlbumCommentCounts = { counts: context.comments.countsByAlbum(albumId) };
+        return reply.send(counts);
+      });
 
       scoped.get('/:albumId/:mediaId', async (request, reply) => {
         const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
@@ -137,6 +174,58 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         });
 
         return reply.code(201).send(comment);
+      });
+
+      /**
+       * Correction par son auteur, dans la fenêtre qui suit la publication.
+       *
+       * La fenêtre est contrôlée **ici** et pas seulement dans l'interface :
+       * une règle que seul le front applique n'est pas une règle. Un délai
+       * dépassé rend 409 et non 403 — le refus porte sur l'état du message, pas
+       * sur un droit d'accès, et le doctrine du 404 (D12) ne s'y applique donc
+       * pas : l'auteur voit déjà son propre commentaire.
+       */
+      scoped.patch('/:commentId', async (request, reply) => {
+        const { commentId } = request.params as { commentId: string };
+        const id = Number(commentId);
+        if (!Number.isInteger(id) || id <= 0) {
+          return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+        }
+
+        const parsed = updateSchema.safeParse(request.body);
+        if (!parsed.success) {
+          return reply.code(400).send({
+            error: 'bad_request',
+            message: `Le commentaire doit contenir entre 1 et ${COMMENT_MAX_LENGTH} caractères.`,
+          });
+        }
+
+        // Même garde que la suppression : un accès retiré ne doit pas laisser
+        // subsister un droit d'écriture sur un album qu'on ne voit plus.
+        const account = request.user!;
+        const location = context.comments.locate(id);
+        if (!location || !context.canSee(account.username, location.albumId)) {
+          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+        }
+
+        let comment: Comment | null;
+        try {
+          comment = context.comments.edit(
+            id,
+            { commenterId: request.commenterId, admin: account.admin },
+            parsed.data.body,
+          );
+        } catch (error) {
+          if (error instanceof EditWindowClosedError) {
+            return reply.code(409).send({ error: 'edit_window_closed', message: error.message });
+          }
+          throw error;
+        }
+
+        if (!comment) {
+          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+        }
+        return reply.send(comment);
       });
 
       /**

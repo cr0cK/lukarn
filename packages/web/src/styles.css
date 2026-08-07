@@ -70,6 +70,22 @@
   img {
     -webkit-user-drag: none;
   }
+
+  /* Tailwind v4 a retiré le `cursor: pointer` que sa v3 posait sur les boutons,
+     pour s'aligner sur le défaut du navigateur. Résultat : plus rien dans cette
+     interface n'annonce au survol qu'il est cliquable, alors qu'elle est faite
+     de boutons sans bordure posés sur des photos — le curseur y était le seul
+     indice. On le remet ici plutôt que par une classe sur chaque bouton, qu'on
+     oublierait au premier composant ajouté.
+
+     Les éléments désactivés en sont exclus : leur curseur doit dire qu'il ne se
+     passera rien. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
 }
 
 @layer utilities {

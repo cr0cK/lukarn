@@ -1,6 +1,5 @@
 import {
   type ReactElement,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -10,6 +9,7 @@ import {
 } from 'react';
 import {
   computeZoomScale,
+  isTap,
   offsetForCenter,
   viewCenter,
   visibleFraction,
@@ -27,7 +27,10 @@ const WHEEL_SENSITIVITY = 0.0015;
 interface ZoomableImageProps {
   /** Rendu plein écran (2560 px), affiché immédiatement. */
   src: string;
-  /** Rendu haute résolution (4096 px), chargé au premier zoom seulement. */
+  /**
+   * Rendu haute résolution (4096 px), chargé au premier agrandissement
+   * seulement — celui de la visionneuse, ou le pincement natif de la page.
+   */
   hdSrc: string;
   /** Vignette déjà en cache navigateur, affichée pendant le chargement de `src`. */
   placeholderSrc: string;
@@ -65,7 +68,9 @@ function fitInside(image: Box, container: Box): Box {
  * un simple `scale()` sur le rendu plein écran (plafonné à 2560 px) ne ferait
  * qu'étirer des pixels déjà rasterisés. Au premier agrandissement, le composant
  * bascule donc sur la variante `hd` (4096 px), qui contient les détails que le
- * rendu d'écran a perdus.
+ * rendu d'écran a perdus — que l'agrandissement vienne de la visionneuse ou du
+ * pincement natif de la page, que le navigateur rasterise à partir des mêmes
+ * pixels d'écran.
  *
  * L'échelle 1 correspond à l'image ajustée au cadre ; l'échelle « 100 % »
  * (`pixelScale`) est celle où un pixel du rendu disponible occupe un pixel
@@ -85,6 +90,7 @@ export function ZoomableImage({
   onLoadedChange,
 }: ZoomableImageProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const [container, setContainer] = useState<Box>({ width: 0, height: 0 });
   const [intrinsic, setIntrinsic] = useState<Box>({
     width: naturalWidth ?? 0,
@@ -103,7 +109,22 @@ export function ZoomableImage({
   const [hdReady, setHdReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
+  /**
+   * Geste pointeur en cours. Il sert à deux choses d'un coup : déplacer l'image
+   * agrandie, et décider au relâchement si le pointeur a désigné un point —
+   * donc un clic — ou déplacé l'image.
+   */
+  const gestureRef = useRef<{
+    pointerId: number;
+    /** Position à l'appui, référence de la décision clic ou glisser. */
+    origin: Point;
+    /** Position du pointeur moins le décalage courant : base du déplacement. */
+    panFrom: Point;
+    /** Vrai dès que l'image a bougé sous le pointeur : coupe la transition. */
+    panning: boolean;
+    /** Le geste a-t-il commencé sur la photo, et non sur le fond du cadre ? */
+    onImage: boolean;
+  } | null>(null);
 
   useLayoutEffect(() => {
     const element = containerRef.current;
@@ -216,11 +237,26 @@ export function ZoomableImage({
     else if (!zoomed && scaleRef.current > 1 + FIT_EPSILON) applyScale(1);
   }, [zoomed, pixelScale, applyScale]);
 
-  // Charge la variante haute résolution dès le premier agrandissement, puis la
-  // laisse en place : rebasculer sur `full` en revenant au cadre ferait
-  // clignoter l'image à chaque aller-retour.
-  useEffect(() => {
-    if (!canZoom || hdReady || scale <= 1 + FIT_EPSILON) return;
+  /**
+   * Un seul téléchargement de la variante `hd`, quelle que soit sa cause. Le
+   * drapeau vit dans une ref et non dans un état : deux déclencheurs qui se
+   * suivent — un agrandissement pendant un pincement — tomberaient tous deux
+   * avant le rendu suivant et demanderaient deux fois le même fichier.
+   */
+  const hdRequestedRef = useRef(false);
+
+  /**
+   * Bascule sur la variante haute résolution, une fois pour toutes.
+   *
+   * Le rendu `full` suffit tant qu'on regarde la photo ajustée au cadre, et
+   * `hd` pèse le double : rien n'est téléchargé avant que ses pixels manquent
+   * vraiment. Une fois en place il y reste — revenir à `full` au retour au
+   * cadrage ferait clignoter l'image à chaque aller-retour.
+   */
+  const requestHd = useCallback((): void => {
+    if (!canZoom || hdRequestedRef.current) return;
+    hdRequestedRef.current = true;
+
     const image = new Image();
     // Chargé et décodé hors écran : le passage à la haute résolution se fait
     // sur une image prête, sans à-coup visible. Sa largeur réelle est relevée
@@ -229,8 +265,50 @@ export function ZoomableImage({
       setRenderedWidth(image.naturalWidth);
       setHdReady(true);
     };
+    // Un échec réseau ne condamne pas le zoom pour toute la durée de la photo :
+    // le déclencheur suivant retentera.
+    image.onerror = () => {
+      hdRequestedRef.current = false;
+    };
     image.src = hdSrc;
-  }, [scale, canZoom, hdReady, hdSrc]);
+  }, [canZoom, hdSrc]);
+
+  // Premier agrandissement dans la visionneuse.
+  useEffect(() => {
+    if (scale > 1 + FIT_EPSILON) requestHd();
+  }, [scale, requestHd]);
+
+  /**
+   * Pincement natif de la page, le geste de zoom spontané sur téléphone.
+   *
+   * Aucun geste maison ne l'intercepte : il entrerait en conflit avec le
+   * balayage de navigation, et le système le fait mieux. Mais le navigateur
+   * re-rasterise alors la page à partir du rendu `full` (2560 px) — au-delà de
+   * ~2× la photo devient molle alors que `hd` détient les pixels manquants.
+   * Les charger dès que l'échelle visuelle décolle rend le pincement net sans
+   * rien demander de plus à l'utilisateur.
+   */
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport || !canZoom || hdReady) return;
+
+    const onViewportChange = (): void => {
+      if (viewport.scale > 1) requestHd();
+    };
+
+    // La page peut déjà être pincée à l'ouverture de la photo : aucun événement
+    // ne viendrait le dire, seule l'échelle courante en témoigne.
+    onViewportChange();
+    // Les moteurs ne signalent pas le pincement de la même façon : le
+    // changement d'échelle passe par `resize`, le déplacement à l'intérieur
+    // d'une page déjà pincée par `scroll`. Les deux, donc.
+    viewport.addEventListener('resize', onViewportChange);
+    viewport.addEventListener('scroll', onViewportChange);
+    return () => {
+      viewport.removeEventListener('resize', onViewportChange);
+      viewport.removeEventListener('scroll', onViewportChange);
+    };
+  }, [canZoom, hdReady, requestHd]);
 
   /**
    * Zoom à la molette.
@@ -263,37 +341,17 @@ export function ZoomableImage({
     return () => element.removeEventListener('wheel', onWheel);
   }, [canZoom, applyScale, onZoomedChange]);
 
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (scale <= 1 + FIT_EPSILON || event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX - offset.x,
-      startY: event.clientY - offset.y,
-    };
-  };
+  /**
+   * Bascule entre cadrage écran et zoom, au point visé.
+   *
+   * Le repère est celui du conteneur, comme pour la molette : à l'échelle 1
+   * l'image y est centrée, les deux centres coïncident.
+   */
+  const toggleZoomAt = (point: Point): void => {
+    const element = containerRef.current;
+    if (!canZoom || !element) return;
 
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    const drag = dragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    setOffset(
-      clampOffset({ x: event.clientX - drag.startX, y: event.clientY - drag.startY }, scale),
-    );
-  };
-
-  const endDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (dragRef.current?.pointerId !== event.pointerId) return;
-    dragRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
-  const toggleZoom = (event: ReactMouseEvent<HTMLElement>): void => {
-    if (!canZoom) return;
-
-    if (scale > 1 + FIT_EPSILON) {
+    if (scaleRef.current > 1 + FIT_EPSILON) {
       applyScale(1);
       onZoomedChange(false);
       return;
@@ -301,12 +359,80 @@ export function ZoomableImage({
 
     // Agrandit à l'endroit cliqué plutôt qu'au centre : on zoome sur ce qu'on
     // regarde, pas sur le milieu de la photo.
-    const rect = event.currentTarget.getBoundingClientRect();
+    const rect = element.getBoundingClientRect();
     applyScale(pixelScale, {
-      x: event.clientX - rect.left - rect.width / 2,
-      y: event.clientY - rect.top - rect.height / 2,
+      x: point.x - rect.left - rect.width / 2,
+      y: point.y - rect.top - rect.height / 2,
     });
     onZoomedChange(true);
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (event.button !== 0) return;
+
+    if (scale > 1 + FIT_EPSILON) {
+      // La capture garantit de recevoir le relâchement même si le pointeur
+      // quitte le cadre en cours de déplacement.
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    gestureRef.current = {
+      pointerId: event.pointerId,
+      origin: { x: event.clientX, y: event.clientY },
+      panFrom: { x: event.clientX - offset.x, y: event.clientY - offset.y },
+      panning: false,
+      // La capture ne prend effet qu'à l'événement suivant : ici, la cible est
+      // encore l'élément réellement sous le pointeur.
+      onImage: event.target === imageRef.current,
+    };
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (scale <= 1 + FIT_EPSILON) return;
+
+    gesture.panning = true;
+    setOffset(
+      clampOffset(
+        { x: event.clientX - gesture.panFrom.x, y: event.clientY - gesture.panFrom.y },
+        scale,
+      ),
+    );
+  };
+
+  /**
+   * Fin du geste, et seul endroit où se décide le clic.
+   *
+   * Ce n'est pas un `onClick` sur l'image parce que, dès qu'elle est agrandie,
+   * le conteneur capture le pointeur pour suivre le déplacement : le navigateur
+   * adresse alors le `click` au capteur et non à l'image, si bien qu'il
+   * n'atteignait jamais son gestionnaire — il fallait Échap pour revenir au
+   * cadrage. Décider ici rend la même décision, quelle que soit la capture.
+   */
+  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const gesture = gestureRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+
+    // Effacé avant tout changement d'échelle : le rendu qui suit doit retrouver
+    // la transition, sinon le retour au cadrage serait instantané et sec.
+    gestureRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    // Le fond du cadre n'est pas la photo : y relâcher ne bascule rien, pas plus
+    // qu'avant. Seule la photo réagit au clic.
+    if (!gesture.onImage) return;
+    if (!isTap(gesture.origin, { x: event.clientX, y: event.clientY })) return;
+    toggleZoomAt({ x: event.clientX, y: event.clientY });
+  };
+
+  // Geste interrompu par le navigateur — deuxième doigt, retour arrière par bord
+  // d'écran : ni clic ni déplacement retenus, la capture est relâchée d'office.
+  const onPointerCancel = (): void => {
+    gestureRef.current = null;
   };
 
   const isZoomed = scale > 1 + FIT_EPSILON;
@@ -321,8 +447,8 @@ export function ZoomableImage({
       className="relative flex size-full items-center justify-center overflow-hidden"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onDoubleClick={(event) => event.preventDefault()}
     >
       {/* Aperçu : la vignette est déjà en cache navigateur puisqu'elle vient
@@ -361,6 +487,7 @@ export function ZoomableImage({
       )}
 
       <img
+        ref={imageRef}
         src={hdReady ? hdSrc : src}
         alt={alt}
         draggable={false}
@@ -376,7 +503,6 @@ export function ZoomableImage({
           }
         }}
         onError={() => setFailed(true)}
-        onClick={toggleZoom}
         className={`relative max-h-full max-w-full object-contain select-none ${
           loaded ? '' : 'opacity-0'
         } ${isZoomed ? 'cursor-grab active:cursor-grabbing' : canZoom ? 'cursor-zoom-in' : ''}`}
@@ -384,7 +510,7 @@ export function ZoomableImage({
           transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
           // Aucune transition pendant le glisser : le déplacement doit coller
           // au curseur, pas le suivre avec du retard.
-          transition: dragRef.current ? 'none' : 'transform 120ms ease-out',
+          transition: gestureRef.current?.panning ? 'none' : 'transform 120ms ease-out',
         }}
       />
 
@@ -488,8 +614,10 @@ function Minimap({
       onPointerCancel={() => {
         dragging.current = false;
       }}
-      // Le repère recouvre l'image : sans ça, un double-clic dessus basculerait
-      // le zoom au lieu de viser un endroit.
+      // Ce qui protège réellement le repère est le `stopPropagation` de son
+      // `onPointerDown` ci-dessus : sans lui, le conteneur armerait son geste et
+      // basculerait le zoom au relâchement. Ces deux gardes-ci ne coûtent rien
+      // et couvrent le double-clic, que le navigateur émet encore.
       onDoubleClick={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >

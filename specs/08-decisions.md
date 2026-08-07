@@ -1127,6 +1127,23 @@ pour un gain nul, ce passage ne coûtant que du quota déjà consommé.
 
 ## D45 — Le cache se prépare à l'avance, mais toujours en second
 
+> **Deux points de cette entrée ont été revus par D58** : le passage prépare
+> désormais les **vignettes** et non la variante `full`, et il **est** branché
+> sur la fin de chaque synchronisation. Les trois garde-fous ci-dessous **restent
+> en vigueur** — ce sont eux la décision — mais deux de leurs justifications ont
+> vieilli. Lire D58 avant d'appliquer ce qui suit.
+>
+> **Garde-fou n° 1.** Le limiteur de rendu n'a pas quatre places fixes mais
+> `max(2, min(4, cœurs - 2))` (`renderConcurrencyFor`), soit **deux** sur le VPS
+> à deux cœurs visé par ce projet. Le raisonnement n'en dépend pas : le
+> préchauffage n'en occupe jamais qu'une, quel que soit le total.
+>
+> **Garde-fou n° 2.** Le motif invoqué — des rendus pleine page qui évinceraient
+> les vignettes de la grille — **ne peut plus se produire** : le passage ne
+> produit que des vignettes. Le seuil de 70 % reste utile, mais il protège
+> désormais autre chose : les vignettes des albums qu'on consulte, contre celles
+> des albums qu'on prépare.
+
 **Contexte.** Mesuré sur une instance en service, album de 471 photos de reflex
 (~8 Mo pièce) : ouvrir une photo jamais rendue coûte **~3,5 s** — environ deux
 secondes de téléchargement Drive, une et demie de décodage et d'encodage WebP —
@@ -1463,3 +1480,342 @@ C'est aussi la raison pour laquelle la vérification de bout en bout de ces
 scripts se fait en produisant une vraie archive et en listant son contenu :
 l'erreur d'origine se lisait dans le contenu du fichier, pas dans un code de
 sortie.
+
+## D54 — Les compteurs de commentaires se demandent par album, pas par photo
+
+**Contexte.** La visionneuse doit signaler qu'une photo porte une conversation
+**avant** qu'on ouvre quoi que ce soit — c'est le seul moment où l'information
+sert à quelque chose. Or `MediaDetail.commentCount` n'est chargé qu'à l'ouverture
+du panneau, précisément pour éviter une requête par photo regardée.
+
+**Choix.** `GET /api/comments/:albumId` rend `{ counts: Record<mediaId, number> }`
+pour l'album entier, en une requête `GROUP BY media_id` sur `idx_comments_thread`.
+Les photos sans commentaire sont omises : sur un album de milliers de vues dont
+une dizaine porte une conversation, la réponse tient en quelques centaines
+d'octets. `MediaDetail.commentCount` reste pour l'onglet du panneau ouvert.
+
+**Écarté.** _Ajouter `commentCount` à `MediaItem`_, donc à chaque page de la
+grille. `MediaRepo` ignore délibérément l'existence des commentaires — sans quoi
+la moindre requête média devient une jointure de plus — et l'y introduire aurait
+fait payer ce coût à tous les appels, y compris ceux qui n'affichent pas de
+pastille. _Charger le détail de chaque photo atteinte_ : parcourir un album à la
+flèche déclencherait une requête par photo traversée, pour un chiffre qui arrive
+après coup.
+
+**Conséquences.** La pastille peut être en retard sur une conversation ouverte
+ailleurs, et ce retard **n'est pas borné par les 30 s de `staleTime`** — il faut
+le dire, l'inverse se déduirait naturellement du réglage. `refetchOnWindowFocus`
+est à `false` globalement, `useCommentCounts` ne pose aucun `refetchInterval`, et
+le hook n'est appelé que depuis la visionneuse : tant qu'elle reste ouverte,
+aucune requête ne repart. Le `staleTime` n'agit donc que sur le `refetchOnMount`
+d'une **réouverture** de la visionneuse, et c'est ce qui borne réellement le
+retard. Publier depuis le panneau, lui, invalide les compteurs immédiatement.
+Un album où presque toutes
+les photos seraient commentées rendrait une réponse proportionnelle au nombre de
+photos ; ce n'est pas l'usage visé, et le jour où il le deviendrait, la pagination
+se poserait comme elle se pose déjà pour les médias.
+
+## D55 — Le repère de lecture vit dans le navigateur, pas en base
+
+**Contexte.** Afficher « 3 nouveaux commentaires » demande de savoir où en était
+le lecteur. Une table côté serveur serait la réponse réflexe.
+
+**Choix.** `localStorage`, sous `gdv:comments-seen:<albumId>`, un **nombre de
+commentaires vus** par photo. Le total vient du serveur, l'écart se calcule à
+l'affichage (`unreadCount`).
+
+Deux raisons, dans cet ordre. D'abord une clé d'accès n'est pas une personne
+(D38) : indexer un repère de lecture par compte ferait qu'au sein d'un foyer, le
+premier à ouvrir une photo effacerait la pastille de tous les autres — l'inverse
+exact de ce que la fonctionnalité promet. Le navigateur, lui, est bien celui
+d'une personne. Ensuite un entier suffit là où une date obligerait le serveur à
+transporter l'horodatage de chaque fil pour qu'on puisse le comparer.
+
+**Écarté.** _Une table `comment_reads(account, album_id, media_id, seen_at)`_ :
+une migration, une écriture à chaque ouverture de panneau, une jointure dans les
+compteurs, et le défaut de cloisonnement ci-dessus. _Un repère par identité de
+commentateur_ plutôt que par compte : il aurait le bon grain, mais la plupart des
+lecteurs n'ont jamais vérifié d'adresse — la pastille ne marcherait que pour ceux
+qui écrivent.
+
+**Conséquences.** Un changement d'appareil, un nettoyage du navigateur ou une
+navigation privée repartent de zéro : on revoit ses propres commentaires comme
+non lus **une fois**, jamais l'inverse. C'est le sens de l'erreur acceptable — la
+pastille peut être bavarde, elle ne doit pas être muette. Le stockage est borné
+par le nombre de photos commentées de l'album, pas par le nombre de photos
+regardées, et une photo redescendue à zéro commentaire quitte la table.
+
+## D56 — Le panneau latéral prend une colonne, il ne recouvre plus la photo
+
+**Contexte.** Le panneau était posé en surimpression sur le bord droit, à
+l'endroit exact de la flèche « Suivant ». Lire un fil puis passer à la photo
+suivante demandait de refermer le panneau, cliquer, le rouvrir — à chaque photo.
+Le laisser ouvert était impossible, alors que c'est l'usage naturel quand on
+parcourt un album commenté.
+
+**Choix.** À partir de `md`, la visionneuse est une rangée : colonne photo
+`flex-1 min-w-0`, colonne panneau `md:relative md:w-80 lg:w-96 md:shrink-0` —
+le préfixe `md:` porte sur **toutes** ces classes, sans quoi elles
+s'appliqueraient aussi à la surimpression `w-full` du téléphone. La zone photo
+rétrécit, les flèches restent atteignables, le panneau peut rester ouvert. En
+dessous de `md`, la surimpression est conservée — 320 px prélevés sur un écran de
+téléphone ne laisseraient rien à voir.
+
+Rien du calcul de zoom n'a bougé. `ZoomableImage` mesure son conteneur par
+`ResizeObserver` : l'échelle d'ajustement, le « 100 % » et le bornage du cadrage
+se recalculent seuls quand la colonne change de largeur. C'est ce qui a rendu la
+correction possible sans toucher à `lib/zoom.ts`.
+
+**Écarté.** _Décaler les flèches vers l'intérieur quand le panneau est ouvert_ :
+une classe à changer, mais la photo reste à moitié cachée derrière le panneau, ce
+qui est le vrai problème. _Une transition de largeur_ : le `ResizeObserver`
+émettrait un rendu par image de l'animation, pour un mouvement qu'on ne regarde
+pas.
+
+**Conséquences.** Entre `md` et `lg`, la zone photo tombe à environ 450 px de
+large : une photo affichée plus petite, mais navigable. C'est le compromis
+assumé, l'alternative étant de repasser en surimpression sur cette plage, donc de
+réintroduire le défaut d'origine sur les écrans d'ordinateur portable les plus
+courants.
+
+## D57 — Trente secondes pour corriger une faute de frappe, et rien de plus
+
+**Contexte.** On publie un commentaire d'une phrase depuis un téléphone, souvent
+d'un pouce, et on voit la coquille une seconde après l'avoir envoyé. Le seul
+recours était de supprimer et de réécrire — ce qui, sur une réponse, emporte
+aussi le fil que d'autres y avaient accroché.
+
+**Choix.** `PATCH /api/comments/:commentId`, réservé à l'auteur, pendant
+`COMMENT_EDIT_WINDOW_MS` (30 s) après la publication. `created_at` ne bouge pas,
+`parent_id` non plus. Le délai est contrôlé **par le serveur** — une règle que
+seule l'interface applique n'est pas une règle — et `remainingEditMs` est
+partagée pour que les deux côtés tranchent à l'identique.
+
+Trois refus distincts, et c'est délibéré. Un commentaire qui n'est pas le sien
+répond **404**, indistinguable d'un identifiant inexistant, comme partout
+ailleurs. Un délai dépassé répond **409 `edit_window_closed`** : le refus porte
+sur l'**état** du message et non sur un droit d'accès, son auteur l'a déjà sous
+les yeux, et le lui expliquer ne révèle rien. Un corps vide répond **400**.
+
+**L'administrateur n'a aucun privilège ici.** Il masque, il supprime, il ne
+réécrit pas. Retirer un propos et mettre d'autres mots dans la bouche de
+quelqu'un sous son nom sont deux pouvoirs de nature différente ; le second n'a
+pas sa place dans un outil dont toute la modération repose sur la réversibilité
+assumée (D36).
+
+**Écarté.** _L'édition libre et sans limite_, qui transforme un fil en document
+révisable : on répond à un message, l'auteur le réécrit, et la réponse devient
+incompréhensible pour qui lit ensuite. C'est la raison pour laquelle les
+messageries qui autorisent l'édition affichent toutes une mention « modifié » —
+un aveu qu'on ne peut plus faire confiance à ce qu'on lit. Trente secondes
+n'appellent pas cette mention : personne n'a eu le temps de lire.
+
+_Une fenêtre plus longue_, cinq ou quinze minutes : elle rendrait la mention
+« modifié » nécessaire, donc l'horodatage d'édition, donc une colonne de plus —
+tout un appareillage pour un cas que la suppression couvre déjà.
+
+_Le suivi de la fenêtre côté client seulement_, sans contrôle serveur : il aurait
+suffi d'un `curl` pour réécrire un commentaire d'il y a six mois.
+
+**Conséquences.** Le décompte est affiché sur le bouton (« Modifier (12 s) »)
+parce qu'un bouton qui disparaît sans prévenir se lit comme un défaut, alors que
+sa disparition est ici la règle. Le formulaire ouvert n'est pas refermé
+d'autorité à l'échéance : c'est le serveur qui refuse, et son message s'affiche
+— fermer le champ ferait disparaître sans prévenir un texte en cours de frappe.
+`Comment.canEdit` est la première valeur du contrat qui **périme d'elle-même** ;
+tout consommateur doit la recouper avec `createdAt`, ce que le type dit
+explicitement.
+
+## D58 — Le préchauffage prépare les vignettes, et suit la synchronisation
+
+**Contexte.** D45 avait tranché : le préchauffage rend la variante `full`, et
+n'est jamais branché sur la fin d'une synchronisation. Les deux points se sont
+révélés faux à l'usage, et il a fallu qu'un compte de test ouvre un album de
+941 photos jamais consulté pour le voir — **2 min 36 avant la première image**.
+
+Ce qui l'explique, avec la provenance de chaque chiffre — elle compte, ils n'ont
+pas tous la même solidité :
+
+- **Un dérivé coûte ~2 s, dont la quasi-totalité en téléchargement Drive.** Repris
+  de la mesure de D45, prise sur une instance en service.
+- **Le rendu lui-même est négligeable devant ce téléchargement**, de l'ordre de
+  quelques dizaines de millisecondes pour une vignette. Cohérent avec D45, qui
+  relevait 1,5 s pour un `full` d'un reflex de 8 Mo — une vignette est sans
+  commune mesure.
+- **Le limiteur ne sert que 2 à 4 rendus à la fois.** Lu dans le code :
+  `renderConcurrencyFor` rend `max(2, min(4, cœurs - 2))`, donc **deux** places
+  sur le VPS à deux cœurs visé par ce projet, quatre sur une machine de
+  développement. Le pire cas est celui de la production.
+- **Une grille froide en demande plusieurs dizaines d'un coup.** Mesuré sur
+  `seed-demo 941`, contexte navigateur neuf, à l'ouverture et avant tout
+  défilement : **26** vignettes montées en 1280 × 720, 31 en 1920 × 1080, 36 en
+  2560 × 1440, 41 en 1440 × 2400, 26 en 390 × 844. Recoupé côté serveur : 26
+  requêtes `/thumb` distinctes ont bien atteint Fastify à 1280 × 720. Le compte
+  est **indépendant du nombre de photos de l'album** — c'est `OVERSCAN_PX` et la
+  hauteur de rangée cible qui le fixent — mais il dépend de la fenêtre et des
+  formats présents ; « de l'ordre de trente » est le registre à retenir. Sur
+  l'album qui a motivé cette entrée, l'attente observée était de 2 min 36.
+
+Or D45 ne préparait pas de vignettes du tout, mais
+la variante `full` — celle du clic sur une photo, pas celle de l'affichage de
+l'album. Le préchauffage travaillait donc consciencieusement à supprimer une
+attente d'une seconde, en laissant intacte celle de plusieurs minutes qui la
+précède.
+
+**Choix.** Le passage prépare les **trois tailles de vignette** et rien d'autre.
+La taille retenue dépend de la largeur de la case et de la densité de l'écran :
+les trois doivent être prêtes, faute de quoi la moitié des écrans repartirait à
+zéro. `MediaRenderer.prepare` les produit en **un seul téléchargement** et sur
+une seule place du limiteur — c'est l'original en mémoire qui pèse, et il est le
+même pour les trois. Le rendu `full` sort du préchauffage : dix fois le poids
+d'une vignette, pour une attente déjà couverte par le préchargement des voisines
+dans la visionneuse.
+
+Le passage est en outre branché sur la **fin de chaque synchronisation**
+(`AppContext.syncThenPrewarm`). C'est le seul instant où l'on sait qu'il y a du
+neuf, et les photos qui viennent d'arriver sont exactement celles qu'on va
+ouvrir. D45 l'avait écarté au motif que la synchronisation peut être désactivée —
+l'argument tient, mais il justifie de **garder** les autres déclencheurs, pas
+d'écarter celui-là.
+
+**Écarté.** _Préparer aussi le rendu `full`_ : sur 941 photos, on passe de
+quelques dizaines de Mo à plusieurs Go, contre un plafond `cacheMaxSizeGB` qui se
+mettrait à évincer — et l'éviction est LRU globale, donc ce sont les vignettes
+des albums qu'on regarde vraiment qui partiraient. _Verrouiller un album jusqu'à
+son préchauffage complet_, ou _afficher une progression_ : deux réponses au
+symptôme, écartées parce que la cause était ailleurs (voir D59) et qu'une fois
+celle-ci traitée, l'attente résiduelle ne justifie plus d'appareillage.
+
+**Conséquences.** `prewarmCache` reste un réglage, à `true` par défaut : le
+comportement voulu est donc celui d'une instance neuve, et le décocher reste
+possible pour une bande passante comptée. Un album déjà préparé ne consomme plus
+un passage entier à ne rien faire — `prepare` rend `0` quand tout est en cache,
+et le passage saute alors sa pause d'une seconde au lieu de la subir par photo.
+
+## D59 — Une vignette démontée ne s'annule pas toute seule
+
+**Contexte.** Le symptôme rapporté était trompeur : un compte non-administrateur
+restait sur « Chargement des photos » là où le compte administrateur affichait
+l'album. Tout accusait le contrôle d'accès. Ce n'en était pas : les requêtes
+n'échouaient pas, elles **attendaient** — et finissaient par aboutir.
+
+Retirer un `<img>` du DOM n'annule pas son téléchargement. La virtualisation de
+la grille démonte les vignettes sorties de la fenêtre, mais le navigateur mène
+leurs requêtes à terme, et chacune continue d'occuper l'une des **six**
+connexions que HTTP/1.1 accorde à une origine. Quelques dizaines de vignettes
+froides suffisent à saturer ce plafond ; tout ce qui part ensuite attend son
+tour, y compris le `GET /items` dont dépend l'affichage. D'où l'écart entre les
+deux comptes, qui n'avait rien à voir avec les droits : l'un avait toutes ses
+vignettes en cache navigateur, l'autre ouvrait une session neuve.
+
+Le cas le plus net est le **changement de sens de tri** : il relance `/items`
+derrière la volée de vignettes de l'ordre précédent, devenues inutiles mais
+toujours en cours. L'écran reste alors sur « Chargement des photos » le temps
+qu'elles se vident — plusieurs dizaines de secondes sur un album froid. Le
+mécanisme est certain ; la durée exacte dépend du débit vers Drive et n'a pas été
+rejouée en conditions contrôlées.
+
+**Choix.** `Thumb` efface son `src` au démontage. C'est le seul geste qui coupe
+réellement une requête d'image en cours.
+
+Le contrôle sur `isConnected` est indispensable et n'a rien d'une précaution de
+style : `StrictMode` rejoue montage et démontage **sans toucher au DOM**, si bien
+que sans lui les vignettes du premier écran perdaient leur `src` à l'instant où
+elles s'affichaient — React ne le réécrit pas, sa vue du DOM le croyant inchangé.
+Le nœud est capté à l'exécution de l'effet, React ayant déjà remis la ref à
+`null` au moment du nettoyage.
+
+**Écarté.** _Un `AbortController` et un `fetch` par vignette_ : il faudrait gérer
+soi-même les `blob:` URLs, leur révocation, et le cache HTTP qu'on perdrait au
+passage — beaucoup d'appareillage pour ce qu'un attribut retiré obtient.
+_Réduire l'`OVERSCAN_PX`_ : cela diminue le nombre de requêtes orphelines sans
+supprimer la fuite, et dégrade le défilement rapide.
+
+**Conséquences.** Le diagnostic initial — « bug multi-utilisateur » — était une
+fausse piste complète, et c'est la leçon la plus utile de cette entrée : deux
+comptes qui se comportent différemment sur la même donnée peuvent ne rien devoir
+aux droits, et tout à l'état de leur cache navigateur. La mesure qui a tranché
+est l'opposition entre le chronométrage serveur, qui répondait vite, et le
+chronométrage navigateur, qui attendait.
+
+## D60 — Un téléchargement Drive a une échéance, sauf quand il relaie une vidéo
+
+**Contexte.** `DriveService.send()` appelait `fetch` sans `AbortSignal`. Node
+hérite alors du défaut d'undici : **cinq minutes**. Or la place du limiteur de
+rendu est prise **avant** le téléchargement — c'est voulu, l'original en mémoire
+est ce qui pèse (D32). Deux téléchargements figés sur un VPS bicœur gèlent donc
+tous les rendus pendant cinq minutes, ce qui, vu du navigateur, ne se distingue
+pas d'un blocage définitif. C'était le diagnostic initialement posé sur la
+lenteur d'un album froid, et il était faux dans ce cas précis — mais le
+mécanisme, lui, existait bel et bien.
+
+**Choix.** `AbortSignal.timeout(120_000)` sur les téléchargements de contenu,
+**et sur eux seuls**. Le discriminant est déjà là : `send(url, token, range?)`.
+
+- **Sans `range`** — téléchargement d'un original pour produire un dérivé, borné
+  par `MAX_DECODE_BYTES` (80 Mo) : échéance. 120 s couvre 80 Mo sur une ligne
+  lente et laisse une marge considérable au cas courant, une dizaine de
+  mégaoctets.
+- **Avec `range`** — relais d'une vidéo vers le navigateur, qui la consomme à son
+  rythme : **aucune échéance**. `AbortSignal.timeout` est une échéance _totale_,
+  pas d'inactivité ; elle couperait une lecture en cours au bout de deux minutes.
+
+**Le repli tient en trois couches**, et c'est là qu'est la vraie décision — une
+échéance seule ne fait que transformer une attente en tuile vide.
+
+1. **L'aperçu Drive**, déjà en place : le `catch` de `build()` repart du
+   `thumbnailLink`, qui pèse quelques kilooctets là où l'original en pèse huit
+   millions. Sur une ligne saturée, c'est précisément ce qui a le plus de chances
+   de passer.
+2. **Un 503 avec `Retry-After`, jamais un 500.** `DriveUnavailableError` distingue
+   le transitoire — délai dépassé, débit limité au-delà des réessais — du
+   définitif, un format que la libvips ne décode pas. Un 500 dit « cassé » et
+   fait renoncer ; un 503 dit « reviens ». Aucun en-tête de cache n'accompagne un
+   échec : rien n'est mémorisé, donc la requête suivante retente réellement.
+3. **Deux réessais côté vignette**, délai doublé et **dispersé**. Sans eux, le
+   503 ne servirait à rien : un `<img>` ne réessaie pas tout seul, et la tuile
+   resterait vide jusqu'au rechargement de la page. La dispersion n'est pas
+   cosmétique — trente vignettes échouent ensemble sur une grille froide, et des
+   réessais synchrones repartiraient saturer les six mêmes connexions (D59).
+
+**Écarté.** _Une échéance unique pour tout le trafic Drive_ : elle couperait la
+vidéo, et c'est le genre de régression qu'on ne voit qu'en production, en
+regardant un film. _Un réessai côté serveur_ : il tiendrait la place du limiteur
+plus longtemps, c'est-à-dire qu'il aggraverait exactement ce qu'on corrige.
+_Prendre la place du limiteur après le téléchargement_ : l'original serait alors
+en mémoire hors de tout comptage, ce que D32 a précisément écarté. _Un bandeau
+d'erreur global_ quand beaucoup de vignettes échouent : de l'appareillage pour un
+état que les réessais résorbent d'eux-mêmes.
+
+**Conséquences.** Le pire cas devient 240 s — l'original puis l'aperçu Drive se
+figeant tous deux — contre 600 s auparavant. Une seule constante gouverne les
+deux, assumé : un aperçu mériterait une échéance plus courte, mais deux réglages
+pour un gain de quelques secondes dans un cas déjà rare ne valent pas la
+complication. Un `<img>` ne connaît pas le code de retour reçu : les deux
+réessais partent donc aussi sur un 404, ce qui coûte deux requêtes inutiles pour
+un média réellement disparu — c'est rare, et l'inverse coûterait bien plus.
+
+## D61 — Le préchauffage s'arrête quand Drive n'est pas connecté
+
+**Contexte.** `CachePrewarmer` ne consultait que `prewarmCache`. Sans connexion
+Drive — instance neuve, consentement révoqué, clé de compte de service absente —
+le passage parcourait l'album entier en échouant photo par photo, **pause d'une
+seconde comprise** puisqu'elle est hors du `try`. Sur mille photos, c'est un
+quart d'heure de boucle stérile par passage horaire, et autant de lignes de
+journal qui noient ce qu'on cherche vraiment.
+
+**Choix.** La connexion entre dans le prédicat existant :
+`enabled: () => this.settings.prewarmCache && this.drive.connected`. Ce prédicat
+est déjà relu à l'entrée de `run()` **et** à chaque photo (D45), donc le passage
+s'arrête immédiatement, et une révocation en cours de passage l'interrompt comme
+le ferait un décochage du réglage.
+
+**Écarté.** _Ajouter `drive` à `PrewarmDeps`_ : une dépendance de plus vers un
+service entier, là où un booléen suffit — et `CachePrewarmer` n'a aucune autre
+raison de connaître Drive. _Un `try` autour de la pause_ : cela accélérerait la
+boucle stérile au lieu de l'éviter.
+
+**Conséquences.** Le passage ne reprend qu'au déclencheur suivant — ménage
+horaire, démarrage, ou fin de synchronisation (D58). Reconnecter Drive ne relance
+donc pas le préchauffage dans la seconde ; en pratique le retour d'OAuth
+enchaîne une synchronisation, qui le déclenche.

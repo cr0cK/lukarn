@@ -121,7 +121,12 @@ export class AppContext {
       // Relu à chaque photo : décocher le réglage dans /admin doit arrêter le
       // passage en cours, pas seulement le suivant — c'est ce qu'on attend
       // d'un interrupteur quand on vient de constater que ça sature la ligne.
-      enabled: () => this.settings.prewarmCache,
+      //
+      // La connexion Drive entre dans le même prédicat plutôt que dans une
+      // dépendance de plus : sans elle, le passage parcourait l'album entier en
+      // échouant photo par photo **avec sa pause d'une seconde**, soit un quart
+      // d'heure de boucle stérile par heure sur un album de mille photos.
+      enabled: () => this.settings.prewarmCache && this.drive.connected,
       log: logger,
     });
 
@@ -148,6 +153,24 @@ export class AppContext {
 
   findAlbum(albumId: string): StoredAlbum | undefined {
     return this.config.album(albumId);
+  }
+
+  /**
+   * Indexe les albums, puis prépare les vignettes de ce qui vient d'arriver.
+   *
+   * Les deux vont ensemble, et c'est le seul moment où on sait qu'il y a du
+   * neuf : une photo indexée mais jamais rendue coûte le prix fort à la
+   * première ouverture de la grille — deux à quatre rendus simultanés pour
+   * plusieurs dizaines de vignettes demandées d'un coup. Toute synchronisation passe par
+   * ici, y compris celles lancées depuis /admin.
+   *
+   * Le préchauffage garde ses autres déclencheurs — démarrage et ménage horaire
+   * — parce que la synchronisation automatique peut être désactivée (D45) ; il
+   * refuse de lui-même un second passage concurrent.
+   */
+  async syncThenPrewarm(albums: StoredAlbum[]): Promise<void> {
+    await this.syncer.syncAll(albums);
+    await this.prewarmer.run();
   }
 
   get settings(): AppSettings {

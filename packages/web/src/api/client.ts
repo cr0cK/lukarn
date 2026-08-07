@@ -5,6 +5,7 @@ import {
   type AdminStatus,
   type AdminUser,
   type Album,
+  type AlbumCommentCounts,
   type AlbumDay,
   type AppSettings,
   type Comment,
@@ -21,6 +22,7 @@ import {
   type ThumbSize,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
+  type UpdateCommentRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
@@ -128,11 +130,17 @@ export const api = {
       `/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`,
     ),
 
+  commentCounts: (albumId: string) =>
+    request<AlbumCommentCounts>(`/comments/${encodeURIComponent(albumId)}`),
+
   createComment: (albumId: string, mediaId: string, body: CreateCommentRequest) =>
     request<Comment>(`/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  updateComment: (commentId: number, body: UpdateCommentRequest) =>
+    request<Comment>(`/comments/${commentId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   deleteComment: (commentId: number) =>
     request<void>(`/comments/${commentId}`, { method: 'DELETE' }),

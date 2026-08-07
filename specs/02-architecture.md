@@ -22,34 +22,34 @@ flowchart LR
 
 ### Le serveur, fichier par fichier
 
-| Fichier                  | Responsabilité                                                                                      |
-| ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `src/main.ts`            | Point d'entrée : `.env`, env, `buildApp`, minuteurs reprogrammables, arrêt gracieux.                |
-| `src/app.ts`             | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.         |
-| `src/env.ts`             | Schéma zod des variables d'environnement, résolution des chemins.                                   |
-| `src/config.ts`          | Schéma zod d'`albums.yaml`, lu au seul amorçage d'une base vide.                                    |
-| `src/bootstrap.ts`       | Import unique d'`albums.yaml` en base, tant qu'aucun compte n'existe.                               |
-| `src/config-repo.ts`     | `ConfigRepo` : comptes, albums, droits, réglages. Seul écrivain, instantané mémoire.                |
-| `src/context.ts`         | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.      |
-| `src/db.ts`              | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                    |
-| `src/repo.ts`            | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                   |
-| `src/comments.ts`        | `CommentRepo` : fils, profondeur limitée à un niveau, modération.                                   |
-| `src/places.ts`          | `AlbumDayRepo` et `PlacesPass` : journées annotées, agglomération des positions EXIF en grappes.    |
-| `src/geocoder.ts`        | Géocodage inverse Nominatim, cadencé et mis en cache par cellule d'environ un kilomètre.            |
-| `src/commenters.ts`      | `CommenterRepo` : identités de commentateur, vérification de l'adresse par code, destinataires.     |
-| `src/mail.ts`            | Transport SMTP, file d'envoi hors requête, composition des emails de notification.                  |
-| `src/sessions.ts`        | Création, lecture, destruction et purge des sessions.                                               |
-| `src/crypto.ts`          | AES-256-GCM pour le refresh token, comparaison en temps constant.                                   |
-| `src/throttle.ts`        | Backoff progressif des tentatives de connexion, en mémoire.                                         |
-| `src/drive/service.ts`   | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation. |
-| `src/drive/sync.ts`      | Parcours des dossiers et remplissage de l'index.                                                    |
-| `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées).                       |
-| `src/media/renderer.ts`  | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive.            |
-| `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU.                                            |
-| `src/media/range.ts`     | Validation du header `Range` avant relais.                                                          |
-| `src/plugins/auth.ts`    | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                   |
-| `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).          |
-| `src/routes/*.ts`        | Les quatre familles de routes — voir [05](./05-api.md).                                             |
+| Fichier                  | Responsabilité                                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.ts`            | Point d'entrée : `.env`, env, `buildApp`, minuteurs reprogrammables, arrêt gracieux.                                                                                            |
+| `src/app.ts`             | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.                                                                                     |
+| `src/env.ts`             | Schéma zod des variables d'environnement, résolution des chemins.                                                                                                               |
+| `src/config.ts`          | Schéma zod d'`albums.yaml`, lu au seul amorçage d'une base vide.                                                                                                                |
+| `src/bootstrap.ts`       | Import unique d'`albums.yaml` en base, tant qu'aucun compte n'existe.                                                                                                           |
+| `src/config-repo.ts`     | `ConfigRepo` : comptes, albums, droits, réglages. Seul écrivain, instantané mémoire.                                                                                            |
+| `src/context.ts`         | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.                                                                                  |
+| `src/db.ts`              | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                                                                                                |
+| `src/repo.ts`            | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                                                                                               |
+| `src/comments.ts`        | `CommentRepo` : fils, profondeur limitée à un niveau, modération.                                                                                                               |
+| `src/places.ts`          | `AlbumDayRepo` et `PlacesPass` : journées annotées, agglomération des positions EXIF en grappes.                                                                                |
+| `src/geocoder.ts`        | Géocodage inverse Nominatim, cadencé et mis en cache par cellule d'environ un kilomètre.                                                                                        |
+| `src/commenters.ts`      | `CommenterRepo` : identités de commentateur, vérification de l'adresse par code, destinataires.                                                                                 |
+| `src/mail.ts`            | Transport SMTP, file d'envoi hors requête, composition des emails de notification.                                                                                              |
+| `src/sessions.ts`        | Création, lecture, destruction et purge des sessions.                                                                                                                           |
+| `src/crypto.ts`          | AES-256-GCM pour le refresh token, comparaison en temps constant.                                                                                                               |
+| `src/throttle.ts`        | Backoff progressif des tentatives de connexion, en mémoire.                                                                                                                     |
+| `src/drive/service.ts`   | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation.                                                                             |
+| `src/drive/sync.ts`      | Parcours des dossiers et remplissage de l'index.                                                                                                                                |
+| `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées).                                                                                                   |
+| `src/media/renderer.ts`  | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive. `prepare` prépare plusieurs variantes en un seul téléchargement, pour le préchauffage. |
+| `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU.                                                                                                                        |
+| `src/media/range.ts`     | Validation du header `Range` avant relais.                                                                                                                                      |
+| `src/plugins/auth.ts`    | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                                                                                               |
+| `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).                                                                                      |
+| `src/routes/*.ts`        | Les quatre familles de routes — voir [05](./05-api.md).                                                                                                                         |
 
 ## Cheminement d'une vignette
 
@@ -63,9 +63,9 @@ sequenceDiagram
   participant C as Cache disque
   participant G as Drive
 
-  N->>F: GET /api/albums/vacances/items?order=desc
-  F->>D: SELECT … ORDER BY taken_at DESC LIMIT 201
-  D-->>F: 200 lignes + curseur
+  N->>F: GET /api/albums/vacances/items?limit=250&order=desc
+  F->>D: SELECT … ORDER BY taken_at DESC LIMIT 251
+  D-->>F: 250 lignes + curseur
   F-->>N: ItemsPage (dimensions comprises)
   Note over N: computeLayout() positionne toute la grille<br/>avant le moindre chargement d'image
   N->>F: GET /api/media/<id>/thumb?s=640
@@ -86,9 +86,14 @@ Points qui comptent :
 
 - Le contrôle d'accès est un `preHandler` global sur le préfixe `/media`
   (`routes/media.ts`) : aucune route média ne peut l'oublier.
-- La déduplication vit dans `MediaRenderer.inFlight` : une grille qui s'ouvre
-  demande des dizaines de vignettes, mais chaque fichier n'est téléchargé qu'une
-  fois même si dix requêtes arrivent ensemble.
+- La déduplication vit dans `MediaRenderer.inFlight`, indexée par **clé de
+  variante** et non par fichier : dix requêtes sur la même vignette ne
+  déclenchent qu'un téléchargement, mais dix requêtes réparties sur `s=320` et
+  `s=640` du même fichier en déclenchent **deux**. C'est le prix assumé d'un
+  chemin de rendu qui ne connaît qu'une variante à la fois.
+  `MediaRenderer.prepare` — le chemin du préchauffage — **ne passe pas par
+  `inFlight`** : il garantit le téléchargement unique autrement, par une seule
+  descente pour toutes les variantes sous une seule place du limiteur.
 - **Les rendus de fichiers _différents_ sont bridés** par un limiteur
   (`media/semaphore.ts`), dimensionné à `cpus - 2` et borné entre 2 et 4. La
   place est prise avant le téléchargement, parce que c'est l'original chargé en
@@ -99,17 +104,27 @@ Points qui comptent :
   libuv, partagé avec les lectures de fichiers. D'où `threadpool.ts`, importé en
   premier par `main.ts` : à la taille par défaut de quatre, servir une vignette
   déjà en cache attend deux secondes derrière les rendus en cours.
-- L'`ETag` vaut `"<mediaId>-<variante>"`, la variante étant `320`/`640`/`1280`,
-  `full` ou `hd`. Un `If-None-Match` correspondant répond 304 sans toucher au
-  disque.
+- L'`ETag` vaut `"<mediaId>-<version>-<variante>"`, la variante étant
+  `320`/`640`/`1280`, `full` ou `hd`. Un `If-None-Match` correspondant répond 304
+  sans toucher au disque. **Le segment `version` n'est pas décoratif** : c'est
+  l'empreinte du contenu, et le dérivé étant servi en `immutable` pendant un an,
+  c'est la seule chose qui invalide le cache navigateur quand on remplace un
+  fichier Drive sous le même identifiant.
 - Les vidéos n'ont pas de rendu : `serveRendered` répond **415** si
   `kind !== 'photo'`. La grille affiche une tuile sobre avec la durée.
 
 ## Cheminement d'une synchronisation
 
 Déclenchée au démarrage (`sync.onStartup`), périodiquement
-(`sync.intervalMinutes`), après un consentement OAuth réussi, ou depuis
-`POST /api/admin/resync`.
+(`sync.intervalMinutes`), après un consentement OAuth réussi, depuis
+`POST /api/admin/resync`, **à la création d'un album**, et **quand son périmètre
+Drive change** (`folderId` ou `recursive` modifié : l'index de l'album est alors
+purgé puis reconstruit). Les deux derniers passent par `startSync`
+(`routes/admin.ts`) — c'est le chemin de « je crée un album et je l'ouvre dans la
+foulée », le plus courant à l'installation.
+
+Tous ces déclencheurs passent par `AppContext.syncThenPrewarm` : l'indexation est
+suivie du préchauffage des vignettes (D58).
 
 1. `Syncer.sync(album)` — si une sync du même album tourne déjà **avec la même
    configuration effective** (`folderId` et `recursive`), la promesse en cours
@@ -214,8 +229,10 @@ navigateur ne lit pas n'est pas lisible du tout.
 **Les lieux d'une journée se déduisent en deux temps.** Une grille datée ne dit
 pas ce qu'on a fait ; les photos, elles, portent souvent leur position. Le
 passage `places.ts` est branché sur le ménage horaire de `main.ts` **et** sur le
-démarrage, comme le préchauffage et pour la même raison — la synchronisation
-peut être désactivée, et les lieux attendraient alors indéfiniment. Il tourne en
+démarrage, pour la même raison que le préchauffage — la synchronisation peut être
+désactivée, et les lieux attendraient alors indéfiniment. La symétrie s'arrête
+là : le préchauffage a depuis un troisième déclencheur, la fin de chaque
+synchronisation (D58), que `places.ts` n'a pas. Il tourne en
 deux moitiés délibérément séparées :
 
 1. **L'agrégation**, déterministe et hors réseau. Pour chaque album,
@@ -240,20 +257,49 @@ synchrone, et géocoder à la volée ferait attendre le lecteur une seconde par
 lieu. Le passage n'est pas armé par `buildApp`, seulement par `main.ts` — les
 tests ne joignent donc jamais le réseau.
 
-**Le cache se remplit sans attendre qu'on clique.** `media/prewarm.ts` rend la
-variante `full` des photos en fond, des plus récentes aux plus anciennes : une
-photo jamais ouverte coûte sinon ~3,5 s au premier clic — deux secondes de
-téléchargement Drive, une et demie de décodage et d'encodage — contre 5 ms
-depuis le cache. Il est branché sur le ménage horaire de `main.ts` et sur le
-démarrage, jamais sur la fin d'une synchronisation : celle-ci peut être
-désactivée, et le cache attendrait alors un clic pour se remplir. Réglage
-`prewarmCache`, relu à chaque photo. Sa lenteur est volontaire — voir D45 pour
-les trois garde-fous.
+**Le cache se remplit sans attendre qu'on clique.** `media/prewarm.ts` prépare
+les **trois tailles de vignette** des photos en fond, des plus récentes aux plus
+anciennes. C'est la grille qui fait attendre, et elle ne demande que celles-ci —
+laquelle dépend de la largeur de la case et de la densité de l'écran, donc les
+trois doivent être prêtes. Le rendu `full` ne vient jamais ici : il pèse une
+dizaine de fois une vignette, et le préchargement des voisines dans la
+visionneuse couvre déjà le feuilletage (voir D58, qui restreint la portée que
+D45 donnait au passage).
+
+Les trois variantes sortent d'**un seul téléchargement** (`MediaRenderer.prepare`),
+pour une raison mesurée : produire un dérivé coûte ~2 s de téléchargement Drive
+pour ~50 ms de rendu. Trois `render()` enchaînés téléchargeraient trois fois le
+même original. Une seule place du limiteur est prise pour l'ensemble — c'est
+l'original en mémoire qui pèse, et il est le même pour toutes les variantes.
+
+Le passage est branché sur le ménage horaire, sur le démarrage, **et sur la fin
+de chaque synchronisation** (`AppContext.syncThenPrewarm`, par où passent la
+sync périodique, celle du démarrage, celle de `/admin` et celle du retour OAuth).
+Les deux derniers déclencheurs s'excluent au démarrage : lancés ensemble, le
+préchauffage partirait sur l'index d'avant pendant que la sync le remplit, et
+celui qui doit suivre la sync se ferait refuser comme passage concurrent — les
+photos qui viennent d'arriver, précisément celles qu'on va ouvrir, attendraient
+le ménage horaire. Le ménage et le démarrage restent branchés séparément parce
+que la synchronisation automatique peut être désactivée. Réglage `prewarmCache`,
+relu à chaque photo — **et conditionné à la connexion Drive** : sans elle, le
+passage échouerait photo par photo en gardant sa pause d'une seconde, soit un
+quart d'heure de boucle stérile par heure sur un album de mille photos (D61). Sa
+lenteur est volontaire — voir D45.
+
+**Un téléchargement de contenu a une échéance de 120 s, un relais vidéo non.**
+La place du limiteur étant prise **avant** le téléchargement, un `fetch` figé
+gèlerait tous les rendus le temps du défaut d'undici — cinq minutes. Les requêtes
+porteuses d'un `Range` en sont exclues : c'est une vidéo que le navigateur
+consomme à son rythme, et une échéance _totale_ couperait la lecture. Un
+dépassement, comme un débit limité au-delà des réessais, lève
+`DriveUnavailableError` → **503 + `Retry-After`**, jamais 500 : l'échec est
+transitoire, et la vignette le retente d'elle-même (D60).
 
 **Un original de plus de 80 Mo n'est pas décodé sur place.** Le limiteur borne
 le nombre de rendus simultanés, pas leur taille, et chaque rendu charge son
-original entier en mémoire pour le donner à sharp : trois places prises par des
-fichiers de 300 Mo suffisent à emporter le processus, donc la galerie. La taille
+original entier en mémoire pour le donner à sharp : ses quatre places au maximum,
+prises par des fichiers de 300 Mo, suffisent à emporter le processus, donc la
+galerie — et deux suffisent déjà sur un VPS bicœur. La taille
 annoncée par Drive est donc contrôlée **avant** de lire le corps, et le corps
 mesuré à son tour — un en-tête absent ou menteur ne doit pas suffire. Au-delà,
 la photo n'est pas refusée : elle emprunte le repli ci-dessous.

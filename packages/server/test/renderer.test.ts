@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import sharp from 'sharp';
-import type { DriveService } from '../src/drive/service.js';
+import { DriveUnavailableError, type DriveService } from '../src/drive/service.js';
 import { MediaCache } from '../src/media/cache.js';
 import { MediaRenderer } from '../src/media/renderer.js';
 
@@ -53,6 +53,106 @@ describe('rendu depuis le cache', () => {
 
     assert.equal(telechargements, 2, 'le dérivé manquant doit être refabriqué');
     assert.ok(existsSync(second.path), 'le chemin rendu doit être lisible');
+  });
+});
+
+describe('préparation de plusieurs variantes', () => {
+  it('ne télécharge l’original qu’une fois pour les trois tailles', async () => {
+    const cache = new MediaCache(join(root, 'prepare'), 1024 * 1024);
+    await cache.load();
+
+    let telechargements = 0;
+    const drive = {
+      fetchFile: () => {
+        telechargements++;
+        return Promise.resolve(new Response(jpeg));
+      },
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const produits = await renderer.prepare(
+      'photo',
+      [
+        { kind: 'thumb', size: 320 },
+        { kind: 'thumb', size: 640 },
+        { kind: 'thumb', size: 1280 },
+      ],
+      'empreinte',
+    );
+
+    // C'est tout l'intérêt de ce chemin : le téléchargement pèse ~2 s là où le
+    // rendu pèse ~50 ms. Trois `render()` successifs tireraient trois fois le
+    // même fichier, soit trois fois le trafic Drive du préchauffage.
+    assert.equal(telechargements, 1, 'un seul téléchargement pour les trois tailles');
+    assert.equal(produits, 3);
+
+    for (const size of [320, 640, 1280] as const) {
+      assert.ok(renderer.isCached('photo', { kind: 'thumb', size }, 'empreinte'));
+    }
+  });
+
+  it('ne refait ni ne retélécharge ce qui est déjà en cache', async () => {
+    const cache = new MediaCache(join(root, 'prepare-cache'), 1024 * 1024);
+    await cache.load();
+
+    let telechargements = 0;
+    const drive = {
+      fetchFile: () => {
+        telechargements++;
+        return Promise.resolve(new Response(jpeg));
+      },
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const variants = [
+      { kind: 'thumb', size: 320 },
+      { kind: 'thumb', size: 640 },
+    ] as const;
+
+    await renderer.prepare('photo', [...variants], null);
+    const seconde = await renderer.prepare('photo', [...variants], null);
+
+    // Un passage de préchauffage repasse sur les mêmes albums heure après
+    // heure : sans ce court-circuit, il retéléchargerait toute la
+    // bibliothèque à chaque tour.
+    assert.equal(seconde, 0);
+    assert.equal(telechargements, 1);
+  });
+
+  it('demande l’aperçu Drive à la plus grande taille voulue', async () => {
+    const cache = new MediaCache(join(root, 'prepare-repli'), 1024 * 1024);
+    await cache.load();
+
+    const urls: string[] = [];
+    const drive = {
+      fetchFile: () => Promise.resolve(new Response(Buffer.from('ni JPEG ni HEIC lisible'))),
+      guard: <T>(operation: () => Promise<T>) => operation(),
+      api: () => ({
+        files: {
+          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Q=s220' } }),
+        },
+      }),
+      fetchAuthorized: (url: string) => {
+        urls.push(url);
+        return Promise.resolve(new Response(jpeg));
+      },
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const produits = await renderer.prepare(
+      'heic',
+      [
+        { kind: 'thumb', size: 320 },
+        { kind: 'thumb', size: 1280 },
+      ],
+      null,
+    );
+
+    // L'aperçu sert de source aux tailles suivantes, et `withoutEnlargement`
+    // interdit de remonter : le demander en 320 livrerait une vignette de
+    // 320 px sous la clé du 1280.
+    assert.deepEqual(urls, ['https://lh3.exemple/Q=s1280']);
+    assert.equal(produits, 2);
   });
 });
 
@@ -130,5 +230,53 @@ describe('original trop lourd', () => {
     // afficherait une case cassée dans la grille pour un fichier valide.
     assert.equal(repliDemande, 1, 'un original hors limite ne doit pas être décodé sur place');
     assert.ok(existsSync(rendu.path));
+  });
+});
+
+describe('échec transitoire de Drive', () => {
+  it('remonte une indisponibilité quand le repli échoue à son tour', async () => {
+    const cache = new MediaCache(join(root, 'transitoire'), 1024 * 1024);
+    await cache.load();
+
+    // Le téléchargement de l'original dépasse le délai, et l'aperçu Drive
+    // n'aboutit pas non plus : c'est le seul cas où l'échec atteint la route, et
+    // il doit y rester reconnaissable comme transitoire pour qu'elle réponde
+    // 503 plutôt que 500 — un 500 ferait renoncer le navigateur.
+    const drive = {
+      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'délai dépassé')),
+      guard: <T>(operation: () => Promise<T>) => operation(),
+      api: () => ({
+        files: {
+          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/AbC=s220' } }),
+        },
+      }),
+      fetchAuthorized: () => Promise.reject(new DriveUnavailableError('aperçu', 5, 'Drive 429')),
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+
+    await assert.rejects(
+      () => renderer.render('lent', { kind: 'thumb', size: 320 }, null),
+      DriveUnavailableError,
+    );
+  });
+
+  it('ne garde rien en cache après un échec', async () => {
+    // L'invariant qui rend le réessai possible : un échec ne doit jamais être
+    // mémorisé, sans quoi la vignette resterait cassée jusqu'à l'éviction.
+    const cache = new MediaCache(join(root, 'sans-trace'), 1024 * 1024);
+    await cache.load();
+
+    const drive = {
+      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'délai dépassé')),
+      guard: <T>(operation: () => Promise<T>) => operation(),
+      api: () => ({ files: { get: () => Promise.resolve({ data: {} }) } }),
+      fetchAuthorized: () => Promise.reject(new Error('pas d’aperçu')),
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    await assert.rejects(() => renderer.render('lent', { kind: 'thumb', size: 320 }, null));
+
+    assert.equal(cache.stats().entryCount, 0);
   });
 });

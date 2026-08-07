@@ -14,6 +14,11 @@ export type PanelTab = 'info' | 'comments';
  * en-tête et son bouton de fermeture, et basculer de l'un à l'autre aurait
  * décalé l'image deux fois. Un cadre unique règle les deux : la photo se
  * rétrécit une fois, et l'onglet inactif reste à un clic.
+ *
+ * Sur écran large, ce rétrécissement est littéral — le panneau occupe une
+ * colonne du flux. C'est ce qui permet de le laisser ouvert : en surimpression,
+ * il recouvrait la flèche « Suivant ». Le zoom n'a rien à en savoir,
+ * `ZoomableImage` mesurant son conteneur par `ResizeObserver`.
  */
 export function SidePanel({
   albumId,
@@ -34,7 +39,12 @@ export function SidePanel({
 }): ReactElement {
   return (
     <aside
-      className="absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l border-ink-700 bg-ink-900/95 backdrop-blur-sm"
+      // Deux régimes selon la largeur. À partir de `md`, le panneau est un
+      // élément du flux : la zone photo rétrécit d'autant, les flèches de
+      // navigation restent atteignables, et le panneau peut donc rester ouvert
+      // d'une photo à l'autre. En dessous, il reprend la surimpression — 320 px
+      // prélevés sur un écran de téléphone ne laisseraient rien à voir.
+      className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-900/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-900 md:backdrop-blur-none lg:w-96"
       aria-label="Informations et commentaires"
     >
       <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
