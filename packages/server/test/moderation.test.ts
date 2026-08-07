@@ -227,7 +227,10 @@ describe('pagination de la file de modération', () => {
     assert.equal(new Set(ids).size, ids.length, 'un commentaire apparaît sur les deux pages');
     assert.equal(ids.length, premiere.total, 'des commentaires manquent entre les deux pages');
     // Antéchronologique d'un bout à l'autre, curseur compris.
-    assert.deepEqual(ids, [...ids].sort((a, b) => b - a));
+    assert.deepEqual(
+      ids,
+      [...ids].sort((a, b) => b - a),
+    );
   });
 
   it('annonce la taille du corpus, pas celle du reste à parcourir', async () => {

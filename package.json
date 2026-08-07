@@ -17,9 +17,10 @@
     "hash-password": "pnpm --filter @gdv/server hash-password",
     "create-admin": "pnpm --filter @gdv/server create-admin",
     "reset-password": "pnpm --filter @gdv/server reset-password",
+    "check:format": "prettier --check .",
     "check:specs": "node tools/check-specs.mjs",
     "check:links": "node tools/check-links.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm check:specs && pnpm check:links",
+    "verify": "pnpm typecheck && pnpm lint && pnpm check:format && pnpm test && pnpm check:specs && pnpm check:links",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {

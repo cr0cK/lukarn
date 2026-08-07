@@ -411,11 +411,15 @@ déploiement.
 ## Vérifications
 
 ```bash
-pnpm verify   # typecheck, lint, tests, check:specs, check:links
+pnpm verify   # typecheck, lint, check:format, tests, check:specs, check:links
 ```
 
 Les tests serveur tournent avec le runner natif de Node (`node --import tsx
 --test`) : pas de framework de test dans les dépendances.
+
+`check:format` est un `prettier --check` : il constate là où `pnpm format`
+réécrit. Sans lui, le formatage n'était vérifié nulle part et dérivait — cinq
+fichiers de `main` s'en écartaient (D75).
 
 Deux contrôles portent sur la documentation, et aucun ne juge la prose :
 `tools/check-specs.mjs` compare ce que le code expose à ce que les specs
@@ -424,6 +428,12 @@ des trois documents qui se renvoient l'un à l'autre (D64). Les deux tournent
 aussi sur `pre-push`. Les liens externes ne sont pas suivis : cela demanderait
 le réseau, et un contrôle qui échoue parce qu'un site tiers est lent finit
 désactivé.
+
+`check-specs.mjs` porte en outre sur la **cohérence interne de
+`08-decisions.md`** : un numéro de décision défini deux fois, ou un renvoi
+`(Dxx)` vers une entrée absente. `check-links.mjs` ne peut pas les voir — un
+`(D67)` en texte brut n'est pas un lien, et un `[D67](./08-decisions.md)`
+désigne le fichier, jamais l'entrée.
 
 ### Voir les emails pour de vrai
 

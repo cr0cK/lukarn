@@ -13,10 +13,7 @@ import { groupForModeration } from '../src/lib/moderation';
 
 let prochain = 1;
 
-function commentaire(
-  createdAt: string,
-  overrides: Partial<AdminComment> = {},
-): AdminComment {
+function commentaire(createdAt: string, overrides: Partial<AdminComment> = {}): AdminComment {
   const id = prochain++;
   return {
     id,

@@ -131,7 +131,10 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-ink-850 px-4 py-3">
-            <Button onClick={() => setCursors(cursors.slice(0, -1))} disabled={cursors.length === 1}>
+            <Button
+              onClick={() => setCursors(cursors.slice(0, -1))}
+              disabled={cursors.length === 1}
+            >
               ‹ Précédent
             </Button>
 
