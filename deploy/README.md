@@ -449,7 +449,9 @@ MAIL_FROM=Galerie <first.last@gmail.com>
 ```
 
 - `smtps://` and port **465**: TLS from the start of the connection. Port **587**
-  with `smtp://` works too (STARTTLS).
+  with `smtp://` works too (STARTTLS). Both are commonly blocked outbound by
+  hosting providers — see [below](#when-nothing-leaves-the-machine) when the
+  connection times out.
 - `MAIL_FROM` must carry **the account address** or a verified alias: Gmail
   rewrites or rejects any other sender.
 - Gmail caps sending at a few hundred recipients a day. Irrelevant for a family
@@ -458,6 +460,57 @@ MAIL_FROM=Galerie <first.last@gmail.com>
   credentials. The server then refuses to start and says so: encode those
   characters (`%2F`, `%3F`, `%23`), as with `@` → `%40`. Google app passwords
   contain none of them. `+`, `:` and spaces pass through unencoded.
+
+### When nothing leaves the machine
+
+A connection that times out, with no SMTP error in sight, is not a credentials
+problem: the host is filtering outbound ports. Nearly all of them block **25**,
+and many block **465** and **587** too — spam leaving a compromised instance is
+their problem before it is anyone else's. Nothing reports this; the connection
+simply never completes.
+
+Find out what gets out before suspecting the password:
+
+```bash
+for p in 25 465 587 2465 2587; do
+  timeout 5 bash -c "exec 3<>/dev/tcp/smtp.example.com/$p" 2>/dev/null \
+    && echo "$p open" || echo "$p blocked"
+done
+```
+
+Relays publish alternative ports for exactly this reason, usually **2465** for
+implicit TLS and **2587** for STARTTLS. Some hosts also lift the block on
+request — a support ticket, and not always granted.
+
+**Keep the scheme consistent with the port.** nodemailer reads the encryption
+from the URL scheme, never from the port number: `smtps://` opens TLS on the
+first byte, `smtp://` starts in the clear and upgrades through STARTTLS. So
+`smtps://…:2465` is right, and `smtp://…:2465` negotiates nothing and hangs.
+
+### Sending from the site's own domain
+
+A relay signing for the site's own domain — `galerie@photos.example.com` rather
+than someone's personal mailbox — needs three DNS records. Gmail and Yahoo have
+required them of bulk senders since February 2024, and here they decide whether a
+visitor's verification code arrives in the inbox or in the spam folder.
+
+| Record        | Answers                                                        |
+| ------------- | -------------------------------------------------------------- |
+| `SPF` (TXT)   | which servers may send for this domain                         |
+| `DKIM` (TXT)  | is this message authentic and unaltered                        |
+| `DMARC` (TXT) | what to do when the first two disagree — `p=none` to start out |
+
+Two traps, both silent:
+
+- **SPF is a `TXT` record, and there must be exactly one.** Registrar interfaces
+  still offer a dedicated `SPF` record type (RRtype 99), abandoned by RFC 7208 in
+  2014 and queried by nobody: the value reads correctly in the zone and reaches
+  no one. Two SPF records is worse still — a `permerror`, which counts as no SPF
+  at all. A domain that already sends mail takes one merged record, not a second.
+- **An MX pointing at a "blackhole" is a default offered, not a requirement.** It
+  exists for domains with no mail service of their own, and it discards every
+  incoming message. A domain that already has an MX keeps it, and domain
+  verification passes just the same.
 
 ### Checking rendering before writing to anyone
 
