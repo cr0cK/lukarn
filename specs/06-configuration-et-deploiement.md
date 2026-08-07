@@ -249,10 +249,17 @@ activé sans son `dpkg-reconfigure` interactif, Docker, `rclone`, Tailscale, et
 l'application ne publie aucun port sur l'hôte, il n'y a donc rien d'autre à
 ouvrir.
 
-**Le fichier ne suppose aucun hébergeur** (D63). Cloud-init est un standard que
-la quasi-totalité des fournisseurs accepte, sous ce nom ou sous celui de « user
-data » ; le `README.md` illustre l'opération avec trois CLI différents, dans un
-bloc replié et à égalité, précisément pour qu'aucun ne se lise comme le chemin
+**Le fichier ne suppose aucun hébergeur** (D63). Cloud-init est un standard _de
+facto_ — une implémentation open source unique, que la quasi-totalité des images
+cloud Linux embarquent et que tous les grands fournisseurs alimentent sous le nom
+de « user data ». Pas une norme publiée : il n'y a ni RFC ni comité, et les
+exceptions existent (Fedora CoreOS et Flatcar utilisent **Ignition**, Windows
+**cloudbase-init**, et une image minimale peut ne pas embarquer le paquet). Le
+`README.md` les nomme et renvoie à la procédure manuelle, plutôt que de laisser
+quelqu'un chercher pourquoi rien ne se passe.
+
+Le `README.md` illustre l'opération avec trois CLI différents, dans un bloc
+replié et à égalité, précisément pour qu'aucun ne se lise comme le chemin
 recommandé. Le compte s'appelle `deploy` et non du prénom de quelqu'un : c'est
 un rôle, et un dépôt public ne crée pas un compte système au nom de son auteur.
 

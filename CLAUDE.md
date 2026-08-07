@@ -108,10 +108,21 @@ le dépôt distant.
 Ce dépôt part en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
 l'équipe qui l'a écrit.
 
-**Commits et pull requests : en anglais**, titre compris. C'est la seule
-exception à la règle « français partout » ci-dessus — le code, les tests,
-l'interface et les specs restent en français ; l'historique git et les PR, qui
-sont la porte d'entrée d'un contributeur, sont en anglais.
+**Ce qui se lit depuis GitHub est en anglais** — `README.md`, commits et pull
+requests, titre compris. C'est la seule exception à la règle « français
+partout » ci-dessus, et la ligne de partage est l'audience :
+
+| En anglais                   | En français                                     |
+| ---------------------------- | ----------------------------------------------- |
+| `README.md`                  | `specs/` — conception, pour qui reprend le code |
+| Commits, PR (titre et corps) | `CLAUDE.md` — instructions internes             |
+|                              | Code, commentaires, tests, interface, journaux  |
+
+Le `README.md` s'adresse à qui installe, souvent sans parler français ; les
+`specs/` s'adressent au développeur qui reprend le projet, et restent cohérentes
+avec le code et les tests. Un exemple qui apparaît des deux côtés peut donc
+diverger — le README dit `photos.example.com`, les specs `photos.exemple.fr` :
+c'est sans conséquence, chacun est idiomatique dans sa langue.
 
 > **Les PR #1 à #11 ont été retitrées en anglais le 2026-08-07, mais les commits
 > correspondants restent en français dans `main`.** La liste des PR et

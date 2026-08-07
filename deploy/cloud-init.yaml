@@ -1,10 +1,12 @@
 #cloud-config
 # Amorçage d'un VPS Debian 12+ / Ubuntu LTS pour la visionneuse.
 #
-# Ce fichier est du cloud-init standard : il se passe en « user data » à la
-# création de la machine, par n'importe quel hébergeur qui l'accepte — la
-# quasi-totalité le fait, sous ce nom ou sous celui de « cloud-config ». Le
-# README donne la commande exacte pour quelques-uns ; aucun n'est requis.
+# Ce fichier est du cloud-init : il se passe en « user data » à la création de la
+# machine, chez n'importe quel hébergeur qui l'accepte — la quasi-totalité le
+# fait, sous ce nom ou sous celui de « cloud-config ». C'est un standard *de
+# facto*, pas une norme publiée : Fedora CoreOS et Flatcar utilisent Ignition,
+# Windows cloudbase-init, et une image minimale peut ne pas embarquer le paquet.
+# Dans ces cas-là, le README décrit la même mise en place à la main.
 #
 # À la fin de ce fichier, la machine a : un compte `deploy` sudo par clé, les
 # mises à jour de sécurité automatiques, Docker, Tailscale installé mais **non
