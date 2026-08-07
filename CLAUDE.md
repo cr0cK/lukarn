@@ -108,10 +108,18 @@ le dépôt distant.
 Ce dépôt part en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
 l'équipe qui l'a écrit.
 
-**Commits et pull requests : en anglais.** C'est la seule exception à la règle
-« français partout » ci-dessus — le code, les tests, l'interface et les specs
-restent en français ; l'historique git et les PR, qui sont la porte d'entrée
-d'un contributeur, sont en anglais.
+**Commits et pull requests : en anglais**, titre compris. C'est la seule
+exception à la règle « français partout » ci-dessus — le code, les tests,
+l'interface et les specs restent en français ; l'historique git et les PR, qui
+sont la porte d'entrée d'un contributeur, sont en anglais.
+
+> **Les PR #1 à #11 ont été retitrées en anglais le 2026-08-07, mais les commits
+> correspondants restent en français dans `main`.** La liste des PR et
+> `git log` divergent donc sur ces onze entrées, et c'est **voulu** : les
+> réaligner supposerait de réécrire l'historique de la branche principale, ce
+> qui casse tous les clones existants pour un gain cosmétique. Ne pas « corriger »
+> cette divergence. Elle s'éteint d'elle-même : tout ce qui est écrit à partir
+> de maintenant est en anglais des deux côtés.
 
 **Une PR dit ce qu'elle apporte ou corrige, pas ce que son auteur a vécu.**
 Concrètement :
