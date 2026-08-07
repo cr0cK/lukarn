@@ -65,7 +65,7 @@ Trois documentations, trois lecteurs, aucune duplication entre elles :
 
 Le `README.md` de la racine reste **court** : ce qu'est l'application, ce qu'elle
 fait, comment la lancer en local, et trois liens. Toute procédure serveur va dans
-`deploy/README.md`, à côté des scripts qu'elle décrit (D56).
+`deploy/README.md`, à côté des scripts qu'elle décrit (D64).
 
 ## Commandes
 

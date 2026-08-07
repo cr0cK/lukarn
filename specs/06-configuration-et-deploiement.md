@@ -411,7 +411,7 @@ Les tests serveur tournent avec le runner natif de Node (`node --import tsx
 Deux contrôles portent sur la documentation, et aucun ne juge la prose :
 `tools/check-specs.mjs` compare ce que le code expose à ce que les specs
 mentionnent ; `tools/check-links.mjs` résout les liens relatifs et les ancres
-des trois documents qui se renvoient l'un à l'autre (D56). Les deux tournent
+des trois documents qui se renvoient l'un à l'autre (D64). Les deux tournent
 aussi sur `pre-push`. Les liens externes ne sont pas suivis : cela demanderait
 le réseau, et un contrôle qui échoue parce qu'un site tiers est lent finit
 désactivé.

@@ -3,7 +3,7 @@
  * Vérifie que les liens internes de la documentation mènent quelque part.
  *
  * La documentation est répartie sur trois fichiers qui se renvoient l'un à
- * l'autre (D56) : `README.md`, `deploy/README.md` et `specs/`. Rien ne signale
+ * l'autre (D64) : `README.md`, `deploy/README.md` et `specs/`. Rien ne signale
  * un renvoi devenu faux — déplacer une section ou renommer un fichier casse un
  * lien en silence, et personne ne s'en aperçoit avant de cliquer. Ce contrôle
  * résout chaque lien relatif et chaque ancre, et échoue sur le premier qui ne

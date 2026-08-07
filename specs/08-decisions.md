@@ -1902,10 +1902,10 @@ machines créées ensuite, et il n'y a rien à migrer — les chemins de
 répertoire personnel. Seule la ligne de `crontab` du `README.md`, qui cite un
 chemin absolu, est à lire avec le nom de compte réel de la machine.
 
-## D56 — La procédure de déploiement vit à côté des scripts, pas dans le README racine
+## D64 — La procédure de déploiement vit à côté des scripts, pas dans le README racine
 
 **Contexte.** À force d'y ajouter ce qui manquait — durcissement (D47), scripts
-et cloud-init (D52), neutralité vis-à-vis de l'hébergeur (D55) —, le `README.md`
+et cloud-init (D52), neutralité vis-à-vis de l'hébergeur (D63) —, le `README.md`
 de la racine avait atteint sept cents lignes, dont plus des trois quarts ne
 concernaient que l'installation d'un serveur. Quelqu'un qui découvre le projet
 devait traverser une procédure Let's Encrypt, une console Google Cloud et une
