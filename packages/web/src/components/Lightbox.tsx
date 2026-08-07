@@ -1,9 +1,10 @@
-import type { MediaItem } from '@gdv/shared';
+import type { AlbumDay, MediaItem } from '@gdv/shared';
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { useCommentCounts, useMediaDetail } from '../api/hooks';
-import { formatDateTime } from '../lib/format';
+import { dayKey, dayLabel } from '../lib/justify';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
+import { placeLabelOf } from '../lib/useGridLayout';
 import { useSwipe } from '../lib/useSwipe';
 import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
@@ -20,6 +21,14 @@ interface LightboxProps {
   albumId: string;
   items: MediaItem[];
   index: number;
+  /**
+   * Total de l'album, et non `items.length` : la liste grandit page après page,
+   * si bien qu'une progression calculée dessus reculait à chaque chargement —
+   * « 40 / 50 » redevenait « 40 / 100 » sous les yeux de qui feuillette.
+   */
+  total: number;
+  /** Journées annotées, pour porter le contexte du jour jusque dans l'image. */
+  days: Map<string, AlbumDay>;
   onIndexChange: (index: number) => void;
   onClose: () => void;
   /** Appelé près de la fin de la liste, pour charger la page suivante. */
@@ -32,11 +41,19 @@ interface LightboxProps {
  * Se pilote entièrement au clavier ; la souris n'est qu'un raccourci. Les
  * médias voisins sont préchargés pour que ←/→ enchaîne sans écran noir, et le
  * défilement de la page est gelé le temps de l'ouverture.
+ *
+ * L'en-tête empile trois informations de portée décroissante : le nom du
+ * fichier, la journée et son lieu, puis la note de cette journée. Ouvrir une
+ * photo faisait jusque-là perdre ce que son en-tête de section disait, alors
+ * que c'est lui qui donne son sens à l'image. L'horodatage exact, lui, reste
+ * dans le panneau `i` où il vivait déjà.
  */
 export function Lightbox({
   albumId,
   items,
   index,
+  total,
+  days,
   onIndexChange,
   onClose,
   onNeedMore,
@@ -299,6 +316,15 @@ export function Lightbox({
 
   if (!item) return null;
 
+  // Les mêmes fonctions que la grille, délibérément : une visionneuse qui
+  // calculerait son libellé de jour de son côté finirait par annoncer une autre
+  // date que l'en-tête de section d'où l'on vient de cliquer.
+  const day = days.get(dayKey(item.takenAt));
+  const dayPlace = placeLabelOf(day);
+  // `total` peut être en retard sur la liste — un album synchronisé pendant
+  // qu'on le feuillette : le compteur ne doit jamais afficher « 60 / 50 ».
+  const count = Math.max(total, items.length);
+
   return (
     <div
       ref={containerRef}
@@ -314,68 +340,125 @@ export function Lightbox({
           `min-w-0` est indispensable — sans lui, le contenu impose sa largeur
           et c'est le panneau qui déborde de l'écran. */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        <header className="absolute inset-x-0 top-0 z-10 flex items-center gap-3 bg-gradient-to-b from-black/70 to-transparent px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-2 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
-            aria-label="Fermer (Échap)"
-            title="Fermer (Échap)"
+        {/* Le dégradé descend plus bas qu'avant : il porte désormais deux lignes
+            de texte et la barre de progression, et un voile trop court laissait
+            la note illisible sur une photo claire. */}
+        <header className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8">
+          {/* Collée au bord haut, comme une barre de chargement : elle reste
+              lisible sans mordre sur la photo. Plus bas, elle traversait
+              l'image — un trait de couleur au milieu d'un cadrage. */}
+          <div
+            className="h-0.5 w-full bg-white/15"
+            role="progressbar"
+            aria-valuenow={index + 1}
+            aria-valuemin={1}
+            aria-valuemax={count}
+            aria-label="Progression dans l'album"
           >
-            <svg
-              viewBox="0 0 24 24"
-              className="size-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-ink-100">{item.name}</p>
-            <p className="text-xs text-ink-400">
-              {formatDateTime(item.takenAt)} · {index + 1} / {items.length}
-            </p>
+            <div
+              className="h-full bg-accent transition-[width] duration-200"
+              style={{ width: `${((index + 1) / count) * 100}%` }}
+            />
           </div>
 
-          <IconButton
-            label="Informations (i)"
-            active={panel === 'info'}
-            onClick={() => togglePanel('info')}
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 11v5M12 7.5v.5" />
-          </IconButton>
-
-          <IconButton
-            label={commentsLabel(commentTotal, unread)}
-            active={panel === 'comments'}
-            onClick={() => togglePanel('comments')}
-            badge={<CommentBadge total={commentTotal} unread={unread} />}
-          >
-            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-          </IconButton>
-
-          {!isVideo && (
-            <IconButton
-              label={zoomed ? 'Revenir à la taille écran (z)' : 'Zoomer (z)'}
-              active={zoomed}
-              onClick={() => setZoomed((value) => !value)}
+          {/* `items-start` : tout se cale sur la **première ligne** de texte.
+              Les retraits hauts ci-dessous sont calculés pour que le nom du
+              fichier, le compteur et le centre des icônes tombent sur la même
+              horizontale — 6 px sous `sm` (bouton de 32), 8 px au-delà (36). */}
+          <div className="flex items-start gap-1 px-2 py-2 sm:gap-2 sm:px-4 sm:py-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-full p-1.5 text-ink-200 transition-colors sm:p-2 hover:bg-white/10 hover:text-white"
+              aria-label="Fermer (Échap)"
+              title="Fermer (Échap)"
             >
-              <circle cx="11" cy="11" r="7" />
-              <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
-            </IconButton>
-          )}
+              <svg
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
 
-          <IconButton label="Télécharger l'original (d)" onClick={download}>
-            <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
-          </IconButton>
+            <div className="min-w-0 flex-1 pt-1.5 sm:pt-2">
+              <p className="truncate text-sm leading-5 font-semibold text-ink-100">{item.name}</p>
+              <p className="truncate text-xs leading-4 text-ink-300">
+                {dayLabel(dayKey(item.takenAt))}
+                {dayPlace && ` · ${dayPlace}`}
+              </p>
+              {day?.description && (
+                // Deux lignes clampées, comme dans la grille : la note est un
+                // repère, pas un récit, et elle est posée sur la photo.
+                //
+                // **Desktop seulement** (D70). Le seuil est `md`, celui où
+                // `SidePanel` cesse d'être un tiroir en surimpression pour se
+                // docker : c'est la largeur à partir de laquelle la mise en
+                // page n'est plus celle d'un téléphone.
+                //
+                // L'enveloppe porte le `hidden` plutôt que le paragraphe :
+                // `line-clamp-2` pose `display: -webkit-box`, et deux
+                // utilitaires de `display` sur le même élément se départagent
+                // par l'ordre de la feuille, pas par celui des classes.
+                <div className="hidden md:block">
+                  <p
+                    className="mt-0.5 line-clamp-2 max-w-prose text-xs leading-4 text-ink-400"
+                    title={day.description}
+                  >
+                    {day.description}
+                  </p>
+                </div>
+              )}
+            </div>
 
-          <IconButton label="Plein écran (f)" onClick={toggleFullscreen}>
-            <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
-          </IconButton>
+            {/* Même retrait que le bloc de texte : le compteur tombe sur la
+                ligne du nom de fichier, pas entre deux lignes. */}
+            <span className="shrink-0 pt-1.5 text-xs leading-5 text-ink-300 tabular-nums sm:pt-2">
+              {index + 1} / {count}
+            </span>
+
+            <div className="flex shrink-0 items-center">
+              <IconButton
+                label="Informations (i)"
+                active={panel === 'info'}
+                onClick={() => togglePanel('info')}
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v5M12 7.5v.5" />
+              </IconButton>
+
+              <IconButton
+                label={commentsLabel(commentTotal, unread)}
+                active={panel === 'comments'}
+                onClick={() => togglePanel('comments')}
+                badge={<CommentBadge total={commentTotal} unread={unread} />}
+              >
+                <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+              </IconButton>
+
+              {!isVideo && (
+                <IconButton
+                  label={zoomed ? 'Revenir à la taille écran (z)' : 'Zoomer (z)'}
+                  active={zoomed}
+                  onClick={() => setZoomed((value) => !value)}
+                >
+                  <circle cx="11" cy="11" r="7" />
+                  <path d={zoomed ? 'M8 11h6M20 20l-3.5-3.5' : 'M8 11h6M11 8v6M20 20l-3.5-3.5'} />
+                </IconButton>
+              )}
+
+              <IconButton label="Télécharger l'original (d)" onClick={download}>
+                <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+              </IconButton>
+
+              <IconButton label="Plein écran (f)" onClick={toggleFullscreen}>
+                <path d="M4 9V4h5M20 9V4h-5M20 15v5h-5M4 15v5h5" />
+              </IconButton>
+            </div>
+          </div>
         </header>
 
         <div
@@ -473,7 +556,9 @@ function IconButton({
       aria-label={label}
       title={label}
       aria-pressed={active}
-      className={`relative rounded-full p-2 transition-colors hover:bg-white/10 hover:text-white ${
+      // Padding resserré sur petit écran : cinq icônes plus la croix laissaient
+      // une quarantaine de pixels à la date, qui était donc toujours tronquée.
+      className={`relative rounded-full p-1.5 transition-colors sm:p-2 hover:bg-white/10 hover:text-white ${
         active ? 'bg-white/15 text-white' : 'text-ink-200'
       }`}
     >

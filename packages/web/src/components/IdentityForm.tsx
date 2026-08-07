@@ -56,7 +56,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
           maxLength={VERIFICATION_CODE_LENGTH}
           placeholder="123456"
           aria-label="Code de vérification"
-          className="w-full rounded border border-ink-700 bg-ink-850 px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
+          className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
         />
 
         {verify.isError && (
@@ -107,7 +107,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         maxLength={64}
         placeholder="Ton nom, tel qu’il s’affichera"
         aria-label="Nom affiché"
-        className="w-full rounded border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
+        className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
       <input
@@ -117,7 +117,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         autoComplete="email"
         placeholder="ton@adresse.fr"
         aria-label="Adresse email"
-        className="w-full rounded border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
+        className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
       {requestCode.isError && (

@@ -158,7 +158,61 @@ sans DOM, ce qui est l'invariant de `justify.test.ts`.
 
 Ces deux constantes sont un **contrat avec `SectionHeader`**, qui doit tenir
 dedans : d'où les hauteurs de ligne fixées explicitement (`leading-5`) et la
-note clampée à deux lignes.
+note clampée à deux lignes. C'est l'**interligne** qui tient le contrat, jamais
+la taille de police : remonter le lieu et la note de 13 à 14 px ne touche à
+aucune des deux constantes tant que `leading-5` reste.
+
+### Sections repliées
+
+`LayoutOptions.isCollapsed?: (key) => boolean` replie une section : elle garde
+son en-tête, ne place aucune ligne, et sa hauteur vaut exactement
+`headerHeight` — le retrait du dernier `gap`, qui n'a de sens qu'après une
+ligne, est sauté. Les sections suivantes remontent d'autant.
+
+Le repli passe par le calcul et non par un `display: none` au rendu, pour la
+même raison que les hauteurs d'en-tête : `totalHeight` gouverne la barre de
+défilement et la virtualisation. Masquer les vignettes après coup laisserait la
+page haute de tout ce qu'elle n'affiche plus (D68).
+
+`LayoutSection` porte donc deux champs de plus :
+
+- **`count`**, le nombre de médias de la section. Il n'est pas déductible de
+  `rows` — repliée, la section n'en a plus, et c'est justement là que son
+  en-tête doit annoncer ce qu'elle cache.
+- **`collapsed`**, pour que l'en-tête oriente son chevron.
+
+Les cellules d'une section repliée **n'apparaissent nulle part**, ni dans ses
+`rows` ni dans `layout.rows`. C'est l'invariant dont dépend tout ce qui parcourt
+la grille : la virtualisation n'a rien à monter, et `moveSelection` rien à
+viser. `justify.test.ts` le verrouille, avec la remontée des sections suivantes
+et la conservation de `count`.
+
+Le repli vaut pour les deux découpages, mois compris : le restreindre au jour
+aurait demandé une condition de plus pour rien, et les clés ne se confondent
+pas (`2026-07` contre `2026-07-14`). `useGridLayout(items, groupBy, days,
+collapsedKeys)` le reçoit sous forme d'ensemble de clés, tenu en mémoire par
+`AlbumPage` — ni URL ni `localStorage` (D68).
+
+**Une section repliée change aussi de hauteur de base**
+(`GRID_COLLAPSED_HEADER_HEIGHT`, 44 px contre 56). La hauteur d'en-tête se
+décompose en trois constantes, et c'est la dernière seule qui tombe au repli :
+
+| Constante                  | Valeur | Rôle                                             |
+| -------------------------- | ------ | ------------------------------------------------ |
+| `GRID_HEADER_PAD_TOP`      | 20     | Retrait au-dessus du titre. **Invariant.**       |
+| `GRID_HEADER_TITLE_HEIGHT` | 24     | La ligne du titre (`leading-6`, `h-6`).          |
+| `GRID_HEADER_PAD_BOTTOM`   | 12     | Respiration avant les vignettes. Nulle au repli. |
+
+**Le contenu de l'en-tête est aligné en haut de sa boîte, jamais en bas**, et
+c'est ce qui rend le repli utilisable : le titre se cale sur
+`section.y + GRID_HEADER_PAD_TOP` quel que soit l'état, et la variation de
+hauteur se consomme en bas, là où il n'y a plus rien. Aligné en bas — comme il
+l'était — raccourcir la boîte remontait le titre d'autant, et le libellé
+sautait de 20 px sous le curseur à chaque clic. Un bouton de repli qui déplace
+sa propre étiquette est inutilisable.
+
+Le lieu et la note gardent leur coût, eux, puisqu'ils restent affichés : c'est
+tout l'intérêt d'une journée repliée.
 
 ### Par mois ou par jour — `GroupBy`
 
@@ -280,28 +334,78 @@ de regroupement, jamais au défilement.
 
 ### En-têtes de section — `components/SectionHeader.tsx`
 
-Chaque section rend un `SectionHeader` : la date, le lieu si les photos le
-portent, la note si quelqu'un en a écrit une, et le crayon d'édition pour un
-administrateur en découpage par jour.
+Chaque section rend un `SectionHeader` : la date, le nombre d'éléments, le lieu
+si les photos le portent, la note si quelqu'un en a écrit une, et le crayon
+d'édition pour un administrateur en découpage par jour.
 
+- **Le titre est un bouton de repli**, `aria-expanded` à l'appui, précédé d'un
+  chevron qui pivote. Le `button` est **dans** le `h2` et non l'inverse : un
+  `h2` est du contenu de flux, qu'un `button` n'a pas le droit de contenir, et
+  c'est le motif d'accordéon attendu par les lecteurs d'écran.
+- **Le compte s'affiche dans les deux états.** C'est lui qui rend le découpage
+  lisible déplié, et lui qui dit ce qu'une section repliée contient. L'unité
+  (« éléments ») tombe sous `sm` faute de place ; le nombre reste, et le nom
+  accessible du bouton porte l'ensemble.
+
+- **Trois détails d'alignement, chacun réglant un défaut mesuré.** Le titre
+  (16 px) et le compte (12 px) sont alignés sur leur **ligne de base** : centrés
+  par leurs boîtes, leurs lettres ne tombaient pas au même niveau. Le compte
+  prend `leading-none`, parce qu'un interligne égal à celui du titre lui donne
+  une boîte aussi haute que l'alignement descend de deux pixels — elle pendait
+  sous une section repliée, dont la boîte vaut exactement
+  `PAD_TOP + TITLE_HEIGHT`. Enfin le lieu et la note prennent `pl-[22px]`, la
+  largeur du chevron et de sa gouttière, pour partir de la même abscisse que le
+  **texte** du titre ; sans quoi les trois lignes de l'en-tête s'alignaient sur
+  deux bords différents. Le chevron reste seul dans sa gouttière, comme la
+  flèche d'une arborescence.
 - **Le lieu affiché** est `place ?? autoPlaces.join(' · ')` — la saisie prime sur
   la déduction. Le calcul vit dans `placeLabelOf`, partagé avec le calcul de
-  hauteur : un lieu compté d'un côté et pas affiché de l'autre laisserait un
-  blanc, l'inverse ferait déborder l'en-tête sur les photos.
+  hauteur **et avec la visionneuse** : un lieu compté d'un côté et pas affiché
+  de l'autre laisserait un blanc, l'inverse ferait déborder l'en-tête sur les
+  photos.
 - **La note est clampée à deux lignes**, son texte entier restant dans `title`.
   Une hauteur libre rendrait le layout dépendant d'une mesure DOM (D49).
 - **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
   grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
   curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit
   exactement ce qu'on remplace.
-- **Le crayon n'apparaît qu'au survol de sa section**, et au focus clavier : un
-  crayon par journée, tous visibles à la fois, transformerait la grille en
-  formulaire.
+- **Le crayon ne s'efface que sous un pointeur fin** (`pointer-fine:opacity-0`).
+  Un crayon par journée, tous visibles à la fois, transformerait la grille en
+  formulaire — mais en Tailwind v4 `hover:` est déjà borné à
+  `@media (hover: hover)`, si bien qu'un `opacity-0` sec le rendait
+  **définitivement** hors d'atteinte au doigt : un administrateur sur téléphone
+  ne pouvait annoter aucune journée. Le masquage est donc réservé au seul
+  endroit où le survol peut le révéler, et le crayon reste visible sur tactile.
 
-La description de l'album, elle, s'affiche en tête de `<main>` en `max-w-prose`
-— elle était saisie depuis `/admin` sans être montrée nulle part. Sur
-`AlbumsPage`, elle est clampée à deux lignes sous le titre : la carte ne peut pas
-changer de hauteur selon l'album sans trouer la grille.
+  Le variant natif `pointer-fine:` plutôt qu'un `[@media(hover:hover)]:`
+  arbitraire, qui **n'était pas généré** : Tailwind n'extrayait pas le candidat,
+  la règle n'existait nulle part dans la feuille, et le correctif n'en était pas
+  un — il avait l'air juste dans le source et ne changeait rien à l'écran.
+
+### Description de l'album — `components/AlbumDescription.tsx`
+
+Elle s'affiche en tête de `<main>` en `max-w-prose`, et **s'y modifie** pour un
+administrateur. Elle ne se saisissait que depuis `/admin`, alors que la note
+d'une journée s'écrit d'un clic dans la grille juste en dessous : deux textes
+voisins, deux gestes. Le composant supprime cette asymétrie ; `/admin` reste le
+seul endroit où changer le titre, le dossier Drive ou le découpage.
+
+- **Le crayon est visible en permanence**, à l'inverse de celui de
+  `SectionHeader`. La règle qui l'y efface tient au nombre — un crayon par
+  journée, tous affichés, feraient de la grille un formulaire. Ici il n'y en a
+  qu'un pour tout l'album : le cacher ne gagnerait rien et le rendrait
+  introuvable. Sans description, c'est « + Décrire cet album » qui prend sa
+  place, faute de texte à survoler.
+- **L'éditeur s'ouvre en surimpression**, comme celui d'une journée, et pour une
+  raison de plus ici : le pousser dans le flux décalerait toute la grille vers
+  le bas, or `useGridLayout` ne remesure `offsetTop` que sur redimensionnement —
+  un simple glissement vertical lui échapperait.
+- **La longueur est bornée par `ALBUM_DESCRIPTION_MAX_LENGTH`**, exporté par
+  `@gdv/shared` et appliqué des deux côtés. Le serveur la bornait déjà, mais par
+  un littéral que le front aurait redéclaré de son côté.
+
+Sur `AlbumsPage`, la description est clampée à deux lignes sous le titre : la
+carte ne peut pas changer de hauteur selon l'album sans trouer la grille.
 
 `Thumb` choisit la variante par `pickThumbSize(displayWidth)` : la plus petite
 des tailles 320/640/1280 qui couvre la largeur d'affichage multipliée par le DPR
@@ -354,6 +458,15 @@ verticaux suivent les **lignes réelles** du layout, dont le nombre de vignettes
 varie, et visent la photo dont le centre horizontal est le plus proche. Un
 décalage d'index fixe ferait dériver le curseur vers la gauche à chaque ligne.
 
+Elle travaille **entièrement dans l'espace des cellules placées**, jamais dans
+celui des index de la liste d'origine — y compris `gauche`, `droite`, `Début` et
+`Fin`, qui valaient autrefois un simple `± 1`. Les deux espaces coïncidaient
+tant que la grille montrait tout ; une section repliée les sépare, et un
+`currentIndex + 1` enverrait la sélection sur une vignette absente du layout :
+plus rien à mettre en évidence, et `scrollSelectionIntoView` sans cible (D68).
+Une sélection introuvable — la journée qu'on vient de replier sous le curseur —
+repart de la première vignette encore visible.
+
 `scrollSelectionIntoView` ne défile que si la cellule sort du viewport, avec une
 marge de 24 px, et respecte `prefers-reduced-motion`.
 
@@ -363,6 +476,40 @@ inclure dans l'ordre de tabulation doublerait le parcours clavier.
 focus ou qu'un modificateur est enfoncé.
 
 ## Visionneuse — `components/Lightbox.tsx`
+
+- **L'en-tête empile trois informations de portée décroissante** : le nom du
+  fichier, puis la journée et son lieu, puis la note. Ouvrir une photo faisait
+  jusque-là perdre ce que son en-tête de section disait, alors que c'est lui qui
+  donne son sens à l'image. L'horodatage exact reste, lui, dans le panneau `i`,
+  où il vivait déjà.
+
+  Les libellés de journée viennent de `dayKey`, `dayLabel` et `placeLabelOf`,
+  **les mêmes fonctions que la grille**. Une visionneuse qui calculerait sa date
+  de son côté finirait par annoncer autre chose que l'en-tête d'où l'on vient de
+  cliquer. `AlbumPage` active donc `useAlbumDays` dès qu'une photo est ouverte,
+  et plus seulement en découpage par jour ; la `queryKey` étant la même, un
+  album déjà par jour ne relance aucune requête.
+
+  Tout se cale sur la **première ligne** : les retraits hauts du bloc de texte
+  et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
+  au centre des boutons d'icône, hauts de 32 puis 36 px.
+
+  **La note est la seule des trois à disparaître sous `md`** (D70) : elle prend
+  deux lignes sur la photo, la grille la montre à toutes les largeurs, et `md`
+  est le seuil où `SidePanel` se docke — la frontière déjà tracée entre la mise
+  en page d'un téléphone et le reste. Le nom du fichier, la journée et son lieu
+  restent, eux, à toutes les largeurs : c'est ce qu'on perd en ouvrant une photo
+  depuis la grille, et le masquer annulerait la raison d'avoir porté ce contexte
+  jusqu'ici. Conséquence à connaître : sur mobile la note n'est plus atteignable
+  que depuis la grille, `ExifPanel` ne la portant pas.
+
+- **La progression est une barre collée au bord haut**, sur toute la largeur et
+  épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
+  Plus bas, elle traversait la photo d'un trait de couleur. Le rapport chiffré
+  la double sur la première ligne, avant les icônes.
+
+  Elle est comptée sur `album.itemCount` et non sur la liste paginée, qui
+  grandit en cours de parcours (D69).
 
 - Gèle `document.body.style.overflow` à l'ouverture, sinon la molette ferait
   défiler la grille sous l'image.
@@ -587,12 +734,12 @@ Les comptes, les albums et les réglages s'administrent depuis `/admin` :
 
 L'administration se navigue par **rubriques, une par URL** (D66) :
 
-| Rubrique       | URL                   | Contenu                                                  |
-| -------------- | --------------------- | -------------------------------------------------------- |
-| Albums         | `/admin/albums`       | `AlbumsSection`                                          |
-| Comptes        | `/admin/comptes`      | `UsersSection`                                           |
-| Commentaires   | `/admin/commentaires` | `CommentsSection`                                        |
-| Serveur        | `/admin/serveur`      | `DriveSection`, `SettingsSection`, `MaintenanceSection`  |
+| Rubrique     | URL                   | Contenu                                                 |
+| ------------ | --------------------- | ------------------------------------------------------- |
+| Albums       | `/admin/albums`       | `AlbumsSection`                                         |
+| Comptes      | `/admin/comptes`      | `UsersSection`                                          |
+| Commentaires | `/admin/commentaires` | `CommentsSection`                                       |
+| Serveur      | `/admin/serveur`      | `DriveSection`, `SettingsSection`, `MaintenanceSection` |
 
 `ADMIN_TABS`, dans `AdminNav`, est la source unique : la navigation la rend, et
 `AdminPage` valide contre elle le paramètre `:tab`. Une rubrique inconnue
@@ -711,6 +858,16 @@ ses lignes ; le cadre appartient à `SidePanel`.
 
 L'état est un `PanelTab | null` — `null` valant « fermé ». `i` et `c` ouvrent
 l'onglet correspondant et le referment s'il est déjà affiché.
+
+**Le panneau est en `ink-850`, un cran au-dessus du fond.** La visionneuse est
+en `ink-950` ; en `ink-900`, le panneau ouvert ne se distinguait pas d'elle —
+seule sa bordure le trahissait, et on ne savait plus où l'on était. Trois
+conséquences dans ce qu'il contient, sans quoi le changement en aurait effacé
+une partie : les séparateurs d'`ExifPanel` et de `CommentsPanel` passent en
+`ink-800`, désormais **plus clairs** que leur fond ; et les champs de saisie de
+`CommentsPanel` et d'`IdentityForm` passent en `ink-900`, plus sombres que le
+panneau, pour continuer de se lire comme des creux. Un champ de la couleur
+exacte de son panneau n'est plus un champ.
 
 **Deux régimes de position selon la largeur.** À partir de `md`, le panneau est
 un élément du flux (`md:relative md:w-80 lg:w-96 md:shrink-0`) : la zone photo

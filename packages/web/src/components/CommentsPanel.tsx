@@ -58,7 +58,7 @@ export function CommentsPanel({
             Aucun commentaire. Sois le premier à en écrire un.
           </p>
         ) : (
-          <ul className="divide-y divide-ink-850">
+          <ul className="divide-y divide-ink-800">
             {threads.map((thread) => (
               <ThreadView
                 key={thread.root.id}
@@ -363,7 +363,7 @@ function EditForm({
         }}
         rows={2}
         maxLength={COMMENT_MAX_LENGTH}
-        className="w-full resize-none rounded border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-100 focus:border-accent focus:outline-none"
+        className="w-full resize-none rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 focus:border-accent focus:outline-none"
       />
 
       {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
@@ -451,7 +451,7 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
         <div
           role="group"
           aria-label="Emoji"
-          className="absolute right-0 bottom-full z-10 mb-2 grid w-64 grid-cols-8 gap-0.5 rounded border border-ink-700 bg-ink-850 p-2 shadow-lg"
+          className="absolute right-0 bottom-full z-10 mb-2 grid w-64 grid-cols-8 gap-0.5 rounded border border-ink-700 bg-ink-900 p-2 shadow-lg"
         >
           {PICKER_EMOJI.map((emoji) => (
             <button
@@ -549,7 +549,7 @@ function CommentForm({
         rows={parentId === null ? 2 : 1}
         maxLength={COMMENT_MAX_LENGTH}
         placeholder={placeholder}
-        className="w-full resize-none rounded border border-ink-700 bg-ink-850 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
+        className="w-full resize-none rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
       {create.isError && (

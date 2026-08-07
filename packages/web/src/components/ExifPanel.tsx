@@ -58,7 +58,7 @@ export function ExifPanel({ detail }: { detail: MediaDetail | undefined }): Reac
   if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">Chargement…</p>;
 
   return (
-    <dl className="divide-y divide-ink-850">
+    <dl className="divide-y divide-ink-800">
       {buildRows(detail).map((row) => (
         <div key={row.label} className="flex gap-4 px-5 py-3">
           <dt className="w-28 shrink-0 text-xs tracking-wide text-ink-400 uppercase">
