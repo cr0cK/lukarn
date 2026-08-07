@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Photos">
+  <!-- Fond ink-900, tuiles accent et accent-dim : les couleurs de l'interface,
+       et le motif que l'application rend vraiment à l'écran, une grille
+       justifiée de photos de largeurs inégales.
+
+       Deux aplats plutôt que des opacités : une opacité se compose avec ce qu'il
+       y a derrière, et Android pose l'icône masquable sur son propre fond.
+       Gouttières à 16 unités, soit 1,75 px sur un lanceur à 56 px : en dessous
+       elles se referment et les six tuiles deviennent une tache.
+       (XML interdit le double tiret en commentaire, d'où les noms sans tirets.) -->
+  <rect width="512" height="512" rx="112" fill="#0b0b0d" />
+  <g>
+    <rect x="106" y="128" width="118" height="120" rx="18" fill="#7aa2ff" />
+    <rect x="240" y="128" width="56" height="120" rx="18" fill="#4c6fd0" />
+    <rect x="312" y="128" width="94" height="120" rx="18" fill="#7aa2ff" />
+    <rect x="106" y="264" width="84" height="120" rx="18" fill="#4c6fd0" />
+    <rect x="206" y="264" width="110" height="120" rx="18" fill="#7aa2ff" />
+    <rect x="332" y="264" width="74" height="120" rx="18" fill="#4c6fd0" />
+  </g>
+</svg>

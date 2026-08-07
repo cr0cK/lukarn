@@ -2173,12 +2173,232 @@ perte entière.
 Écarté aussi un dépliement au toucher — un geste de plus sur l'appareil où les
 gestes sont les plus rares, pour un texte que la grille montre déjà.
 
-**Conséquences.** Sur mobile, la note n'est atteignable **que depuis la
-grille** : `ExifPanel` ne liste que l'EXIF et ne porte pas la note de journée.
-Si l'on veut que le panneau « Infos » serve de recours sur mobile, c'est un
-ajout à faire — il n'existe pas aujourd'hui.
+**Conséquences.** Sur mobile, la note n'était plus atteignable que depuis la
+grille : `ExifPanel` ne listait alors que l'EXIF. Le recours annoncé ici comme
+« un ajout à faire » a été fait dans la foulée — [D74](./08-decisions.md) lui
+donne ses lignes « Lieu » et « Ce jour-là », sans condition de largeur. Le choix
+ci-dessus est inchangé : l'en-tête reste réservé à `md` et au-delà, seul le
+constat de la conséquence a cessé d'être vrai.
 
 L'enveloppe du paragraphe porte le `hidden md:block`, et non le paragraphe
 lui-même : `line-clamp-2` pose `display: -webkit-box`, et deux utilitaires de
 `display` sur un même élément se départagent par l'ordre de la feuille de style,
 pas par celui des classes de l'attribut.
+---
+
+## D71 — Le service worker met en cache la coquille, jamais les photos
+
+**Contexte.** L'application se consulte dans un onglet : il faut retenir l'URL,
+la retaper, et la barre du navigateur mange une bande d'un écran de téléphone.
+On veut qu'un proche pose l'icône sur son écran d'accueil et ouvre les photos
+comme n'importe quelle autre application. Rendre installable oblige à déclarer
+un service worker — et un service worker, une fois là, invite à mettre les
+albums hors-ligne.
+
+**Choix.** Il met en cache l'HTML, le JS et le CSS, et **rien d'autre**.
+`/api/…`, les requêtes non-GET et les autres origines passent au réseau sans
+qu'il les intercepte. Les photos restent servies par le réseau, avec le cache
+HTTP privé que le serveur pose déjà sur les dérivés
+(`private, max-age=31536000, immutable`).
+
+**Écarté.** Mettre les albums hors-ligne. Trois raisons, dans cet ordre. Le
+cloisonnement d'abord : un cache applicatif n'est indexé par rien — ni par la
+session, ni par le cookie — là où le cache HTTP l'est par la valeur du cookie.
+Sur le téléphone d'un foyer où deux comptes se succèdent, le second rouvrirait
+une photo d'un album qu'il n'a jamais eu le droit de voir, sans qu'aucune
+requête n'atteigne `authorize()`. Le quota ensuite : un album de vacances pèse
+plus que ce qu'un navigateur mobile accorde à une origine. L'éviction enfin :
+quand le quota est atteint, le navigateur vide le cache **en entier**, coquille
+comprise — l'application deviendrait moins fiable hors-ligne à mesure qu'on lui
+demanderait d'en faire plus.
+
+Écarté aussi : Workbox. Trois règles tiennent en quatre-vingts lignes lisibles,
+là où un générateur ajouterait une dépendance de build, un fichier généré à ne
+pas relire, et une couche à comprendre pour le prochain qui reprend le code.
+Ce dépôt écrit déjà lui-même son dotenv et son throttle.
+
+Écarté enfin : `skipWaiting()`. Remplacer le service worker à chaud fait
+demander à un onglet ouvert des bundles que le déploiement vient de supprimer,
+en pleine session. La nouvelle version prend la main au lancement suivant, ce
+qui est très exactement le comportement qu'on attend d'une application posée sur
+un écran d'accueil.
+
+**Conséquences.** Hors-ligne, l'application s'ouvre et affiche sa coquille ;
+les albums, eux, ne chargent pas. C'est assumé : le repli utile n'est pas de
+consulter ses photos dans le métro, c'est que l'icône ne mène pas à une page
+d'erreur du navigateur quand le réseau vacille.
+
+Concrètement, ce qui s'affiche alors est **l'écran de connexion** : `RequireAuth`
+ne distingue pas un `useMe()` en échec réseau d'une session absente, et redirige
+vers `/login` dans les deux cas. Ce n'est pas satisfaisant, mais c'est le
+comportement existant et il ne dépend pas du service worker — le corriger
+demanderait de séparer « pas connecté » de « serveur injoignable » dans toute
+l'application, ce qui n'est pas le sujet ici.
+
+Le cache d'assets réclame une purge à l'activation, sans quoi il grossit d'un
+build à chaque déploiement, indéfiniment — les noms portent un hash, rien
+n'écrase jamais rien.
+
+**Le piège iOS**, qui n'a rien à voir avec le cache et qu'on découvrira
+autrement à l'usage : une application posée sur l'écran d'accueil a son
+**propre** stockage de cookies, séparé de celui de Safari. Le premier
+lancement redemande donc une connexion, même si l'on venait de se connecter
+dans le navigateur. Une fois, pour l'année que dure la session — mais il faut
+le savoir pour ne pas le prendre pour une régression.
+
+---
+
+## D72 — Le nom de l'instance vit dans le `.env`, et le serveur le pose dans la coquille
+
+**Contexte.** Une fois installée, l'application s'appelait « Photos » sous
+l'icône, quelle que soit l'instance. C'est le nom qui compte le plus dans tout
+le projet : il est le seul que voie quelqu'un qui ne l'a pas installée
+lui-même, et deux galeries posées sur le même téléphone porteraient le même.
+Le nom apparaît à quatre endroits — le `<title>`, `apple-mobile-web-app-title`,
+`application-name`, et `name`/`short_name` du manifeste.
+
+**Choix.** `APP_NAME`, avec `Photos` pour défaut. `index.html` et
+`manifest.webmanifest` gardent ce défaut en dur, et le serveur y substitue la
+valeur configurée **au démarrage**, une fois, en mémoire (`shell.ts`). Les deux
+fichiers deviennent des routes exactes, prioritaires sur `@fastify/static`. Le
+front relit le nom dans la balise `application-name` du DOM.
+
+**Écarté.** Une constante de build (`import.meta.env`) : une seule image sert
+toutes les installations, et reconstruire un conteneur pour renommer sa galerie
+est hors de proportion. Écarté aussi : un réglage en base, à côté des comptes et
+des albums — il faudrait qu'il vaille avant qu'aucun compte n'existe, puisque la
+première page servie est justement l'écran de connexion, et `ConfigRepo` ne
+répond pas à cette question-là. Écarté enfin : exposer le nom dans une réponse
+d'API que le front lirait au démarrage. Cela ajoutait un champ au contrat, un
+état de chargement, et surtout un instant où la page s'affiche sans son nom —
+alors que le serveur peut simplement l'avoir déjà écrit dans l'HTML qu'il rend.
+
+Écarté également : remplacer la chaîne « Photos » partout dans le fichier. La
+substitution vise trois emplacements nommés, parce qu'un remplacement global
+renommerait aussi un commentaire ou un futur texte d'interface qui contiendrait
+le mot.
+
+**Conséquences.** Substituer dans du HTML par expression régulière n'est
+défendable que parce que le gabarit appartient au dépôt : ce n'est pas de
+l'analyse de HTML, c'est un gabarit dont on connaît les trous. Le risque réel
+est silencieux — ajouter un attribut à la balise `<title>`, intervertir `name`
+et `content` dans une `<meta>`, et le motif ne correspond plus sans que rien ne
+casse : le serveur démarre, la page s'affiche, elle porte le mauvais nom.
+`test/shell.test.ts` fait donc tourner la substitution sur le **vrai**
+`index.html`, pas sur une chaîne d'exemple.
+
+Le nom est échappé avant d'entrer dans l'HTML. Il vient du `.env` de
+l'exploitant et non d'un visiteur, mais un `"` suffit à sortir d'un attribut, et
+personne ne relit son `.env` en se demandant s'il est du HTML valide.
+
+L'icône, elle, **n'est pas** configurable : ce serait un fichier à monter dans
+le conteneur, donc un volume de plus dans le compose et une procédure dans
+`deploy/README.md`, pour un besoin que personne n'a encore exprimé. Le jour où
+il se pose, `WEB_DIR` est déjà surchargeable.
+
+---
+
+## D73 — La barre supérieure tient sur une rangée, et déclare ses contrôles au lieu de les rendre
+
+**Contexte.** Sur un téléphone, la barre montait à **101 px** — deux rangées. La
+première alignait le retour, le titre, « Admin » et « Déconnexion », soit 169 px
+de boutons texte qui ramenaient le titre d'album à `D.` et le sous-titre à
+`120 éléments · févri…`. La seconde ne portait que les deux bascules de vue,
+réduites à des icônes muettes occupant 80 px sur 393. Sur une application dont
+le principe est que le chrome ne doit pas concurrencer les photos, 12 % de la
+hauteur d'écran.
+
+**Choix.** Une rangée à toutes les largeurs (65 px). Sous `sm`, tout ce qui n'est
+ni le retour ni le titre passe dans un menu où chaque entrée porte enfin un
+libellé — « Regrouper par jour » plutôt qu'une icône de calendrier. De `sm` à
+`lg`, les contrôles reviennent dans la barre en icônes seules. À partir de `lg`,
+les libellés reparaissent.
+
+Pour que le même contrôle sache se rendre des deux façons, `TopBar` cesse de
+prendre des `children` et prend un tableau d'`actions` — `label`, `action`,
+`icon`, `onSelect`.
+
+**Écarté.** Ne mettre que les actions de compte dans le menu et laisser les
+bascules de vue en icônes dans la barre : cela gardait un tap pour inverser le
+tri, mais laissait les deux icônes sans nom au toucher, où aucune infobulle ne
+s'affiche — c'était l'autre moitié du problème.
+
+Écarté aussi : le kebab à toutes les largeurs. Il aurait donné un seul
+comportement à écrire et à documenter, mais un écran large n'a aucune raison de
+cacher cinq contrôles derrière un tap.
+
+Écarté enfin : faire apparaître les libellés dès `md`. Mesuré à 768 px, les cinq
+libellés ramenaient le titre de 456 à 144 px et tronquaient le sous-titre — le
+défaut même qu'on corrigeait. `lg` est le premier seuil où les deux tiennent.
+
+**Conséquences.** Le libellé d'une entrée de menu est l'`action`, pas le `label` :
+une ligne de menu dit ce qu'elle fait, un bouton de barre dit où l'on en est.
+Les deux textes existaient déjà, ils ne servaient simplement pas au même endroit.
+
+`InstallButton` disparaît. Son état passe dans `useInstallPrompt`, parce que la
+proposition s'affiche désormais à deux endroits selon la largeur et qu'un état
+dupliqué aurait divergé — le bouton disparaissant après `appinstalled`, la ligne
+de menu non. Le mode d'emploi iOS devient `InstallInstructions`.
+
+**Installer se place en dernier, après « Déconnexion »**, contre l'habitude qui
+met la déconnexion en fin de menu. La raison : c'est la seule entrée qui
+apparaît et disparaît toute seule, selon le navigateur et selon qu'on a déjà
+installé. Ailleurs, elle décalerait les contrôles permanents d'une visite à
+l'autre.
+
+---
+
+## D74 — La visionneuse range ses actions, et rend à la photo la note de sa journée
+
+**Contexte.** Deux défauts au même endroit, sur téléphone. Les six actions de
+l'en-tête ne laissaient que 121 px au titre, si bien que la date restait
+tronquée même après avoir resserré les icônes. Et surtout, **ouvrir une photo
+faisait disparaître ce qui la décrit** : la grille affiche la note et le lieu de
+la journée en tête de section, la visionneuse ne les recevait pas du tout.
+
+Cette vue est celle qu'on utilisera le plus — on regarde des photos sur un
+téléphone.
+
+**Choix.** Sous `sm`, Informations, Zoomer, Télécharger et Plein écran passent
+dans un menu kebab. Le bloc titre passe à 235 px et la date s'affiche en entier.
+Le panneau Infos s'ouvre désormais sur deux lignes, « Lieu » et « Ce jour-là »,
+avant l'EXIF.
+
+**`Commentaires` est la seule action à rester en ligne**, quelle que soit la
+largeur : son icône porte la pastille des non-lus, et c'est le seul signe qu'une
+photo a été commentée. Rangée dans un menu, elle ne signalerait plus rien — un
+indicateur qu'il faut ouvrir un menu pour voir n'est pas un indicateur.
+
+**Écarté.** Mettre les cinq actions dans le menu : le titre y gagnait 38 px de
+plus, au prix de cette pastille. Écarté aussi : garder Informations en ligne à
+côté de Commentaires — le titre retombait à 197 px, et la date repassait tout
+juste, sans marge pour un nom de fichier long.
+
+Écarté surtout : **une vraie légende par photo.** C'est ce que la demande
+appelait, mais elle n'existe pas dans le modèle — il faudrait une colonne, une
+migration, un écran d'administration, une route et un contrat partagé. La note
+de journée existe déjà, elle est saisie depuis l'album, et elle répond au même
+besoin dans la quasi-totalité des cas : ce qui décrit une photo de vacances,
+c'est le jour et le lieu. Le chantier de la légende par photo reste ouvert, il
+n'est simplement pas dans cette PR.
+
+Écarté enfin : afficher la note en surimpression sous la photo. Toujours
+visible, sans tap — mais une bande de plus par-dessus une image déjà petite sur
+un téléphone, sur une application dont le principe est que le chrome ne doit pas
+concurrencer les photos.
+
+**Conséquences.** `useAlbumDays` est appelé quel que soit le regroupement, et
+non plus seulement en mode « par jour » : une requête par album, dont la réponse
+ne porte que les journées ayant quelque chose à montrer. Sans cela, la note
+n'apparaîtrait que dans les albums réglés par jour.
+
+Sur grand écran, `Commentaires` passe **devant** `Informations` au lieu de la
+suivre. C'est le prix de la position fixe, et le bon compromis : la seule action
+à ne jamais bouger est celle qu'il faut pouvoir repérer.
+
+Le menu kebab est extrait dans `components/ActionMenu.tsx`, partagé avec la
+`TopBar` ([D73](./08-decisions.md)). Ce qui compte dans ce composant n'est pas
+son dessin mais ses trois règles de fermeture — clic dehors, `Échap` avec
+restitution du focus, fermeture avant l'action — et elles se seraient réécrites
+de travers la deuxième fois. Son écoute de `Échap` est en capture et arrête la
+propagation, sans quoi un seul appui fermerait le menu **et** la photo.

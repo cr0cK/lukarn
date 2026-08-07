@@ -51,6 +51,7 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                               |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                      | `specs/02-architecture.md`, et `08` si un compromis change                     |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, composants            | `specs/07-frontend.md`                                                         |
+| `packages/server/src/shell.ts` (nom d'instance, coquille, manifeste)         | `specs/05-api.md`, `specs/07-frontend.md`                                      |
 | `packages/web/src/styles.css` (tokens `@theme`)                              | `specs/07-frontend.md`                                                         |
 | Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/08-decisions.md` — **nouvelle entrée**, on ne réécrit pas les anciennes |
 | Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                              |
@@ -172,6 +173,10 @@ sont une autre affaire : ils restent tels quels.
 - **Le serveur inventorie le cache disque au démarrage** (`MediaCache.load()`).
   Un fichier déposé dans `CACHE_DIR` pendant que le serveur tourne est invisible
   jusqu'au redémarrage — c'est pour ça que `seed-demo` demande de redémarrer.
+- **`index.html` et le manifeste sont lus une fois au démarrage** (`shell.ts`,
+  qui y substitue `APP_NAME`). Rebuilder le front sous un serveur qui tourne
+  laisse donc servir l'ancien HTML, qui référence des bundles supprimés : page
+  blanche. Redémarre. Sans objet en production comme sous `pnpm dev`.
 - **`PUBLIC_URL` doit correspondre exactement à l'URI de redirection déclarée
   dans Google Cloud** (`PUBLIC_URL + /api/oauth/callback`). Un `/` final, `http`
   au lieu de `https`, un `www.` en trop : `redirect_uri_mismatch`. `PUBLIC_URL`

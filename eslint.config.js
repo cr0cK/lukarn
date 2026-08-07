@@ -47,4 +47,10 @@ export default tseslint.config(
     files: ['packages/web/test/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
+  {
+    // Le service worker : ni Node, ni fenêtre. `self`, `caches` et `clients`
+    // n'existent que dans ce contexte, et seraient autrement des erreurs.
+    files: ['packages/web/public/*.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
 );

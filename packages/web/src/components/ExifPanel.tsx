@@ -1,4 +1,4 @@
-import type { MediaDetail } from '@gdv/shared';
+import type { AlbumDay, MediaDetail } from '@gdv/shared';
 import type { ReactElement } from 'react';
 import {
   formatAperture,
@@ -18,11 +18,25 @@ interface Row {
   href?: string;
 }
 
-function buildRows(detail: MediaDetail): Row[] {
+function buildRows(detail: MediaDetail, day: AlbumDay | undefined): Row[] {
   const rows: Row[] = [];
   const push = (label: string, value: string | null | undefined, href?: string): void => {
     if (value) rows.push(href ? { label, value, href } : { label, value });
   };
+
+  // La journée d'abord : c'est le seul texte écrit par un humain sur cette
+  // photo, et il dit ce que ni le nom de fichier ni l'EXIF ne diront jamais.
+  //
+  // **Ces deux lignes sont sans condition de largeur, et c'est délibéré.**
+  // L'en-tête de la visionneuse ne montre le contexte du jour qu'à partir de
+  // `md` (D70) : sous ce seuil, elles sont le seul accès à la note depuis une
+  // photo ouverte. Les conditionner ferait disparaître l'information sur
+  // téléphone sans rien casser de visible.
+  //
+  // `place` prime sur `autoPlaces` — c'est une correction saisie à la main, et
+  // une correction que le géocodage écraserait ne servirait à rien (D51).
+  push('Lieu', day?.place ?? day?.autoPlaces.join(' · '));
+  push('Ce jour-là', day?.description);
 
   push(detail.takenAtFromExif ? 'Prise de vue' : 'Modifié le', formatDateTime(detail.takenAt));
   push('Dimensions', detail.width && detail.height ? `${detail.width} × ${detail.height}` : null);
@@ -54,12 +68,18 @@ function buildRows(detail: MediaDetail): Row[] {
  * `SidePanel`, qui les partage avec les commentaires. Les deux onglets se
  * disputaient sinon la même largeur avec chacun son cadre.
  */
-export function ExifPanel({ detail }: { detail: MediaDetail | undefined }): ReactElement {
+export function ExifPanel({
+  detail,
+  day,
+}: {
+  detail: MediaDetail | undefined;
+  day: AlbumDay | undefined;
+}): ReactElement {
   if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">Chargement…</p>;
 
   return (
     <dl className="divide-y divide-ink-800">
-      {buildRows(detail).map((row) => (
+      {buildRows(detail, day).map((row) => (
         <div key={row.label} className="flex gap-4 px-5 py-3">
           <dt className="w-28 shrink-0 text-xs tracking-wide text-ink-400 uppercase">
             {row.label}

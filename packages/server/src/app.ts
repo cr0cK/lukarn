@@ -1,8 +1,8 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
-import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply } from 'fastify';
 import { AppContext } from './context.js';
 import type { Env } from './env.js';
 import authPlugin from './plugins/auth.js';
@@ -14,6 +14,7 @@ import { createCommentRoutes } from './routes/comments.js';
 import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
 import { createSubscriptionRoutes } from './routes/subscriptions.js';
+import { renderManifest, renderShell } from './shell.js';
 
 export interface BuiltApp {
   server: FastifyInstance;
@@ -70,7 +71,7 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
     { prefix: '/api' },
   );
 
-  await registerFrontend(server, env.webDir);
+  await registerFrontend(server, env.webDir, env.appName);
 
   server.setErrorHandler(async (error: FastifyError, request, reply) => {
     const status = error.statusCode ?? 500;
@@ -86,7 +87,11 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
   return { server, context };
 }
 
-async function registerFrontend(server: FastifyInstance, webDir: string): Promise<void> {
+async function registerFrontend(
+  server: FastifyInstance,
+  webDir: string,
+  appName: string,
+): Promise<void> {
   const hasBuild = existsSync(join(webDir, 'index.html'));
 
   if (!hasBuild) {
@@ -127,10 +132,39 @@ async function registerFrontend(server: FastifyInstance, webDir: string): Promis
     },
   });
 
-  // La route générique de @fastify/static fait correspondre `/` au répertoire
-  // racine et refuse de le servir (403). Une route exacte, prioritaire sur la
-  // générique, rend l'application.
-  server.get('/', async (_request, reply) => reply.sendFile('index.html'));
+  // La coquille et le manifeste portent le nom de l'instance, substitué une
+  // fois au démarrage : ces deux fichiers ne changent pas sous les pieds du
+  // serveur, et les rendre depuis la mémoire évite une lecture disque par
+  // navigation. Un redémarrage suffit à changer APP_NAME, comme pour le reste
+  // du `.env`.
+  const shell = renderShell(readFileSync(join(webDir, 'index.html'), 'utf8'), appName);
+
+  const sendShell = (reply: FastifyReply): FastifyReply =>
+    reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(shell);
+
+  // Cette route exacte passe avant la route générique de @fastify/static, qui
+  // servirait sinon le fichier brut — avec son nom par défaut. Elle est de
+  // toute façon indispensable : la générique fait correspondre `/` au
+  // répertoire racine et refuse de le servir (403).
+  server.get('/', async (_request, reply) => sendShell(reply));
+
+  const manifestPath = join(webDir, 'manifest.webmanifest');
+  if (existsSync(manifestPath)) {
+    const manifest = renderManifest(readFileSync(manifestPath, 'utf8'), appName);
+    server.get('/manifest.webmanifest', async (_request, reply) =>
+      reply
+        .type('application/manifest+json; charset=utf-8')
+        .header('Cache-Control', 'no-cache')
+        .send(manifest),
+    );
+  } else {
+    // Sans manifeste l'application reste entièrement utilisable, elle ne
+    // s'installe simplement plus : un avertissement, pas un refus de démarrer.
+    // C'est le même arbitrage que pour un front absent, quelques lignes plus haut.
+    server.log.warn(
+      `manifest.webmanifest absent de ${webDir} — l'application ne pourra pas être installée.`,
+    );
+  }
 
   server.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) {
@@ -145,6 +179,6 @@ async function registerFrontend(server: FastifyInstance, webDir: string): Promis
     }
     // Le routage vit dans le front : toute autre URL lui rend index.html, sans
     // quoi un rechargement sur /album/vacances tomberait en 404.
-    return reply.sendFile('index.html');
+    return sendShell(reply);
   });
 }

@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import { registerServiceWorker } from './lib/registerServiceWorker';
 import './styles.css';
 
 const queryClient = new QueryClient({
@@ -16,6 +17,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+registerServiceWorker();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root introuvable');

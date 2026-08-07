@@ -6,6 +6,23 @@
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#0b0b0d" />
     <meta name="robots" content="noindex, nofollow" />
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+    <!-- iOS ignore le manifeste pour l'icône d'accueil : il lui faut ce lien. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Le nom ci-dessous, comme celui du `<title>`, est un défaut et non une
+         valeur en dur : le serveur y substitue APP_NAME au démarrage
+         (`shell.ts`). Écrit tel quel, il reste juste en développement, où Vite
+         sert ce fichier sans passer par le serveur. -->
+    <meta name="application-name" content="Photos" />
+    <meta name="apple-mobile-web-app-title" content="Photos" />
+    <!-- `black`, et surtout pas `black-translucent` : ce dernier fait passer le
+         contenu sous l'horloge, et l'en-tête de la visionneuse — posé en
+         `absolute` en haut de l'écran — s'y retrouverait. -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+
     <title>Photos</title>
   </head>
   <body>
