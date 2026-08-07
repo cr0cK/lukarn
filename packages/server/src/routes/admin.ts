@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import {
   ALBUM_DAY_DESCRIPTION_MAX_LENGTH,
   ALBUM_DAY_PLACE_MAX_LENGTH,
+  ALBUM_DESCRIPTION_MAX_LENGTH,
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
   DEFAULT_GROUP_BY,
@@ -89,7 +90,7 @@ const groupBy = z.enum(['month', 'day']);
 const createAlbumSchema = z.object({
   id: albumId,
   title: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
+  description: z.string().max(ALBUM_DESCRIPTION_MAX_LENGTH).optional(),
   folderId: z.string().min(1).max(256),
   recursive: z.boolean().default(true),
   groupBy: groupBy.default(DEFAULT_GROUP_BY),
@@ -97,7 +98,7 @@ const createAlbumSchema = z.object({
 
 const updateAlbumSchema = z.object({
   title: z.string().min(1).max(200).optional(),
-  description: z.string().max(2000).nullable().optional(),
+  description: z.string().max(ALBUM_DESCRIPTION_MAX_LENGTH).nullable().optional(),
   folderId: z.string().min(1).max(256).optional(),
   recursive: z.boolean().optional(),
   groupBy: groupBy.optional(),

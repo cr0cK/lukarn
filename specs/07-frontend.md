@@ -382,10 +382,30 @@ d'édition pour un administrateur en découpage par jour.
   la règle n'existait nulle part dans la feuille, et le correctif n'en était pas
   un — il avait l'air juste dans le source et ne changeait rien à l'écran.
 
-La description de l'album, elle, s'affiche en tête de `<main>` en `max-w-prose`
-— elle était saisie depuis `/admin` sans être montrée nulle part. Sur
-`AlbumsPage`, elle est clampée à deux lignes sous le titre : la carte ne peut pas
-changer de hauteur selon l'album sans trouer la grille.
+### Description de l'album — `components/AlbumDescription.tsx`
+
+Elle s'affiche en tête de `<main>` en `max-w-prose`, et **s'y modifie** pour un
+administrateur. Elle ne se saisissait que depuis `/admin`, alors que la note
+d'une journée s'écrit d'un clic dans la grille juste en dessous : deux textes
+voisins, deux gestes. Le composant supprime cette asymétrie ; `/admin` reste le
+seul endroit où changer le titre, le dossier Drive ou le découpage.
+
+- **Le crayon est visible en permanence**, à l'inverse de celui de
+  `SectionHeader`. La règle qui l'y efface tient au nombre — un crayon par
+  journée, tous affichés, feraient de la grille un formulaire. Ici il n'y en a
+  qu'un pour tout l'album : le cacher ne gagnerait rien et le rendrait
+  introuvable. Sans description, c'est « + Décrire cet album » qui prend sa
+  place, faute de texte à survoler.
+- **L'éditeur s'ouvre en surimpression**, comme celui d'une journée, et pour une
+  raison de plus ici : le pousser dans le flux décalerait toute la grille vers
+  le bas, or `useGridLayout` ne remesure `offsetTop` que sur redimensionnement —
+  un simple glissement vertical lui échapperait.
+- **La longueur est bornée par `ALBUM_DESCRIPTION_MAX_LENGTH`**, exporté par
+  `@gdv/shared` et appliqué des deux côtés. Le serveur la bornait déjà, mais par
+  un littéral que le front aurait redéclaré de son côté.
+
+Sur `AlbumsPage`, la description est clampée à deux lignes sous le titre : la
+carte ne peut pas changer de hauteur selon l'album sans trouer la grille.
 
 `Thumb` choisit la variante par `pickThumbSize(displayWidth)` : la plus petite
 des tailles 320/640/1280 qui couvre la largeur d'affichage multipliée par le DPR

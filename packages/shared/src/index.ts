@@ -446,6 +446,16 @@ export interface UpdateAlbumRequest {
   groupBy?: GroupBy;
 }
 
+/**
+ * Longueur maximale d'une description d'album.
+ *
+ * Bien plus généreuse que celle d'une note de journée
+ * (`ALBUM_DAY_DESCRIPTION_MAX_LENGTH`), et pour une raison de rendu : la note
+ * vit dans un en-tête dont le layout précalcule la hauteur sans DOM, la
+ * description d'album dans un paragraphe libre qui n'a rien à tenir (D49).
+ */
+export const ALBUM_DESCRIPTION_MAX_LENGTH = 2000;
+
 export interface AppSettings {
   /** Minutes entre deux synchronisations automatiques. 0 pour désactiver. */
   syncIntervalMinutes: number;

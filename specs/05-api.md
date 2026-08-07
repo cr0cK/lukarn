@@ -493,6 +493,14 @@ voyant ses photos, donc le crayon est dans la grille ; mais l'écriture passe pa
 `/api/admin`, seul préfixe qui répond **403**. Partout ailleurs un refus d'accès
 répond 404, et cette route ne déplace pas cet invariant (D50).
 
+La **description de l'album** suit exactement la même règle : son crayon vit sur
+la page de l'album, son écriture passe par `PATCH /api/admin/albums/:id`, avec le
+champ `description` de `UpdateAlbumRequest`. Sa borne est
+`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exportée par `@gdv/shared` plutôt
+qu'écrite en littéral dans le schéma Zod : le compteur de caractères du front la
+lit désormais, et deux limites divergentes rendraient une saisie acceptée à
+l'écran refusée par le serveur.
+
 La ligne est créée si la journée n'en avait pas : on peut annoter une journée
 dont aucune photo ne porte de position. Une journée vidée de sa note **et** de
 son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.

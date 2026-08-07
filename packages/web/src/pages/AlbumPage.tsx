@@ -9,6 +9,7 @@ import {
 import { type ReactElement, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
+import { AlbumDescription } from '../components/AlbumDescription';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { Lightbox } from '../components/Lightbox';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
@@ -285,12 +286,12 @@ export default function AlbumPage(): ReactElement {
       </TopBar>
 
       <main className="mx-auto max-w-[2000px] px-4 py-4 sm:px-6">
-        {/* La description était saisie depuis /admin sans être affichée nulle
-            part. `max-w-prose` : une ligne large de 2000 px ne se lit pas. */}
-        {album.data?.description && (
-          <p className="mb-5 max-w-prose text-sm leading-relaxed whitespace-pre-line text-ink-300">
-            {album.data.description}
-          </p>
+        {album.data && (
+          <AlbumDescription
+            albumId={albumId}
+            description={album.data.description}
+            editable={Boolean(me?.admin)}
+          />
         )}
 
         {isPending && <Spinner label="Chargement des photos" />}
