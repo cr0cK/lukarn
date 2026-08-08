@@ -18,6 +18,7 @@ import { isPanelTab, type PanelTab } from '../components/SidePanel';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
 import { formatRange } from '../lib/format';
+import { isTyping } from '../lib/typing';
 import { moveSelection, scrollSelectionIntoView, useGridLayout } from '../lib/useGridLayout';
 import { useShortcut } from '../lib/useShortcut';
 
@@ -212,7 +213,7 @@ export default function AlbumPage(): ReactElement {
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.target instanceof HTMLElement && event.target.tagName === 'INPUT') return;
+      if (isTyping(event.target)) return;
 
       const directions = {
         ArrowLeft: 'left',

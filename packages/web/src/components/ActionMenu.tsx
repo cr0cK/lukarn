@@ -10,8 +10,15 @@ export interface MenuEntry {
 interface ActionMenuProps {
   /** Groupes séparés par un filet. Les groupes vides sont ignorés. */
   groupes: MenuEntry[][];
+  /**
+   * Lignes de contexte en tête du menu, non cliquables. La première ressort,
+   * les suivantes la précisent — un identifiant, puis l'adresse qui le signe.
+   */
+  entete?: string[];
   /** Nom accessible du bouton, s'il y a plusieurs menus sur la même page. */
   label?: string;
+  /** Contenu du bouton. Les trois points par défaut, une pastille pour le compte. */
+  trigger?: ReactNode;
   /** Habillage du bouton : la barre et la visionneuse n'ont pas le même fond. */
   triggerClassName?: string;
 }
@@ -33,7 +40,9 @@ const TRIGGER_PAR_DEFAUT =
  */
 export function ActionMenu({
   groupes,
+  entete,
   label = 'Menu',
+  trigger,
   triggerClassName = TRIGGER_PAR_DEFAUT,
 }: ActionMenuProps): ReactElement {
   const [ouvert, setOuvert] = useState(false);
@@ -78,41 +87,64 @@ export function ActionMenu({
         aria-haspopup="menu"
         aria-expanded={ouvert}
       >
-        <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
-          <circle cx="12" cy="5" r="1.75" />
-          <circle cx="12" cy="12" r="1.75" />
-          <circle cx="12" cy="19" r="1.75" />
-        </svg>
+        {trigger ?? (
+          <svg viewBox="0 0 24 24" className="size-5" fill="currentColor">
+            <circle cx="12" cy="5" r="1.75" />
+            <circle cx="12" cy="12" r="1.75" />
+            <circle cx="12" cy="19" r="1.75" />
+          </svg>
+        )}
       </button>
 
       {ouvert && (
-        <div
-          role="menu"
-          className="absolute top-full right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl"
-        >
-          {remplis.map((groupe, rang) => (
-            <Fragment key={groupe[0]!.label}>
-              {rang > 0 && <div role="separator" className="my-1 h-px bg-ink-700" />}
-              {groupe.map((entree) => (
-                <button
-                  key={entree.label}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    // Fermer d'abord : `onSelect` peut naviguer ou ouvrir un
-                    // panneau, et un menu laissé ouvert se retrouverait
-                    // par-dessus ce qu'il vient de déclencher.
-                    setOuvert(false);
-                    entree.onSelect();
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-200 transition-colors hover:bg-white/5 hover:text-ink-100"
-                >
-                  <span className="shrink-0 text-ink-400">{entree.icon}</span>
-                  {entree.label}
-                </button>
-              ))}
-            </Fragment>
-          ))}
+        <div className="absolute top-full right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl">
+          {/* Hors du `role="menu"`, qui n'admet que des `menuitem` : ces lignes
+              ne se choisissent pas. `title` parce qu'une adresse un peu longue
+              est tronquée plutôt que de faire grandir le menu. */}
+          {entete && entete.length > 0 && (
+            <>
+              <div className="px-4 py-2">
+                {entete.map((ligne, rang) => (
+                  <p
+                    key={ligne}
+                    title={ligne}
+                    className={
+                      rang === 0 ? 'truncate text-sm text-ink-200' : 'truncate text-xs text-ink-400'
+                    }
+                  >
+                    {ligne}
+                  </p>
+                ))}
+              </div>
+              <div className="mb-1 h-px bg-ink-700" />
+            </>
+          )}
+
+          <div role="menu">
+            {remplis.map((groupe, rang) => (
+              <Fragment key={groupe[0]!.label}>
+                {rang > 0 && <div role="separator" className="my-1 h-px bg-ink-700" />}
+                {groupe.map((entree) => (
+                  <button
+                    key={entree.label}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      // Fermer d'abord : `onSelect` peut naviguer ou ouvrir un
+                      // panneau, et un menu laissé ouvert se retrouverait
+                      // par-dessus ce qu'il vient de déclencher.
+                      setOuvert(false);
+                      entree.onSelect();
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-200 transition-colors hover:bg-white/5 hover:text-ink-100"
+                  >
+                    <span className="shrink-0 text-ink-400">{entree.icon}</span>
+                    {entree.label}
+                  </button>
+                ))}
+              </Fragment>
+            ))}
+          </div>
         </div>
       )}
     </div>
