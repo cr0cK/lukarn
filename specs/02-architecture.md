@@ -43,7 +43,8 @@ flowchart LR
 | `src/throttle.ts`        | Backoff progressif des tentatives de connexion, en mémoire.                                                                                                                     |
 | `src/drive/service.ts`   | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation.                                                                             |
 | `src/drive/sync.ts`      | Parcours des dossiers et remplissage de l'index.                                                                                                                                |
-| `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées).                                                                                                   |
+| `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées), et date de prise de vue d'une vidéo.                                                              |
+| `src/drive/mp4.ts`       | Lecture de l'en-tête d'un conteneur MP4 par fenêtres : où est le `moov`, quelle date porte son `mvhd`.                                                                          |
 | `src/media/renderer.ts`  | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive. `prepare` prépare plusieurs variantes en un seul téléchargement, pour le préchauffage. |
 | `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU.                                                                                                                        |
 | `src/media/range.ts`     | Validation du header `Range` avant relais.                                                                                                                                      |
@@ -157,19 +158,29 @@ imageMediaMetadata, videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
    `parseExifTime` lit `YYYY:MM:DD HH:MM:SS`, et les dimensions sont inversées
    quand `imageMediaMetadata.rotation` est impair — sinon les portraits
    casseraient la mise en page.
-7. Écriture par lots de 500 dans une transaction. L'album devient consultable
+7. **Une vidéo est la seule exception au « aucun contenu n'est téléchargé »** :
+   Drive n'expose aucune date de prise de vue pour elle, alors le début de son
+   fichier est lu par requêtes `Range` (D97). `drive/mp4.ts` suit la chaîne des
+   boîtes de premier niveau depuis l'offset 0 pour atteindre le `moov`, dont le
+   `mvhd` porte la date d'enregistrement ; `resolveVideoTakenAt` la confronte à
+   l'horodatage du nom du fichier. Au plus **quatre fenêtres de 64 Ko** par
+   vidéo, 2,3 en moyenne sur un import réel, et **aucune** pour une vidéo déjà
+   datée dont le `md5` n'a pas bougé — c'est ce que `MediaRepo.fileTakenAt`
+   vérifie avant de lire quoi que ce soit. Un échec de lecture ne fait pas
+   échouer la sync : la date retombe sur le nom, puis sur `modifiedTime`.
+8. Écriture par lots de 500 dans une transaction. L'album devient consultable
    pendant la sync.
-8. `deleteStale(albumId, seenAt)` retire ce qui n'a pas été revu — fichier
+9. `deleteStale(albumId, seenAt)` retire ce qui n'a pas été revu — fichier
    déplacé, supprimé ou mis à la corbeille.
-9. `sync_state` passe à `ok`. En cas d'échec, le statut passe à `error` avec le
-   message, **mais `lastSyncAt` garde la valeur de la dernière sync réussie** :
-   /admin annonce ainsi le dernier passage vraiment complet. Attention à ce que
-   cela ne dit **pas** : l'index n'est pas revenu en arrière. Les lots déjà
-   écrits sont validés, `deleteStale` n'a pas eu lieu, donc l'index mélange
-   l'ancien et le nouveau contenu. Il reste cohérent — tout ce qui a été écrit
-   existe bien dans Drive — simplement incomplet (voir [08](./08-decisions.md),
-   D27).
-10. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
+10. `sync_state` passe à `ok`. En cas d'échec, le statut passe à `error` avec le
+    message, **mais `lastSyncAt` garde la valeur de la dernière sync réussie** :
+    /admin annonce ainsi le dernier passage vraiment complet. Attention à ce que
+    cela ne dit **pas** : l'index n'est pas revenu en arrière. Les lots déjà
+    écrits sont validés, `deleteStale` n'a pas eu lieu, donc l'index mélange
+    l'ancien et le nouveau contenu. Il reste cohérent — tout ce qui a été écrit
+    existe bien dans Drive — simplement incomplet (voir [08](./08-decisions.md),
+    D27).
+11. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
     s'arrête net sur `DriveRevokedError` — les suivants échoueraient de la même
     façon.
 

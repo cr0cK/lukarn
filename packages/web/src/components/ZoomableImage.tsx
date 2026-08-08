@@ -45,7 +45,6 @@ interface ZoomableImageProps {
   /** Piloté depuis la visionneuse (touche `z`). */
   zoomed: boolean;
   onZoomedChange: (zoomed: boolean) => void;
-  onLoadedChange?: (loaded: boolean) => void;
 }
 
 interface Box {
@@ -88,7 +87,6 @@ export function ZoomableImage({
   naturalHeight,
   zoomed,
   onZoomedChange,
-  onLoadedChange,
 }: ZoomableImageProps): ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -522,7 +520,6 @@ export function ZoomableImage({
         onLoad={(event) => {
           const image = event.currentTarget;
           setLoaded(true);
-          onLoadedChange?.(true);
           setRenderedWidth(image.naturalWidth);
           // Repli quand l'index ne connaît pas les dimensions du fichier : on
           // prend celles du rendu reçu. Le zoom sera plus limité, mais présent.

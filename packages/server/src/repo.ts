@@ -336,6 +336,32 @@ export class MediaRepo {
   }
 
   /**
+   * Ce qu'une synchronisation précédente a daté sur ce fichier, et sur quel
+   * contenu. Sert le court-circuit de la vidéo (D97) : tant que le `md5` n'a pas
+   * bougé, relire l'en-tête du fichier rendrait exactement la même date, au prix
+   * de quelques requêtes `Range` par vidéo à chaque resync d'album.
+   *
+   * Lu sur le couple `(album_id, id)`, la clé primaire : le même fichier indexé
+   * sous deux albums porte deux lignes, qui peuvent avoir été datées à des
+   * moments différents.
+   */
+  fileTakenAt(
+    albumId: string,
+    id: string,
+  ): { md5: string | null; takenAt: string; takenAtFromExif: boolean } | null {
+    const row = this.db
+      .prepare('SELECT md5, taken_at, taken_at_from_exif FROM media WHERE album_id = ? AND id = ?')
+      .get(albumId, id) as
+      { md5: string | null; taken_at: string; taken_at_from_exif: number } | undefined;
+    if (!row) return null;
+    return {
+      md5: row.md5,
+      takenAt: row.taken_at,
+      takenAtFromExif: row.taken_at_from_exif === 1,
+    };
+  }
+
+  /**
    * Compteur, bornes chronologiques et couverture effective de l'album.
    *
    * `chosenId` est le choix d'un administrateur, et il ne vaut que tant que la

@@ -1,13 +1,17 @@
 /**
- * Ce que la visionneuse montre pendant qu'un média se prépare — photo comme
- * vidéo, cette dernière passant `measured: false` faute d'aperçu à afficher.
+ * Ce qu'on montre pendant qu'une **photo** se prépare : aperçu flou, indicateur
+ * d'activité, message d'échec.
  *
  * Isolé ici parce que la règle est facile à casser sans que rien n'échoue : une
- * combinaison fausse ne produit pas d'erreur, seulement un écran trompeur. Deux
- * cas ont déjà été manqués : l'aperçu flou affiché **sans** indicateur — on ne
- * voit alors pas une photo qui charge, mais une photo floue, et on conclut que
- * l'application est cassée — et la vidéo illisible dont l'indicateur tournait
- * indéfiniment, faute d'un échec qui l'arrête (D79).
+ * combinaison fausse ne produit pas d'erreur, seulement un écran trompeur. Le
+ * cas manqué est l'aperçu flou affiché **sans** indicateur — on ne voit alors
+ * pas une photo qui charge, mais une photo floue, et on conclut que
+ * l'application est cassée.
+ *
+ * La vidéo n'y passe plus : elle n'a que deux états, lue ou illisible. Son
+ * attente est couverte par le `poster` de la balise et par les contrôles natifs
+ * du navigateur, qui portent déjà leur propre indicateur — en superposer un
+ * second en faisait tourner deux, l'un sur l'autre (D98).
  */
 
 export interface PreviewInput {

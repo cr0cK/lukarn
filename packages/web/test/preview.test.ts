@@ -55,11 +55,10 @@ describe('affichage pendant le chargement', () => {
     assert.equal(overlay.error, true);
   });
 
-  it("arrête l'indicateur d'une vidéo que le navigateur ne sait pas lire", () => {
-    // Régression déjà survenue, sur une vidéo HEVC d'iPhone comme sur un Drive
-    // indisponible : la balise `<video>` n'écoutait pas `error`, donc l'attente
-    // ne se terminait jamais. Une vidéo n'ayant pas d'aperçu serveur, elle
-    // passe toujours `measured: false` — c'est la combinaison à protéger.
+  it("arrête l'indicateur d'un rendu qui a échoué avant d'être mesuré", () => {
+    // Rien à positionner, donc rien à flouter : il ne reste que le message. La
+    // combinaison est celle d'un rendu refusé avant que ses dimensions soient
+    // connues — l'indicateur tournerait alors sur un écran définitivement vide.
     const overlay = previewOverlay({ loaded: false, failed: true, measured: false });
 
     assert.equal(overlay.error, true);

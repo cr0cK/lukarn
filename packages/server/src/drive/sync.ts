@@ -4,10 +4,13 @@ import {
   classify,
   FOLDER_MIME,
   parseExifTime,
+  resolveVideoTakenAt,
   toCoordinates,
   toNumber,
   toText,
+  type VideoTakenAt,
 } from './metadata.js';
+import { findMoovOffset, readCreationTime } from './mp4.js';
 import { DriveRevokedError, type DriveService } from './service.js';
 
 const FIELDS =
@@ -17,6 +20,29 @@ const FIELDS =
 const PAGE_SIZE = 1000;
 /** Garde-fou contre un dossier pointant sur toute une arborescence géante. */
 const MAX_FOLDERS = 5000;
+
+/**
+ * Fenêtre de lecture de l'en-tête d'une vidéo. 64 Ko couvrent d'un coup le
+ * `moov` entier des fichiers observés, et restent négligeables devant les
+ * dizaines de Mo du fichier.
+ */
+const HEADER_WINDOW_BYTES = 64 * 1024;
+
+/**
+ * Nombre de fenêtres ouvertes au plus pour atteindre le `moov`. Mesuré sur un
+ * import réel : 2,3 en moyenne, le `moov` d'un enregistrement de téléphone étant
+ * placé après le `mdat`. Au-delà, la date retombe sur le nom du fichier plutôt
+ * que de faire durer la sync.
+ */
+const HEADER_MAX_WINDOWS = 4;
+
+/**
+ * Échéance d'une lecture d'en-tête. `fetchFile` n'en pose aucune sur une requête
+ * `Range` — c'est le relais d'une vidéo vers le navigateur, qui la consomme à son
+ * rythme. Ici, une connexion muette bloquerait la sync entière, et l'album
+ * resterait `running` indéfiniment.
+ */
+const HEADER_TIMEOUT_MS = 20_000;
 
 /**
  * Ce dont la synchronisation a besoin d'un album, et rien de plus : elle ne
@@ -195,7 +221,7 @@ export class Syncer {
             continue;
           }
 
-          const item = this.toUpsert(album.id, file);
+          const item = await this.toUpsert(album.id, file);
           if (!item) continue;
 
           batch.push(item);
@@ -302,7 +328,7 @@ export class Syncer {
     } while (pageToken);
   }
 
-  private toUpsert(albumId: string, file: drive_v3.Schema$File): MediaUpsert | null {
+  private async toUpsert(albumId: string, file: drive_v3.Schema$File): Promise<MediaUpsert | null> {
     const kind = classify(file.mimeType);
     if (!kind || !file.id || !file.modifiedTime) return null;
 
@@ -310,9 +336,16 @@ export class Syncer {
     const video = file.videoMediaMetadata;
 
     const exifTime = parseExifTime(image?.time);
-    // Sans date EXIF (vidéos, captures d'écran, photos ré-encodées), la date de
-    // modification Drive est le seul repère chronologique disponible.
-    const takenAt = exifTime ?? new Date(file.modifiedTime).toISOString();
+    // Sans date EXIF (captures d'écran, photos ré-encodées), la date de
+    // modification Drive est le seul repère chronologique disponible. Une vidéo,
+    // elle, n'en a jamais et se date sur son fichier (D97).
+    const { takenAt, fromFile } =
+      kind === 'video'
+        ? await this.videoTakenAt(albumId, file)
+        : {
+            takenAt: exifTime ?? new Date(file.modifiedTime).toISOString(),
+            fromFile: exifTime !== null,
+          };
 
     const width = toNumber(image?.width) ?? toNumber(video?.width);
     const height = toNumber(image?.height) ?? toNumber(video?.height);
@@ -335,7 +368,7 @@ export class Syncer {
       width: rotated ? height : width,
       height: rotated ? width : height,
       takenAt,
-      takenAtFromExif: exifTime !== null,
+      takenAtFromExif: fromFile,
       modifiedTime: new Date(file.modifiedTime).toISOString(),
       durationMs: toNumber(video?.durationMillis),
       cameraMake: toText(image?.cameraMake),
@@ -354,5 +387,98 @@ export class Syncer {
       // redemande à chaque chargement de page un aperçu qui n'existe pas (D92).
       hasThumbnail: file.hasThumbnail === true,
     };
+  }
+
+  /**
+   * Date de prise de vue d'une vidéo, reconstruite depuis le fichier (D97).
+   *
+   * Le court-circuit sur le `md5` est ce qui rend la sync d'un album de vidéos
+   * répétable : une vidéo déjà datée depuis son fichier et dont le contenu n'a
+   * pas bougé garde sa date sans qu'un seul octet soit relu. Une vidéo restée
+   * sur `modifiedTime` — en-tête illisible, Drive indisponible au moment de la
+   * lecture — est réessayée au passage suivant.
+   */
+  private async videoTakenAt(albumId: string, file: drive_v3.Schema$File): Promise<VideoTakenAt> {
+    const md5 = toText(file.md5Checksum);
+    const known = this.media.fileTakenAt(albumId, file.id!);
+    if (known?.takenAtFromExif && md5 !== null && known.md5 === md5) {
+      return { takenAt: known.takenAt, fromFile: true };
+    }
+
+    return resolveVideoTakenAt({
+      name: file.name,
+      containerTime: await this.containerTime(file.id!, toNumber(file.size)),
+      durationMs: toNumber(file.videoMediaMetadata?.durationMillis),
+      modifiedTime: file.modifiedTime!,
+    });
+  }
+
+  /**
+   * `creation_time` du conteneur, en suivant la chaîne des boîtes de premier
+   * niveau d'une fenêtre à l'autre. `null` dès que le fichier ne se laisse pas
+   * lire — format non ISOBMFF, `moov` hors d'atteinte, Drive indisponible :
+   * l'appelant se rabat alors sur le nom, puis sur la date de modification.
+   */
+  private async containerTime(fileId: string, fileSize: number | null): Promise<string | null> {
+    // Sans taille annoncée, la chaîne ne peut pas être bornée : une boîte de
+    // taille nulle court « jusqu'à la fin », qu'on ne connaîtrait pas.
+    if (fileSize === null || fileSize <= 0) return null;
+
+    let start = 0;
+
+    for (let fenetre = 0; fenetre < HEADER_MAX_WINDOWS; fenetre++) {
+      const buffer = await this.readWindow(fileId, start, fileSize);
+      if (buffer === null) return null;
+
+      const { moovOffset, nextOffset } = findMoovOffset(buffer, start, fileSize);
+
+      if (moovOffset !== null) {
+        const time = readCreationTime(buffer, moovOffset - start);
+        if (time !== null) return time;
+        // Le `moov` est là mais son `mvhd` déborde de la fenêtre : rouvrir sur
+        // la boîte elle-même. Si elle y commençait déjà, il n'y a plus rien à
+        // en tirer et insister ferait boucler.
+        if (moovOffset === start) return null;
+        start = moovOffset;
+        continue;
+      }
+
+      if (nextOffset === null) return null;
+      start = nextOffset;
+    }
+
+    return null;
+  }
+
+  /** Une fenêtre de l'en-tête, ou `null` si Drive ne l'a pas rendue. */
+  private async readWindow(
+    fileId: string,
+    start: number,
+    fileSize: number,
+  ): Promise<Buffer | null> {
+    const end = Math.min(start + HEADER_WINDOW_BYTES, fileSize) - 1;
+    if (end < start) return null;
+
+    try {
+      const response = await this.drive.guard(() =>
+        this.drive.fetchFile(
+          fileId,
+          `bytes=${start}-${end}`,
+          AbortSignal.timeout(HEADER_TIMEOUT_MS),
+        ),
+      );
+      if (!response.ok && response.status !== 206) return null;
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      // Une autorisation révoquée fait échouer tout le reste de la sync : la
+      // laisser remonter évite de dater 300 vidéos sur leur date de
+      // téléversement avant de s'en apercevoir.
+      if (error instanceof DriveRevokedError) throw error;
+      this.log.warn(
+        `En-tête de la vidéo ${fileId} illisible : ${(error as Error).message} — ` +
+          'la date vient du nom du fichier ou de sa date de modification.',
+      );
+      return null;
+    }
   }
 }

@@ -1,10 +1,17 @@
 import type { AlbumDay, MediaItem } from '@gdv/shared';
-import { type ReactElement, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ReactElement,
+  type ReactNode,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { errorText, mediaUrl } from '../api/client';
 import { useCommentCounts, useMediaDetail, useUpdateAlbum } from '../api/hooks';
 import { useCaptionHidden } from '../lib/caption';
 import { dayKey, dayLabel } from '../lib/justify';
-import { previewOverlay } from '../lib/preview';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { isTyping } from '../lib/typing';
 import { placeLabelOf } from '../lib/useGridLayout';
@@ -92,13 +99,12 @@ export function Lightbox({
   const item = items[index];
   const isVideo = item?.kind === 'video';
   const [zoomed, setZoomed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
   /**
    * Lecture impossible. Propre à la vidéo : la photo tient son propre échec
    * dans `ZoomableImage`. Sans cet état, une vidéo qui n'arrive pas — Drive
    * indisponible, jeton révoqué, ou codec que le navigateur ne décode pas —
-   * laisse `loaded` à `false` et le tourniquet tourne indéfiniment sur un écran
-   * noir muet.
+   * laisserait le `poster` affiché, ce qui se lit comme une image figée (D79,
+   * D98).
    */
   const [failed, setFailed] = useState(false);
   /** Sens du dernier déplacement : oriente le préchargement. */
@@ -195,13 +201,12 @@ export function Lightbox({
     (next: number) => {
       // `Début` sur le premier média, `Fin` sur le dernier, une flèche à une
       // extrémité : l'index demandé est déjà celui affiché. Sans ce garde-fou,
-      // `setLoaded(false)` attendrait un chargement qui ne viendra pas — aucun
-      // élément n'est remonté, donc aucun `loadeddata` n'est émis, et le
-      // tourniquet de la vidéo tourne indéfiniment.
+      // `setFailed(false)` effacerait le message d'une vidéo illisible sans que
+      // rien ne le remplace — aucun élément n'est remonté, donc aucun événement
+      // de lecture ne viendra le rétablir.
       if (next < 0 || next >= items.length || next === index) return;
       setDirection(next >= index ? 1 : -1);
       setZoomed(false);
-      setLoaded(false);
       setFailed(false);
       // Un éditeur resté ouvert écrirait sur la photo qu'on vient de quitter :
       // le champ est remonté avec la nouvelle photo, pas le geste en cours.
@@ -210,6 +215,17 @@ export function Lightbox({
     },
     [index, items.length, onIndexChange],
   );
+
+  /**
+   * Une vidéo dont ce navigateur ne décode pas la piste image. Le son sort, le
+   * lecteur se croit en marche, et rien ne signale l'échec : c'est le cas d'un
+   * HEVC dans Chromium, où le conteneur et la piste audio sont valides. La
+   * constater demande de regarder ce qui est arrivé plutôt que d'écouter une
+   * erreur qui ne viendra pas (D98).
+   */
+  const checkVideoTrack = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
+    if (event.currentTarget.videoWidth === 0) setFailed(true);
+  }, []);
 
   // Désactivé pendant le zoom, où le doigt sert à se déplacer dans l'image, et
   // sur une vidéo, où il traverserait les contrôles natifs de lecture.
@@ -404,16 +420,6 @@ export function Lightbox({
   ]);
 
   if (!item) return null;
-
-  /**
-   * Même règle que la photo, sans l'aperçu flou : l'attente d'une vidéo est
-   * couverte par le `poster` de la balise, que le navigateur affiche lui-même
-   * — d'où `measured: false`, il n'y a rien à superposer. La combinaison est
-   * décidée là plutôt qu'en JSX parce qu'elle échoue en silence : un tourniquet
-   * laissé sur un échec ne casse rien, il fait seulement croire que ça charge
-   * encore.
-   */
-  const videoOverlay = previewOverlay({ loaded, failed, measured: false });
 
   // Les mêmes fonctions que la grille, délibérément : une visionneuse qui
   // calculerait son libellé de jour de son côté finirait par annoncer une autre
@@ -734,7 +740,7 @@ export function Lightbox({
           {...swipe}
           onPointerDownCapture={dismissPanelOnOutsideClick}
         >
-          {isVideo && videoOverlay.error ? (
+          {isVideo && failed ? (
             <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
               <p className="text-sm text-ink-300">Cette vidéo n'a pas pu être lue.</p>
               {/* Le format en cause plutôt qu'un « une erreur est survenue » :
@@ -766,7 +772,13 @@ export function Lightbox({
               autoPlay
               playsInline
               className="max-h-full max-w-full"
-              onLoadedData={() => setLoaded(true)}
+              // À ce stade, une piste vidéo décodable a forcément livré une
+              // image : un `videoWidth` nul dit que le navigateur n'a gardé que
+              // le son. Il ne lève alors aucune erreur — conteneur et piste
+              // audio sont valides — si bien que `error` seul laisserait le
+              // `poster` en place, qu'on prendrait pour une image figée (D98).
+              onLoadedData={checkVideoTrack}
+              onPlaying={checkVideoTrack}
               onError={() => setFailed(true)}
             />
           ) : (
@@ -782,12 +794,7 @@ export function Lightbox({
               naturalHeight={item.height}
               zoomed={zoomed}
               onZoomedChange={setZoomed}
-              onLoadedChange={setLoaded}
             />
-          )}
-
-          {isVideo && videoOverlay.spinner && (
-            <span className="absolute size-8 animate-spin rounded-full border-2 border-ink-700 border-t-accent" />
           )}
 
           {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
