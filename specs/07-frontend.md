@@ -1262,6 +1262,14 @@ ses lignes ; le cadre appartient à `SidePanel`.
 L'état est un `PanelTab | null` — `null` valant « fermé ». `i` et `c` ouvrent
 l'onglet correspondant et le referment s'il est déjà affiché.
 
+**L'en-tête porte le nom du fichier**, seul endroit où il s'affiche : il vaut
+pour les deux onglets, et le répéter dans les lignes d'`ExifPanel` en ferait un
+doublon à deux centimètres de lui-même. Le bouton de fermeture annule dans le
+flux (`-my-1 -mr-1`) le rembourrage qui agrandit sa cible de clic, sans le
+retirer de la cible : la croix retombe alors sur la ligne du nom et sur la marge
+droite de la colonne de contenu. Elle était sinon 4 px plus bas et 4 px plus à
+droite que tout le reste — un décalage qu'on ne sait pas nommer en regardant.
+
 **Le panneau est en `ink-850`, un cran au-dessus du fond.** La visionneuse est
 en `ink-950` ; en `ink-900`, le panneau ouvert ne se distinguait pas d'elle —
 seule sa bordure le trahissait, et on ne savait plus où l'on était. Trois
@@ -1289,6 +1297,27 @@ Le compteur de la pastille vient de `MediaDetail.commentCount`, déjà chargé a
 le détail : afficher « 3 » avant même d'ouvrir l'onglet est ce qui donne envie de
 le lire, et le fil lui-même n'est demandé qu'à l'ouverture — la plupart des
 photos sont regardées sans qu'on lise les commentaires.
+
+### Infos — `components/ExifPanel.tsx` et `lib/exifRows.ts`
+
+Une liste de couples libellé / valeur, dans un ordre qui va du plus humain au
+plus technique : « Lieu » et « Ce jour-là », puis la date, les dimensions, la
+taille, la durée, l'appareil et les réglages de prise de vue, enfin la position.
+Une ligne sans valeur n'existe pas — un panneau plein de tirets sur une capture
+d'écran sans EXIF n'apprendrait rien.
+
+**Sauf la position, dont l'absence se dit** : « Aucune donnée GPS », en `ink-400`
+comme tout ce qui constate plutôt qu'il n'informe. C'est la seule ligne dont on
+se demande, en ne la voyant pas, si la photo n'a rien à donner ou si
+l'application n'a pas fini son travail ([D94](./08-decisions.md)). Elle sort de
+l'EXIF de la photo et ne doit rien au géocodage inverse : elle s'affiche que
+« Lieu » ait un nom ou pas, et pointe vers OpenStreetMap. Réservée aux photos —
+Drive ne rend de position que dans `imageMediaMetadata`, jamais pour une vidéo,
+donc la ligne y vaudrait « aucune » sur la totalité des fichiers.
+
+Le choix des lignes vit dans `lib/exifRows.ts` et non dans le composant, comme
+`captionEntries` : c'est la seule partie du panneau qui ait des cas — présent,
+absent, absent et dit — et elle se vérifie sans DOM (`test/exif-rows.test.ts`).
 
 ### Commentaires — `components/CommentsPanel.tsx`
 

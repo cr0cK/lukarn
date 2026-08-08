@@ -68,7 +68,13 @@ export function SidePanel({
         <button
           type="button"
           onClick={onClose}
-          className="shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
+          // `-my-1 -mr-1` retire du flux le rembourrage qui agrandit la cible de
+          // clic, sans le retirer de la cible elle-même : la croix retombe alors
+          // sur la ligne de base du nom de fichier et sur la marge droite du
+          // panneau. Sans ça, ses 4 px la posaient plus bas que le titre et plus
+          // à droite que la colonne de contenu — deux décalages qu'on ne sait
+          // pas nommer en regardant, mais qu'on voit.
+          className="-my-1 -mr-1 shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
           aria-label="Fermer le panneau (Échap)"
         >
           <svg
