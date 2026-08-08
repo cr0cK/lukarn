@@ -173,30 +173,90 @@ for (const chemin of sources) {
 /* ------------------------------------------------------------- Décisions */
 
 /**
- * Les décisions se numérotent à la main, et jusqu'ici rien ne l'arbitrait.
+ * Une décision porte un identifiant, et rien dans git ne l'arbitre.
  *
  * Deux défauts en découlent, qu'aucun des contrôles ci-dessus n'attrape. Le
- * premier : deux entrées portant le même numéro, ce qui arrive dès que des
- * branches parallèles ajoutent chacune la suivante — elles partent toutes du
- * même dernier numéro et ne se voient pas. Le second, plus coûteux : un renvoi
- * `(Dxx)` vers un numéro qui n'existe pas, ou qui a changé de sens depuis. Un
- * tel renvoi ne casse rien, se lit sans accroc, et envoie le lecteur sur une
- * décision qui parle d'autre chose.
+ * premier : deux entrées portant le même identifiant. Le second, plus coûteux :
+ * un renvoi `(Dxx)` vers une décision qui n'existe pas, ou qui a changé de sens
+ * depuis. Un tel renvoi ne casse rien, se lit sans accroc, et envoie le lecteur
+ * sur une décision qui parle d'autre chose.
  *
  * `check-links.mjs` ne peut pas les voir : un renvoi `(D67)` en texte brut
  * n'est pas un lien markdown, et un `[D67](./08-decisions.md)` pointe le
  * fichier, jamais l'entrée.
  */
-const specDecisions = lire(join(SPECS, '08-decisions.md'));
-const numerosDefinis = [...specDecisions.matchAll(/^## D(\d+)\s/gm)].map((m) => Number(m[1]));
-const definies = new Set(numerosDefinis);
 
-const dejaVus = new Set();
-for (const numero of numerosDefinis) {
-  if (dejaVus.has(numero)) {
-    manques.push(`Décision « D${numero} » définie deux fois dans specs/08-decisions.md`);
+/**
+ * Dernière décision du journal historique, qui n'accepte plus d'ajout.
+ *
+ * Le rang séquentiel demandait de connaître le dernier numéro pris, ce qu'une
+ * branche ne peut pas savoir des autres : deux branches parallèles écrivaient
+ * chacune la suivante, au même endroit du même fichier — collision d'identifiant
+ * et conflit git à chaque fusion. La date décide seule (D260809).
+ */
+const DERNIERE_ARCHIVEE = 99;
+
+/** `D` + la date au format AAMMJJ, une lettre si le jour porte déjà une décision. */
+const FORMAT_IDENTIFIANT = /^D(\d{2})(\d{2})(\d{2})([a-z])?$/;
+
+/** Identifiant → d'où il vient, pour nommer les deux fautifs sur un doublon. */
+const definies = new Map();
+
+function definir(identifiant, origine) {
+  const deja = definies.get(identifiant);
+  if (deja) {
+    manques.push(`Décision « ${identifiant} » définie deux fois : ${deja} et ${origine}`);
+    return;
   }
-  dejaVus.add(numero);
+  definies.set(identifiant, origine);
+}
+
+const archive = lire(join(SPECS, '08-decisions.md'));
+for (const [, identifiant, numero] of archive.matchAll(/^## (D(\d+))\s/gm)) {
+  definir(identifiant, 'specs/08-decisions.md');
+  if (Number(numero) > DERNIERE_ARCHIVEE) {
+    manques.push(
+      `Décision « ${identifiant} » ajoutée à specs/08-decisions.md, dont le journal est clos : ` +
+        'une nouvelle décision est un fichier de specs/decisions/',
+    );
+  }
+}
+
+// Une décision par fichier : c'est ce qui rend deux branches parallèles
+// fusionnables sans arbitrage, le conflit d'insertion en fin de journal ayant
+// coûté plus cher que la collision d'identifiant elle-même.
+for (const chemin of fichiers(join(SPECS, 'decisions'), (n) => n.endsWith('.md'))) {
+  const nomDeFichier = chemin.split('/').pop();
+  if (nomDeFichier === 'README.md') continue;
+  const ici = relative(RACINE, chemin);
+
+  const titres = [...lire(chemin).matchAll(/^#\s+(\S+)\s+—\s/gm)];
+  if (titres.length !== 1) {
+    manques.push(
+      `${ici} : une décision porte un titre « # D<AAMMJJ> — … » et un seul ` +
+        `(${titres.length} trouvé(s))`,
+    );
+    continue;
+  }
+
+  const identifiant = titres[0][1];
+  const date = FORMAT_IDENTIFIANT.exec(identifiant);
+  if (!date) {
+    manques.push(
+      `${ici} : « ${identifiant} » n'est pas un « D<AAMMJJ> » suivi d'une lettre au plus`,
+    );
+    continue;
+  }
+  if (Number(date[2]) < 1 || Number(date[2]) > 12 || Number(date[3]) < 1 || Number(date[3]) > 31) {
+    manques.push(`${ici} : « ${identifiant} » n'encode pas une date (AAMMJJ)`);
+  }
+  // Le nom de fichier est ce qu'on lit dans `git log` et dans le dossier ; il
+  // ment dès qu'il diverge du titre, sans que rien ne s'en aperçoive.
+  if (!nomDeFichier.startsWith(`${identifiant}-`)) {
+    manques.push(`${ici} : le fichier devrait s'appeler « ${identifiant}-<slug>.md »`);
+  }
+
+  definir(identifiant, ici);
 }
 
 // Les renvois vivent autant dans le code que dans les specs : un commentaire
@@ -204,6 +264,7 @@ for (const numero of numerosDefinis) {
 // et la plus facile à laisser pourrir.
 const porteursDeRenvois = [
   ...fichiers(SPECS, (n) => n.endsWith('.md')),
+  ...fichiers(join(RACINE, 'tools'), (n) => n.endsWith('.mjs')),
   ...fichiers(join(RACINE, 'packages/shared/src'), (n) => n.endsWith('.ts')),
   ...fichiers(join(RACINE, 'packages/server/src'), (n) => n.endsWith('.ts')),
   ...fichiers(join(RACINE, 'packages/server/test'), (n) => n.endsWith('.ts')),
@@ -216,10 +277,10 @@ for (const chemin of porteursDeRenvois) {
   lire(chemin)
     .split('\n')
     .forEach((ligne, index) => {
-      for (const [, numero] of ligne.matchAll(/\bD(\d+)\b/g)) {
-        if (definies.has(Number(numero))) continue;
+      for (const [identifiant] of ligne.matchAll(/\bD\d+[a-z]?\b/g)) {
+        if (definies.has(identifiant)) continue;
         manques.push(
-          `${relative(RACINE, chemin)}:${index + 1} renvoie à « D${numero} », qui n'existe pas`,
+          `${relative(RACINE, chemin)}:${index + 1} renvoie à « ${identifiant} », qui n'existe pas`,
         );
       }
     });
