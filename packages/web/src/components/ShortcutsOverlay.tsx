@@ -20,6 +20,7 @@ const GROUPS: { title: string; shortcuts: [string, string][] }[] = [
       ['C', 'Commentaires'],
       ['D', "Télécharger l'original"],
       ['Z', 'Zoom à 100 %'],
+      ['L', 'Masquer / afficher la légende'],
       ['H', "Masquer l'habillage, rien que la photo"],
       ['Molette', 'Zoom progressif'],
       ['Glisser', "Se déplacer dans l'image, ou dans le repère en bas à droite"],

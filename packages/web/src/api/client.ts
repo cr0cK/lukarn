@@ -10,6 +10,7 @@ import {
   type AppSettings,
   type BulkModerationResult,
   type Comment,
+  type CommentsFeedPage,
   type CommentsPage,
   type CreateAlbumRequest,
   type CreateCommentRequest,
@@ -17,6 +18,7 @@ import {
   type IdentityRequest,
   type ItemsPage,
   type MediaDetail,
+  type MediaItem,
   type ModerationFilter,
   type SessionUser,
   type SortOrder,
@@ -24,6 +26,7 @@ import {
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
   type UpdateCommentRequest,
+  type UpdateMediaRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
@@ -129,6 +132,13 @@ export const api = {
       `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
     ),
 
+  /** Même partage que `updateAlbumDay` : saisie dans la galerie, écriture sous `/api/admin`. */
+  updateMedia: (albumId: string, mediaId: string, body: UpdateMediaRequest) =>
+    request<MediaItem>(
+      `/admin/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+
   requestIdentityCode: (body: IdentityRequest) =>
     request<{ ok: true }>('/identity/request-code', {
       method: 'POST',
@@ -147,6 +157,18 @@ export const api = {
 
   commentCounts: (albumId: string) =>
     request<AlbumCommentCounts>(`/comments/${encodeURIComponent(albumId)}`),
+
+  /**
+   * Fil d'activité. `albumId` le restreint à un album ; `null` prend tout ce que
+   * la session a le droit de voir — la portée est décidée par le serveur, ce
+   * paramètre ne fait que la réduire.
+   */
+  commentsFeed: (albumId: string | null, cursor: string | null) => {
+    const params = new URLSearchParams();
+    if (albumId) params.set('album', albumId);
+    if (cursor) params.set('cursor', cursor);
+    return request<CommentsFeedPage>(`/comments/feed?${params}`);
+  },
 
   createComment: (albumId: string, mediaId: string, body: CreateCommentRequest) =>
     request<Comment>(`/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`, {

@@ -31,26 +31,53 @@ interface TopBarProps {
   back?: boolean;
   /** Contrôles propres à la page, à gauche de ceux du compte. */
   actions?: TopBarAction[];
+  /**
+   * Ouverture du tiroir d'activité, avec le nombre de messages arrivés depuis
+   * le dernier passage. Absent sur les pages où le fil n'a pas de sens.
+   */
+  feed?: { unread: number; onOpen: () => void };
 }
 
 const CLASSE_BOUTON =
   'flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 lg:px-2.5';
 
+const CLASSE_PASTILLE =
+  'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-sm font-medium text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
+
+/**
+ * L'initiale du compte, faute d'une photo à afficher.
+ *
+ * `Array.from` plutôt que `[0]` : un identifiant peut commencer hors du plan de
+ * base — un emoji, un idéogramme —, dont l'accès indexé ne rendrait que la
+ * moitié, soit un caractère de remplacement à l'écran.
+ */
+const initiale = (username: string): string => Array.from(username)[0]?.toUpperCase() ?? '?';
+
 /**
  * Barre supérieure collante, commune à toutes les pages authentifiées.
  *
- * Une seule rangée, quelle que soit la largeur. Sous `sm`, tout ce qui n'est ni
- * le retour ni le titre passe dans un menu : cinq contrôles alignés sur 393 px
- * réduisaient le titre d'album à une initiale et repoussaient les contrôles de
- * vue sur une rangée à eux seuls, soit 101 px d'en-tête sur une application où
- * ce qui doit ressortir, ce sont les photos.
+ * Une seule rangée, quelle que soit la largeur, et deux familles qui ne se
+ * mélangent pas : **ce que fait cette page** — les contrôles de vue — puis, tout
+ * à droite, **qui la regarde** — la pastille du compte, qui ne s'ouvre que si on
+ * le demande. Admin, Déconnexion et Installer n'ont plus à tenir dans la barre,
+ * ce qui rend au titre la largeur qu'ils lui prenaient.
  *
- * Entre `sm` et `lg`, les contrôles reviennent dans la barre mais gardent leurs
- * seules icônes : il y a la place pour cinq cibles, pas pour cinq libellés.
- * Mesuré — à 768 px, les cinq libellés ramenaient le titre de 456 à 144 px et
- * tronquaient le sous-titre, soit exactement le défaut qu'on corrige ici.
+ * Sous `sm`, les contrôles de vue passent à leur tour dans un menu : cinq
+ * contrôles alignés sur 393 px réduisaient le titre d'album à une initiale et
+ * les repoussaient sur une rangée à eux seuls, soit 101 px d'en-tête sur une
+ * application où ce qui doit ressortir, ce sont les photos.
+ *
+ * Entre `sm` et `lg`, ils reviennent dans la barre mais gardent leurs seules
+ * icônes. Mesuré — à 768 px, afficher les libellés ramenait le titre de 456 à
+ * 144 px et tronquait le sous-titre, soit exactement le défaut qu'on corrige.
  */
-export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarProps): ReactElement {
+export function TopBar({
+  title,
+  subtitle,
+  back = false,
+  actions = [],
+  feed,
+}: TopBarProps): ReactElement {
   const { data: user } = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
@@ -80,8 +107,18 @@ export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarPr
   ];
 
   return (
-    <header className="sticky top-0 z-30 border-b border-ink-850 bg-ink-900/85 backdrop-blur-md">
-      <div className="mx-auto flex max-w-[2000px] items-center gap-x-2 px-4 py-3 sm:gap-x-3 sm:px-6">
+    // `ink-800` sur un corps en `ink-900` : la barre est une surface, pas une
+    // portion de page. Aux deux mêmes valeurs, elle ne tenait que par son filet
+    // d'un pixel, et ce qui s'y trouve isolé — la pastille, à l'autre bout d'un
+    // écran large — paraissait posé sur le vide. Le filet monte d'autant, sans
+    // quoi il disparaîtrait dans le fond qu'il est censé délimiter.
+    <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-800/85 backdrop-blur-md">
+      {/* `min-h-16` : la hauteur est **réservée**, jamais déduite du contenu.
+          Une page sans sous-titre — la liste des albums — donnait sinon une
+          barre de 57 px là où une page d'album en fait 65, et tout ce qui y est
+          centré sautait de 8 px d'une navigation à l'autre. La pastille, seule à
+          son extrémité, est ce qui le montrait le mieux. */}
+      <div className="mx-auto flex min-h-16 max-w-[2000px] items-center gap-x-2 px-4 py-3 sm:gap-x-3 sm:px-6">
         {back && (
           <Link
             to="/"
@@ -105,9 +142,47 @@ export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarPr
           {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
         </div>
 
-        {/* À partir de `sm` : tout dans la barre. Le libellé n'apparaît qu'à
-            partir de `lg` — entre les deux, cinq libellés ne tiennent pas et
-            c'est le titre de l'album qui payait la place. */}
+        {/* L'activité reste **en ligne à toutes les largeurs**, contrairement
+            aux contrôles de vue : son icône porte la pastille des non-lus, et
+            c'est le seul signe qu'une conversation a bougé quelque part.
+            Rangée dans le menu sous `sm`, elle ne signalerait plus rien — même
+            raison que le bouton « Commentaires » de la visionneuse. */}
+        {feed && (
+          <button
+            type="button"
+            onClick={feed.onOpen}
+            title="Activité récente"
+            aria-label={feedLabel(feed.unread)}
+            className={`relative shrink-0 rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="size-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+            </svg>
+            {feed.unread > 0 && (
+              <span
+                aria-hidden="true"
+                // Plafonnée à « 9+ », comme celle de la visionneuse : au-delà le
+                // chiffre déborde de l'icône, et savoir s'il y en a douze ou
+                // dix-sept ne change aucun geste.
+                className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
+              >
+                {feed.unread > 9 ? '9+' : feed.unread}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* À partir de `sm` : les contrôles de vue dans la barre. Le libellé
+            n'apparaît qu'à partir de `lg` — entre les deux, c'est le titre de
+            l'album qui payait la place. */}
         <div className="hidden shrink-0 items-center gap-1 sm:flex lg:gap-2">
           {actions.map((item) => (
             <button
@@ -124,57 +199,59 @@ export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarPr
               <span className="hidden lg:inline">{item.label}</span>
             </button>
           ))}
-
-          {user?.admin && (
-            <Link to="/admin" className={CLASSE_BOUTON} aria-label="Administration">
-              <IconeAdmin />
-              <span className="hidden lg:inline">Admin</span>
-            </Link>
-          )}
-
-          <button
-            type="button"
-            onClick={seDeconnecter}
-            className={CLASSE_BOUTON}
-            aria-label="Déconnexion"
-          >
-            <IconeDeconnexion />
-            <span className="hidden lg:inline">Déconnexion</span>
-          </button>
-
-          {install.disponible && (
-            <button
-              type="button"
-              onClick={proposerInstallation}
-              title="Ajouter à l'écran d'accueil"
-              className={CLASSE_BOUTON}
-              aria-label="Installer"
-            >
-              <IconeInstaller />
-              <span className="hidden lg:inline">Installer</span>
-            </button>
-          )}
         </div>
 
-        {/* Sous `sm` seulement : au-dessus, tout est déjà dans la barre. */}
-        <div className="sm:hidden">
+        {/* Sous `sm` seulement, et seulement s'il y a quelque chose à y mettre :
+            un menu vide n'offrirait qu'une cible qui ne fait rien. */}
+        {actions.length > 0 && (
+          <div className="sm:hidden">
+            <ActionMenu
+              label="Affichage"
+              groupes={[
+                actions.map((item) => ({
+                  label: item.action,
+                  icon: item.icon,
+                  onSelect: item.onSelect,
+                })),
+              ]}
+            />
+          </div>
+        )}
+
+        {/* Le compte, à toutes les largeurs. Rendu seulement une fois la session
+            connue : une pastille sans initiale le temps d'un aller-retour
+            réseau, puis une lettre, ferait sursauter la barre à chaque page. */}
+        {user && (
           <ActionMenu
-            groupes={[
-              actions.map((item) => ({
-                label: item.action,
-                icon: item.icon,
-                onSelect: item.onSelect,
-              })),
-              compte,
-            ]}
+            label="Compte"
+            // L'initiale de l'identifiant, pas celle du nom d'affichage : c'est
+            // la première ligne du menu qu'elle abrège, et deux lettres
+            // différentes de part et d'autre du clic se liraient comme un défaut.
+            trigger={initiale(user.username)}
+            triggerClassName={CLASSE_PASTILLE}
+            // L'identifiant ouvre des albums et peut être partagé par tout un
+            // foyer ; l'adresse, elle, dit qui signe les commentaires. Les deux
+            // quand elles diffèrent — c'est justement là qu'on se demande sous
+            // quel nom on écrit.
+            entete={[user.username, ...(user.identity ? [user.identity.email] : [])]}
+            groupes={[compte]}
           />
-        </div>
+        )}
       </div>
 
       {modeEmploi && <InstallInstructions onClose={() => setModeEmploi(false)} />}
     </header>
   );
 }
+/**
+ * Nom accessible du bouton d'activité : c'est lui qui porte l'information de la
+ * pastille, celle-ci étant purement visuelle.
+ */
+function feedLabel(unread: number): string {
+  if (unread === 0) return 'Activité récente';
+  return `Activité récente : ${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`;
+}
+
 function IconeAdmin(): ReactElement {
   return (
     <svg

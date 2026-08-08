@@ -15,11 +15,17 @@ import type { LayoutSection } from '../lib/justify';
  *
  * **Sa hauteur ne se mesure pas, elle se déclare.** `computeLayout` a déjà
  * placé toutes les photos quand ce composant se monte ; s'il débordait de la
- * boîte que le layout lui a réservée, il passerait sous les vignettes. D'où les
- * hauteurs de ligne fixées (`leading-5`, deux lignes clampées) qui totalisent
- * exactement `GRID_PLACE_HEIGHT` et `GRID_DESCRIPTION_HEIGHT` — c'est
- * l'interligne qui tient le contrat, pas la taille de police, qu'on peut donc
- * remonter sans toucher aux constantes.
+ * boîte que le layout lui a réservée, il passerait sous les vignettes. D'où
+ * l'interligne fixé (`leading-5`) et une seule ligne par texte, qui valent
+ * chacune exactement `GRID_HEADER_LINE_HEIGHT` — c'est l'interligne qui tient
+ * le contrat, pas la taille de police, qu'on peut donc remonter sans toucher à
+ * la constante.
+ *
+ * Une ligne et non deux pour la note : réserver deux lignes à un texte qui n'en
+ * occupe qu'une laissait 20 px de blanc sous l'en-tête, et l'écart avant les
+ * vignettes changeait d'une section à l'autre. La note entière reste lisible
+ * dans l'infobulle, dans le panneau `i` et dans le bandeau de la visionneuse
+ * (D85).
  *
  * Même raison pour l'éditeur : il s'ouvre **en survol absolu** au lieu de
  * pousser le flux. Faire grandir l'en-tête à l'ouverture décalerait toute la
@@ -158,10 +164,10 @@ export function SectionHeader({
       )}
 
       {day?.description && (
-        // `title` porte le texte entier : deux lignes clampées suffisent à se
-        // repérer, mais une note tronquée doit rester lisible en entier.
+        // `title` porte le texte entier : une ligne suffit à se repérer dans la
+        // grille, mais une note tronquée doit rester lisible en entier.
         <p
-          className="line-clamp-2 max-w-3xl pl-[22px] text-sm leading-5 text-ink-200"
+          className="max-w-3xl truncate pl-[22px] text-sm leading-5 text-ink-200"
           title={day.description}
         >
           {day.description}

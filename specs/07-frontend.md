@@ -25,12 +25,20 @@ revenir après la connexion.
 Le serveur rend `index.html` sur toute URL non-`/api` et non-`/assets`, donc un
 rechargement direct sur `/album/vacances` fonctionne (voir [05](./05-api.md)).
 
-### Trois paramètres de requête portent l'état de la vue
+### Quatre paramètres de requête portent l'état de la vue
 
 Sur `/album/:albumId` :
 
 - `?photo=<mediaId>` — la visionneuse est ouverte sur ce média. Le bouton Retour
   la referme, et un lien partagé rouvre la même vue.
+- `?panel=comments` (ou `info`) — l'onglet ouvert du panneau latéral. C'est ce
+  qui permet d'arriver sur la **conversation** et pas seulement sur l'image : le
+  tiroir d'activité et les emails de notification renvoient tous deux vers
+  `?photo=…&panel=comments`. Sans ce paramètre, ils ouvraient la photo en
+  laissant les messages fermés, c'est-à-dire invisibles — un email annonçant un
+  message menait à une image muette. Une valeur inconnue vaut « panneau fermé »
+  (`isPanelTab`). Le panneau n'est donc plus un état local de `Lightbox`, qui le
+  reçoit désormais en propriété.
 - `?order=asc` — sens chronologique. Le défaut `desc` n'est **pas** écrit dans
   l'URL, qui reste courte et revient à son adresse d'origine quand on rebascule.
   Une valeur inconnue est ramenée au défaut côté front (`isSortOrder`), pour ne
@@ -52,11 +60,18 @@ Sur `/album/:albumId` :
   sauter la page une seconde fois, après coup, sous le curseur de quelqu'un qui
   avait déjà commencé à défiler.
 
-Les trois sont indépendants : `setParam` repart toujours des paramètres courants,
-sinon ouvrir une photo effacerait le tri et le refermer le rétablirait tout seul.
+Les quatre sont indépendants : `setParams` repart toujours des paramètres
+courants, sinon ouvrir une photo effacerait le tri et le refermer le rétablirait
+tout seul. Il accepte **plusieurs clés d'un coup** pour les gestes qui en
+touchent deux : fermer la visionneuse retire la photo _et_ son panneau, et deux
+écritures successives laisseraient une entrée d'historique intermédiaire où
+l'une est partie sans l'autre. Le panneau resté seul dans l'URL rouvrirait
+d'ailleurs la photo suivante sur un onglet que personne n'a redemandé.
+
 Ouvrir une photo pousse une entrée d'historique ; naviguer d'une photo à l'autre
 aux flèches utilise `replace`, sinon parcourir 50 photos empilerait 50 entrées et
-le bouton Retour ne ramènerait plus à la grille.
+le bouton Retour ne ramènerait plus à la grille. Ouvrir et refermer le panneau
+suit la même règle, pour la même raison.
 
 `order` et `group` se pilotent depuis deux bascules de la `TopBar`, déclarées en
 `actions` (voir « Barre supérieure » plus bas) et bâties sur le même patron :
@@ -70,23 +85,48 @@ conservée désignerait autre chose.
 
 ## Barre supérieure — `components/TopBar.tsx`
 
-Une seule rangée, à toutes les largeurs — 65 px, mesurés. Ce qu'elle contient au
-maximum : le retour, le titre et son sous-titre, les contrôles de vue de la page,
-puis Admin, Déconnexion et Installer.
+Une seule rangée, à toutes les largeurs, et **65 px réservés** plutôt que déduits
+du contenu (`min-h-16` sur la rangée, plus le filet). Une page sans sous-titre —
+la liste des albums — donnait sinon une barre de 57 px là où une page d'album en
+fait 65 : tout ce qui y est centré verticalement sautait de 8 px d'une navigation
+à l'autre, et la pastille du compte, seule à son extrémité, était ce qui le
+montrait le mieux.
 
-| Largeur       | Ce qui est visible                                       |
-| ------------- | -------------------------------------------------------- |
-| `< sm` (640)  | Retour, titre, **un menu kebab** qui porte tout le reste |
-| `sm` – `lg`   | Tout dans la barre, **icônes seules**                    |
-| `≥ lg` (1024) | Tout dans la barre, avec les libellés                    |
+Deux familles s'y succèdent et ne se mélangent jamais : **ce que fait cette
+page** — le retour, le titre et son sous-titre, l'activité, les contrôles de vue
+— puis, tout à droite, **qui la regarde** : une pastille portant l'initiale du
+compte, qui ouvre Admin, Déconnexion et Installer.
+
+| Largeur       | Ce qui est visible                                                    |
+| ------------- | --------------------------------------------------------------------- |
+| `< sm` (640)  | Retour, titre, **Activité**, un menu **Affichage**, la pastille       |
+| `sm` – `lg`   | Idem, les contrôles de vue dépliés dans la barre en **icônes seules** |
+| `≥ lg` (1024) | Idem, avec les libellés des contrôles de vue                          |
+
+**`Activité` reste en ligne à toutes les largeurs**, et n'entre jamais dans un
+menu. Son icône porte la pastille des non-lus, seul signe qu'une conversation a
+bougé quelque part ; rangée dans le menu, elle ne signalerait plus rien.
+Exactement la règle du bouton « Commentaires » de la visionneuse, pour le même
+motif. Le bouton est déclaré par la propriété `feed` et non dans le tableau
+`actions`, qui est précisément ce qui bascule dans le menu.
 
 Les seuils sortent de mesures, pas d'un choix d'esthétique. À 393 px, cinq
 contrôles alignés poussaient les bascules de vue sur **une seconde rangée à
 elles seules** — 101 px d'en-tête, le titre d'album réduit à `D.` et le
 sous-titre à `120 éléments · févri…`. Et à 768 px, afficher les cinq libellés
 ramenait le titre de 456 à 144 px en tronquant le sous-titre : c'est pourquoi
-les libellés n'arrivent qu'à `lg`, et non à `md`. Après : 277 px de titre à
-393 px, aucune troncature nulle part.
+les libellés n'arrivent qu'à `lg`, et non à `md`.
+
+Le menu **Affichage** ne se rend que si la page déclare des contrôles ; sans
+cette garde, `/` et `/admin` offriraient sous `sm` une cible qui n'ouvre rien.
+
+**La barre est une surface, pas une portion de page** : `ink-800` translucide sur
+un corps en `ink-900`, filet en `ink-700`. Elle valait `ink-900/85`, soit
+exactement la couleur du corps — la bande n'existait alors que par un filet d'un
+pixel, et sur un écran large la pastille, seule à son extrémité, paraissait posée
+sur le vide. Le filet monte du même cran, sans quoi il se dissoudrait dans le
+fond qu'il délimite. C'est le raisonnement déjà tenu pour le panneau de la
+visionneuse, un cran au-dessus du sien.
 
 **Les contrôles de page sont décrits, pas rendus.** `TopBar` ne prend plus de
 `children` mais un tableau d'`actions` :
@@ -105,10 +145,31 @@ la barre et en ligne libellée dans le menu. Avec des `children`, la page
 fournissait du JSX dont la barre ne savait rien : le libellé ne pouvait qu'être
 masqué, et les icônes se retrouvaient anonymes.
 
-**Installer est en dernier, après Déconnexion**, dans la barre comme dans le
-menu. La proposition apparaît et disparaît selon le navigateur et selon qu'on a
-déjà installé ; la placer ailleurs ferait bouger la position des contrôles
-permanents d'une visite à l'autre.
+**Le compte tient dans une pastille**, à toutes les largeurs. Admin, Déconnexion
+et Installer étaient auparavant trois boutons alignés dans la barre, et
+l'identifiant connecté vivait dans le sous-titre de la liste des albums — à
+gauche, sous « Albums », loin des boutons auxquels il se rapporte, et à
+l'emplacement qu'une page d'album donne au nombre d'éléments et à la période.
+Trois actions dont aucune ne sert au quotidien occupaient ainsi la place que
+réclamait le titre : les replier derrière une cible unique la lui rend, et
+regroupe enfin l'identité avec ce qu'on peut en faire.
+
+Ce que le menu affiche en tête : l'**identifiant**, puis l'**adresse** de
+l'identité de commentateur si la session en porte une. Les deux, parce qu'elles
+ne disent pas la même chose — l'identifiant ouvre des albums et peut être
+partagé par tout un foyer, l'adresse dit qui signe (voir
+[04 — Identités](./04-securite-et-acces.md#identité-de-commentateur)). La
+pastille abrège la **première ligne** : une initiale prise ailleurs se lirait
+comme un défaut au moment où le menu s'ouvre.
+
+Pas de photo, ni de service d'avatar distant : une seule lettre, rendue sur
+place. Aller chercher une image chez un tiers à partir de l'adresse la lui
+communiquerait à chaque chargement de page, pour un gain purement décoratif sur
+une application qu'on héberge précisément pour éviter cela (D86).
+
+**Installer est en dernier, après Déconnexion.** La proposition apparaît et
+disparaît selon le navigateur et selon qu'on a déjà installé ; la placer ailleurs
+ferait bouger la position des contrôles permanents d'une visite à l'autre.
 
 Le menu lui-même vit dans `components/ActionMenu.tsx`, partagé avec la
 visionneuse. Il se referme au clic dehors, à `Échap` — en rendant le focus à
@@ -126,20 +187,21 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 — les albums ne changent qu'au rythme des synchronisations —, `staleTime` de
 60 s, `retry: 1`.
 
-| Hook             | Clé                       | Particularité                                                                                                                                                                                                                                                                       |
-| ---------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useMe`          | `['me']`                  | `staleTime` 5 min. Ne **réessaie pas** sur 401 : c'est la réponse normale d'un visiteur non connecté, pas un incident.                                                                                                                                                              |
-| `useLogin`       | —                         | Écrit `me` dans le cache et invalide `albums`.                                                                                                                                                                                                                                      |
-| `useLogout`      | —                         | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                                                                                                               |
-| `useAlbums`      | `['albums']`              |                                                                                                                                                                                                                                                                                     |
-| `useAlbum`       | `['album', id]`           |                                                                                                                                                                                                                                                                                     |
-| `useAlbumItems`  | `['items', id, order]`    | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                |
-| `useAlbumDays`   | `['days', id]`            | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout. |
-| `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                             |
-| `useAdminStatus` | `['admin','status']`      | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                       |
-| `useAdminUsers`  | `['admin','users']`       | Liste d'administration des comptes.                                                                                                                                                                                                                                                 |
-| `useAdminAlbums` | `['admin','albums']`      | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                                                                                                                   |
-| `useSettings`    | `['admin','settings']`    |                                                                                                                                                                                                                                                                                     |
+| Hook              | Clé                                   | Particularité                                                                                                                                                                                                                                                                             |
+| ----------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useMe`           | `['me']`                              | `staleTime` 5 min. Ne **réessaie pas** sur 401 : c'est la réponse normale d'un visiteur non connecté, pas un incident.                                                                                                                                                                    |
+| `useLogin`        | —                                     | Écrit `me` dans le cache et invalide `albums`.                                                                                                                                                                                                                                            |
+| `useLogout`       | —                                     | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                                                                                                                     |
+| `useAlbums`       | `['albums']`                          |                                                                                                                                                                                                                                                                                           |
+| `useAlbum`        | `['album', id]`                       |                                                                                                                                                                                                                                                                                           |
+| `useAlbumItems`   | `['items', id, order]`                | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                      |
+| `useAlbumDays`    | `['days', id]`                        | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout.       |
+| `useMediaDetail`  | `['detail', albumId, id]`             | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                                   |
+| `useCommentsFeed` | `['comments', albumId ?? '', 'feed']` | `useInfiniteQuery`, curseur serveur, `staleTime` 30 s. Le littéral est **en dernier**, comme pour `commentCounts` : devant, il entrerait en collision avec le fil d'un album qui s'appellerait « feed ». Montée dès l'affichage d'une page de galerie — c'est elle qui porte la pastille. |
+| `useAdminStatus`  | `['admin','status']`                  | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                             |
+| `useAdminUsers`   | `['admin','users']`                   | Liste d'administration des comptes.                                                                                                                                                                                                                                                       |
+| `useAdminAlbums`  | `['admin','albums']`                  | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                                                                                                                         |
+| `useSettings`     | `['admin','settings']`                |                                                                                                                                                                                                                                                                                           |
 
 Une mutation par opération d'administration — `useCreateUser`, `useUpdateUser`,
 `useDeleteUser`, `useCreateAlbum`, `useUpdateAlbum`, `useDeleteAlbum`,
@@ -204,16 +266,21 @@ l'absence de décalage. Un en-tête qui déciderait de sa taille une fois monté
 passerait sous ses propres photos, et il n'y aurait rien pour le rattraper.
 
 `useGridLayout(items, groupBy, days)` construit la fonction :
-`GRID_HEADER_HEIGHT + (lieu ? 20 : 0) + (note ? 40 : 0)`. Elle rend `undefined`
-en découpage par mois — une note appartient à une journée, et il n'y aurait pas
-d'en-tête à qui l'accrocher parmi les trente. Le layout reste pur et testable
-sans DOM, ce qui est l'invariant de `justify.test.ts`.
+`GRID_HEADER_HEIGHT + (lieu ? 20 : 0) + (note ? 20 : 0)`, ces 20 px étant
+`GRID_HEADER_LINE_HEIGHT`. Elle rend `undefined` en découpage par mois — une
+note appartient à une journée, et il n'y aurait pas d'en-tête à qui l'accrocher
+parmi les trente. Le layout reste pur et testable sans DOM, ce qui est
+l'invariant de `justify.test.ts`.
 
-Ces deux constantes sont un **contrat avec `SectionHeader`**, qui doit tenir
-dedans : d'où les hauteurs de ligne fixées explicitement (`leading-5`) et la
-note clampée à deux lignes. C'est l'**interligne** qui tient le contrat, jamais
-la taille de police : remonter le lieu et la note de 13 à 14 px ne touche à
-aucune des deux constantes tant que `leading-5` reste.
+Cette constante est un **contrat avec `SectionHeader`**, qui doit tenir dedans :
+d'où l'interligne fixé explicitement (`leading-5`) et **une seule ligne
+tronquée par texte**. C'est l'**interligne** qui tient le contrat, jamais la
+taille de police : remonter le lieu et la note de 13 à 14 px n'y touche pas tant
+que `leading-5` reste.
+
+Une constante et non deux, et c'est ce qui rend le contrat exact plutôt
+qu'approché : réserver deux lignes à la note revenait à parier sur sa longueur,
+et le pari perdu laissait 20 px de blanc sous l'en-tête (D85).
 
 ### Sections repliées
 
@@ -374,7 +441,7 @@ et démontage **sans toucher au DOM**, et sans lui les vignettes du premier écr
 perdaient leur `src` à l'instant où elles s'affichaient — React ne le réécrit
 pas, sa vue du DOM le croyant inchangé.
 
-**La visionneuse doit le même geste, et pour bien plus lourd** ([D82](./08-decisions.md)).
+**La visionneuse doit le même geste, et pour bien plus lourd** ([D87](./08-decisions.md)).
 `ZoomableImage` est remonté à chaque photo (`key={item.id}`), et son `<img>`
 sortant emporte un `full` d'environ un mégaoctet que personne n'attend plus.
 Mesuré en parcourant vingt-cinq photos aux flèches puis en refermant la
@@ -428,8 +495,12 @@ d'édition pour un administrateur en découpage par jour.
   hauteur **et avec la visionneuse** : un lieu compté d'un côté et pas affiché
   de l'autre laisserait un blanc, l'inverse ferait déborder l'en-tête sur les
   photos.
-- **La note est clampée à deux lignes**, son texte entier restant dans `title`.
-  Une hauteur libre rendrait le layout dépendant d'une mesure DOM (D49).
+- **Le lieu et la note tiennent chacun sur une ligne tronquée**, valant chacun
+  `GRID_HEADER_LINE_HEIGHT` (20 px). Une hauteur libre rendrait le layout
+  dépendant d'une mesure DOM (D49) ; deux lignes réservées à la note en
+  laissaient une vide dès qu'elle était courte, et l'écart avant les vignettes
+  passait de 12 à 32 px d'une section à l'autre (D85). Le texte entier reste
+  dans `title`, dans le panneau `i` et dans le bandeau de la visionneuse.
 - **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
   grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
   curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit
@@ -499,11 +570,12 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 | Grille      | `Échap`         | Revenir à la liste des albums                                           |
 | Visionneuse | `← →`           | Média précédent / suivant                                               |
 | Visionneuse | `Début` / `Fin` | Premier / dernier                                                       |
-| Visionneuse | `Échap`         | Défait une couche à la fois : zoom, puis panneau, puis fermeture        |
+| Visionneuse | `Échap`         | Défait une couche à la fois : éditeur, zoom, panneau, puis fermeture    |
 | Visionneuse | `I` `C`         | Ouvre le panneau sur l'onglet Infos · Commentaires (referme si déjà là) |
 | Visionneuse | `F` `D`         | Plein écran · télécharger l'original                                    |
 | Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)          |
-| Visionneuse | `H`             | Escamote l'habillage : en-tête et flèches, rien que la photo            |
+| Visionneuse | `L`             | Masque ou rappelle le bandeau de légende (préférence retenue)           |
+| Visionneuse | `H`             | Escamote tout l'habillage : rien que la photo                           |
 | Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                        |
 | Partout     | `?`             | Aide-mémoire des raccourcis                                             |
 
@@ -566,23 +638,34 @@ marge de 24 px, et respecte `prefers-reduced-motion`.
 
 Les vignettes sont `tabIndex={-1}` : la navigation se fait aux flèches, les
 inclure dans l'ordre de tabulation doublerait le parcours clavier.
-`useShortcut` ignore les raccourcis à une touche quand un champ de saisie a le
-focus ou qu'un modificateur est enfoncé.
+
+**Aucune de ces touches ne part pendant une saisie**, ni lorsqu'un modificateur
+est enfoncé. Le test tient dans `lib/typing.ts` — `input`, `textarea`, `select`,
+`contenteditable` — et les trois gestionnaires l'appellent : la grille, la
+visionneuse, et `useShortcut` pour le `?`. Il y vit parce qu'ils en avaient
+chacun leur copie, et qu'une seule suffisait à diverger : celle de la
+grille ne connaissait que `input`, si bien que les flèches, `Début` et `Fin`
+déplaçaient la sélection au lieu du curseur dès qu'on éditait la description d'un
+album ou la note d'une journée — deux textes saisis dans un `textarea`, donc
+inéditables au clavier. La visionneuse garde une exception, et une seule :
+`Échap` lui parvient même depuis le champ de commentaire, c'est la sortie de
+secours.
 
 ## Visionneuse — `components/Lightbox.tsx`
 
-- **L'en-tête est un fil de contexte de portée décroissante** : l'album et la
-  journée sur la même ligne, puis le lieu, puis la note
-  ([D83](./08-decisions.md)). Ouvrir une photo faisait jusque-là perdre ce que
-  son en-tête de section disait, alors que c'est lui qui donne son sens à
-  l'image. L'horodatage exact reste, lui, dans le panneau `i`, où il vivait
-  déjà.
+- **L'en-tête situe, le bandeau bas raconte.** En haut : l'album et la journée
+  sur une ligne, le lieu sur la suivante — ce qui place l'image. En bas, dans
+  `MediaCaption` : les textes écrits à la main. L'horodatage exact reste, lui,
+  dans le panneau `i`, où il vivait déjà.
 
-  **Le nom du fichier a quitté cette place.** Il l'occupait en tête, en gras,
-  alors que `IMG_0004.jpg` ne dit ni où, ni quand, ni quoi — et il masquait
-  l'album, seule information qui manque vraiment quand on arrive par un lien
-  partagé. Il n'est pas perdu : `SidePanel` le porte en tête du panneau `i`,
-  auprès des données techniques qu'il accompagne.
+  **Le nom du fichier a quitté cette place** ([D88](./08-decisions.md)). Il
+  l'occupait en tête, en gras, alors que `IMG_0004.jpg` ne dit ni où, ni quand,
+  ni quoi — et il masquait l'album, seule information qui manque vraiment quand
+  on arrive par un lien partagé. Il n'est pas perdu : `SidePanel` le porte en
+  tête du panneau `i`, auprès des données techniques qu'il accompagne. C'est le
+  **titre d'album** qui se tronque quand la ligne est trop courte, jamais la
+  date : elle est brève et bornée, et c'est elle qu'un « Allemagne – Forêt
+  Noire · Aujo… » sacrifierait.
 
   Les libellés de journée viennent de `dayKey`, `dayLabel` et `placeLabelOf`,
   **les mêmes fonctions que la grille**. Une visionneuse qui calculerait sa date
@@ -595,25 +678,23 @@ focus ou qu'un modificateur est enfoncé.
   et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
   au centre des boutons d'icône, hauts de 32 puis 36 px.
 
-  **La note s'affiche désormais à toutes les largeurs**, deux lignes au doigt et
-  trois au clavier — là où D70 la réservait au desktop. Le motif d'alors valait
-  pour un panneau latéral qui prend 320 px à un écran de téléphone, pas pour
-  trois lignes sous un voile qu'on escamote d'un geste ([D83](./08-decisions.md)).
-  Elle reste par ailleurs dans le panneau `i`, qu'`ExifPanel` rend sans
-  condition de largeur.
+  **La note du jour a quitté cet en-tête**, où elle vivait en `hidden md:block`.
+  D70 l'y avait réservée aux écrans larges, et l'arbitrage se tenait : deux
+  lignes de plus **empilées au-dessus de l'image**, sur un téléphone où la photo
+  est déjà à l'étroit. Ce n'est plus la question posée — une légende sous la
+  photo ne rogne pas le cadrage de la même façon, et elle est masquable d'un
+  geste. La note descend donc dans le bandeau, à toutes les largeurs, avec les
+  autres textes (D84). L'en-tête ne garde que ce qui situe.
 
-  **Le voile est ce qui rend tout cela lisible** : `from-black/90 via-black/60
-to-transparent`, sur `pb-10`. Un texte clair posé sur un ciel surexposé ne se
-  lit pas ; le dégradé est plus opaque en haut, là où les lignes s'accumulent,
-  et sa base transparente évite la barre noire franche au bord de la photo.
-
-  **`h` escamote tout l'habillage** — en-tête et flèches — pour ne laisser que
-  la photo. C'est la contrepartie assumée d'un fil de contexte plus fourni : il
-  couvre le haut du cadrage, et un geste doit pouvoir le rendre. Les touches
-  ←/→ et le balayage continuent de fonctionner : on escamote ce qui se voit,
-  pas ce qui se pilote. Un unique bouton reste au coin haut-droit, seule sortie
-  possible pour qui touche l'écran. L'état ne suit pas la photo : on le règle
-  une fois, pour regarder.
+  **`h` escamote tout l'habillage** — en-tête, flèches et bandeau — pour ne
+  laisser que la photo ([D88](./08-decisions.md)). Le raccourci ne double pas le
+  `L` de la légende : `L` range le texte du bas et laisse le bouton qui le
+  rappelle, `h` ne laisse rien. Les touches ←/→ et le balayage continuent de
+  fonctionner : on escamote ce qui se voit, pas ce qui se pilote. Un unique
+  bouton reste au coin haut-droit, seule sortie possible pour qui touche
+  l'écran. L'état n'est pas retenu d'une visite à l'autre, contrairement au
+  masquage de la légende — rouvrir la visionneuse sans un seul repère laisserait
+  qui a oublié le raccourci devant un écran muet.
 
 - **La progression est une barre collée au bord haut**, sur toute la largeur et
   épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
@@ -683,18 +764,20 @@ to-transparent`, sur `pb-10`. Un texte clair posé sur un ciel surexposé ne se
   73, et `1 / 120 · 7 août 2026 à 17:21` affiché **en entier** sur un écran de
   393 px.
 - **Le panneau Infos s'ouvre sur la journée**, avant l'EXIF : « Lieu » puis
-  « Ce jour-là ». C'est le seul texte écrit par un humain sur cette photo, et il
-  dit ce que ni le nom de fichier ni l'EXIF ne diront jamais. **La note a donc
-  deux chemins, selon la largeur** : l'en-tête de la visionneuse à partir de
-  `md`, le panneau Infos partout ([D70](./08-decisions.md)). Les deux lignes
-  d'`ExifPanel` sont **sans condition de largeur**, et c'est ce qui les rend
-  indispensables : sous `md`, elles sont le seul accès à la note depuis une
-  photo ouverte. `place` prime sur `autoPlaces`, comme partout ailleurs
+  « Ce jour-là ». `place` prime sur `autoPlaces`, comme partout ailleurs
   ([D51](./08-decisions.md)).
+
+  Ces deux lignes sont désormais une **redite** du bandeau, et elles restent :
+  ce sont les seules à rendre le texte **entier** sans dépliement, et les
+  supprimer ferait perdre l'accès à la note depuis un panneau déjà ouvert. Ce
+  qui a changé, c'est leur statut — elles étaient le recours de D70 sous `md`,
+  elles sont maintenant un confort.
+
   `useAlbumDays` est appelé dès que la grille est par jour **ou** que la
   visionneuse est ouverte (`groupBy === 'day' || isOpen`) : la note doit être là
   quelle que soit la façon dont on est arrivé sur la photo, sans payer la
   requête pour une grille par mois qu'on se contente de faire défiler.
+
 - **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
   le dernier, une flèche à une extrémité : la cible est l'index courant, aucun
   élément n'est remonté, donc aucun `loadeddata` n'est émis. Remettre `loaded` à
@@ -723,6 +806,69 @@ to-transparent`, sur `pb-10`. Un texte clair posé sur un ciel surexposé ne se
 
   Sous `md` la question ne se pose pas — le panneau occupe tout l'écran, il n'y a
   pas de dehors.
+
+### Bandeau de légende — `components/MediaCaption.tsx` et `lib/caption.ts`
+
+Les trois textes écrits à la main, rassemblés en bas de la colonne photo, à
+**toutes** les largeurs. Ils vivaient à trois endroits — la description d'album
+en tête de grille, la note du jour dans son en-tête de section, et rien du tout
+sur la photo elle-même : ouvrir une image faisait perdre l'essentiel de ce qui
+l'explique (D84).
+
+| Ligne   | Préfixe      | Style                 | Lignes visibles |
+| ------- | ------------ | --------------------- | --------------- |
+| Photo   | —            | `text-sm` · `ink-100` | 3               |
+| Journée | `Ce jour-là` | `text-xs` · `ink-300` | 2               |
+| Album   | `Album`      | `text-xs` · `ink-500` | 1               |
+
+La hiérarchie est portée par la couleur et le clampage, sans aucun titre : plus
+la portée est large, plus la ligne s'efface. La ligne de la photo est la seule
+sans préfixe — les deux autres parlent d'autre chose que de l'image qu'on
+regarde, et sans ce mot « Bonifacio, la plage » se lirait comme sa légende.
+
+`captionEntries` (`lib/caption.ts`) décide quelles lignes exister : logique pure,
+donc testable sans DOM, et c'est la seule partie qui ait des cas — texte absent,
+texte blanc, tout vide, ordre des portées (`packages/web/test/caption.test.ts`).
+
+Ce qu'il faut savoir du composant :
+
+- **Le dégradé est celui de l'en-tête, retourné**
+  (`from-black/85 via-black/55 to-transparent`), et les marges latérales
+  tiennent compte de `env(safe-area-inset-*)` : en paysage, l'encoche mord sur
+  ce bord-là aussi. Elles sont posées sur le contenu et non sur l'enveloppe,
+  pour que le dégradé aille jusqu'au bord de l'écran.
+- **Un clic sur le texte déplie** (`line-clamp-none`, `max-h-[50vh]` et
+  défilement propre), avec `aria-expanded`. Le dépliement **n'est pas**
+  persisté : il répond à un texte précis, pas au suivant — la visionneuse
+  remonte le composant à chaque photo (`key`), ce qui le remet à plat.
+- **Le chevron masque tout le bandeau**, et cette préférence-là **est** retenue
+  (`localStorage`, `useCaptionHidden`) : c'est un choix sur la façon de regarder
+  ses photos, qu'on ne veut pas refaire à chaque ouverture. Masqué, un bouton
+  fantôme « Afficher la légende (l) » reste en bas à droite — un état caché sans
+  porte de sortie est un piège. La touche `L` fait la même chose au clavier.
+- **Le crayon et le « + Décrire cette photo » sont réservés à l'administrateur**,
+  avec les affordances d'`AlbumDescription` : éditeur en surimpression,
+  `z-20`, compteur de caractères, Annuler / Enregistrer. Deux façons de corriger
+  un texte dans la même application se remarqueraient tout de suite.
+- **Le bandeau est masqué pendant le zoom**, comme les flèches de navigation :
+  le doigt y sert à se déplacer dans l'image.
+- **Sur une vidéo, il pousse au lieu de recouvrir** (`overlay={false}`, donc dans
+  le flux). C'est le seul endroit où il le fait : les contrôles natifs de
+  lecture vivent au bas de la balise, et sur une vidéo portrait qui remplit
+  l'écran, un bandeau posé dessus rendrait play/pause et la barre de progression
+  intouchables.
+- **L'ouverture de l'éditeur est pilotée par `Lightbox`**, pas par le composant :
+  c'est la visionneuse qui écoute `Échap`, et cette touche doit refermer le champ
+  **avant** le zoom, le panneau et la fermeture. Sans cette couche, `Échap`
+  depuis la saisie fermerait la visionneuse par-dessus un texte non enregistré.
+- L'alerte d'échec de couverture est remontée de `bottom-6` à `bottom-28` :
+  posée plus bas, elle passait sous le bandeau qu'elle doit interrompre.
+
+`useUpdateMedia` (`api/hooks.ts`) **corrige le cache au lieu de l'invalider** :
+`setQueriesData` sur le préfixe `['items', albumId]` remplace l'item dans les
+pages des **deux** sens de tri, et `setQueryData` met à jour le détail. Invalider
+relancerait toutes les pages accumulées de la requête infinie — après cinq pages
+de défilement, écrire une légende redemanderait mille lignes (la leçon de D67).
 
 ### Pastille des commentaires — `lib/seenComments.ts`
 
@@ -753,6 +899,20 @@ Trois bords que le calcul doit tenir :
 - Rien n'est marqué tant que les compteurs ne sont pas chargés : marquer à ce
   moment effacerait le repère pour le reconstituer faux à l'arrivée des vrais
   totaux.
+
+**Le fil d'activité a son propre repère**, `gdv:comments-feed-seen`, et c'est un
+**identifiant** de commentaire, pas un compte. Le fil est paginé et sans total :
+compter ce qu'on a lu supposerait de le parcourir en entier, alors
+qu'`AUTOINCREMENT` fait de l'id un jalon exact — tout ce qui le dépasse est
+arrivé depuis, quels que soient les messages supprimés entre-temps. Les trois
+bords ci-dessus valent à l'identique : `unreadFeedCount` ne compte que ce qui
+dépasse le repère, le repère redescend si la tête du fil passe sous lui, et rien
+n'est marqué avant l'arrivée de la première page.
+
+Un seul repère pour toutes les portées, la globale : ouvrir le tiroir filtré sur
+« Vacances » ne doit pas éteindre une pastille qui annonçait aussi des messages
+sur « Corse ». Le tiroir ouvert vaut lecture, comme le panneau ouvert d'une
+photo.
 
 ### Préchargement asymétrique
 
@@ -1165,7 +1325,48 @@ parle, désormais le seul endroit où la substitution s'apprend. La palette
 s'ouvre vers le haut et **ancrée à droite** : le formulaire est en bas du
 panneau, et 16 rem alignées à gauche déborderaient de celui-ci.
 
-### Modération — `components/admin/CommentsSection.tsx` et `lib/moderation.ts`
+### Fil d'activité — `components/CommentsFeed.tsx`
+
+**Une conversation ne se découvre pas.** La pastille d'une photo suppose qu'on
+ait déjà ouvert la bonne, et sur un album de milliers de vues dont dix portent
+un message, personne ne tombe dessus. Un message écrit sans lecteur est un
+message perdu : le tiroir est le seul endroit d'où l'on voit qu'il a été écrit
+(D86).
+
+Un **tiroir** et non une page : la grille reste derrière, on referme et on est
+encore au même endroit. Pleine largeur sous `sm`, colonne de 384 px au-delà —
+384 px prélevés sur un écran de 393 ne laisseraient rien voir de la galerie, et
+le tiroir vaudrait alors une page.
+
+`useActivityFeed()` est ce que les deux pages de galerie branchent sur leur barre
+supérieure : la pastille et l'ouverture. Il monte la requête de portée
+**globale**, même depuis un album — la pastille répond à « y a-t-il du nouveau
+quelque part », et la restreindre à l'album ouvert l'éteindrait en changeant de
+page sans que rien n'ait été lu. Le tiroir s'ouvre donc lui aussi sur la portée
+globale : ouvrir sur une liste plus étroite que ce que la pastille annonce ferait
+chercher des messages absents. Dans un album, une bascule « Tous les albums /
+`<titre>` » restreint après coup, et le rappel de l'album disparaît alors de
+chaque bloc — il répète ce que la bascule affiche déjà.
+
+Le rangement est celui de la modération, `lib/commentGroups.ts`, à une exception
+près : **les messages d'un bloc se lisent du plus ancien au plus récent**, alors
+que la liste des blocs reste antéchronologique. Ici on lit une conversation, et
+la réponse au-dessus de la question se lit à l'envers. La place d'un bloc dans sa
+journée, elle, se décide toujours sur son message le plus récent.
+
+Chaque bloc renvoie vers `/album/:id?photo=<mediaId>&panel=comments` — la photo
+**et** la conversation. Une vignette de 56 px ouvre le bloc : c'est elle qui fait
+reconnaître le fil, bien avant le nom de fichier. Une photo retirée de l'index
+n'en a plus et le bloc cesse d'être cliquable, le lien menant à une visionneuse
+qui se refermerait aussitôt. Le corps est clampé à trois lignes : le tiroir est
+un survol de ce qui s'est dit, la conversation entière s'ouvre sous la photo,
+avec de quoi y répondre.
+
+Un **bouton** « Messages plus anciens » plutôt qu'un défilement infini : on
+vient voir ce qui vient d'arriver, pas remonter une archive, et un observateur
+de défilement chargerait des pages sous un pouce qui ne fait que parcourir.
+
+### Modération — `components/admin/CommentsSection.tsx` et `lib/commentGroups.ts`
 
 **Une liste de travail, pas un flux** (D67). On arrive avec une intention — un
 message signalé, une journée, une adresse —, et la file répond à ces trois
@@ -1188,13 +1389,19 @@ qu'un filtre change. `keepPreviousData` garde la page affichée le temps de la
 suivante, faute de quoi la section se replie sous le curseur à chaque clic.
 Le pied annonce `x–y sur total`, où `total` vient du serveur.
 
-`lib/moderation.ts` range la page **par journée, puis par photo**. Deux
+`lib/commentGroups.ts` range la page **par journée, puis par photo**. Deux
 répétitions disparaissent : la date, inutile sur chaque ligne quand vingt
 messages se suivent le même jour, et le couple photo / album, réécrit à
 l'identique sous chaque message d'un même fil. La journée est celle du lecteur
 et **non UTC**, à l'inverse de la grille — la raison est plus bas, section
 « Dates ». Le rangement ne porte que sur la page reçue : une photo dont les
 commentaires enjambent une frontière de page apparaît des deux côtés.
+
+`groupByDayAndPhoto` est **générique** sur le contexte album / photo : la file de
+modération et le tiroir d'activité posent la même question — qu'est-ce qui a été
+écrit, et où — et n'y répondent pas deux fois. Ce qui distingue `AdminComment`
+de `FeedComment` — l'adresse de l'auteur, l'état de masquage — n'entre pas dans
+le rangement, qui ne lit que l'album, la photo et la date.
 
 Chaque bloc renvoie vers la photo commentée (`/album/:id?photo=<mediaId>`) :
 modérer sans voir l'image qui a suscité le message revient à juger un propos hors
@@ -1253,6 +1460,18 @@ défilement discrètes, anneau de focus `:focus-visible` uniquement (l'app se
 pilote aux flèches, la cible active doit rester repérable), et deux animations —
 `fade-in` des vignettes décodées, `lightbox-enter` — toutes deux neutralisées
 sous `prefers-reduced-motion: reduce`.
+
+**`scrollbar-gutter: stable` sur `html`**, et c'est une correction, pas une
+coquetterie : la visionneuse gèle `document.body.style.overflow` à l'ouverture,
+donc la barre de défilement disparaît et toute la mise en page glisse de sa
+largeur — en-tête compris — à chaque photo ouverte, puis revient à la fermeture.
+Le même décalage se produit entre une page qui défile et une qui ne défile pas.
+Réserver la gouttière fixe la largeur utile une fois pour toutes.
+
+Le prix est une bande vide de 10 px — la largeur fixée par la règle
+`::-webkit-scrollbar` — là où le système dessine ses barres en surimpression et
+ne prenait rien. C'est le compromis assumé : un décalage à chaque photo ouverte
+se remarque, dix pixels constants non.
 
 **`cursor: pointer` est remis en base sur les éléments cliquables.** Tailwind 4 a
 retiré la règle que sa v3 posait sur les `button`, pour s'aligner sur le défaut

@@ -2752,7 +2752,393 @@ est encore dans le nouveau dossier, elle redevient la couverture sans geste.
 
 ---
 
-## D82 — Une image qu'on quitte doit être abandonnée, sinon elle bouche la file de celles qu'on regarde
+## D81 — L'adresse d'expédition ne reçoit rien : un `Reply-To` récupère les réponses
+
+**Contexte.** `MAIL_FROM` porte une adresse du domaine de l'instance, par
+exemple `Galerie <galerie@exemple.fr>`. Le relais qui l'émet est
+transactionnel : il envoie, il ne reçoit pas. Et le domaine d'envoi n'a pas
+forcément de boîte derrière cette adresse — chez plusieurs registraires, une
+simple redirection suppose désormais un abonnement de messagerie.
+
+Une réponse à une notification de commentaire partait donc dans le vide, ou
+rebondissait chez son auteur. L'instance n'en savait rien : le rejet a lieu
+chez le destinataire, aucun journal du serveur ne le montre.
+
+**Choix.** Une variable facultative, `MAIL_REPLY_TO`, pose l'en-tête `Reply-To`
+sur tous les messages. L'expéditeur affiché reste celui du domaine — c'est lui
+qui est aligné avec SPF et DKIM, en changer ferait tomber les messages en
+indésirable — mais « Répondre » vise une adresse qui, elle, a une boîte.
+
+Elle est **indépendante** de la paire `SMTP_URL`/`MAIL_FROM`, qui reste
+indissociable. Absente, aucun en-tête n'est posé et le comportement est celui
+d'avant : c'est le bon réglage pour un domaine qui reçoit son courrier, et il
+n'y avait aucune raison de forcer les instances existantes à déclarer quelque
+chose.
+
+**Écarté.** Un `noreply@` explicite, qui aurait supprimé le problème en
+supprimant la conversation. Ces messages annoncent des commentaires de proches
+sur des photos de famille ; répondre est un usage prévisible, et un
+`noreply@` demande à l'expéditeur de comprendre qu'on ne lui parle pas.
+
+Écarté aussi : composer le `Reply-To` à partir de l'adresse du commentateur qui
+a déclenché la notification. Séduisant — la réponse arriverait à la bonne
+personne — mais l'annonce des nouvelles photos n'a pas de commentateur
+d'origine, et surtout cela divulguerait l'adresse d'un visiteur aux autres
+destinataires.
+
+**Trois garde-fous, deux sévérités.** La ligne de partage est la même que
+partout ailleurs dans `env.ts` : ce qui est **faux** arrête le démarrage, ce qui
+est seulement **inopérant** est journalisé.
+
+- **La forme de `MAIL_FROM` et de `MAIL_REPLY_TO` est contrôlée** — `Nom
+<adresse>` ou adresse nue — et une valeur illisible arrête le démarrage. Le
+  cas visé est celui du contrôle de `SMTP_URL` (D37 pour le transport) : un
+  chevron non refermé part tel quel dans l'en-tête, le relais rejette ou
+  réécrit, et l'échec survient des semaines après la mise en service sans que
+  rien ne le rattache à une ligne du `.env`. Le contrôle reste permissif là où
+  il n'apprendrait rien : pas de point exigé dans le domaine, `@localhost` sert
+  aux essais avec un relais local.
+- **`MAIL_REPLY_TO` sans relais** est signalée en `warn`, pas refusée : couper
+  SMTP le temps d'une intervention est légitime, et faire tomber le démarrage
+  pour une variable qui n'a rien d'invalide serait disproportionné.
+- **`MAIL_REPLY_TO` égale à `MAIL_FROM`** est signalée aussi. C'est le geste
+  réflexe — recopier l'expéditeur — et il est pire que ne rien mettre : la
+  configuration paraît faite, tandis que les réponses continuent d'aller
+  précisément là où elles n'arrivaient pas. La comparaison porte sur l'adresse
+  extraite, un nom d'affichage ou une différence de casse ne masquant pas le
+  doublon.
+
+C'est aussi pourquoi `mailReplyTo` vit à la racine de `Env` et non dans `mail` :
+regroupée avec `smtpUrl` et `from`, elle disparaîtrait avec eux quand aucun
+relais n'est configuré — c'est-à-dire dans le cas précis qu'il s'agit de
+signaler.
+
+**Conséquences.** L'adresse configurée est visible de tous les destinataires,
+comme n'importe quel en-tête. Sur une instance familiale, c'est une adresse que
+les destinataires connaissent déjà ; sur une instance ouverte, mieux vaut une
+vraie boîte sur le domaine, et la variable reste alors vide.
+
+---
+
+## D82 — Un fil d'activité, parce qu'une conversation ne se découvre pas
+
+**Contexte.** Les commentaires étaient invisibles tant qu'on n'ouvrait pas la
+photo qui les portait. La pastille de la visionneuse ne se voit qu'une fois la
+photo atteinte, et sur un album de milliers de vues dont dix portent un message,
+personne ne tombe dessus. Une discussion pouvait donc vivre et s'éteindre sans
+qu'aucun de ceux à qui elle s'adressait ne la voie — un message écrit sans
+lecteur est un message perdu, et c'est le contraire de ce que des commentaires
+sous des photos de famille sont censés produire.
+
+L'administration avait déjà sa vue globale, la file de modération. Elle n'était
+d'aucun secours ici : elle répond 403 hors `/api/admin`, montre les adresses
+email des auteurs, et sert à trier ce qu'on retire — pas à lire ce qui s'écrit.
+
+**Choix.** Une route `GET /api/comments/feed`, et un tiroir ouvert depuis la
+barre supérieure des deux pages de galerie.
+
+**La portée vient de `albumsFor()`, jamais de la requête.** C'est la première
+route qui rend, en une réponse, des messages venus d'albums différents : une
+erreur de portée n'y produit pas une page vide mais une fuite, et rien dans
+l'affichage ne la signalerait — la conversation d'un album qu'on n'a pas s'y lit
+comme les autres. `?album=` ne fait que restreindre ; un album qu'on ne voit pas
+répond 404 comme partout (D12). Une session sans album rend une page vide, cas
+qu'un test couvre en premier parce que c'est celui qu'un `IN ()` oublié
+transformerait en corpus entier.
+
+**Aucun index, aucune migration.** `ORDER BY c.id DESC` est l'ordre de la clé
+primaire : SQLite parcourt la table à rebours et s'arrête au `LIMIT`. Un index
+`(album_id, id DESC)` ne ferait pas mieux, SQLite ne sachant pas fusionner
+l'ordre de plusieurs tranches d'un `IN`. Le cas défavorable est assumé, dans la
+continuité de D67 : un compte qui ne voit qu'un album sur cinquante fait
+traverser les commentaires des quarante-neuf autres avant de réunir sa page. Le
+corpus reste borné par ce que des humains écrivent.
+
+**Le paramètre `?panel=comments` est la moitié utile de l'entrée.** L'onglet du
+panneau latéral était un état local de `Lightbox` : un lien vers `?photo=` ouvrait
+l'image en laissant les messages fermés. Le tiroir aurait donc mené à la photo
+sans mener à la conversation, c'est-à-dire nulle part. L'onglet vit maintenant
+dans l'URL, comme `photo`, `order` et `group`, et les emails de notification en
+profitent — un message annoncé par email menait jusque-là à une image muette.
+
+**La pastille compte des identifiants, pas des messages.** Le repère de lecture
+du fil, `gdv:comments-feed-seen`, est le plus grand id vu. Le fil est paginé et
+sans total : compter ce qu'on a lu supposerait de le parcourir en entier, alors
+qu'`AUTOINCREMENT` fait de l'id un jalon exact. Le repère reste dans le
+navigateur pour la raison de D55 — une clé d'accès est partagée par tout un
+foyer, une table côté serveur ferait effacer la pastille des autres par le
+premier qui lit.
+
+**Écarté : une notification par email de plus.** L'instance en envoie déjà pour
+les réponses et les nouveautés d'album (D39, D41). Un troisième motif d'écrire
+aurait fait payer à la boîte aux lettres ce qui manquait à l'interface, et se
+serait heurté au fait qu'une identité n'est rattachée à aucun album — on ne sait
+pas à qui écrire pour un message qui ne répond à personne.
+
+**Écarté : une page `/activite`.** Une route de plus, et surtout on quitte la
+grille pour y aller. Le tiroir laisse la galerie derrière lui : on referme et on
+est encore au même endroit.
+
+**Écarté : une icône par journée ou par mois dans les en-têtes de section.**
+Filtrer sur une plage de `taken_at` demandait une jointure sur `media` — les
+messages des photos disparues seraient sortis du résultat — et un bouton de plus
+dans un en-tête dont toutes les hauteurs sont déclarées au pixel. La bascule
+« tous les albums / cet album » couvre le besoin réel, qui est de savoir où ça
+parle.
+
+**Conséquences.** Une requête de plus au chargement de chaque page de galerie,
+du même ordre que celle des compteurs d'album. Publier un commentaire invalide
+les deux portées du fil, donc recharge les pages déjà parcourues du tiroir — le
+tiroir est presque toujours fermé au moment où l'on écrit.
+
+`lib/moderation.ts` devient `lib/commentGroups.ts`, et son rangement par journée
+puis par photo devient générique : la file de modération et le tiroir posent la
+même question, et n'ont pas à y répondre deux fois. Le tiroir s'en écarte sur un
+point, assumé : les messages d'un bloc s'y lisent du plus ancien au plus récent,
+parce qu'on y lit une conversation et non une file de travail.
+
+Enfin, un album dont l'identifiant Drive serait `feed` n'obtiendrait jamais ses
+compteurs, la précédence des segments littéraux de Fastify jouant ici comme pour
+`unsubscribe`. Même arbitrage : la route générale prime sur un identifiant que
+son créateur peut renommer.
+
+---
+
+## D83 — Une description par photo, portée par l'album
+
+**Contexte.** Un album porte une description, une journée porte une note — mais
+une photo précise n'avait rien. C'est pourtant là que le contexte manque le
+plus : « Léa saute du ponton, troisième essai » ne se déduit ni du nom de
+fichier, ni de l'EXIF, ni de la note du jour, qui parle de la journée entière.
+Une galerie familiale se regarde des années plus tard, et ce qui n'a pas été
+écrit est perdu.
+
+**Choix.** Une table `media_notes (album_id, media_id, description, updated_at)`,
+clé primaire `(album_id, media_id)`. Le texte se saisit depuis la galerie, en
+voyant l'image ; la mutation passe par
+`PATCH /api/admin/albums/:id/items/:mediaId`, seul préfixe qui réponde 403 (D50).
+Même partage que la note de journée et la couverture, et pour la même raison.
+
+**La portée est l'album, pas le fichier Drive.** Un fichier présent dans deux
+albums — dossiers imbriqués, tous deux déclarés — y porte deux descriptions,
+exactement comme il y porte deux fils de commentaires. Une description par
+`media_id` seul serait plus simple à écrire et fausse à lire : elle montrerait à
+un visiteur ce qui a été rédigé dans un album auquel il n'a pas accès, ce qui
+contredirait le cloisonnement décidé en D12. Le prix assumé est qu'on décrit deux
+fois la même photo si on tient à la voir décrite des deux côtés — un cas rare, et
+qui reste un choix.
+
+**Aucune clé étrangère vers `media`**, et c'est le cœur de l'entrée. `deleteStale`
+retire une photo de l'index dès qu'une synchronisation ne la revoit pas :
+corbeille Drive le temps d'un retour en arrière, dossier renommé, sync
+interrompue à mi-parcours. Une cascade détruirait alors, sur un contretemps
+d'indexation, un texte écrit à la main que rien ne régénère — contrairement à une
+vignette. L'identifiant Drive étant stable, la photo revenue retrouve sa
+description d'elle-même. Le raisonnement est celui de `comments.media_id` (D35)
+et d'`albums.cover_media_id` (D80) ; il s'applique ici avec plus de force encore,
+puisqu'une description perdue ne se reconstitue par aucun moyen.
+
+Corollaire à ne pas défaire : **aucun ménage ne touche cette table.** Ni
+`deleteStale`, ni `clearAlbum`, ni `pruneAlbums`, ni le `ON CONFLICT DO UPDATE`
+d'`upsertMany` — même invariant que `replaceCells` dans `AlbumDayRepo`, où un
+`excluded.description` glissé par mégarde effacerait tout à chaque passage
+horaire. La seule suppression vient de la cascade sur `albums`.
+
+**Transportée avec l'item, pas en appel groupé.** Les compteurs de commentaires
+d'un album voyagent d'un bloc (D54), et on aurait pu faire de même. Trois raisons
+de ne pas le faire ici. La visionneuse doit afficher la légende sur la photo
+qu'on vient d'atteindre à la flèche, donc au même instant que l'item lui-même —
+pas au retour d'une seconde requête. Le coût est une jointure `LEFT JOIN`
+1-pour-1 sur une clé primaire, invisible à côté du parcours d'index que la page
+fait déjà. Et un bloc « toutes les descriptions de l'album » transporterait, sur
+un album largement décrit, des kilo-octets de texte pour des photos qu'on ne
+regardera pas — là où un compteur tient en un entier.
+
+**Écarté.** Une colonne `media.description`. Elle aurait évité la jointure, mais
+`upsertMany` réécrit toute la ligne à chaque synchronisation : il aurait fallu
+l'exclure du `DO UPDATE` — un oubli silencieux à un caractère près, sur une
+requête déjà longue de vingt colonnes. Et elle aurait disparu avec la photo, ce
+que toute l'entrée cherche à éviter.
+
+Écarté aussi : refuser les vidéos, comme le fait `coverId`. Le refus s'y justifie
+par le pipeline, qui ne rend pas de vignette vidéo ; ici rien ne s'y oppose, et
+une vidéo mérite une légende autant qu'une photo.
+
+**Conséquences.** `MediaItem` gagne un champ, donc `MediaDetail` aussi — le
+panneau `i` en hérite sans un mot de plus. La borne est de 1000 caractères,
+entre la note de journée (300, dont l'en-tête de section précalcule la hauteur
+sans DOM — D49) et la description d'album (2000, un paragraphe libre) : posée sur
+la photo, au-delà de mille caractères une légende cesse d'être une légende.
+
+`SELECT *` devient `SELECT media.*` dans `listItems` et `getDetail` : les deux
+tables portent une colonne `album_id`, et SQLite l'accepterait sans broncher en
+laissant le lecteur suivant deviner laquelle il tient.
+
+---
+
+## D84 — Le contexte descend en bas de la visionneuse, à toutes les largeurs
+
+**Contexte.** Trois textes décrivent une photo ouverte, et aucun n'était là quand
+on la regardait. La description de l'album ne vit qu'en tête de grille. La note
+du jour n'apparaissait dans la visionneuse qu'à partir de `md` (D70), donc jamais
+sur téléphone. Et la description de la photo elle-même venait d'exister (D83)
+sans avoir nulle part où s'afficher. Ouvrir une image faisait donc perdre
+l'essentiel de ce qui l'explique — exactement le défaut que D68 puis D74 avaient
+attaqué par petites touches, en portant un fragment de contexte dans l'en-tête.
+
+**Choix.** Un bandeau bas dans la colonne photo (`MediaCaption`), qui empile les
+trois textes par portée décroissante — la photo, la journée, l'album —, à
+**toutes** les largeurs. La hiérarchie est portée par la couleur et le nombre de
+lignes visibles (`ink-100`/3, `ink-300`/2, `ink-500`/1), sans aucun titre : plus
+la portée est large, plus la ligne s'efface.
+
+**Cela renverse le seuil de D70, et il faut dire pourquoi ce n'est pas se
+dédire.** L'arbitrage de D70 portait sur **deux lignes empilées au-dessus de
+l'image**, sur un téléphone où la photo est déjà à l'étroit : le contexte y
+mangeait le cadrage par le haut, sans recours. La question posée ici n'est pas
+la même. Une légende posée sous la photo, sur un dégradé, ne rogne rien du même
+ordre ; elle est repliée par défaut ; et elle se masque d'un geste, ce que la
+note de l'en-tête ne proposait pas. D70 écartait d'ailleurs explicitement « un
+dépliement au toucher » — un geste de plus pour un texte que la grille montrait
+déjà. C'est vrai de la note du jour, faux de la description d'une photo, que la
+grille ne montre nulle part.
+
+**Le masquage est persisté, le dépliement ne l'est pas.** La différence n'est pas
+un oubli : masquer est un choix sur la façon de regarder ses photos — on le fait
+une fois, et le redemander à chaque ouverture serait le meilleur moyen de ne
+jamais l'utiliser. Déplier est une réponse à un texte précis, qui n'a aucun sens
+sur la photo suivante. Le premier vit donc dans `localStorage`
+(`useCaptionHidden`), le second dans l'état d'un composant remonté à chaque
+photo.
+
+Masqué, un bouton fantôme « Afficher la légende (l) » reste en bas à droite. Un
+état caché sans porte de sortie est un piège : le bandeau parti, plus rien ne
+dirait qu'il a existé.
+
+**Écarté.** Laisser la description de photo dans le seul panneau `i`. Il est
+fermé par défaut, et une légende qu'il faut aller chercher n'est pas une légende.
+
+Écarté aussi : un bandeau permanent non masquable. Une galerie se regarde aussi
+pour les images seules, et un texte posé sur chaque photo, sans moyen de
+l'écarter, finirait par être ce qu'on reproche à l'application.
+
+**Conséquences.** La note du jour quitte l'en-tête, qui ne garde que ce qui
+identifie le fichier et situe la journée. Les lignes « Lieu » et « Ce jour-là »
+d'`ExifPanel` deviennent une redite du bandeau : elles restent, parce qu'elles
+sont le seul endroit qui donne le texte **entier** sans dépliement, et que les
+retirer ferait perdre l'accès à la note depuis un panneau déjà ouvert. Leur
+statut change, pas leur code — elles étaient le recours de D70 sous `md`, elles
+sont désormais un confort.
+
+`Échap` gagne une couche — éditeur, zoom, panneau, fermeture. La saisie de la
+légende vit dans la visionneuse, et le gestionnaire de touches laisse passer
+`Échap` depuis un champ de saisie (c'est la sortie de secours) : sans cette
+couche, corriger une légende et appuyer sur `Échap` fermerait la visionneuse
+par-dessus un texte non enregistré.
+
+Sur une vidéo, et là seulement, le bandeau **pousse** au lieu de recouvrir. Les
+contrôles natifs de lecture vivent au bas de la balise ; sur une vidéo portrait
+qui remplit l'écran, un bandeau posé dessus rendrait play/pause et la barre de
+progression intouchables — un défaut bien pire que la place perdue.
+
+---
+
+## D85 — Une ligne par texte dans l'en-tête de section, parce qu'une hauteur réservée doit être exacte
+
+**Contexte.** Le layout de la grille est calculé sans DOM : `useGridLayout`
+déclare la hauteur de chaque en-tête, et `SectionHeader` doit tenir dedans
+(D49). La note d'une journée s'y réservait **deux** lignes — 40 px — alors
+qu'une note de journée est le plus souvent courte et n'en occupe qu'une. Les
+20 px de trop tombaient sous le texte, et l'écart avant les vignettes passait de
+12 px à 32 px d'une section à l'autre, selon la longueur d'une note. Le défaut
+se voit sur deux sections voisines, et n'a aucune explication visible.
+
+**Choix.** Une seule ligne, tronquée, pour le lieu **comme** pour la note, et
+une seule constante — `GRID_HEADER_LINE_HEIGHT` — pour les deux. La réservation
+devient exacte par construction : ce que le layout compte est exactement ce que
+le composant rend, quelle que soit la longueur du texte.
+
+**Ce que la note perd, et où elle le retrouve.** Une note de 300 caractères se
+lisait sur deux lignes dans la grille ; elle s'y lit maintenant sur une, avec
+une ellipse. Son texte entier reste dans l'attribut `title`, dans le panneau
+`i`, et surtout dans le **bandeau de la visionneuse** (D84), qui la montre à
+toutes les largeurs et la déplie au clic. C'est cette dernière porte qui rend
+l'arbitrage tenable : quand D49 fixait deux lignes, la grille était le seul
+endroit qui montrât la note.
+
+**Écarté.** Estimer le nombre de lignes à partir de la longueur du texte et de
+la largeur disponible, en majorant la largeur d'un glyphe pour ne jamais
+sous-réserver. Cela marche, et cela gardait deux lignes aux notes longues. Mais
+c'est une constante de plus à faire suivre la taille de police, et une
+estimation juste « presque toujours » : le jour où elle se trompe vers le bas,
+les vignettes passent sous le texte, sans rien pour le rattraper. Un contrat
+exact vaut mieux qu'une estimation prudente.
+
+Écarté aussi : réserver 40 px et forcer la boîte à deux lignes même vide. La
+hauteur redevenait cohérente, mais l'espace blanc restait — c'est lui qu'on
+voulait supprimer, pas son irrégularité.
+
+**Conséquences.** `GRID_PLACE_HEIGHT` et `GRID_DESCRIPTION_HEIGHT` fusionnent en
+`GRID_HEADER_LINE_HEIGHT`. L'écart entre un en-tête et ses vignettes vaut
+désormais `GRID_HEADER_PAD_BOTTOM` (12 px) dans **tous** les cas : sans note,
+avec un lieu seul, avec une note courte, avec une note longue.
+
+`ALBUM_DAY_DESCRIPTION_MAX_LENGTH` reste à 300. La borne ne servait pas à tenir
+dans deux lignes — elle dit qu'une note de journée est un repère, pas un récit,
+et cela n'a pas changé.
+
+---
+
+## D86 — Le compte tient dans une pastille, et son initiale est rendue sur place
+
+**Contexte.** La barre supérieure alignait Admin, Déconnexion et Installer, trois
+boutons dont aucun ne sert au quotidien d'une visionneuse de photos ; à `lg` ils
+portaient leurs libellés, soit près de 250 px pris au titre de l'album. Ailleurs,
+sous « Albums », un sous-titre disait « Connecté en tant que alexis » — à
+l'opposé de la barre des boutons qu'il concernait, et à l'emplacement qu'une page
+d'album donne au nombre d'éléments et à la période.
+
+**Choix.** Une pastille portant l'initiale du compte, tout à droite, à toutes les
+largeurs. Elle ouvre l'`ActionMenu` déjà écrit pour les petits écrans, coiffé de
+l'identifiant et — si la session porte une identité de commentateur — de son
+adresse. Les contrôles de vue de la page restent seuls dans la barre, et gardent
+leur propre menu sous `sm`.
+
+Deux familles, deux emplacements : **ce que fait cette page** à gauche, **qui la
+regarde** à droite. C'est ce partage qui rend la règle mémorisable ; la position
+d'un contrôle cesse de dépendre de la largeur de l'écran.
+
+L'initiale est celle de l'**identifiant**, pas du nom d'affichage, alors que la
+personne est mieux décrite par le second : c'est la première ligne du menu que la
+pastille abrège, et deux lettres différentes de part et d'autre du clic se
+liraient comme un défaut.
+
+**Écarté.** Gravatar, ou tout service d'avatar distant. L'adresse — ou son
+empreinte, ce qui revient au même pour un annuaire d'emails — partirait chez un
+tiers à chaque chargement de page, et le tiers apprendrait au passage qui
+consulte quelle instance et quand. C'est cher payé pour une image décorative, sur
+une application qu'on héberge précisément pour que ces données ne sortent pas.
+Une lettre rendue sur place ne coûte aucune requête et ne dit rien à personne.
+
+Écarté aussi : garder Déconnexion visible dans la barre à côté de la pastille.
+Deux gestes pour la même chose, dont l'un des deux se serait fait cliquer par
+erreur — c'est précisément l'action qu'on ne veut pas déclencher sans l'avoir
+voulue.
+
+**Conséquences.** Sous `sm`, une page qui déclare des contrôles de vue montre
+deux cibles au lieu d'une : le menu Affichage et la pastille. Mesuré à 393 px, le
+titre y perd une trentaine de pixels — c'est le prix d'un emplacement du compte
+qui ne bouge plus d'une largeur à l'autre. Une page sans contrôle de vue — `/`,
+`/admin` — n'affiche que la pastille : un menu vide n'offrirait qu'une cible qui
+n'ouvre rien.
+
+La pastille n'est rendue qu'une fois la session connue. Une pastille sans
+initiale le temps d'un aller-retour réseau, puis une lettre, ferait sursauter la
+barre à chaque changement de page.
+
+---
+
+## D87 — Une image qu'on quitte doit être abandonnée, sinon elle bouche la file de celles qu'on regarde
 
 **Contexte.** Des vignettes restaient noires dans la grille — parfois une
 minute, parfois assez longtemps pour qu'on les croie perdues. Ouvrir la photo
@@ -2796,42 +3182,47 @@ DOM.
 
 ---
 
-## D83 — La photo ouverte dit d'où elle vient, et s'en débarrasse d'une touche
+## D88 — La photo ouverte dit d'où elle vient, et s'en débarrasse d'une touche
 
-**Contexte.** L'en-tête de la visionneuse ouvrait sur le nom du fichier, en
-gras et en tête ([D74](#d74--la-visionneuse-range-ses-actions-et-rend-à-la-photo-la-note-de-sa-journée)).
-`IMG_0004.jpg` ne dit ni où, ni quand, ni quoi ; il tenait la place de la seule
-information qui manque vraiment quand on ouvre un lien partagé — de quel album
-vient cette photo. Le reste du fil, la journée et son lieu, était comprimé sur
-une ligne unique, et la note ne s'affichait qu'à partir de `md`
-([D70](#d70--la-note-dune-journée-quitte-len-tête-de-la-visionneuse-sur-mobile)).
+**Contexte.** [D84](#d84--le-contexte-descend-en-bas-de-la-visionneuse-à-toutes-les-largeurs)
+a fait descendre dans le bandeau bas tout ce qui est **écrit à la main** sur une
+photo. L'en-tête, lui, a gardé la répartition d'avant : le nom du fichier en
+gras et en tête ([D74](#d74--la-visionneuse-range-ses-actions-et-rend-à-la-photo-la-note-de-sa-journée)),
+la journée et le lieu comprimés sur la ligne du dessous. Or `IMG_0004.jpg` ne
+dit ni où, ni quand, ni quoi, et il occupait la place de la seule information
+qui manque vraiment quand on ouvre un lien partagé : de quel album vient cette
+photo.
 
-**Décision.** L'en-tête devient un fil de contexte, du plus large au plus
-étroit : **album · journée**, puis le lieu, puis la note. Le nom du fichier
-descend en tête du panneau `i`, où `SidePanel` l'affichait déjà, auprès des
-données techniques qu'il accompagne. La note s'affiche à toutes les largeurs,
-deux lignes au doigt et trois au clavier : le motif qui la réservait au desktop
-valait pour un panneau latéral prenant 320 px à un écran de téléphone, pas pour
-trois lignes de texte sous un voile.
+**Décision.** Les deux zones se partagent le travail selon ce qu'elles portent —
+l'en-tête **situe**, le bandeau **raconte**. En haut : **album · journée**, puis
+le lieu sur sa propre ligne. En bas, inchangé : ce que quelqu'un a écrit. Le nom
+du fichier descend en tête du panneau `i`, où `SidePanel` l'affichait déjà,
+auprès des données techniques qu'il accompagne.
 
-Le voile passe à `from-black/90 via-black/60 to-transparent` sur `pb-10` : plus
-opaque en haut, là où les lignes s'accumulent, et toujours transparent à sa
-base — un texte clair sur un ciel surexposé ne se lit pas, et une barre noire
-franche au bord de la photo se voit trop.
+C'est le titre d'album qui se tronque, jamais la date. Sur un téléphone la ligne
+ne tient pas les deux, et « Allemagne – Forêt Noire · Aujo… » sacrifierait
+précisément ce qu'on cherchait à donner : la date est courte et bornée, elle
+reste entière.
 
-**`h` escamote tout l'habillage**, en-tête et flèches comprises. C'est la
-contrepartie assumée d'un fil plus fourni : il couvre le haut du cadrage, et
-regarder une photo sans rien par-dessus doit rester à un geste. Les touches
-←/→ et le balayage continuent de fonctionner — on escamote ce qui se voit, pas
-ce qui se pilote. Un unique bouton reste au coin haut-droit : sans lui, la
-sortie ne tiendrait qu'au clavier, c'est-à-dire à rien pour qui touche l'écran.
-L'état ne suit pas la photo courante, il se règle une fois pour la séance.
+**`h` escamote tout l'habillage** : en-tête, flèches, bandeau de légende. Le
+raccourci ne fait pas double emploi avec le `l` de D84, et les deux portées ne se
+recouvrent pas — `l` range le texte du bas et laisse en place le bouton qui le
+rappelle, `h` ne laisse rien d'autre que la photo. Les touches ←/→ et le
+balayage continuent de fonctionner : on escamote ce qui se voit, pas ce qui se
+pilote. Un unique bouton reste au coin haut-droit, sans quoi la sortie ne
+tiendrait qu'au clavier, c'est-à-dire à rien pour qui touche l'écran.
 
-**Écarté.** Garder le nom du fichier sur une quatrième ligne : l'en-tête en
-compte déjà jusqu'à trois, et une ligne de plus pour l'information la moins
-utile du lot est exactement l'inverse du problème qu'on traite. Écarté aussi :
-faire du clic sur la photo la bascule d'habillage. Ce geste bascule déjà le
-zoom, et deux sens pour un même clic se disputeraient à chaque photo.
+L'état n'est **pas** persisté, contrairement au masquage de la légende, et
+l'asymétrie est voulue : ranger la légende est un choix sur la façon de lire ses
+photos, escamoter tout l'habillage est un geste qu'on fait devant une image
+précise. Une visionneuse qui rouvrirait sans un seul repère laisserait qui a
+oublié le raccourci devant un écran muet.
+
+**Écarté.** Garder le nom du fichier sur une ligne de plus : l'en-tête en compte
+déjà deux, et l'allonger pour l'information la moins utile du lot est l'inverse
+du problème qu'on traite. Écarté aussi : faire du clic sur la photo la bascule
+d'habillage. Ce geste bascule déjà le zoom, et deux sens pour un même clic se
+disputeraient à chaque photo.
 
 **Conséquences.** `Lightbox` prend un `albumTitle` — la visionneuse est une vue
 à part entière, on y arrive par un lien sans avoir vu la grille. La grille, elle,

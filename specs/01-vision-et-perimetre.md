@@ -95,6 +95,11 @@ calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
   et une adresse vérifiée par code — distincte de la clé d'accès, qu'un foyer
   peut partager. Sans serveur SMTP, aucun code ne part et les commentaires
   restent indisponibles.
+- **Fil d'activité** : les derniers commentaires des albums qu'on a le droit de
+  voir, tous albums et toutes photos confondus, dans un tiroir ouvert depuis la
+  barre supérieure. Une conversation ne se découvre pas en ouvrant la bonne
+  photo par hasard : sans cette vue, un message pouvait vivre et s'éteindre sans
+  qu'aucun de ses destinataires ne le voie (voir D82).
 - **Annonce par email des nouvelles photos d'un album**, aux identités vérifiées
   qui ont ouvert cet album. Personne ne revient spontanément sur une galerie
   auto-hébergée : sans cette annonce, les photos déposées et les commentaires

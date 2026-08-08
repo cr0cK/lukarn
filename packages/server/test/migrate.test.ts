@@ -224,6 +224,40 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute les descriptions de photo à une base en version 8', () => {
+    const db = databaseAtVersion(8);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
+       VALUES ('vacances', 'Vacances', 'dossier', 1, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
+       VALUES ('vacances', 'abc', 'IMG.jpg', 'image/jpeg', 'photo',
+               '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    assert.ok(columns(db, 'media_notes').includes('description'));
+    // La table arrive vide et l'index est intact : une instance en service
+    // traverse la mise à jour sans rien voir changer, jusqu'à ce que quelqu'un
+    // décrive une photo.
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM media_notes').get() as { n: number }).n, 0);
+    assert.equal(
+      (db.prepare('SELECT name FROM media WHERE id = ?').get('abc') as { name: string }).name,
+      'IMG.jpg',
+    );
+
+    // Aucune clé étrangère vers `media` : c'est tout l'intérêt de la table, et
+    // c'est ce qu'une migration ultérieure ne doit pas « corriger » (D83).
+    const references = (db.pragma('foreign_key_list(media_notes)') as { table: string }[]).map(
+      (row) => row.table,
+    );
+    assert.deepEqual(references, ['albums']);
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

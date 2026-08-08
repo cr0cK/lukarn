@@ -27,6 +27,9 @@ services:
       # vérification d'adresse ne peut pas partir.
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # Facultative, et sans effet sur les deux précédentes : où répondre quand
+      # l'adresse d'envoi ne reçoit pas de courrier.
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
       # Vide ⇒ aucune coordonnée ne sort de la machine, et les journées gardent
       # leurs grappes sans libellé. C'est le seul réglage de confidentialité de
       # l'application : il doit atteindre le conteneur pour exister.

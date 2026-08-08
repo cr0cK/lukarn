@@ -1,29 +1,43 @@
-import type { AdminComment } from '@gdv/shared';
+import type { Comment } from '@gdv/shared';
 import { dayLabel, localDayKey } from './justify';
 
-/** Les commentaires d'une même photo, dans l'ordre où la file les a rendus. */
-export interface PhotoGroup {
+/**
+ * Ce qu'un commentaire doit porter pour être rangé ici : lui-même, et de quoi
+ * le situer. `AdminComment` et `FeedComment` le satisfont tous deux — la file
+ * de modération et le tiroir d'activité posent la même question, « qu'est-ce
+ * qui a été écrit, et où », et n'ont pas à y répondre deux fois.
+ */
+export interface SituatedComment extends Comment {
+  albumId: string;
+  albumTitle: string;
+  mediaId: string;
+  /** `null` si la photo a disparu de l'index : le message, lui, reste. */
+  mediaName: string | null;
+}
+
+/** Les commentaires d'une même photo, dans l'ordre où la liste les a rendus. */
+export interface PhotoGroup<T extends SituatedComment = SituatedComment> {
   /** Identifie le groupe parmi ses frères — `key` de React comme clé de `Map`. */
   key: string;
   albumId: string;
   albumTitle: string;
   mediaId: string;
-  /** `null` si la photo a disparu de l'index : le fil reste modérable. */
+  /** `null` si la photo a disparu de l'index : le fil reste lisible et modérable. */
   mediaName: string | null;
-  comments: AdminComment[];
+  comments: T[];
 }
 
-/** Une journée de la file, et les photos commentées ce jour-là. */
-export interface DayGroup {
+/** Une journée de la liste, et les photos commentées ce jour-là. */
+export interface DayGroup<T extends SituatedComment = SituatedComment> {
   /** `YYYY-MM-DD` sur l'horloge du lecteur. */
   key: string;
   /** « Aujourd'hui », « Hier », ou la date complète. */
   label: string;
-  photos: PhotoGroup[];
+  photos: PhotoGroup<T>[];
 }
 
 /**
- * Range une page de modération par journée, puis par photo.
+ * Range une page de commentaires par journée, puis par photo.
  *
  * Deux répétitions disparaissent d'un coup : la date, qui n'a pas à figurer sur
  * chaque ligne quand vingt messages se suivent le même jour, et le couple
@@ -43,10 +57,10 @@ export interface DayGroup {
  *
  * L'ordre d'entrée est préservé partout : les journées comme les photos
  * apparaissent dans l'ordre de leur premier commentaire, et les commentaires
- * d'une photo gardent le leur. La file arrive antéchronologique, elle le reste.
+ * d'une photo gardent le leur. La liste arrive antéchronologique, elle le reste.
  */
-export function groupForModeration(comments: AdminComment[]): DayGroup[] {
-  const days = new Map<string, Map<string, PhotoGroup>>();
+export function groupByDayAndPhoto<T extends SituatedComment>(comments: T[]): DayGroup<T>[] {
+  const days = new Map<string, Map<string, PhotoGroup<T>>>();
 
   for (const comment of comments) {
     const dayKey = localDayKey(new Date(comment.createdAt));

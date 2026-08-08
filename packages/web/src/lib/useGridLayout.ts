@@ -30,15 +30,19 @@ export const GRID_HEADER_HEIGHT =
 export const GRID_COLLAPSED_HEADER_HEIGHT = GRID_HEADER_PAD_TOP + GRID_HEADER_TITLE_HEIGHT;
 
 /**
- * Ce que coûte un lieu, puis une note, dans un en-tête de section. Ces deux
- * valeurs sont un contrat avec `SectionHeader`, qui doit tenir dedans : le
- * layout est calculé sans DOM, donc rien ne rattrapera un dépassement — les
- * photos de la section suivante passeraient dessous. D'où les hauteurs de ligne
- * fixées explicitement côté composant (`leading-5`), et la note clampée à deux
- * lignes.
+ * Ce que coûte une ligne de plus dans un en-tête de section : le lieu, la note.
+ *
+ * C'est un contrat avec `SectionHeader`, qui doit tenir dedans — le layout est
+ * calculé sans DOM, donc rien ne rattrapera un dépassement et les photos de la
+ * section passeraient sous le texte. D'où l'interligne fixé explicitement côté
+ * composant (`leading-5`), et **une seule ligne par texte**, tronquée.
+ *
+ * Une constante et non deux, parce que la réservation doit valoir exactement ce
+ * qui sera rendu. La note valait deux lignes alors qu'elle n'en occupe souvent
+ * qu'une, et les 20 px de trop tombaient sous le texte : l'écart avant les
+ * vignettes passait de 12 à 32 px selon la longueur de la note (D85).
  */
-export const GRID_PLACE_HEIGHT = 20;
-export const GRID_DESCRIPTION_HEIGHT = 40;
+export const GRID_HEADER_LINE_HEIGHT = 20;
 /** Marge de lignes rendues hors viewport, pour que le défilement rapide reste plein. */
 const OVERSCAN_PX = 900;
 
@@ -142,8 +146,8 @@ export function useGridLayout(
       const base = collapsedKeys?.has(key) ? GRID_COLLAPSED_HEADER_HEIGHT : GRID_HEADER_HEIGHT;
       return (
         base +
-        (placeLabelOf(day) ? GRID_PLACE_HEIGHT : 0) +
-        (day?.description ? GRID_DESCRIPTION_HEIGHT : 0)
+        (placeLabelOf(day) ? GRID_HEADER_LINE_HEIGHT : 0) +
+        (day?.description ? GRID_HEADER_LINE_HEIGHT : 0)
       );
     };
   }, [groupBy, days, collapsedKeys]);

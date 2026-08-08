@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { unreadCount } from '../src/lib/seenComments';
+import { unreadCount, unreadFeedCount } from '../src/lib/seenComments';
 
 /**
  * Non-lus de la pastille.
@@ -34,5 +34,32 @@ describe('commentaires non lus', () => {
 
   it('ne signale rien sur une photo sans commentaire', () => {
     assert.equal(unreadCount(0, undefined), 0);
+  });
+});
+
+/**
+ * Non-lus du fil d'activité.
+ *
+ * Le repère y est un identifiant et non un compte : ce qui a été supprimé
+ * depuis le dernier passage ne doit pas se faire passer pour du nouveau, et un
+ * message ancien qui remonterait dans la page ne doit pas rallumer la pastille.
+ */
+describe('non-lus du fil d’activité', () => {
+  it('ne compte que ce qui dépasse le repère', () => {
+    assert.equal(unreadFeedCount([12, 11, 10, 9], 10), 2);
+  });
+
+  it('considère tout comme non lu sans repère', () => {
+    assert.equal(unreadFeedCount([3, 2, 1], 0), 3);
+  });
+
+  it('ne signale rien quand la suppression a vidé le haut du fil', () => {
+    // Le repère est à 20, les messages restants sont plus anciens : rien n'est
+    // arrivé depuis, même si le fil a changé de contenu.
+    assert.equal(unreadFeedCount([8, 7], 20), 0);
+  });
+
+  it('ne signale rien sur un fil vide', () => {
+    assert.equal(unreadFeedCount([], 0), 0);
   });
 });

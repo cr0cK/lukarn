@@ -287,6 +287,50 @@ comptes, droits, réglages), reconstruit à la première lecture qui suit une
 écriture. Étant le seul écrivain de ces quatre tables, il ne peut pas servir un
 instantané périmé.
 
+### `media_notes`
+
+Ce qui se passe sur **une** photo. L'album dit où l'on était, la journée ce
+qu'on y a fait ; « Léa saute du ponton, troisième essai » ne se déduit ni du nom
+de fichier, ni de l'EXIF, ni de la note du jour. Écrite par `MediaRepo`, la
+seule classe qui possède cette table.
+
+| Table         | Colonnes                                                                                                              |
+| ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `media_notes` | `album_id` (FK `ON DELETE CASCADE`), `media_id` (**sans FK**), `description`, `updated_at`, PK `(album_id, media_id)` |
+
+Quatre choix à connaître :
+
+- **La portée est l'album, pas le fichier Drive.** Le même fichier indexé sous
+  deux albums porte deux descriptions, exactement comme il porte deux fils de
+  commentaires. Les confondre montrerait à un visiteur ce qui a été écrit dans
+  un album qu'il ne peut pas ouvrir (D12).
+- **Aucune clé étrangère vers `media`**, pour la raison de `comments.media_id` et
+  d'`albums.cover_media_id` : `deleteStale` retire une photo dès qu'une
+  synchronisation ne la revoit pas — corbeille Drive le temps d'un retour en
+  arrière, dossier renommé, sync interrompue. Une cascade détruirait sur un
+  contretemps d'indexation un texte écrit à la main, que rien ne régénère.
+  L'identifiant Drive est stable : la photo revenue retrouve sa description
+  (voir [08](./08-decisions.md), D83).
+- **Aucun ménage n'y touche.** Ni `deleteStale`, ni `clearAlbum`, ni
+  `pruneAlbums`, ni le `ON CONFLICT DO UPDATE` d'`upsertMany` — même invariant
+  que `AlbumDayRepo` : le passage de fond n'écrase jamais une saisie. La seule
+  suppression vient de la cascade sur `albums`, c'est-à-dire de la suppression
+  de l'album lui-même.
+- **Une ligne vide n'existe pas.** `setDescription` fait un `DELETE` quand la
+  valeur reçue est `null`, vide ou blanche : la garder ferait grossir la table
+  sans rien dire de plus qu'une ligne absente.
+
+`listItems` et `getDetail` lisent la description par un
+`LEFT JOIN media_notes ON (album_id, media_id)`. Le `SELECT` devient `media.*` :
+les deux tables portent une colonne `album_id`, et une étoile nue rendrait la
+ligne ambiguë à la lecture. La jointure est **1-pour-1** sur la clé primaire de
+`media_notes` — elle ne duplique ni ne perd de ligne, donc la pagination par
+curseur est inchangée, ce que `packages/server/test/media-notes.test.ts`
+verrouille en paginant un album dont deux photos sur cinq sont décrites.
+
+Vidéos comprises, contrairement à la couverture : une vidéo mérite une légende,
+et rien dans le pipeline ne s'y oppose.
+
 ## Index
 
 | Index                                                      | Ce qu'il sert                                                                                                                                                                                                                                                                                      |
@@ -369,6 +413,15 @@ reparte de la même étape.
 | 6       | `commenters.pending_display_name`.                                                  |
 | 7       | `album_days`, `geo_places` ; `albums.group_by`.                                     |
 | 8       | `albums.cover_media_id`.                                                            |
+| 9       | `media_notes` : une description par photo, portée par l'album.                      |
+
+La migration 9 ajoute la table des descriptions de photo. Elle arrive vide et ne
+touche à aucune ligne existante : une instance en service la traverse sans rien
+voir changer, jusqu'à ce que quelqu'un décrive une photo.
+`packages/server/test/migrate.test.ts` le vérifie sur une base en version 8
+portant un album et un média — et vérifie aussi que la table ne référence
+**qu'**`albums`, l'absence de clé étrangère vers `media` étant tout l'intérêt de
+sa forme.
 
 La migration 8 ajoute la couverture choisie. Elle arrive à `NULL` sur toutes les
 lignes, c'est-à-dire au comportement d'avant : chaque album continue d'afficher
@@ -470,6 +523,24 @@ règle qu'à l'unité.
 `LIKE '%…%'` est un parcours qu'aucun index ne sert, le corpus est borné par ce
 que des humains écrivent, et `idx_comments_thread` continue de couvrir le chemin
 chaud de la galerie. À revoir au-delà de la dizaine de milliers de commentaires.
+
+### Le fil d'activité
+
+`CommentRepo.listFeed(query)` sert le tiroir d'activité du visiteur : le même
+curseur par identifiant, la même page antéchronologique, mais restreinte aux
+albums qu'on a le droit de voir.
+
+**`albumIds` est la seule barrière de cloisonnement**, et elle vient de
+`albumsFor()` — jamais de la requête. Une liste vide rend une page vide, et non
+tout le corpus : c'est ce que produirait un `IN ()` oublié, et c'est le cas que
+le test couvre en premier.
+
+Là non plus, **aucun index nouveau** (D82). `ORDER BY c.id DESC` est l'ordre de
+la clé primaire : SQLite parcourt la table à rebours et s'arrête au `LIMIT`. Un
+index `(album_id, id DESC)` ne ferait pas mieux — SQLite ne sait pas fusionner
+l'ordre de plusieurs tranches d'un `IN`, et il faudrait alors trier. Le cas
+défavorable est connu et assumé : un compte qui ne voit qu'un album sur cinquante
+fait traverser les commentaires des quarante-neuf autres avant de réunir sa page.
 
 ## Ce qui n'est pas dans la base
 

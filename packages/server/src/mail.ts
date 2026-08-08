@@ -1,6 +1,6 @@
 import { createTransport } from 'nodemailer';
 import { signAlbumUnsubscribeToken, signUnsubscribeToken } from './crypto.js';
-import type { Env } from './env.js';
+import { parseMailAddress, type Env } from './env.js';
 
 /**
  * Notifications par email : transport SMTP, mise en file et composition des
@@ -58,10 +58,37 @@ export class Mailer {
         "SMTP non configuré : ni les notifications de commentaires ni l'annonce des " +
           "nouvelles photos n'enverront rien.",
       );
+      // Avertir plutôt que refuser de démarrer : couper SMTP le temps d'une
+      // intervention est légitime, et on ne laisse pas au passage une variable
+      // qui n'a rien d'invalide bloquer l'instance.
+      if (env.mailReplyTo) {
+        log.warn(
+          "MAIL_REPLY_TO est renseignée mais aucun relais n'est configuré : sans " +
+            "SMTP_URL ni MAIL_FROM, aucun message ne part, et l'adresse de réponse " +
+            'ne sert à rien.',
+        );
+      }
       return new Mailer(null, log);
     }
 
-    const transport = createTransport(env.mail.smtpUrl, { from: env.mail.from });
+    // Le garde-fou vise le geste réflexe : recopier MAIL_FROM dans
+    // MAIL_REPLY_TO. La configuration paraît faite, et les réponses continuent
+    // d'aller exactement là où elles n'arrivaient pas.
+    if (env.mailReplyTo && parseMailAddress(env.mailReplyTo) === parseMailAddress(env.mail.from)) {
+      log.warn(
+        `MAIL_REPLY_TO désigne la même adresse que MAIL_FROM (${env.mailReplyTo}) : ` +
+          "l'en-tête Reply-To ne détourne alors rien. Mets-y une adresse qui reçoit " +
+          'vraiment du courrier, ou laisse la variable vide.',
+      );
+    }
+
+    // `replyTo` n'est posé que s'il est configuré : un en-tête vide vaut moins
+    // que pas d'en-tête, le client de messagerie retombant alors sur l'adresse
+    // d'expédition — qui est justement celle qui ne reçoit rien.
+    const transport = createTransport(env.mail.smtpUrl, {
+      from: env.mail.from,
+      ...(env.mailReplyTo ? { replyTo: env.mailReplyTo } : {}),
+    });
     return new Mailer(async (message) => {
       await transport.sendMail(message);
     }, log);
@@ -122,13 +149,17 @@ export interface Recipient {
  * de notification pour voir de quoi il retourne, et forcer trois clics de plus
  * suffit à faire renoncer. La visionneuse s'ouvre sur `?photo=<id>` (voir
  * `AlbumPage`), qui est exactement l'URL qu'un visiteur partagerait.
+ *
+ * Et sur `&panel=comments` : cet email annonce un **message**, pas une photo.
+ * Arriver sur l'image le panneau fermé laisserait chercher ce dont il était
+ * question.
  */
 export function buildCommentMail(
   notification: CommentNotification,
   recipient: Recipient,
   env: Env,
 ): MailMessage {
-  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}`;
+  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
   /**
    * Ce lien coupe `commenters.notify`, donc **tout** ce que la galerie envoie :
    * les réponses aux commentaires comme les annonces de nouvelles photos. Le

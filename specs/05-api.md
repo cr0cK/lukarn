@@ -144,6 +144,20 @@ jointure de plus. Il compte les commentaires **visibles**, réponses comprises, 
 voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
 charger un fil que la plupart des visiteurs n'ouvriront pas.
 
+**`MediaItem.description`** — la légende écrite à la main sur cette photo,
+`null` si personne n'en a écrit. Elle est portée par le couple **(album,
+média)** : le même fichier indexé sous deux albums en porte deux, comme il porte
+deux fils de commentaires ([04](./04-securite-et-acces.md), D12).
+
+Elle voyage avec l'item, et non par un appel groupé comme `AlbumCommentCounts` :
+la visionneuse doit l'afficher sur la photo qu'on vient d'atteindre à la flèche,
+la liste est déjà chargée, et le texte est court là où un compteur par photo
+tient en un entier (D83). Côté serveur c'est une jointure 1-pour-1 sur la clé
+primaire de `media_notes`, sans effet sur la pagination.
+
+`MediaDetail` en hérite en étendant `MediaItem` : le panneau `i` n'a rien à
+demander de plus.
+
 ## Identité de commentateur — `routes/identity.ts`
 
 `requireAuth` sur tout le préfixe : on déclare une identité depuis une session
@@ -187,6 +201,7 @@ réécrire la signature de tous les messages d'un tiers.
 
 | Méthode | Chemin                            | Accès     | Réponse              |
 | ------- | --------------------------------- | --------- | -------------------- |
+| GET     | `/api/comments/feed`              | session   | `CommentsFeedPage`   |
 | GET     | `/api/comments/:albumId`          | session   | `AlbumCommentCounts` |
 | GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage`       |
 | POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`            |
@@ -199,6 +214,33 @@ Le contrôle d'accès est refait dans chaque handler plutôt que posé en
 segment fixe de l'URL. Il reste identique à celui des albums — **404 et jamais
 403** sur un album inconnu ou non attribué (voir
 [04](./04-securite-et-acces.md)).
+
+**`GET /api/comments/feed?album=&cursor=&limit=`** — `CommentsFeedPage` =
+`{ comments: FeedComment[], nextCursor }`, du plus récent au plus ancien, tous
+albums et toutes photos confondus. `FeedComment` est un `Comment` augmenté de
+quoi le situer et y revenir : `albumId`, `albumTitle`, `mediaId`, `mediaName` et
+`mediaVersion` — les deux derniers `null` si la photo a quitté l'index, le
+message restant lisible sans vignette ni lien.
+
+C'est la seule route qui rend, en une réponse, des messages venus d'albums
+différents. **La portée vient de `albumsFor()`, jamais de la requête** :
+`?album=` ne fait que la restreindre, et un album qu'on ne voit pas répond 404
+comme partout ailleurs. Une session sans aucun album rend une page vide.
+
+`limit` va de 1 à 100, `COMMENTS_FEED_PAGE_SIZE` (30) par défaut. La borne haute
+n'est pas cosmétique : `better-sqlite3` est synchrone, et composer une page de
+cent mille commentaires bloquerait la boucle d'événements le temps de la rendre.
+
+Le curseur est un identifiant de commentaire, comme celui de la modération. Pas
+de `total` : on ne modère pas ici, on regarde ce qui vient d'arriver, et compter
+tout le corpus visible coûterait une requête pour un nombre que personne ne lit.
+L'ordre est celui de la clé primaire décroissante — SQLite parcourt la table à
+rebours et s'arrête au `LIMIT`, sans index supplémentaire (voir
+[03](./03-modele-de-donnees.md)).
+
+Le segment littéral `feed` est protégé par la même précédence que
+`unsubscribe`, et le revers vaut aussi : un album dont l'identifiant serait
+`feed` n'obtiendrait jamais ses compteurs. Un test le vérifie.
 
 **`GET /api/comments/:albumId`** — `AlbumCommentCounts` = `{ counts: Record<mediaId, number> }`,
 masqués exclus. Les photos sans commentaire **n'y figurent pas** : sur un album
@@ -519,6 +561,25 @@ l'écran refusée par le serveur.
 La ligne est créée si la journée n'en avait pas : on peut annoter une journée
 dont aucune photo ne porte de position. Une journée vidée de sa note **et** de
 son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
+
+### Description d'une photo
+
+`PATCH /api/admin/albums/:id/items/:mediaId` — corps `UpdateMediaRequest` =
+`{ description? }`. Champ absent = inchangé (la réponse rend alors l'item tel
+quel), `null` **ou chaîne vide** = effacé — la ligne de `media_notes` est
+supprimée, une description vide ne disant rien de plus qu'une absente. Borne :
+`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exportée par `@gdv/shared` et appliquée
+des deux côtés, sinon `400`. La réponse est le `MediaItem` à jour.
+
+Deux `404` distincts, et il faut les deux : album inconnu ou supprimé, et média
+non indexé **dans cet album**. Sans le second, on écrirait un texte que rien
+n'affichera jamais, sur un identifiant peut-être inventé.
+
+Même partage que les deux textes voisins : **la saisie est dans la galerie** —
+on décrit une photo en la voyant, avec ses voisines autour —, **la mutation est
+sous `/api/admin`**, seul préfixe qui réponde 403 (D50, D83). Les vidéos sont
+acceptées, contrairement à `coverId` : une vidéo mérite une légende, et rien
+dans le pipeline ne s'y oppose.
 
 ### Modération des commentaires
 

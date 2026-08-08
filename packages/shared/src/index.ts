@@ -73,6 +73,19 @@ export interface MediaItem {
    * `null` pour les rares fichiers sans empreinte.
    */
   version: string | null;
+  /**
+   * Légende écrite à la main sur cette photo, `null` si personne n'en a écrit.
+   *
+   * Portée par le couple **(album, média)** et non par le seul fichier Drive :
+   * le même fichier indexé sous deux albums porte deux descriptions, comme il
+   * porte deux fils de commentaires — le cloisonnement vaut aussi pour ce qu'on
+   * écrit (D12).
+   *
+   * Elle voyage avec l'item, et non par un appel groupé comme les compteurs de
+   * commentaires : la visionneuse doit l'afficher sur la photo qu'on vient
+   * d'atteindre, et la liste des items est déjà chargée (D83).
+   */
+  description: string | null;
 }
 
 export interface MediaExif {
@@ -97,6 +110,24 @@ export interface MediaDetail extends MediaItem {
    */
   commentCount: number;
 }
+
+/** Champ absent = inchangé, `null` = effacé. */
+export interface UpdateMediaRequest {
+  description?: string | null;
+}
+
+/**
+ * Longueur maximale d'une description de photo.
+ *
+ * Entre les deux autres textes de l'écran, et pour la même raison de rendu :
+ * plus généreuse qu'une note de journée (`ALBUM_DAY_DESCRIPTION_MAX_LENGTH`, 300),
+ * dont l'en-tête de section précalcule la hauteur sans DOM (D49), plus courte
+ * qu'une description d'album (`ALBUM_DESCRIPTION_MAX_LENGTH`, 2000), qui vit
+ * dans un paragraphe libre. Celle-ci est posée sur la photo : dépliée, elle est
+ * plafonnée à la moitié de la hauteur d'écran, et au-delà de mille caractères
+ * elle cesserait d'être une légende pour devenir un texte qui cache l'image.
+ */
+export const MEDIA_DESCRIPTION_MAX_LENGTH = 1000;
 
 export interface Album {
   id: string;
@@ -219,9 +250,10 @@ export interface UpdateAlbumDayRequest {
 }
 
 /**
- * Une note de journée est un repère, pas un récit : deux lignes clampées dans
+ * Une note de journée est un repère, pas un récit : une ligne tronquée dans
  * l'en-tête de section, dont la hauteur est précalculée par le layout. Une
- * longueur libre le rendrait dépendant d'une mesure DOM (D49).
+ * longueur libre le rendrait dépendant d'une mesure DOM (D49). Le texte entier
+ * se lit dans le bandeau de la visionneuse, qui le déplie au clic (D85).
  */
 export const ALBUM_DAY_DESCRIPTION_MAX_LENGTH = 300;
 export const ALBUM_DAY_PLACE_MAX_LENGTH = 120;
@@ -308,6 +340,53 @@ export interface AlbumCommentCounts {
 export interface UpdateCommentRequest {
   body: string;
 }
+
+/**
+ * Un commentaire situé hors de sa photo, tel que le fil d'activité le montre.
+ *
+ * Une conversation ne se découvre pas en ouvrant la bonne photo par hasard : sur
+ * un album de milliers de vues, personne ne tombe sur les dix qui portent un
+ * message. D'où le contexte joint au message — sans lui, la liste dirait que
+ * quelqu'un a écrit, jamais où.
+ */
+export interface FeedComment extends Comment {
+  albumId: string;
+  albumTitle: string;
+  mediaId: string;
+  /**
+   * `null` si la photo a quitté l'index depuis. Le message reste lisible —
+   * l'effacer parce que son support a disparu supprimerait une parole que
+   * personne n'a décidé de retirer — mais il n'a plus ni vignette ni lien.
+   */
+  mediaName: string | null;
+  /** Empreinte de la photo, à joindre à l'URL de sa vignette. Voir `MediaItem.version`. */
+  mediaVersion: string | null;
+}
+
+/**
+ * Une page du fil d'activité, du plus récent au plus ancien.
+ *
+ * Le curseur est un identifiant de commentaire, comme celui de la modération :
+ * `AUTOINCREMENT` fait que l'ordre des id est l'ordre d'écriture, ce qui évite
+ * le curseur composite dont la pagination des médias a besoin.
+ *
+ * Pas de `total`, à l'inverse d'`AdminCommentsPage` : on ne modère pas ici, on
+ * regarde ce qui vient d'arriver. Compter tout le corpus visible coûterait une
+ * seconde requête pour un nombre que personne ne lirait.
+ */
+export interface CommentsFeedPage {
+  comments: FeedComment[];
+  nextCursor: string | null;
+}
+
+/**
+ * Taille d'une page du fil d'activité.
+ *
+ * Assez large pour que la pastille des non-lus, plafonnée à « 9+ », se décide
+ * toujours sur la seule première page — sinon un retour après une longue
+ * absence afficherait « 9+ » puis un nombre plus petit à mesure du défilement.
+ */
+export const COMMENTS_FEED_PAGE_SIZE = 30;
 
 /**
  * Délai pendant lequel son auteur peut corriger un commentaire.

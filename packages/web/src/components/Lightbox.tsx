@@ -2,12 +2,15 @@ import type { AlbumDay, MediaItem } from '@gdv/shared';
 import { type ReactElement, type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { errorText, mediaUrl } from '../api/client';
 import { useCommentCounts, useMediaDetail, useUpdateAlbum } from '../api/hooks';
+import { useCaptionHidden } from '../lib/caption';
 import { dayKey, dayLabel } from '../lib/justify';
 import { previewOverlay } from '../lib/preview';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
+import { isTyping } from '../lib/typing';
 import { placeLabelOf } from '../lib/useGridLayout';
 import { useSwipe } from '../lib/useSwipe';
 import { ActionMenu } from './ActionMenu';
+import { MediaCaption } from './MediaCaption';
 import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
 
@@ -37,10 +40,24 @@ interface LightboxProps {
   total: number;
   /** Journées annotées, pour porter le contexte du jour jusque dans l'image. */
   days: Map<string, AlbumDay>;
+  /** Description de l'album, troisième et dernière ligne du bandeau de légende. */
+  albumDescription: string | null;
   /** Couverture actuelle de l'album, pour signaler la photo qui l'est déjà. */
   coverId: string | null;
-  /** Administrateur : lui seul peut désigner la couverture. */
-  canSetCover: boolean;
+  /**
+   * Administrateur : lui seul peut désigner la couverture et décrire une photo.
+   * Un booléen pour les deux — ce sont les deux affordances que la visionneuse
+   * réserve à l'administrateur, et deux drapeaux toujours égaux finiraient par
+   * ne plus l'être.
+   */
+  isAdmin: boolean;
+  /**
+   * Onglet ouvert du panneau latéral, `null` s'il est fermé. Piloté par la page
+   * parce qu'il vit dans l'URL : c'est ce qui permet d'arriver directement sur
+   * une conversation depuis le tiroir d'activité ou depuis un email.
+   */
+  panel: PanelTab | null;
+  onPanelChange: (panel: PanelTab | null) => void;
   onIndexChange: (index: number) => void;
   onClose: () => void;
   /** Appelé près de la fin de la liste, pour charger la page suivante. */
@@ -54,11 +71,10 @@ interface LightboxProps {
  * médias voisins sont préchargés pour que ←/→ enchaîne sans écran noir, et le
  * défilement de la page est gelé le temps de l'ouverture.
  *
- * L'en-tête empile trois informations de portée décroissante : le nom du
- * fichier, la journée et son lieu, puis la note de cette journée. Ouvrir une
- * photo faisait jusque-là perdre ce que son en-tête de section disait, alors
- * que c'est lui qui donne son sens à l'image. L'horodatage exact, lui, reste
- * dans le panneau `i` où il vivait déjà.
+ * L'en-tête **situe** la photo — l'album, la journée, le lieu ; le bandeau bas
+ * (`MediaCaption`) **la raconte** — ce que quelqu'un a écrit sur elle et sur son
+ * jour, à toutes les largeurs. L'horodatage exact, lui, reste dans le panneau
+ * `i` où il vivait déjà, avec le nom du fichier.
  */
 export function Lightbox({
   albumId,
@@ -67,16 +83,17 @@ export function Lightbox({
   index,
   total,
   days,
+  albumDescription,
   coverId,
-  canSetCover,
+  isAdmin,
+  panel,
+  onPanelChange,
   onIndexChange,
   onClose,
   onNeedMore,
 }: LightboxProps): ReactElement | null {
   const item = items[index];
   const isVideo = item?.kind === 'video';
-  /** `null` = panneau fermé ; sinon l'onglet visible. */
-  const [panel, setPanel] = useState<PanelTab | null>(null);
   const [zoomed, setZoomed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   /**
@@ -90,12 +107,21 @@ export function Lightbox({
   /** Sens du dernier déplacement : oriente le préchargement. */
   const [direction, setDirection] = useState(1);
   /**
+   * Bandeau de légende. Le masquage est un réglage d'affichage, retenu d'une
+   * visite à l'autre ; l'ouverture de l'éditeur est pilotée ici parce que c'est
+   * la visionneuse qui écoute `Échap`.
+   */
+  const { hidden: captionHidden, setHidden: setCaptionHidden } = useCaptionHidden();
+  const [editingCaption, setEditingCaption] = useState(false);
+  /**
    * Habillage escamoté : plus d'en-tête ni de flèches, rien que la photo.
    *
-   * Le fil de contexte est désormais assez fourni pour couvrir le haut d'un
-   * cadrage — c'est le prix à payer pour qu'il dise enfin d'où vient la photo,
-   * et le geste qui le rend est ce qui rend ce prix acceptable. L'état ne suit
-   * pas la photo : on le règle une fois, pour regarder.
+   * Distinct du masquage de la légende, et les deux portées ne se recouvrent
+   * pas : `l` range le texte du bas, `h` range tout ce que la visionneuse pose
+   * sur l'image. L'état ne suit pas la photo, on le règle une fois pour
+   * regarder — mais il n'est pas retenu d'une visite à l'autre, contrairement à
+   * la légende : une visionneuse qui rouvrirait sans un seul repère laisserait
+   * qui a oublié le raccourci devant une image muette.
    */
   const [bare, setBare] = useState(false);
 
@@ -136,9 +162,12 @@ export function Lightbox({
   }, [panel, mediaId, commentTotal, commentCounts, seen, markSeen]);
 
   /** Ouvre le panneau sur cet onglet, ou le referme s'il y est déjà. */
-  const togglePanel = useCallback((tab: PanelTab) => {
-    setPanel((current) => (current === tab ? null : tab));
-  }, []);
+  const togglePanel = useCallback(
+    (tab: PanelTab) => {
+      onPanelChange(panel === tab ? null : tab);
+    },
+    [panel, onPanelChange],
+  );
 
   /**
    * Un clic hors du panneau le referme, comme n'importe quel tiroir.
@@ -159,10 +188,10 @@ export function Lightbox({
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!panel) return;
       if ((event.target as HTMLElement).closest('button, [role="img"]')) return;
-      setPanel(null);
+      onPanelChange(null);
       event.stopPropagation();
     },
-    [panel],
+    [panel, onPanelChange],
   );
 
   const goTo = useCallback(
@@ -177,6 +206,9 @@ export function Lightbox({
       setZoomed(false);
       setLoaded(false);
       setFailed(false);
+      // Un éditeur resté ouvert écrirait sur la photo qu'on vient de quitter :
+      // le champ est remonté avec la nouvelle photo, pas le geste en cours.
+      setEditingCaption(false);
       onIndexChange(next);
     },
     [index, items.length, onIndexChange],
@@ -278,22 +310,19 @@ export function Lightbox({
       // écrire « info » ferait défiler les photos et ouvrirait le panneau sous
       // les doigts. Échap reste écouté : c'est la sortie de secours, et elle
       // doit marcher aussi depuis le champ.
-      const target = event.target;
-      if (
-        event.key !== 'Escape' &&
-        target instanceof HTMLElement &&
-        (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)
-      ) {
-        return;
-      }
+      if (event.key !== 'Escape' && isTyping(event.target)) return;
 
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
           // Échap défait la dernière couche ouverte plutôt que de tout fermer :
-          // sortir du zoom, puis du panneau, puis de la visionneuse.
-          if (zoomed) setZoomed(false);
-          else if (panel) setPanel(null);
+          // sortir de l'éditeur, puis du zoom, puis du panneau, puis de la
+          // visionneuse. L'éditeur passe en premier parce que c'est la seule
+          // couche qui contienne une saisie en cours : sans lui, Échap depuis le
+          // champ fermerait la visionneuse par-dessus un texte non enregistré.
+          if (editingCaption) setEditingCaption(false);
+          else if (zoomed) setZoomed(false);
+          else if (panel) onPanelChange(null);
           else onClose();
           break;
         case 'ArrowLeft':
@@ -337,6 +366,11 @@ export function Lightbox({
           event.preventDefault();
           setZoomed((value) => !value);
           break;
+        case 'l':
+        case 'L':
+          event.preventDefault();
+          setCaptionHidden(!captionHidden);
+          break;
         case 'h':
         case 'H':
           event.preventDefault();
@@ -356,7 +390,21 @@ export function Lightbox({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [index, items.length, zoomed, panel, goTo, onClose, toggleFullscreen, download, togglePanel]);
+  }, [
+    index,
+    items.length,
+    zoomed,
+    panel,
+    editingCaption,
+    captionHidden,
+    setCaptionHidden,
+    goTo,
+    onClose,
+    onPanelChange,
+    toggleFullscreen,
+    download,
+    togglePanel,
+  ]);
 
   if (!item) return null;
 
@@ -456,7 +504,7 @@ export function Lightbox({
     // de /admin. Reconfirmer la photo déjà en couverture n'est donc pas un
     // clic perdu : elle l'était peut-être par défaut, et cela la fixe, si bien
     // que la prochaine photo synchronisée ne la remplacera plus.
-    ...(canSetCover && !isVideo
+    ...(isAdmin && !isVideo
       ? [
           {
             label: isCover ? "Couverture de l'album" : 'Définir comme couverture',
@@ -488,16 +536,14 @@ export function Lightbox({
           `min-w-0` est indispensable — sans lui, le contenu impose sa largeur
           et c'est le panneau qui déborde de l'écran. */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Le voile est ce qui rend le fil de contexte lisible : sans lui, du
-            texte clair sur un ciel surexposé ne se lit pas du tout. Il descend
-            d'autant plus bas qu'il porte maintenant jusqu'à cinq lignes —
-            album et jour, lieu, trois lignes de note — et il est plus opaque en
-            haut, là où le texte est le plus dense. La transparence de sa base
-            garde la transition douce plutôt que de poser une barre noire au
-            bord de la photo. */}
+        {/* Le voile est ce qui rend l'en-tête lisible : sans lui, du texte clair
+            sur un ciel surexposé ne se lit pas du tout. Il couvre deux lignes —
+            album et jour, puis le lieu —, symétrique de celui du bandeau bas, et
+            sa base transparente garde la transition douce plutôt que de poser
+            une barre noire au bord de la photo. */}
         <header
           hidden={bare}
-          className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/90 via-black/60 to-transparent pb-10"
+          className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8"
         >
           {/* Collée au bord haut, comme une barre de chargement : elle reste
               lisible sans mordre sur la photo. Plus bas, elle traversait
@@ -545,13 +591,15 @@ export function Lightbox({
             </button>
 
             <div className="min-w-0 flex-1 pt-1.5 sm:pt-2">
-              {/* Le fil de contexte, du plus large au plus étroit : l'album, la
-                  journée, son lieu, ce qu'on y a fait. Il remplace le nom de
-                  fichier, qui occupait cette ligne sans rien apprendre à
-                  personne — `IMG_0004.jpg` ne dit ni où ni quand. Le nom reste
-                  là où il sert : en tête du panneau `i`, à côté des données
-                  techniques qu'il accompagne. */}
-              {/* C'est le **titre d'album** qui se tronque, jamais la date : sur
+              {/* L'en-tête **situe** la photo, le bandeau bas **la raconte** :
+                  ici l'album et la journée, là ce que quelqu'un a écrit. Le nom
+                  de fichier occupait cette place en gras sans rien apprendre à
+                  personne — `IMG_0004.jpg` ne dit ni où ni quand — et masquait
+                  l'album, seule information qui manque vraiment quand on arrive
+                  par un lien partagé. Il reste en tête du panneau `i`, auprès
+                  des données techniques qu'il accompagne.
+
+                  C'est le **titre d'album** qui se tronque, jamais la date : sur
                   un téléphone, la ligne ne tient pas les deux, et un
                   « Allemagne – Forêt Noire · Aujo… » sacrifie précisément ce
                   qu'on cherchait à donner. D'où le `truncate` sur le seul album
@@ -565,29 +613,13 @@ export function Lightbox({
                 )}
                 <span className="shrink-0">{dayLabel(dayKey(item.takenAt))}</span>
               </p>
+              {/* Le lieu prend sa propre ligne, la première étant désormais
+                  pleine. La note du jour, elle, est descendue dans le bandeau
+                  bas (D84) : elle est écrite à la main, comme la description de
+                  la photo, et les deux se lisent ensemble ou pas du tout. */}
               {dayPlace && (
                 <p className="truncate text-xs leading-4 text-ink-300" title={dayPlace}>
                   {dayPlace}
-                </p>
-              )}
-              {day?.description && (
-                // La note passe **à toutes les largeurs**, là où elle était
-                // réservée au desktop (D70). Le motif d'alors — 320 px pris à
-                // un écran de téléphone ne laissent rien à voir — vaut pour un
-                // panneau latéral, pas pour trois lignes sous un voile qu'on
-                // escamote d'un geste. Elle reste par ailleurs dans le panneau
-                // `i`, qui la rend sans condition de largeur.
-                //
-                // Deux lignes au doigt, trois au clavier : la note est un
-                // repère, pas un récit, et elle est posée sur une photo. Le
-                // clamp peut revenir sur le paragraphe maintenant qu'aucun
-                // `hidden` ne s'y dispute la propriété `display` — c'est cette
-                // collision, et non le style, qui imposait une enveloppe.
-                <p
-                  className="mt-0.5 line-clamp-2 text-xs leading-4 text-ink-200 md:line-clamp-3"
-                  title={day.description}
-                >
-                  {day.description}
                 </p>
               )}
             </div>
@@ -784,16 +816,52 @@ export function Lightbox({
           {/* Une couverture refusée — session expirée, rôle retiré entre-temps —
               doit se voir : le bouton reprend son état d'origine, et sans ce
               message rien ne distinguerait l'échec de l'absence de clic. Il
-              part à la photo suivante, ou à la tentative suivante. */}
+              part à la photo suivante, ou à la tentative suivante.
+
+              `bottom-28` et non `bottom-6` : le bandeau de légende occupe
+              désormais le bas de la colonne, et un message d'erreur posé
+              dessous serait recouvert par le texte qu'il doit interrompre. */}
           {setCover.isError && (
             <p
               role="alert"
-              className="absolute inset-x-4 bottom-6 mx-auto max-w-md rounded-lg bg-red-950/90 px-3 py-2 text-center text-xs text-red-200 shadow-lg"
+              className="absolute inset-x-4 bottom-28 mx-auto max-w-md rounded-lg bg-red-950/90 px-3 py-2 text-center text-xs text-red-200 shadow-lg"
             >
               {errorText(setCover.error, "La couverture n'a pas pu être enregistrée.")}
             </p>
           )}
         </div>
+
+        {/* Masqué pendant le zoom, comme les flèches de navigation : le doigt y
+            sert à se déplacer dans l'image, et le bandeau tomberait dessous.
+
+            `key` sur le média : le dépliement se remet à plat d'une photo à
+            l'autre, il répond à un texte précis et pas au suivant.
+
+            Sur une vidéo, `overlay={false}` : le bandeau entre dans le flux et
+            la colonne prend d'autant — c'est le seul endroit où il pousse au
+            lieu de recouvrir, les contrôles natifs de lecture vivant au bas de
+            la balise.
+
+            Escamoté aussi par `h`, et pas seulement replié comme le fait `l` :
+            « rien que la photo » ne s'arrête pas au haut de l'écran, et le
+            bouton « Afficher la légende » que `l` laisse en place est encore
+            quelque chose de posé dessus. */}
+        {!zoomed && !bare && (
+          <MediaCaption
+            key={item.id}
+            albumId={albumId}
+            mediaId={item.id}
+            description={item.description}
+            day={day?.description ?? null}
+            album={albumDescription}
+            editable={isAdmin}
+            hidden={captionHidden}
+            onHiddenChange={setCaptionHidden}
+            editing={editingCaption}
+            onEditingChange={setEditingCaption}
+            overlay={!isVideo}
+          />
+        )}
       </div>
 
       {panel && (
@@ -804,8 +872,8 @@ export function Lightbox({
           detail={detail}
           day={days.get(dayKey(item.takenAt))}
           tab={panel}
-          onTabChange={setPanel}
-          onClose={() => setPanel(null)}
+          onTabChange={onPanelChange}
+          onClose={() => onPanelChange(null)}
         />
       )}
     </div>
