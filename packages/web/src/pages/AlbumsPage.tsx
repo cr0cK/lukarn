@@ -3,6 +3,7 @@ import { type ReactElement, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { mediaUrl } from '../api/client';
 import { useAlbums, useMe } from '../api/hooks';
+import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
@@ -56,12 +57,17 @@ export default function AlbumsPage(): ReactElement {
   const { data: albums, isPending, error } = useAlbums();
   const { data: user } = useMe();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const activity = useActivityFeed();
 
-  useShortcut('?', () => setShowShortcuts(true));
+  useShortcut('?', () => setShowShortcuts(true), !activity.isOpen);
 
   return (
     <div className="min-h-full">
-      <TopBar title="Albums" subtitle={user ? `Connecté en tant que ${user.username}` : null} />
+      <TopBar
+        title="Albums"
+        subtitle={user ? `Connecté en tant que ${user.username}` : null}
+        feed={{ unread: activity.unread, onOpen: activity.open }}
+      />
 
       <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
         {isPending && <Spinner label="Chargement des albums" />}
@@ -94,6 +100,10 @@ export default function AlbumsPage(): ReactElement {
           </div>
         )}
       </main>
+
+      {activity.isOpen && (
+        <CommentsFeed albumId={null} albumTitle={null} onClose={activity.close} />
+      )}
 
       {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
     </div>

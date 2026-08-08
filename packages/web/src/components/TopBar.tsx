@@ -31,6 +31,11 @@ interface TopBarProps {
   back?: boolean;
   /** Contrôles propres à la page, à gauche de ceux du compte. */
   actions?: TopBarAction[];
+  /**
+   * Ouverture du tiroir d'activité, avec le nombre de messages arrivés depuis
+   * le dernier passage. Absent sur les pages où le fil n'a pas de sens.
+   */
+  feed?: { unread: number; onOpen: () => void };
 }
 
 const CLASSE_BOUTON =
@@ -50,7 +55,13 @@ const CLASSE_BOUTON =
  * Mesuré — à 768 px, les cinq libellés ramenaient le titre de 456 à 144 px et
  * tronquaient le sous-titre, soit exactement le défaut qu'on corrige ici.
  */
-export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarProps): ReactElement {
+export function TopBar({
+  title,
+  subtitle,
+  back = false,
+  actions = [],
+  feed,
+}: TopBarProps): ReactElement {
   const { data: user } = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
@@ -104,6 +115,44 @@ export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarPr
           <h1 className="truncate text-base font-medium tracking-tight">{title}</h1>
           {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
         </div>
+
+        {/* L'activité reste **en ligne à toutes les largeurs**, contrairement
+            aux contrôles de vue : son icône porte la pastille des non-lus, et
+            c'est le seul signe qu'une conversation a bougé quelque part.
+            Rangée dans le menu sous `sm`, elle ne signalerait plus rien — même
+            raison que le bouton « Commentaires » de la visionneuse. */}
+        {feed && (
+          <button
+            type="button"
+            onClick={feed.onOpen}
+            title="Activité récente"
+            aria-label={feedLabel(feed.unread)}
+            className={`relative shrink-0 rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="size-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+            </svg>
+            {feed.unread > 0 && (
+              <span
+                aria-hidden="true"
+                // Plafonnée à « 9+ », comme celle de la visionneuse : au-delà le
+                // chiffre déborde de l'icône, et savoir s'il y en a douze ou
+                // dix-sept ne change aucun geste.
+                className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
+              >
+                {feed.unread > 9 ? '9+' : feed.unread}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* À partir de `sm` : tout dans la barre. Le libellé n'apparaît qu'à
             partir de `lg` — entre les deux, cinq libellés ne tiennent pas et
@@ -175,6 +224,15 @@ export function TopBar({ title, subtitle, back = false, actions = [] }: TopBarPr
     </header>
   );
 }
+/**
+ * Nom accessible du bouton d'activité : c'est lui qui porte l'information de la
+ * pastille, celle-ci étant purement visuelle.
+ */
+function feedLabel(unread: number): string {
+  if (unread === 0) return 'Activité récente';
+  return `Activité récente : ${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`;
+}
+
 function IconeAdmin(): ReactElement {
   return (
     <svg

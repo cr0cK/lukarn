@@ -1,8 +1,10 @@
 import {
+  COMMENTS_FEED_PAGE_SIZE,
   COMMENT_MAX_LENGTH,
   EMAIL_MAX_LENGTH,
   type AlbumCommentCounts,
   type Comment,
+  type CommentsFeedPage,
   type CommentsPage,
 } from '@gdv/shared';
 import type { FastifyPluginAsync } from 'fastify';
@@ -23,6 +25,18 @@ const createSchema = z.object({
 // acceptée ici, sans quoi corriger une faute de frappe permettrait de changer
 // de conversation.
 const updateSchema = createSchema.pick({ body: true });
+
+/**
+ * `coerce` parce que tout arrive en texte dans une chaîne de requête. La borne
+ * haute du `limit` n'est pas une politesse : sans elle, `?limit=100000` ferait
+ * composer une page de cent mille commentaires par un `better-sqlite3`
+ * synchrone, qui bloque la boucle d'événements le temps de la rendre.
+ */
+const feedSchema = z.object({
+  album: z.string().min(1).optional(),
+  cursor: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(COMMENTS_FEED_PAGE_SIZE),
+});
 
 const unsubscribeSchema = z.object({
   // L'adresse elle-même : c'est elle qui identifie une personne, le compte
@@ -72,6 +86,51 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 
     await app.register(async (scoped) => {
       scoped.addHook('preHandler', requireAuth);
+
+      /**
+       * Fil d'activité : les derniers commentaires, tous albums et toutes
+       * photos confondus.
+       *
+       * Déclarée avant `/:albumId`, mais l'ordre n'y fait rien : la table de
+       * routage de Fastify fait toujours passer un segment littéral avant un
+       * paramètre. C'est ce qui protège aussi `/unsubscribe`, et un test le
+       * vérifie — un album dont l'identifiant Drive serait `feed` resterait
+       * inatteignable par cette route, sans que rien ne le signale.
+       *
+       * Le cloisonnement tient à `albumsFor()` : la liste des albums visibles
+       * vient du serveur, jamais de la requête. `?album=` ne fait que la
+       * restreindre — il ne l'élargit pas, et un album qu'on ne voit pas répond
+       * 404 comme partout ailleurs (D12).
+       */
+      scoped.get('/feed', async (request, reply) => {
+        const parsed = feedSchema.safeParse(request.query);
+        if (!parsed.success) {
+          return reply.code(400).send({ error: 'bad_request', message: 'Requête invalide' });
+        }
+
+        const account = request.user!;
+        const { album, cursor, limit } = parsed.data;
+
+        if (
+          album !== undefined &&
+          (!context.findAlbum(album) || !context.canSee(account.username, album))
+        ) {
+          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        }
+
+        const albumIds =
+          album !== undefined
+            ? [album]
+            : context.albumsFor(account.username).map((visible) => visible.id);
+
+        const page: CommentsFeedPage = context.comments.listFeed({
+          albumIds,
+          cursor: cursor ?? null,
+          limit,
+          viewer: { commenterId: request.commenterId, admin: account.admin },
+        });
+        return reply.send(page);
+      });
 
       /**
        * Compteurs de l'album entier, pour la pastille de la visionneuse.

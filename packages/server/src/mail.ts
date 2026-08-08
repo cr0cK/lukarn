@@ -149,13 +149,17 @@ export interface Recipient {
  * de notification pour voir de quoi il retourne, et forcer trois clics de plus
  * suffit à faire renoncer. La visionneuse s'ouvre sur `?photo=<id>` (voir
  * `AlbumPage`), qui est exactement l'URL qu'un visiteur partagerait.
+ *
+ * Et sur `&panel=comments` : cet email annonce un **message**, pas une photo.
+ * Arriver sur l'image le panneau fermé laisserait chercher ce dont il était
+ * question.
  */
 export function buildCommentMail(
   notification: CommentNotification,
   recipient: Recipient,
   env: Env,
 ): MailMessage {
-  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}`;
+  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
   /**
    * Ce lien coupe `commenters.notify`, donc **tout** ce que la galerie envoie :
    * les réponses aux commentaires comme les annonces de nouvelles photos. Le

@@ -471,6 +471,24 @@ règle qu'à l'unité.
 que des humains écrivent, et `idx_comments_thread` continue de couvrir le chemin
 chaud de la galerie. À revoir au-delà de la dizaine de milliers de commentaires.
 
+### Le fil d'activité
+
+`CommentRepo.listFeed(query)` sert le tiroir d'activité du visiteur : le même
+curseur par identifiant, la même page antéchronologique, mais restreinte aux
+albums qu'on a le droit de voir.
+
+**`albumIds` est la seule barrière de cloisonnement**, et elle vient de
+`albumsFor()` — jamais de la requête. Une liste vide rend une page vide, et non
+tout le corpus : c'est ce que produirait un `IN ()` oublié, et c'est le cas que
+le test couvre en premier.
+
+Là non plus, **aucun index nouveau** (D82). `ORDER BY c.id DESC` est l'ordre de
+la clé primaire : SQLite parcourt la table à rebours et s'arrête au `LIMIT`. Un
+index `(album_id, id DESC)` ne ferait pas mieux — SQLite ne sait pas fusionner
+l'ordre de plusieurs tranches d'un `IN`, et il faudrait alors trier. Le cas
+défavorable est connu et assumé : un compte qui ne voit qu'un album sur cinquante
+fait traverser les commentaires des quarante-neuf autres avant de réunir sa page.
+
 ## Ce qui n'est pas dans la base
 
 - Les dérivés d'images : fichiers sur disque sous `CACHE_DIR`, inventoriés en

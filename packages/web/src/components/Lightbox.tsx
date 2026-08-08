@@ -35,6 +35,13 @@ interface LightboxProps {
   coverId: string | null;
   /** Administrateur : lui seul peut désigner la couverture. */
   canSetCover: boolean;
+  /**
+   * Onglet ouvert du panneau latéral, `null` s'il est fermé. Piloté par la page
+   * parce qu'il vit dans l'URL : c'est ce qui permet d'arriver directement sur
+   * une conversation depuis le tiroir d'activité ou depuis un email.
+   */
+  panel: PanelTab | null;
+  onPanelChange: (panel: PanelTab | null) => void;
   onIndexChange: (index: number) => void;
   onClose: () => void;
   /** Appelé près de la fin de la liste, pour charger la page suivante. */
@@ -62,14 +69,14 @@ export function Lightbox({
   days,
   coverId,
   canSetCover,
+  panel,
+  onPanelChange,
   onIndexChange,
   onClose,
   onNeedMore,
 }: LightboxProps): ReactElement | null {
   const item = items[index];
   const isVideo = item?.kind === 'video';
-  /** `null` = panneau fermé ; sinon l'onglet visible. */
-  const [panel, setPanel] = useState<PanelTab | null>(null);
   const [zoomed, setZoomed] = useState(false);
   const [loaded, setLoaded] = useState(false);
   /**
@@ -120,9 +127,12 @@ export function Lightbox({
   }, [panel, mediaId, commentTotal, commentCounts, seen, markSeen]);
 
   /** Ouvre le panneau sur cet onglet, ou le referme s'il y est déjà. */
-  const togglePanel = useCallback((tab: PanelTab) => {
-    setPanel((current) => (current === tab ? null : tab));
-  }, []);
+  const togglePanel = useCallback(
+    (tab: PanelTab) => {
+      onPanelChange(panel === tab ? null : tab);
+    },
+    [panel, onPanelChange],
+  );
 
   /**
    * Un clic hors du panneau le referme, comme n'importe quel tiroir.
@@ -143,10 +153,10 @@ export function Lightbox({
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (!panel) return;
       if ((event.target as HTMLElement).closest('button, [role="img"]')) return;
-      setPanel(null);
+      onPanelChange(null);
       event.stopPropagation();
     },
-    [panel],
+    [panel, onPanelChange],
   );
 
   const goTo = useCallback(
@@ -277,7 +287,7 @@ export function Lightbox({
           // Échap défait la dernière couche ouverte plutôt que de tout fermer :
           // sortir du zoom, puis du panneau, puis de la visionneuse.
           if (zoomed) setZoomed(false);
-          else if (panel) setPanel(null);
+          else if (panel) onPanelChange(null);
           else onClose();
           break;
         case 'ArrowLeft':
@@ -335,7 +345,18 @@ export function Lightbox({
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [index, items.length, zoomed, panel, goTo, onClose, toggleFullscreen, download, togglePanel]);
+  }, [
+    index,
+    items.length,
+    zoomed,
+    panel,
+    goTo,
+    onClose,
+    onPanelChange,
+    toggleFullscreen,
+    download,
+    togglePanel,
+  ]);
 
   if (!item) return null;
 
@@ -718,8 +739,8 @@ export function Lightbox({
           detail={detail}
           day={days.get(dayKey(item.takenAt))}
           tab={panel}
-          onTabChange={setPanel}
-          onClose={() => setPanel(null)}
+          onTabChange={onPanelChange}
+          onClose={() => onPanelChange(null)}
         />
       )}
     </div>
