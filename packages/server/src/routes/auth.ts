@@ -1,7 +1,9 @@
+import { USER_CODE_LENGTH, normalizeUserCode } from '@gdv/shared';
 import argon2 from 'argon2';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { requireAuth } from '../plugins/auth.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 
 /**
@@ -16,6 +18,12 @@ const loginSchema = z.object({
   username: z.string().min(1).max(64),
   password: z.string().min(1).max(512),
 });
+
+/** Le `deviceCode` fait 43 caractères en base64url ; la borne laisse de la marge. */
+const pollSchema = z.object({ deviceCode: z.string().min(1).max(128) });
+
+/** Le code affiché, une fois replié : huit caractères de l'alphabet sans ambiguïté. */
+const USER_CODE_PATTERN = new RegExp(`^[A-HJ-NP-Z2-9]{${USER_CODE_LENGTH}}$`);
 
 export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
   const throttle = context.throttle;
@@ -104,5 +112,188 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/setup-state', async (_request, reply) =>
       reply.send({ needsSetup: context.config.users().length === 0 }),
     );
+
+    /* ------------------------------------------------------------------------
+     * Appairage d'un écran sans clavier (D260809c)
+     *
+     * Un téléviseur n'a pas de caméra : c'est lui qui affiche le QR, et un
+     * téléphone déjà connecté qui le scanne. L'appairage délègue donc un accès
+     * existant, il n'en crée aucun.
+     * --------------------------------------------------------------------- */
+
+    /**
+     * Ouvre une demande. Publique, et elle doit l'être : c'est le premier geste
+     * d'un écran qui n'a pas de session. Elle ne divulgue rien — un code tiré au
+     * sort, et un secret que seul son destinataire reçoit.
+     */
+    app.post('/device/start', async (_request, reply) => {
+      const started = context.pairings.start();
+      if (!started) {
+        // La borne est atteinte : la table est en base, et une rafale de
+        // demandes ne doit pas la faire grossir sans fin. Personne n'y gagne un
+        // accès, l'appairage devient seulement indisponible le temps que les
+        // demandes en cours expirent.
+        return reply.code(429).header('Retry-After', '60').send({
+          error: 'too_many_pairings',
+          message: 'Trop de demandes en cours. Réessaie dans une minute.',
+        });
+      }
+      return noStore(reply).send(started);
+    });
+
+    /**
+     * Le sondage de l'écran. POST et non GET : la réponse pose un cookie, et le
+     * `deviceCode` n'a rien à faire dans une URL — journaux d'accès, historique
+     * et `Referer` la gardent.
+     */
+    app.post('/device/poll', async (request, reply) => {
+      const parsed = pollSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: 'bad_request', message: "Code d'appareil requis" });
+      }
+
+      const { deviceCode } = parsed.data;
+      const attempt = { ip: request.ip, username: deviceCode };
+      const blocked = blockedReply(reply, throttle.blockedFor(attempt));
+      if (blocked) return blocked;
+
+      const claimed = context.pairings.claim(deviceCode);
+      if (claimed.status === 'pending') {
+        return noStore(reply).code(202).send({ status: 'pending' });
+      }
+      if (claimed.status === 'unknown') {
+        throttle.fail(attempt);
+        return noStore(reply).code(404).send(UNKNOWN_CODE);
+      }
+
+      // La configuration fait autorité, comme pour toute session : un compte
+      // supprimé entre l'approbation et la relève n'ouvre rien. La clé
+      // étrangère `ON DELETE CASCADE` couvre déjà le cas ; cette vérification
+      // couvre celui d'un compte disparu autrement.
+      const user = context.config.user(claimed.username);
+      if (!user) {
+        throttle.fail(attempt);
+        return noStore(reply).code(404).send(UNKNOWN_CODE);
+      }
+
+      throttle.succeed(attempt);
+      const session = context.sessions.create(user.username);
+      request.log.info({ username: user.username }, 'Écran appairé');
+
+      return noStore(reply)
+        .setCookie(
+          SESSION_COOKIE,
+          session.id,
+          sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
+        )
+        .send({
+          status: 'approved',
+          user: {
+            username: user.username,
+            admin: user.admin,
+            // L'écran appairé arrive sans identité, comme après une connexion
+            // au mot de passe : elle vaut pour la personne, pas pour la clé
+            // d'accès. Sans cette règle, le téléviseur du salon signerait du
+            // nom de celui qui a approuvé.
+            identity: null,
+            commentsEnabled: context.mailer.enabled,
+          },
+        });
+    });
+
+    /** Ce que le téléphone affiche avant d'approuver. */
+    app.get<{ Params: { userCode: string } }>(
+      '/device/:userCode',
+      { preHandler: requireAuth },
+      async (request, reply) => {
+        const userCode = normalizeUserCode(request.params.userCode);
+        const attempt = { ip: request.ip, username: userCode };
+        const blocked = blockedReply(reply, throttle.blockedFor(attempt));
+        if (blocked) return blocked;
+
+        const pairing = USER_CODE_PATTERN.test(userCode) ? context.pairings.find(userCode) : null;
+        if (!pairing) {
+          throttle.fail(attempt);
+          return noStore(reply).code(404).send(UNKNOWN_CODE);
+        }
+
+        return noStore(reply).send({
+          userCode: pairing.userCode,
+          expiresAt: pairing.expiresAt,
+          // Une demande déjà approuvée n'est pas une erreur : c'est ce qui
+          // permet de dire « c'est fait » à qui rouvre la page, au lieu de
+          // « ce code n'existe pas ».
+          approved: pairing.username !== null,
+        });
+      },
+    );
+
+    /**
+     * L'approbation. Elle inscrit qui approuve, et rien de plus : c'est le
+     * sondage qui crée la session, sinon un écran éteint entre-temps laisserait
+     * derrière lui une session d'un an que personne n'a ouverte.
+     */
+    app.post<{ Params: { userCode: string } }>(
+      '/device/:userCode/approve',
+      { preHandler: requireAuth },
+      async (request, reply) => {
+        const userCode = normalizeUserCode(request.params.userCode);
+        const attempt = { ip: request.ip, username: userCode };
+        const blocked = blockedReply(reply, throttle.blockedFor(attempt));
+        if (blocked) return blocked;
+
+        const result = USER_CODE_PATTERN.test(userCode)
+          ? context.pairings.approve(userCode, request.user!.username)
+          : 'unknown';
+
+        if (result === 'unknown') {
+          throttle.fail(attempt);
+          return noStore(reply).code(404).send(UNKNOWN_CODE);
+        }
+        if (result === 'taken') {
+          // 409 et non 404 : le refus porte sur l'état de la demande, pas sur
+          // l'existence d'une ressource d'autrui qu'il faudrait cacher — celui
+          // qui approuve tient le code sous les yeux.
+          return noStore(reply).code(409).send({
+            error: 'already_paired',
+            message: 'Cet écran a déjà été connecté par un autre compte.',
+          });
+        }
+
+        throttle.succeed(attempt);
+        return noStore(reply).send({ ok: true });
+      },
+    );
   };
+}
+
+/**
+ * Réponse commune à un code inconnu, expiré, déjà relevé ou mal formé.
+ * Distinguer ces cas dirait à qui essaie des codes au hasard lesquels ont
+ * existé.
+ */
+const UNKNOWN_CODE = {
+  error: 'unknown_code',
+  message: "Ce code n'est plus valide. Relance la connexion depuis l'écran.",
+};
+
+/**
+ * Aucune réponse d'appairage ne doit être gardée : elles portent un secret, un
+ * état qui change toutes les deux secondes, ou un cookie de session.
+ */
+function noStore(reply: FastifyReply): FastifyReply {
+  return reply.header('Cache-Control', 'no-store');
+}
+
+/** Le 429 du throttle, ou `null` si la voie est libre. */
+function blockedReply(reply: FastifyReply, retryAfterMs: number): FastifyReply | null {
+  if (retryAfterMs <= 0) return null;
+  const seconds = Math.ceil(retryAfterMs / 1000);
+  return reply
+    .code(429)
+    .header('Retry-After', String(seconds))
+    .send({
+      error: 'too_many_attempts',
+      message: `Trop de tentatives. Réessaie dans ${seconds} s.`,
+    });
 }

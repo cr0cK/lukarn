@@ -6,6 +6,7 @@ import AdminPage from './pages/AdminPage';
 import AlbumPage from './pages/AlbumPage';
 import AlbumsPage from './pages/AlbumsPage';
 import LoginPage from './pages/LoginPage';
+import PairPage from './pages/PairPage';
 
 function FullPageSpinner(): ReactElement {
   return (
@@ -45,6 +46,16 @@ export default function App(): ReactElement {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* L'approbation d'un écran, ouverte depuis le téléphone. Gardée comme le
+          reste : sans session, on passe par /login, qui ramène ici avec le code. */}
+      <Route
+        path="/pair"
+        element={
+          <RequireAuth>
+            <PairPage />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/"
         element={

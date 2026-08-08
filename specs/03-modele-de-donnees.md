@@ -100,6 +100,32 @@ perdu son autorisation.
 passe sa mi-vie — le cookie est réémis en même temps, sans quoi le navigateur
 jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
 
+### `device_pairings`
+
+Une demande d'appairage en cours, le temps qu'un écran sans clavier obtienne une
+session (D260809c). Table de passage : une ligne y vit cinq minutes au plus, et
+disparaît dès que l'appareil demandeur a relevé sa session.
+
+| Colonne                     | Rôle                                                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_code` (PK)            | Les huit caractères affichés sur l'écran demandeur, repris dans le QR. Stockés **en clair** : ils s'affichent sur un téléviseur, les hacher ne protégerait rien de ce que la pièce voit déjà.                    |
+| `device_hash` (UNIQUE)      | HMAC du `deviceCode` de 32 octets rendu au seul demandeur. C'est lui qui autorise à relever la session, jamais le code affiché. Haché pour la raison de `commenters.code_hash` : un dump ne doit rien livrer.    |
+| `username`                  | Le compte de celui qui a approuvé, `NULL` tant que personne ne l'a fait. `COLLATE NOCASE` et `ON DELETE CASCADE`, comme partout où un compte est référencé : une demande approuvée par un compte supprimé meurt. |
+| `approved_at`, `created_at` | Dates ISO 8601 UTC. `approved_at` à `NULL` vaut « en attente ».                                                                                                                                                  |
+| `expires_at`                | Cinq minutes après la création. Une demande plus longue laisserait un code approuvable traîner sur un écran allumé.                                                                                              |
+
+Trois points tiennent le cloisonnement :
+
+- **La ligne est supprimée à la relève, pas marquée.** Un `deviceCode` ne vaut
+  donc qu'une seule session : rejoué, il tombe sur la même réponse qu'un code
+  inconnu.
+- **L'approbation ne crée aucune session** — elle ne fait qu'inscrire qui a
+  approuvé. Sans quoi une session d'un an naîtrait pour un écran éteint
+  entre-temps (D260809c).
+- **La purge horaire de `main.ts`** efface les demandes expirées, à côté des
+  sessions et des compteurs du throttle. Sans elle, les demandes jamais
+  approuvées s'accumuleraient jusqu'au redémarrage.
+
 ### `users`, `albums`, `user_albums`, `settings`
 
 La configuration : qui se connecte, quels dossiers Drive sont exposés, et les
@@ -474,20 +500,28 @@ reparte de la même étape.
 
 État actuel :
 
-| Version | Contenu                                                                             |
-| ------- | ----------------------------------------------------------------------------------- |
-| 1       | Schéma initial : `media`, `sync_state`, `oauth_token`, `sessions` et leurs index.   |
-| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                               |
-| 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base. |
-| 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                  |
-| 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.   |
-| 6       | `commenters.pending_display_name`.                                                  |
-| 7       | `album_days`, `geo_places` ; `albums.group_by`.                                     |
-| 8       | `albums.cover_media_id`.                                                            |
-| 9       | `media_notes` : une description par photo, portée par l'album.                      |
-| 10      | `media.has_thumbnail` : Drive a-t-il un aperçu de ce fichier ?                      |
-| 11      | Les quatre tables FTS5 de recherche, leurs déclencheurs, et leur `rebuild`.         |
-| 12      | `albums.sort_order` : le sens de lecture par défaut de l'album.                     |
+| Version | Contenu                                                                                  |
+| ------- | ---------------------------------------------------------------------------------------- |
+| 1       | Schéma initial : `media`, `sync_state`, `oauth_token`, `sessions` et leurs index.        |
+| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                    |
+| 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base.      |
+| 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                       |
+| 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.        |
+| 6       | `commenters.pending_display_name`.                                                       |
+| 7       | `album_days`, `geo_places` ; `albums.group_by`.                                          |
+| 8       | `albums.cover_media_id`.                                                                 |
+| 9       | `media_notes` : une description par photo, portée par l'album.                           |
+| 10      | `media.has_thumbnail` : Drive a-t-il un aperçu de ce fichier ?                           |
+| 11      | Les quatre tables FTS5 de recherche, leurs déclencheurs, et leur `rebuild`.              |
+| 12      | `albums.sort_order` : le sens de lecture par défaut de l'album.                          |
+| 13      | `device_pairings` : appairer un écran sans clavier plutôt que d'y taper un mot de passe. |
+
+La migration 13 crée une table vide, et rien d'autre : une instance en service
+la traverse sans qu'aucune ligne ne bouge et sans qu'aucune session ouverte n'en
+pâtisse. Elle n'ouvre pas non plus de chemin d'accès nouveau — l'appairage
+délègue une clé existante, et l'écran qui approuve doit déjà être connecté
+(D260809c). `packages/server/test/migrate.test.ts` le vérifie sur une base en
+version 12 portant un compte et une session.
 
 La migration 12 ajoute le sens de lecture, et c'est la seule à ce jour qui
 **change le comportement des albums en service** : la colonne arrive à `'asc'`,

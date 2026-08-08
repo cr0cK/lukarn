@@ -15,6 +15,9 @@ import {
   type CreateAlbumRequest,
   type CreateCommentRequest,
   type CreateUserRequest,
+  type DevicePairingStart,
+  type DevicePairingState,
+  type DevicePollResult,
   type IdentityRequest,
   type ItemsPage,
   type MediaDetail,
@@ -99,6 +102,29 @@ export const api = {
     }),
 
   logout: () => request<{ ok: true }>('/auth/logout', { method: 'POST' }),
+
+  /* Appairage d'un écran sans clavier — voir D260809c. */
+
+  startPairing: () => request<DevicePairingStart>('/auth/device/start', { method: 'POST' }),
+
+  /**
+   * Le sondage de l'écran. Le `deviceCode` part dans le corps et non dans
+   * l'URL : c'est le seul secret de l'échange, et une URL se retrouve dans les
+   * journaux comme dans l'historique.
+   */
+  pollPairing: (deviceCode: string) =>
+    request<DevicePollResult>('/auth/device/poll', {
+      method: 'POST',
+      body: JSON.stringify({ deviceCode }),
+    }),
+
+  pairingState: (userCode: string) =>
+    request<DevicePairingState>(`/auth/device/${encodeURIComponent(userCode)}`),
+
+  approvePairing: (userCode: string) =>
+    request<{ ok: true }>(`/auth/device/${encodeURIComponent(userCode)}/approve`, {
+      method: 'POST',
+    }),
 
   albums: () => request<Album[]>('/albums'),
 

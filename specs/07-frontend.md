@@ -6,11 +6,12 @@ vue vit dans l'URL, le reste est du `useState` local.
 
 ## Routage
 
-`App.tsx`, quatre routes plus un fourre-tout.
+`App.tsx`, cinq routes plus un fourre-tout.
 
 | Chemin            | Page         | Garde                              |
 | ----------------- | ------------ | ---------------------------------- |
 | `/login`          | `LoginPage`  | aucune (redirige si déjà connecté) |
+| `/pair`           | `PairPage`   | `RequireAuth`                      |
 | `/`               | `AlbumsPage` | `RequireAuth`                      |
 | `/album/:albumId` | `AlbumPage`  | `RequireAuth`                      |
 | `/admin`          | —            | `Navigate to="/admin/albums"`      |
@@ -21,6 +22,11 @@ vue vit dans l'URL, le reste est du `useState` local.
 le serveur refuse déjà toute route protégée. Il évite d'afficher une page vide en
 attendant le 401, et mémorise la destination dans `location.state.from` pour y
 revenir après la connexion.
+
+Le retour après connexion emporte `pathname` **et** `search`. C'est
+indispensable depuis `/pair?code=…` : le code de l'appairage vit dans la
+recherche, et un retour au seul chemin ramènerait sur une page qui ne sait plus
+quoi approuver.
 
 Le serveur rend `index.html` sur toute URL non-`/api` et non-`/assets`, donc un
 rechargement direct sur `/album/vacances` fonctionne (voir [05](./05-api.md)).
@@ -117,6 +123,65 @@ complet. Changer l'un ou l'autre remet la sélection
 clavier à `-1` et remonte la page : inverser le tri renumérote l'album, changer
 le regroupement recalcule toutes les hauteurs, et dans les deux cas la position
 conservée désignerait autre chose.
+
+## Connexion — `pages/LoginPage.tsx`
+
+Deux champs, et un second chemin sous eux : **« Connecter avec un téléphone »**.
+Il est là pour l'écran qui n'a pas de clavier — un téléviseur, où chaque
+caractère se compose à la télécommande (D260809c).
+
+Le panneau d'appairage vit dans `components/DeviceLogin.tsx`, et il ne demande
+rien tant qu'on ne l'ouvre pas : une demande d'appairage par affichage de la
+page de connexion remplirait la table pour rien. Une fois ouvert, il montre le
+QR, le code en clair sous lui, et sonde le serveur toutes les deux secondes
+jusqu'à ce que la session arrive.
+
+**La demande naît du clic, dans `LoginPage`, et pas d'un effet de montage du
+panneau.** Ce n'est pas une préférence de style : sous `StrictMode`, le
+démontage simulé détache l'observateur de la mutation en cours — le
+`MutationObserver` de TanStack Query ne se rattache pas au remontage —, si bien
+que la requête aboutit sans que son résultat n'atteigne personne et que l'écran
+tourne indéfiniment. Le panneau reçoit donc la demande en propriété, avec de
+quoi la rouvrir. C'est aussi la règle générale : une mutation appartient à un
+geste, jamais à un montage.
+
+- **Le QR ne contient que l'URL** `<origine>/pair?code=…`, jamais un secret : il
+  s'affiche dans un salon. C'est le `deviceCode`, gardé par le seul navigateur
+  qui a fait la demande, qui relève la session.
+- **L'origine vient de `window.location`**, pas de `PUBLIC_URL` : l'adresse à
+  ouvrir sur le téléphone est celle par laquelle cet écran-là est joignable.
+- **Le code est affiché en toutes lettres** sous le QR, groupé par quatre. Il
+  sert à deux choses : entrer l'appairage sans caméra, et surtout **vérifier**
+  sur le téléphone qu'on approuve bien l'écran qu'on regarde.
+- **Une demande expirée le dit et se relance** d'un bouton, plutôt que de laisser
+  un QR mort à l'écran.
+- Le sondage s'arrête dès que la page perd son panneau ou que la session arrive.
+  Le composant est monté dans un écran qui reste allumé des heures : une boucle
+  qui survivrait à sa fermeture n'aurait aucune raison de s'arrêter.
+
+### `lib/qr.ts`
+
+Encode l'URL en QR et rend un `path` SVG unique — un rectangle par module,
+concaténés en une seule commande de tracé. Un `<svg>` inline plutôt qu'une image
+en `data:` : la CSP n'autorise `data:` que pour les images inlinées par Vite
+(voir [04](./04-securite-et-acces.md)), et un tracé se redimensionne sans
+crénelage sur un écran de deux mètres.
+
+L'encodage lui-même vient de `qrcode-generator`, une dépendance sans
+dépendance : Reed-Solomon et masquage ne s'écrivent pas à la main pour économiser
+dix kilo-octets. Le niveau de correction est `M`, et le type est choisi
+automatiquement par la bibliothèque en fonction de la longueur de l'URL.
+
+### Approbation — `pages/PairPage.tsx`
+
+La page qu'ouvre le téléphone. `RequireAuth` la garde : sans session, elle
+renvoie vers `/login` et y revient une fois connecté, code compris.
+
+Elle affiche le code **tel que l'écran l'affiche**, et demande une confirmation
+explicite. C'est la seule vérification possible contre un QR qui ne serait pas
+celui qu'on regarde — le reste est du ressort de qui approuve (D260809c). Trois états
+suivent : approuvé (« l'écran va s'ouvrir »), expiré, ou déjà pris par un autre
+compte.
 
 ## Barre supérieure — `components/TopBar.tsx`
 

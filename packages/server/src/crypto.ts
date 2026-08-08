@@ -117,6 +117,19 @@ export function hashVerificationCode(email: string, code: string, secret: string
 }
 
 /**
+ * Empreinte du `deviceCode` d'une demande d'appairage.
+ *
+ * C'est le seul secret de l'échange — le code affiché à l'écran ne relève rien.
+ * Il vit cinq minutes, ce qui ne justifie pas de le laisser lisible dans un
+ * dump : le HMAC coûte moins que la requête SQL qui le cherche. Le préfixe le
+ * distingue des autres empreintes du même secret, qui n'ouvrent pas la même
+ * chose.
+ */
+export function hashDeviceCode(deviceCode: string, secret: string): string {
+  return createHmac('sha256', secret).update(`device:${deviceCode}`).digest('base64url');
+}
+
+/**
  * Comparaison en temps constant tolérante aux longueurs différentes.
  * `timingSafeEqual` lève quand elles diffèrent — ce qui est déjà une réponse,
  * mais sous forme d'exception plutôt que de `false`.

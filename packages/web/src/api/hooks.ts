@@ -104,6 +104,65 @@ export function useLogin() {
   });
 }
 
+/* --------------------------------------------------------------------------
+ * Appairage d'un écran sans clavier (D260809c)
+ * ------------------------------------------------------------------------ */
+
+/** Ouvre une demande. Appelée au clic, jamais à l'affichage de la page. */
+export function useStartPairing() {
+  return useMutation({ mutationFn: api.startPairing });
+}
+
+/**
+ * Le sondage de l'écran demandeur, jusqu'à ce que la session arrive.
+ *
+ * Il s'arrête de lui-même sur l'approbation comme sur l'erreur : une demande
+ * expirée répond 404, et continuer à sonder un code mort tiendrait un écran
+ * allumé à interroger le serveur toute la nuit.
+ */
+export function usePairingPoll(deviceCode: string | null, intervalMs: number) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ['pairing', 'poll', deviceCode],
+    queryFn: async () => {
+      const result = await api.pollPairing(deviceCode!);
+      if (result.status === 'approved') {
+        queryClient.setQueryData(queryKeys.me, result.user);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
+      }
+      return result;
+    },
+    enabled: deviceCode !== null,
+    refetchInterval: (query) =>
+      query.state.status === 'error' || query.state.data?.status === 'approved'
+        ? false
+        : intervalMs,
+    // Un 404 dit que la demande est morte : la réessayer ne la ressuscite pas.
+    retry: false,
+    gcTime: 0,
+  });
+}
+
+/** Ce que le téléphone lit avant d'approuver : le code existe-t-il encore ? */
+export function usePairingState(userCode: string) {
+  return useQuery({
+    queryKey: ['pairing', 'state', userCode],
+    queryFn: () => api.pairingState(userCode),
+    enabled: userCode.length > 0,
+    retry: false,
+    gcTime: 0,
+  });
+}
+
+export function useApprovePairing() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userCode: string) => api.approvePairing(userCode),
+    onSuccess: (_result, userCode) =>
+      queryClient.invalidateQueries({ queryKey: ['pairing', 'state', userCode] }),
+  });
+}
+
 export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({

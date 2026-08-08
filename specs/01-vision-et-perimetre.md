@@ -100,6 +100,11 @@ calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
   barre supérieure. Une conversation ne se découvre pas en ouvrant la bonne
   photo par hasard : sans cette vue, un message pouvait vivre et s'éteindre sans
   qu'aucun de ses destinataires ne le voie (voir D82).
+- **Appairage d'un écran sans clavier** : un téléviseur affiche un QR code, un
+  téléphone déjà connecté l'approuve, l'écran reçoit la session. Taper un mot de
+  passe masqué à la télécommande est la façon la plus pénible d'ouvrir une
+  galerie familiale, et c'est justement l'écran où on la regarde. L'appairage
+  délègue un accès existant, il n'en crée aucun (voir D260809c).
 - **Annonce par email des nouvelles photos d'un album**, aux identités vérifiées
   qui ont ouvert cet album. Personne ne revient spontanément sur une galerie
   auto-hébergée : sans cette annonce, les photos déposées et les commentaires
