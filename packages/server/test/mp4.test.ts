@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { findMoovOffset, readCreationTime } from '../src/drive/mp4.js';
+import { findMoovOffset, readCreationTime, readVideoCodec } from '../src/drive/mp4.js';
 
 /**
  * Lecture de l'en-tête d'un conteneur MP4 par fenêtres.
@@ -52,6 +52,36 @@ function mvhd1(iso: string): Buffer {
 
 function ftyp(): Buffer {
   return boite('ftyp', Buffer.from('isommp42', 'latin1'));
+}
+
+/**
+ * `hdlr` : version et drapeaux, `pre_defined`, puis le type de gestionnaire.
+ * C'est lui qui dit si la piste porte l'image (`vide`) ou le son (`soun`).
+ */
+function hdlr(type: string): Buffer {
+  const corps = Buffer.alloc(32);
+  corps.write(type, 8, 'latin1');
+  return boite('hdlr', corps);
+}
+
+/**
+ * `stsd` : version et drapeaux, nombre d'entrées, puis la première entrée —
+ * sa taille, et le code à quatre lettres du format.
+ */
+function stsd(format: string): Buffer {
+  const corps = Buffer.alloc(24);
+  corps.writeUInt32BE(1, 4);
+  corps.writeUInt32BE(16, 8);
+  corps.write(format, 12, 'latin1');
+  return boite('stsd', corps);
+}
+
+/** Une piste complète, telle qu'un encodeur l'écrit : `trak/mdia/minf/stbl/stsd`. */
+function trak(handler: string, format: string): Buffer {
+  const stbl = boite('stbl', stsd(format));
+  const minf = boite('minf', Buffer.concat([boite('dinf'), stbl]));
+  const mdia = boite('mdia', Buffer.concat([boite('mdhd', Buffer.alloc(24)), hdlr(handler), minf]));
+  return boite('trak', Buffer.concat([boite('tkhd', Buffer.alloc(84)), mdia]));
 }
 
 /**
@@ -196,6 +226,73 @@ describe('readCreationTime', () => {
     const fichier = Buffer.concat([ftyp(), boite('moov', boite('mvhd', corps))]);
 
     assert.equal(readCreationTime(fichier, 16), null);
+  });
+});
+
+describe('readVideoCodec', () => {
+  it('lit le codec de la piste image, placée après la piste son', () => {
+    // L'ordre courant sur un enregistrement de téléphone. Prendre le premier
+    // `stsd` venu rendrait `mp4a` — un codec audio — et ferait transcoder toutes
+    // les vidéos, y compris celles que le navigateur lit déjà.
+    const fichier = Buffer.concat([
+      ftyp(),
+      boite(
+        'moov',
+        Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('soun', 'mp4a'), trak('vide', 'hvc1')]),
+      ),
+    ]);
+
+    assert.equal(readVideoCodec(fichier, 16), 'hvc1');
+  });
+
+  it('reconnaît les deux écritures de l’HEVC et celle de l’H.264', () => {
+    // `hvc1` et `hev1` désignent le même codec, à la façon de ranger les
+    // paramètres près : les deux sont illisibles là où l'un l'est.
+    for (const format of ['hvc1', 'hev1', 'avc1']) {
+      const fichier = Buffer.concat([
+        ftyp(),
+        boite('moov', Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('vide', format)])),
+      ]);
+
+      assert.equal(readVideoCodec(fichier, 16), format);
+    }
+  });
+
+  it('ne devine rien quand le `stsd` déborde de la fenêtre', () => {
+    const fichier = Buffer.concat([
+      ftyp(),
+      boite('moov', Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('vide', 'hvc1')])),
+    ]);
+    // La fenêtre s'arrête dix octets avant la fin : le `stsd` n'y est pas
+    // entier, et il vaut mieux ne rien rendre que lire des octets absents.
+    const tronque = fichier.subarray(0, fichier.length - 10);
+
+    assert.equal(readVideoCodec(tronque, 16), null);
+  });
+
+  it('rend `null` sur un `moov` sans piste image', () => {
+    // Un enregistrement sonore mal classé, ou un conteneur dont la piste image
+    // se décrit autrement : la colonne retient « examiné, rien trouvé ».
+    const fichier = Buffer.concat([
+      ftyp(),
+      boite('moov', Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('soun', 'mp4a')])),
+    ]);
+
+    assert.equal(readVideoCodec(fichier, 16), null);
+  });
+
+  it('ne lit pas un `trak` resté dans une boîte `free`', () => {
+    // Le piège de `readCreationTime`, à l'identique : un ancien `moov` neutralisé
+    // porte encore ses pistes, et son codec peut ne plus être celui du fichier.
+    const perime = boite('free', trak('vide', 'avc1'));
+    const fichier = Buffer.concat([
+      ftyp(),
+      perime,
+      boite('moov', Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('vide', 'hvc1')])),
+    ]);
+
+    const scan = findMoovOffset(fichier, 0, fichier.length);
+    assert.equal(readVideoCodec(fichier, scan.moovOffset!), 'hvc1');
   });
 });
 

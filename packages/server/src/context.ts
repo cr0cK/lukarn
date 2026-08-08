@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import type { AppSettings } from '@gdv/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { bootstrapFromYaml } from './bootstrap.js';
@@ -16,6 +17,7 @@ import { AlbumNotifier } from './notifier.js';
 import { PairingStore } from './pairings.js';
 import { AlbumDayRepo, PlacesPass } from './places.js';
 import { CachePrewarmer } from './media/prewarm.js';
+import { ffmpegAvailable, spawnFfmpeg, TranscodePass, VideoTranscoder } from './media/transcode.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SearchRepo } from './search.js';
 import { SessionStore } from './sessions.js';
@@ -52,6 +54,11 @@ export class AppContext {
   /** Agrégation des positions en journées puis géocodage, en tâche de fond. */
   readonly places: PlacesPass;
   readonly prewarmer: CachePrewarmer;
+  /**
+   * Préparation des vidéos que le navigateur ne décode pas. Inerte tant que
+   * `ffmpeg` n'a pas été trouvé sur la machine — voir `checkFfmpeg`.
+   */
+  readonly transcoder: TranscodePass;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
   /** Demandes d'appairage en attente — un écran sans clavier, cinq minutes. */
@@ -66,10 +73,21 @@ export class AppContext {
   readonly throttle = new LoginThrottle();
   readonly drive: DriveService;
   readonly cache: MediaCache;
+  /**
+   * Magasin des versions lisibles des vidéos, avec son propre budget.
+   *
+   * Une `MediaCache` de plus et non un répertoire du cache d'images : inventaire,
+   * LRU, éviction et ménage des `.tmp` au démarrage sont exactement ce qu'il
+   * faut, et un LRU commun aux deux laisserait une navigation dans la grille
+   * évincer des heures de transcodage (D260809b).
+   */
+  readonly videoStore: MediaCache;
   readonly renderer: MediaRenderer;
   readonly syncer: Syncer;
 
   private readonly settingsListeners: SettingsListener[] = [];
+  /** Faux tant que `checkFfmpeg` n'a pas trouvé le binaire. */
+  private ffmpeg = false;
 
   constructor(
     readonly env: Env,
@@ -102,6 +120,11 @@ export class AppContext {
     this.mailer = Mailer.fromEnv(env, logger);
     this.drive = new DriveService(env, this.db, logger);
     this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
+    this.videoStore = new MediaCache(
+      join(env.cacheDir, 'video'),
+      this.settings.videoCacheMaxSizeGB * GIB,
+      logger,
+    );
     this.renderer = new MediaRenderer(this.drive, this.cache, logger);
     this.syncer = new Syncer(this.drive, this.media, this.syncState, logger);
     this.notifier = new AlbumNotifier({
@@ -141,6 +164,25 @@ export class AppContext {
       log: logger,
     });
 
+    this.transcoder = new TranscodePass({
+      albums: () => this.albums,
+      media: this.media,
+      store: this.videoStore,
+      transcoder: new VideoTranscoder({
+        drive: this.drive,
+        store: this.videoStore,
+        root: join(env.cacheDir, 'video'),
+        run: spawnFfmpeg,
+      }),
+      // Trois conditions dans le même prédicat, relu à chaque vidéo, pour la
+      // raison du préchauffage : sans Drive, le passage parcourrait l'album en
+      // échouant fichier par fichier ; sans ffmpeg, il le parcourrait en
+      // échouant après avoir téléchargé chaque original — cent cinquante
+      // méga-octets tirés pour rien, par vidéo et par heure.
+      enabled: () => this.settings.transcodeVideos && this.drive.connected && this.ffmpeg,
+      log: logger,
+    });
+
     // Filet de sécurité : une base restaurée d'une sauvegarde peut porter des
     // médias d'albums disparus depuis. La condition est indispensable — sans
     // album déclaré, `pruneAlbums` viderait l'index entier, ce qui est le bon
@@ -148,6 +190,25 @@ export class AppContext {
     // sur une base dont la configuration n'a pas encore été amorcée.
     const albumIds = this.albums.map((album) => album.id);
     if (albumIds.length > 0) this.media.pruneAlbums(albumIds);
+  }
+
+  /**
+   * Cherche `ffmpeg` et arme — ou non — la préparation des vidéos.
+   *
+   * Appelé une fois au démarrage, depuis `buildApp` : le constructeur ne peut
+   * pas attendre un processus, et sonder le binaire à chaque passage coûterait
+   * un `spawn` par heure pour une réponse qui ne change pas. L'avertissement
+   * est explicite parce que le symptôme, lui, ne l'est pas : sans ffmpeg, les
+   * vidéos HEVC restent affichées comme illisibles, exactement comme avant, et
+   * rien ne dirait qu'il manque un paquet.
+   */
+  async checkFfmpeg(): Promise<void> {
+    this.ffmpeg = await ffmpegAvailable();
+    if (this.ffmpeg || !this.settings.transcodeVideos) return;
+    this.log.warn(
+      'ffmpeg est introuvable : les vidéos que le navigateur ne décode pas ne seront pas ' +
+        'préparées, elles resteront seulement téléchargeables.',
+    );
   }
 
   get albums(): StoredAlbum[] {
@@ -198,6 +259,12 @@ export class AppContext {
     });
 
     await this.prewarmer.run();
+
+    // Après le préchauffage, jamais avant : les vignettes font attendre quelqu'un
+    // devant sa grille, un transcodage prépare une vidéo que personne ne regarde
+    // encore. Passer devant retarderait de plusieurs minutes ce qui se compte en
+    // secondes.
+    await this.transcoder.run();
   }
 
   get settings(): AppSettings {
@@ -221,6 +288,7 @@ export class AppContext {
   updateSettings(patch: Partial<AppSettings>): AppSettings {
     const settings = this.config.updateSettings(patch);
     this.cache.setMaxBytes(settings.cacheMaxSizeGB * GIB);
+    this.videoStore.setMaxBytes(settings.videoCacheMaxSizeGB * GIB);
     for (const listener of this.settingsListeners) listener(settings);
     return settings;
   }

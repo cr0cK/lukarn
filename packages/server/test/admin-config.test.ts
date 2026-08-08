@@ -52,6 +52,7 @@ function media(albumId: string, id: string): MediaUpsert {
     lng: null,
     md5: null,
     hasThumbnail: true,
+    videoCodec: null,
   };
 }
 
@@ -635,8 +636,10 @@ describe('réglages', () => {
       syncIntervalMinutes: 5,
       syncOnStartup: true,
       cacheMaxSizeGB: 2,
-      // Non touché par ce PATCH : seuls les champs envoyés changent.
+      // Non touchés par ce PATCH : seuls les champs envoyés changent.
       prewarmCache: true,
+      transcodeVideos: true,
+      videoCacheMaxSizeGB: 5,
       moderationEmail: null,
     });
 

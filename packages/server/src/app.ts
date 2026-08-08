@@ -50,6 +50,10 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
 
   const context = new AppContext(env, server.log);
   await context.cache.load();
+  // Le magasin vidéo a son propre inventaire, et c'est lui qui efface les
+  // temporaires d'un transcodage interrompu par un arrêt brutal.
+  await context.videoStore.load();
+  await context.checkFfmpeg();
 
   // Avant tout le reste : un en-tête posé sur `onRequest` couvre aussi les
   // réponses que les plugins suivants produisent sans nous consulter.

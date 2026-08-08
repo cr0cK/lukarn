@@ -32,6 +32,7 @@ function photo(id: string, takenAt: string, width = 4000, height = 3000): MediaI
     takenAt,
     takenAtFromExif: true,
     durationMs: null,
+    videoCodec: null,
     description: null,
     version: null,
   };

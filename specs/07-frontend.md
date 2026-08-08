@@ -937,10 +937,10 @@ secours.
   défiler la grille sous l'image.
 - Prend le focus à l'ouverture et le **rend à l'élément précédent** à la
   fermeture.
-- Vidéos : `<video controls autoPlay playsInline>` sur `/original`, seek natif
-  par `Range`, et `poster` sur la vignette 1280 quand `item.hasPreview` — celle
-  de la grille, donc déjà en cache disque et souvent en cache navigateur : le
-  rectangle noir de l'attente disparaît sans une requête de plus (D92).
+- Vidéos : `<video controls autoPlay playsInline>`, seek natif par `Range`, et
+  `poster` sur la vignette 1280 quand `item.hasPreview` — celle de la grille,
+  donc déjà en cache disque et souvent en cache navigateur : le rectangle noir
+  de l'attente disparaît sans une requête de plus (D92).
   L'attente n'a **pas** d'indicateur propre : le `poster` l'occupe, et les
   contrôles natifs portent déjà le leur — en superposer un second en faisait
   tourner deux, l'un sur l'autre ([D98](./08-decisions.md)). L'échec, lui,
@@ -951,6 +951,41 @@ secours.
   décodage à moitié réussi (D98). Photos :
   `ZoomableImage`, remonté à chaque photo (`key={item.id}`) pour réinitialiser
   zoom et cadrage sans les remettre à zéro à la main.
+- **La source de la vidéo est choisie par le client** — `lib/videoSource.ts`,
+  fonction pure et testée à côté de `preview.ts`, et pour la même raison : une
+  règle d'une ligne dont l'erreur ne se voit pas. `chooseVideoSource` interroge
+  `canPlayType` sur le **codec réel** de la piste image, `video/mp4;
+codecs="hvc1"`, et non sur le type nu, auquel tout le monde répond `maybe`
+  (D98). Réponse vide : la balise pointe sur `/playable`, la version H.264 que
+  le serveur a préparée (D260809b). Sinon — y compris quand le codec est inconnu —
+  elle garde `/original`, en pleine qualité : c'est ce qui fait que Safari et un
+  iPhone, qui décodent l'HEVC, ne voient jamais le transcodage. La détection de
+  D98 reste le filet derrière ce choix, pour le navigateur qui annonce savoir
+  lire un format sans y parvenir.
+- **Le message d'échec gagne une phrase quand le codec est connu pour être
+  illisible ici** : une version lisible est en préparation, et elle démarrera là
+  sans rien demander. Sans elle, `/playable` en 404 donnerait le message de
+  D79 — « le fichier reste téléchargeable » — à quelqu'un qui, dix minutes plus
+  tard, aurait pu simplement la regarder.
+- **Et la visionneuse la guette.** Tant que l'attente dure, elle redemande le
+  premier octet de `/playable` toutes les vingt secondes (`Range: bytes=0-0`) ;
+  à la première réponse servie, `failed` repasse à faux, la balise est remontée
+  et son `autoPlay` enchaîne. Sans ce guet, le message resterait jusqu'à ce
+  qu'on rouvre la photo — c'est-à-dire pour toujours du point de vue de qui est
+  resté devant, et c'est précisément la personne qui voulait voir cette vidéo.
+
+  Un octet en `Range` plutôt qu'un rechargement de la balise, qui clignoterait
+  à chaque essai — poster, puis message — pour la même réponse. Le 404 se voit
+  dans la console dans les deux cas, le navigateur journalisant toute requête
+  refusée : c'est le seul bruit du guet. Vingt secondes parce qu'un transcodage
+  dure des minutes et que la file est servie une vidéo à la fois — sonder plus
+  souvent ne la ferait pas arriver plus tôt. Un sondage qui échoue ne change
+  rien à l'écran : il n'y a rien de cassé, la vidéo n'est simplement pas encore
+  prête.
+
+  Le guet ne concerne que ce cas : une réponse **servie** est `immutable`, donc
+  un navigateur qui a déjà obtenu la version ne redemande jamais rien.
+
 - Le téléchargement passe par une ancre synthétique plutôt que `window.open` :
   pas de blocage de popup, et le navigateur gère sa barre de téléchargement.
 - `SidePanel` n'est monté qu'à l'ouverture, et la position EXIF est liée vers

@@ -217,6 +217,17 @@ de son côté la règle photo/vidéo, et sans réclamer à chaque chargement de 
 une image vouée au 415 sur la vidéo dont Drive n'a pas d'aperçu — codec qu'il ne
 lit pas, ou fichier déposé trop récemment pour avoir été traité.
 
+**`MediaItem.videoCodec`** — le code à quatre lettres du codec de la piste image
+d'une vidéo, tel qu'il est écrit dans le fichier : `avc1`, `hvc1`, `hev1`.
+`null` sur une photo et sur toute vidéo dont l'en-tête n'a pas été lu, chaîne
+vide quand il l'a été sans qu'on y reconnaisse de piste image (voir les trois
+états de `video_codec` dans [03](./03-modele-de-donnees.md)).
+
+Il voyage avec l'item parce que **c'est le client qui choisit sa source** : avec
+le codec réel, `canPlayType` donne une réponse franche là où `video/mp4` seul
+répond `maybe` partout et n'apprend rien (D98). Chrome demande donc `/playable`,
+Safari et un iPhone gardent `/original` en pleine qualité (D260809b).
+
 **`MediaItem.description`** — la légende écrite à la main sur cette photo,
 `null` si personne n'en a écrit. Elle est portée par le couple **(album,
 média)** : le même fichier indexé sous deux albums en porte deux, comme il porte
@@ -523,6 +534,7 @@ plutôt qu'une 500 opaque répétée sur chaque vignette de la grille.
 | GET     | `/api/media/:mediaId/full`     | session + accès | `image/webp`              |
 | GET     | `/api/media/:mediaId/hd`       | session + accès | `image/webp`              |
 | GET     | `/api/media/:mediaId/original` | session + accès | flux du fichier d'origine |
+| GET     | `/api/media/:mediaId/playable` | session + accès | `video/mp4` transcodé     |
 
 **`thumb`** — `s` vaut 320 (défaut), 640 ou 1280 ; toute autre valeur donne
 `400 bad_request`. Un `s` non numérique retombe sur 320 plutôt que d'échouer.
@@ -583,6 +595,32 @@ cache disque.
   connexion est marquée révoquée et la réponse est `503 drive_revoked`.
 - Contrairement aux rendus, cette route ne filtre pas sur `kind` : elle sert
   aussi bien l'original d'une photo que le flux d'une vidéo.
+
+**`playable`** — la version H.264 préparée par le serveur pour les vidéos dont
+aucun navigateur courant ne décode le codec
+([D260809b](./decisions/D260809b-transcodage-video.md)). Elle
+vient du magasin disque, pas de Drive : les plages sont donc résolues ici plutôt
+que relayées.
+
+| Code | Quand                                                                                                                    |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ |
+| 200  | `Content-Type: video/mp4`, `Accept-Ranges: bytes`, `Content-Length`, `Cache-Control: …immutable`, `Vary: Cookie`, ETag   |
+| 206  | `Range` valide : `Content-Range: bytes <début>-<fin>/<taille>`, bornée à la taille réelle                                |
+| 304  | `If-None-Match` correspondant à `"<mediaId>-<version>-playable"`                                                         |
+| 404  | `not_ready` — la version n'est pas (encore) préparée ; `not_found` si le média est absent de l'index ou l'album interdit |
+| 416  | Plage entièrement au-delà de la fin : `Content-Range: bytes */<taille>`, corps vide                                      |
+
+Le **404 `not_ready` est le contrat avec le front**, pas une erreur : la
+préparation est anticipée et dure des minutes, une vidéo arrivée il y a un quart
+d'heure n'a pas encore la sienne. La visionneuse l'affiche comme « en
+préparation », avec le bouton **Télécharger** de D79. Rien ne déclenche un
+transcodage à la demande — ce serait une requête HTTP tenue ouverte dix minutes,
+et autant de ffmpeg simultanés que de curieux.
+
+Le type est toujours `video/mp4`, quel que soit le conteneur d'origine : c'est ce
+que ffmpeg vient de produire. Le contenu servi est un dérivé, donc l'ETag porte
+la même version que les autres — une nouvelle version du fichier Drive produit
+une nouvelle clé de magasin, donc un nouveau dérivé.
 
 ## Administration — `routes/admin.ts`
 
@@ -813,17 +851,25 @@ doit le dire plutôt que de laisser espérer des notifications.
 ### Réglages
 
 `AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB,
-prewarmCache, moderationEmail }`. `PATCH`
+prewarmCache, transcodeVideos, videoCacheMaxSizeGB, moderationEmail }`. `PATCH`
 accepte un sous-ensemble (`UpdateSettingsRequest`) et renvoie l'état complet.
 Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0,
 `prewarmCache` booléen (défaut `true`, relu à chaque photo par le préchauffage —
-le décocher arrête le passage en cours, pas seulement le suivant).
+le décocher arrête le passage en cours, pas seulement le suivant),
+`transcodeVideos` booléen (défaut `true`, relu de la même façon à chaque vidéo),
+`videoCacheMaxSizeGB` > 0 (défaut 5).
 `moderationEmail` accepte une adresse valide, `null` ou la chaîne vide — les deux
 dernières valant « aucune alerte », `ConfigRepo` les ramenant au même `NULL`.
 
-**Les réglages s'appliquent sans redémarrage** : la limite de `MediaCache` est
-ajustée dans la foulée (avec éviction si elle baisse) et le minuteur de
-synchronisation de `main.ts` est reprogrammé. C'était la limite du rechargement
+`videoCacheMaxSizeGB` est un budget **distinct** de `cacheMaxSizeGB`, et non une
+part de celui-ci : les deux dérivés n'ont pas le même coût de reconstruction —
+quelques secondes pour une vignette, plusieurs minutes de processeur pour une
+vidéo. Un LRU commun laisserait une navigation dans la grille évincer des heures
+de travail (D260809b).
+
+**Les réglages s'appliquent sans redémarrage** : les limites des deux
+`MediaCache` sont ajustées dans la foulée (avec éviction si elles baissent) et le
+minuteur de synchronisation de `main.ts` est reprogrammé. C'était la limite du rechargement
 de configuration d'avant, qui ne relisait ces valeurs qu'au démarrage.
 
 ## Callback OAuth — `routes/admin.ts`

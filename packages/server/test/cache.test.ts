@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
@@ -81,6 +81,65 @@ describe('cache disque', () => {
     assert.equal(cache.stats().entryCount, 0);
     assert.equal(cache.stats().bytes, 0);
     assert.equal(cache.hit('k'), null);
+  });
+
+  it('range un fichier déjà écrit sans le charger en mémoire', async () => {
+    const dir = join(root, 'putfile');
+    const cache = new MediaCache(dir, 1024 * 1024);
+    await cache.load();
+
+    const source = join(dir, 'sortie.tmp');
+    writeFileSync(source, Buffer.alloc(4096, 7));
+
+    const path = await cache.putFile('clip:empreinte', source);
+
+    assert.ok(existsSync(path));
+    // Déplacé, pas copié : un dérivé vidéo pèse des dizaines de Mo, le laisser
+    // derrière doublerait la place occupée.
+    assert.equal(existsSync(source), false);
+    assert.equal(cache.hit('clip:empreinte'), path);
+    assert.equal(cache.stats().bytes, 4096);
+  });
+
+  it('évince aussi ce qui est entré par renommage', async () => {
+    const dir = join(root, 'putfile-lru');
+    const cache = new MediaCache(dir, 300);
+    await cache.load();
+
+    for (const nom of ['vieux', 'moyen', 'recent', 'nouveau']) {
+      const source = join(dir, `${nom}.tmp`);
+      writeFileSync(source, Buffer.alloc(100, 1));
+      await cache.putFile(nom, source);
+    }
+    await settle();
+
+    // La taille est comptée à l'entrée : sans ça, le magasin grossirait sans
+    // limite et le budget des vidéos ne voudrait rien dire.
+    assert.ok(cache.stats().bytes <= 300, 'la limite doit être respectée');
+    assert.equal(cache.hit('vieux'), null, 'la moins récemment utilisée doit partir');
+    assert.ok(cache.hit('nouveau'), 'la dernière écriture doit survivre');
+  });
+
+  it('n’inventorie ni ne vide ce qui n’est pas à lui', async () => {
+    // Le magasin vidéo vit sous `CACHE_DIR/video` : un cache qui compterait ses
+    // octets dans son budget les évincerait, et « vider le cache » depuis
+    // /admin emporterait des heures de transcodage avec les vignettes.
+    const dir = join(root, 'voisin');
+    const cache = new MediaCache(dir, 1024 * 1024);
+    await cache.load();
+    await cache.put('vignette', Buffer.alloc(100, 1));
+
+    const voisin = join(dir, 'video');
+    mkdirSync(join(voisin, 'ab'), { recursive: true });
+    const etranger = join(voisin, 'ab', 'film.bin');
+    writeFileSync(etranger, Buffer.alloc(9000, 2));
+
+    const relu = new MediaCache(dir, 1024 * 1024);
+    await relu.load();
+    assert.equal(relu.stats().bytes, 100, 'seul son propre rayon est inventorié');
+
+    await relu.clear();
+    assert.ok(existsSync(etranger), 'le magasin voisin doit survivre au vidage');
   });
 
   it("épargne une entrée réclamée pendant que l'éviction tourne", async () => {

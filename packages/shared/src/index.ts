@@ -92,6 +92,20 @@ export interface MediaItem {
    */
   version: string | null;
   /**
+   * Code à quatre lettres du codec de la piste image d'une vidéo — `avc1`,
+   * `hvc1`, `hev1` — tel qu'il est écrit dans le fichier lui-même.
+   *
+   * `null` sur une photo, sur une vidéo dont l'en-tête n'a pas pu être lu, et
+   * sur toute ligne indexée avant que la colonne existe. Chaîne vide quand
+   * l'en-tête a été lu sans qu'on y reconnaisse de piste image.
+   *
+   * C'est ce qui permet au client de choisir sa source : `canPlayType` sur
+   * `video/mp4` seul répond `maybe` partout et n'apprend rien (D98) ; avec le
+   * codec réel, la réponse est franche, et un navigateur qui sait lire l'HEVC
+   * garde l'original en pleine qualité (D260809b).
+   */
+  videoCodec: string | null;
+  /**
    * Légende écrite à la main sur cette photo, `null` si personne n'en a écrit.
    *
    * Portée par le couple **(album, média)** et non par le seul fichier Drive :
@@ -701,6 +715,21 @@ export interface AppSettings {
    * de téléchargements Drive faits d'avance.
    */
   prewarmCache: boolean;
+  /**
+   * Préparer à l'avance une version lisible des vidéos dont le codec n'est
+   * décodé par aucun navigateur courant. Une vidéo à la fois, en fond et à
+   * priorité basse : compter environ une minute de processeur par minute de
+   * film (D260809b). Sans `ffmpeg` sur la machine, le réglage reste sans effet.
+   */
+  transcodeVideos: boolean;
+  /**
+   * Place accordée aux versions lisibles des vidéos, distincte de celle des
+   * vignettes. Deux budgets et non un seul parce que les deux dérivés n'ont pas
+   * le même coût : une vignette se refait en quelques secondes, une vidéo en
+   * plusieurs minutes de processeur — un LRU commun laisserait la navigation
+   * dans la grille évincer une heure de travail (D260809b).
+   */
+  videoCacheMaxSizeGB: number;
   /**
    * Adresse prévenue de chaque nouveau commentaire. `null` pour n'en prévenir
    * aucune.

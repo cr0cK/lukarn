@@ -38,6 +38,7 @@ function media(albumId: string, id: string, takenAt: string): MediaUpsert {
     lng: null,
     md5: null,
     hasThumbnail: true,
+    videoCodec: null,
   };
 }
 
@@ -269,6 +270,7 @@ describe('aperçu disponible', () => {
       mimeType: 'video/mp4',
       durationMs: 4000,
       hasThumbnail: true,
+      videoCodec: null,
     };
     const sans: MediaUpsert = { ...avec, id: 'clip-sans', hasThumbnail: false };
     repo.upsertMany([media('apercus', 'photo', '2024-08-03T10:00:00.000Z'), avec, sans], seenAt);

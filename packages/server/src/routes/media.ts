@@ -1,4 +1,5 @@
 import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { isThumbSize } from '@gdv/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
@@ -9,8 +10,9 @@ import {
   DriveRevokedError,
   DriveUnavailableError,
 } from '../drive/service.js';
-import { formatRange, parseRange } from '../media/range.js';
+import { formatRange, parseRange, type ByteRange } from '../media/range.js';
 import type { Variant } from '../media/renderer.js';
+import { playableKey } from '../media/transcode.js';
 import { requireAuth } from '../plugins/auth.js';
 
 /**
@@ -34,6 +36,24 @@ const IMMUTABLE = 'private, max-age=31536000, immutable';
 const VARY_COOKIE = 'Cookie';
 
 const thumbQuery = z.object({ s: z.coerce.number().int().default(320) });
+
+/**
+ * Ramène une plage demandée aux bornes réelles du fichier.
+ *
+ * `null` quand elle n'a aucune intersection avec lui : c'est le 416, que le
+ * lecteur provoque couramment en changeant de vidéo pendant qu'une requête est
+ * en vol.
+ */
+function resolveRange(range: ByteRange, size: number): { start: number; end: number } | null {
+  // Plage suffixe (`bytes=-500`) : les derniers octets, jamais plus que le
+  // fichier entier.
+  if (range.start === null) {
+    const length = Math.min(range.end ?? 0, size);
+    return length > 0 ? { start: size - length, end: size - 1 } : null;
+  }
+  if (range.start >= size) return null;
+  return { start: range.start, end: Math.min(range.end ?? size - 1, size - 1) };
+}
 
 export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
   /**
@@ -172,6 +192,77 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:mediaId/hd', async (request, reply) =>
       serveRendered(request, reply, { kind: 'hd' }),
     );
+
+    /**
+     * Version transcodée, servie depuis le magasin disque (D260809b).
+     *
+     * **404 quand elle n'est pas là**, et c'est le contrat avec le front : la
+     * préparation est anticipée et lente, une vidéo arrivée il y a dix minutes
+     * n'a pas encore la sienne. Le front en fait « en préparation », avec le
+     * bouton Télécharger de D79 — pas une erreur.
+     *
+     * Le fichier est local, contrairement à `/original` : les plages sont donc
+     * résolues ici plutôt que relayées à Drive.
+     */
+    app.get('/:mediaId/playable', async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      const meta = context.media.getFileMeta(mediaId);
+      if (!meta) {
+        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+      }
+
+      const path = context.videoStore.hit(playableKey(mediaId, meta.md5));
+      // L'inventaire peut désigner un fichier qui n'est plus là — éviction
+      // concurrente, ménage manuel sur le volume : `stat` tranche avant que les
+      // en-têtes soient posés, là où `createReadStream` échouerait après.
+      const size = path
+        ? await stat(path).then(
+            (info) => info.size,
+            () => null,
+          )
+        : null;
+      if (path === null || size === null) {
+        return reply
+          .code(404)
+          .send({ error: 'not_ready', message: 'Version lisible pas encore préparée' });
+      }
+
+      const etag = `"${mediaId}-${meta.md5 ?? 'v0'}-playable"`;
+      if (request.headers['if-none-match'] === etag) {
+        return reply
+          .code(304)
+          .header('Cache-Control', IMMUTABLE)
+          .header('Vary', VARY_COOKIE)
+          .header('ETag', etag)
+          .send();
+      }
+
+      reply
+        // Toujours du MP4 H.264, quel que soit le conteneur d'origine : c'est ce
+        // que ffmpeg vient de produire, et annoncer `video/quicktime` ferait
+        // douter un lecteur qui reçoit pourtant exactement ce qu'il sait lire.
+        .header('Content-Type', 'video/mp4')
+        .header('Accept-Ranges', 'bytes')
+        .header('Cache-Control', IMMUTABLE)
+        .header('Vary', VARY_COOKIE)
+        .header('ETag', etag);
+
+      const asked = parseRange(request.headers.range);
+      if (!asked) {
+        return reply.header('Content-Length', String(size)).send(createReadStream(path));
+      }
+
+      const range = resolveRange(asked, size);
+      if (!range) {
+        return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+      }
+
+      return reply
+        .code(206)
+        .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`)
+        .header('Content-Length', String(range.end - range.start + 1))
+        .send(createReadStream(path, { start: range.start, end: range.end }));
+    });
 
     /**
      * Fichier d'origine, non transformé. Sert au téléchargement (`?download=1`)

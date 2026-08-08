@@ -44,9 +44,10 @@ flowchart LR
 | `src/drive/service.ts`   | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation.                                                                             |
 | `src/drive/sync.ts`      | Parcours des dossiers et remplissage de l'index.                                                                                                                                |
 | `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées), et date de prise de vue d'une vidéo.                                                              |
-| `src/drive/mp4.ts`       | Lecture de l'en-tête d'un conteneur MP4 par fenêtres : où est le `moov`, quelle date porte son `mvhd`.                                                                          |
+| `src/drive/mp4.ts`       | Lecture de l'en-tête d'un conteneur MP4 par fenêtres : où est le `moov`, quelle date porte son `mvhd`, quel codec porte sa piste image.                                         |
 | `src/media/renderer.ts`  | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive. `prepare` prépare plusieurs variantes en un seul téléchargement, pour le préchauffage. |
-| `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU.                                                                                                                        |
+| `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU. Deux instances : les dérivés d'images, et le magasin des vidéos préparées.                                             |
+| `src/media/transcode.ts` | `VideoTranscoder` et `TranscodePass` : version H.264 des vidéos dont le codec n'est décodé par aucun navigateur courant, une à la fois et en fond.                              |
 | `src/media/range.ts`     | Validation du header `Range` avant relais.                                                                                                                                      |
 | `src/plugins/auth.ts`    | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                                                                                               |
 | `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).                                                                                      |
@@ -130,7 +131,10 @@ purgé puis reconstruit). Les deux derniers passent par `startSync`
 foulée », le plus courant à l'installation.
 
 Tous ces déclencheurs passent par `AppContext.syncThenPrewarm` : l'indexation est
-suivie du préchauffage des vignettes (D58).
+suivie du préchauffage des vignettes (D58), puis de la préparation des vidéos
+illisibles (D260809b). L'ordre n'est pas neutre — les vignettes font attendre
+quelqu'un devant sa grille, un transcodage prépare une vidéo que personne ne
+regarde encore.
 
 1. `Syncer.sync(album)` — si une sync du même album tourne déjà **avec la même
    configuration effective** (`folderId` et `recursive`), la promesse en cours
@@ -163,11 +167,19 @@ imageMediaMetadata, videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
    fichier est lu par requêtes `Range` (D97). `drive/mp4.ts` suit la chaîne des
    boîtes de premier niveau depuis l'offset 0 pour atteindre le `moov`, dont le
    `mvhd` porte la date d'enregistrement ; `resolveVideoTakenAt` la confronte à
-   l'horodatage du nom du fichier. Au plus **quatre fenêtres de 64 Ko** par
-   vidéo, 2,3 en moyenne sur un import réel, et **aucune** pour une vidéo déjà
-   datée dont le `md5` n'a pas bougé — c'est ce que `MediaRepo.fileTakenAt`
-   vérifie avant de lire quoi que ce soit. Un échec de lecture ne fait pas
-   échouer la sync : la date retombe sur le nom, puis sur `modifiedTime`.
+   l'horodatage du nom du fichier. **La même fenêtre livre le codec de la piste
+   image** — `readVideoCodec` descend `moov → trak → mdia → minf → stbl → stsd`
+   et retient la première piste dont le `hdlr` vaut `vide` (D260809b) : les deux
+   lectures partagent la boîte, donc les séparer doublerait le nombre de
+   requêtes pour relire les mêmes octets. Au plus **quatre fenêtres de 64 Ko**
+   par vidéo, 2,3 en moyenne sur un import réel, et **aucune** pour une vidéo
+   déjà datée dont le `md5` n'a pas bougé **et dont le codec est renseigné** —
+   c'est ce que `MediaRepo.fileTakenAt` vérifie avant de lire quoi que ce soit.
+   Cette dernière condition est ce qui peuple `video_codec` sans reprise de
+   données : les lignes d'avant la migration 14 sont relues une fois, puis
+   court-circuitées comme les autres. Un échec de lecture ne fait pas échouer la
+   sync : la date retombe sur le nom, puis sur `modifiedTime`, et le codec reste
+   `NULL`, donc réessayé.
 8. Écriture par lots de 500 dans une transaction. L'album devient consultable
    pendant la sync.
 9. `deleteStale(albumId, seenAt)` retire ce qui n'a pas été revu — fichier
@@ -183,6 +195,39 @@ imageMediaMetadata, videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
 11. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
     s'arrête net sur `DriveRevokedError` — les suivants échoueraient de la même
     façon.
+
+## Cheminement d'une vidéo illisible
+
+Une vidéo HEVC ne se lit ni dans Chrome ni dans Firefox. D79 et D98 lui ont donné
+un message honnête et un bouton **Télécharger** ; D260809b la rend lisible, sans lui
+retirer sa qualité là où elle se lisait déjà.
+
+**Côté serveur, en fond.** `TranscodePass` est branché au même endroit que le
+préchauffage — fin de `syncThenPrewarm`, et ménage horaire de `main.ts` — et
+reprend ses gardes : un seul passage à la fois, réglage relu à chaque vidéo,
+plafond par passage, arrêt à l'extinction du serveur. Pour chaque vidéo, du plus
+récent album au plus ancien :
+
+1. `needsTranscoding(item.videoCodec)` — seuls `hvc1` et `hev1` passent. La règle
+   porte sur le codec, jamais sur un poids ou un nombre de fichiers : transcoder
+   un `avc1` dépenserait des minutes de processeur à dégrader l'image.
+2. Le magasin est consulté sur `playableKey(id, md5)`, qui porte l'empreinte du
+   contenu — une vidéo remplacée dans Drive sous le même identifiant est refaite.
+3. `VideoTranscoder` télécharge l'original **sur disque** (jamais en mémoire :
+   `MediaRenderer` refuse au-delà de 80 Mo, une vidéo en fait couramment 150),
+   lance `ffmpeg` reniçé à 15 et sur un seul fil, puis range le résultat par
+   `MediaCache.putFile` — un `rename`, pas trente méga-octets chargés pour être
+   réécrits. Les temporaires sont effacés même en cas d'échec.
+4. Le passage s'arrête quand le magasin atteint 90 % de son budget : à la limite,
+   chaque nouvelle vidéo évincerait la plus ancienne, et le passage suivant
+   referait ce que celui-ci vient de jeter.
+
+**Côté client, à l'ouverture.** `chooseVideoSource` interroge le navigateur sur
+le codec réel — `canPlayType('video/mp4; codecs="hvc1"')` — et non sur le type
+nu, auquel tout le monde répond `maybe` (D98). Chrome demande donc
+`GET /api/media/:id/playable`, Safari et un iPhone gardent `/original` en pleine
+qualité. Tant que la version n'existe pas, `/playable` répond **404**, que la
+visionneuse affiche comme « en préparation » avec le bouton Télécharger.
 
 ## Les choix structurants, et leur raison
 
