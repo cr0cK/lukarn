@@ -1,14 +1,19 @@
 import type { AdminComment } from '@gdv/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { groupForModeration } from '../src/lib/moderation';
+import { groupByDayAndPhoto, type DayGroup } from '../src/lib/commentGroups';
 
 /**
- * Rangement de la file de modération.
+ * Rangement d'une liste de commentaires par journée puis par photo — celui de
+ * la file de modération comme celui du tiroir d'activité.
  *
  * Deux invariants portent tout : rien ne se perd ni ne se duplique en passant
  * d'une liste plate à deux niveaux de groupes, et l'ordre antéchronologique
  * rendu par le serveur survit au rangement.
+ *
+ * Les cas sont écrits sur `AdminComment`, le plus riche des deux : ce qui les
+ * distingue — l'adresse de l'auteur, l'état de masquage — n'entre pas dans le
+ * rangement, qui ne lit que l'album, la photo et la date.
  */
 
 let prochain = 1;
@@ -37,7 +42,7 @@ function commentaire(createdAt: string, overrides: Partial<AdminComment> = {}): 
 }
 
 /** Tous les commentaires du résultat, à plat, dans l'ordre où ils s'affichent. */
-function aplati(groupes: ReturnType<typeof groupForModeration>): AdminComment[] {
+function aplati(groupes: DayGroup<AdminComment>[]): AdminComment[] {
   return groupes.flatMap((jour) => jour.photos.flatMap((photo) => photo.comments));
 }
 
@@ -50,7 +55,7 @@ describe('rangement de la file de modération', () => {
       commentaire('2026-08-06T08:00:00.000Z', { albumId: 'corse', albumTitle: 'Corse' }),
     ];
 
-    const sortie = aplati(groupForModeration(entree));
+    const sortie = aplati(groupByDayAndPhoto(entree));
 
     assert.equal(sortie.length, entree.length);
     assert.deepEqual(
@@ -60,7 +65,7 @@ describe('rangement de la file de modération', () => {
   });
 
   it('regroupe les commentaires d’une même photo sous un seul en-tête', () => {
-    const groupes = groupForModeration([
+    const groupes = groupByDayAndPhoto([
       commentaire('2026-08-07T12:00:00.000Z'),
       commentaire('2026-08-07T11:00:00.000Z', { mediaId: 'phare', mediaName: 'phare.jpg' }),
       commentaire('2026-08-07T10:00:00.000Z'),
@@ -79,7 +84,7 @@ describe('rangement de la file de modération', () => {
   it('ne mélange pas le même fichier indexé sous deux albums', () => {
     // Même média, deux albums : deux conversations séparées (D12), donc deux
     // blocs — les réunir montrerait ce qui s'est dit dans un album cloisonné.
-    const groupes = groupForModeration([
+    const groupes = groupByDayAndPhoto([
       commentaire('2026-08-07T12:00:00.000Z', { albumId: 'vacances', albumTitle: 'Vacances' }),
       commentaire('2026-08-07T11:00:00.000Z', { albumId: 'corse', albumTitle: 'Corse' }),
     ]);
@@ -94,7 +99,7 @@ describe('rangement de la file de modération', () => {
       commentaire('2026-08-05T18:00:00.000Z'),
     ];
 
-    const sortie = aplati(groupForModeration(entree));
+    const sortie = aplati(groupByDayAndPhoto(entree));
 
     assert.deepEqual(
       sortie.map((comment) => comment.id),
@@ -109,7 +114,7 @@ describe('rangement de la file de modération', () => {
     const local = new Date(2026, 7, 7, 0, 30);
     const veilleUtc = new Date(2026, 7, 6, 23, 30);
 
-    const groupes = groupForModeration([
+    const groupes = groupByDayAndPhoto([
       commentaire(local.toISOString()),
       commentaire(veilleUtc.toISOString()),
     ]);

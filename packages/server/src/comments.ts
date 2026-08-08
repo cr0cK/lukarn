@@ -4,7 +4,9 @@ import {
   type AdminCommentsPage,
   type Comment,
   type CommentThread,
+  type CommentsFeedPage,
   type CommentsPage,
+  type FeedComment,
   type ModerationQuery,
 } from '@gdv/shared';
 import type { Db } from './db.js';
@@ -46,6 +48,19 @@ export interface CreateCommentInput {
   body: string;
   /** Commentaire auquel on répond, ou `null` pour ouvrir un fil. */
   parentId: number | null;
+}
+
+/** Ce que le fil d'activité demande au dépôt. */
+export interface FeedQuery {
+  /**
+   * Albums que le demandeur a le droit de voir. Une liste vide rend une page
+   * vide — et non tout le corpus, ce que produirait un `IN ()` oublié.
+   */
+  albumIds: string[];
+  /** Identifiant de la dernière ligne de la page précédente, `null` pour la première. */
+  cursor: number | null;
+  limit: number;
+  viewer: Viewer;
 }
 
 /**
@@ -176,6 +191,78 @@ export class CommentRepo {
     const counts: Record<string, number> = {};
     for (const row of rows) counts[row.media_id] = row.count;
     return counts;
+  }
+
+  /**
+   * Fil d'activité : les derniers commentaires des albums qu'on a le droit de
+   * voir, du plus récent au plus ancien, tous albums et toutes photos confondus.
+   *
+   * **`albumIds` est la seule barrière de cloisonnement.** Rien d'autre dans
+   * cette requête ne restreint la portée, et un appelant qui passerait la liste
+   * de tous les albums de l'instance servirait à un visiteur les conversations
+   * d'albums qu'il n'a pas. La liste vient de `albumsFor()`, jamais du client.
+   *
+   * L'ordre est celui de la clé primaire, décroissant : SQLite parcourt la table
+   * à rebours et s'arrête au `LIMIT`, sans tri ni index supplémentaire. Le prix
+   * de ce choix est visible dans un seul cas — un compte qui ne voit qu'un album
+   * sur cinquante fait traverser les commentaires des quarante-neuf autres avant
+   * de réunir sa page. Sur le corpus d'une galerie familiale, cela reste un
+   * balayage de quelques milliers de lignes ; un index `(album_id, id DESC)` ne
+   * l'éviterait pas, SQLite ne sachant pas fusionner l'ordre de plusieurs
+   * tranches d'un `IN`.
+   */
+  listFeed(query: FeedQuery): CommentsFeedPage {
+    if (query.albumIds.length === 0) return { comments: [], nextCursor: null };
+
+    const conditions = ['c.hidden_at IS NULL'];
+    const params: (string | number)[] = [];
+
+    conditions.push(`c.album_id IN (${query.albumIds.map(() => '?').join(', ')})`);
+    params.push(...query.albumIds);
+
+    if (query.cursor !== null) {
+      conditions.push('c.id < ?');
+      params.push(query.cursor);
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT c.id, c.parent_id, c.commenter_id, a.display_name, c.body, c.created_at,
+                c.hidden_at, c.album_id, c.media_id,
+                al.title AS album_title, m.name AS media_name, m.md5 AS media_md5
+           FROM comments c
+           JOIN commenters a ON a.id = c.commenter_id
+           LEFT JOIN albums al ON al.id = c.album_id
+           -- LEFT JOIN, même raison qu'en modération : un commentaire survit à
+           -- la disparition de sa photo de l'index (migration 4).
+           LEFT JOIN media m ON m.album_id = c.album_id AND m.id = c.media_id
+           ${where(conditions)}
+           ORDER BY c.id DESC
+           LIMIT ?`,
+      )
+      .all(...params, query.limit + 1) as (CommentRow & {
+      album_id: string;
+      media_id: string;
+      album_title: string | null;
+      media_name: string | null;
+      media_md5: string | null;
+    })[];
+
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+
+    const comments: FeedComment[] = page.map((row) => ({
+      ...toComment(row, query.viewer),
+      albumId: row.album_id,
+      albumTitle: row.album_title ?? row.album_id,
+      mediaId: row.media_id,
+      mediaName: row.media_name,
+      // Même troncature qu'en `repo.ts` : la vignette est servie en `immutable`,
+      // son URL doit donc changer quand le fichier Drive change de contenu.
+      mediaVersion: row.media_md5 ? row.media_md5.slice(0, 8) : null,
+    }));
+
+    return { comments, nextCursor: hasMore ? String(page.at(-1)!.id) : null };
   }
 
   /** Compteur affiché avec le détail d'un média, masqués exclus. */

@@ -187,6 +187,7 @@ réécrire la signature de tous les messages d'un tiers.
 
 | Méthode | Chemin                            | Accès     | Réponse              |
 | ------- | --------------------------------- | --------- | -------------------- |
+| GET     | `/api/comments/feed`              | session   | `CommentsFeedPage`   |
 | GET     | `/api/comments/:albumId`          | session   | `AlbumCommentCounts` |
 | GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage`       |
 | POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`            |
@@ -199,6 +200,33 @@ Le contrôle d'accès est refait dans chaque handler plutôt que posé en
 segment fixe de l'URL. Il reste identique à celui des albums — **404 et jamais
 403** sur un album inconnu ou non attribué (voir
 [04](./04-securite-et-acces.md)).
+
+**`GET /api/comments/feed?album=&cursor=&limit=`** — `CommentsFeedPage` =
+`{ comments: FeedComment[], nextCursor }`, du plus récent au plus ancien, tous
+albums et toutes photos confondus. `FeedComment` est un `Comment` augmenté de
+quoi le situer et y revenir : `albumId`, `albumTitle`, `mediaId`, `mediaName` et
+`mediaVersion` — les deux derniers `null` si la photo a quitté l'index, le
+message restant lisible sans vignette ni lien.
+
+C'est la seule route qui rend, en une réponse, des messages venus d'albums
+différents. **La portée vient de `albumsFor()`, jamais de la requête** :
+`?album=` ne fait que la restreindre, et un album qu'on ne voit pas répond 404
+comme partout ailleurs. Une session sans aucun album rend une page vide.
+
+`limit` va de 1 à 100, `COMMENTS_FEED_PAGE_SIZE` (30) par défaut. La borne haute
+n'est pas cosmétique : `better-sqlite3` est synchrone, et composer une page de
+cent mille commentaires bloquerait la boucle d'événements le temps de la rendre.
+
+Le curseur est un identifiant de commentaire, comme celui de la modération. Pas
+de `total` : on ne modère pas ici, on regarde ce qui vient d'arriver, et compter
+tout le corpus visible coûterait une requête pour un nombre que personne ne lit.
+L'ordre est celui de la clé primaire décroissante — SQLite parcourt la table à
+rebours et s'arrête au `LIMIT`, sans index supplémentaire (voir
+[03](./03-modele-de-donnees.md)).
+
+Le segment littéral `feed` est protégé par la même précédence que
+`unsubscribe`, et le revers vaut aussi : un album dont l'identifiant serait
+`feed` n'obtiendrait jamais ses compteurs. Un test le vérifie.
 
 **`GET /api/comments/:albumId`** — `AlbumCommentCounts` = `{ counts: Record<mediaId, number> }`,
 masqués exclus. Les photos sans commentaire **n'y figurent pas** : sur un album

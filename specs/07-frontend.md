@@ -25,12 +25,20 @@ revenir après la connexion.
 Le serveur rend `index.html` sur toute URL non-`/api` et non-`/assets`, donc un
 rechargement direct sur `/album/vacances` fonctionne (voir [05](./05-api.md)).
 
-### Trois paramètres de requête portent l'état de la vue
+### Quatre paramètres de requête portent l'état de la vue
 
 Sur `/album/:albumId` :
 
 - `?photo=<mediaId>` — la visionneuse est ouverte sur ce média. Le bouton Retour
   la referme, et un lien partagé rouvre la même vue.
+- `?panel=comments` (ou `info`) — l'onglet ouvert du panneau latéral. C'est ce
+  qui permet d'arriver sur la **conversation** et pas seulement sur l'image : le
+  tiroir d'activité et les emails de notification renvoient tous deux vers
+  `?photo=…&panel=comments`. Sans ce paramètre, ils ouvraient la photo en
+  laissant les messages fermés, c'est-à-dire invisibles — un email annonçant un
+  message menait à une image muette. Une valeur inconnue vaut « panneau fermé »
+  (`isPanelTab`). Le panneau n'est donc plus un état local de `Lightbox`, qui le
+  reçoit désormais en propriété.
 - `?order=asc` — sens chronologique. Le défaut `desc` n'est **pas** écrit dans
   l'URL, qui reste courte et revient à son adresse d'origine quand on rebascule.
   Une valeur inconnue est ramenée au défaut côté front (`isSortOrder`), pour ne
@@ -52,11 +60,18 @@ Sur `/album/:albumId` :
   sauter la page une seconde fois, après coup, sous le curseur de quelqu'un qui
   avait déjà commencé à défiler.
 
-Les trois sont indépendants : `setParam` repart toujours des paramètres courants,
-sinon ouvrir une photo effacerait le tri et le refermer le rétablirait tout seul.
+Les quatre sont indépendants : `setParams` repart toujours des paramètres
+courants, sinon ouvrir une photo effacerait le tri et le refermer le rétablirait
+tout seul. Il accepte **plusieurs clés d'un coup** pour les gestes qui en
+touchent deux : fermer la visionneuse retire la photo _et_ son panneau, et deux
+écritures successives laisseraient une entrée d'historique intermédiaire où
+l'une est partie sans l'autre. Le panneau resté seul dans l'URL rouvrirait
+d'ailleurs la photo suivante sur un onglet que personne n'a redemandé.
+
 Ouvrir une photo pousse une entrée d'historique ; naviguer d'une photo à l'autre
 aux flèches utilise `replace`, sinon parcourir 50 photos empilerait 50 entrées et
-le bouton Retour ne ramènerait plus à la grille.
+le bouton Retour ne ramènerait plus à la grille. Ouvrir et refermer le panneau
+suit la même règle, pour la même raison.
 
 `order` et `group` se pilotent depuis deux bascules de la `TopBar`, déclarées en
 `actions` (voir « Barre supérieure » plus bas) et bâties sur le même patron :
@@ -74,11 +89,19 @@ Une seule rangée, à toutes les largeurs — 65 px, mesurés. Ce qu'elle contie
 maximum : le retour, le titre et son sous-titre, les contrôles de vue de la page,
 puis Admin, Déconnexion et Installer.
 
-| Largeur       | Ce qui est visible                                       |
-| ------------- | -------------------------------------------------------- |
-| `< sm` (640)  | Retour, titre, **un menu kebab** qui porte tout le reste |
-| `sm` – `lg`   | Tout dans la barre, **icônes seules**                    |
-| `≥ lg` (1024) | Tout dans la barre, avec les libellés                    |
+| Largeur       | Ce qui est visible                                                      |
+| ------------- | ----------------------------------------------------------------------- |
+| `< sm` (640)  | Retour, titre, **Activité**, puis un menu kebab qui porte tout le reste |
+| `sm` – `lg`   | Tout dans la barre, **icônes seules**                                   |
+| `≥ lg` (1024) | Tout dans la barre, avec les libellés                                   |
+
+**`Activité` reste en ligne à toutes les largeurs**, et n'entre jamais dans le
+menu — c'est la seule exception au tableau ci-dessus. Son icône porte la pastille
+des non-lus, seul signe qu'une conversation a bougé quelque part ; rangée dans le
+menu, elle ne signalerait plus rien. Exactement la règle du bouton
+« Commentaires » de la visionneuse, pour le même motif. Le bouton est déclaré
+par la propriété `feed` et non dans le tableau `actions`, qui est précisément ce
+qui bascule dans le menu.
 
 Les seuils sortent de mesures, pas d'un choix d'esthétique. À 393 px, cinq
 contrôles alignés poussaient les bascules de vue sur **une seconde rangée à
@@ -126,20 +149,21 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 — les albums ne changent qu'au rythme des synchronisations —, `staleTime` de
 60 s, `retry: 1`.
 
-| Hook             | Clé                       | Particularité                                                                                                                                                                                                                                                                       |
-| ---------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useMe`          | `['me']`                  | `staleTime` 5 min. Ne **réessaie pas** sur 401 : c'est la réponse normale d'un visiteur non connecté, pas un incident.                                                                                                                                                              |
-| `useLogin`       | —                         | Écrit `me` dans le cache et invalide `albums`.                                                                                                                                                                                                                                      |
-| `useLogout`      | —                         | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                                                                                                               |
-| `useAlbums`      | `['albums']`              |                                                                                                                                                                                                                                                                                     |
-| `useAlbum`       | `['album', id]`           |                                                                                                                                                                                                                                                                                     |
-| `useAlbumItems`  | `['items', id, order]`    | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                |
-| `useAlbumDays`   | `['days', id]`            | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout. |
-| `useMediaDetail` | `['detail', albumId, id]` | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                             |
-| `useAdminStatus` | `['admin','status']`      | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                       |
-| `useAdminUsers`  | `['admin','users']`       | Liste d'administration des comptes.                                                                                                                                                                                                                                                 |
-| `useAdminAlbums` | `['admin','albums']`      | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                                                                                                                   |
-| `useSettings`    | `['admin','settings']`    |                                                                                                                                                                                                                                                                                     |
+| Hook              | Clé                                   | Particularité                                                                                                                                                                                                                                                                             |
+| ----------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useMe`           | `['me']`                              | `staleTime` 5 min. Ne **réessaie pas** sur 401 : c'est la réponse normale d'un visiteur non connecté, pas un incident.                                                                                                                                                                    |
+| `useLogin`        | —                                     | Écrit `me` dans le cache et invalide `albums`.                                                                                                                                                                                                                                            |
+| `useLogout`       | —                                     | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                                                                                                                     |
+| `useAlbums`       | `['albums']`                          |                                                                                                                                                                                                                                                                                           |
+| `useAlbum`        | `['album', id]`                       |                                                                                                                                                                                                                                                                                           |
+| `useAlbumItems`   | `['items', id, order]`                | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                      |
+| `useAlbumDays`    | `['days', id]`                        | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout.       |
+| `useMediaDetail`  | `['detail', albumId, id]`             | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                                   |
+| `useCommentsFeed` | `['comments', albumId ?? '', 'feed']` | `useInfiniteQuery`, curseur serveur, `staleTime` 30 s. Le littéral est **en dernier**, comme pour `commentCounts` : devant, il entrerait en collision avec le fil d'un album qui s'appellerait « feed ». Montée dès l'affichage d'une page de galerie — c'est elle qui porte la pastille. |
+| `useAdminStatus`  | `['admin','status']`                  | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                             |
+| `useAdminUsers`   | `['admin','users']`                   | Liste d'administration des comptes.                                                                                                                                                                                                                                                       |
+| `useAdminAlbums`  | `['admin','albums']`                  | Même sondage conditionnel que `useAdminStatus` : la page d'administration lit les albums ici, pas dans le statut.                                                                                                                                                                         |
+| `useSettings`     | `['admin','settings']`                |                                                                                                                                                                                                                                                                                           |
 
 Une mutation par opération d'administration — `useCreateUser`, `useUpdateUser`,
 `useDeleteUser`, `useCreateAlbum`, `useUpdateAlbum`, `useDeleteAlbum`,
@@ -716,6 +740,20 @@ Trois bords que le calcul doit tenir :
   moment effacerait le repère pour le reconstituer faux à l'arrivée des vrais
   totaux.
 
+**Le fil d'activité a son propre repère**, `gdv:comments-feed-seen`, et c'est un
+**identifiant** de commentaire, pas un compte. Le fil est paginé et sans total :
+compter ce qu'on a lu supposerait de le parcourir en entier, alors
+qu'`AUTOINCREMENT` fait de l'id un jalon exact — tout ce qui le dépasse est
+arrivé depuis, quels que soient les messages supprimés entre-temps. Les trois
+bords ci-dessus valent à l'identique : `unreadFeedCount` ne compte que ce qui
+dépasse le repère, le repère redescend si la tête du fil passe sous lui, et rien
+n'est marqué avant l'arrivée de la première page.
+
+Un seul repère pour toutes les portées, la globale : ouvrir le tiroir filtré sur
+« Vacances » ne doit pas éteindre une pastille qui annonçait aussi des messages
+sur « Corse ». Le tiroir ouvert vaut lecture, comme le panneau ouvert d'une
+photo.
+
 ### Préchargement asymétrique
 
 `PRELOAD_AHEAD = 4`, `PRELOAD_BEHIND = 1`, orientés par le sens du dernier
@@ -1127,7 +1165,48 @@ parle, désormais le seul endroit où la substitution s'apprend. La palette
 s'ouvre vers le haut et **ancrée à droite** : le formulaire est en bas du
 panneau, et 16 rem alignées à gauche déborderaient de celui-ci.
 
-### Modération — `components/admin/CommentsSection.tsx` et `lib/moderation.ts`
+### Fil d'activité — `components/CommentsFeed.tsx`
+
+**Une conversation ne se découvre pas.** La pastille d'une photo suppose qu'on
+ait déjà ouvert la bonne, et sur un album de milliers de vues dont dix portent
+un message, personne ne tombe dessus. Un message écrit sans lecteur est un
+message perdu : le tiroir est le seul endroit d'où l'on voit qu'il a été écrit
+(D82).
+
+Un **tiroir** et non une page : la grille reste derrière, on referme et on est
+encore au même endroit. Pleine largeur sous `sm`, colonne de 384 px au-delà —
+384 px prélevés sur un écran de 393 ne laisseraient rien voir de la galerie, et
+le tiroir vaudrait alors une page.
+
+`useActivityFeed()` est ce que les deux pages de galerie branchent sur leur barre
+supérieure : la pastille et l'ouverture. Il monte la requête de portée
+**globale**, même depuis un album — la pastille répond à « y a-t-il du nouveau
+quelque part », et la restreindre à l'album ouvert l'éteindrait en changeant de
+page sans que rien n'ait été lu. Le tiroir s'ouvre donc lui aussi sur la portée
+globale : ouvrir sur une liste plus étroite que ce que la pastille annonce ferait
+chercher des messages absents. Dans un album, une bascule « Tous les albums /
+`<titre>` » restreint après coup, et le rappel de l'album disparaît alors de
+chaque bloc — il répète ce que la bascule affiche déjà.
+
+Le rangement est celui de la modération, `lib/commentGroups.ts`, à une exception
+près : **les messages d'un bloc se lisent du plus ancien au plus récent**, alors
+que la liste des blocs reste antéchronologique. Ici on lit une conversation, et
+la réponse au-dessus de la question se lit à l'envers. La place d'un bloc dans sa
+journée, elle, se décide toujours sur son message le plus récent.
+
+Chaque bloc renvoie vers `/album/:id?photo=<mediaId>&panel=comments` — la photo
+**et** la conversation. Une vignette de 56 px ouvre le bloc : c'est elle qui fait
+reconnaître le fil, bien avant le nom de fichier. Une photo retirée de l'index
+n'en a plus et le bloc cesse d'être cliquable, le lien menant à une visionneuse
+qui se refermerait aussitôt. Le corps est clampé à trois lignes : le tiroir est
+un survol de ce qui s'est dit, la conversation entière s'ouvre sous la photo,
+avec de quoi y répondre.
+
+Un **bouton** « Messages plus anciens » plutôt qu'un défilement infini : on
+vient voir ce qui vient d'arriver, pas remonter une archive, et un observateur
+de défilement chargerait des pages sous un pouce qui ne fait que parcourir.
+
+### Modération — `components/admin/CommentsSection.tsx` et `lib/commentGroups.ts`
 
 **Une liste de travail, pas un flux** (D67). On arrive avec une intention — un
 message signalé, une journée, une adresse —, et la file répond à ces trois
@@ -1150,13 +1229,19 @@ qu'un filtre change. `keepPreviousData` garde la page affichée le temps de la
 suivante, faute de quoi la section se replie sous le curseur à chaque clic.
 Le pied annonce `x–y sur total`, où `total` vient du serveur.
 
-`lib/moderation.ts` range la page **par journée, puis par photo**. Deux
+`lib/commentGroups.ts` range la page **par journée, puis par photo**. Deux
 répétitions disparaissent : la date, inutile sur chaque ligne quand vingt
 messages se suivent le même jour, et le couple photo / album, réécrit à
 l'identique sous chaque message d'un même fil. La journée est celle du lecteur
 et **non UTC**, à l'inverse de la grille — la raison est plus bas, section
 « Dates ». Le rangement ne porte que sur la page reçue : une photo dont les
 commentaires enjambent une frontière de page apparaît des deux côtés.
+
+`groupByDayAndPhoto` est **générique** sur le contexte album / photo : la file de
+modération et le tiroir d'activité posent la même question — qu'est-ce qui a été
+écrit, et où — et n'y répondent pas deux fois. Ce qui distingue `AdminComment`
+de `FeedComment` — l'adresse de l'auteur, l'état de masquage — n'entre pas dans
+le rangement, qui ne lit que l'album, la photo et la date.
 
 Chaque bloc renvoie vers la photo commentée (`/album/:id?photo=<mediaId>`) :
 modérer sans voir l'image qui a suscité le message revient à juger un propos hors

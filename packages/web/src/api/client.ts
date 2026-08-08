@@ -10,6 +10,7 @@ import {
   type AppSettings,
   type BulkModerationResult,
   type Comment,
+  type CommentsFeedPage,
   type CommentsPage,
   type CreateAlbumRequest,
   type CreateCommentRequest,
@@ -147,6 +148,18 @@ export const api = {
 
   commentCounts: (albumId: string) =>
     request<AlbumCommentCounts>(`/comments/${encodeURIComponent(albumId)}`),
+
+  /**
+   * Fil d'activité. `albumId` le restreint à un album ; `null` prend tout ce que
+   * la session a le droit de voir — la portée est décidée par le serveur, ce
+   * paramètre ne fait que la réduire.
+   */
+  commentsFeed: (albumId: string | null, cursor: string | null) => {
+    const params = new URLSearchParams();
+    if (albumId) params.set('album', albumId);
+    if (cursor) params.set('cursor', cursor);
+    return request<CommentsFeedPage>(`/comments/feed?${params}`);
+  },
 
   createComment: (albumId: string, mediaId: string, body: CreateCommentRequest) =>
     request<Comment>(`/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`, {

@@ -7,6 +7,16 @@ import { ExifPanel } from './ExifPanel';
 export type PanelTab = 'info' | 'comments';
 
 /**
+ * L'onglet vit dans l'URL, comme la photo ouverte : c'est ce qui permet à un
+ * lien — celui du tiroir d'activité, celui d'un email de notification — d'ouvrir
+ * la conversation et pas seulement l'image. Une valeur inconnue, URL bricolée à
+ * la main, vaut « panneau fermé » plutôt qu'un onglet vide.
+ */
+export function isPanelTab(value: string | null): value is PanelTab {
+  return value === 'info' || value === 'comments';
+}
+
+/**
  * Panneau latéral de la visionneuse : métadonnées et commentaires, sous un seul
  * cadre à deux onglets.
  *

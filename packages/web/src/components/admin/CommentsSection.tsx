@@ -9,7 +9,7 @@ import {
   useModerateCommenter,
 } from '../../api/hooks';
 import { formatLocalDateTime, formatRelative } from '../../lib/format';
-import { groupForModeration, type PhotoGroup } from '../../lib/moderation';
+import { groupByDayAndPhoto, type PhotoGroup } from '../../lib/commentGroups';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 import { Button, FormError, Section, type Notify } from './ui';
@@ -64,7 +64,7 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
     cursor,
   });
 
-  const days = groupForModeration(data?.comments ?? []);
+  const days = groupByDayAndPhoto(data?.comments ?? []);
   const first = (cursors.length - 1) * PAGE_SIZE + 1;
   const last = first + (data?.comments.length ?? 0) - 1;
 
@@ -234,7 +234,7 @@ function PhotoBlock({
   notify,
   onBulk,
 }: {
-  photo: PhotoGroup;
+  photo: PhotoGroup<AdminComment>;
   notify: Notify;
   onBulk: (comment: AdminComment) => void;
 }): ReactElement {

@@ -3,6 +3,7 @@ import {
   type AlbumDay,
   type CreateAlbumRequest,
   type CreateCommentRequest,
+  type FeedComment,
   type IdentityRequest,
   type CreateUserRequest,
   type MediaItem,
@@ -43,6 +44,10 @@ export const queryKeys = {
   // en collision avec le fil d'un album qui s'appellerait « counts », un
   // identifiant que rien n'interdit.
   commentCounts: (albumId: string) => ['comments', albumId, 'counts'] as const,
+  // Même construction que les compteurs, et pour la même raison : le littéral
+  // en dernier. `''` porte la portée globale — un identifiant d'album ne peut
+  // pas être vide, donc rien ne s'y confond.
+  commentsFeed: (albumId: string | null) => ['comments', albumId ?? '', 'feed'] as const,
   // Tout ce qui restreint la file entre dans la clé, curseur compris : deux
   // pages voisines sont deux entrées de cache distinctes, ce qui rend le retour
   // à la page précédente immédiat. L'invalidation reste large — le préfixe
@@ -265,6 +270,36 @@ export function useCommentCounts(albumId: string) {
 }
 
 /**
+ * Fil d'activité, page par page.
+ *
+ * Chargé dès l'affichage d'une page de la galerie et pas seulement à
+ * l'ouverture du tiroir : c'est lui qui porte la pastille de non-lus, et une
+ * pastille qui n'apparaîtrait qu'après avoir ouvert le tiroir ne servirait à
+ * rien — on ne l'ouvre que si quelque chose signale qu'il y a à lire.
+ *
+ * Même `staleTime` que les compteurs de l'album, et pour le même motif : une
+ * conversation qui démarre pendant qu'on regarde ses photos est exactement ce
+ * que la pastille sert à annoncer.
+ */
+export function useCommentsFeed(albumId: string | null, enabled = true) {
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.commentsFeed(albumId),
+    queryFn: ({ pageParam }) => api.commentsFeed(albumId, pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled,
+    staleTime: 30 * 1000,
+  });
+
+  const comments = useMemo<FeedComment[]>(
+    () => query.data?.pages.flatMap((page) => page.comments) ?? [],
+    [query.data],
+  );
+
+  return { ...query, comments };
+}
+
+/**
  * Poste un commentaire. Le fil **et** le détail du média sont invalidés :
  * le second porte le compteur affiché sur l'onglet, qui resterait sinon en
  * retard d'une unité jusqu'à la réouverture de la photo.
@@ -307,6 +342,13 @@ function invalidateThread(queryClient: QueryClient, albumId: string, mediaId: st
   // invalidation, publier depuis le panneau laisserait la pastille annoncer
   // l'état d'avant, y compris sur la photo qu'on a sous les yeux.
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentCounts(albumId) });
+  // Les deux portées du fil d'activité, la globale comme celle de l'album : le
+  // message qu'on vient d'écrire doit y figurer, et les deux peuvent être en
+  // cache en même temps. Le coût est celui d'un rechargement des pages déjà
+  // parcourues du tiroir — borné par ce qu'on a fait défiler, et le tiroir est
+  // presque toujours fermé au moment où l'on écrit.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(albumId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(null) });
 }
 
 /**
