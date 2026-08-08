@@ -99,7 +99,11 @@ export default function AdminPage(): ReactElement {
     <div className="min-h-full">
       <TopBar title="Administration" back />
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 md:flex-row">
+      {/* 90 rem plutôt que les 64 rem d'origine : la colonne de contenu passe de
+          760 à 1170 px sur un écran de portable, où les rangées d'albums
+          tronquaient leur titre alors qu'un tiers de l'écran restait vide de
+          chaque côté. */}
+      <main className="mx-auto flex max-w-[90rem] flex-col gap-6 px-4 py-6 sm:px-6 md:flex-row">
         <AdminNav />
 
         <div className="min-w-0 flex-1 space-y-6">

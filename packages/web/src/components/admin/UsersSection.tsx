@@ -6,7 +6,7 @@ import { formatAlbumAccess } from '../../lib/adminForm';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 import { UserForm } from './UserForm';
-import { Button, FormError, Section, type Notify } from './ui';
+import { Button, FormError, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 /** Rubrique « Comptes » : liste des comptes, création, modification, suppression. */
 export function UsersSection({
@@ -89,18 +89,23 @@ export function UsersSection({
         ) : (
           <div
             key={user.username}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-850 px-4 py-3 last:border-b-0"
+            className={`${ROW_CLASS} border-b border-ink-850 px-4 py-3 last:border-b-0 xl:items-center`}
           >
             <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-2 truncate text-sm font-medium text-ink-100">
-                {user.username}
+              {/* `truncate` sur le seul identifiant, et les mentions qui le
+                  suivent en `shrink-0` : posé sur la ligne entière, il laissait
+                  le badge se rétracter avec le reste et « administrateur »
+                  s'affichait « administ ». Un rôle à moitié écrit se lit comme
+                  un autre rôle. */}
+              <p className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink-100">
+                <span className="truncate">{user.username}</span>
                 {user.admin && (
-                  <span className="rounded-full bg-accent/15 px-2 py-0.5 text-xs font-normal text-accent">
+                  <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-normal text-accent">
                     administrateur
                   </span>
                 )}
                 {user.username === me?.username && (
-                  <span className="text-xs font-normal text-ink-400">(toi)</span>
+                  <span className="shrink-0 text-xs font-normal text-ink-400">(toi)</span>
                 )}
               </p>
               <p className="truncate text-xs text-ink-400">
@@ -108,29 +113,31 @@ export function UsersSection({
               </p>
             </div>
 
-            <Button
-              onClick={() => {
-                setCreating(false);
-                setEditing(user.username);
-              }}
-              ariaLabel={`Modifier le compte ${user.username}`}
-            >
-              Modifier
-            </Button>
+            <div className={ROW_ACTIONS_CLASS}>
+              <Button
+                onClick={() => {
+                  setCreating(false);
+                  setEditing(user.username);
+                }}
+                ariaLabel={`Modifier le compte ${user.username}`}
+              >
+                Modifier
+              </Button>
 
-            <Button
-              variant="danger"
-              onClick={() => setConfirming(user)}
-              disabled={user.username === me?.username}
-              ariaLabel={`Supprimer le compte ${user.username}`}
-              title={
-                user.username === me?.username
-                  ? 'Tu ne peux pas supprimer ton propre compte.'
-                  : undefined
-              }
-            >
-              Supprimer
-            </Button>
+              <Button
+                variant="danger"
+                onClick={() => setConfirming(user)}
+                disabled={user.username === me?.username}
+                ariaLabel={`Supprimer le compte ${user.username}`}
+                title={
+                  user.username === me?.username
+                    ? 'Tu ne peux pas supprimer ton propre compte.'
+                    : undefined
+                }
+              >
+                Supprimer
+              </Button>
+            </div>
           </div>
         ),
       )}

@@ -12,7 +12,7 @@ import { formatLocalDateTime, formatRelative } from '../../lib/format';
 import { groupByDayAndPhoto, type PhotoGroup } from '../../lib/commentGroups';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Button, FormError, Section, type Notify } from './ui';
+import { Button, FormError, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 /**
  * Une page tient dans un écran une fois les journées et les photos regroupées.
@@ -87,6 +87,11 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 
         <AlbumFilter albums={albums.data} value={albumId} onChange={setAlbumId} />
 
+        {/* `basis-64` décide de son passage à la ligne : `flex-1` seul le laissait
+            prendre ce qui restait après les onglets et le sélecteur, soit une
+            trentaine de pixels sur une tablette — un champ où l'on ne voit pas
+            ce qu'on tape. En annonçant 16 rem, il descend d'une ligne quand
+            elles ne tiennent pas, puis s'étire. */}
         <input
           type="search"
           value={search}
@@ -94,7 +99,7 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
           placeholder="Rechercher un mot, un nom, une adresse"
           aria-label="Rechercher dans les commentaires"
           maxLength={200}
-          className="min-w-0 flex-1 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
+          className="min-w-0 flex-1 basis-64 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
         />
       </div>
 
@@ -206,11 +211,15 @@ function AlbumFilter({
   onChange: (albumId: string | null) => void;
 }): ReactElement {
   return (
+    // `min-w-0` : un `select` réclame la largeur de sa plus longue option, et
+    // un titre d'album de soixante caractères le faisait dépasser du cadre de la
+    // section sur un téléphone. Il occupe donc sa propre ligne en dessous de
+    // `sm`, et reste borné au-delà.
     <select
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value || null)}
       aria-label="Filtrer par album"
-      className="rounded-lg border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-sm text-ink-200 outline-none focus:border-accent-dim"
+      className="w-full min-w-0 truncate rounded-lg border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-sm text-ink-200 outline-none focus:border-accent-dim sm:w-auto sm:max-w-64"
     >
       <option value="">Tous les albums</option>
       {albums?.map((album) => (
@@ -323,18 +332,23 @@ function CommentRow({
         )}
       </div>
 
-      <div className="mt-1 flex flex-wrap items-start justify-between gap-2">
+      {/* `sm:items-start` et non `sm:items-center` : un message de plusieurs
+          lignes centrerait son bouton à mi-hauteur, loin de la ligne qu'on
+          vient de lire. */}
+      <div className={`${ROW_CLASS} mt-1 xl:items-start`}>
         <p className="min-w-0 flex-1 text-sm break-words whitespace-pre-wrap text-ink-200">
           {comment.body}
         </p>
 
-        <Button
-          onClick={toggle}
-          disabled={moderate.isPending}
-          variant={hidden ? 'default' : 'danger'}
-        >
-          {hidden ? 'Rendre visible' : 'Masquer'}
-        </Button>
+        <div className={ROW_ACTIONS_CLASS}>
+          <Button
+            onClick={toggle}
+            disabled={moderate.isPending}
+            variant={hidden ? 'default' : 'danger'}
+          >
+            {hidden ? 'Rendre visible' : 'Masquer'}
+          </Button>
+        </div>
       </div>
     </li>
   );

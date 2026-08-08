@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';
 import { queryKeys } from '../../api/hooks';
 import { formatRelative } from '../../lib/format';
-import { Button, Section, type Notify } from './ui';
+import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 /** Section « Connexion Google Drive » : état de l'autorisation OAuth. */
 export function DriveSection({
@@ -62,7 +62,7 @@ export function DriveSection({
 
   return (
     <Section title="Connexion Google Drive">
-      <div className="flex flex-wrap items-center gap-4 px-4 py-4">
+      <div className={`${ROW_CLASS} px-4 py-4 xl:items-center`}>
         <div className="min-w-0 flex-1">
           {!status.oauthConfigured ? (
             <p className="text-sm text-amber-300">
@@ -95,23 +95,25 @@ export function DriveSection({
           )}
         </div>
 
-        {status.driveConnected ? (
-          <Button
-            variant="danger"
-            onClick={() => disconnect.mutate()}
-            disabled={disconnect.isPending}
-          >
-            Déconnecter
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            onClick={() => connect.mutate()}
-            disabled={!status.oauthConfigured || connect.isPending}
-          >
-            {status.driveRevokedAt ? 'Reconnecter Google Drive' : 'Connecter Google Drive'}
-          </Button>
-        )}
+        <div className={ROW_ACTIONS_CLASS}>
+          {status.driveConnected ? (
+            <Button
+              variant="danger"
+              onClick={() => disconnect.mutate()}
+              disabled={disconnect.isPending}
+            >
+              Déconnecter
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => connect.mutate()}
+              disabled={!status.oauthConfigured || connect.isPending}
+            >
+              {status.driveRevokedAt ? 'Reconnecter Google Drive' : 'Connecter Google Drive'}
+            </Button>
+          )}
+        </div>
       </div>
     </Section>
   );

@@ -1171,11 +1171,38 @@ tout en haut passerait inaperçu depuis le bas de la file.
 | `MaintenanceSection`          | Occupation du cache et purge                                                                                                |
 | `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                                                                          |
 | `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                                                                    |
-| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section                                                     |
+| `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section, géométrie des lignes                               |
 
 Chaque section porte ses propres mutations, et `ui.tsx` existe pour que les
 formulaires ne réinventent ni les classes ni le lien `label` /
 `aria-describedby`.
+
+### Une ligne s'empile plutôt que de tronquer ce qui la nomme
+
+La page est bornée à **`max-w-[90rem]`**, et non aux 64 rem d'origine : celles-ci
+laissaient 760 px de contenu sur un écran de 1495 px, le reste étant pris par la
+colonne de navigation et deux marges vides d'un tiers de fenêtre.
+
+Toute ligne d'administration — album, compte, état du Drive, occupation du
+cache, commentaire à modérer — se compose des deux mêmes blocs : ce qui décrit,
+et ce qui agit. `ROW_CLASS` et `ROW_ACTIONS_CLASS` (`ui.tsx`) en tiennent la
+géométrie unique : **empilée sous `xl`, en rangée au-delà** ([D95](./08-decisions.md)).
+Côte à côte, seul le bloc descriptif peut se rétracter — les boutons portent
+`whitespace-nowrap` — et il tombait à deux caractères suivis d'une ellipse.
+
+Le seuil est `xl` et non `sm` parce que la place manque bien au-delà du
+téléphone : `AdminNav` prend sa colonne de 12 rem dès `md`, ce qui fait de la
+bande 768–1280 px celle où une rangée à quatre boutons rogne le plus le titre.
+L'alignement vertical, lui, reste à chaque appelant — une ligne de liste centre
+ses deux blocs, un commentaire de plusieurs lignes garde son bouton en haut —
+parce que deux classes d'alignement concurrentes dans la même chaîne se
+départageraient sur l'ordre de la feuille de style et non sur celui du code.
+
+Deux corollaires, dans la file de modération : le sélecteur d'album porte
+`min-w-0` (un `select` réclame sinon la largeur de sa plus longue option, et
+débordait du cadre de sa section), et le champ de recherche porte `basis-64`
+pour descendre d'une ligne quand la place manque au lieu de se réduire aux
+trente pixels que `flex-1` lui laissait.
 
 **Le bouton « Couverture automatique » d'une ligne d'album est son propre
 indicateur** : il n'apparaît que si une photo a été choisie. La ligne de
