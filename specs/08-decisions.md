@@ -1,8 +1,16 @@
 # 08 — Journal des décisions
 
 Une entrée par décision : le contexte, le choix, ce qui a été écarté et pourquoi.
-Ajouter une entrée à la fin plutôt que réécrire une entrée existante — une
-décision revenue sur elle-même reste une information utile.
+Une décision revenue sur elle-même reste une information utile, on ne réécrit
+donc pas une entrée existante.
+
+> **Ce journal est clos à D99, et les décisions suivantes vivent une par fichier
+> dans [`decisions/`](./decisions/).** Le rang séquentiel demandait de connaître
+> le dernier numéro pris, qu'une branche ne peut pas voir des autres, et
+> l'ajout en fin de fichier faisait entrer en conflit deux branches parallèles
+> même quand leurs numéros différaient. L'identifiant est désormais la date de
+> la décision (D260809). Les entrées ci-dessous ne bougent pas : leurs trois
+> cents renvois depuis le code restent valides.
 
 ---
 
@@ -3835,3 +3843,8 @@ l'adresse, ce que le bouton fait déjà.
 Enfin, la grille **attend** que le sens soit connu avant de charger la première
 page : sans cette garde, la découverte d'un album chargerait deux cents éléments
 dans un sens rejeté à l'arrivée de la réponse suivante.
+
+---
+
+Fin du journal séquentiel. Les décisions prises depuis sont dans
+[`decisions/`](./decisions/), une par fichier, du plus ancien au plus récent.
