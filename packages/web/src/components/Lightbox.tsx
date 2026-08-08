@@ -40,8 +40,6 @@ interface LightboxProps {
   total: number;
   /** Journées annotées, pour porter le contexte du jour jusque dans l'image. */
   days: Map<string, AlbumDay>;
-  /** Description de l'album, troisième et dernière ligne du bandeau de légende. */
-  albumDescription: string | null;
   /** Couverture actuelle de l'album, pour signaler la photo qui l'est déjà. */
   coverId: string | null;
   /**
@@ -83,7 +81,6 @@ export function Lightbox({
   index,
   total,
   days,
-  albumDescription,
   coverId,
   isAdmin,
   panel,
@@ -853,7 +850,6 @@ export function Lightbox({
             mediaId={item.id}
             description={item.description}
             day={day?.description ?? null}
-            album={albumDescription}
             editable={isAdmin}
             hidden={captionHidden}
             onHiddenChange={setCaptionHidden}

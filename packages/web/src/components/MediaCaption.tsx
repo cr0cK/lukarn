@@ -5,14 +5,15 @@ import { useUpdateMedia } from '../api/hooks';
 import { captionEntries, type CaptionEntry } from '../lib/caption';
 
 /**
- * Bandeau de légende de la visionneuse : la description de la photo, la note de
- * sa journée, la description de l'album — dans cet ordre, et à **toutes les
- * largeurs**.
+ * Bandeau de légende de la visionneuse : la description de la photo, puis la
+ * note de sa journée — dans cet ordre, et à **toutes les largeurs**.
  *
  * Il vit dans son propre fichier parce que `Lightbox.tsx` en fait déjà 850, et
  * parce que ce qu'il porte n'a rien à voir avec la navigation entre photos :
- * trois textes, un dépliement, un masquage, et un éditeur pour
- * l'administrateur (D84).
+ * deux textes, un dépliement, un masquage, et un éditeur pour
+ * l'administrateur (D84). La description de l'album en a été retirée (D89) :
+ * elle se lit en ouvrant l'album, et la répéter sur chacune de ses photos
+ * coûtait une ligne de bandeau pour un texte déjà lu.
  *
  * L'éditeur est repris d'`AlbumDescription` — surimpression, compteur de
  * caractères, Annuler/Enregistrer. Deux façons de corriger un texte dans la
@@ -21,10 +22,9 @@ import { captionEntries, type CaptionEntry } from '../lib/caption';
 interface MediaCaptionProps {
   albumId: string;
   mediaId: string;
-  /** Les trois textes candidats. Une chaîne vide ou blanche vaut absence. */
+  /** Les deux textes candidats. Une chaîne vide ou blanche vaut absence. */
   description: string | null;
   day: string | null;
-  album: string | null;
   /** Administrateur : lui seul voit le crayon et l'invitation à écrire. */
   editable: boolean;
   hidden: boolean;
@@ -50,7 +50,6 @@ export function MediaCaption({
   mediaId,
   description,
   day,
-  album,
   editable,
   hidden,
   onHiddenChange,
@@ -65,7 +64,7 @@ export function MediaCaption({
    */
   const [expanded, setExpanded] = useState(false);
 
-  const entries = captionEntries({ description, day, album });
+  const entries = captionEntries({ description, day });
 
   // Rien à dire et rien à écrire : pas même un bouton fantôme, qui inviterait à
   // découvrir un bandeau vide.
@@ -165,7 +164,7 @@ export function MediaCaption({
 }
 
 /**
- * Une ligne du bandeau. Les trois portées se distinguent par la couleur et le
+ * Une ligne du bandeau. Les deux portées se distinguent par la couleur et le
  * nombre de lignes visibles : plus la portée est large, plus la ligne
  * s'efface — c'est ce qui fait lire la description de la photo en premier sans
  * qu'aucun titre ne le dise.
@@ -173,7 +172,6 @@ export function MediaCaption({
 const LINE_STYLES: Record<CaptionEntry['scope'], string> = {
   photo: 'line-clamp-3 text-sm leading-5 text-ink-100',
   day: 'line-clamp-2 text-xs leading-4 text-ink-300',
-  album: 'line-clamp-1 text-xs leading-4 text-ink-500',
 };
 
 function CaptionLine({

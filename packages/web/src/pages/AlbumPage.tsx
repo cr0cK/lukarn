@@ -398,7 +398,6 @@ export default function AlbumPage(): ReactElement {
           index={openedIndex}
           total={album.data?.itemCount ?? items.length}
           days={byDay}
-          albumDescription={album.data?.description ?? null}
           coverId={album.data?.coverId ?? null}
           isAdmin={Boolean(me?.admin)}
           panel={panel}

@@ -809,22 +809,28 @@ secours.
 
 ### Bandeau de légende — `components/MediaCaption.tsx` et `lib/caption.ts`
 
-Les trois textes écrits à la main, rassemblés en bas de la colonne photo, à
-**toutes** les largeurs. Ils vivaient à trois endroits — la description d'album
-en tête de grille, la note du jour dans son en-tête de section, et rien du tout
-sur la photo elle-même : ouvrir une image faisait perdre l'essentiel de ce qui
-l'explique (D84).
+Les textes écrits à la main, rassemblés en bas de la colonne photo, à **toutes**
+les largeurs. Ce qui explique une image se lisait ailleurs qu'elle — la note du
+jour dans l'en-tête de sa section, et rien du tout sur la photo elle-même :
+ouvrir une image faisait perdre l'essentiel de ce qui l'explique (D84).
 
 | Ligne   | Préfixe      | Style                 | Lignes visibles |
 | ------- | ------------ | --------------------- | --------------- |
 | Photo   | —            | `text-sm` · `ink-100` | 3               |
 | Journée | `Ce jour-là` | `text-xs` · `ink-300` | 2               |
-| Album   | `Album`      | `text-xs` · `ink-500` | 1               |
 
 La hiérarchie est portée par la couleur et le clampage, sans aucun titre : plus
 la portée est large, plus la ligne s'efface. La ligne de la photo est la seule
-sans préfixe — les deux autres parlent d'autre chose que de l'image qu'on
+sans préfixe — celle du dessous parle d'autre chose que de l'image qu'on
 regarde, et sans ce mot « Bonifacio, la plage » se lirait comme sa légende.
+
+**La description de l'album n'est pas une troisième ligne**
+([D89](./08-decisions.md)). Elle l'a été, et elle coûtait une ligne de bandeau
+sur chacune des neuf cents photos d'un album pour un texte lu une fois, en
+ouvrant la grille — identique d'une photo à l'autre, donc invisible à force
+d'être là. Ce que la visionneuse doit à l'album, c'est de dire **lequel**, pas
+de le raconter : son titre est dans l'en-tête (D88), et la description reste où
+on la lit, en tête de grille.
 
 `captionEntries` (`lib/caption.ts`) décide quelles lignes exister : logique pure,
 donc testable sans DOM, et c'est la seule partie qui ait des cas — texte absent,
