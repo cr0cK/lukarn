@@ -50,12 +50,20 @@ export const GRID_HEADER_LINE_HEIGHT = 20;
  * Classes du paragraphe de la note, partagées avec la sonde de mesure.
  *
  * Elles sont **la** définition de sa géométrie : la largeur maximale, le retrait
- * qui l'aligne sur le texte du titre, la taille de police, l'interligne et la
- * césure. Mesurer avec d'autres classes que celles du rendu ferait diverger la
- * hauteur réservée de la hauteur rendue, ce que rien ne rattraperait. La couleur
- * reste au composant : elle ne change aucune métrique.
+ * qui l'aligne sur le texte du titre, la taille de police, l'interligne, la
+ * césure et le traitement des retours à la ligne. Mesurer avec d'autres classes
+ * que celles du rendu ferait diverger la hauteur réservée de la hauteur rendue,
+ * ce que rien ne rattraperait. La couleur reste au composant : elle ne change
+ * aucune métrique.
+ *
+ * `whitespace-pre-line` conserve les retours à la ligne saisis, comme le
+ * bandeau de la visionneuse et la description d'album le font déjà de la même
+ * note : sans lui, un texte écrit en trois lignes s'affichait ici en une seule
+ * phrase, et le même contenu se lisait différemment selon l'écran où on
+ * l'ouvrait.
  */
-export const GRID_HEADER_NOTE_CLASS = 'max-w-3xl pl-[22px] text-sm leading-5 break-words';
+export const GRID_HEADER_NOTE_CLASS =
+  'max-w-3xl pl-[22px] text-sm leading-5 break-words whitespace-pre-line';
 
 /**
  * Hauteur d'un en-tête de section, à réserver comme à rendre.

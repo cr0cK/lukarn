@@ -528,6 +528,10 @@ d'édition pour un administrateur en découpage par jour.
   pas anticiper (D49, D85, D93). Le `line-clamp` posé sur le paragraphe reprend
   ce même nombre : il ne tronque rien tant que la mesure tombe juste, et il est
   le seul rattrapage possible le jour où elle ne tomberait pas juste.
+  `whitespace-pre-line` conserve en outre les retours à la ligne saisis, comme
+  le font déjà `MediaCaption` et `AlbumDescription` de la même note — la sonde
+  portant la même classe, ces retours entrent d'eux-mêmes dans la hauteur
+  réservée.
 - **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
   grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
   curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit

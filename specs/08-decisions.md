@@ -3466,6 +3466,15 @@ layout. C'est la solution évidente, et elle est incompatible avec la
 virtualisation — un en-tête hors viewport n'est pas monté, donc pas mesurable,
 et la barre de défilement serait fausse tant qu'on n'a pas tout parcouru.
 
+**Les retours à la ligne saisis sont conservés** (`whitespace-pre-line`), ce qui
+n'était vrai nulle part dans la grille : une note écrite en trois lignes s'y
+affichait en une seule phrase, alors que le bandeau de la visionneuse
+(`MediaCaption`) et la description d'album gardaient déjà les siens. Le même
+texte se lisait donc autrement selon l'endroit où on l'ouvrait. Comme la sonde
+porte la même classe que le paragraphe, ces retours entrent d'eux-mêmes dans la
+hauteur réservée — c'est le bénéfice d'avoir fait de `GRID_HEADER_NOTE_CLASS` la
+définition unique de la géométrie plutôt qu'une liste de classes recopiée.
+
 **Conséquences.** Le lieu, lui, reste sur une ligne tronquée : il est court par
 nature, et le déplier multiplierait les cas sans rien montrer de plus. L'écart
 entre un en-tête et ses vignettes vaut toujours `GRID_HEADER_PAD_BOTTOM` (12 px)
