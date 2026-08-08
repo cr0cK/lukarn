@@ -83,6 +83,12 @@ de l'album, que le paramètre `?group=` de l'URL peut contredire. C'est une
 préférence de l'album, pas un découpage de la requête — la liste servie est la
 même dans les deux cas.
 
+Il porte de même `sortOrder` (`desc` \| `asc`) : le sens de lecture appliqué à
+l'ouverture, que `?order=` contredit. Là, en revanche, ce n'est pas seulement une
+question de mise en page — le sens part au serveur, qui trie et pagine dans ce
+sens. Le front s'en sert comme **dernier** recours : l'URL prime, puis ce que le
+navigateur a retenu de cet album (voir [07](./07-frontend.md) et D99).
+
 **`GET /api/albums/:albumId`** — `404 not_found` si l'album n'existe pas **ou**
 n'est pas attribué (voir [04](./04-securite-et-acces.md)).
 
@@ -115,7 +121,7 @@ doit donc tenir sans lui, et les lieux s'allument tout seuls au passage suivant.
 | --------- | ---------------- | ------ | -------------------------------------------------------------- |
 | `cursor`  | chaîne base64url | —      | ≤ 512 caractères. Illisible ⇒ ignoré, la page repart du début. |
 | `limit`   | entier           | 200    | 1 à 500                                                        |
-| `order`   | `desc` \| `asc`  | `desc` | Toute autre valeur ⇒ **400**, pas de repli silencieux.         |
+| `order`   | `desc` \| `asc`  | `asc`  | Toute autre valeur ⇒ **400**, pas de repli silencieux.         |
 
 Réponse `ItemsPage` = `{ items: MediaItem[], nextCursor: string | null }`.
 `nextCursor: null` signale la fin de l'album. Codes : `400 bad_request` si les
@@ -128,11 +134,16 @@ personne aux nouveautés de l'album (voir [04](./04-securite-et-acces.md) et
 [08](./08-decisions.md), D41). Une écriture par ouverture d'album, négligeable.
 Ni les pages suivantes ni `/items/:mediaId` ne le font.
 
+Le défaut est `DEFAULT_SORT_ORDER`, la même constante que la colonne
+`albums.sort_order` : la route ne lit pas la préférence de l'album, elle ne
+connaît que ce que le client lui passe. C'est le front qui résout le sens — URL,
+puis navigateur, puis album — et qui envoie le résultat (voir
+[07](./07-frontend.md)).
+
 `packages/server/test/items-order.test.ts` verrouille le contrat de cette route :
-le défaut `desc` (les liens déjà partagés ne portent pas `order` et doivent
-continuer d'ouvrir l'album dans le même sens), la pagination dans le sens
-demandé, le 400 sur `zigzag`, `ASC`, `''` ou `asc,desc`, et le 404 sur un album
-interdit quel que soit l'ordre.
+le défaut `asc` (un album se lit dans le sens où il a été vécu tant que rien n'en
+demande un autre, D99), la pagination dans le sens demandé, le 400 sur `zigzag`,
+`ASC`, `''` ou `asc,desc`, et le 404 sur un album interdit quel que soit l'ordre.
 
 **`GET /api/albums/:albumId/items/:mediaId`** — `MediaDetail` = `MediaItem` plus
 le bloc `exif` et `commentCount`. `404` si l'album est inconnu/interdit, `404` si
@@ -591,14 +602,15 @@ de commentateur, et celle prévenue des nouveaux commentaires est le réglage
 ### Albums
 
 `POST` : `CreateAlbumRequest` = `{ id, title, description?, folderId,
-recursive?, groupBy? }` (`recursive` vaut `true` par défaut, `groupBy` vaut
-`month`). `PATCH` : `UpdateAlbumRequest`, où `description: null` efface la
-description. `409 conflict` sur un id déjà pris.
+recursive?, groupBy?, sortOrder? }` (`recursive` vaut `true` par défaut,
+`groupBy` vaut `month`, `sortOrder` vaut `asc`). `PATCH` :
+`UpdateAlbumRequest`, où `description: null` efface la description.
+`409 conflict` sur un id déjà pris.
 
-`groupBy` est le découpage appliqué à l'ouverture de l'album — une préférence,
-que `?group=` contredit. Le changer ne touche **pas** à l'index : contrairement
-à `folderId` et `recursive`, il ne modifie pas le périmètre Drive, seulement la
-mise en page.
+`groupBy` est le découpage appliqué à l'ouverture de l'album, `sortOrder` son
+sens de lecture — deux préférences, que `?group=` et `?order=` contredisent.
+Les changer ne touche **pas** à l'index : contrairement à `folderId` et
+`recursive`, ils ne modifient pas le périmètre Drive.
 
 `AdminAlbum` complète la configuration par l'état réel : `itemCount`,
 `lastSyncAt`, `syncStatus`, `syncError`, `coverId`, et `members` — les comptes

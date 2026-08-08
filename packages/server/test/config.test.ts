@@ -41,7 +41,49 @@ describe('parseConfig', () => {
     // `recursive` est vrai par défaut : un dossier de photos contient presque
     // toujours des sous-dossiers.
     assert.equal(config.albums[0]!.recursive, true);
+    // Découpage et sens de lecture retombent sur les constantes partagées : le
+    // YAML d'amorçage n'a pas son propre défaut, sinon un album créé depuis
+    // /admin et le même album amorcé par fichier s'ouvriraient différemment.
+    assert.equal(config.albums[0]!.groupBy, 'month');
+    assert.equal(config.albums[0]!.sortOrder, 'asc');
     assert.equal(config.users[1]!.admin, false);
+  });
+
+  it('lit le sens de lecture déclaré sur un album', () => {
+    const config = parseConfig(
+      yaml(`
+users:
+  - username: alexis
+    passwordHash: "${HASH}"
+    albums: ["*"]
+albums:
+  - id: quotidien
+    title: Quotidien
+    folderId: folder-1
+    sortOrder: desc
+`),
+    );
+    assert.equal(config.albums[0]!.sortOrder, 'desc');
+  });
+
+  it('rejette un sens de lecture inconnu', () => {
+    assert.throws(
+      () =>
+        parseConfig(
+          yaml(`
+users:
+  - username: alexis
+    passwordHash: "${HASH}"
+    albums: ["*"]
+albums:
+  - id: quotidien
+    title: Quotidien
+    folderId: folder-1
+    sortOrder: aleatoire
+`),
+        ),
+      /Configuration invalide/,
+    );
   });
 
   it('rejette un YAML mal formé', () => {

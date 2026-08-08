@@ -6,6 +6,7 @@ import {
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
   DEFAULT_GROUP_BY,
+  DEFAULT_SORT_ORDER,
   EMAIL_MAX_LENGTH,
   MEDIA_DESCRIPTION_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -87,6 +88,7 @@ const moderationQuerySchema = z.object({
 });
 
 const groupBy = z.enum(['month', 'day']);
+const sortOrder = z.enum(['desc', 'asc']);
 
 const createAlbumSchema = z.object({
   id: albumId,
@@ -95,6 +97,7 @@ const createAlbumSchema = z.object({
   folderId: z.string().min(1).max(256),
   recursive: z.boolean().default(true),
   groupBy: groupBy.default(DEFAULT_GROUP_BY),
+  sortOrder: sortOrder.default(DEFAULT_SORT_ORDER),
 });
 
 const updateAlbumSchema = z.object({
@@ -103,6 +106,7 @@ const updateAlbumSchema = z.object({
   folderId: z.string().min(1).max(256).optional(),
   recursive: z.boolean().optional(),
   groupBy: groupBy.optional(),
+  sortOrder: sortOrder.optional(),
   // Un identifiant de fichier Drive, borné comme celui d'un dossier. `null`
   // rend la couverture au choix automatique — la photo la plus récente.
   coverId: z.string().min(1).max(256).nullable().optional(),
@@ -164,6 +168,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       folderId: album.folderId,
       recursive: album.recursive,
       groupBy: album.groupBy,
+      sortOrder: album.sortOrder,
       itemCount: context.media.stats(album.id).itemCount,
       lastSyncAt: state.lastSyncAt,
       syncStatus: state.status,
@@ -452,6 +457,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         folderId: input.folderId,
         recursive: input.recursive,
         groupBy: input.groupBy,
+        sortOrder: input.sortOrder,
       });
 
       request.log.info(`Album "${album.id}" créé`);

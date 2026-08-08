@@ -2,7 +2,6 @@ import {
   DEFAULT_GROUP_BY,
   DEFAULT_SORT_ORDER,
   isGroupBy,
-  isSortOrder,
   type GroupBy,
   type SortOrder,
 } from '@gdv/shared';
@@ -17,6 +16,7 @@ import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
 import { isPanelTab, type PanelTab } from '../components/SidePanel';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
+import { resolveOrder, useStoredOrder } from '../lib/albumOrder';
 import { formatRange } from '../lib/format';
 import { isTyping } from '../lib/typing';
 import { moveSelection, scrollSelectionIntoView, useGridLayout } from '../lib/useGridLayout';
@@ -38,17 +38,21 @@ export default function AlbumPage(): ReactElement {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Le sens de tri vit dans l'URL, comme la photo ouverte : un lien partagé
-  // restitue la vue exacte. Une valeur inconnue (URL bricolée à la main) est
-  // ramenée au défaut plutôt que de laisser l'API répondre 400.
-  const orderParam = searchParams.get('order');
-  const order: SortOrder = isSortOrder(orderParam) ? orderParam : DEFAULT_SORT_ORDER;
-
   const album = useAlbum(albumId);
   const { data: me } = useMe();
 
-  // Le découpage en sections suit la même règle, à un défaut près : c'est
-  // l'album qui le porte. Un séjour se lit par jour, dix ans de photos
+  // Le sens de lecture vient de trois sources, dans cet ordre : l'URL — un lien
+  // partagé restitue la vue exacte —, ce que ce navigateur a retenu de l'album,
+  // puis le défaut que l'album porte. Voir `lib/albumOrder.ts`.
+  const { stored: storedOrder, remember: rememberOrder } = useStoredOrder(albumId);
+  const albumSortOrder = album.data?.sortOrder;
+  const order = resolveOrder(searchParams.get('order'), storedOrder, albumSortOrder);
+  // Ce que le bouton annonce le temps que l'album réponde. La grille, elle,
+  // attend le vrai sens plutôt que d'afficher deux cents photos à l'envers.
+  const shownOrder: SortOrder = order ?? DEFAULT_SORT_ORDER;
+
+  // Le découpage en sections suit la même règle, à une source près : il n'a pas
+  // de mémoire par navigateur. Un séjour se lit par jour, dix ans de photos
   // d'enfants par mois, et personne n'a à le redemander à chaque ouverture.
   const albumGroupBy = album.data?.groupBy ?? DEFAULT_GROUP_BY;
   const groupParam = searchParams.get('group');
@@ -56,7 +60,8 @@ export default function AlbumPage(): ReactElement {
 
   const { items, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useAlbumItems(
     albumId,
-    order,
+    order ?? undefined,
+    order !== null,
   );
 
   // La photo ouverte vit dans l'URL : le bouton Retour la referme, et un lien
@@ -159,11 +164,14 @@ export default function AlbumPage(): ReactElement {
   );
 
   const toggleOrder = useCallback(() => {
-    const next: SortOrder = order === 'desc' ? 'asc' : 'desc';
-    // Le défaut n'est pas écrit dans l'URL : elle reste courte, et l'album
-    // revient à son adresse d'origine quand on rebascule.
-    setParams({ order: next === DEFAULT_SORT_ORDER ? null : next }, false);
-  }, [order, setParams]);
+    const next: SortOrder = shownOrder === 'desc' ? 'asc' : 'desc';
+    // Toujours retenu par le navigateur : c'est ce qui évite de rebasculer le
+    // même album à chaque visite. Dans l'URL, en revanche, le paramètre n'est
+    // écrit que s'il contredit la préférence de l'album — la règle de
+    // `toggleGroupBy` : revenir à celle-ci rend à l'album son adresse d'origine.
+    rememberOrder(next);
+    setParams({ order: next === albumSortOrder ? null : next }, false);
+  }, [shownOrder, albumSortOrder, rememberOrder, setParams]);
 
   const toggleGroupBy = useCallback(() => {
     const next: GroupBy = groupBy === 'month' ? 'day' : 'month';
@@ -193,11 +201,11 @@ export default function AlbumPage(): ReactElement {
   // hors écran. Dans les deux cas on repart du haut.
   //
   // Rien tant que l'album n'est pas chargé, et c'est indispensable : `groupBy`
-  // part du défaut global puis bascule sur la préférence de l'album à
-  // l'arrivée de la réponse. Sans cette garde, ouvrir un album réglé sur
-  // « jour » remettrait la sélection à zéro et remonterait la page une seconde
-  // fois, après coup, sous le curseur de quelqu'un qui avait déjà commencé à
-  // défiler.
+  // comme `order` partent d'un défaut puis basculent sur la préférence de
+  // l'album à l'arrivée de la réponse — ensemble, dans le même rendu. Sans
+  // cette garde, ouvrir un album réglé sur « jour » remettrait la sélection à
+  // zéro et remonterait la page une seconde fois, après coup, sous le curseur
+  // de quelqu'un qui avait déjà commencé à défiler.
   const albumLoaded = !album.isPending;
   useEffect(() => {
     if (!albumLoaded) return;
@@ -344,9 +352,11 @@ export default function AlbumPage(): ReactElement {
     : null;
 
   // Le bouton annonce l'état courant ; l'infobulle annonce ce que le clic fera.
-  const orderLabel = order === 'desc' ? "Plus récentes d'abord" : "Plus anciennes d'abord";
+  const orderLabel = shownOrder === 'desc' ? "Plus récentes d'abord" : "Plus anciennes d'abord";
   const orderAction =
-    order === 'desc' ? "Afficher les plus anciennes d'abord" : "Afficher les plus récentes d'abord";
+    shownOrder === 'desc'
+      ? "Afficher les plus anciennes d'abord"
+      : "Afficher les plus récentes d'abord";
 
   // Même règle pour le regroupement : le libellé dit l'état, l'infobulle dit
   // l'effet du clic.
@@ -370,7 +380,7 @@ export default function AlbumPage(): ReactElement {
             icon: (
               <>
                 <path d="M12 5v14" />
-                <path d={order === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
+                <path d={shownOrder === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
               </>
             ),
           },

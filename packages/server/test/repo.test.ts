@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
+import { DEFAULT_SORT_ORDER } from '@gdv/shared';
 import { openDb } from '../src/db.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
@@ -57,10 +58,16 @@ repo.upsertMany([media('vacances', 'shared', '2024-06-06T10:00:00.000Z')], seenA
 repo.upsertMany([media('prive', 'shared', '2024-06-06T10:00:00.000Z')], seenAt);
 
 describe('pagination par curseur', () => {
-  it('rend les médias du plus récent au plus ancien', () => {
+  it('applique le sens partagé par défaut', () => {
+    // Le défaut du dépôt est celui du contrat, pas un choix local : les deux
+    // ont déjà divergé le temps que `DEFAULT_SORT_ORDER` passe à `asc` (D99),
+    // et un dépôt resté en `desc` aurait servi l'inverse de ce que la route
+    // annonce sans qu'aucun appel échoue.
     const page = repo.listItems('vacances', 100, null);
-    const dates = page.items.map((item) => item.takenAt);
-    assert.deepEqual(dates, [...dates].sort().reverse());
+    assert.deepEqual(
+      page.items.map((item) => item.id),
+      repo.listItems('vacances', 100, null, DEFAULT_SORT_ORDER).items.map((item) => item.id),
+    );
     assert.equal(page.nextCursor, null);
   });
 

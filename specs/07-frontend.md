@@ -39,26 +39,42 @@ Sur `/album/:albumId` :
   message menait à une image muette. Une valeur inconnue vaut « panneau fermé »
   (`isPanelTab`). Le panneau n'est donc plus un état local de `Lightbox`, qui le
   reçoit désormais en propriété.
-- `?order=asc` — sens chronologique. Le défaut `desc` n'est **pas** écrit dans
-  l'URL, qui reste courte et revient à son adresse d'origine quand on rebascule.
-  Une valeur inconnue est ramenée au défaut côté front (`isSortOrder`), pour ne
-  pas laisser une URL bricolée à la main provoquer un 400.
-- `?group=day` — découpage de la grille en sections. Même règle, à un défaut
-  près : **c'est l'album qui le porte** (`Album.groupBy`), pas une constante.
-  Le paramètre n'est écrit que s'il contredit cette préférence, sinon revenir
-  dessus rendrait à l'album une adresse traînant un `?group=` qui ne dit rien de
-  plus. Une valeur inconnue est ramenée à la préférence de l'album
-  (`isGroupBy`). Contrairement à `order`, ce paramètre **ne part jamais au
-  serveur** et n'entre pas dans la clé TanStack Query de la liste : celle-ci est
-  la même, seule la mise en page la segmente autrement, donc rebasculer ne
-  recharge aucune photo.
+- `?order=desc` — sens chronologique. **C'est l'album qui porte le défaut**
+  (`Album.sortOrder`), pas une constante : un séjour se raconte du premier jour
+  au dernier, une bibliothèque qu'on alimente au fil de l'eau se lit par la fin.
+  Le paramètre n'est écrit que s'il contredit cette préférence — même règle que
+  `?group=`. Une valeur inconnue est ramenée au sens résolu (`isSortOrder`),
+  pour ne pas laisser une URL bricolée à la main provoquer un 400.
+
+  S'y ajoute une **mémoire par album dans le navigateur**, que le découpage n'a
+  pas : `gdv:album-order:<albumId>` (voir `lib/albumOrder.ts`). La priorité est
+  **URL > navigateur > album**. L'URL d'abord parce qu'elle est une vue exacte,
+  partagée ou reçue par email, et que la mémoire locale du destinataire n'a pas
+  à la contredire ; le navigateur ensuite, parce que rebasculer le même album à
+  chaque visite est précisément le geste qu'une mémoire évite. Basculer le sens
+  écrit **toujours** dans le navigateur, et dans l'URL seulement si le sens
+  contredit l'album.
+
+  Tant qu'aucune des trois sources n'a répondu — album pas encore chargé, rien
+  en mémoire, pas de paramètre —, `resolveOrder` rend `null` et `useAlbumItems`
+  reste **désactivée**. Sans cette garde, la découverte d'un album chargerait
+  deux cents éléments dans un sens rejeté à la réponse suivante. La requête
+  restant `pending`, le `Spinner` de la grille couvre l'attente.
+
+- `?group=day` — découpage de la grille en sections. Même règle de défaut porté
+  par l'album (`Album.groupBy`), sans la mémoire par navigateur : le découpage
+  est une lecture de l'album, pas une habitude de lecteur. Une valeur inconnue
+  est ramenée à la préférence de l'album (`isGroupBy`). Contrairement à `order`,
+  ce paramètre **ne part jamais au serveur** et n'entre pas dans la clé TanStack
+  Query de la liste : celle-ci est la même, seule la mise en page la segmente
+  autrement, donc rebasculer ne recharge aucune photo.
 
   **Piège** : `album` et `items` sont deux requêtes distinctes, et `groupBy`
-  bascule sur la préférence de l'album quand la première arrive. L'effet qui
-  remet la sélection à zéro et remonte la page attend donc qu'`album.isPending`
-  soit retombé — sans cette garde, ouvrir un album réglé sur « jour » ferait
-  sauter la page une seconde fois, après coup, sous le curseur de quelqu'un qui
-  avait déjà commencé à défiler.
+  comme `order` basculent sur la préférence de l'album quand la première arrive.
+  L'effet qui remet la sélection à zéro et remonte la page attend donc
+  qu'`album.isPending` soit retombé — sans cette garde, ouvrir un album réglé
+  sur « jour » ferait sauter la page une seconde fois, après coup, sous le
+  curseur de quelqu'un qui avait déjà commencé à défiler.
 
 - `?day=YYYY-MM-DD` — **le seul paramètre éphémère**, et c'est ce qui le
   distingue des quatre autres : il ne décrit pas un état de la vue mais une
@@ -303,7 +319,7 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 | `useLogout`       | —                                     | `queryClient.clear()` : le cache contient les albums et médias de l'ancienne session.                                                                                                                                                                                                     |
 | `useAlbums`       | `['albums']`                          |                                                                                                                                                                                                                                                                                           |
 | `useAlbum`        | `['album', id]`                       |                                                                                                                                                                                                                                                                                           |
-| `useAlbumItems`   | `['items', id, order]`                | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers.                                                                                                      |
+| `useAlbumItems`   | `['items', id, order]`                | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers. Un troisième argument `enabled` la tient à l'arrêt tant que le sens n'est pas résolu.                |
 | `useAlbumDays`    | `['days', id]`                        | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout.       |
 | `useMediaDetail`  | `['detail', albumId, id]`             | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                                   |
 | `useCommentsFeed` | `['comments', albumId ?? '', 'feed']` | `useInfiniteQuery`, curseur serveur, `staleTime` 30 s. Le littéral est **en dernier**, comme pour `commentCounts` : devant, il entrerait en collision avec le fil d'un album qui s'appellerait « feed ». Montée dès l'affichage d'une page de galerie — c'est elle qui porte la pastille. |

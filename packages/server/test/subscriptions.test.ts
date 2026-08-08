@@ -359,6 +359,11 @@ describe('annonce des nouveautés', () => {
     assert.equal(envoyes.length, 1);
     assert.match(envoyes[0]!.subject, /1 nouvelle photo dans Vacances/);
     assert.equal(envoyes[0]!.to, 'abo-papi@exemple.fr');
+    // Le lien mène à ce que le message annonce. Depuis que les albums se lisent
+    // du début (D99), l'ouvrir sans `?order=desc` poserait le lecteur sur les
+    // photos les plus anciennes — l'inverse de « il y a du nouveau ».
+    assert.match(envoyes[0]!.text, /\/album\/vacances\?order=desc/);
+    assert.match(envoyes[0]!.html, /\/album\/vacances\?order=desc/);
   });
 
   it('n’annonce pas deux fois les mêmes photos', async () => {

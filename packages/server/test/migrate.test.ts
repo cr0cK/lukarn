@@ -324,6 +324,30 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('bascule les albums en version 11 dans le sens où ils ont été vécus', () => {
+    const db = databaseAtVersion(11);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
+       VALUES ('vacances', 'Vacances', 'dossier', 1, 0, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    assert.ok(columns(db, 'albums').includes('sort_order'));
+
+    const album = db.prepare('SELECT * FROM albums WHERE id = ?').get('vacances') as {
+      title: string;
+      sort_order: string;
+    };
+    // Les albums déjà en service **changent** de sens, à la différence du
+    // découpage : `desc` était la seule valeur possible, personne ne l'a
+    // choisie, et on découvrait un séjour par sa dernière journée (D99).
+    assert.equal(album.title, 'Vacances');
+    assert.equal(album.sort_order, 'asc');
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

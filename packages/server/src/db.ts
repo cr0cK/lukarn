@@ -508,6 +508,19 @@ export const MIGRATIONS: string[] = [
   INSERT INTO media_notes_fts (media_notes_fts) VALUES ('rebuild');
   INSERT INTO geo_places_fts (geo_places_fts) VALUES ('rebuild');
   `,
+
+  // 12 — sens de lecture par défaut de la grille, à côté du découpage. Il vivait
+  // dans une constante globale, donc identique pour tous les albums, et
+  // uniquement dans l'URL : on découvrait un séjour par sa dernière journée, et
+  // le sens rebasculé était perdu en quittant la page.
+  //
+  // `DEFAULT 'asc'` fait basculer les albums déjà en service, et c'est voulu :
+  // le sens sortant n'a jamais été choisi par personne, c'était le seul
+  // disponible (D99).
+  `
+  ALTER TABLE albums ADD COLUMN sort_order TEXT NOT NULL DEFAULT 'asc'
+    CHECK (sort_order IN ('desc', 'asc'));
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

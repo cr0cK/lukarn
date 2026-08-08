@@ -612,6 +612,7 @@ export function buildAlbum(
     title: string;
     description?: string | null;
     groupBy?: GroupBy;
+    sortOrder?: SortOrder;
     coverMediaId?: string | null;
   },
   media: MediaRepo,
@@ -624,6 +625,7 @@ export function buildAlbum(
     title: config.title,
     description: config.description ?? null,
     groupBy: config.groupBy ?? DEFAULT_GROUP_BY,
+    sortOrder: config.sortOrder ?? DEFAULT_SORT_ORDER,
     itemCount: stats.itemCount,
     coverId: stats.coverId,
     coverVersion: stats.coverVersion,

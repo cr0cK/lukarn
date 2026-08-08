@@ -46,6 +46,7 @@ export function bootstrapFromYaml(config: ConfigRepo, env: Env, log: BootstrapLo
       folderId: album.folderId,
       recursive: album.recursive,
       groupBy: album.groupBy,
+      sortOrder: album.sortOrder,
     })),
     users: yaml.users.map((user) => ({
       username: user.username,

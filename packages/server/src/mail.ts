@@ -243,7 +243,10 @@ export function buildAlbumUpdateMail(
   email: string,
   env: Env,
 ): MailMessage {
-  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}`;
+  // `?order=desc` : le message annonce ce qui vient d'arriver, le lien doit y
+  // mener. Le paramètre ne vaut que pour cette visite — il prime sur le sens
+  // par défaut de l'album, sans écraser la mémoire du navigateur (D99).
+  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?order=desc`;
   const unsubscribe =
     `${env.publicUrl}/api/subscriptions/unsubscribe` +
     `?u=${encodeURIComponent(email)}&a=${encodeURIComponent(notification.albumId)}` +

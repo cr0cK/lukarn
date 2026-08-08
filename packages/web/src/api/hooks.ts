@@ -127,13 +127,23 @@ export function useAlbum(albumId: string) {
  * liste aplatie. Le curseur du serveur est stable même si une synchronisation
  * insère des médias pendant le défilement, donc aucune photo n'est sautée ni
  * dupliquée.
+ *
+ * `enabled` couvre le cas où le sens n'est pas encore connu — album pas chargé
+ * et rien en mémoire locale. Sans lui, la première ouverture chargerait deux
+ * cents éléments dans un sens rejeté à la réponse suivante ; la requête reste
+ * `pending`, donc le Spinner de la grille couvre l'attente.
  */
-export function useAlbumItems(albumId: string, order: SortOrder = DEFAULT_SORT_ORDER) {
+export function useAlbumItems(
+  albumId: string,
+  order: SortOrder = DEFAULT_SORT_ORDER,
+  enabled = true,
+) {
   const query = useInfiniteQuery({
     queryKey: queryKeys.items(albumId, order),
     queryFn: ({ pageParam }) => api.items(albumId, pageParam, order),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled,
   });
 
   const items = useMemo<MediaItem[]>(
