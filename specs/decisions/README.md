@@ -35,6 +35,22 @@ que le choix coûte :
 On ajoute une décision plutôt que de réécrire une décision existante : une
 décision revenue sur elle-même reste une information utile.
 
+## Renvoyer à une autre décision
+
+`(Dxx)` en texte, sans lien : c'est la forme de l'écrasante majorité des renvois
+du dépôt, et la seule possible dans un commentaire de code. `check:specs` vérifie
+que la décision citée existe.
+
+Un lien cliquable reste légitime quand le renvoi porte le fil de la lecture
+plutôt qu'une simple caution. Il s'écrit alors depuis ce répertoire :
+
+- vers l'ancien journal, `[D38](../08-decisions.md#d38--une-clé-daccès-nest-pas-une-personne)` ;
+- vers une décision d'ici, `[D260809](./D260809-numerotation-des-decisions.md)`.
+
+`check:links` résout les deux, ancre comprise, et signale un titre qui aurait
+changé de libellé depuis. Une ancre `#dxx--…` seule, en revanche, ne mène nulle
+part depuis ce répertoire : elle est cherchée dans le fichier courant.
+
 `pnpm check:specs` contrôle le format de l'identifiant, l'accord entre le titre
 et le nom du fichier, l'absence de doublon, et le fait que chaque renvoi `(Dxx)`
 des specs et du code mène à une décision qui existe. Ce dernier point vaut
