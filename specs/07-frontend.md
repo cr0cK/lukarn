@@ -726,9 +726,19 @@ secours.
   dire de combien, le chiffre le compte sans dire où. Réunis, chacun lit
   l'autre, et la rangée rend au titre la largeur qu'un « 900 / 900 » lui prenait
   en permanence — sur un écran de 393 px, c'est ce qui fait tenir
-  « Allemagne – Forêt Noire · 4 août 2026 » en entier. Il porte `aria-hidden` :
-  la barre déclare déjà `aria-valuenow` et `aria-valuemax`, et un lecteur
-  d'écran annoncerait deux fois la même chose à deux mots d'intervalle.
+  « Allemagne – Forêt Noire · 4 août 2026 » en entier.
+
+  Il est **hors du flux** (`absolute`, `top-1`), et c'est ce qui rend le
+  déplacement gratuit : dans le flux, ses quinze pixels rallongeaient d'autant
+  un en-tête posé sur la photo — soit exactement ce qu'on venait de lui faire
+  rendre. Il tient dans la bande que le dégradé occupait déjà sans rien y
+  mettre, entre le trait et la première ligne de titre : en-tête à 102 px sur
+  desktop et 92 px sur mobile, les mêmes qu'avant. `pointer-events-none`, sans
+  quoi il capterait un clic destiné au titre qu'il recouvre.
+
+  Il porte `aria-hidden` : la barre déclare déjà `aria-valuenow` et
+  `aria-valuemax`, et un lecteur d'écran annoncerait deux fois la même chose à
+  deux mots d'intervalle.
 
   Elle est comptée sur `album.itemCount` et non sur la liste paginée, qui
   grandit en cours de parcours (D69).

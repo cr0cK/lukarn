@@ -566,12 +566,22 @@ export function Lightbox({
               lit l'autre, et la rangée du haut rend au titre la largeur qu'un
               « 900 / 900 » lui prenait en permanence.
 
+              **Hors du flux**, et c'est le point : dans le flux il ajoutait
+              quinze pixels à un en-tête posé sur la photo, soit exactement ce
+              qu'on venait de lui faire rendre. Il tient dans la bande que le
+              dégradé occupait déjà sans rien y mettre, entre le trait et la
+              première ligne de titre — un bandeau qui coûte de la hauteur pour
+              dire « 25 sur 900 » n'en vaut pas le prix.
+
+              `pointer-events-none` : posé au-dessus de la rangée, il capterait
+              sinon un clic destiné au titre.
+
               `aria-hidden` : la barre porte déjà `aria-valuenow` et
               `aria-valuemax`, un lecteur d'écran annoncerait deux fois la même
               chose à deux mots d'intervalle. */}
           <p
             aria-hidden="true"
-            className="pt-1 text-center text-[11px] leading-none text-ink-400 tabular-nums"
+            className="pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] leading-none text-ink-400 tabular-nums"
           >
             {index + 1} / {count}
           </p>
