@@ -512,6 +512,32 @@ Two traps, both silent:
   incoming message. A domain that already has an MX keeps it, and domain
   verification passes just the same.
 
+### Where replies go
+
+A transactional relay sends; it does not receive. So `MAIL_FROM` naming an
+address on the site's own domain says nothing about whether that address has a
+mailbox behind it — and recipients do reply to a notification about a comment on
+a family photo. The reply bounces at their end, and no server log here ever shows
+it.
+
+There are two ways out. The cheap one:
+
+```bash
+MAIL_REPLY_TO=first.last@example.com   # replies land in an existing mailbox
+```
+
+`MAIL_REPLY_TO` is optional and independent of the pair above. It sets the
+`Reply-To` header while `MAIL_FROM` stays on the domain that SPF and DKIM sign —
+changing the sender to dodge this is what puts messages in the spam folder. The
+cost is that the address is visible to every recipient, like any header. Left
+empty, no header is set and replies follow `MAIL_FROM`.
+
+The alternative is a real mailbox, or a forwarding address, on the domain
+itself — from the registrar, from a mail host, or from a forwarding service.
+Mailbox plans and free forwarding both exist depending on the provider; what
+matters is that `galerie@example.com` resolves somewhere, and that the domain
+keeps a working `MX` (see the blackhole trap above).
+
 ### Checking rendering before writing to anyone
 
 A local stub relay avoids sending real messages during trials:
