@@ -26,8 +26,8 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 | `kind`                                                                                                        | TEXT    | `CHECK (kind IN ('photo','video'))`.                                                                                                  |
 | `size`                                                                                                        | INTEGER | Nullable : Drive ne déclare pas toujours une taille.                                                                                  |
 | `width` / `height`                                                                                            | INTEGER | **Déjà corrigées de la rotation EXIF** par `toUpsert`. C'est ce qui permet au front de calculer la mise en page sans charger d'image. |
-| `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Date EXIF si connue, sinon `modifiedTime` de Drive.                                                                     |
-| `taken_at_from_exif`                                                                                          | INTEGER | 0/1. Le front écrit « Prise de vue » ou « Modifié le » selon la valeur.                                                               |
+| `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Photo : date EXIF si connue, sinon `modifiedTime`. Vidéo : reconstruite depuis le fichier — voir ci-dessous.            |
+| `taken_at_from_exif`                                                                                          | INTEGER | 0/1. Le front écrit « Prise de vue » ou « Modifié le » selon la valeur. À 1 dès que la date vient du fichier, EXIF ou conteneur.      |
 | `modified_time`                                                                                               | TEXT    | ISO 8601. Écrit à chaque sync, jamais relu — conservé, voir « Colonnes écrites et jamais relues » plus bas.                           |
 | `duration_ms`                                                                                                 | INTEGER | Vidéos seulement.                                                                                                                     |
 | `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, tous nullables. Servis par `/items/:mediaId`.                                                                                   |
@@ -44,6 +44,17 @@ première seconde ([08](./08-decisions.md), D92). L'API n'expose donc pas la
 colonne mais la question qu'on lui pose : `MediaItem.hasPreview`, calculé par
 `toItem()` comme `kind === 'photo' || has_thumbnail === 1`. Le front demande une
 vignette « quand il y en a une », sans rejouer la règle photo/vidéo de son côté.
+
+**`taken_at` d'une vidéo ne vient pas de Drive.** `videoMediaMetadata` se limite
+à `{width, height, durationMillis}` : aucune date de prise de vue. La sync lit
+donc le `creation_time` du conteneur par quelques requêtes `Range`, et le
+confronte à l'horodatage du nom du fichier — `resolveVideoTakenAt`, quatre
+règles décrites en [08](./08-decisions.md), D97. `taken_at_from_exif` vaut 1
+dans les trois premières et 0 dans la dernière, celle où seule la date de
+téléversement restait : le panneau écrit alors « Modifié le », qui est
+exactement ce qu'on sait. Aucune migration n'accompagne ce changement — la sync
+ré-upserte chaque fichier, et une vidéo déjà datée depuis son fichier n'est
+relue que si son `md5` a bougé.
 
 **`added_at` n'est pas un doublon de `seen_at`, et c'est le piège de la
 migration 5.** `seen_at` est réécrit sur _tous_ les médias à chaque passage de
@@ -634,7 +645,7 @@ et `db.ts` dit à quoi elles servent :
 
 | Colonne               | Pourquoi elle reste                                                                                    |
 | --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `media.modified_time` | Repère chronologique dont `taken_at` dérive quand l'EXIF manque ; permet de recalculer sans réindexer. |
+| `media.modified_time` | Repère chronologique dont `taken_at` dérive en dernier recours ; permet de recalculer sans réindexer.  |
 | `oauth_token.scope`   | Portée consentie : dira, quand `SCOPES` évoluera, si le jeton stocké couvre encore ce qui est demandé. |
 | `sessions.created_at` | Seule trace de l'ancienneté d'une session — la première question posée après un accès suspect.         |
 

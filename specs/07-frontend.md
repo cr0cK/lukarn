@@ -859,9 +859,15 @@ secours.
 - Vidéos : `<video controls autoPlay playsInline>` sur `/original`, seek natif
   par `Range`, et `poster` sur la vignette 1280 quand `item.hasPreview` — celle
   de la grille, donc déjà en cache disque et souvent en cache navigateur : le
-  rectangle noir de l'attente disparaît sans une requête de plus (D92). `error`
-  remplace la balise par un message et un bouton de téléchargement — le fichier reste lisible ailleurs même quand ce navigateur
-  n'en décode pas le codec ([D79](./08-decisions.md)). Photos :
+  rectangle noir de l'attente disparaît sans une requête de plus (D92).
+  L'attente n'a **pas** d'indicateur propre : le `poster` l'occupe, et les
+  contrôles natifs portent déjà le leur — en superposer un second en faisait
+  tourner deux, l'un sur l'autre ([D98](./08-decisions.md)). L'échec, lui,
+  remplace la balise par un message et un bouton de téléchargement : le fichier
+  reste lisible ailleurs même quand ce navigateur n'en décode pas le codec
+  ([D79](./08-decisions.md)). Il se constate de deux façons — `error`, et un
+  `videoWidth` nul sur `loadeddata` ou `playing`, qui est la seule trace d'un
+  décodage à moitié réussi (D98). Photos :
   `ZoomableImage`, remonté à chaque photo (`key={item.id}`) pour réinitialiser
   zoom et cadrage sans les remettre à zéro à la main.
 - Le téléchargement passe par une ancre synthétique plutôt que `window.open` :
@@ -931,9 +937,9 @@ secours.
 
 - **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
   le dernier, une flèche à une extrémité : la cible est l'index courant, aucun
-  élément n'est remonté, donc aucun `loadeddata` n'est émis. Remettre `loaded` à
-  `false` dans ce cas laisserait le tourniquet de chargement d'une vidéo tourner
-  indéfiniment.
+  élément n'est remonté, donc aucun événement de lecture n'est émis. Remettre
+  `failed` à `false` dans ce cas effacerait le message d'une vidéo illisible
+  sans que rien ne le remplace.
 - **Un clic dans la zone photo referme le panneau ouvert**, comme n'importe quel
   tiroir. Le gestionnaire est posé en **capture** et non en bulle : le zoom se
   décide au relâchement du pointeur dans `ZoomableImage`, plus bas dans l'arbre,
@@ -1196,13 +1202,13 @@ Les invariants sont vérifiés sur toutes les combinaisons
 indicateur, un échec exclut les deux, et l'indicateur apparaît même sans aperçu à
 montrer — dimensions inconnues, un écran noir muet serait pire.
 
-**La visionneuse y passe aussi la vidéo**, avec `measured: false` — l'attente
-d'une vidéo est couverte par le `poster` de la balise, que le navigateur affiche
-lui-même (D92) : il n'y a rien à superposer. C'est ce qui la fait
-sortir de l'attente quand la lecture échoue : la branche vidéo décidait sa
-combinaison en JSX, sans écouter `error` sur la balise, et un codec non décodé ou
-un Drive indisponible laissait le tourniquet tourner indéfiniment sur un écran
-noir muet ([D79](./08-decisions.md)).
+**La vidéo n'y passe pas.** Elle n'a que deux états — lue, ou illisible — et son
+attente appartient au navigateur : le `poster` l'occupe, les contrôles natifs
+l'annoncent. Elle est passée un temps par `previewOverlay` avec
+`measured: false`, ce qui posait un second tourniquet par-dessus celui des
+contrôles ([D98](./08-decisions.md)). Ce qu'elle en garde est l'invariant même :
+une attente doit se terminer sur une image ou sur un message
+([D79](./08-decisions.md)).
 
 Le repère est **manipulable** : y cliquer ou y glisser amène le point visé au
 centre de la fenêtre. Il montrait où l'on se trouvait sans permettre d'y agir,

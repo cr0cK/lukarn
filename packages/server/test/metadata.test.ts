@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { classify, parseExifTime, toCoordinates, toNumber } from '../src/drive/metadata.js';
+import {
+  classify,
+  parseExifTime,
+  parseNameTime,
+  resolveVideoTakenAt,
+  toCoordinates,
+  toNumber,
+} from '../src/drive/metadata.js';
 
 describe('classify', () => {
   it('reconnaît photos et vidéos', () => {
@@ -42,6 +49,114 @@ describe('parseExifTime', () => {
     assert.equal(parseExifTime(undefined), null);
     assert.equal(parseExifTime(''), null);
     assert.equal(parseExifTime('pas une date'), null);
+  });
+});
+
+describe('parseNameTime', () => {
+  it('lit les noms que produisent les téléphones', () => {
+    // Les millièmes qu'un Pixel ajoute après les secondes ne gênent pas.
+    assert.equal(parseNameTime('PXL_20260729_143012123.mp4'), '2026-07-29T14:30:12.000Z');
+    assert.equal(parseNameTime('VID_20260729_143012.mp4'), '2026-07-29T14:30:12.000Z');
+    assert.equal(parseNameTime('IMG_20260805_091544.MOV'), '2026-08-05T09:15:44.000Z');
+    assert.equal(parseNameTime('20260805-091544.mp4'), '2026-08-05T09:15:44.000Z');
+  });
+
+  it("ne trouve rien dans un nom qui n'est pas horodaté", () => {
+    assert.equal(parseNameTime('anniversaire.mp4'), null);
+    assert.equal(parseNameTime('20260805.mp4'), null);
+    assert.equal(parseNameTime(null), null);
+    assert.equal(parseNameTime(''), null);
+  });
+
+  it('rejette une date qui ne peut pas exister', () => {
+    assert.equal(parseNameTime('VID_20260231_143012.mp4'), null);
+    assert.equal(parseNameTime('VID_20260729_251012.mp4'), null);
+    assert.equal(parseNameTime('VID_20260729_146012.mp4'), null);
+  });
+
+  it('ne découpe pas un long nombre en date', () => {
+    // Un identifiant d'export, pas un horodatage : le chiffre qui précède
+    // suffit à le dire.
+    assert.equal(parseNameTime('9920260729_143012.mp4'), null);
+  });
+});
+
+describe('resolveVideoTakenAt', () => {
+  const modifiedTime = '2026-08-08T07:51:00.000Z';
+
+  it('préfère le nom quand le conteneur le corrobore', () => {
+    // Le nom porte le début de l'enregistrement dans l'heure de l'appareil,
+    // exactement comme l'EXIF d'une photo. Ici le conteneur est en UTC, deux
+    // heures plus tôt : deux écritures du même instant.
+    const resolu = resolveVideoTakenAt({
+      name: 'PXL_20260729_143012123.mp4',
+      containerTime: '2026-07-29T12:30:38.000Z',
+      durationMs: 26_000,
+      modifiedTime,
+    });
+
+    assert.deepEqual(resolu, { takenAt: '2026-07-29T14:30:12.000Z', fromFile: true });
+  });
+
+  it("remonte du conteneur au début de l'enregistrement", () => {
+    // Sans nom exploitable : l'en-tête est écrit à l'arrêt de l'enregistrement,
+    // la prise de vue commence une durée plus tôt.
+    const resolu = resolveVideoTakenAt({
+      name: 'vacances.mp4',
+      containerTime: '2026-07-29T12:30:38.000Z',
+      durationMs: 38_000,
+      modifiedTime,
+    });
+
+    assert.deepEqual(resolu, { takenAt: '2026-07-29T12:30:00.000Z', fromFile: true });
+  });
+
+  it("écarte un nom horodaté qui n'a rien à voir avec le fichier", () => {
+    // Plus de 26 h d'écart : le nom vient d'ailleurs — fichier renommé, numéro
+    // qui ressemble à une date. Le conteneur, lui, est dans le fichier.
+    const resolu = resolveVideoTakenAt({
+      name: 'VID_20240101_120000.mp4',
+      containerTime: '2026-07-29T12:30:38.000Z',
+      durationMs: 38_000,
+      modifiedTime,
+    });
+
+    assert.deepEqual(resolu, { takenAt: '2026-07-29T12:30:00.000Z', fromFile: true });
+  });
+
+  it("retient le nom seul quand le conteneur ne s'ouvre pas", () => {
+    const resolu = resolveVideoTakenAt({
+      name: 'VID_20260729_143012.avi',
+      containerTime: null,
+      durationMs: null,
+      modifiedTime,
+    });
+
+    assert.deepEqual(resolu, { takenAt: '2026-07-29T14:30:12.000Z', fromFile: true });
+  });
+
+  it('retombe sur la date de modification, et le dit', () => {
+    // Le seul cas qui ne prétend pas dater le tournage : `fromFile` est faux, et
+    // l'interface écrit « Modifié le » plutôt que « Prise de vue ».
+    const resolu = resolveVideoTakenAt({
+      name: 'anniversaire.mp4',
+      containerTime: null,
+      durationMs: null,
+      modifiedTime,
+    });
+
+    assert.deepEqual(resolu, { takenAt: modifiedTime, fromFile: false });
+  });
+
+  it('se passe de la durée quand Drive ne la connaît pas', () => {
+    const resolu = resolveVideoTakenAt({
+      name: null,
+      containerTime: '2026-07-29T12:30:38.000Z',
+      durationMs: null,
+      modifiedTime,
+    });
+
+    assert.deepEqual(resolu, { takenAt: '2026-07-29T12:30:38.000Z', fromFile: true });
   });
 });
 

@@ -369,9 +369,9 @@ export class DriveService {
    * transmis à Google, et la réponse 206 est renvoyée au navigateur sans
    * retraitement, ce qui donne le seek vidéo natif sans transcodage.
    */
-  async fetchFile(fileId: string, range?: string): Promise<Response> {
+  async fetchFile(fileId: string, range?: string, signal?: AbortSignal): Promise<Response> {
     const url = `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
-    return this.fetchAuthorized(url, fileId, range);
+    return this.fetchAuthorized(url, fileId, range, signal);
   }
 
   /**
@@ -380,9 +380,14 @@ export class DriveService {
    * en-tête `Authorization`, ce qui ferait échouer le repli au moment précis où
    * il sert. `label` n'apparaît que dans les messages d'erreur.
    */
-  async fetchAuthorized(url: string, label: string, range?: string): Promise<Response> {
+  async fetchAuthorized(
+    url: string,
+    label: string,
+    range?: string,
+    signal?: AbortSignal,
+  ): Promise<Response> {
     for (let attempt = 0; ; attempt++) {
-      const response = await this.sendWithRefresh(url, range);
+      const response = await this.sendWithRefresh(url, range, signal);
 
       if (response.ok || response.status === 206 || response.status === 416) return response;
 
@@ -413,8 +418,12 @@ export class DriveService {
   }
 
   /** Un envoi, avec renouvellement du jeton si Google le refuse en cours de vie. */
-  private async sendWithRefresh(url: string, range?: string): Promise<Response> {
-    let response = await this.send(url, await this.accessToken(false), range);
+  private async sendWithRefresh(
+    url: string,
+    range?: string,
+    signal?: AbortSignal,
+  ): Promise<Response> {
+    let response = await this.send(url, await this.accessToken(false), range, signal);
 
     if (response.status === 401) {
       // Google a cessé d'accepter cet access token avant son expiration :
@@ -424,7 +433,7 @@ export class DriveService {
       // temps-là. Le nouvel échange passe par `guard` : si Google refuse aussi
       // le refresh token, la révocation est enregistrée et /admin le dit.
       if (response.body) await response.body.cancel();
-      response = await this.send(url, await this.accessToken(true), range);
+      response = await this.send(url, await this.accessToken(true), range, signal);
     }
 
     return response;
@@ -439,14 +448,21 @@ export class DriveService {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private async send(url: string, token: string, range?: string): Promise<Response> {
+  private async send(
+    url: string,
+    token: string,
+    range?: string,
+    signal?: AbortSignal,
+  ): Promise<Response> {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (range) headers.Range = range;
 
-    // **Aucune échéance sur une requête `Range`.** C'est le relais d'une vidéo
-    // vers le navigateur, qui la consomme à son rythme : une échéance *totale*
-    // couperait la lecture en cours de visionnage, pas une panne.
-    if (range) return fetch(url, { headers });
+    // **Aucune échéance par défaut sur une requête `Range`.** C'est le relais
+    // d'une vidéo vers le navigateur, qui la consomme à son rythme : une
+    // échéance *totale* couperait la lecture en cours de visionnage, pas une
+    // panne. Un appelant qui n'est pas ce relais — la lecture de l'en-tête d'une
+    // vidéo à la synchronisation, qui tient en 64 Ko — fournit la sienne.
+    if (range) return fetch(url, { headers, signal });
 
     try {
       return await fetch(url, { headers, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
