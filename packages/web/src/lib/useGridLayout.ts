@@ -1,6 +1,7 @@
 import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@gdv/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
+import { measureLines } from './measureLines';
 
 export const GRID_GAP = 4;
 export const GRID_SECTION_GAP = 28;
@@ -35,14 +36,43 @@ export const GRID_COLLAPSED_HEADER_HEIGHT = GRID_HEADER_PAD_TOP + GRID_HEADER_TI
  * C'est un contrat avec `SectionHeader`, qui doit tenir dedans — le layout est
  * calculé sans DOM, donc rien ne rattrapera un dépassement et les photos de la
  * section passeraient sous le texte. D'où l'interligne fixé explicitement côté
- * composant (`leading-5`), et **une seule ligne par texte**, tronquée.
+ * composant (`leading-5`) : c'est lui qui tient le contrat, jamais la taille de
+ * police.
  *
- * Une constante et non deux, parce que la réservation doit valoir exactement ce
- * qui sera rendu. La note valait deux lignes alors qu'elle n'en occupe souvent
- * qu'une, et les 20 px de trop tombaient sous le texte : l'écart avant les
- * vignettes passait de 12 à 32 px selon la longueur de la note (D85).
+ * Une constante et non deux — le lieu et la note se comptent en lignes de même
+ * hauteur — et une réservation qui vaut exactement ce qui sera rendu : le lieu
+ * tient sur une ligne tronquée, la note sur le nombre de lignes que
+ * `measureLines` lui a mesuré (D85, D93).
  */
 export const GRID_HEADER_LINE_HEIGHT = 20;
+
+/**
+ * Classes du paragraphe de la note, partagées avec la sonde de mesure.
+ *
+ * Elles sont **la** définition de sa géométrie : la largeur maximale, le retrait
+ * qui l'aligne sur le texte du titre, la taille de police, l'interligne et la
+ * césure. Mesurer avec d'autres classes que celles du rendu ferait diverger la
+ * hauteur réservée de la hauteur rendue, ce que rien ne rattraperait. La couleur
+ * reste au composant : elle ne change aucune métrique.
+ */
+export const GRID_HEADER_NOTE_CLASS = 'max-w-3xl pl-[22px] text-sm leading-5 break-words';
+
+/**
+ * Hauteur d'un en-tête de section, à réserver comme à rendre.
+ *
+ * Pure et exportée pour être vérifiable : c'est l'invariant dont dépend
+ * l'absence de recouvrement entre un en-tête et ses vignettes.
+ */
+export function sectionHeaderHeight(options: {
+  collapsed: boolean;
+  hasPlace: boolean;
+  /** Lignes occupées par la note. `0` quand la journée n'en porte pas. */
+  descriptionLines: number;
+}): number {
+  const base = options.collapsed ? GRID_COLLAPSED_HEADER_HEIGHT : GRID_HEADER_HEIGHT;
+  const lines = (options.hasPlace ? 1 : 0) + options.descriptionLines;
+  return base + lines * GRID_HEADER_LINE_HEIGHT;
+}
 /** Marge de lignes rendues hors viewport, pour que le défilement rapide reste plein. */
 const OVERSCAN_PX = 900;
 
@@ -60,6 +90,14 @@ export interface GridLayout {
   viewportHeight: number;
   /** Décalage du conteneur dans la page, pour convertir layout ↔ scroll. */
   offsetTop: number;
+  /**
+   * Lignes occupées par la note de chaque journée, par clé de section.
+   *
+   * Portées par le layout et non recalculées au rendu : la hauteur réservée et
+   * la boîte rendue doivent tenir du **même** nombre, mesuré une fois. Deux
+   * calculs, fût-ce avec la même fonction, sont deux occasions de diverger.
+   */
+  descriptionLines: ReadonlyMap<string, number>;
 }
 
 /**
@@ -134,23 +172,42 @@ export function useGridLayout(
     };
   }, []);
 
-  const headerHeightFor = useMemo(() => {
-    // Les notes n'ont de sens que par jour ; le repli vaut pour les deux
-    // découpages. L'un ou l'autre suffit à faire varier une hauteur.
-    const annotated = groupBy === 'day' && days && days.size > 0 ? days : undefined;
-    const collapses = collapsedKeys && collapsedKeys.size > 0;
-    if (!annotated && !collapses) return undefined;
+  // Les notes n'ont de sens que par jour : accrocher une note de journée à un
+  // en-tête de mois choisirait arbitrairement laquelle des trente afficher.
+  const annotatedDays = groupBy === 'day' && days && days.size > 0 ? days : undefined;
 
-    return (key: string): number => {
-      const day = annotated?.get(key);
-      const base = collapsedKeys?.has(key) ? GRID_COLLAPSED_HEADER_HEIGHT : GRID_HEADER_HEIGHT;
-      return (
-        base +
-        (placeLabelOf(day) ? GRID_HEADER_LINE_HEIGHT : 0) +
-        (day?.description ? GRID_HEADER_LINE_HEIGHT : 0)
+  /**
+   * Mesuré ici, une fois par largeur, et non au rendu de chaque en-tête : c'est
+   * ce même nombre qui réserve la hauteur et qui borne la boîte, et la mesure
+   * force un calcul de style que la virtualisation rejouerait à chaque
+   * défilement.
+   */
+  const descriptionLines = useMemo(() => {
+    const lines = new Map<string, number>();
+    if (!annotatedDays || width <= 0) return lines;
+    for (const [key, day] of annotatedDays) {
+      if (!day.description) continue;
+      lines.set(
+        key,
+        measureLines(day.description, width, GRID_HEADER_NOTE_CLASS, GRID_HEADER_LINE_HEIGHT),
       );
-    };
-  }, [groupBy, days, collapsedKeys]);
+    }
+    return lines;
+  }, [annotatedDays, width]);
+
+  const headerHeightFor = useMemo(() => {
+    // Le repli vaut pour les deux découpages. L'un ou l'autre suffit à faire
+    // varier une hauteur.
+    const collapses = collapsedKeys && collapsedKeys.size > 0;
+    if (!annotatedDays && !collapses) return undefined;
+
+    return (key: string): number =>
+      sectionHeaderHeight({
+        collapsed: collapsedKeys?.has(key) ?? false,
+        hasPlace: placeLabelOf(annotatedDays?.get(key)) !== null,
+        descriptionLines: descriptionLines.get(key) ?? 0,
+      });
+  }, [annotatedDays, collapsedKeys, descriptionLines]);
 
   // `undefined` tant que rien n'est replié — le cas de très loin le plus
   // fréquent — pour que le layout ne se recalcule pas sur une fonction neuve à
@@ -182,6 +239,7 @@ export function useGridLayout(
     visibleTo: viewport.top - offsetTop + viewport.height + OVERSCAN_PX,
     viewportHeight: viewport.height,
     offsetTop,
+    descriptionLines,
   };
 }
 

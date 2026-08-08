@@ -43,7 +43,7 @@ export function JustifiedGrid({
   onLoadMore,
   hasMore,
 }: JustifiedGridProps): ReactElement {
-  const { layout, visibleFrom, visibleTo, viewportHeight } = grid;
+  const { layout, visibleFrom, visibleTo, viewportHeight, descriptionLines } = grid;
 
   useEffect(() => {
     if (!hasMore || layout.totalHeight === 0) return;
@@ -63,6 +63,7 @@ export function JustifiedGrid({
             section={section}
             day={days.get(section.key)}
             editable={canAnnotate}
+            descriptionLines={descriptionLines.get(section.key) ?? 0}
             onToggle={() => onToggleSection(section.key)}
           />
 

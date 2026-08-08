@@ -285,22 +285,27 @@ avant qu'un nœud DOM n'existe — c'est ce qui rend possibles la virtualisation
 l'absence de décalage. Un en-tête qui déciderait de sa taille une fois monté
 passerait sous ses propres photos, et il n'y aurait rien pour le rattraper.
 
-`useGridLayout(items, groupBy, days)` construit la fonction :
-`GRID_HEADER_HEIGHT + (lieu ? 20 : 0) + (note ? 20 : 0)`, ces 20 px étant
-`GRID_HEADER_LINE_HEIGHT`. Elle rend `undefined` en découpage par mois — une
-note appartient à une journée, et il n'y aurait pas d'en-tête à qui l'accrocher
-parmi les trente. Le layout reste pur et testable sans DOM, ce qui est
-l'invariant de `justify.test.ts`.
+`useGridLayout(items, groupBy, days)` construit la fonction, dont le calcul est
+isolé dans `sectionHeaderHeight` — pure, exportée, et vérifiée pour elle-même :
+`GRID_HEADER_HEIGHT + (lieu ? 1 : 0) + lignes de la note`, chaque ligne valant
+`GRID_HEADER_LINE_HEIGHT` (20 px). Elle rend `undefined` en découpage par mois —
+une note appartient à une journée, et il n'y aurait pas d'en-tête à qui
+l'accrocher parmi les trente. Le layout reste pur et testable sans DOM, ce qui
+est l'invariant de `justify.test.ts`.
 
 Cette constante est un **contrat avec `SectionHeader`**, qui doit tenir dedans :
-d'où l'interligne fixé explicitement (`leading-5`) et **une seule ligne
-tronquée par texte**. C'est l'**interligne** qui tient le contrat, jamais la
-taille de police : remonter le lieu et la note de 13 à 14 px n'y touche pas tant
-que `leading-5` reste.
+d'où l'interligne fixé explicitement (`leading-5`). C'est l'**interligne** qui
+tient le contrat, jamais la taille de police : remonter le lieu et la note de 13
+à 14 px n'y touche pas tant que `leading-5` reste.
 
-Une constante et non deux, et c'est ce qui rend le contrat exact plutôt
-qu'approché : réserver deux lignes à la note revenait à parier sur sa longueur,
-et le pari perdu laissait 20 px de blanc sous l'en-tête (D85).
+**Le nombre de lignes de la note est mesuré, pas estimé** — `lib/measureLines.ts`
+rend le texte dans une sonde hors écran portant les mêmes classes
+(`GRID_HEADER_NOTE_CLASS`) et la même largeur, puis divise la hauteur obtenue par
+l'interligne. Le résultat sert **à la fois** à réserver la hauteur et à borner la
+boîte rendue (`descriptionLines`, porté par `GridLayout`), si bien que les deux
+ne peuvent pas diverger. C'est ce qui permet à une note longue de s'afficher en
+entier sans revenir à une hauteur libre : une estimation d'après la longueur du
+texte, elle, se trompe (D85, D93).
 
 ### Sections repliées
 
@@ -515,12 +520,14 @@ d'édition pour un administrateur en découpage par jour.
   hauteur **et avec la visionneuse** : un lieu compté d'un côté et pas affiché
   de l'autre laisserait un blanc, l'inverse ferait déborder l'en-tête sur les
   photos.
-- **Le lieu et la note tiennent chacun sur une ligne tronquée**, valant chacun
-  `GRID_HEADER_LINE_HEIGHT` (20 px). Une hauteur libre rendrait le layout
-  dépendant d'une mesure DOM (D49) ; deux lignes réservées à la note en
-  laissaient une vide dès qu'elle était courte, et l'écart avant les vignettes
-  passait de 12 à 32 px d'une section à l'autre (D85). Le texte entier reste
-  dans `title`, dans le panneau `i` et dans le bandeau de la visionneuse.
+- **Le lieu tient sur une ligne tronquée** — il est court par nature, et son
+  texte entier reste dans `title`, dans le panneau `i` et dans le bandeau de la
+  visionneuse. **La note s'affiche en entier**, sur autant de lignes de
+  `GRID_HEADER_LINE_HEIGHT` (20 px) qu'il lui en faut : le nombre vient de la
+  mesure décrite plus haut, jamais d'une hauteur libre que le layout ne saurait
+  pas anticiper (D49, D85, D93). Le `line-clamp` posé sur le paragraphe reprend
+  ce même nombre : il ne tronque rien tant que la mesure tombe juste, et il est
+  le seul rattrapage possible le jour où elle ne tomberait pas juste.
 - **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
   grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
   curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit
