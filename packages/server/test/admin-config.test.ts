@@ -359,6 +359,46 @@ describe('albums', () => {
     assert.equal(context.findAlbum('sejour')!.groupBy, 'month');
   });
 
+  it('fait l’aller-retour du sens de lecture, à la création comme à la mise à jour', async () => {
+    const chronologique = await post('/api/admin/albums', {
+      id: 'sejour',
+      title: 'Séjour',
+      folderId: 'folder-sejour',
+    });
+    assert.equal(
+      (chronologique.json() as AdminAlbum).sortOrder,
+      'asc',
+      'un album se lit par son début tant que rien ne dit le contraire',
+    );
+
+    const recentes = await post('/api/admin/albums', {
+      id: 'quotidien',
+      title: 'Quotidien',
+      folderId: 'folder-quotidien',
+      sortOrder: 'desc',
+    });
+    assert.equal((recentes.json() as AdminAlbum).sortOrder, 'desc');
+    // La galerie le lit aussi : c'est ce défaut-là qu'elle applique quand ni
+    // l'URL ni la mémoire du navigateur n'imposent un sens.
+    const vue = await server.inject({
+      method: 'GET',
+      url: '/api/albums/quotidien',
+      headers: { cookie },
+    });
+    assert.equal((vue.json() as { sortOrder: string }).sortOrder, 'desc');
+
+    const bascule = await patch('/api/admin/albums/quotidien', { sortOrder: 'asc' });
+    assert.equal((bascule.json() as AdminAlbum).sortOrder, 'asc');
+    // Le sens ne touche pas au périmètre Drive : rien à réindexer.
+    assert.equal(context.syncState.get('quotidien').status, 'never');
+
+    assert.equal(
+      (await patch('/api/admin/albums/quotidien', { sortOrder: 'aleatoire' })).statusCode,
+      400,
+    );
+    assert.equal(context.findAlbum('quotidien')!.sortOrder, 'asc');
+  });
+
   it('choisit une couverture, la refuse hors de l’album, et y replie sans elle', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',

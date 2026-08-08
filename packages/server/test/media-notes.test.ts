@@ -211,7 +211,7 @@ describe('description de photo — pagination', () => {
       cursor = page.nextCursor;
     } while (cursor);
 
-    assert.deepEqual(seen, ['p5', 'p4', 'p3', 'p2', 'p1']);
+    assert.deepEqual(seen, ['p1', 'p2', 'p3', 'p4', 'p5']);
     assert.equal(new Set(seen).size, seen.length, 'aucun doublon');
   });
 });

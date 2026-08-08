@@ -34,7 +34,14 @@ export function isGroupBy(value: unknown): value is GroupBy {
   return value === 'month' || value === 'day';
 }
 
-export const DEFAULT_SORT_ORDER: SortOrder = 'desc';
+/**
+ * Sens appliqué tant que rien n'en impose un autre — défaut de la colonne
+ * `albums.sort_order` comme du paramètre `?order=` de l'API.
+ *
+ * `asc` parce qu'un album se lit dans le sens où il a été vécu : ouvrir un
+ * séjour sur sa dernière journée en donne la fin avant le début (D99).
+ */
+export const DEFAULT_SORT_ORDER: SortOrder = 'asc';
 
 export function isSortOrder(value: unknown): value is SortOrder {
   return value === 'desc' || value === 'asc';
@@ -150,6 +157,13 @@ export interface Album {
    * découpage dépend de l'album, pas d'un défaut global.
    */
   groupBy: GroupBy;
+  /**
+   * Sens de lecture appliqué à l'ouverture, tant que ni l'URL ni la mémoire du
+   * navigateur n'en imposent un autre. Un séjour se raconte du premier au
+   * dernier jour, une bibliothèque courante par ses dernières arrivées : le bon
+   * sens dépend de l'album, pas d'un défaut global (D99).
+   */
+  sortOrder: SortOrder;
   itemCount: number;
   /**
    * Id du média affiché en couverture : celui qu'un administrateur a choisi, ou
@@ -560,6 +574,8 @@ export interface AdminAlbum {
   recursive: boolean;
   /** Découpage appliqué à l'ouverture de l'album. Voir `Album.groupBy`. */
   groupBy: GroupBy;
+  /** Sens de lecture appliqué à l'ouverture de l'album. Voir `Album.sortOrder`. */
+  sortOrder: SortOrder;
   /** Nombre de médias indexés, et état de la dernière synchronisation. */
   itemCount: number;
   lastSyncAt: string | null;
@@ -585,6 +601,7 @@ export interface CreateAlbumRequest {
   folderId: string;
   recursive?: boolean;
   groupBy?: GroupBy;
+  sortOrder?: SortOrder;
 }
 
 export interface UpdateAlbumRequest {
@@ -593,6 +610,7 @@ export interface UpdateAlbumRequest {
   folderId?: string;
   recursive?: boolean;
   groupBy?: GroupBy;
+  sortOrder?: SortOrder;
   /**
    * Photo à afficher en couverture. Elle doit être indexée dans cet album et
    * ne pas être une vidéo. `null` rend le choix automatique.

@@ -34,6 +34,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
   const [folder, setFolder] = useState(album?.folderId ?? '');
   const [recursive, setRecursive] = useState(album?.recursive ?? true);
   const [byDay, setByDay] = useState(album?.groupBy === 'day');
+  const [newestFirst, setNewestFirst] = useState(album?.sortOrder === 'desc');
   const [touched, setTouched] = useState(false);
 
   const idError = editing ? null : validateAlbumId(albumId);
@@ -64,6 +65,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           folderId,
           recursive,
           groupBy: byDay ? 'day' : 'month',
+          sortOrder: newestFirst ? 'desc' : 'asc',
         },
         {
           onSuccess: (created) => {
@@ -88,6 +90,9 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
     if (folderId !== album.folderId) body.folderId = folderId;
     if (recursive !== album.recursive) body.recursive = recursive;
     if ((byDay ? 'day' : 'month') !== album.groupBy) body.groupBy = byDay ? 'day' : 'month';
+    if ((newestFirst ? 'desc' : 'asc') !== album.sortOrder) {
+      body.sortOrder = newestFirst ? 'desc' : 'asc';
+    }
 
     if (Object.keys(body).length === 0) {
       onClose();
@@ -188,6 +193,15 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         onChange={setByDay}
         disabled={pending}
         hint="Le bon découpage pour un séjour. Les notes de journée ne s'affichent que par jour. Le visiteur peut toujours rebasculer."
+      />
+
+      <Checkbox
+        id={`${fieldId}-sort-order`}
+        label="Ouvrir l'album des plus récentes d'abord"
+        checked={newestFirst}
+        onChange={setNewestFirst}
+        disabled={pending}
+        hint="Décoché, l'album se lit dans l'ordre où il a été vécu. À cocher pour une bibliothèque qu'on alimente au fil de l'eau. Le visiteur peut rebasculer, et son navigateur s'en souvient."
       />
 
       <FormError

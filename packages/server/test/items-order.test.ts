@@ -125,10 +125,12 @@ after(async () => {
 });
 
 describe('sens du tri des médias', () => {
-  it('rend le plus récent en premier sans paramètre', async () => {
-    // Le défaut est un contrat : les liens déjà partagés ne portent pas
-    // `order` et doivent continuer d'ouvrir l'album dans le même sens.
-    assert.deepEqual(await ids(''), ['septembre', 'juin', 'mars']);
+  it('rend le plus ancien en premier sans paramètre', async () => {
+    // Le défaut est un contrat, et c'est celui de `DEFAULT_SORT_ORDER` : un
+    // album se lit dans le sens où il a été vécu tant que rien n'en demande un
+    // autre (D99). Le sens choisi par un album vit dans sa colonne, pas ici :
+    // cette route ne connaît que ce que le client lui passe.
+    assert.deepEqual(await ids(''), ['mars', 'juin', 'septembre']);
   });
 
   it('inverse la liste en ascendant', async () => {

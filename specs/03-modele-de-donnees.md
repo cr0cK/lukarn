@@ -105,12 +105,12 @@ jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
 La configuration : qui se connecte, quels dossiers Drive sont exposés, et les
 réglages. Écrites **uniquement** par `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Colonnes                                                                                                                          |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                             |
-| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `cover_media_id`, `position`, `created_at`, `updated_at` |
-| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                    |
-| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`    |
+| Table         | Colonnes                                                                                                                                        |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                           |
+| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at` |
+| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                                  |
+| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`                  |
 
 Quatre choix à connaître :
 
@@ -134,6 +134,12 @@ Quatre choix à connaître :
   d'enfants par mois, et rouvrir l'album redonnait le défaut global à chaque
   fois. Le paramètre `?group=` continue de primer — c'est une préférence, pas
   une contrainte.
+- **`sort_order`** (`CHECK (sort_order IN ('desc', 'asc'))`, défaut `asc`) est le
+  sens de lecture appliqué à l'ouverture, pour la même raison que `group_by` : un
+  séjour se raconte du premier jour au dernier, une bibliothèque qu'on alimente
+  au fil de l'eau se lit par la fin. Le paramètre `?order=` prime, et le
+  navigateur retient par album ce que son lecteur a choisi — la colonne n'est que
+  le troisième recours (voir [07](./07-frontend.md) et D99).
 - **`cover_media_id`** est la photo choisie comme couverture, `NULL` pour la plus
   récente automatiquement. Aucune clé étrangère vers `media`, pour la même raison
   que `comments.media_id` : `deleteStale` retire une ligne dès qu'une
@@ -481,6 +487,17 @@ reparte de la même étape.
 | 9       | `media_notes` : une description par photo, portée par l'album.                      |
 | 10      | `media.has_thumbnail` : Drive a-t-il un aperçu de ce fichier ?                      |
 | 11      | Les quatre tables FTS5 de recherche, leurs déclencheurs, et leur `rebuild`.         |
+| 12      | `albums.sort_order` : le sens de lecture par défaut de l'album.                     |
+
+La migration 12 ajoute le sens de lecture, et c'est la seule à ce jour qui
+**change le comportement des albums en service** : la colonne arrive à `'asc'`,
+alors qu'ils s'ouvraient jusque-là du plus récent au plus ancien. Le contraire
+aurait figé un sens que personne n'a choisi — c'était la seule valeur possible
+tant qu'elle vivait dans une constante globale, et elle faisait découvrir un
+séjour par sa dernière journée (D99). Le propriétaire rebascule album par album
+depuis /admin, et chaque visiteur pour lui-même depuis la grille.
+`packages/server/test/migrate.test.ts` le vérifie sur une base en version 11
+portant un album : la ligne survit, la colonne arrive à `asc`.
 
 La migration 11 rend la bibliothèque interrogeable. Elle crée les quatre tables
 FTS5 à contenu externe décrites plus haut, leurs douze déclencheurs, puis lance

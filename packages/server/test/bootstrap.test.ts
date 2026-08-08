@@ -59,6 +59,7 @@ albums:
     title: '2026-07 - Allemagne / Forêt Noire'
     description: 'Photos de vacances en Allemagne, juillet 2026'
     folderId: '1DVlkhk2mynYOiLdSOHgYPivnyn68DBwr'
+    sortOrder: desc
 
 sync:
   intervalMinutes: 0
@@ -175,6 +176,11 @@ describe('mise à jour d’une instance en service', () => {
       assert.equal(album.title, '2026-07 - Allemagne / Forêt Noire');
       assert.equal(album.folderId, '1DVlkhk2mynYOiLdSOHgYPivnyn68DBwr');
       assert.equal(album.recursive, true);
+      // Les préférences d'affichage déclarées dans le fichier atteignent la
+      // colonne : sans ce passage, l'amorçage les perdrait en silence, et le
+      // seul moyen de les retrouver serait de rouvrir /admin.
+      assert.equal(album.groupBy, 'month');
+      assert.equal(album.sortOrder, 'desc');
     } finally {
       await server.close();
       context.close();

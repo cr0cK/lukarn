@@ -44,6 +44,11 @@ albums:
     # "day" convient à un séjour, et c'est le seul découpage où s'affichent les
     # notes de journée et les lieux déduits des photos.
     groupBy: day
+    # Sens de lecture à l'ouverture : "asc" (défaut) part des plus anciennes,
+    # "desc" des plus récentes. Un séjour se raconte dans l'ordre où il a été
+    # vécu ; une bibliothèque qu'on alimente au fil de l'eau se lit par la fin.
+    # Le visiteur peut toujours rebasculer, et son navigateur s'en souvient.
+    sortOrder: asc
 
   - id: famille
     title: 'Photos de famille'
