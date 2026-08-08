@@ -97,11 +97,10 @@ page** — le retour, le titre et son sous-titre, l'activité, les contrôles de
 — puis, tout à droite, **qui la regarde** : une pastille portant l'initiale du
 compte, qui ouvre Admin, Déconnexion et Installer.
 
-| Largeur       | Ce qui est visible                                                    |
-| ------------- | --------------------------------------------------------------------- |
-| `< sm` (640)  | Retour, titre, **Activité**, un menu **Affichage**, la pastille       |
-| `sm` – `lg`   | Idem, les contrôles de vue dépliés dans la barre en **icônes seules** |
-| `≥ lg` (1024) | Idem, avec les libellés des contrôles de vue                          |
+| Largeur      | Ce qui est visible                                                    |
+| ------------ | --------------------------------------------------------------------- |
+| `< sm` (640) | Retour, titre, **Activité**, un menu **Affichage**, la pastille       |
+| `≥ sm`       | Idem, les contrôles de vue dépliés dans la barre en **icônes seules** |
 
 **`Activité` reste en ligne à toutes les largeurs**, et n'entre jamais dans un
 menu. Son icône porte la pastille des non-lus, seul signe qu'une conversation a
@@ -114,8 +113,21 @@ Les seuils sortent de mesures, pas d'un choix d'esthétique. À 393 px, cinq
 contrôles alignés poussaient les bascules de vue sur **une seconde rangée à
 elles seules** — 101 px d'en-tête, le titre d'album réduit à `D.` et le
 sous-titre à `120 éléments · févri…`. Et à 768 px, afficher les cinq libellés
-ramenait le titre de 456 à 144 px en tronquant le sous-titre : c'est pourquoi
-les libellés n'arrivent qu'à `lg`, et non à `md`.
+ramenait le titre de 456 à 144 px en tronquant le sous-titre.
+
+**Le libellé ne revient à aucune largeur** ([D90](./08-decisions.md)). Il
+réapparaissait au-delà de `lg`, où la place ne manque pourtant pas : « Plus
+récentes d'abord » y tenait à lui seul plus large que le sous-titre de l'album,
+pour un réglage qu'on touche une fois par visite. Les deux contrôles se nomment
+au survol — infobulle et nom accessible portent l'état **et** l'effet du clic,
+« Plus récentes d'abord — Afficher les plus anciennes d'abord » —, et leur état
+se lit dans le tracé : le sens de la flèche, un trait ou deux dans le
+calendrier. Sous `sm` c'est le menu qui les nomme en clair, où la place est
+justement ce qui manque le moins.
+
+Les boutons de la rangée sont **carrés de 36 px**, tous. Sans libellé, deux
+cibles de 28 px voisinaient avec le bouton d'activité, seul à sa taille, et
+l'irrégularité sautait aux yeux sur une rangée par ailleurs alignée.
 
 Le menu **Affichage** ne se rend que si la page déclare des contrôles ; sans
 cette garde, `/` et `/admin` offriraient sous `sm` une cible qui n'ouvre rien.
@@ -133,9 +145,9 @@ visionneuse, un cran au-dessus du sien.
 
 ```ts
 interface TopBarAction {
-  label: string; // l'état courant, dans la barre : « Par mois »
+  label: string; // l'état courant, dans l'infobulle : « Par mois »
   action: string; // ce que le clic fera, dans le menu : « Regrouper par jour »
-  icon: ReactNode;
+  icon: ReactNode; // le contenu d'un <svg viewBox="0 0 24 24">, pas la balise
   onSelect: () => void;
 }
 ```
@@ -144,6 +156,14 @@ C'est la seule forme qui permet au **même** contrôle de se rendre en icône da
 la barre et en ligne libellée dans le menu. Avec des `children`, la page
 fournissait du JSX dont la barre ne savait rien : le libellé ne pouvait qu'être
 masqué, et les icônes se retrouvaient anonymes.
+
+`icon` porte le **tracé** et non la balise — des `path`, des `rect` —, comme les
+actions de la visionneuse. C'est la barre qui l'enveloppe, et elle seule sait à
+quelle taille : 20 px en ligne, accordée aux autres icônes de la rangée, 16 px
+dans le menu, accordée à toutes les entrées de menu de l'application. Une page
+qui livrerait le `<svg>` tout fait imposerait la même aux deux — c'était le cas,
+et l'écart de quatre pixels avec le bouton d'activité se voyait dès que le
+libellé a cessé de le masquer.
 
 **Le compte tient dans une pastille**, à toutes les largeurs. Admin, Déconnexion
 et Installer étaient auparavant trois boutons alignés dans la barre, et
