@@ -17,6 +17,7 @@ import {
   type Point,
 } from '../lib/zoom';
 import { previewOverlay } from '../lib/preview';
+import { releaseIfDetached } from '../lib/imageRelease';
 
 /** Au-delà, on n'observe plus que le grain du capteur. */
 const MAX_SCALE = 8;
@@ -253,11 +254,15 @@ export function ZoomableImage({
    * vraiment. Une fois en place il y reste — revenir à `full` au retour au
    * cadrage ferait clignoter l'image à chaque aller-retour.
    */
+  /** Le `hd` en cours de téléchargement, pour l'abandonner en quittant la photo. */
+  const hdImageRef = useRef<HTMLImageElement | null>(null);
+
   const requestHd = useCallback((): void => {
     if (!canZoom || hdRequestedRef.current) return;
     hdRequestedRef.current = true;
 
     const image = new Image();
+    hdImageRef.current = image;
     // Chargé et décodé hors écran : le passage à la haute résolution se fait
     // sur une image prête, sans à-coup visible. Sa largeur réelle est relevée
     // ici : c'est la seule mesure qui remplace l'estimation du plafond serveur.
@@ -277,6 +282,29 @@ export function ZoomableImage({
   useEffect(() => {
     if (scale > 1 + FIT_EPSILON) requestHd();
   }, [scale, requestHd]);
+
+  /**
+   * Abandonne les rendus de la photo qu'on vient de quitter.
+   *
+   * La visionneuse remonte ce composant à chaque photo (`key={item.id}`), et
+   * retirer un `<img>` du DOM **ne coupe pas** sa requête : le navigateur mène
+   * à terme le mégaoctet d'un `full` que plus personne n'attend. Mesuré en
+   * parcourant vingt-cinq photos aux flèches puis en refermant — vingt-quatre
+   * `full` encore en vol, les soixante vignettes de la grille en file derrière
+   * elles sur les six connexions d'une origine HTTP/1.1, donc noires trente
+   * secondes durant. C'est le geste que la grille fait déjà pour ses vignettes.
+   *
+   * Le `hd` avec, quoique plus rare : il ne part qu'au zoom, mais il pèse le
+   * double, et quitter la photo juste après l'avoir agrandie est exactement ce
+   * qu'on fait quand elle ne valait pas le détour.
+   */
+  useEffect(() => {
+    const node = imageRef.current;
+    return () => {
+      releaseIfDetached(node);
+      hdImageRef.current?.removeAttribute('src');
+    };
+  }, [src]);
 
   /**
    * Pincement natif de la page, le geste de zoom spontané sur téléphone.

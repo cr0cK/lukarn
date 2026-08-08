@@ -3135,3 +3135,171 @@ n'ouvre rien.
 La pastille n'est rendue qu'une fois la session connue. Une pastille sans
 initiale le temps d'un aller-retour réseau, puis une lettre, ferait sursauter la
 barre à chaque changement de page.
+
+---
+
+## D87 — Une image qu'on quitte doit être abandonnée, sinon elle bouche la file de celles qu'on regarde
+
+**Contexte.** Des vignettes restaient noires dans la grille — parfois une
+minute, parfois assez longtemps pour qu'on les croie perdues. Ouvrir la photo
+correspondante la montrait sans attendre, ce qui écartait la piste d'un rendu
+serveur en échec : le fichier était là, c'est la vignette qui n'arrivait pas.
+
+La mesure a désigné le coupable ailleurs que dans la grille. Protocole :
+descendre dans un album, ouvrir une photo, parcourir vingt-cinq photos aux
+flèches, refermer, puis relever les requêtes en vol. Trois secondes après la
+fermeture, **89 requêtes**, en tête vingt-quatre `…/full` d'un mégaoctet
+vieilles de dix secondes. Les soixante vignettes du retour à la grille étaient
+derrière elles dans la file — les six connexions qu'un navigateur accorde à une
+origine HTTP/1.1 —, et mettaient une minute à se remplir.
+
+Ces `full` sont les photos **déjà quittées**. `ZoomableImage` est remonté à
+chaque photo (`key={item.id}`, qui remet zoom et cadrage à zéro sans les gérer
+à la main), et retirer un `<img>` du DOM **n'annule pas** son téléchargement.
+C'est le piège que la grille connaissait déjà et traitait par
+`releaseIfDetached` ; la visionneuse ne le traitait pas, alors qu'elle
+téléchargeait des fichiers cent fois plus gros.
+
+**Décision.** `releaseIfDetached` quitte `Thumb` pour `lib/imageRelease.ts` —
+deux appelants, une seule raison — et `ZoomableImage` l'appelle au démontage,
+en abandonnant du même geste le `hd` s'il était en route. Après : **dix
+requêtes en vol, zéro `full` orphelin**, et la grille se remplit en cinq
+secondes au lieu de soixante.
+
+**Écarté.** Faire du préchargement le suspect : il annulait déjà correctement,
+et `image.src = ''` comme `removeAttribute('src')` produisent tous deux un
+`net::ERR_ABORTED` — vérifié dans le navigateur avant de toucher au code.
+Écarté aussi : compter sur HTTP/2 derrière le proxy pour dissoudre la file. Le
+multiplexage lève la limite de six connexions, pas celle des quatre rendus
+simultanés du serveur (`media/semaphore.ts`), qui joue exactement le même rôle
+sur un album dont les vignettes ne sont pas encore en cache. Le vrai correctif
+est de ne pas demander ce qu'on ne regarde plus.
+
+**Conséquences.** La règle vaut désormais pour tout `<img>` que ce front monte
+puis démonte : la requête se coupe explicitement. Le contrôle sur `isConnected`
+la rend sûre sous `StrictMode`, qui rejoue montage et démontage sans toucher au
+DOM.
+
+---
+
+## D88 — La photo ouverte dit d'où elle vient, et s'en débarrasse d'une touche
+
+**Contexte.** [D84](#d84--le-contexte-descend-en-bas-de-la-visionneuse-à-toutes-les-largeurs)
+a fait descendre dans le bandeau bas tout ce qui est **écrit à la main** sur une
+photo. L'en-tête, lui, a gardé la répartition d'avant : le nom du fichier en
+gras et en tête ([D74](#d74--la-visionneuse-range-ses-actions-et-rend-à-la-photo-la-note-de-sa-journée)),
+la journée et le lieu comprimés sur la ligne du dessous. Or `IMG_0004.jpg` ne
+dit ni où, ni quand, ni quoi, et il occupait la place de la seule information
+qui manque vraiment quand on ouvre un lien partagé : de quel album vient cette
+photo.
+
+**Décision.** Les deux zones se partagent le travail selon ce qu'elles portent —
+l'en-tête **situe**, le bandeau **raconte**. En haut : **album · journée**, puis
+le lieu sur sa propre ligne. En bas, inchangé : ce que quelqu'un a écrit. Le nom
+du fichier descend en tête du panneau `i`, où `SidePanel` l'affichait déjà,
+auprès des données techniques qu'il accompagne.
+
+C'est le titre d'album qui se tronque, jamais la date. Sur un téléphone la ligne
+ne tient pas les deux, et « Allemagne – Forêt Noire · Aujo… » sacrifierait
+précisément ce qu'on cherchait à donner : la date est courte et bornée, elle
+reste entière.
+
+**`h` escamote tout l'habillage** : en-tête, flèches, bandeau de légende. Le
+raccourci ne fait pas double emploi avec le `l` de D84, et les deux portées ne se
+recouvrent pas — `l` range le texte du bas et laisse en place le bouton qui le
+rappelle, `h` ne laisse rien d'autre que la photo. Les touches ←/→ et le
+balayage continuent de fonctionner : on escamote ce qui se voit, pas ce qui se
+pilote. Un unique bouton reste au coin haut-droit, sans quoi la sortie ne
+tiendrait qu'au clavier, c'est-à-dire à rien pour qui touche l'écran.
+
+L'état n'est **pas** persisté, contrairement au masquage de la légende, et
+l'asymétrie est voulue : ranger la légende est un choix sur la façon de lire ses
+photos, escamoter tout l'habillage est un geste qu'on fait devant une image
+précise. Une visionneuse qui rouvrirait sans un seul repère laisserait qui a
+oublié le raccourci devant un écran muet.
+
+**Écarté.** Garder le nom du fichier sur une ligne de plus : l'en-tête en compte
+déjà deux, et l'allonger pour l'information la moins utile du lot est l'inverse
+du problème qu'on traite. Écarté aussi : faire du clic sur la photo la bascule
+d'habillage. Ce geste bascule déjà le zoom, et deux sens pour un même clic se
+disputeraient à chaque photo.
+
+**Conséquences.** `Lightbox` prend un `albumTitle` — la visionneuse est une vue
+à part entière, on y arrive par un lien sans avoir vu la grille. La grille, elle,
+ne change pas : son en-tête de section porte déjà la journée, elle est dans un
+album qu'on vient d'ouvrir, et rien n'y est posé sur une photo.
+
+---
+
+## D89 — La description de l'album quitte la légende : on l'a lue en entrant
+
+**Contexte.** [D84](#d84--le-contexte-descend-en-bas-de-la-visionneuse-à-toutes-les-largeurs)
+a rassemblé trois textes en bas de la visionneuse, du plus précis au plus
+général : la photo, la journée, l'album. Le raisonnement tenait pour les deux
+premiers — ils sont propres à ce qu'on regarde. Il tenait moins pour le
+troisième, et l'usage l'a montré : la description d'album est **la même sur
+toutes les photos de l'album**, et on vient de la lire en tête de grille. Une
+ligne de bandeau par photo pour un texte identique neuf cents fois, sur une
+zone dont le défaut est justement de manger le cadrage.
+
+**Décision.** La portée `album` disparaît de `captionEntries` — du type, du
+composant, et de la plomberie qui descendait `albumDescription` depuis
+`AlbumPage`. Le bandeau porte deux lignes : la photo, puis la journée.
+
+Ce que la visionneuse doit à l'album, c'est de dire **lequel**, pas de le
+raconter. Son titre est passé en tête de l'en-tête au même moment
+([D88](#d88--la-photo-ouverte-dit-doù-elle-vient-et-sen-débarrasse-dune-touche)),
+et c'est ce qui rend ce retrait sans perte : quelqu'un qui arrive par un lien
+partagé sait toujours où il est, en un mot au lieu d'un paragraphe.
+
+**Écarté.** Garder la ligne en la repliant par défaut : le bandeau se déplie
+d'un bloc, un troisième texte replié restait une ligne de plus à l'écran et un
+clic de plus à comprendre. Écarté aussi : ne l'afficher que sur la première
+photo ouverte d'une session. Un affichage qui dépend de l'ordre des gestes ne
+s'explique pas, et il n'y a rien à expliquer ici — le texte est ailleurs, à un
+endroit qu'on a traversé.
+
+**Conséquences.** La description d'album n'a plus qu'un seul lieu, la tête de
+grille — où elle prend désormais toute la largeur (D88). Un lien partagé qui
+ouvre directement une photo ne la montre donc pas ; refermer la visionneuse la
+donne, et c'est le geste qu'on fait de toute façon pour voir le reste de
+l'album.
+
+---
+
+## D90 — Les contrôles de vue se nomment au survol, à toutes les largeurs
+
+**Contexte.** [D73](#d73--la-barre-supérieure-tient-sur-une-rangée-et-déclare-ses-contrôles-au-lieu-de-les-rendre)
+a mesuré ce que coûtaient les libellés des contrôles de vue et les a repoussés
+au-delà de `lg` : à 768 px, les afficher ramenait le titre d'album de 456 à
+144 px. Au-delà de ce seuil, la place ne manquant plus, ils revenaient.
+
+Ce que la mesure ne disait pas, c'est qu'ils ne servaient pas davantage sur un
+écran large. « Plus récentes d'abord » y occupait à lui seul plus de largeur que
+le sous-titre de l'album — 900 éléments, la période couverte —, pour un réglage
+qu'on touche une fois par visite, dans une application dont tout le propos est
+que ce qui ressorte soit les photos.
+
+**Décision.** Les libellés ne reviennent à aucune largeur. Les deux contrôles se
+nomment **au survol** : l'infobulle et le nom accessible portent la même phrase,
+l'état courant puis l'effet du clic — « Plus récentes d'abord — Afficher les
+plus anciennes d'abord ». N'annoncer que l'effet, comme le faisait l'infobulle,
+laissait deviner d'où l'on part.
+
+L'état reste par ailleurs lisible dans le tracé, qui en dépend déjà : le sens de
+la flèche pour le tri, un trait ou deux dans le calendrier pour le découpage.
+Et sous `sm`, c'est le menu **Affichage** qui nomme tout en clair — là où la
+place manque le moins, une liste déroulée n'ayant pas de largeur à défendre.
+
+**Conséquences.** `TopBarAction.icon` porte désormais le **tracé** et non la
+balise `<svg>`, comme les actions de la visionneuse : c'est la barre qui
+l'enveloppe, à 20 px en ligne et 16 px dans le menu. Sans cela, un tracé livré
+tout fait imposait la même taille aux deux, et les 16 px des contrôles de vue
+juraient avec les 20 du bouton d'activité — un écart que le libellé masquait, et
+que son retrait a mis au premier plan. Les boutons de la rangée sont du même
+coup tous carrés de 36 px.
+
+**Écarté.** Raccourcir les libellés plutôt que les retirer — « Récentes », « Par
+jour ». La barre y gagnait la moitié, mais deux mots posés en permanence pour un
+réglage rarement touché restaient deux mots de trop, et il aurait fallu inventer
+un vocabulaire court là où le vocabulaire long existe déjà dans le menu.

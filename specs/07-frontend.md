@@ -97,11 +97,10 @@ page** — le retour, le titre et son sous-titre, l'activité, les contrôles de
 — puis, tout à droite, **qui la regarde** : une pastille portant l'initiale du
 compte, qui ouvre Admin, Déconnexion et Installer.
 
-| Largeur       | Ce qui est visible                                                    |
-| ------------- | --------------------------------------------------------------------- |
-| `< sm` (640)  | Retour, titre, **Activité**, un menu **Affichage**, la pastille       |
-| `sm` – `lg`   | Idem, les contrôles de vue dépliés dans la barre en **icônes seules** |
-| `≥ lg` (1024) | Idem, avec les libellés des contrôles de vue                          |
+| Largeur      | Ce qui est visible                                                    |
+| ------------ | --------------------------------------------------------------------- |
+| `< sm` (640) | Retour, titre, **Activité**, un menu **Affichage**, la pastille       |
+| `≥ sm`       | Idem, les contrôles de vue dépliés dans la barre en **icônes seules** |
 
 **`Activité` reste en ligne à toutes les largeurs**, et n'entre jamais dans un
 menu. Son icône porte la pastille des non-lus, seul signe qu'une conversation a
@@ -114,8 +113,21 @@ Les seuils sortent de mesures, pas d'un choix d'esthétique. À 393 px, cinq
 contrôles alignés poussaient les bascules de vue sur **une seconde rangée à
 elles seules** — 101 px d'en-tête, le titre d'album réduit à `D.` et le
 sous-titre à `120 éléments · févri…`. Et à 768 px, afficher les cinq libellés
-ramenait le titre de 456 à 144 px en tronquant le sous-titre : c'est pourquoi
-les libellés n'arrivent qu'à `lg`, et non à `md`.
+ramenait le titre de 456 à 144 px en tronquant le sous-titre.
+
+**Le libellé ne revient à aucune largeur** ([D90](./08-decisions.md)). Il
+réapparaissait au-delà de `lg`, où la place ne manque pourtant pas : « Plus
+récentes d'abord » y tenait à lui seul plus large que le sous-titre de l'album,
+pour un réglage qu'on touche une fois par visite. Les deux contrôles se nomment
+au survol — infobulle et nom accessible portent l'état **et** l'effet du clic,
+« Plus récentes d'abord — Afficher les plus anciennes d'abord » —, et leur état
+se lit dans le tracé : le sens de la flèche, un trait ou deux dans le
+calendrier. Sous `sm` c'est le menu qui les nomme en clair, où la place est
+justement ce qui manque le moins.
+
+Les boutons de la rangée sont **carrés de 36 px**, tous. Sans libellé, deux
+cibles de 28 px voisinaient avec le bouton d'activité, seul à sa taille, et
+l'irrégularité sautait aux yeux sur une rangée par ailleurs alignée.
 
 Le menu **Affichage** ne se rend que si la page déclare des contrôles ; sans
 cette garde, `/` et `/admin` offriraient sous `sm` une cible qui n'ouvre rien.
@@ -133,9 +145,9 @@ visionneuse, un cran au-dessus du sien.
 
 ```ts
 interface TopBarAction {
-  label: string; // l'état courant, dans la barre : « Par mois »
+  label: string; // l'état courant, dans l'infobulle : « Par mois »
   action: string; // ce que le clic fera, dans le menu : « Regrouper par jour »
-  icon: ReactNode;
+  icon: ReactNode; // le contenu d'un <svg viewBox="0 0 24 24">, pas la balise
   onSelect: () => void;
 }
 ```
@@ -144,6 +156,14 @@ C'est la seule forme qui permet au **même** contrôle de se rendre en icône da
 la barre et en ligne libellée dans le menu. Avec des `children`, la page
 fournissait du JSX dont la barre ne savait rien : le libellé ne pouvait qu'être
 masqué, et les icônes se retrouvaient anonymes.
+
+`icon` porte le **tracé** et non la balise — des `path`, des `rect` —, comme les
+actions de la visionneuse. C'est la barre qui l'enveloppe, et elle seule sait à
+quelle taille : 20 px en ligne, accordée aux autres icônes de la rangée, 16 px
+dans le menu, accordée à toutes les entrées de menu de l'application. Une page
+qui livrerait le `<svg>` tout fait imposerait la même aux deux — c'était le cas,
+et l'écart de quatre pixels avec le bouton d'activité se voyait dès que le
+libellé a cessé de le masquer.
 
 **Le compte tient dans une pastille**, à toutes les largeurs. Admin, Déconnexion
 et Installer étaient auparavant trois boutons alignés dans la barre, et
@@ -434,12 +454,24 @@ synchrones repartiraient saturer les six mêmes connexions. Le réessai remonte
 l'`<img>` par sa `key` : l'URL ne change pas, c'est le remontage qui relance la
 requête.
 
-`Thumb` efface donc son `src` au démontage (`releaseIfDetached`), seul geste qui
-coupe réellement la requête. Le contrôle sur `isConnected` n'est pas une
-précaution de style : `StrictMode` rejoue montage et démontage **sans toucher au
-DOM**, et sans lui les vignettes du premier écran perdaient leur `src` à
-l'instant où elles s'affichaient — React ne le réécrit pas, sa vue du DOM le
-croyant inchangé.
+`Thumb` efface donc son `src` au démontage (`releaseIfDetached`, dans
+`lib/imageRelease.ts`), seul geste qui coupe réellement la requête. Le contrôle
+sur `isConnected` n'est pas une précaution de style : `StrictMode` rejoue montage
+et démontage **sans toucher au DOM**, et sans lui les vignettes du premier écran
+perdaient leur `src` à l'instant où elles s'affichaient — React ne le réécrit
+pas, sa vue du DOM le croyant inchangé.
+
+**La visionneuse doit le même geste, et pour bien plus lourd** ([D87](./08-decisions.md)).
+`ZoomableImage` est remonté à chaque photo (`key={item.id}`), et son `<img>`
+sortant emporte un `full` d'environ un mégaoctet que personne n'attend plus.
+Mesuré en parcourant vingt-cinq photos aux flèches puis en refermant la
+visionneuse : **89 requêtes en vol**, dont vingt-quatre `full` orphelins, et les
+soixante vignettes de la grille derrière eux dans la file — noires pendant une
+minute, ce qui se lit comme des vignettes qui ne chargeront jamais. Le même
+`releaseIfDetached` au démontage, plus l'abandon du `hd` s'il était en route,
+ramène la mesure à **dix requêtes en vol et zéro `full` orphelin**, et la grille
+se remplit en cinq secondes. Le helper vit donc dans `lib/` et non dans `Thumb` :
+deux appelants, une seule raison.
 
 Le filtrage des sections est un balayage linéaire de `layout.sections`, refait à
 chaque événement de défilement. Le découpage par jour multiplie ce tableau, ce
@@ -508,7 +540,8 @@ d'édition pour un administrateur en découpage par jour.
 
 ### Description de l'album — `components/AlbumDescription.tsx`
 
-Elle s'affiche en tête de `<main>` en `max-w-prose`, et **s'y modifie** pour un
+Elle s'affiche en tête de `<main>`, **sur toute la largeur de la grille**, et
+**s'y modifie** pour un
 administrateur. Elle ne se saisissait que depuis `/admin`, alors que la note
 d'une journée s'écrit d'un clic dans la grille juste en dessous : deux textes
 voisins, deux gestes. Le composant supprime cette asymétrie ; `/admin` reste le
@@ -524,6 +557,12 @@ seul endroit où changer le titre, le dossier Drive ou le découpage.
   raison de plus ici : le pousser dans le flux décalerait toute la grille vers
   le bas, or `useGridLayout` ne remesure `offsetTop` que sur redimensionnement —
   un simple glissement vertical lui échapperait.
+- **Le texte n'a pas de borne de largeur, l'éditeur en garde une.** La
+  description coiffe la grille et prend sa largeur : bornée à la mesure
+  typographique habituelle, elle laissait sur un grand écran deux tiers de la
+  ligne vides au-dessus d'une grille qui, elle, va jusqu'au bord. L'éditeur est
+  un formulaire, pas un texte à lire : un champ de saisie large de deux mille
+  pixels ne se relit pas, il reste donc en `max-w-prose`.
 - **La longueur est bornée par `ALBUM_DESCRIPTION_MAX_LENGTH`**, exporté par
   `@gdv/shared` et appliqué des deux côtés. Le serveur la bornait déjà, mais par
   un littéral que le front aurait redéclaré de son côté.
@@ -556,6 +595,7 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 | Visionneuse | `F` `D`         | Plein écran · télécharger l'original                                    |
 | Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)          |
 | Visionneuse | `L`             | Masque ou rappelle le bandeau de légende (préférence retenue)           |
+| Visionneuse | `H`             | Escamote tout l'habillage : rien que la photo                           |
 | Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                        |
 | Partout     | `?`             | Aide-mémoire des raccourcis                                             |
 
@@ -633,10 +673,19 @@ secours.
 
 ## Visionneuse — `components/Lightbox.tsx`
 
-- **L'en-tête situe, le bandeau bas raconte.** En haut : le nom du fichier, puis
-  la journée et son lieu — ce qui identifie l'image et la place dans l'album. En
-  bas, dans `MediaCaption` : les trois textes écrits à la main. L'horodatage
-  exact reste, lui, dans le panneau `i`, où il vivait déjà.
+- **L'en-tête situe, le bandeau bas raconte.** En haut : l'album et la journée
+  sur une ligne, le lieu sur la suivante — ce qui place l'image. En bas, dans
+  `MediaCaption` : les textes écrits à la main. L'horodatage exact reste, lui,
+  dans le panneau `i`, où il vivait déjà.
+
+  **Le nom du fichier a quitté cette place** ([D88](./08-decisions.md)). Il
+  l'occupait en tête, en gras, alors que `IMG_0004.jpg` ne dit ni où, ni quand,
+  ni quoi — et il masquait l'album, seule information qui manque vraiment quand
+  on arrive par un lien partagé. Il n'est pas perdu : `SidePanel` le porte en
+  tête du panneau `i`, auprès des données techniques qu'il accompagne. C'est le
+  **titre d'album** qui se tronque quand la ligne est trop courte, jamais la
+  date : elle est brève et bornée, et c'est elle qu'un « Allemagne – Forêt
+  Noire · Aujo… » sacrifierait.
 
   Les libellés de journée viennent de `dayKey`, `dayLabel` et `placeLabelOf`,
   **les mêmes fonctions que la grille**. Une visionneuse qui calculerait sa date
@@ -645,9 +694,9 @@ secours.
   et plus seulement en découpage par jour ; la `queryKey` étant la même, un
   album déjà par jour ne relance aucune requête.
 
-  Tout se cale sur la **première ligne** : les retraits hauts du bloc de texte
-  et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
-  au centre des boutons d'icône, hauts de 32 puis 36 px.
+  Tout se cale sur la **première ligne** : le retrait haut du bloc de texte
+  (6 px sous `sm`, 8 px au-delà) est celui qui amène sa ligne au centre des
+  boutons d'icône, hauts de 32 puis 36 px.
 
   **La note du jour a quitté cet en-tête**, où elle vivait en `hidden md:block`.
   D70 l'y avait réservée aux écrans larges, et l'arbitrage se tenait : deux
@@ -655,12 +704,41 @@ secours.
   est déjà à l'étroit. Ce n'est plus la question posée — une légende sous la
   photo ne rogne pas le cadrage de la même façon, et elle est masquable d'un
   geste. La note descend donc dans le bandeau, à toutes les largeurs, avec les
-  deux autres textes (D84). L'en-tête ne garde que ce qui identifie et situe.
+  autres textes (D84). L'en-tête ne garde que ce qui situe.
+
+  **`h` escamote tout l'habillage** — en-tête, flèches et bandeau — pour ne
+  laisser que la photo ([D88](./08-decisions.md)). Le raccourci ne double pas le
+  `L` de la légende : `L` range le texte du bas et laisse le bouton qui le
+  rappelle, `h` ne laisse rien. Les touches ←/→ et le balayage continuent de
+  fonctionner : on escamote ce qui se voit, pas ce qui se pilote. Un unique
+  bouton reste au coin haut-droit, seule sortie possible pour qui touche
+  l'écran. L'état n'est pas retenu d'une visite à l'autre, contrairement au
+  masquage de la légende — rouvrir la visionneuse sans un seul repère laisserait
+  qui a oublié le raccourci devant un écran muet.
 
 - **La progression est une barre collée au bord haut**, sur toute la largeur et
   épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
-  Plus bas, elle traversait la photo d'un trait de couleur. Le rapport chiffré
-  la double sur la première ligne, avant les icônes.
+  Plus bas, elle traversait la photo d'un trait de couleur.
+
+  **Le rapport chiffré est juste dessous, centré, en 11 px**, et non plus à
+  l'autre bout de la rangée du titre. Deux façons de dire la même chose
+  logeaient aux deux extrémités de l'écran : le trait donnait la position sans
+  dire de combien, le chiffre le compte sans dire où. Réunis, chacun lit
+  l'autre, et la rangée rend au titre la largeur qu'un « 900 / 900 » lui prenait
+  en permanence — sur un écran de 393 px, c'est ce qui fait tenir
+  « Allemagne – Forêt Noire · 4 août 2026 » en entier.
+
+  Il est **hors du flux** (`absolute`, `top-1`), et c'est ce qui rend le
+  déplacement gratuit : dans le flux, ses quinze pixels rallongeaient d'autant
+  un en-tête posé sur la photo — soit exactement ce qu'on venait de lui faire
+  rendre. Il tient dans la bande que le dégradé occupait déjà sans rien y
+  mettre, entre le trait et la première ligne de titre : en-tête à 102 px sur
+  desktop et 92 px sur mobile, les mêmes qu'avant. `pointer-events-none`, sans
+  quoi il capterait un clic destiné au titre qu'il recouvre.
+
+  Il porte `aria-hidden` : la barre déclare déjà `aria-valuenow` et
+  `aria-valuemax`, et un lecteur d'écran annoncerait deux fois la même chose à
+  deux mots d'intervalle.
 
   Elle est comptée sur `album.itemCount` et non sur la liste paginée, qui
   grandit en cours de parcours (D69).
@@ -770,22 +848,28 @@ secours.
 
 ### Bandeau de légende — `components/MediaCaption.tsx` et `lib/caption.ts`
 
-Les trois textes écrits à la main, rassemblés en bas de la colonne photo, à
-**toutes** les largeurs. Ils vivaient à trois endroits — la description d'album
-en tête de grille, la note du jour dans son en-tête de section, et rien du tout
-sur la photo elle-même : ouvrir une image faisait perdre l'essentiel de ce qui
-l'explique (D84).
+Les textes écrits à la main, rassemblés en bas de la colonne photo, à **toutes**
+les largeurs. Ce qui explique une image se lisait ailleurs qu'elle — la note du
+jour dans l'en-tête de sa section, et rien du tout sur la photo elle-même :
+ouvrir une image faisait perdre l'essentiel de ce qui l'explique (D84).
 
 | Ligne   | Préfixe      | Style                 | Lignes visibles |
 | ------- | ------------ | --------------------- | --------------- |
 | Photo   | —            | `text-sm` · `ink-100` | 3               |
 | Journée | `Ce jour-là` | `text-xs` · `ink-300` | 2               |
-| Album   | `Album`      | `text-xs` · `ink-500` | 1               |
 
 La hiérarchie est portée par la couleur et le clampage, sans aucun titre : plus
 la portée est large, plus la ligne s'efface. La ligne de la photo est la seule
-sans préfixe — les deux autres parlent d'autre chose que de l'image qu'on
+sans préfixe — celle du dessous parle d'autre chose que de l'image qu'on
 regarde, et sans ce mot « Bonifacio, la plage » se lirait comme sa légende.
+
+**La description de l'album n'est pas une troisième ligne**
+([D89](./08-decisions.md)). Elle l'a été, et elle coûtait une ligne de bandeau
+sur chacune des neuf cents photos d'un album pour un texte lu une fois, en
+ouvrant la grille — identique d'une photo à l'autre, donc invisible à force
+d'être là. Ce que la visionneuse doit à l'album, c'est de dire **lequel**, pas
+de le raconter : son titre est dans l'en-tête (D88), et la description reste où
+on la lit, en tête de grille.
 
 `captionEntries` (`lib/caption.ts`) décide quelles lignes exister : logique pure,
 donc testable sans DOM, et c'est la seule partie qui ait des cas — texte absent,

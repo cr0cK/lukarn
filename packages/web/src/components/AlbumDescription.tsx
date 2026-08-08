@@ -40,8 +40,12 @@ export function AlbumDescription({
     // bien qu'un simple glissement vertical lui échapperait.
     <div className="relative mb-5">
       {description ? (
-        // `max-w-prose` : une ligne large de 2000 px ne se lit pas.
-        <p className="max-w-prose text-sm leading-relaxed whitespace-pre-line text-ink-300">
+        // Aucune borne de largeur : la description prend celle de la grille
+        // qu'elle coiffe. Bornée à la mesure typographique habituelle, elle
+        // laissait sur un grand écran deux tiers de la ligne vides au-dessus
+        // d'une grille qui, elle, va jusqu'au bord — un alinéa étroit posé sur
+        // une planche large, sans que rien ne justifie la rupture.
+        <p className="text-sm leading-relaxed whitespace-pre-line text-ink-300">
           {description}
           {editable && (
             <EditButton
@@ -125,6 +129,8 @@ function DescriptionEditor({
   return (
     <form
       onSubmit={submit}
+      // L'éditeur, lui, reste borné : c'est un formulaire, et un champ de
+      // saisie large de deux mille pixels ne se relit pas.
       className="absolute top-0 left-0 z-20 w-full max-w-prose space-y-2 rounded-xl border border-ink-700 bg-ink-900 p-3 shadow-xl"
     >
       <textarea

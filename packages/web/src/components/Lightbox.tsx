@@ -24,6 +24,12 @@ const PRELOAD_BEHIND = 1;
 
 interface LightboxProps {
   albumId: string;
+  /**
+   * Titre de l'album, en tête du fil de contexte. La visionneuse est une vue à
+   * part entière — on y arrive par un lien partagé, sans avoir vu la grille —
+   * et sans lui la photo ne dit plus de quel album elle vient.
+   */
+  albumTitle: string;
   items: MediaItem[];
   index: number;
   /**
@@ -34,8 +40,6 @@ interface LightboxProps {
   total: number;
   /** Journées annotées, pour porter le contexte du jour jusque dans l'image. */
   days: Map<string, AlbumDay>;
-  /** Description de l'album, troisième et dernière ligne du bandeau de légende. */
-  albumDescription: string | null;
   /** Couverture actuelle de l'album, pour signaler la photo qui l'est déjà. */
   coverId: string | null;
   /**
@@ -65,18 +69,18 @@ interface LightboxProps {
  * médias voisins sont préchargés pour que ←/→ enchaîne sans écran noir, et le
  * défilement de la page est gelé le temps de l'ouverture.
  *
- * L'en-tête annonce le fichier et la journée qui le porte ; le contexte écrit à
- * la main — description de la photo, note du jour, description de l'album —
- * descend dans le bandeau bas (`MediaCaption`), à toutes les largeurs.
- * L'horodatage exact, lui, reste dans le panneau `i` où il vivait déjà.
+ * L'en-tête **situe** la photo — l'album, la journée, le lieu ; le bandeau bas
+ * (`MediaCaption`) **la raconte** — ce que quelqu'un a écrit sur elle et sur son
+ * jour, à toutes les largeurs. L'horodatage exact, lui, reste dans le panneau
+ * `i` où il vivait déjà, avec le nom du fichier.
  */
 export function Lightbox({
   albumId,
+  albumTitle,
   items,
   index,
   total,
   days,
-  albumDescription,
   coverId,
   isAdmin,
   panel,
@@ -106,6 +110,17 @@ export function Lightbox({
    */
   const { hidden: captionHidden, setHidden: setCaptionHidden } = useCaptionHidden();
   const [editingCaption, setEditingCaption] = useState(false);
+  /**
+   * Habillage escamoté : plus d'en-tête ni de flèches, rien que la photo.
+   *
+   * Distinct du masquage de la légende, et les deux portées ne se recouvrent
+   * pas : `l` range le texte du bas, `h` range tout ce que la visionneuse pose
+   * sur l'image. L'état ne suit pas la photo, on le règle une fois pour
+   * regarder — mais il n'est pas retenu d'une visite à l'autre, contrairement à
+   * la légende : une visionneuse qui rouvrirait sans un seul repère laisserait
+   * qui a oublié le raccourci devant une image muette.
+   */
+  const [bare, setBare] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -353,6 +368,11 @@ export function Lightbox({
           event.preventDefault();
           setCaptionHidden(!captionHidden);
           break;
+        case 'h':
+        case 'H':
+          event.preventDefault();
+          setBare((value) => !value);
+          break;
         case ' ': {
           // L'espace fait défiler la page par défaut : ici il pilote la vidéo.
           event.preventDefault();
@@ -457,6 +477,19 @@ export function Lightbox({
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
+    {
+      label: "Masquer l'habillage",
+      shortcut: 'h',
+      onSelect: () => setBare(true),
+      // Un œil barré : c'est ce qui disparaît, pas ce qui reste.
+      icon: (
+        <>
+          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+          <circle cx="12" cy="12" r="2.5" />
+          <path d="m4 20 16-16" />
+        </>
+      ),
+    },
     // Réservée à l'administrateur, et jamais sur une vidéo : le pipeline ne
     // décode pas de vignette vidéo, un album en couverture resterait vide.
     //
@@ -500,10 +533,15 @@ export function Lightbox({
           `min-w-0` est indispensable — sans lui, le contenu impose sa largeur
           et c'est le panneau qui déborde de l'écran. */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Le dégradé descend plus bas qu'avant : il porte désormais deux lignes
-            de texte et la barre de progression, et un voile trop court laissait
-            la note illisible sur une photo claire. */}
-        <header className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8">
+        {/* Le voile est ce qui rend l'en-tête lisible : sans lui, du texte clair
+            sur un ciel surexposé ne se lit pas du tout. Il couvre deux lignes —
+            album et jour, puis le lieu —, symétrique de celui du bandeau bas, et
+            sa base transparente garde la transition douce plutôt que de poser
+            une barre noire au bord de la photo. */}
+        <header
+          hidden={bare}
+          className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8"
+        >
           {/* Collée au bord haut, comme une barre de chargement : elle reste
               lisible sans mordre sur la photo. Plus bas, elle traversait
               l'image — un trait de couleur au milieu d'un cadrage. */}
@@ -521,10 +559,37 @@ export function Lightbox({
             />
           </div>
 
+          {/* Le rapport chiffré **sous la barre**, centré, et non plus dans la
+              rangée du titre. Deux façons de dire la même chose logeaient à
+              deux bouts de l'écran : le trait disait la position sans dire de
+              combien, le chiffre disait le compte sans dire où. Réunis, chacun
+              lit l'autre, et la rangée du haut rend au titre la largeur qu'un
+              « 900 / 900 » lui prenait en permanence.
+
+              **Hors du flux**, et c'est le point : dans le flux il ajoutait
+              quinze pixels à un en-tête posé sur la photo, soit exactement ce
+              qu'on venait de lui faire rendre. Il tient dans la bande que le
+              dégradé occupait déjà sans rien y mettre, entre le trait et la
+              première ligne de titre — un bandeau qui coûte de la hauteur pour
+              dire « 25 sur 900 » n'en vaut pas le prix.
+
+              `pointer-events-none` : posé au-dessus de la rangée, il capterait
+              sinon un clic destiné au titre.
+
+              `aria-hidden` : la barre porte déjà `aria-valuenow` et
+              `aria-valuemax`, un lecteur d'écran annoncerait deux fois la même
+              chose à deux mots d'intervalle. */}
+          <p
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] leading-none text-ink-400 tabular-nums"
+          >
+            {index + 1} / {count}
+          </p>
+
           {/* `items-start` : tout se cale sur la **première ligne** de texte.
-              Les retraits hauts ci-dessous sont calculés pour que le nom du
-              fichier, le compteur et le centre des icônes tombent sur la même
-              horizontale — 6 px sous `sm` (bouton de 32), 8 px au-delà (36).
+              Les retraits hauts ci-dessous sont calculés pour que le titre et le
+              centre des icônes tombent sur la même horizontale — 6 px sous `sm`
+              (bouton de 32), 8 px au-delà (36).
 
               Les marges latérales tiennent compte de l'encoche : en paysage, sur
               un iPhone posé sur l'écran d'accueil, elle recouvre exactement le
@@ -550,23 +615,38 @@ export function Lightbox({
             </button>
 
             <div className="min-w-0 flex-1 pt-1.5 sm:pt-2">
-              <p className="truncate text-sm leading-5 font-semibold text-ink-100">{item.name}</p>
-              {/* La note du jour vivait ici, en `hidden md:block` (D70). Elle
-                  est descendue dans le bandeau bas, qui la montre à toutes les
-                  largeurs et à côté des deux autres textes écrits à la main
-                  (D84). L'en-tête ne garde que ce qui identifie le fichier et
-                  situe la journée. */}
-              <p className="truncate text-xs leading-4 text-ink-300">
-                {dayLabel(dayKey(item.takenAt))}
-                {dayPlace && ` · ${dayPlace}`}
-              </p>
-            </div>
+              {/* L'en-tête **situe** la photo, le bandeau bas **la raconte** :
+                  ici l'album et la journée, là ce que quelqu'un a écrit. Le nom
+                  de fichier occupait cette place en gras sans rien apprendre à
+                  personne — `IMG_0004.jpg` ne dit ni où ni quand — et masquait
+                  l'album, seule information qui manque vraiment quand on arrive
+                  par un lien partagé. Il reste en tête du panneau `i`, auprès
+                  des données techniques qu'il accompagne.
 
-            {/* Même retrait que le bloc de texte : le compteur tombe sur la
-                ligne du nom de fichier, pas entre deux lignes. */}
-            <span className="shrink-0 pt-1.5 text-xs leading-5 text-ink-300 tabular-nums sm:pt-2">
-              {index + 1} / {count}
-            </span>
+                  C'est le **titre d'album** qui se tronque, jamais la date : sur
+                  un téléphone, la ligne ne tient pas les deux, et un
+                  « Allemagne – Forêt Noire · Aujo… » sacrifie précisément ce
+                  qu'on cherchait à donner. D'où le `truncate` sur le seul album
+                  et un `shrink-0` sur la date, qui est courte et bornée. */}
+              <p className="flex min-w-0 items-baseline text-sm leading-5 font-semibold text-ink-100">
+                {albumTitle && (
+                  <>
+                    <span className="truncate">{albumTitle}</span>
+                    <span className="shrink-0 px-1.5 text-ink-400">·</span>
+                  </>
+                )}
+                <span className="shrink-0">{dayLabel(dayKey(item.takenAt))}</span>
+              </p>
+              {/* Le lieu prend sa propre ligne, la première étant désormais
+                  pleine. La note du jour, elle, est descendue dans le bandeau
+                  bas (D84) : elle est écrite à la main, comme la description de
+                  la photo, et les deux se lisent ensemble ou pas du tout. */}
+              {dayPlace && (
+                <p className="truncate text-xs leading-4 text-ink-300" title={dayPlace}>
+                  {dayPlace}
+                </p>
+              )}
+            </div>
 
             {/* Les commentaires restent **toujours** en ligne, contrairement aux
                 autres actions : leur icône porte la pastille des non-lus, et
@@ -704,8 +784,11 @@ export function Lightbox({
           )}
 
           {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
-            l'image, et les flèches tomberaient sous le curseur. */}
-          {!zoomed && (
+            l'image, et les flèches tomberaient sous le curseur. Masquées aussi
+            quand l'habillage est escamoté — « rien que la photo » ne s'arrête
+            pas au texte. Les touches ←/→ et le balayage, eux, continuent : on
+            escamote ce qui se voit, pas ce qui se pilote. */}
+          {!zoomed && !bare && (
             <NavButton
               side="left"
               disabled={index === 0}
@@ -713,13 +796,39 @@ export function Lightbox({
               label="Précédent (←)"
             />
           )}
-          {!zoomed && (
+          {!zoomed && !bare && (
             <NavButton
               side="right"
               disabled={index === items.length - 1}
               onClick={() => goTo(index + 1)}
               label="Suivant (→)"
             />
+          )}
+
+          {/* Le seul retour possible une fois tout escamoté, et il doit se
+              trouver sans le chercher : au coin, à la place qu'occupaient les
+              actions. Sans lui, la sortie ne tiendrait qu'à `h` ou à `Échap`,
+              c'est-à-dire à rien pour qui touche l'écran. */}
+          {bare && (
+            <button
+              type="button"
+              onClick={() => setBare(false)}
+              title="Afficher l'habillage (h)"
+              aria-label="Afficher l'habillage (h)"
+              className="absolute top-[calc(0.5rem_+_env(safe-area-inset-top))] right-[calc(0.5rem_+_env(safe-area-inset-right))] z-10 rounded-full bg-black/40 p-2 text-ink-200 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                <circle cx="12" cy="12" r="2.5" />
+              </svg>
+            </button>
           )}
 
           {/* Une couverture refusée — session expirée, rôle retiré entre-temps —
@@ -749,15 +858,19 @@ export function Lightbox({
             Sur une vidéo, `overlay={false}` : le bandeau entre dans le flux et
             la colonne prend d'autant — c'est le seul endroit où il pousse au
             lieu de recouvrir, les contrôles natifs de lecture vivant au bas de
-            la balise. */}
-        {!zoomed && (
+            la balise.
+
+            Escamoté aussi par `h`, et pas seulement replié comme le fait `l` :
+            « rien que la photo » ne s'arrête pas au haut de l'écran, et le
+            bouton « Afficher la légende » que `l` laisse en place est encore
+            quelque chose de posé dessus. */}
+        {!zoomed && !bare && (
           <MediaCaption
             key={item.id}
             albumId={albumId}
             mediaId={item.id}
             description={item.description}
             day={day?.description ?? null}
-            album={albumDescription}
             editable={isAdmin}
             hidden={captionHidden}
             onHiddenChange={setCaptionHidden}

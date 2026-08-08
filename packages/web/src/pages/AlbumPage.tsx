@@ -6,7 +6,7 @@ import {
   type GroupBy,
   type SortOrder,
 } from '@gdv/shared';
-import { type ReactElement, useCallback, useEffect, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
 import { AlbumDescription } from '../components/AlbumDescription';
@@ -253,9 +253,20 @@ export default function AlbumPage(): ReactElement {
     navigate,
   ]);
 
+  // Le layout est lu par une ref, et n'est **pas** une dépendance : c'est un
+  // objet neuf à chaque page chargée, à chaque redimensionnement et à chaque
+  // section repliée. En dépendance, l'effet se rejouait donc en plein
+  // défilement et ramenait la page — en douceur, ce qui la rendait d'autant
+  // plus déroutante — sur la dernière vignette sélectionnée. Mesuré : en
+  // descendant sans rien toucher, la vue repartait de y≈13000 à y≈2845 à
+  // chaque page d'items. La mise en vue suit la **sélection**, rien d'autre.
+  const gridRef = useRef(grid);
+  gridRef.current = grid;
   useEffect(() => {
-    if (!isOpen) scrollSelectionIntoView(grid.layout, grid.offsetTop, selectedIndex);
-  }, [selectedIndex, isOpen, grid.layout, grid.offsetTop]);
+    if (!isOpen) {
+      scrollSelectionIntoView(gridRef.current.layout, gridRef.current.offsetTop, selectedIndex);
+    }
+  }, [selectedIndex, isOpen]);
 
   useShortcut('?', () => setShowShortcuts(true), !isOpen && !activity.isOpen);
 
@@ -290,18 +301,13 @@ export default function AlbumPage(): ReactElement {
             label: orderLabel,
             action: orderAction,
             onSelect: toggleOrder,
+            // Le tracé seul, sans sa balise : c'est `TopBar` qui l'enveloppe, à
+            // la taille de l'endroit où il s'affiche — la barre ou son menu.
             icon: (
-              <svg
-                viewBox="0 0 24 24"
-                className="size-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
+              <>
                 <path d="M12 5v14" />
                 <path d={order === 'desc' ? 'm19 12-7 7-7-7' : 'm5 12 7-7 7 7'} />
-              </svg>
+              </>
             ),
           },
           {
@@ -309,19 +315,12 @@ export default function AlbumPage(): ReactElement {
             action: groupAction,
             onSelect: toggleGroupBy,
             icon: (
-              <svg
-                viewBox="0 0 24 24"
-                className="size-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
-              >
+              <>
                 <rect x="3" y="5" width="18" height="16" rx="2" />
                 <path d="M3 10h18M8 3v4M16 3v4" />
                 {/* Plusieurs traits pour le mois, un seul repère pour le jour. */}
                 <path d={groupBy === 'month' ? 'M7 14h10M7 17.5h6' : 'M11 14h2v3h-2z'} />
-              </svg>
+              </>
             ),
           },
         ]}
@@ -382,11 +381,11 @@ export default function AlbumPage(): ReactElement {
       {isOpen && (
         <Lightbox
           albumId={albumId}
+          albumTitle={album.data?.title ?? ''}
           items={items}
           index={openedIndex}
           total={album.data?.itemCount ?? items.length}
           days={byDay}
-          albumDescription={album.data?.description ?? null}
           coverId={album.data?.coverId ?? null}
           isAdmin={Boolean(me?.admin)}
           panel={panel}

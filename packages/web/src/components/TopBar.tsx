@@ -19,7 +19,16 @@ export interface TopBarAction {
   label: string;
   /** Ce que le déclenchement fera : « Regrouper par jour ». C'est le libellé du menu. */
   action: string;
-  /** Tracé SVG, rendu en `size-4`. */
+  /**
+   * Le **contenu** d'un `<svg viewBox="0 0 24 24">` — des `path`, des `rect` —,
+   * pas la balise. C'est la barre qui l'enveloppe, et elle seule sait à quelle
+   * taille : 20 px alignée sur les autres icônes de la rangée, 16 px dans le
+   * menu où toutes les entrées de l'application s'accordent. Une page qui
+   * livrerait le `<svg>` tout fait imposerait la même aux deux, et c'est
+   * l'écart de quatre pixels qu'on voyait dans la barre.
+   *
+   * Même convention que les actions de `Lightbox`.
+   */
   icon: ReactNode;
   onSelect: () => void;
 }
@@ -38,8 +47,17 @@ interface TopBarProps {
   feed?: { unread: number; onOpen: () => void };
 }
 
+/**
+ * Un contrôle de vue : une icône, rien d'autre.
+ *
+ * Boîte carrée de 36 px — le retrait compense les 16 px du tracé pour retomber
+ * sur celle du fil d'activité, qui en fait 20. Sans le libellé qui les
+ * allongeait, deux cibles de 28 px voisinaient avec une de 36 dans la même
+ * rangée, et l'écart devenait le seul irrégulier d'un alignement par ailleurs
+ * régulier.
+ */
 const CLASSE_BOUTON =
-  'flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 lg:px-2.5';
+  'flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100';
 
 const CLASSE_PASTILLE =
   'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-sm font-medium text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
@@ -153,7 +171,7 @@ export function TopBar({
             onClick={feed.onOpen}
             title="Activité récente"
             aria-label={feedLabel(feed.unread)}
-            className={`relative shrink-0 rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
+            className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
           >
             <svg
               viewBox="0 0 24 24"
@@ -180,23 +198,27 @@ export function TopBar({
           </button>
         )}
 
-        {/* À partir de `sm` : les contrôles de vue dans la barre. Le libellé
-            n'apparaît qu'à partir de `lg` — entre les deux, c'est le titre de
-            l'album qui payait la place. */}
+        {/* À partir de `sm` : les contrôles de vue dans la barre, **en icônes
+            seules à toutes les largeurs**. Le libellé y revenait au-delà de
+            `lg`, et « Plus récentes d'abord » y tenait à lui seul plus de place
+            que le sous-titre de l'album : deux réglages qu'on touche une fois
+            par visite pesaient en permanence autant que ce qu'ils règlent. Ils
+            se nomment au survol, comme le reste des icônes de cette interface.
+
+            L'infobulle dit l'état **et** l'effet du clic, la même phrase que le
+            nom accessible : une icône seule ne dit ni l'un ni l'autre, et
+            n'annoncer que l'effet laisserait deviner d'où l'on part. */}
         <div className="hidden shrink-0 items-center gap-1 sm:flex lg:gap-2">
           {actions.map((item) => (
             <button
               key={item.label}
               type="button"
               onClick={item.onSelect}
-              title={item.action}
-              // Le nom accessible dit l'état **et** l'effet du clic : sous `lg`
-              // il ne reste qu'une icône, qui ne dit ni l'un ni l'autre.
+              title={`${item.label} — ${item.action}`}
               aria-label={`${item.label}. ${item.action}.`}
               className={CLASSE_BOUTON}
             >
-              {item.icon}
-              <span className="hidden lg:inline">{item.label}</span>
+              <IconeAction taille="size-5">{item.icon}</IconeAction>
             </button>
           ))}
         </div>
@@ -210,7 +232,7 @@ export function TopBar({
               groupes={[
                 actions.map((item) => ({
                   label: item.action,
-                  icon: item.icon,
+                  icon: <IconeAction taille="size-4">{item.icon}</IconeAction>,
                   onSelect: item.onSelect,
                 })),
               ]}
@@ -250,6 +272,31 @@ export function TopBar({
 function feedLabel(unread: number): string {
   if (unread === 0) return 'Activité récente';
   return `Activité récente : ${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`;
+}
+
+/**
+ * Enveloppe SVG d'un contrôle de vue. Le tracé vient de la page, la taille de
+ * l'endroit où il s'affiche — c'est tout l'intérêt de ne pas recevoir la balise.
+ */
+function IconeAction({
+  taille,
+  children,
+}: {
+  taille: 'size-4' | 'size-5';
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={taille}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
 }
 
 function IconeAdmin(): ReactElement {
