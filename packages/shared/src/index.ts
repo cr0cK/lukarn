@@ -234,6 +234,68 @@ export interface LoginRequest {
   password: string;
 }
 
+/* --------------------------------------------------------------------------
+ * Appairage d'un écran sans clavier
+ *
+ * Un téléviseur n'a pas de caméra : c'est lui qui affiche le QR, et un
+ * téléphone déjà connecté qui le scanne. Deux valeurs de natures opposées
+ * circulent donc — l'une est faite pour être vue de toute la pièce, l'autre
+ * pour ne l'être jamais. Voir D260809c.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Alphabet du code affiché. Ni `I`, ni `O`, ni `0`, ni `1` : il se lit sur un
+ * écran à trois mètres, et se recopie parfois à la main sur un téléphone.
+ */
+export const USER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/** Huit caractères de `USER_CODE_ALPHABET`, soit 40 bits. */
+export const USER_CODE_LENGTH = 8;
+
+/** Ce que l'écran demandeur reçoit à l'ouverture d'une demande d'appairage. */
+export interface DevicePairingStart {
+  /** Les huit caractères affichés, sans séparateur. */
+  userCode: string;
+  /**
+   * Le secret du demandeur, rendu **une seule fois**. C'est lui qui relève la
+   * session ; il n'est jamais affiché, ni porté par le QR.
+   */
+  deviceCode: string;
+  expiresAt: string;
+  /** Cadence de sondage recommandée, en millisecondes. */
+  intervalMs: number;
+}
+
+/** Ce que le téléphone lit avant d'approuver. */
+export interface DevicePairingState {
+  userCode: string;
+  expiresAt: string;
+  /** Vrai si quelqu'un a déjà approuvé — pas une erreur, un état à annoncer. */
+  approved: boolean;
+}
+
+/**
+ * Réponse au sondage. `pending` arrive en 202, `approved` en 200 avec le cookie
+ * de session : le statut HTTP et le discriminant disent la même chose, l'un
+ * pour les intermédiaires, l'autre pour le code appelant.
+ */
+export type DevicePollResult = { status: 'pending' } | { status: 'approved'; user: SessionUser };
+
+/**
+ * Replie un code saisi ou lu dans une URL sur sa forme stockée : majuscules,
+ * sans séparateur. Sans ce repli, le code recopié depuis l'écran avec son tiret
+ * ne désignerait aucune demande.
+ */
+export function normalizeUserCode(value: string): string {
+  return value.replace(/[\s-]/g, '').toUpperCase();
+}
+
+/** Forme lisible du code, groupée par quatre : `ABCD-EFGH`. */
+export function formatUserCode(value: string): string {
+  const code = normalizeUserCode(value);
+  return code.length <= 4 ? code : `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
 export interface ItemsPage {
   items: MediaItem[];
   /** À repasser en `?cursor=` pour la page suivante. `null` = fin de l'album. */

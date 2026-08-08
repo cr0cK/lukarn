@@ -348,6 +348,40 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute l’appairage à une base en version 12 sans toucher aux sessions', () => {
+    const db = databaseAtVersion(12);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('famille', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO sessions (id, username, created_at, expires_at)
+       VALUES ('session-en-cours', 'famille', ?, '2027-01-01T00:00:00.000Z')`,
+    ).run(date);
+
+    migrate(db);
+
+    // La table arrive vide, et n'ouvre aucun accès : l'appairage délègue une
+    // clé existante, il n'en crée pas (D260809c).
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS n FROM device_pairings').get() as { n: number }).n,
+      0,
+    );
+    // Une instance en service la traverse sans que ses sessions en pâtissent.
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number }).n, 1);
+    assert.deepEqual(columns(db, 'users'), [
+      'username',
+      'password_hash',
+      'admin',
+      'all_albums',
+      'created_at',
+      'updated_at',
+    ]);
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

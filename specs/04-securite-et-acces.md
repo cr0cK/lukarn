@@ -170,6 +170,61 @@ font pas :
 
 Le coût est une lecture SQLite par requête — négligeable en process.
 
+## Appairage d'un écran sans clavier
+
+`packages/server/src/pairings.ts` pour l'état, `routes/auth.ts` pour les quatre
+routes. Le raisonnement complet est en
+[D260809c](./decisions/D260809c-approbation-ecran.md) ; ce qui suit est ce qui
+touche à l'accès.
+
+Un téléviseur n'a pas de caméra : c'est **lui** qui affiche le QR, et un
+téléphone déjà connecté qui le scanne. L'appairage délègue donc un accès
+existant, il n'en crée aucun — le mot de passe reste le seul chemin d'entrée
+d'un premier appareil.
+
+|                     | Ce que c'est                                      | Qui le voit                       |
+| ------------------- | ------------------------------------------------- | --------------------------------- |
+| `userCode`, 8 car.  | Le nom d'une demande en attente                   | L'écran, le QR, la pièce entière  |
+| `deviceCode`, 32 o. | La preuve d'être l'appareil qui a fait la demande | Le demandeur, et personne d'autre |
+
+Ce qui tient l'ensemble :
+
+- **Le code affiché ne relève rien.** Seul le `deviceCode` permet de récupérer
+  la session, et il n'apparaît jamais à l'écran. Sans cette séparation, une
+  photo du téléviseur suffirait à prendre sa place.
+- **Approuver exige une session** (`requireAuth`), et la session créée porte le
+  compte de l'approbateur, avec ses albums — réévalués à chaque requête comme
+  pour n'importe quelle session.
+- **L'identité de commentateur ne suit pas.** L'écran appairé arrive sans
+  identité, comme après une connexion au mot de passe : elle vaut pour la
+  personne, pas pour la clé d'accès. Sans cette règle, le téléviseur du salon
+  signerait du nom de celui qui a approuvé.
+- **Un `deviceCode` ne vaut qu'une session** : la demande est supprimée à la
+  relève, et un rejeu répond comme un code inconnu.
+- **Cinq minutes**, puis la demande meurt. La purge horaire de `main.ts` efface
+  ce que personne n'a relevé.
+- **Un code inconnu, expiré ou déjà pris répond la même chose** — 404
+  `unknown_code`. Distinguer « expiré » de « jamais existé » dirait à qui essaie
+  des codes au hasard lesquels ont existé.
+- **Les échecs comptent dans le throttle**, sur les trois mêmes axes que la
+  connexion (`throttle.ts`), le code tenant lieu d'identifiant. Un sondage de
+  codes est donc freiné exactement comme un sondage de mots de passe, et sans
+  compteur de plus.
+- **Le nombre de demandes en attente est borné** (`MAX_PENDING`). Au-delà, la
+  route d'ouverture purge puis répond 429 : la table est en base, et une rafale
+  de demandes ne doit pas la faire grossir sans fin. Personne n'y gagne un
+  accès — au pire l'appairage devient indisponible le temps de la rafale, ce
+  qu'une rafale obtiendrait de toute façon.
+
+**Le risque assumé** est social, et aucun secret n'y change rien : faire scanner
+à quelqu'un un QR qui n'est pas le sien lui fait donner son accès. La page
+d'approbation affiche le code, qui doit correspondre à celui de l'écran qu'on
+regarde ; la demande expire en cinq minutes ; et ce qui se donne est une clé
+d'accès partagée, révocable en changeant son mot de passe — ce qui ferme toutes
+ses sessions, y compris celle de l'écran.
+
+`packages/server/test/device-pairing.test.ts` verrouille ces points.
+
 ## Contrôle d'accès aux albums
 
 Tout part de `ConfigRepo` : `albumsFor(username)` et `canSee(username, albumId)`,

@@ -521,6 +521,38 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE albums ADD COLUMN sort_order TEXT NOT NULL DEFAULT 'asc'
     CHECK (sort_order IN ('desc', 'asc'));
   `,
+
+  // 13 — appairer un écran sans clavier, au lieu d'y taper un mot de passe.
+  //
+  // Table de passage : une ligne y vit cinq minutes au plus, et disparaît dès
+  // que l'écran demandeur a relevé sa session. Elle n'ouvre aucun accès
+  // nouveau — l'appairage délègue une clé existante, et celui qui approuve doit
+  // déjà être connecté (D260809c).
+  `
+  CREATE TABLE device_pairings (
+    -- Les huit caractères affichés sur l'écran et repris dans le QR. En clair,
+    -- et c'est délibéré : ils s'affichent dans un salon, les hacher ne
+    -- protégerait rien de ce que la pièce voit déjà.
+    user_code    TEXT PRIMARY KEY,
+    -- HMAC du deviceCode de 32 octets rendu au seul demandeur. C'est LUI qui
+    -- autorise à relever la session, jamais le code affiché : sans cette
+    -- séparation, une photo du téléviseur suffirait à prendre sa place. Haché
+    -- pour la raison de commenters.code_hash — un dump de la base ne doit pas
+    -- livrer de quoi se substituer à un écran en attente.
+    device_hash  TEXT NOT NULL UNIQUE,
+    -- Le compte de celui qui a approuvé, NULL tant que personne ne l'a fait.
+    -- CASCADE : une demande approuvée par un compte supprimé entre-temps ne
+    -- doit pas pouvoir devenir une session.
+    username     TEXT COLLATE NOCASE REFERENCES users (username) ON DELETE CASCADE,
+    approved_at  TEXT,
+    created_at   TEXT NOT NULL,
+    -- Cinq minutes. Au-delà, un code approuvable traînerait sur un écran allumé.
+    expires_at   TEXT NOT NULL
+  );
+
+  -- Sert la purge horaire, et la borne du nombre de demandes en attente.
+  CREATE INDEX idx_device_pairings_expires ON device_pairings (expires_at);
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

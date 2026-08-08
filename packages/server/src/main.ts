@@ -30,6 +30,11 @@ function startScheduler(context: AppContext): () => void {
     const forgotten = context.throttle.purge();
     if (forgotten > 0) context.log.debug(`${forgotten} compteurs de connexion oubliés`);
 
+    // Les demandes d'appairage vivent cinq minutes ; celles que personne n'a
+    // relevées ne s'effacent pas d'elles-mêmes, et la table est bornée.
+    const abandoned = context.pairings.purgeExpired();
+    if (abandoned > 0) context.log.debug(`${abandoned} demandes d'appairage expirées purgées`);
+
     // L'annonce des nouvelles photos est ici, et non à la fin d'une sync : avec
     // une synchronisation toutes les demi-heures écrivant par lots, verser deux
     // cents photos enverrait une dizaine d'emails dans la journée. Le notifieur

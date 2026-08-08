@@ -13,6 +13,7 @@ import { Mailer } from './mail.js';
 import { MediaCache } from './media/cache.js';
 import { MediaRenderer } from './media/renderer.js';
 import { AlbumNotifier } from './notifier.js';
+import { PairingStore } from './pairings.js';
 import { AlbumDayRepo, PlacesPass } from './places.js';
 import { CachePrewarmer } from './media/prewarm.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
@@ -53,6 +54,8 @@ export class AppContext {
   readonly prewarmer: CachePrewarmer;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
+  /** Demandes d'appairage en attente — un écran sans clavier, cinq minutes. */
+  readonly pairings: PairingStore;
   /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
   readonly mailer: Mailer;
   /**
@@ -80,6 +83,7 @@ export class AppContext {
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
+    this.pairings = new PairingStore(this.db, env.sessionSecret);
     this.days = new AlbumDayRepo(this.db);
     this.search = new SearchRepo(this.db);
 

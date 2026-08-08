@@ -28,12 +28,16 @@ Utilisée par le `HEALTHCHECK` du Dockerfile.
 
 ## Authentification — `routes/auth.ts`
 
-| Méthode | Chemin                  | Accès   |
-| ------- | ----------------------- | ------- |
-| POST    | `/api/auth/login`       | aucun   |
-| POST    | `/api/auth/logout`      | aucun   |
-| GET     | `/api/auth/me`          | aucun\* |
-| GET     | `/api/auth/setup-state` | aucun   |
+| Méthode | Chemin                               | Accès   |
+| ------- | ------------------------------------ | ------- |
+| POST    | `/api/auth/login`                    | aucun   |
+| POST    | `/api/auth/logout`                   | aucun   |
+| GET     | `/api/auth/me`                       | aucun\* |
+| GET     | `/api/auth/setup-state`              | aucun   |
+| POST    | `/api/auth/device/start`             | aucun   |
+| POST    | `/api/auth/device/poll`              | aucun   |
+| GET     | `/api/auth/device/:userCode`         | session |
+| POST    | `/api/auth/device/:userCode/approve` | session |
 
 **`POST /api/auth/login`** — corps `{ username, password }` (1–64 et 1–512
 caractères).
@@ -62,6 +66,56 @@ Publique, et elle doit l'être : elle est interrogée avant toute connexion. Ell
 ne divulgue rien — sur une instance sans compte il n'y a rien à protéger, et la
 réponse ne dit jamais **qui** existe, seulement s'il existe quelqu'un
 (`packages/server/test/setup-state.test.ts` le vérifie).
+
+### Appairage d'un écran — `pairings.ts`
+
+Quatre routes pour un même échange : un écran sans clavier affiche un code, un
+téléphone déjà connecté l'approuve, l'écran relève la session. Le raisonnement
+est en [D260809c](./decisions/D260809c-approbation-ecran.md), ses règles d'accès
+en [04](./04-securite-et-acces.md).
+
+**`POST /api/auth/device/start`** — sans corps. Ouvre une demande.
+
+| Code | Corps                                       | Quand                                                                     |
+| ---- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| 200  | `DevicePairingStart`                        | Succès. `{ userCode, deviceCode, expiresAt, intervalMs }`.                |
+| 429  | `too_many_pairings` + en-tête `Retry-After` | `MAX_PENDING` demandes en attente : la table est bornée, pas la patience. |
+
+`userCode` est fait pour être lu à l'écran — huit caractères d'un alphabet sans
+`I`, `O`, `0` ni `1`, servis groupés par quatre. `deviceCode` ne l'est pas : 32
+octets rendus **une seule fois**, au demandeur, et jamais affichés.
+
+**`POST /api/auth/device/poll`** — corps `{ deviceCode }`. Le sondage de
+l'écran, toutes les `intervalMs` (2 s).
+
+| Code | Corps                               | Quand                                                               |
+| ---- | ----------------------------------- | ------------------------------------------------------------------- |
+| 200  | `{ status: 'approved', user }`      | Approuvée. Pose le cookie `gdv_session` et **supprime la demande**. |
+| 202  | `{ status: 'pending' }`             | Personne n'a encore approuvé.                                       |
+| 400  | `bad_request`                       | Corps absent ou hors bornes.                                        |
+| 404  | `unknown_code`                      | Inconnue, expirée, déjà relevée, ou compte approbateur disparu.     |
+| 429  | `too_many_attempts` + `Retry-After` | Throttle, sur les trois axes de la connexion.                       |
+
+Un POST et non un GET : la réponse pose un cookie, et le `deviceCode` n'a rien à
+faire dans une URL — journaux d'accès et historique la gardent.
+
+**`GET /api/auth/device/:userCode`** — ce que le téléphone affiche avant
+d'approuver : `200 { userCode, expiresAt, approved }`, ou `404 unknown_code`. Un
+code déjà approuvé n'est pas une erreur — c'est ce qui permet de dire « c'est
+fait » plutôt que « ce code n'existe pas » à qui rouvre la page.
+
+**`POST /api/auth/device/:userCode/approve`** — sans corps.
+
+| Code | Corps            | Quand                                                                                 |
+| ---- | ---------------- | ------------------------------------------------------------------------------------- |
+| 200  | `{ ok: true }`   | Approuvée au nom de la session appelante. Rejouer la même approbation ne change rien. |
+| 401  | `unauthorized`   | Aucune session : le téléphone se connecte d'abord, et revient.                        |
+| 404  | `unknown_code`   | Inconnue ou expirée.                                                                  |
+| 409  | `already_paired` | Un **autre** compte l'a approuvée entre-temps.                                        |
+
+Aucune session n'est créée ici : l'approbation inscrit qui approuve, et c'est le
+sondage qui crée la session — sinon un écran éteint entre-temps laisserait
+derrière lui une session d'un an que personne n'a ouverte.
 
 ## Albums — `routes/albums.ts`
 
