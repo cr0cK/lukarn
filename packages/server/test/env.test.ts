@@ -91,12 +91,12 @@ describe('SMTP_URL', () => {
 
 describe('MAIL_REPLY_TO', () => {
   it('reste facultative, et vide vaut absente', () => {
-    // La distinction porte : `replyTo` à null ne pose aucun en-tête, tandis
-    // qu'un en-tête vide ferait retomber le client de messagerie sur l'adresse
-    // d'expédition — celle qui, précisément, ne reçoit rien.
-    assert.equal(loadEnv(avecSmtp('smtp://localhost:1025')).mail?.replyTo, null);
+    // La distinction porte : `null` ne pose aucun en-tête, tandis qu'un en-tête
+    // vide ferait retomber le client de messagerie sur l'adresse d'expédition —
+    // celle qui, précisément, ne reçoit rien.
+    assert.equal(loadEnv(avecSmtp('smtp://localhost:1025')).mailReplyTo, null);
     assert.equal(
-      loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: '   ' })).mail?.replyTo,
+      loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: '   ' })).mailReplyTo,
       null,
     );
   });
@@ -108,6 +108,58 @@ describe('MAIL_REPLY_TO', () => {
       env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: 'moi@exemple.fr' }),
     );
     assert.equal(config.mail?.from, 'Galerie <galerie@exemple.fr>');
-    assert.equal(config.mail?.replyTo, 'moi@exemple.fr');
+    assert.equal(config.mailReplyTo, 'moi@exemple.fr');
+  });
+
+  it('survit à un relais éteint, sans quoi on ne pourrait pas le signaler', () => {
+    // Elle vit hors de `mail` exprès : c'est ce qui permet au Mailer d'avertir
+    // qu'une adresse de réponse est configurée alors que rien ne peut partir.
+    const config = loadEnv(env({ MAIL_REPLY_TO: 'moi@exemple.fr' }));
+    assert.equal(config.mail, null);
+    assert.equal(config.mailReplyTo, 'moi@exemple.fr');
+  });
+});
+
+describe('forme des adresses', () => {
+  it('refuse ce qui trahit une faute de frappe', () => {
+    // Toutes ces valeurs partent telles quelles dans l'en-tête : le relais les
+    // rejette ou les réécrit, semaines après la mise en service, et rien ne
+    // rattache l'échec à une ligne du .env.
+    for (const valeur of [
+      'Galerie <galerie@exemple.fr', // chevron non refermé
+      'galerie(at)exemple.fr', // pas d'arobase
+      'galerie@', // pas de domaine
+      '@exemple.fr', // pas de partie locale
+      'a@b c@d', // deux adresses
+      'Galerie',
+    ]) {
+      assert.throws(
+        () => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025', MAIL_FROM: valeur })),
+        /MAIL_FROM ne porte pas d'adresse email exploitable/,
+        `« ${valeur} » doit être refusé`,
+      );
+      assert.throws(
+        () => loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: valeur })),
+        /MAIL_REPLY_TO ne porte pas d'adresse email exploitable/,
+        `« ${valeur} » doit être refusé`,
+      );
+    }
+  });
+
+  it('laisse passer les formes légitimes', () => {
+    // Un contrôle qui crie à tort finit contourné : le nom d'affichage, le
+    // « + » du sous-adressage et le relais local sont tous corrects.
+    for (const valeur of [
+      'galerie@exemple.fr',
+      'Galerie <galerie@exemple.fr>',
+      '"Galerie Photos" <galerie@exemple.fr>',
+      'prenom.nom+galerie@gmail.com',
+      'galerie@localhost',
+    ]) {
+      assert.ok(
+        loadEnv(env({ SMTP_URL: 'smtp://localhost:1025', MAIL_FROM: valeur })).mail,
+        `« ${valeur} » doit être accepté`,
+      );
+    }
   });
 });

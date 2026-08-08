@@ -92,7 +92,13 @@ export interface Env {
    */
   serviceAccount: { email: string; privateKey: string; file: string } | null;
   /** `null` si l'instance n'envoie pas d'email : les notifications s'éteignent. */
-  mail: { smtpUrl: string; from: string; replyTo: string | null } | null;
+  mail: { smtpUrl: string; from: string } | null;
+  /**
+   * Hors de `mail` à dessein : la variable est indépendante de la paire
+   * `SMTP_URL`/`MAIL_FROM`, et le rester ici permet de signaler celle qui est
+   * renseignée sans relais pour l'utiliser.
+   */
+  mailReplyTo: string | null;
   /**
    * `null` si `GEOCODING_URL` est vide : les lieux déduits de l'EXIF ne sont
    * plus nommés, le reste de l'application est inchangé.
@@ -175,6 +181,47 @@ function validateSmtpUrl(url: string): void {
   }
 }
 
+/** Une adresse : rien d'espace ni de chevron autour d'un seul `@`. */
+const ADRESSE = /^[^\s<>@]+@[^\s<>@]+$/;
+
+/**
+ * Extrait l'adresse d'un en-tête « Nom <adresse> » ou « adresse », en minuscules
+ * pour être comparable. Rend `null` si rien ne ressemble à une adresse.
+ *
+ * Volontairement permissif sur le domaine — pas de point exigé, `@localhost`
+ * sert aux essais avec un relais local — et strict sur ce qui trahit une faute
+ * de frappe : chevron non refermé, `@` absent ou en double, espace au milieu.
+ */
+export function parseMailAddress(valeur: string): string | null {
+  const brut = valeur.trim();
+
+  const chevrons = brut.match(/<([^<>]*)>$/);
+  if (chevrons) {
+    const adresse = chevrons[1]!.trim();
+    return ADRESSE.test(adresse) ? adresse.toLowerCase() : null;
+  }
+
+  // Un chevron sans sa paire : « Galerie <galerie@exemple.fr » part tel quel
+  // dans l'en-tête, et le relais le rejette ou le réécrit.
+  if (brut.includes('<') || brut.includes('>')) return null;
+
+  return ADRESSE.test(brut) ? brut.toLowerCase() : null;
+}
+
+/**
+ * Contrôle qu'une variable d'adresse est exploitable, et arrête le démarrage
+ * sinon. Même raison que pour `SMTP_URL` : un en-tête `From` mal formé ne se
+ * voit qu'au premier envoi, sous la forme d'un rejet du relais que rien ne
+ * rattache à une faute de frappe dans le `.env`.
+ */
+function validateMailAddress(variable: string, valeur: string): void {
+  if (parseMailAddress(valeur)) return;
+  throw new Error(
+    `${variable} ne porte pas d'adresse email exploitable : « ${valeur} ». Formes ` +
+      'acceptées : « galerie@exemple.fr » ou « Galerie <galerie@exemple.fr> ».',
+  );
+}
+
 /**
  * `baseDir` sert de racine aux chemins relatifs (CONFIG_PATH, DATA_DIR…).
  * C'est le répertoire du `.env` quand il y en a un, si bien qu'un script lancé
@@ -215,6 +262,10 @@ export function loadEnv(
     throw new Error('SMTP_URL et MAIL_FROM doivent être renseignés ensemble (ou aucun des deux).');
   }
   if (hasSmtp) validateSmtpUrl(env.SMTP_URL!);
+  if (hasFrom) validateMailAddress('MAIL_FROM', env.MAIL_FROM!);
+
+  const replyTo = env.MAIL_REPLY_TO?.trim() || null;
+  if (replyTo) validateMailAddress('MAIL_REPLY_TO', replyTo);
 
   const geocodingUrl = env.GEOCODING_URL.trim().replace(/\/+$/, '');
   if (geocodingUrl && !URL.canParse(geocodingUrl)) {
@@ -239,14 +290,8 @@ export function loadEnv(
     serviceAccount: env.GOOGLE_SERVICE_ACCOUNT_FILE
       ? readServiceAccount(resolve(baseDir, env.GOOGLE_SERVICE_ACCOUNT_FILE))
       : null,
-    mail:
-      hasSmtp && hasFrom
-        ? {
-            smtpUrl: env.SMTP_URL!,
-            from: env.MAIL_FROM!,
-            replyTo: env.MAIL_REPLY_TO?.trim() || null,
-          }
-        : null,
+    mail: hasSmtp && hasFrom ? { smtpUrl: env.SMTP_URL!, from: env.MAIL_FROM! } : null,
+    mailReplyTo: replyTo,
     // La politique d'usage de Nominatim exige un `User-Agent` qui identifie
     // l'appelant : l'instance publique bloque les agents anonymes, et un
     // `node-fetch` générique se ferait couper sans qu'on sache pourquoi.

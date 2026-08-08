@@ -2784,6 +2784,33 @@ personne — mais l'annonce des nouvelles photos n'a pas de commentateur
 d'origine, et surtout cela divulguerait l'adresse d'un visiteur aux autres
 destinataires.
 
+**Trois garde-fous, deux sévérités.** La ligne de partage est la même que
+partout ailleurs dans `env.ts` : ce qui est **faux** arrête le démarrage, ce qui
+est seulement **inopérant** est journalisé.
+
+- **La forme de `MAIL_FROM` et de `MAIL_REPLY_TO` est contrôlée** — `Nom
+<adresse>` ou adresse nue — et une valeur illisible arrête le démarrage. Le
+  cas visé est celui du contrôle de `SMTP_URL` (D37 pour le transport) : un
+  chevron non refermé part tel quel dans l'en-tête, le relais rejette ou
+  réécrit, et l'échec survient des semaines après la mise en service sans que
+  rien ne le rattache à une ligne du `.env`. Le contrôle reste permissif là où
+  il n'apprendrait rien : pas de point exigé dans le domaine, `@localhost` sert
+  aux essais avec un relais local.
+- **`MAIL_REPLY_TO` sans relais** est signalée en `warn`, pas refusée : couper
+  SMTP le temps d'une intervention est légitime, et faire tomber le démarrage
+  pour une variable qui n'a rien d'invalide serait disproportionné.
+- **`MAIL_REPLY_TO` égale à `MAIL_FROM`** est signalée aussi. C'est le geste
+  réflexe — recopier l'expéditeur — et il est pire que ne rien mettre : la
+  configuration paraît faite, tandis que les réponses continuent d'aller
+  précisément là où elles n'arrivaient pas. La comparaison porte sur l'adresse
+  extraite, un nom d'affichage ou une différence de casse ne masquant pas le
+  doublon.
+
+C'est aussi pourquoi `mailReplyTo` vit à la racine de `Env` et non dans `mail` :
+regroupée avec `smtpUrl` et `from`, elle disparaîtrait avec eux quand aucun
+relais n'est configuré — c'est-à-dire dans le cas précis qu'il s'agit de
+signaler.
+
 **Conséquences.** L'adresse configurée est visible de tous les destinataires,
 comme n'importe quel en-tête. Sur une instance familiale, c'est une adresse que
 les destinataires connaissent déjà ; sur une instance ouverte, mieux vaut une
