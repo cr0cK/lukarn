@@ -6,26 +6,24 @@ import {
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateAlbumDay } from '../api/hooks';
-import { placeLabelOf } from '../lib/useGridLayout';
+import { GRID_HEADER_NOTE_CLASS, placeLabelOf } from '../lib/useGridLayout';
 import type { LayoutSection } from '../lib/justify';
 
 /**
  * En-tête d'une section de la grille : la date, le nombre d'éléments, le lieu
  * si les photos le portent, la note si quelqu'un en a écrit une.
  *
- * **Sa hauteur ne se mesure pas, elle se déclare.** `computeLayout` a déjà
- * placé toutes les photos quand ce composant se monte ; s'il débordait de la
- * boîte que le layout lui a réservée, il passerait sous les vignettes. D'où
- * l'interligne fixé (`leading-5`) et une seule ligne par texte, qui valent
- * chacune exactement `GRID_HEADER_LINE_HEIGHT` — c'est l'interligne qui tient
- * le contrat, pas la taille de police, qu'on peut donc remonter sans toucher à
- * la constante.
+ * **Sa hauteur ne se mesure pas ici, elle lui est donnée.** `computeLayout` a
+ * déjà placé toutes les photos quand ce composant se monte ; s'il débordait de
+ * la boîte que le layout lui a réservée, il passerait sous les vignettes. D'où
+ * l'interligne fixé (`leading-5`) : chaque ligne vaut exactement
+ * `GRID_HEADER_LINE_HEIGHT`, et c'est l'interligne qui tient le contrat, pas la
+ * taille de police, qu'on peut donc remonter sans toucher à la constante.
  *
- * Une ligne et non deux pour la note : réserver deux lignes à un texte qui n'en
- * occupe qu'une laissait 20 px de blanc sous l'en-tête, et l'écart avant les
- * vignettes changeait d'une section à l'autre. La note entière reste lisible
- * dans l'infobulle, dans le panneau `i` et dans le bandeau de la visionneuse
- * (D85).
+ * Le lieu tient sur une ligne tronquée ; la note s'étend sur autant de lignes
+ * qu'il lui en faut, mais **celles que le layout a comptées** —
+ * `descriptionLines` vient de la même mesure que la hauteur réservée, et borne
+ * la boîte pour que les deux ne puissent pas diverger (D93).
  *
  * Même raison pour l'éditeur : il s'ouvre **en survol absolu** au lieu de
  * pousser le flux. Faire grandir l'en-tête à l'ouverture décalerait toute la
@@ -38,6 +36,8 @@ interface SectionHeaderProps {
   day: AlbumDay | undefined;
   /** Administrateur, en découpage par jour : une note appartient à une journée. */
   editable: boolean;
+  /** Lignes réservées à la note par le layout. `0` quand il n'y en a pas. */
+  descriptionLines: number;
   /** Replie ou déplie cette section. */
   onToggle: () => void;
 }
@@ -47,6 +47,7 @@ export function SectionHeader({
   section,
   day,
   editable,
+  descriptionLines,
   onToggle,
 }: SectionHeaderProps): ReactElement {
   const [editing, setEditing] = useState(false);
@@ -156,7 +157,8 @@ export function SectionHeader({
           sur le **texte** du titre, pas sur le bord du bouton. Sans ça, les
           trois lignes de l'en-tête partaient de deux abscisses différentes. Le
           chevron reste seul dans sa gouttière, comme la flèche d'une
-          arborescence. */}
+          arborescence. La note le tient de `GRID_HEADER_NOTE_CLASS`, qui doit
+          décrire sa géométrie entière pour que la sonde mesure la bonne. */}
       {place && (
         <p className="truncate pl-[22px] text-sm leading-5 text-ink-300" title={place}>
           {place}
@@ -164,11 +166,19 @@ export function SectionHeader({
       )}
 
       {day?.description && (
-        // `title` porte le texte entier : une ligne suffit à se repérer dans la
-        // grille, mais une note tronquée doit rester lisible en entier.
         <p
-          className="max-w-3xl truncate pl-[22px] text-sm leading-5 text-ink-200"
-          title={day.description}
+          className={`${GRID_HEADER_NOTE_CLASS} text-ink-200`}
+          // Le nombre de lignes est mesuré, pas estimé : la boîte devrait tomber
+          // juste sans qu'on la borne. Le `line-clamp` est là pour le jour où
+          // elle ne tomberait pas juste — une ellipse coûte moins cher que des
+          // vignettes recouvertes, et c'est le seul rattrapage possible dans un
+          // layout calculé sans DOM.
+          style={{
+            display: '-webkit-box',
+            WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: descriptionLines,
+            overflow: 'hidden',
+          }}
         >
           {day.description}
         </p>
