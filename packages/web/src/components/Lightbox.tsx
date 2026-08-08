@@ -30,6 +30,17 @@ import { ZoomableImage } from './ZoomableImage';
 const PRELOAD_AHEAD = 4;
 const PRELOAD_BEHIND = 1;
 
+/**
+ * Délai entre deux essais, tant que la version préparée d'une vidéo n'est pas
+ * là.
+ *
+ * Vingt secondes, parce qu'un transcodage dure des minutes et que la file est
+ * servie une vidéo à la fois : sonder plus souvent ne la ferait pas arriver
+ * plus tôt, et sonder plus rarement laisserait quelqu'un devant un message
+ * alors que le fichier est prêt depuis une minute.
+ */
+const PLAYABLE_RETRY_MS = 20_000;
+
 interface LightboxProps {
   albumId: string;
   /**
@@ -99,6 +110,17 @@ export function Lightbox({
 }: LightboxProps): ReactElement | null {
   const item = items[index];
   const isVideo = item?.kind === 'video';
+  /**
+   * D'où vient la vidéo. Le codec réel tranche : ce navigateur-ci prend la
+   * version préparée par le serveur, un autre qui décode l'HEVC — Safari, un
+   * iPhone — garde l'original en pleine qualité (D260809b).
+   *
+   * La détection de D98 reste le filet derrière ce choix, et pas seulement pour
+   * les vidéos sans codec connu : un navigateur qui annonce savoir lire un
+   * format sans y parvenir tombe encore dessus.
+   */
+  const transcoded =
+    isVideo && chooseVideoSource(item?.videoCodec ?? null, canPlayVideoType) === 'transcoded';
   const [zoomed, setZoomed] = useState(false);
   /**
    * Lecture impossible. Propre à la vidéo : la photo tient son propre échec
@@ -147,8 +169,51 @@ export function Lightbox({
   const { data: commentCounts } = useCommentCounts(albumId);
   const { seen, markSeen } = useSeenComments(albumId);
   const mediaId = item?.id;
+  const mediaVersion = item?.version;
   const commentTotal = (mediaId && commentCounts?.counts[mediaId]) || 0;
   const unread = unreadCount(commentTotal, mediaId ? seen[mediaId] : 0);
+
+  /**
+   * Guette la version préparée, et rend la main au lecteur dès qu'elle arrive.
+   *
+   * Sans ça, le message d'attente resterait jusqu'à ce qu'on rouvre la photo.
+   * La préparation est anticipée et finit toujours par arriver (D260809b), mais
+   * rien ne le dirait à qui est resté devant — et c'est précisément la personne
+   * qui voulait regarder cette vidéo-là.
+   *
+   * **Un octet demandé en `Range`**, plutôt qu'un rechargement de la balise :
+   * celle-ci clignoterait à chaque essai — poster, puis message — pour la même
+   * réponse. Le 404 apparaît dans la console dans les deux cas, le navigateur
+   * journalisant toute requête refusée ; c'est le seul bruit, et il dit
+   * exactement ce qui se passe. Repasser `failed` à faux remonte la balise,
+   * dont l'`autoPlay` enchaîne tout seul.
+   */
+  useEffect(() => {
+    if (!mediaId || !transcoded || !failed) return;
+
+    const controller = new AbortController();
+    const url = mediaUrl.playable(mediaId, mediaVersion);
+
+    const probe = async (): Promise<void> => {
+      try {
+        const response = await fetch(url, {
+          headers: { Range: 'bytes=0-0' },
+          signal: controller.signal,
+        });
+        if (response.ok) setFailed(false);
+      } catch {
+        // Essai interrompu, ou réseau coupé : le suivant retentera. Un échec de
+        // sondage ne doit surtout pas remplacer le message par une erreur —
+        // il n'y a rien de cassé, la vidéo n'est simplement pas encore prête.
+      }
+    };
+
+    const timer = setInterval(() => void probe(), PLAYABLE_RETRY_MS);
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [mediaId, mediaVersion, transcoded, failed]);
 
   useEffect(() => {
     // Tant que les compteurs ne sont pas là, tout vaut zéro : marquer ici
@@ -430,18 +495,6 @@ export function Lightbox({
   // `total` peut être en retard sur la liste — un album synchronisé pendant
   // qu'on le feuillette : le compteur ne doit jamais afficher « 60 / 50 ».
   const count = Math.max(total, items.length);
-
-  /**
-   * D'où vient la vidéo. Le codec réel tranche : ce navigateur-ci prend la
-   * version préparée par le serveur, un autre qui décode l'HEVC — Safari, un
-   * iPhone — garde l'original en pleine qualité (D260809b).
-   *
-   * La détection de D98 reste le filet derrière ce choix, et pas seulement pour
-   * les vidéos sans codec connu : un navigateur qui annonce savoir lire un
-   * format sans y parvenir tombe encore dessus.
-   */
-  const transcoded =
-    isVideo && chooseVideoSource(item.videoCodec, canPlayVideoType) === 'transcoded';
 
   // Les actions sont décrites une fois et rendues de deux façons : en icônes
   // alignées à partir de `sm`, en lignes libellées dans le menu en dessous. Les
@@ -762,12 +815,12 @@ export function Lightbox({
                   Sans le téléchargement, la vidéo serait simplement perdue.
 
                   Quand le codec est connu pour être illisible ici, on sait en
-                  plus qu'une version lisible est en route : le dire évite de
-                  faire revenir dans dix minutes quelqu'un qui aurait renoncé
-                  (D260809b). */}
+                  plus qu'une version lisible est en route, et la visionneuse la
+                  guette : le message annonce donc ce qui va se passer, sans
+                  demander de revenir ni de recharger (D260809b). */}
               <p className="text-xs text-ink-400">
                 {transcoded
-                  ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur — réessaie dans quelques minutes. Le fichier d'origine reste téléchargeable."
+                  ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur : elle démarrera ici dès qu'elle sera prête. Le fichier d'origine reste téléchargeable."
                   : "Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste téléchargeable."}
               </p>
               <button

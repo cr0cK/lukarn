@@ -963,10 +963,29 @@ codecs="hvc1"`, et non sur le type nu, auquel tout le monde répond `maybe`
   D98 reste le filet derrière ce choix, pour le navigateur qui annonce savoir
   lire un format sans y parvenir.
 - **Le message d'échec gagne une phrase quand le codec est connu pour être
-  illisible ici** : la version lisible est en préparation, il suffit de revenir.
-  Sans elle, `/playable` en 404 donnerait le message de D79 — « le fichier reste
-  téléchargeable » — à quelqu'un qui, dix minutes plus tard, aurait pu
-  simplement la regarder.
+  illisible ici** : une version lisible est en préparation, et elle démarrera là
+  sans rien demander. Sans elle, `/playable` en 404 donnerait le message de
+  D79 — « le fichier reste téléchargeable » — à quelqu'un qui, dix minutes plus
+  tard, aurait pu simplement la regarder.
+- **Et la visionneuse la guette.** Tant que l'attente dure, elle redemande le
+  premier octet de `/playable` toutes les vingt secondes (`Range: bytes=0-0`) ;
+  à la première réponse servie, `failed` repasse à faux, la balise est remontée
+  et son `autoPlay` enchaîne. Sans ce guet, le message resterait jusqu'à ce
+  qu'on rouvre la photo — c'est-à-dire pour toujours du point de vue de qui est
+  resté devant, et c'est précisément la personne qui voulait voir cette vidéo.
+
+  Un octet en `Range` plutôt qu'un rechargement de la balise, qui clignoterait
+  à chaque essai — poster, puis message — pour la même réponse. Le 404 se voit
+  dans la console dans les deux cas, le navigateur journalisant toute requête
+  refusée : c'est le seul bruit du guet. Vingt secondes parce qu'un transcodage
+  dure des minutes et que la file est servie une vidéo à la fois — sonder plus
+  souvent ne la ferait pas arriver plus tôt. Un sondage qui échoue ne change
+  rien à l'écran : il n'y a rien de cassé, la vidéo n'est simplement pas encore
+  prête.
+
+  Le guet ne concerne que ce cas : une réponse **servie** est `immutable`, donc
+  un navigateur qui a déjà obtenu la version ne redemande jamais rien.
+
 - Le téléchargement passe par une ancre synthétique plutôt que `window.open` :
   pas de blocage de popup, et le navigateur gère sa barre de téléchargement.
 - `SidePanel` n'est monté qu'à l'ouverture, et la position EXIF est liée vers

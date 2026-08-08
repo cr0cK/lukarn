@@ -79,7 +79,11 @@ les vidéos durent une minute.
 [06](../06-configuration-et-deploiement.md). Sans lui, le serveur démarre en le
 signalant, et les vidéos concernées gardent le message de D79.
 
-Une vidéo qui vient d'arriver n'est pas lisible tout de suite — elle le dit.
+Une vidéo qui vient d'arriver n'est pas lisible tout de suite — elle le dit, et
+**elle se met à jouer d'elle-même** quand sa version arrive : la visionneuse
+redemande le premier octet toutes les vingt secondes tant qu'elle attend. Sans
+ce guet, le 404 aurait été un cul-de-sac pour qui est resté devant, et le seul
+moyen d'en sortir aurait été de rouvrir la photo — que rien n'invitait à faire.
 
 **Ce qu'on achète est la lisibilité, pas le poids.** Le premier passage réel le
 mesure sans ambiguïté : 1,5× seulement, là où l'estimation de départ tablait sur
