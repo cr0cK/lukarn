@@ -694,9 +694,9 @@ secours.
   et plus seulement en découpage par jour ; la `queryKey` étant la même, un
   album déjà par jour ne relance aucune requête.
 
-  Tout se cale sur la **première ligne** : les retraits hauts du bloc de texte
-  et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
-  au centre des boutons d'icône, hauts de 32 puis 36 px.
+  Tout se cale sur la **première ligne** : le retrait haut du bloc de texte
+  (6 px sous `sm`, 8 px au-delà) est celui qui amène sa ligne au centre des
+  boutons d'icône, hauts de 32 puis 36 px.
 
   **La note du jour a quitté cet en-tête**, où elle vivait en `hidden md:block`.
   D70 l'y avait réservée aux écrans larges, et l'arbitrage se tenait : deux
@@ -718,8 +718,17 @@ secours.
 
 - **La progression est une barre collée au bord haut**, sur toute la largeur et
   épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
-  Plus bas, elle traversait la photo d'un trait de couleur. Le rapport chiffré
-  la double sur la première ligne, avant les icônes.
+  Plus bas, elle traversait la photo d'un trait de couleur.
+
+  **Le rapport chiffré est juste dessous, centré, en 11 px**, et non plus à
+  l'autre bout de la rangée du titre. Deux façons de dire la même chose
+  logeaient aux deux extrémités de l'écran : le trait donnait la position sans
+  dire de combien, le chiffre le compte sans dire où. Réunis, chacun lit
+  l'autre, et la rangée rend au titre la largeur qu'un « 900 / 900 » lui prenait
+  en permanence — sur un écran de 393 px, c'est ce qui fait tenir
+  « Allemagne – Forêt Noire · 4 août 2026 » en entier. Il porte `aria-hidden` :
+  la barre déclare déjà `aria-valuenow` et `aria-valuemax`, et un lecteur
+  d'écran annoncerait deux fois la même chose à deux mots d'intervalle.
 
   Elle est comptée sur `album.itemCount` et non sur la liste paginée, qui
   grandit en cours de parcours (D69).

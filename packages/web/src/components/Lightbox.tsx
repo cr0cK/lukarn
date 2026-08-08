@@ -559,10 +559,27 @@ export function Lightbox({
             />
           </div>
 
+          {/* Le rapport chiffré **sous la barre**, centré, et non plus dans la
+              rangée du titre. Deux façons de dire la même chose logeaient à
+              deux bouts de l'écran : le trait disait la position sans dire de
+              combien, le chiffre disait le compte sans dire où. Réunis, chacun
+              lit l'autre, et la rangée du haut rend au titre la largeur qu'un
+              « 900 / 900 » lui prenait en permanence.
+
+              `aria-hidden` : la barre porte déjà `aria-valuenow` et
+              `aria-valuemax`, un lecteur d'écran annoncerait deux fois la même
+              chose à deux mots d'intervalle. */}
+          <p
+            aria-hidden="true"
+            className="pt-1 text-center text-[11px] leading-none text-ink-400 tabular-nums"
+          >
+            {index + 1} / {count}
+          </p>
+
           {/* `items-start` : tout se cale sur la **première ligne** de texte.
-              Les retraits hauts ci-dessous sont calculés pour que le nom du
-              fichier, le compteur et le centre des icônes tombent sur la même
-              horizontale — 6 px sous `sm` (bouton de 32), 8 px au-delà (36).
+              Les retraits hauts ci-dessous sont calculés pour que le titre et le
+              centre des icônes tombent sur la même horizontale — 6 px sous `sm`
+              (bouton de 32), 8 px au-delà (36).
 
               Les marges latérales tiennent compte de l'encoche : en paysage, sur
               un iPhone posé sur l'écran d'accueil, elle recouvre exactement le
@@ -620,12 +637,6 @@ export function Lightbox({
                 </p>
               )}
             </div>
-
-            {/* Même retrait que le bloc de texte : le compteur tombe sur la
-                ligne du nom de fichier, pas entre deux lignes. */}
-            <span className="shrink-0 pt-1.5 text-xs leading-5 text-ink-300 tabular-nums sm:pt-2">
-              {index + 1} / {count}
-            </span>
 
             {/* Les commentaires restent **toujours** en ligne, contrairement aux
                 autres actions : leur icône porte la pastille des non-lus, et
