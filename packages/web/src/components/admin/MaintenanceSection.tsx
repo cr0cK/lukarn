@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';
 import { queryKeys } from '../../api/hooks';
 import { formatBytes } from '../../lib/format';
-import { Button, Section, type Notify } from './ui';
+import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 /** Section « Maintenance » : occupation du cache et purge. */
 export function MaintenanceSection({
@@ -27,7 +27,7 @@ export function MaintenanceSection({
 
   return (
     <Section title="Maintenance">
-      <div className="flex flex-wrap items-center gap-4 px-4 py-4">
+      <div className={`${ROW_CLASS} px-4 py-4 xl:items-center`}>
         <div className="min-w-0 flex-1">
           <p className="text-sm text-ink-200">
             Cache : {formatBytes(status.cache.bytes)} sur {formatBytes(status.cache.maxBytes)}
@@ -37,13 +37,15 @@ export function MaintenanceSection({
           </p>
         </div>
 
-        <Button
-          variant="danger"
-          onClick={() => clearCache.mutate()}
-          disabled={clearCache.isPending}
-        >
-          Vider le cache
-        </Button>
+        <div className={ROW_ACTIONS_CLASS}>
+          <Button
+            variant="danger"
+            onClick={() => clearCache.mutate()}
+            disabled={clearCache.isPending}
+          >
+            Vider le cache
+          </Button>
+        </div>
       </div>
     </Section>
   );

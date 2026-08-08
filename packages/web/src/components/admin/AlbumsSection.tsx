@@ -5,7 +5,7 @@ import { useDeleteAlbum, useResync, useUpdateAlbum } from '../../api/hooks';
 import { formatRelative } from '../../lib/format';
 import { AlbumForm } from './AlbumForm';
 import { ConfirmDialog } from './ConfirmDialog';
-import { Button, Section, type Notify } from './ui';
+import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 const SYNC_LABELS: Record<SyncStatus, { text: string; className: string }> = {
   never: { text: 'jamais synchronisé', className: 'text-ink-400' },
@@ -128,7 +128,7 @@ export function AlbumsSection({
         ) : (
           <div
             key={album.id}
-            className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-ink-850 px-4 py-3 last:border-b-0"
+            className={`${ROW_CLASS} border-b border-ink-850 px-4 py-3 last:border-b-0 xl:items-center`}
           >
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-ink-100">{album.title}</p>
@@ -149,49 +149,55 @@ export function AlbumsSection({
               )}
             </div>
 
-            <span className={`text-xs ${SYNC_LABELS[album.syncStatus].className}`}>
-              {SYNC_LABELS[album.syncStatus].text}
-            </span>
+            {/* L'état de synchronisation ouvre le groupe d'actions au lieu de
+                fermer les métadonnées : c'est lui qu'on lit avant de décider de
+                resynchroniser, et il reste ainsi contre le bouton qu'il appelle
+                une fois la ligne empilée. */}
+            <div className={ROW_ACTIONS_CLASS}>
+              <span className={`mr-1 text-xs ${SYNC_LABELS[album.syncStatus].className}`}>
+                {SYNC_LABELS[album.syncStatus].text}
+              </span>
 
-            <Button
-              onClick={() => startResync(album.id)}
-              disabled={album.syncStatus === 'running' || !driveConnected}
-              ariaLabel={`Resynchroniser l'album ${album.title}`}
-            >
-              Resynchroniser
-            </Button>
-
-            {/* Sa seule présence dit qu'une couverture a été choisie : la ligne
-                de métadonnées au-dessus est tronquée dès que la fenêtre se
-                resserre, et un indicateur qu'on ne voit pas n'en est pas un. */}
-            {album.coverId && (
               <Button
-                onClick={() => clearCover(album)}
-                disabled={update.isPending}
-                title="Une photo a été choisie comme couverture. Rendre à l'album sa photo la plus récente."
-                ariaLabel={`Rendre automatique la couverture de l'album ${album.title}`}
+                onClick={() => startResync(album.id)}
+                disabled={album.syncStatus === 'running' || !driveConnected}
+                ariaLabel={`Resynchroniser l'album ${album.title}`}
               >
-                Couverture automatique
+                Resynchroniser
               </Button>
-            )}
 
-            <Button
-              onClick={() => {
-                setCreating(false);
-                setEditing(album.id);
-              }}
-              ariaLabel={`Modifier l'album ${album.title}`}
-            >
-              Modifier
-            </Button>
+              {/* Sa seule présence dit qu'une couverture a été choisie : la ligne
+                  de métadonnées au-dessus est tronquée dès que la fenêtre se
+                  resserre, et un indicateur qu'on ne voit pas n'en est pas un. */}
+              {album.coverId && (
+                <Button
+                  onClick={() => clearCover(album)}
+                  disabled={update.isPending}
+                  title="Une photo a été choisie comme couverture. Rendre à l'album sa photo la plus récente."
+                  ariaLabel={`Rendre automatique la couverture de l'album ${album.title}`}
+                >
+                  Couverture automatique
+                </Button>
+              )}
 
-            <Button
-              variant="danger"
-              onClick={() => setConfirming(album)}
-              ariaLabel={`Supprimer l'album ${album.title}`}
-            >
-              Supprimer
-            </Button>
+              <Button
+                onClick={() => {
+                  setCreating(false);
+                  setEditing(album.id);
+                }}
+                ariaLabel={`Modifier l'album ${album.title}`}
+              >
+                Modifier
+              </Button>
+
+              <Button
+                variant="danger"
+                onClick={() => setConfirming(album)}
+                ariaLabel={`Supprimer l'album ${album.title}`}
+              >
+                Supprimer
+              </Button>
+            </div>
           </div>
         ),
       )}

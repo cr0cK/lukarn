@@ -76,6 +76,36 @@ export function Section({
   );
 }
 
+/**
+ * Ligne d'administration : ce qui décrit d'un côté, ce qui agit de l'autre.
+ *
+ * **Empilée sous `xl`, en rangée au-delà.** Côte à côte, le bloc de description
+ * est le seul des deux à pouvoir se rétracter — les boutons portent
+ * `whitespace-nowrap` — et il tombait à deux caractères suivis d'une ellipse :
+ * « 2… » pour un album, un badge « administrateur » coupé à « administ »,
+ * l'avertissement de `DriveSection` rendu à un mot par ligne. Un intitulé qu'on
+ * ne peut plus lire ne désigne plus rien.
+ *
+ * **`xl` et non `sm`**, parce que la place manque bien au-delà du téléphone :
+ * dès `md`, `AdminNav` passe en colonne et prélève 12 rem sur la largeur, si
+ * bien qu'une rangée à quatre boutons rognait encore le titre à 1024 px.
+ * Empiler y coûte une hauteur de bouton et rend le titre entier ; les largeurs
+ * de portable courantes (1280, 1366, 1440) restent au-dessus du seuil et
+ * gardent la rangée.
+ *
+ * L'alignement vertical reste à la charge de chaque appelant : une ligne de
+ * liste centre ses deux blocs, un commentaire de plusieurs lignes garde son
+ * bouton en haut. Deux classes concurrentes dans la même chaîne se
+ * départageraient sur l'ordre de la feuille de style, pas sur celui écrit ici.
+ */
+export const ROW_CLASS = 'flex flex-col gap-3 xl:flex-row xl:gap-4';
+
+/**
+ * Groupe d'actions d'une ligne. Sur une rangée il se colle à droite ; empilé,
+ * il garde la largeur de ses boutons au lieu de s'étirer sur toute la ligne.
+ */
+export const ROW_ACTIONS_CLASS = 'flex flex-wrap items-center gap-2 xl:justify-end';
+
 const CONTROL_CLASS =
   'w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60 read-only:text-ink-300';
 
