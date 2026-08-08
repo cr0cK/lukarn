@@ -7,6 +7,7 @@ import {
   ALL_ALBUMS,
   DEFAULT_GROUP_BY,
   EMAIL_MAX_LENGTH,
+  MEDIA_DESCRIPTION_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
@@ -119,6 +120,11 @@ const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'attendu : AAAA-MM-JJ');
 const updateAlbumDaySchema = z.object({
   description: z.string().max(ALBUM_DAY_DESCRIPTION_MAX_LENGTH).nullable().optional(),
   place: z.string().max(ALBUM_DAY_PLACE_MAX_LENGTH).nullable().optional(),
+});
+
+/** Légende d'une photo. Chaîne vide acceptée et ramenée à `null`, comme ci-dessus. */
+const updateMediaSchema = z.object({
+  description: z.string().max(MEDIA_DESCRIPTION_MAX_LENGTH).nullable().optional(),
 });
 
 const updateSettingsSchema = z.object({
@@ -558,6 +564,31 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) return badRequest(reply, parsed.error);
 
       return reply.send(context.days.upsertNote(params.id, day.data, parsed.data));
+    });
+
+    /**
+     * Décrit une photo. Même partage que la journée ci-dessus : on écrit la
+     * légende depuis la galerie, en voyant l'image et ses voisines, mais la
+     * mutation reste sous `/api/admin` — le seul préfixe qui réponde 403,
+     * l'invariant « refus d'accès = 404 » tenant partout ailleurs (D50).
+     */
+    app.patch('/albums/:id/items/:mediaId', async (request, reply) => {
+      const params = request.params as { id: string; mediaId: string };
+      if (!context.findAlbum(params.id)) {
+        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+      }
+
+      const parsed = updateMediaSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error);
+
+      // Décrire une photo absente de l'index laisserait un texte que rien
+      // n'affiche jamais, sur un identifiant peut-être inventé.
+      const item = context.media.setDescription(params.id, params.mediaId, parsed.data);
+      if (!item) {
+        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+      }
+
+      return reply.send(item);
     });
 
     /* ------------------------------------------------------------ réglages */

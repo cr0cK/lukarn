@@ -288,10 +288,36 @@ async function main(): Promise<void> {
     days.upsertNote(firstAlbum.id, day, { description: notes[index]! }),
   );
 
+  // Trois photos décrites, sur les plus récentes du premier album : sans elles,
+  // le bandeau de légende de la visionneuse ne se voit pas hors compte Drive.
+  // La troisième est longue exprès — c'est le cas qui montre le clampage et le
+  // dépliement au clic.
+  const legendes = [
+    'Léa saute du ponton, troisième essai — le seul où elle ne se pince pas le nez.',
+    'La lumière de 19 h sur les falaises, dix minutes avant qu’elle tombe.',
+    'Le petit port au réveil, avant que les bateaux de promenade ne sortent. ' +
+      'On y était seuls, avec le patron du café qui rentrait ses chaises de la veille ' +
+      'et deux pêcheurs qui remontaient des filets vides en discutant du vent. ' +
+      'C’est la photo que tout le monde a redemandée en rentrant.',
+  ];
+  const decrites = (
+    db
+      .prepare(
+        `SELECT id FROM media WHERE album_id = ? AND kind = 'photo'
+          ORDER BY taken_at DESC, id DESC LIMIT ?`,
+      )
+      .all(firstAlbum.id, legendes.length) as { id: string }[]
+  ).map((row) => row.id);
+
+  decrites.forEach((mediaId, index) =>
+    media.setDescription(firstAlbum.id, mediaId, { description: legendes[index]! }),
+  );
+
   db.close();
   console.log(
     `\n${created} médias créés, ${named} lieux nommés, ${recent.length} journées annotées ` +
-      `sur "${firstAlbum.id}". Cache : ${cache.stats().entryCount} entrées.`,
+      `et ${decrites.length} photos décrites sur "${firstAlbum.id}". ` +
+      `Cache : ${cache.stats().entryCount} entrées.`,
   );
   console.log(
     'Regarde un album réglé sur « par jour » : les lieux et les notes ne s’affichent que là.',

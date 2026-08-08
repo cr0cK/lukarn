@@ -228,16 +228,21 @@ l'absence de décalage. Un en-tête qui déciderait de sa taille une fois monté
 passerait sous ses propres photos, et il n'y aurait rien pour le rattraper.
 
 `useGridLayout(items, groupBy, days)` construit la fonction :
-`GRID_HEADER_HEIGHT + (lieu ? 20 : 0) + (note ? 40 : 0)`. Elle rend `undefined`
-en découpage par mois — une note appartient à une journée, et il n'y aurait pas
-d'en-tête à qui l'accrocher parmi les trente. Le layout reste pur et testable
-sans DOM, ce qui est l'invariant de `justify.test.ts`.
+`GRID_HEADER_HEIGHT + (lieu ? 20 : 0) + (note ? 20 : 0)`, ces 20 px étant
+`GRID_HEADER_LINE_HEIGHT`. Elle rend `undefined` en découpage par mois — une
+note appartient à une journée, et il n'y aurait pas d'en-tête à qui l'accrocher
+parmi les trente. Le layout reste pur et testable sans DOM, ce qui est
+l'invariant de `justify.test.ts`.
 
-Ces deux constantes sont un **contrat avec `SectionHeader`**, qui doit tenir
-dedans : d'où les hauteurs de ligne fixées explicitement (`leading-5`) et la
-note clampée à deux lignes. C'est l'**interligne** qui tient le contrat, jamais
-la taille de police : remonter le lieu et la note de 13 à 14 px ne touche à
-aucune des deux constantes tant que `leading-5` reste.
+Cette constante est un **contrat avec `SectionHeader`**, qui doit tenir dedans :
+d'où l'interligne fixé explicitement (`leading-5`) et **une seule ligne
+tronquée par texte**. C'est l'**interligne** qui tient le contrat, jamais la
+taille de police : remonter le lieu et la note de 13 à 14 px n'y touche pas tant
+que `leading-5` reste.
+
+Une constante et non deux, et c'est ce qui rend le contrat exact plutôt
+qu'approché : réserver deux lignes à la note revenait à parier sur sa longueur,
+et le pari perdu laissait 20 px de blanc sous l'en-tête (D85).
 
 ### Sections repliées
 
@@ -440,8 +445,12 @@ d'édition pour un administrateur en découpage par jour.
   hauteur **et avec la visionneuse** : un lieu compté d'un côté et pas affiché
   de l'autre laisserait un blanc, l'inverse ferait déborder l'en-tête sur les
   photos.
-- **La note est clampée à deux lignes**, son texte entier restant dans `title`.
-  Une hauteur libre rendrait le layout dépendant d'une mesure DOM (D49).
+- **Le lieu et la note tiennent chacun sur une ligne tronquée**, valant chacun
+  `GRID_HEADER_LINE_HEIGHT` (20 px). Une hauteur libre rendrait le layout
+  dépendant d'une mesure DOM (D49) ; deux lignes réservées à la note en
+  laissaient une vide dès qu'elle était courte, et l'écart avant les vignettes
+  passait de 12 à 32 px d'une section à l'autre (D85). Le texte entier reste
+  dans `title`, dans le panneau `i` et dans le bandeau de la visionneuse.
 - **L'éditeur s'ouvre en survol absolu**, jamais en poussant le flux : faire
   grandir l'en-tête à l'ouverture décalerait toute la suite de l'album sous le
   curseur. Le champ « lieu » prend `autoPlaces` en `placeholder` — on voit
@@ -504,10 +513,11 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 | Grille      | `Échap`         | Revenir à la liste des albums                                           |
 | Visionneuse | `← →`           | Média précédent / suivant                                               |
 | Visionneuse | `Début` / `Fin` | Premier / dernier                                                       |
-| Visionneuse | `Échap`         | Défait une couche à la fois : zoom, puis panneau, puis fermeture        |
+| Visionneuse | `Échap`         | Défait une couche à la fois : éditeur, zoom, panneau, puis fermeture    |
 | Visionneuse | `I` `C`         | Ouvre le panneau sur l'onglet Infos · Commentaires (referme si déjà là) |
 | Visionneuse | `F` `D`         | Plein écran · télécharger l'original                                    |
 | Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)          |
+| Visionneuse | `L`             | Masque ou rappelle le bandeau de légende (préférence retenue)           |
 | Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                        |
 | Partout     | `?`             | Aide-mémoire des raccourcis                                             |
 
@@ -575,11 +585,10 @@ focus ou qu'un modificateur est enfoncé.
 
 ## Visionneuse — `components/Lightbox.tsx`
 
-- **L'en-tête empile trois informations de portée décroissante** : le nom du
-  fichier, puis la journée et son lieu, puis la note. Ouvrir une photo faisait
-  jusque-là perdre ce que son en-tête de section disait, alors que c'est lui qui
-  donne son sens à l'image. L'horodatage exact reste, lui, dans le panneau `i`,
-  où il vivait déjà.
+- **L'en-tête situe, le bandeau bas raconte.** En haut : le nom du fichier, puis
+  la journée et son lieu — ce qui identifie l'image et la place dans l'album. En
+  bas, dans `MediaCaption` : les trois textes écrits à la main. L'horodatage
+  exact reste, lui, dans le panneau `i`, où il vivait déjà.
 
   Les libellés de journée viennent de `dayKey`, `dayLabel` et `placeLabelOf`,
   **les mêmes fonctions que la grille**. Une visionneuse qui calculerait sa date
@@ -592,14 +601,13 @@ focus ou qu'un modificateur est enfoncé.
   et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
   au centre des boutons d'icône, hauts de 32 puis 36 px.
 
-  **La note est la seule des trois à disparaître sous `md`** (D70) : elle prend
-  deux lignes sur la photo, la grille la montre à toutes les largeurs, et `md`
-  est le seuil où `SidePanel` se docke — la frontière déjà tracée entre la mise
-  en page d'un téléphone et le reste. Le nom du fichier, la journée et son lieu
-  restent, eux, à toutes les largeurs : c'est ce qu'on perd en ouvrant une photo
-  depuis la grille, et le masquer annulerait la raison d'avoir porté ce contexte
-  jusqu'ici. Conséquence à connaître : sur mobile la note n'est plus atteignable
-  que depuis la grille, `ExifPanel` ne la portant pas.
+  **La note du jour a quitté cet en-tête**, où elle vivait en `hidden md:block`.
+  D70 l'y avait réservée aux écrans larges, et l'arbitrage se tenait : deux
+  lignes de plus **empilées au-dessus de l'image**, sur un téléphone où la photo
+  est déjà à l'étroit. Ce n'est plus la question posée — une légende sous la
+  photo ne rogne pas le cadrage de la même façon, et elle est masquable d'un
+  geste. La note descend donc dans le bandeau, à toutes les largeurs, avec les
+  deux autres textes (D84). L'en-tête ne garde que ce qui identifie et situe.
 
 - **La progression est une barre collée au bord haut**, sur toute la largeur et
   épaisse de 2 px — une barre de chargement, pas un élément de mise en page.
@@ -669,18 +677,20 @@ focus ou qu'un modificateur est enfoncé.
   73, et `1 / 120 · 7 août 2026 à 17:21` affiché **en entier** sur un écran de
   393 px.
 - **Le panneau Infos s'ouvre sur la journée**, avant l'EXIF : « Lieu » puis
-  « Ce jour-là ». C'est le seul texte écrit par un humain sur cette photo, et il
-  dit ce que ni le nom de fichier ni l'EXIF ne diront jamais. **La note a donc
-  deux chemins, selon la largeur** : l'en-tête de la visionneuse à partir de
-  `md`, le panneau Infos partout ([D70](./08-decisions.md)). Les deux lignes
-  d'`ExifPanel` sont **sans condition de largeur**, et c'est ce qui les rend
-  indispensables : sous `md`, elles sont le seul accès à la note depuis une
-  photo ouverte. `place` prime sur `autoPlaces`, comme partout ailleurs
+  « Ce jour-là ». `place` prime sur `autoPlaces`, comme partout ailleurs
   ([D51](./08-decisions.md)).
+
+  Ces deux lignes sont désormais une **redite** du bandeau, et elles restent :
+  ce sont les seules à rendre le texte **entier** sans dépliement, et les
+  supprimer ferait perdre l'accès à la note depuis un panneau déjà ouvert. Ce
+  qui a changé, c'est leur statut — elles étaient le recours de D70 sous `md`,
+  elles sont maintenant un confort.
+
   `useAlbumDays` est appelé dès que la grille est par jour **ou** que la
   visionneuse est ouverte (`groupBy === 'day' || isOpen`) : la note doit être là
   quelle que soit la façon dont on est arrivé sur la photo, sans payer la
   requête pour une grille par mois qu'on se contente de faire défiler.
+
 - **`goTo` ignore l'index déjà affiché.** `Début` sur le premier média, `Fin` sur
   le dernier, une flèche à une extrémité : la cible est l'index courant, aucun
   élément n'est remonté, donc aucun `loadeddata` n'est émis. Remettre `loaded` à
@@ -709,6 +719,69 @@ focus ou qu'un modificateur est enfoncé.
 
   Sous `md` la question ne se pose pas — le panneau occupe tout l'écran, il n'y a
   pas de dehors.
+
+### Bandeau de légende — `components/MediaCaption.tsx` et `lib/caption.ts`
+
+Les trois textes écrits à la main, rassemblés en bas de la colonne photo, à
+**toutes** les largeurs. Ils vivaient à trois endroits — la description d'album
+en tête de grille, la note du jour dans son en-tête de section, et rien du tout
+sur la photo elle-même : ouvrir une image faisait perdre l'essentiel de ce qui
+l'explique (D84).
+
+| Ligne   | Préfixe      | Style                 | Lignes visibles |
+| ------- | ------------ | --------------------- | --------------- |
+| Photo   | —            | `text-sm` · `ink-100` | 3               |
+| Journée | `Ce jour-là` | `text-xs` · `ink-300` | 2               |
+| Album   | `Album`      | `text-xs` · `ink-500` | 1               |
+
+La hiérarchie est portée par la couleur et le clampage, sans aucun titre : plus
+la portée est large, plus la ligne s'efface. La ligne de la photo est la seule
+sans préfixe — les deux autres parlent d'autre chose que de l'image qu'on
+regarde, et sans ce mot « Bonifacio, la plage » se lirait comme sa légende.
+
+`captionEntries` (`lib/caption.ts`) décide quelles lignes exister : logique pure,
+donc testable sans DOM, et c'est la seule partie qui ait des cas — texte absent,
+texte blanc, tout vide, ordre des portées (`packages/web/test/caption.test.ts`).
+
+Ce qu'il faut savoir du composant :
+
+- **Le dégradé est celui de l'en-tête, retourné**
+  (`from-black/85 via-black/55 to-transparent`), et les marges latérales
+  tiennent compte de `env(safe-area-inset-*)` : en paysage, l'encoche mord sur
+  ce bord-là aussi. Elles sont posées sur le contenu et non sur l'enveloppe,
+  pour que le dégradé aille jusqu'au bord de l'écran.
+- **Un clic sur le texte déplie** (`line-clamp-none`, `max-h-[50vh]` et
+  défilement propre), avec `aria-expanded`. Le dépliement **n'est pas**
+  persisté : il répond à un texte précis, pas au suivant — la visionneuse
+  remonte le composant à chaque photo (`key`), ce qui le remet à plat.
+- **Le chevron masque tout le bandeau**, et cette préférence-là **est** retenue
+  (`localStorage`, `useCaptionHidden`) : c'est un choix sur la façon de regarder
+  ses photos, qu'on ne veut pas refaire à chaque ouverture. Masqué, un bouton
+  fantôme « Afficher la légende (l) » reste en bas à droite — un état caché sans
+  porte de sortie est un piège. La touche `L` fait la même chose au clavier.
+- **Le crayon et le « + Décrire cette photo » sont réservés à l'administrateur**,
+  avec les affordances d'`AlbumDescription` : éditeur en surimpression,
+  `z-20`, compteur de caractères, Annuler / Enregistrer. Deux façons de corriger
+  un texte dans la même application se remarqueraient tout de suite.
+- **Le bandeau est masqué pendant le zoom**, comme les flèches de navigation :
+  le doigt y sert à se déplacer dans l'image.
+- **Sur une vidéo, il pousse au lieu de recouvrir** (`overlay={false}`, donc dans
+  le flux). C'est le seul endroit où il le fait : les contrôles natifs de
+  lecture vivent au bas de la balise, et sur une vidéo portrait qui remplit
+  l'écran, un bandeau posé dessus rendrait play/pause et la barre de progression
+  intouchables.
+- **L'ouverture de l'éditeur est pilotée par `Lightbox`**, pas par le composant :
+  c'est la visionneuse qui écoute `Échap`, et cette touche doit refermer le champ
+  **avant** le zoom, le panneau et la fermeture. Sans cette couche, `Échap`
+  depuis la saisie fermerait la visionneuse par-dessus un texte non enregistré.
+- L'alerte d'échec de couverture est remontée de `bottom-6` à `bottom-28` :
+  posée plus bas, elle passait sous le bandeau qu'elle doit interrompre.
+
+`useUpdateMedia` (`api/hooks.ts`) **corrige le cache au lieu de l'invalider** :
+`setQueriesData` sur le préfixe `['items', albumId]` remplace l'item dans les
+pages des **deux** sens de tri, et `setQueryData` met à jour le détail. Invalider
+relancerait toutes les pages accumulées de la requête infinie — après cinq pages
+de défilement, écrire une légende redemanderait mille lignes (la leçon de D67).
 
 ### Pastille des commentaires — `lib/seenComments.ts`
 
