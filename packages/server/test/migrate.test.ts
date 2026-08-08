@@ -258,6 +258,30 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute l’aperçu Drive à une base en version 9 sans en promettre un', () => {
+    const db = databaseAtVersion(9);
+    db.prepare(
+      `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
+       VALUES ('vacances', 'clip', 'VID.mp4', 'video/mp4', 'video',
+               '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+    ).run();
+
+    migrate(db);
+
+    const clip = db.prepare('SELECT * FROM media WHERE id = ?').get('clip') as {
+      name: string;
+      has_thumbnail: number;
+    };
+    // La vidéo garde sa ligne, et la colonne arrive à 0 : seule la
+    // synchronisation suivante sait si Drive a un aperçu de ce fichier.
+    // Prétendre que oui ferait demander à toute la vidéothèque, dès le premier
+    // chargement de grille, une image qui n'existe peut-être pas (D92).
+    assert.equal(clip.name, 'VID.mp4');
+    assert.equal(clip.has_thumbnail, 0);
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

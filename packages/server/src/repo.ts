@@ -36,6 +36,7 @@ interface MediaRow {
   lat: number | null;
   lng: number | null;
   md5: string | null;
+  has_thumbnail: number;
   description: string | null;
 }
 
@@ -62,6 +63,11 @@ export interface MediaUpsert {
   lat: number | null;
   lng: number | null;
   md5: string | null;
+  /**
+   * `hasThumbnail` de Drive : l'aperçu de la première seconde existe-t-il ?
+   * Toujours vrai sur une photo, pas toujours sur une vidéo.
+   */
+  hasThumbnail: boolean;
 }
 
 function toItem(row: MediaRow): MediaItem {
@@ -77,6 +83,10 @@ function toItem(row: MediaRow): MediaItem {
     takenAt: row.taken_at,
     takenAtFromExif: row.taken_at_from_exif === 1,
     durationMs: row.duration_ms,
+    // Une photo a toujours un rendu — le pipeline la décode, et retombe sur
+    // l'aperçu Drive quand libvips ne la lit pas. Une vidéo n'en a un que si
+    // Drive a produit le sien : rien n'est décodé localement (D92).
+    hasPreview: row.kind === 'photo' || row.has_thumbnail === 1,
     // Huit caractères de l'empreinte suffisent à distinguer deux versions
     // successives d'un même fichier ; l'URL reste lisible.
     version: row.md5 ? row.md5.slice(0, 8) : null,
@@ -295,10 +305,11 @@ export class MediaRepo {
     kind: MediaKind;
     size: number | null;
     md5: string | null;
+    hasThumbnail: boolean;
   } | null {
     const row = this.db
       .prepare(
-        `SELECT name, mime_type, kind, size, md5 FROM media
+        `SELECT name, mime_type, kind, size, md5, has_thumbnail FROM media
          WHERE id = ?
          ORDER BY seen_at DESC, album_id ASC
          LIMIT 1`,
@@ -310,6 +321,7 @@ export class MediaRepo {
           kind: MediaKind;
           size: number | null;
           md5: string | null;
+          has_thumbnail: number;
         }
       | undefined;
     if (!row) return null;
@@ -319,6 +331,7 @@ export class MediaRepo {
       kind: row.kind,
       size: row.size,
       md5: row.md5,
+      hasThumbnail: row.has_thumbnail === 1,
     };
   }
 
@@ -348,8 +361,10 @@ export class MediaRepo {
       )
       .get(albumId) as { count: number; newest: string | null; oldest: string | null };
 
-    // `kind = 'photo'` des deux côtés : jamais une vidéo, dont la vignette
-    // demanderait un décodage que le pipeline ne fait pas.
+    // `kind = 'photo'` des deux côtés : jamais une vidéo. Elle a bien une
+    // vignette depuis D92, mais celle-ci appartient à Drive et peut manquer —
+    // or la couverture est la seule image dont l'absence se voit depuis la page
+    // d'accueil, sans repli.
     const chosen = chosenId
       ? (this.db
           .prepare(`SELECT id, md5 FROM media WHERE album_id = ? AND id = ? AND kind = 'photo'`)
@@ -427,12 +442,12 @@ export class MediaRepo {
          album_id, id, name, mime_type, kind, size, width, height,
          taken_at, taken_at_from_exif, modified_time, duration_ms,
          camera_make, camera_model, lens, iso_speed, exposure_time,
-         aperture, focal_length, lat, lng, md5, seen_at, added_at
+         aperture, focal_length, lat, lng, md5, has_thumbnail, seen_at, added_at
        ) VALUES (
          @albumId, @id, @name, @mimeType, @kind, @size, @width, @height,
          @takenAt, @takenAtFromExif, @modifiedTime, @durationMs,
          @cameraMake, @cameraModel, @lens, @isoSpeed, @exposureTime,
-         @aperture, @focalLength, @lat, @lng, @md5, @seenAt, @seenAt
+         @aperture, @focalLength, @lat, @lng, @md5, @hasThumbnail, @seenAt, @seenAt
        )
        ON CONFLICT (album_id, id) DO UPDATE SET
          name = excluded.name,
@@ -455,6 +470,7 @@ export class MediaRepo {
          lat = excluded.lat,
          lng = excluded.lng,
          md5 = excluded.md5,
+         has_thumbnail = excluded.has_thumbnail,
          seen_at = excluded.seen_at
          -- added_at est délibérément absent de ce DO UPDATE : c'est la date
          -- d'entrée dans l'index, elle ne bouge plus. La réécrire ferait
@@ -467,6 +483,7 @@ export class MediaRepo {
         statement.run({
           ...item,
           takenAtFromExif: item.takenAtFromExif ? 1 : 0,
+          hasThumbnail: item.hasThumbnail ? 1 : 0,
           seenAt,
         });
       }

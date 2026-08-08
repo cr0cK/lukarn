@@ -110,8 +110,13 @@ Points qui comptent :
   l'empreinte du contenu, et le dérivé étant servi en `immutable` pendant un an,
   c'est la seule chose qui invalide le cache navigateur quand on remplace un
   fichier Drive sous le même identifiant.
-- Les vidéos n'ont pas de rendu : `serveRendered` répond **415** si
-  `kind !== 'photo'`. La grille affiche une tuile sobre avec la durée.
+- **Une vidéo a une vignette, jamais de plein écran.** `serveRendered` la rend
+  depuis l'aperçu Drive (`render(..., 'poster')`), qui court-circuite le
+  téléchargement de l'original : aucun octet de vidéo n'est décodé ici (D92).
+  Deux 415 subsistent, précis : `full` ou `hd` sur une vidéo — il n'y a rien à
+  agrandir —, et `thumb` sur une vidéo dont `has_thumbnail` vaut 0, Drive n'ayant
+  pas d'image à donner. La grille garde alors la tuile sobre, et le badge de
+  lecture avec la durée dans tous les cas.
 
 ## Cheminement d'une synchronisation
 
@@ -143,8 +148,11 @@ suivie du préchauffage des vignettes (D58).
    par un raccourci n'est jamais indexé. `visited` sert donc au cas où le même
    dossier est atteint par deux chemins, pas à casser un cycle de raccourcis.
 5. `files.list` par pages de 1000, en ne demandant que
-   `id, name, mimeType, size, modifiedTime, md5Checksum, imageMediaMetadata,
-videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
+   `id, name, mimeType, size, modifiedTime, md5Checksum, hasThumbnail,
+imageMediaMetadata, videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
+   `hasThumbnail` dit si Drive a produit un aperçu du fichier : c'est ce qui
+   permet à une vidéo d'avoir une vignette de grille (D92), et le stocker évite
+   d'en redemander une à chaque chargement de page quand il n'y en a pas.
 6. `toUpsert` normalise : `classify` écarte tout ce qui n'est ni image ni vidéo,
    `parseExifTime` lit `YYYY:MM:DD HH:MM:SS`, et les dimensions sont inversées
    quand `imageMediaMetadata.rotation` est impair — sinon les portraits

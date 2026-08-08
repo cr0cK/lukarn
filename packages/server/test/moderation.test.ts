@@ -58,6 +58,7 @@ function media(albumId: string, id: string): MediaUpsert {
     lat: null,
     lng: null,
     md5: null,
+    hasThumbnail: true,
   };
 }
 

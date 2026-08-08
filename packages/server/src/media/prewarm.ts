@@ -4,7 +4,8 @@ import type { MediaCache } from './cache.js';
 import type { MediaRenderer, Variant } from './renderer.js';
 
 /**
- * Prépare les vignettes des photos avant qu'on ouvre l'album.
+ * Prépare les vignettes avant qu'on ouvre l'album — les photos, et les vidéos
+ * dont Drive donne un aperçu.
  *
  * Le constat qui le justifie : une photo jamais rendue coûte environ deux
  * secondes au premier affichage — presque tout en téléchargement de l'original
@@ -123,16 +124,25 @@ export class CachePrewarmer {
             const { bytes, maxBytes } = this.deps.cache.stats();
             if (bytes >= maxBytes * BUDGET_RATIO) return { ...result, stopped: 'budget' };
 
-            // Les vidéos n'ont pas de rendu image.
-            if (item.kind !== 'photo') continue;
+            // Une vidéo dont Drive n'a pas d'aperçu n'a pas d'image à
+            // préparer — c'est le 415 que la route rend. `hasPreview` est
+            // toujours vrai sur une photo : ce test n'en écarte aucune.
+            if (!item.hasPreview) continue;
 
             const md5 = this.deps.media.getFileMeta(item.id)?.md5 ?? null;
 
             try {
               // Les trois tailles en un seul téléchargement : c'est lui qui
               // coûte, et le payer une fois par variante triplerait le trafic
-              // Drive comme la durée du passage.
-              const produits = await this.deps.renderer.prepare(item.id, VARIANTS, md5);
+              // Drive comme la durée du passage. Une vidéo coûte d'ailleurs
+              // moins cher qu'une photo : son aperçu Drive pèse quelques
+              // dizaines de Ko, contre plusieurs Mo pour un original.
+              const produits = await this.deps.renderer.prepare(
+                item.id,
+                VARIANTS,
+                md5,
+                item.kind === 'video' ? 'poster' : 'original',
+              );
               // Rien à faire : la photo était déjà prête, et la pause n'a pas
               // lieu d'être — sans quoi un album déjà préchauffé occuperait un
               // passage entier à ne rien faire, une seconde par photo.

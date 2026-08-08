@@ -25,6 +25,7 @@ function photo(id: string, takenAt: string, width = 4000, height = 3000): MediaI
     name: `${id}.jpg`,
     kind: 'photo',
     mimeType: 'image/jpeg',
+    hasPreview: true,
     size: 1000,
     width,
     height,

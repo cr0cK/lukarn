@@ -58,6 +58,16 @@ const HD_QUALITY = 88;
 
 export type Variant = { kind: 'thumb'; size: ThumbSize } | { kind: 'full' } | { kind: 'hd' };
 
+/**
+ * D'où part le rendu.
+ *
+ * `original` décode le fichier Drive, et ne retombe sur l'aperçu Drive que
+ * lorsque ce décodage échoue. `poster` va directement à l'aperçu : c'est le cas
+ * d'une vidéo, dont rien n'est décodé ici (D92). Sans ce court-circuit, un MP4
+ * de 48 Mo serait tiré puis jeté par `MAX_DECODE_BYTES` à chaque vignette.
+ */
+export type RenderOrigin = 'original' | 'poster';
+
 export interface Rendered {
   path: string;
   contentType: string;
@@ -146,7 +156,12 @@ export class MediaRenderer {
   }
 
   /** `md5` vient de l'index et identifie la version du fichier. */
-  async render(fileId: string, variant: Variant, md5: string | null = null): Promise<Rendered> {
+  async render(
+    fileId: string,
+    variant: Variant,
+    md5: string | null = null,
+    origin: RenderOrigin = 'original',
+  ): Promise<Rendered> {
     const key = variantKey(fileId, variant, md5);
 
     const cached = this.cache.hit(key);
@@ -160,7 +175,9 @@ export class MediaRenderer {
     const pending = this.inFlight.get(key);
     if (pending) return pending;
 
-    const task = this.produce(fileId, variant, key).finally(() => this.inFlight.delete(key));
+    const task = this.produce(fileId, variant, key, origin).finally(() =>
+      this.inFlight.delete(key),
+    );
     this.inFlight.set(key, task);
     return task;
   }
@@ -182,7 +199,12 @@ export class MediaRenderer {
    * sur une même vignette, pas à un passage de fond qui ne visite chaque photo
    * qu'une fois.
    */
-  async prepare(fileId: string, variants: Variant[], md5: string | null = null): Promise<number> {
+  async prepare(
+    fileId: string,
+    variants: Variant[],
+    md5: string | null = null,
+    origin: RenderOrigin = 'original',
+  ): Promise<number> {
     // Du plus grand au plus petit : c'est la première variante qui sert de
     // gabarit au repli sur l'aperçu Drive, et `withoutEnlargement` figerait
     // toutes les suivantes à sa taille si on commençait par la plus petite.
@@ -196,12 +218,18 @@ export class MediaRenderer {
       let source: Buffer;
 
       try {
-        source = await this.download(fileId);
+        source =
+          origin === 'poster'
+            ? await this.downloadDriveThumbnail(fileId, premiere)
+            : await this.download(fileId);
         // Cette première conversion vaut test de décodage : c'est elle qui fait
         // basculer sur l'aperçu Drive les formats que la libvips embarquée ne
         // lit pas, exactement comme pour un rendu demandé.
         await this.store(fileId, premiere, md5, source);
       } catch (error) {
+        // En `poster`, l'aperçu Drive **est** le repli : le redemander après un
+        // échec ne ferait que rejouer le même appel.
+        if (origin === 'poster') throw error;
         this.log.warn(
           `Décodage local impossible pour ${fileId} (${(error as Error).message}), ` +
             'repli sur la vignette Drive',
@@ -222,8 +250,13 @@ export class MediaRenderer {
    * décodage : c'est l'original en mémoire qui pèse le plus lourd, et attendre
    * son tour avec neuf mégaoctets déjà chargés reviendrait à ne rien limiter.
    */
-  private produce(fileId: string, variant: Variant, key: string): Promise<Rendered> {
-    return this.places.run(() => this.build(fileId, variant, key));
+  private produce(
+    fileId: string,
+    variant: Variant,
+    key: string,
+    origin: RenderOrigin,
+  ): Promise<Rendered> {
+    return this.places.run(() => this.build(fileId, variant, key, origin));
   }
 
   private async store(
@@ -235,12 +268,24 @@ export class MediaRenderer {
     await this.cache.put(variantKey(fileId, variant, md5), await this.transform(source, variant));
   }
 
-  private async build(fileId: string, variant: Variant, key: string): Promise<Rendered> {
+  private async build(
+    fileId: string,
+    variant: Variant,
+    key: string,
+    origin: RenderOrigin,
+  ): Promise<Rendered> {
     let output: Buffer;
 
     try {
-      output = await this.transform(await this.download(fileId), variant);
+      const source =
+        origin === 'poster'
+          ? await this.downloadDriveThumbnail(fileId, variant)
+          : await this.download(fileId);
+      output = await this.transform(source, variant);
     } catch (error) {
+      // En `poster`, l'aperçu Drive **est** la source : il n'y a pas d'original
+      // à décoder derrière, et le repli n'aurait rien de plus à tenter.
+      if (origin === 'poster') throw error;
       // Formats que la libvips embarquée ne décode pas (certains HEIC, RAW
       // propriétaires), et fichiers trop lourds pour être tenus en mémoire :
       // Drive sait produire un aperçu JPEG, on repart de là. Le téléchargement

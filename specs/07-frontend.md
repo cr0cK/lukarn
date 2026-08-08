@@ -574,8 +574,14 @@ carte ne peut pas changer de hauteur selon l'album sans trouer la grille.
 des tailles 320/640/1280 qui couvre la largeur d'affichage multipliée par le DPR
 (plafonné à 2). Demander systématiquement du 1280 saturerait la bande passante
 sur une grille de 200 vignettes. Les vignettes du premier écran sont en
-`loading="eager"`, le reste en `lazy`. Les vidéos n'ont pas de rendu serveur : une
-tuile sobre avec l'icône de lecture et la durée.
+`loading="eager"`, le reste en `lazy`.
+
+L'`<img>` s'affiche dès que `item.hasPreview`, vidéos comprises : leur aperçu
+vient de Drive ([08](./08-decisions.md), D92). Le badge de lecture se pose alors
+**par-dessus** l'image — disque `bg-black/45`, triangle blanc, centré — parce
+que c'est lui qui distingue une vidéo d'une photo au premier coup d'œil et qu'il
+doit rester lisible sur un aperçu clair. Sans aperçu, ou après les réessais, la
+tuile sobre reste. La durée est affichée dans les deux cas.
 
 ## Navigation clavier
 
@@ -748,8 +754,10 @@ secours.
 - Prend le focus à l'ouverture et le **rend à l'élément précédent** à la
   fermeture.
 - Vidéos : `<video controls autoPlay playsInline>` sur `/original`, seek natif
-  par `Range`. `error` remplace la balise par un message et un bouton de
-  téléchargement — le fichier reste lisible ailleurs même quand ce navigateur
+  par `Range`, et `poster` sur la vignette 1280 quand `item.hasPreview` — celle
+  de la grille, donc déjà en cache disque et souvent en cache navigateur : le
+  rectangle noir de l'attente disparaît sans une requête de plus (D92). `error`
+  remplace la balise par un message et un bouton de téléchargement — le fichier reste lisible ailleurs même quand ce navigateur
   n'en décode pas le codec ([D79](./08-decisions.md)). Photos :
   `ZoomableImage`, remonté à chaque photo (`key={item.id}`) pour réinitialiser
   zoom et cadrage sans les remettre à zéro à la main.
@@ -777,8 +785,9 @@ secours.
   qu'il annonce. `1 / 120` précède la date parce que c'est le repère utile quand
   on parcourt un album, et donc la date qui doit être rognée la première.
 - **Définir comme couverture** n'apparaît que pour un administrateur, et jamais
-  sur une vidéo : le pipeline n'en rend pas de vignette, l'album resterait sans
-  image. C'est la seule action sans raccourci clavier — on la fait une fois par
+  sur une vidéo : son aperçu appartient à Drive (D92) et peut manquer, or la
+  couverture est la seule image dont l'absence se voit depuis la page d'accueil,
+  sans repli. C'est la seule action sans raccourci clavier — on la fait une fois par
   album, et l'aide-mémoire `?` s'adresse à tout le monde. Elle s'allume quand la
   photo ouverte est déjà la couverture ; la resélectionner n'est pas un clic
   perdu : elle l'était peut-être par défaut, et cela la fixe. Le retour à
@@ -1084,8 +1093,9 @@ Les invariants sont vérifiés sur toutes les combinaisons
 indicateur, un échec exclut les deux, et l'indicateur apparaît même sans aperçu à
 montrer — dimensions inconnues, un écran noir muet serait pire.
 
-**La visionneuse y passe aussi la vidéo**, avec `measured: false` — une vidéo n'a
-pas de rendu serveur, donc rien à montrer en attendant. C'est ce qui la fait
+**La visionneuse y passe aussi la vidéo**, avec `measured: false` — l'attente
+d'une vidéo est couverte par le `poster` de la balise, que le navigateur affiche
+lui-même (D92) : il n'y a rien à superposer. C'est ce qui la fait
 sortir de l'attente quand la lecture échoue : la branche vidéo décidait sa
 combinaison en JSX, sans écouter `error` sur la balise, et un codec non décodé ou
 un Drive indisponible laissait le tourniquet tourner indéfiniment sur un écran

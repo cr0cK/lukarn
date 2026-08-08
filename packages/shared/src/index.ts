@@ -65,6 +65,17 @@ export interface MediaItem {
   /** Durée en millisecondes, uniquement pour les vidéos. */
   durationMs: number | null;
   /**
+   * `true` si le serveur sait rendre une image de ce média — la photo
+   * elle-même, ou l'aperçu que Drive produit de la première seconde d'une
+   * vidéo (D92).
+   *
+   * Une question, pas une colonne : le front demande une vignette « quand il y
+   * en a une » sans rejouer de son côté la règle photo/vidéo, ni sans réclamer
+   * une image vouée au 415 sur la vidéo dont Drive n'a pas d'aperçu — codec
+   * exotique, ou fichier déposé trop récemment pour avoir été traité.
+   */
+  hasPreview: boolean;
+  /**
    * Empreinte courte du contenu, à joindre aux URLs média.
    *
    * Drive conserve l'identifiant d'un fichier dont on remplace le contenu par

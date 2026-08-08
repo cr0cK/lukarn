@@ -36,6 +36,7 @@ function media(albumId: string, id: string, takenAt: string): MediaUpsert {
     lat: null,
     lng: null,
     md5: null,
+    hasThumbnail: true,
   };
 }
 
@@ -232,7 +233,7 @@ describe('statistiques', () => {
     assert.equal(repo.stats('prive', 'v00').coverId, 'shared');
   });
 
-  it('refuse une vidéo en couverture, dont le pipeline ne rend pas de vignette', () => {
+  it('refuse une vidéo en couverture, dont l’aperçu appartient à Drive', () => {
     // Album à part : ajouter une ligne à « prive » fausserait les comptes des
     // tests de nettoyage, qui s'appuient sur son contenu exact.
     const clip: MediaUpsert = {
@@ -244,9 +245,46 @@ describe('statistiques', () => {
     repo.upsertMany([media('fete', 'f01', '2024-07-06T10:00:00.000Z'), clip], seenAt);
 
     // Ni par choix explicite — la route le refuse déjà, le dépôt ne s'y fie
-    // pas — ni par le repli, où elle serait pourtant la plus récente.
+    // pas — ni par le repli, où elle serait pourtant la plus récente. La vidéo
+    // a bien une vignette depuis D92, mais celle-ci vient de Drive et peut
+    // manquer : la couverture est la seule image dont l'absence se voit depuis
+    // la page d'accueil, sans repli.
     assert.equal(repo.stats('fete', 'clip').coverId, 'f01');
     assert.equal(repo.stats('fete').coverId, 'f01');
+  });
+});
+
+describe('aperçu disponible', () => {
+  it('est toujours vrai pour une photo, et suit Drive pour une vidéo', () => {
+    const avec: MediaUpsert = {
+      ...media('apercus', 'clip-avec', '2024-08-02T10:00:00.000Z'),
+      kind: 'video',
+      mimeType: 'video/mp4',
+      durationMs: 4000,
+      hasThumbnail: true,
+    };
+    const sans: MediaUpsert = { ...avec, id: 'clip-sans', hasThumbnail: false };
+    repo.upsertMany([media('apercus', 'photo', '2024-08-03T10:00:00.000Z'), avec, sans], seenAt);
+
+    const apercus = new Map(
+      repo.listItems('apercus', 10, null).items.map((item) => [item.id, item.hasPreview]),
+    );
+
+    // Le front demande une image « quand il y en a une » : la règle
+    // photo/vidéo ne se rejoue pas de son côté. Une photo en a toujours une —
+    // le pipeline la décode, ou retombe sur l'aperçu Drive ; une vidéo n'en a
+    // une que si Drive l'a produite.
+    assert.equal(apercus.get('photo'), true);
+    assert.equal(apercus.get('clip-avec'), true);
+    assert.equal(apercus.get('clip-sans'), false);
+  });
+
+  it('suit la colonne jusque dans le détail d’un média', () => {
+    // Même règle sur `/items/:mediaId` que dans la liste : la visionneuse pose
+    // son `poster` à partir de l'item, et les deux chemins ne doivent pas
+    // diverger.
+    assert.equal(repo.getDetail('apercus', 'clip-sans')?.hasPreview, false);
+    assert.equal(repo.getDetail('apercus', 'clip-avec')?.hasPreview, true);
   });
 });
 

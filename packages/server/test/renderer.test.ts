@@ -156,6 +156,82 @@ describe('préparation de plusieurs variantes', () => {
   });
 });
 
+describe('aperçu d’une vidéo', () => {
+  it('part de l’aperçu Drive sans jamais toucher à l’original', async () => {
+    const cache = new MediaCache(join(root, 'poster'), 1024 * 1024);
+    await cache.load();
+
+    const urls: string[] = [];
+    const drive = {
+      fetchFile: () => {
+        throw new Error('un original de vidéo ne doit jamais être téléchargé');
+      },
+      guard: <T>(operation: () => Promise<T>) => operation(),
+      api: () => ({
+        files: {
+          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Vid=s220' } }),
+        },
+      }),
+      fetchAuthorized: (url: string) => {
+        urls.push(url);
+        return Promise.resolve(new Response(jpeg));
+      },
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const produits = await renderer.prepare(
+      'clip',
+      [
+        { kind: 'thumb', size: 320 },
+        { kind: 'thumb', size: 640 },
+        { kind: 'thumb', size: 1280 },
+      ],
+      'empreinte',
+      'poster',
+    );
+
+    // Tirer un MP4 de 48 Mo pour le voir refuser par `MAX_DECODE_BYTES` à
+    // chaque vignette est précisément ce que le court-circuit évite : aucun
+    // octet de vidéo ne transite, et D6 (pas de transcodage) reste intact.
+    assert.deepEqual(urls, ['https://lh3.exemple/Vid=s1280'], 'un seul aperçu, à la plus grande');
+    assert.equal(produits, 3);
+
+    for (const size of [320, 640, 1280] as const) {
+      assert.ok(renderer.isCached('clip', { kind: 'thumb', size }, 'empreinte'));
+    }
+  });
+
+  it('sert un rendu isolé depuis l’aperçu, sans repli à retenter', async () => {
+    const cache = new MediaCache(join(root, 'poster-unique'), 1024 * 1024);
+    await cache.load();
+
+    let apercus = 0;
+    const drive = {
+      fetchFile: () => {
+        throw new Error('un original de vidéo ne doit jamais être téléchargé');
+      },
+      guard: <T>(operation: () => Promise<T>) => operation(),
+      api: () => ({
+        files: {
+          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Vid=s220' } }),
+        },
+      }),
+      fetchAuthorized: () => {
+        apercus++;
+        return Promise.resolve(new Response(jpeg));
+      },
+    } as unknown as DriveService;
+
+    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const rendu = await renderer.render('clip', { kind: 'thumb', size: 320 }, null, 'poster');
+
+    assert.ok(existsSync(rendu.path));
+    // L'aperçu Drive **est** la source : le repli du chemin photo n'a rien de
+    // plus à tenter, et le redemander ne ferait que rejouer le même appel.
+    assert.equal(apercus, 1);
+  });
+});
+
 describe('repli sur la vignette Drive', () => {
   it('demande la vignette avec le jeton OAuth et non en anonyme', async () => {
     const cache = new MediaCache(join(root, 'repli'), 1024 * 1024);

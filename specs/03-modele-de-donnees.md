@@ -32,9 +32,18 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 | `duration_ms`                                                                                                 | INTEGER | Vidéos seulement.                                                                                                                     |
 | `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, tous nullables. Servis par `/items/:mediaId`.                                                                                   |
 | `md5`                                                                                                         | TEXT    | Empreinte du contenu Drive. Porte la version des URL et des ETag, et entre dans la clé du cache disque.                               |
+| `has_thumbnail`                                                                                               | INTEGER | 0/1, le `hasThumbnail` de Drive. Décide si une **vidéo** a une vignette — voir ci-dessous.                                            |
 | `seen_at`                                                                                                     | TEXT    | Estampille de la sync qui a vu cette ligne. Base de `deleteStale`.                                                                    |
 | `added_at`                                                                                                    | TEXT    | Date d'entrée dans l'index, écrite à l'INSERT et **jamais** par le `ON CONFLICT DO UPDATE`. Nullable — voir ci-dessous.               |
 | **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                      |
+
+**`has_thumbnail` ne concerne en pratique que les vidéos.** Une photo a toujours
+un rendu — le pipeline la décode, et retombe sur l'aperçu Drive quand libvips ne
+la lit pas —, alors qu'une vidéo n'a d'image que si Drive en a produit une de sa
+première seconde ([08](./08-decisions.md), D92). L'API n'expose donc pas la
+colonne mais la question qu'on lui pose : `MediaItem.hasPreview`, calculé par
+`toItem()` comme `kind === 'photo' || has_thumbnail === 1`. Le front demande une
+vignette « quand il y en a une », sans rejouer la règle photo/vidéo de son côté.
 
 **`added_at` n'est pas un doublon de `seen_at`, et c'est le piège de la
 migration 5.** `seen_at` est réécrit sur _tous_ les médias à chaque passage de
@@ -120,8 +129,10 @@ Quatre choix à connaître :
   synchronisation ne la revoit pas, et une cascade effacerait le choix sur un
   contretemps d'indexation. Le repli est donc calculé à la lecture, par
   `MediaRepo.stats(albumId, chosenId)` : la photo absente de l'index — ou qui est
-  une vidéo, dont le pipeline ne rend pas de vignette — rend la main à la plus
-  récente sans que le choix soit effacé. L'identifiant Drive étant stable, la
+  une vidéo — rend la main à la plus récente sans que le choix soit effacé. Une
+  vidéo a bien une vignette depuis D92, mais celle-ci appartient à Drive et peut
+  manquer, or la couverture est la seule image dont l'absence se voit depuis la
+  page d'accueil, sans repli. L'identifiant Drive étant stable, la
   photo revenue redevient la couverture.
 - **`created_at` / `updated_at` sont écrits par l'application**, en ISO 8601 UTC,
   pas par `CURRENT_TIMESTAMP` qui produirait un format différent du reste de la
@@ -364,7 +375,8 @@ tous deux déclarés) produit **deux lignes**. Conséquences à connaître :
 - Les métadonnées sont dupliquées. C'est assumé : le coût est quelques centaines
   d'octets par doublon, contre une jointure sur chaque lecture de grille.
 - `getDetail(albumId, id)` est scopé à un album ; `getFileMeta(id)` ne l'est pas.
-  Les colonnes qu'il lit (`name`, `mime_type`, `kind`, `size`, `md5`) décrivent
+  Les colonnes qu'il lit (`name`, `mime_type`, `kind`, `size`, `md5`,
+  `has_thumbnail`) décrivent
   le fichier et non son appartenance — mais les deux lignes peuvent **diverger**
   entre deux synchronisations, l'une ayant déjà vu une nouvelle version du
   fichier que l'autre ignore encore. La sélection est donc
@@ -414,6 +426,15 @@ reparte de la même étape.
 | 7       | `album_days`, `geo_places` ; `albums.group_by`.                                     |
 | 8       | `albums.cover_media_id`.                                                            |
 | 9       | `media_notes` : une description par photo, portée par l'album.                      |
+| 10      | `media.has_thumbnail` : Drive a-t-il un aperçu de ce fichier ?                      |
+
+La migration 10 ajoute l'aperçu Drive, à `0` sur toutes les lignes existantes.
+Le défaut est délibéré : une vidéo déjà indexée n'affiche pas d'aperçu tant que
+la synchronisation suivante n'a pas rempli la colonne — seule la sync sait ce
+que Drive possède. Un manque passager vaut mieux qu'une rafale de requêtes
+vouées au 415, une par vidéo et par chargement de grille.
+`packages/server/test/migrate.test.ts` le vérifie sur une base en version 9
+portant une vidéo : la ligne survit, la colonne arrive à 0.
 
 La migration 9 ajoute la table des descriptions de photo. Elle arrive vide et ne
 touche à aucune ligne existante : une instance en service la traverse sans rien
