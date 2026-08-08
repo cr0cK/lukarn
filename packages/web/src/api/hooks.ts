@@ -6,15 +6,19 @@ import {
   type FeedComment,
   type IdentityRequest,
   type CreateUserRequest,
+  type ItemsPage,
+  type MediaDetail,
   type MediaItem,
   type SortOrder,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
+  type UpdateMediaRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
 } from '@gdv/shared';
 import {
+  type InfiniteData,
   type QueryClient,
   keepPreviousData,
   useInfiniteQuery,
@@ -189,6 +193,47 @@ export function useMediaDetail(albumId: string, mediaId: string | null) {
     queryFn: () => api.itemDetail(albumId, mediaId!),
     enabled: mediaId !== null,
     staleTime: Infinity,
+  });
+}
+
+/**
+ * Décrit une photo. La réponse **corrige le cache** au lieu de l'invalider, et
+ * c'est indispensable ici : la liste des items est une requête infinie, dont
+ * une invalidation relance **toutes** les pages accumulées — après cinq pages
+ * de défilement, écrire une légende redemanderait mille lignes (la leçon de
+ * D67).
+ *
+ * `setQueriesData` sur le préfixe `['items', albumId]` et non sur une clé
+ * exacte : les deux sens de tri sont deux entrées de cache distinctes, et celui
+ * qu'on ne regarde pas porte la même photo — inverser le tri après coup
+ * montrerait sinon l'ancienne légende.
+ */
+export function useUpdateMedia(albumId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ mediaId, body }: { mediaId: string; body: UpdateMediaRequest }) =>
+      api.updateMedia(albumId, mediaId, body),
+    onSuccess: (saved) => {
+      queryClient.setQueriesData<InfiniteData<ItemsPage>>(
+        { queryKey: ['items', albumId] },
+        (current) =>
+          current && {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.map((item) => (item.id === saved.id ? saved : item)),
+            })),
+          },
+      );
+
+      // Le détail porte la même description, et le panneau `i` peut être ouvert
+      // à l'instant où l'on enregistre. `MediaDetail` étant un `MediaItem`
+      // augmenté, seule la partie item est remplacée : l'EXIF et le compteur de
+      // commentaires ne viennent pas de cette réponse.
+      queryClient.setQueryData<MediaDetail>(queryKeys.detail(albumId, saved.id), (current) =>
+        current ? { ...current, ...saved } : current,
+      );
+    },
   });
 }
 

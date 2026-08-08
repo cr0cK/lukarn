@@ -8,10 +8,11 @@ import {
   type MediaKind,
   type SortOrder,
   type SyncStatus,
+  type UpdateMediaRequest,
 } from '@gdv/shared';
 import type { Db } from './db.js';
 
-/** Ligne brute de `media`, telle que SQLite la renvoie. */
+/** Ligne brute de `media`, augmentée de la description jointe. */
 interface MediaRow {
   album_id: string;
   id: string;
@@ -35,6 +36,7 @@ interface MediaRow {
   lat: number | null;
   lng: number | null;
   md5: string | null;
+  description: string | null;
 }
 
 export interface MediaUpsert {
@@ -78,8 +80,26 @@ function toItem(row: MediaRow): MediaItem {
     // Huit caractères de l'empreinte suffisent à distinguer deux versions
     // successives d'un même fichier ; l'URL reste lisible.
     version: row.md5 ? row.md5.slice(0, 8) : null,
+    description: row.description,
   };
 }
+
+/**
+ * Les colonnes de `media`, augmentées de la description saisie sur ce couple
+ * (album, média).
+ *
+ * `media.*` et non `*` : les deux tables portent une colonne `album_id`, et une
+ * étoile nue rendrait la ligne ambiguë à la lecture — SQLite l'accepterait, le
+ * lecteur suivant devrait deviner laquelle des deux il tient.
+ *
+ * La jointure est **1-pour-1** sur la clé primaire de `media_notes` : elle ne
+ * duplique ni ne perd de ligne, donc elle ne touche pas à la pagination par
+ * curseur, qui compte les lignes rendues pour savoir s'il reste une page.
+ */
+const SELECT_ITEMS = `SELECT media.*, media_notes.description AS description
+       FROM media
+       LEFT JOIN media_notes
+         ON media_notes.album_id = media.album_id AND media_notes.media_id = media.id`;
 
 /**
  * Détail tel que l'index le connaît. Le nombre de commentaires vient d'ailleurs
@@ -167,18 +187,19 @@ export class MediaRepo {
     const rows = position
       ? (this.db
           .prepare(
-            `SELECT * FROM media
-             WHERE album_id = ?
-               AND (taken_at ${after} ? OR (taken_at = ? AND id ${after} ?))
-             ORDER BY taken_at ${direction}, id ${direction}
+            `${SELECT_ITEMS}
+             WHERE media.album_id = ?
+               AND (media.taken_at ${after} ?
+                    OR (media.taken_at = ? AND media.id ${after} ?))
+             ORDER BY media.taken_at ${direction}, media.id ${direction}
              LIMIT ?`,
           )
           .all(albumId, position.takenAt, position.takenAt, position.id, limit + 1) as MediaRow[])
       : (this.db
           .prepare(
-            `SELECT * FROM media
-             WHERE album_id = ?
-             ORDER BY taken_at ${direction}, id ${direction}
+            `${SELECT_ITEMS}
+             WHERE media.album_id = ?
+             ORDER BY media.taken_at ${direction}, media.id ${direction}
              LIMIT ?`,
           )
           .all(albumId, limit + 1) as MediaRow[]);
@@ -194,10 +215,51 @@ export class MediaRepo {
   }
 
   getDetail(albumId: string, id: string): IndexedDetail | null {
-    const row = this.db
-      .prepare('SELECT * FROM media WHERE album_id = ? AND id = ?')
-      .get(albumId, id) as MediaRow | undefined;
+    const row = this.mediaRow(albumId, id);
     return row ? toDetail(row) : null;
+  }
+
+  /**
+   * Écrit la description d'une photo **dans cet album**, et rend l'item à jour.
+   *
+   * Champ absent : rien n'est touché. `null` — comme une chaîne vide ou blanche
+   * — efface la ligne : une description vide ne dit rien de plus qu'une
+   * description absente, et la garder ferait grossir la table pour rien.
+   *
+   * `null` en retour si le média n'est pas indexé dans cet album. C'est la
+   * route qui en fait un 404 : le dépôt ne décide pas des codes HTTP.
+   */
+  setDescription(albumId: string, mediaId: string, patch: UpdateMediaRequest): MediaItem | null {
+    const row = this.mediaRow(albumId, mediaId);
+    if (!row) return null;
+    if (patch.description === undefined) return toItem(row);
+
+    const trimmed = patch.description?.trim();
+    const description = trimmed ? trimmed : null;
+
+    if (description === null) {
+      this.db
+        .prepare('DELETE FROM media_notes WHERE album_id = ? AND media_id = ?')
+        .run(albumId, mediaId);
+    } else {
+      this.db
+        .prepare(
+          `INSERT INTO media_notes (album_id, media_id, description, updated_at)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT (album_id, media_id) DO UPDATE SET
+             description = excluded.description,
+             updated_at = excluded.updated_at`,
+        )
+        .run(albumId, mediaId, description, new Date().toISOString());
+    }
+
+    return { ...toItem(row), description };
+  }
+
+  private mediaRow(albumId: string, id: string): MediaRow | undefined {
+    return this.db
+      .prepare(`${SELECT_ITEMS} WHERE media.album_id = ? AND media.id = ?`)
+      .get(albumId, id) as MediaRow | undefined;
   }
 
   /**
@@ -416,6 +478,12 @@ export class MediaRepo {
   /**
    * Supprime de l'index les médias que la sync n'a pas revus : ils ont été
    * retirés du dossier Drive, déplacés, ou mis à la corbeille.
+   *
+   * `media_notes` n'est **pas** touchée, ni ici ni par `clearAlbum` et
+   * `pruneAlbums` : la description est écrite à la main et rien ne la
+   * régénère, alors qu'une photo quitte l'index sur un simple contretemps
+   * d'indexation. Le seul ménage vient de la cascade sur `albums`, c'est-à-dire
+   * de la suppression de l'album lui-même (D83).
    */
   deleteStale(albumId: string, seenAt: string): number {
     return this.db

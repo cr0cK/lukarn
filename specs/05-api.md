@@ -144,6 +144,20 @@ jointure de plus. Il compte les commentaires **visibles**, réponses comprises, 
 voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
 charger un fil que la plupart des visiteurs n'ouvriront pas.
 
+**`MediaItem.description`** — la légende écrite à la main sur cette photo,
+`null` si personne n'en a écrit. Elle est portée par le couple **(album,
+média)** : le même fichier indexé sous deux albums en porte deux, comme il porte
+deux fils de commentaires ([04](./04-securite-et-acces.md), D12).
+
+Elle voyage avec l'item, et non par un appel groupé comme `AlbumCommentCounts` :
+la visionneuse doit l'afficher sur la photo qu'on vient d'atteindre à la flèche,
+la liste est déjà chargée, et le texte est court là où un compteur par photo
+tient en un entier (D83). Côté serveur c'est une jointure 1-pour-1 sur la clé
+primaire de `media_notes`, sans effet sur la pagination.
+
+`MediaDetail` en hérite en étendant `MediaItem` : le panneau `i` n'a rien à
+demander de plus.
+
 ## Identité de commentateur — `routes/identity.ts`
 
 `requireAuth` sur tout le préfixe : on déclare une identité depuis une session
@@ -547,6 +561,25 @@ l'écran refusée par le serveur.
 La ligne est créée si la journée n'en avait pas : on peut annoter une journée
 dont aucune photo ne porte de position. Une journée vidée de sa note **et** de
 son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
+
+### Description d'une photo
+
+`PATCH /api/admin/albums/:id/items/:mediaId` — corps `UpdateMediaRequest` =
+`{ description? }`. Champ absent = inchangé (la réponse rend alors l'item tel
+quel), `null` **ou chaîne vide** = effacé — la ligne de `media_notes` est
+supprimée, une description vide ne disant rien de plus qu'une absente. Borne :
+`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exportée par `@gdv/shared` et appliquée
+des deux côtés, sinon `400`. La réponse est le `MediaItem` à jour.
+
+Deux `404` distincts, et il faut les deux : album inconnu ou supprimé, et média
+non indexé **dans cet album**. Sans le second, on écrirait un texte que rien
+n'affichera jamais, sur un identifiant peut-être inventé.
+
+Même partage que les deux textes voisins : **la saisie est dans la galerie** —
+on décrit une photo en la voyant, avec ses voisines autour —, **la mutation est
+sous `/api/admin`**, seul préfixe qui réponde 403 (D50, D83). Les vidéos sont
+acceptées, contrairement à `coverId` : une vidéo mérite une légende, et rien
+dans le pipeline ne s'y oppose.
 
 ### Modération des commentaires
 

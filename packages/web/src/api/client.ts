@@ -18,6 +18,7 @@ import {
   type IdentityRequest,
   type ItemsPage,
   type MediaDetail,
+  type MediaItem,
   type ModerationFilter,
   type SessionUser,
   type SortOrder,
@@ -25,6 +26,7 @@ import {
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
   type UpdateCommentRequest,
+  type UpdateMediaRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
@@ -128,6 +130,13 @@ export const api = {
   itemDetail: (albumId: string, mediaId: string) =>
     request<MediaDetail>(
       `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
+    ),
+
+  /** Même partage que `updateAlbumDay` : saisie dans la galerie, écriture sous `/api/admin`. */
+  updateMedia: (albumId: string, mediaId: string, body: UpdateMediaRequest) =>
+    request<MediaItem>(
+      `/admin/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
     ),
 
   requestIdentityCode: (body: IdentityRequest) =>

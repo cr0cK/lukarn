@@ -2750,6 +2750,8 @@ Changer le périmètre Drive d'un album vide son index (D50) et donc sa
 couverture, le temps de la resynchronisation. Le choix survit : si la photo
 est encore dans le nouveau dossier, elle redevient la couverture sans geste.
 
+---
+
 ## D81 — L'adresse d'expédition ne reçoit rien : un `Reply-To` récupère les réponses
 
 **Contexte.** `MAIL_FROM` porte une adresse du domaine de l'instance, par
@@ -2815,6 +2817,8 @@ signaler.
 comme n'importe quel en-tête. Sur une instance familiale, c'est une adresse que
 les destinataires connaissent déjà ; sur une instance ouverte, mieux vaut une
 vraie boîte sur le domaine, et la variable reste alors vide.
+
+---
 
 ## D82 — Un fil d'activité, parce qu'une conversation ne se découvre pas
 
@@ -2897,3 +2901,188 @@ Enfin, un album dont l'identifiant Drive serait `feed` n'obtiendrait jamais ses
 compteurs, la précédence des segments littéraux de Fastify jouant ici comme pour
 `unsubscribe`. Même arbitrage : la route générale prime sur un identifiant que
 son créateur peut renommer.
+
+---
+
+## D83 — Une description par photo, portée par l'album
+
+**Contexte.** Un album porte une description, une journée porte une note — mais
+une photo précise n'avait rien. C'est pourtant là que le contexte manque le
+plus : « Léa saute du ponton, troisième essai » ne se déduit ni du nom de
+fichier, ni de l'EXIF, ni de la note du jour, qui parle de la journée entière.
+Une galerie familiale se regarde des années plus tard, et ce qui n'a pas été
+écrit est perdu.
+
+**Choix.** Une table `media_notes (album_id, media_id, description, updated_at)`,
+clé primaire `(album_id, media_id)`. Le texte se saisit depuis la galerie, en
+voyant l'image ; la mutation passe par
+`PATCH /api/admin/albums/:id/items/:mediaId`, seul préfixe qui réponde 403 (D50).
+Même partage que la note de journée et la couverture, et pour la même raison.
+
+**La portée est l'album, pas le fichier Drive.** Un fichier présent dans deux
+albums — dossiers imbriqués, tous deux déclarés — y porte deux descriptions,
+exactement comme il y porte deux fils de commentaires. Une description par
+`media_id` seul serait plus simple à écrire et fausse à lire : elle montrerait à
+un visiteur ce qui a été rédigé dans un album auquel il n'a pas accès, ce qui
+contredirait le cloisonnement décidé en D12. Le prix assumé est qu'on décrit deux
+fois la même photo si on tient à la voir décrite des deux côtés — un cas rare, et
+qui reste un choix.
+
+**Aucune clé étrangère vers `media`**, et c'est le cœur de l'entrée. `deleteStale`
+retire une photo de l'index dès qu'une synchronisation ne la revoit pas :
+corbeille Drive le temps d'un retour en arrière, dossier renommé, sync
+interrompue à mi-parcours. Une cascade détruirait alors, sur un contretemps
+d'indexation, un texte écrit à la main que rien ne régénère — contrairement à une
+vignette. L'identifiant Drive étant stable, la photo revenue retrouve sa
+description d'elle-même. Le raisonnement est celui de `comments.media_id` (D35)
+et d'`albums.cover_media_id` (D80) ; il s'applique ici avec plus de force encore,
+puisqu'une description perdue ne se reconstitue par aucun moyen.
+
+Corollaire à ne pas défaire : **aucun ménage ne touche cette table.** Ni
+`deleteStale`, ni `clearAlbum`, ni `pruneAlbums`, ni le `ON CONFLICT DO UPDATE`
+d'`upsertMany` — même invariant que `replaceCells` dans `AlbumDayRepo`, où un
+`excluded.description` glissé par mégarde effacerait tout à chaque passage
+horaire. La seule suppression vient de la cascade sur `albums`.
+
+**Transportée avec l'item, pas en appel groupé.** Les compteurs de commentaires
+d'un album voyagent d'un bloc (D54), et on aurait pu faire de même. Trois raisons
+de ne pas le faire ici. La visionneuse doit afficher la légende sur la photo
+qu'on vient d'atteindre à la flèche, donc au même instant que l'item lui-même —
+pas au retour d'une seconde requête. Le coût est une jointure `LEFT JOIN`
+1-pour-1 sur une clé primaire, invisible à côté du parcours d'index que la page
+fait déjà. Et un bloc « toutes les descriptions de l'album » transporterait, sur
+un album largement décrit, des kilo-octets de texte pour des photos qu'on ne
+regardera pas — là où un compteur tient en un entier.
+
+**Écarté.** Une colonne `media.description`. Elle aurait évité la jointure, mais
+`upsertMany` réécrit toute la ligne à chaque synchronisation : il aurait fallu
+l'exclure du `DO UPDATE` — un oubli silencieux à un caractère près, sur une
+requête déjà longue de vingt colonnes. Et elle aurait disparu avec la photo, ce
+que toute l'entrée cherche à éviter.
+
+Écarté aussi : refuser les vidéos, comme le fait `coverId`. Le refus s'y justifie
+par le pipeline, qui ne rend pas de vignette vidéo ; ici rien ne s'y oppose, et
+une vidéo mérite une légende autant qu'une photo.
+
+**Conséquences.** `MediaItem` gagne un champ, donc `MediaDetail` aussi — le
+panneau `i` en hérite sans un mot de plus. La borne est de 1000 caractères,
+entre la note de journée (300, dont l'en-tête de section précalcule la hauteur
+sans DOM — D49) et la description d'album (2000, un paragraphe libre) : posée sur
+la photo, au-delà de mille caractères une légende cesse d'être une légende.
+
+`SELECT *` devient `SELECT media.*` dans `listItems` et `getDetail` : les deux
+tables portent une colonne `album_id`, et SQLite l'accepterait sans broncher en
+laissant le lecteur suivant deviner laquelle il tient.
+
+---
+
+## D84 — Le contexte descend en bas de la visionneuse, à toutes les largeurs
+
+**Contexte.** Trois textes décrivent une photo ouverte, et aucun n'était là quand
+on la regardait. La description de l'album ne vit qu'en tête de grille. La note
+du jour n'apparaissait dans la visionneuse qu'à partir de `md` (D70), donc jamais
+sur téléphone. Et la description de la photo elle-même venait d'exister (D83)
+sans avoir nulle part où s'afficher. Ouvrir une image faisait donc perdre
+l'essentiel de ce qui l'explique — exactement le défaut que D68 puis D74 avaient
+attaqué par petites touches, en portant un fragment de contexte dans l'en-tête.
+
+**Choix.** Un bandeau bas dans la colonne photo (`MediaCaption`), qui empile les
+trois textes par portée décroissante — la photo, la journée, l'album —, à
+**toutes** les largeurs. La hiérarchie est portée par la couleur et le nombre de
+lignes visibles (`ink-100`/3, `ink-300`/2, `ink-500`/1), sans aucun titre : plus
+la portée est large, plus la ligne s'efface.
+
+**Cela renverse le seuil de D70, et il faut dire pourquoi ce n'est pas se
+dédire.** L'arbitrage de D70 portait sur **deux lignes empilées au-dessus de
+l'image**, sur un téléphone où la photo est déjà à l'étroit : le contexte y
+mangeait le cadrage par le haut, sans recours. La question posée ici n'est pas
+la même. Une légende posée sous la photo, sur un dégradé, ne rogne rien du même
+ordre ; elle est repliée par défaut ; et elle se masque d'un geste, ce que la
+note de l'en-tête ne proposait pas. D70 écartait d'ailleurs explicitement « un
+dépliement au toucher » — un geste de plus pour un texte que la grille montrait
+déjà. C'est vrai de la note du jour, faux de la description d'une photo, que la
+grille ne montre nulle part.
+
+**Le masquage est persisté, le dépliement ne l'est pas.** La différence n'est pas
+un oubli : masquer est un choix sur la façon de regarder ses photos — on le fait
+une fois, et le redemander à chaque ouverture serait le meilleur moyen de ne
+jamais l'utiliser. Déplier est une réponse à un texte précis, qui n'a aucun sens
+sur la photo suivante. Le premier vit donc dans `localStorage`
+(`useCaptionHidden`), le second dans l'état d'un composant remonté à chaque
+photo.
+
+Masqué, un bouton fantôme « Afficher la légende (l) » reste en bas à droite. Un
+état caché sans porte de sortie est un piège : le bandeau parti, plus rien ne
+dirait qu'il a existé.
+
+**Écarté.** Laisser la description de photo dans le seul panneau `i`. Il est
+fermé par défaut, et une légende qu'il faut aller chercher n'est pas une légende.
+
+Écarté aussi : un bandeau permanent non masquable. Une galerie se regarde aussi
+pour les images seules, et un texte posé sur chaque photo, sans moyen de
+l'écarter, finirait par être ce qu'on reproche à l'application.
+
+**Conséquences.** La note du jour quitte l'en-tête, qui ne garde que ce qui
+identifie le fichier et situe la journée. Les lignes « Lieu » et « Ce jour-là »
+d'`ExifPanel` deviennent une redite du bandeau : elles restent, parce qu'elles
+sont le seul endroit qui donne le texte **entier** sans dépliement, et que les
+retirer ferait perdre l'accès à la note depuis un panneau déjà ouvert. Leur
+statut change, pas leur code — elles étaient le recours de D70 sous `md`, elles
+sont désormais un confort.
+
+`Échap` gagne une couche — éditeur, zoom, panneau, fermeture. La saisie de la
+légende vit dans la visionneuse, et le gestionnaire de touches laisse passer
+`Échap` depuis un champ de saisie (c'est la sortie de secours) : sans cette
+couche, corriger une légende et appuyer sur `Échap` fermerait la visionneuse
+par-dessus un texte non enregistré.
+
+Sur une vidéo, et là seulement, le bandeau **pousse** au lieu de recouvrir. Les
+contrôles natifs de lecture vivent au bas de la balise ; sur une vidéo portrait
+qui remplit l'écran, un bandeau posé dessus rendrait play/pause et la barre de
+progression intouchables — un défaut bien pire que la place perdue.
+
+---
+
+## D85 — Une ligne par texte dans l'en-tête de section, parce qu'une hauteur réservée doit être exacte
+
+**Contexte.** Le layout de la grille est calculé sans DOM : `useGridLayout`
+déclare la hauteur de chaque en-tête, et `SectionHeader` doit tenir dedans
+(D49). La note d'une journée s'y réservait **deux** lignes — 40 px — alors
+qu'une note de journée est le plus souvent courte et n'en occupe qu'une. Les
+20 px de trop tombaient sous le texte, et l'écart avant les vignettes passait de
+12 px à 32 px d'une section à l'autre, selon la longueur d'une note. Le défaut
+se voit sur deux sections voisines, et n'a aucune explication visible.
+
+**Choix.** Une seule ligne, tronquée, pour le lieu **comme** pour la note, et
+une seule constante — `GRID_HEADER_LINE_HEIGHT` — pour les deux. La réservation
+devient exacte par construction : ce que le layout compte est exactement ce que
+le composant rend, quelle que soit la longueur du texte.
+
+**Ce que la note perd, et où elle le retrouve.** Une note de 300 caractères se
+lisait sur deux lignes dans la grille ; elle s'y lit maintenant sur une, avec
+une ellipse. Son texte entier reste dans l'attribut `title`, dans le panneau
+`i`, et surtout dans le **bandeau de la visionneuse** (D84), qui la montre à
+toutes les largeurs et la déplie au clic. C'est cette dernière porte qui rend
+l'arbitrage tenable : quand D49 fixait deux lignes, la grille était le seul
+endroit qui montrât la note.
+
+**Écarté.** Estimer le nombre de lignes à partir de la longueur du texte et de
+la largeur disponible, en majorant la largeur d'un glyphe pour ne jamais
+sous-réserver. Cela marche, et cela gardait deux lignes aux notes longues. Mais
+c'est une constante de plus à faire suivre la taille de police, et une
+estimation juste « presque toujours » : le jour où elle se trompe vers le bas,
+les vignettes passent sous le texte, sans rien pour le rattraper. Un contrat
+exact vaut mieux qu'une estimation prudente.
+
+Écarté aussi : réserver 40 px et forcer la boîte à deux lignes même vide. La
+hauteur redevenait cohérente, mais l'espace blanc restait — c'est lui qu'on
+voulait supprimer, pas son irrégularité.
+
+**Conséquences.** `GRID_PLACE_HEIGHT` et `GRID_DESCRIPTION_HEIGHT` fusionnent en
+`GRID_HEADER_LINE_HEIGHT`. L'écart entre un en-tête et ses vignettes vaut
+désormais `GRID_HEADER_PAD_BOTTOM` (12 px) dans **tous** les cas : sans note,
+avec un lieu seul, avec une note courte, avec une note longue.
+
+`ALBUM_DAY_DESCRIPTION_MAX_LENGTH` reste à 300. La borne ne servait pas à tenir
+dans deux lignes — elle dit qu'une note de journée est un repère, pas un récit,
+et cela n'a pas changé.

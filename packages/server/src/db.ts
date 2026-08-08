@@ -360,6 +360,31 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE albums ADD COLUMN cover_media_id TEXT;
   `,
+
+  // 9 — une description par photo. L'album dit où l'on était, la journée ce
+  // qu'on y a fait ; ce qui se passe sur une image précise ne se déduit ni du
+  // nom de fichier, ni de l'EXIF, ni de la note du jour.
+  `
+  CREATE TABLE media_notes (
+    -- Le texte appartient au couple (album, média), jamais au seul média : le
+    -- même fichier Drive indexé sous deux albums porte deux descriptions,
+    -- exactement comme il porte deux fils de commentaires. Les confondre
+    -- montrerait à un visiteur ce qui a été écrit dans un album auquel il n'a
+    -- pas accès, ce qui contredirait le cloisonnement décidé en D12.
+    album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    -- Aucune clé étrangère vers media, pour la raison de comments.media_id et
+    -- d'albums.cover_media_id : deleteStale retire une photo dès qu'une
+    -- synchronisation ne la revoit pas — corbeille Drive le temps d'un retour
+    -- en arrière, dossier renommé, sync interrompue. Une cascade détruirait sur
+    -- un contretemps d'indexation un texte écrit à la main, que rien ne
+    -- régénère. L'identifiant Drive est stable : la photo revenue retrouve sa
+    -- description (D83).
+    media_id    TEXT NOT NULL,
+    description TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    PRIMARY KEY (album_id, media_id)
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): Db {
