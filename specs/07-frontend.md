@@ -233,8 +233,15 @@ titre et le bouton d'activité. Un `ReactNode` et non un descripteur à la
 menu, on ne cherche pas dans un menu — et son état appartient à la page qui le
 monte.
 
+**Le champ est centré dans la barre**, et c'est ce qui fixe sa largeur : à
+partir de `sm` il ne s'étire plus, il tient 20 rem, et le titre à gauche comme
+les contrôles du compte à droite se partagent le reste à parts égales — d'où le
+`flex-1` symétrique de part et d'autre. Étiré jusqu'aux contrôles, il y collait
+et la barre paraissait pencher de ce côté.
+
 **La rangée unique est préservée à toutes les largeurs.** Sous `sm`, le titre
-« Albums » s'efface (`hidden sm:block`) et le champ prend la ligne : sur la
+« Albums » s'efface (`hidden sm:block`) et le champ reprend toute la ligne :
+20 rem fixes y laisseraient un blanc au milieu d'un écran de 393 px. Sur la
 racine, le titre ne dit rien que l'URL ne dise déjà, alors qu'une seconde rangée
 coûterait 40 px d'en-tête sur une application où ce qui doit ressortir, ce sont
 les photos.
