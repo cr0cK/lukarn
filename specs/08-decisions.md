@@ -2749,3 +2749,42 @@ visiteurs, pas au seul administrateur.
 Changer le périmètre Drive d'un album vide son index (D50) et donc sa
 couverture, le temps de la resynchronisation. Le choix survit : si la photo
 est encore dans le nouveau dossier, elle redevient la couverture sans geste.
+
+## D81 — L'adresse d'expédition ne reçoit rien : un `Reply-To` récupère les réponses
+
+**Contexte.** `MAIL_FROM` porte une adresse du domaine de l'instance, par
+exemple `Galerie <galerie@exemple.fr>`. Le relais qui l'émet est
+transactionnel : il envoie, il ne reçoit pas. Et le domaine d'envoi n'a pas
+forcément de boîte derrière cette adresse — chez plusieurs registraires, une
+simple redirection suppose désormais un abonnement de messagerie.
+
+Une réponse à une notification de commentaire partait donc dans le vide, ou
+rebondissait chez son auteur. L'instance n'en savait rien : le rejet a lieu
+chez le destinataire, aucun journal du serveur ne le montre.
+
+**Choix.** Une variable facultative, `MAIL_REPLY_TO`, pose l'en-tête `Reply-To`
+sur tous les messages. L'expéditeur affiché reste celui du domaine — c'est lui
+qui est aligné avec SPF et DKIM, en changer ferait tomber les messages en
+indésirable — mais « Répondre » vise une adresse qui, elle, a une boîte.
+
+Elle est **indépendante** de la paire `SMTP_URL`/`MAIL_FROM`, qui reste
+indissociable. Absente, aucun en-tête n'est posé et le comportement est celui
+d'avant : c'est le bon réglage pour un domaine qui reçoit son courrier, et il
+n'y avait aucune raison de forcer les instances existantes à déclarer quelque
+chose.
+
+**Écarté.** Un `noreply@` explicite, qui aurait supprimé le problème en
+supprimant la conversation. Ces messages annoncent des commentaires de proches
+sur des photos de famille ; répondre est un usage prévisible, et un
+`noreply@` demande à l'expéditeur de comprendre qu'on ne lui parle pas.
+
+Écarté aussi : composer le `Reply-To` à partir de l'adresse du commentateur qui
+a déclenché la notification. Séduisant — la réponse arriverait à la bonne
+personne — mais l'annonce des nouvelles photos n'a pas de commentateur
+d'origine, et surtout cela divulguerait l'adresse d'un visiteur aux autres
+destinataires.
+
+**Conséquences.** L'adresse configurée est visible de tous les destinataires,
+comme n'importe quel en-tête. Sur une instance familiale, c'est une adresse que
+les destinataires connaissent déjà ; sur une instance ouverte, mieux vaut une
+vraie boîte sur le domaine, et la variable reste alors vide.

@@ -61,7 +61,13 @@ export class Mailer {
       return new Mailer(null, log);
     }
 
-    const transport = createTransport(env.mail.smtpUrl, { from: env.mail.from });
+    // `replyTo` n'est posé que s'il est configuré : un en-tête vide vaut moins
+    // que pas d'en-tête, le client de messagerie retombant alors sur l'adresse
+    // d'expédition — qui est justement celle qui ne reçoit rien.
+    const transport = createTransport(env.mail.smtpUrl, {
+      from: env.mail.from,
+      ...(env.mail.replyTo ? { replyTo: env.mail.replyTo } : {}),
+    });
     return new Mailer(async (message) => {
       await transport.sendMail(message);
     }, log);

@@ -88,3 +88,26 @@ describe('SMTP_URL', () => {
     assert.equal(loadEnv(env()).mail, null);
   });
 });
+
+describe('MAIL_REPLY_TO', () => {
+  it('reste facultative, et vide vaut absente', () => {
+    // La distinction porte : `replyTo` à null ne pose aucun en-tête, tandis
+    // qu'un en-tête vide ferait retomber le client de messagerie sur l'adresse
+    // d'expédition — celle qui, précisément, ne reçoit rien.
+    assert.equal(loadEnv(avecSmtp('smtp://localhost:1025')).mail?.replyTo, null);
+    assert.equal(
+      loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: '   ' })).mail?.replyTo,
+      null,
+    );
+  });
+
+  it('n’a pas besoin d’être déclarée avec MAIL_FROM', () => {
+    // Contrairement à SMTP_URL et MAIL_FROM : forcer le couple obligerait
+    // toutes les instances en service à déclarer une adresse qu'elles n'ont pas.
+    const config = loadEnv(
+      env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: 'moi@exemple.fr' }),
+    );
+    assert.equal(config.mail?.from, 'Galerie <galerie@exemple.fr>');
+    assert.equal(config.mail?.replyTo, 'moi@exemple.fr');
+  });
+});

@@ -52,6 +52,15 @@ const schema = z.object({
   MAIL_FROM: z.string().optional(),
 
   /**
+   * Adresse à qui répondre, quand celle de `MAIL_FROM` ne reçoit rien. Un relais
+   * transactionnel n'a pas de boîte de réception, et le domaine d'envoi n'en a
+   * pas forcément une : sans cette variable, répondre à une notification part
+   * dans le vide, ou rebondit. Absente, aucun `Reply-To` n'est posé — le
+   * comportement d'avant, correct pour un domaine qui reçoit son courrier.
+   */
+  MAIL_REPLY_TO: z.string().optional(),
+
+  /**
    * Racine du service de géocodage inverse, qui donne un nom aux coordonnées
    * EXIF. Une chaîne vide le désactive : les journées gardent leurs grappes,
    * simplement sans libellé. Une instance Nominatim privée se met ici.
@@ -83,7 +92,7 @@ export interface Env {
    */
   serviceAccount: { email: string; privateKey: string; file: string } | null;
   /** `null` si l'instance n'envoie pas d'email : les notifications s'éteignent. */
-  mail: { smtpUrl: string; from: string } | null;
+  mail: { smtpUrl: string; from: string; replyTo: string | null } | null;
   /**
    * `null` si `GEOCODING_URL` est vide : les lieux déduits de l'EXIF ne sont
    * plus nommés, le reste de l'application est inchangé.
@@ -230,7 +239,14 @@ export function loadEnv(
     serviceAccount: env.GOOGLE_SERVICE_ACCOUNT_FILE
       ? readServiceAccount(resolve(baseDir, env.GOOGLE_SERVICE_ACCOUNT_FILE))
       : null,
-    mail: hasSmtp && hasFrom ? { smtpUrl: env.SMTP_URL!, from: env.MAIL_FROM! } : null,
+    mail:
+      hasSmtp && hasFrom
+        ? {
+            smtpUrl: env.SMTP_URL!,
+            from: env.MAIL_FROM!,
+            replyTo: env.MAIL_REPLY_TO?.trim() || null,
+          }
+        : null,
     // La politique d'usage de Nominatim exige un `User-Agent` qui identifie
     // l'appelant : l'instance publique bloque les agents anonymes, et un
     // `node-fetch` générique se ferait couper sans qu'on sache pourquoi.
