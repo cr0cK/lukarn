@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { mediaUrl } from '../api/client';
 import { useAlbums, useMe } from '../api/hooks';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
+import { SearchBox } from '../components/SearchBox';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
@@ -63,7 +64,14 @@ export default function AlbumsPage(): ReactElement {
 
   return (
     <div className="min-h-full">
-      <TopBar title="Albums" feed={{ unread: activity.unread, onOpen: activity.open }} />
+      {/* La recherche est ici et pas dans un album : elle porte sur toute la
+          bibliothèque, et c'est précisément passé une vingtaine d'albums que
+          « où sont les photos de Marseille » cesse d'avoir une réponse. */}
+      <TopBar
+        title="Albums"
+        search={<SearchBox shortcutEnabled={!activity.isOpen && !showShortcuts} />}
+        feed={{ unread: activity.unread, onOpen: activity.open }}
+      />
 
       <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
         {isPending && <Spinner label="Chargement des albums" />}

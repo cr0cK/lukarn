@@ -398,6 +398,116 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE media ADD COLUMN has_thumbnail INTEGER NOT NULL DEFAULT 0;
   `,
+
+  // 11 — index de recherche : quatre tables FTS5 **à contenu externe**, tenues
+  // par des déclencheurs.
+  //
+  // Le coût d'une recherche ici n'est pas la requête — quelques milliers de
+  // lignes, moins d'une milliseconde — mais de tenir l'index à jour. Ces textes
+  // s'écrivent depuis six endroits (ConfigRepo.saveAlbum, AlbumDayRepo.upsertNote
+  // et .replaceCells, Geocoder, MediaRepo.setDescription, et les suppressions en
+  // cascade d'un album). Réindexer depuis le code demanderait de n'en oublier
+  // aucun, aujourd'hui et dans tout chemin d'écriture écrit plus tard — et un
+  // index périmé ne se voit pas : il rend simplement moins de résultats.
+  //
+  // `content='<table>'` : la table FTS ne stocke que l'index, jamais une copie du
+  // texte. Le contrat de cette forme est que chaque écriture soit répercutée,
+  // d'où les trois déclencheurs par table — la suppression passe par la commande
+  // 'delete' avec les **anciennes** valeurs, seule façon pour FTS5 de retrouver
+  // les termes à retirer sans relire la ligne, qui n'existe plus.
+  //
+  // Le tokenizer replie les diacritiques : « ete » trouve « été », « nim »
+  // trouve « Nîmes », sans colonne normalisée à tenir à la main.
+  //
+  // Le `rebuild` final indexe ce qui est déjà là : sans lui, une instance en
+  // service ne deviendrait interrogeable qu'au fil des écritures suivantes,
+  // c'est-à-dire jamais pour un album qu'on ne retouche plus (D96).
+  `
+  CREATE VIRTUAL TABLE albums_fts USING fts5(
+    title, description,
+    content='albums', content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+  );
+
+  CREATE TRIGGER albums_ai AFTER INSERT ON albums BEGIN
+    INSERT INTO albums_fts (rowid, title, description)
+      VALUES (new.rowid, new.title, new.description);
+  END;
+  CREATE TRIGGER albums_ad AFTER DELETE ON albums BEGIN
+    INSERT INTO albums_fts (albums_fts, rowid, title, description)
+      VALUES ('delete', old.rowid, old.title, old.description);
+  END;
+  CREATE TRIGGER albums_au AFTER UPDATE ON albums BEGIN
+    INSERT INTO albums_fts (albums_fts, rowid, title, description)
+      VALUES ('delete', old.rowid, old.title, old.description);
+    INSERT INTO albums_fts (rowid, title, description)
+      VALUES (new.rowid, new.title, new.description);
+  END;
+
+  CREATE VIRTUAL TABLE album_days_fts USING fts5(
+    description, place,
+    content='album_days', content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+  );
+
+  CREATE TRIGGER album_days_ai AFTER INSERT ON album_days BEGIN
+    INSERT INTO album_days_fts (rowid, description, place)
+      VALUES (new.rowid, new.description, new.place);
+  END;
+  CREATE TRIGGER album_days_ad AFTER DELETE ON album_days BEGIN
+    INSERT INTO album_days_fts (album_days_fts, rowid, description, place)
+      VALUES ('delete', old.rowid, old.description, old.place);
+  END;
+  CREATE TRIGGER album_days_au AFTER UPDATE ON album_days BEGIN
+    INSERT INTO album_days_fts (album_days_fts, rowid, description, place)
+      VALUES ('delete', old.rowid, old.description, old.place);
+    INSERT INTO album_days_fts (rowid, description, place)
+      VALUES (new.rowid, new.description, new.place);
+  END;
+
+  CREATE VIRTUAL TABLE media_notes_fts USING fts5(
+    description,
+    content='media_notes', content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+  );
+
+  CREATE TRIGGER media_notes_ai AFTER INSERT ON media_notes BEGIN
+    INSERT INTO media_notes_fts (rowid, description) VALUES (new.rowid, new.description);
+  END;
+  CREATE TRIGGER media_notes_ad AFTER DELETE ON media_notes BEGIN
+    INSERT INTO media_notes_fts (media_notes_fts, rowid, description)
+      VALUES ('delete', old.rowid, old.description);
+  END;
+  CREATE TRIGGER media_notes_au AFTER UPDATE ON media_notes BEGIN
+    INSERT INTO media_notes_fts (media_notes_fts, rowid, description)
+      VALUES ('delete', old.rowid, old.description);
+    INSERT INTO media_notes_fts (rowid, description) VALUES (new.rowid, new.description);
+  END;
+
+  CREATE VIRTUAL TABLE geo_places_fts USING fts5(
+    label,
+    content='geo_places', content_rowid='rowid',
+    tokenize='unicode61 remove_diacritics 2'
+  );
+
+  CREATE TRIGGER geo_places_ai AFTER INSERT ON geo_places BEGIN
+    INSERT INTO geo_places_fts (rowid, label) VALUES (new.rowid, new.label);
+  END;
+  CREATE TRIGGER geo_places_ad AFTER DELETE ON geo_places BEGIN
+    INSERT INTO geo_places_fts (geo_places_fts, rowid, label)
+      VALUES ('delete', old.rowid, old.label);
+  END;
+  CREATE TRIGGER geo_places_au AFTER UPDATE ON geo_places BEGIN
+    INSERT INTO geo_places_fts (geo_places_fts, rowid, label)
+      VALUES ('delete', old.rowid, old.label);
+    INSERT INTO geo_places_fts (rowid, label) VALUES (new.rowid, new.label);
+  END;
+
+  INSERT INTO albums_fts (albums_fts) VALUES ('rebuild');
+  INSERT INTO album_days_fts (album_days_fts) VALUES ('rebuild');
+  INSERT INTO media_notes_fts (media_notes_fts) VALUES ('rebuild');
+  INSERT INTO geo_places_fts (geo_places_fts) VALUES ('rebuild');
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

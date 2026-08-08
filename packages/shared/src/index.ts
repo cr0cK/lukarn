@@ -270,6 +270,54 @@ export const ALBUM_DAY_DESCRIPTION_MAX_LENGTH = 300;
 export const ALBUM_DAY_PLACE_MAX_LENGTH = 120;
 
 /* --------------------------------------------------------------------------
+ * Recherche
+ *
+ * Ce que la recherche rend n'est pas un extrait de texte mais une **entité
+ * navigable** : un album, une journée, une photo. « Marseille » doit ouvrir la
+ * journée à Marseille, pas afficher la ligne où le mot apparaît — c'est ce qui
+ * distingue une recherche d'un `grep`.
+ * ------------------------------------------------------------------------ */
+
+/** Ce vers quoi un résultat mène. Décide aussi du groupe où il s'affiche. */
+export type SearchHitKind = 'album' | 'day' | 'media';
+
+/** Un résultat de recherche : de quoi l'afficher, et de quoi y aller. */
+export interface SearchHit {
+  kind: SearchHitKind;
+  albumId: string;
+  albumTitle: string;
+  /** Ce qu'on lit dans la liste : titre d'album, lieu, ou début de note. */
+  label: string;
+  /**
+   * La ligne dessous : ce qui situe le résultat sans répéter le libellé — la
+   * description d'un album, la note d'une journée déjà nommée par son lieu.
+   * `null` quand le libellé se suffit.
+   *
+   * Le nom de l'album et la date voyagent à part (`albumTitle`, `day`) : les
+   * dates sont affichées en UTC par `format.ts`, et les composer ici les
+   * figerait dans le fuseau du serveur.
+   */
+  context: string | null;
+  /** Journée visée, `YYYY-MM-DD`. Présent pour `kind: 'day'`. */
+  day?: string;
+  /** Média visé. Présent pour `kind: 'media'`. */
+  mediaId?: string;
+}
+
+/**
+ * En deçà, on ne cherche pas : une seule lettre en préfixe remonterait une
+ * bonne part de la bibliothèque, pour une saisie qui n'a encore rien dit.
+ */
+export const SEARCH_MIN_LENGTH = 2;
+
+/**
+ * Résultats rendus **par type**. La liste est une suggestion au fil de la
+ * frappe, pas une page de résultats : au-delà, elle cesse de tenir à l'écran et
+ * la bonne réponse se lit moins vite qu'en précisant la recherche.
+ */
+export const SEARCH_HITS_PER_KIND = 5;
+
+/* --------------------------------------------------------------------------
  * Commentaires
  *
  * Un fil par média *et par album* : le même fichier Drive indexé sous deux

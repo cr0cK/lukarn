@@ -16,6 +16,7 @@ import { AlbumNotifier } from './notifier.js';
 import { AlbumDayRepo, PlacesPass } from './places.js';
 import { CachePrewarmer } from './media/prewarm.js';
 import { MediaRepo, SyncStateRepo } from './repo.js';
+import { SearchRepo } from './search.js';
 import { SessionStore } from './sessions.js';
 import { SubscriptionRepo } from './subscriptions.js';
 import { LoginThrottle } from './throttle.js';
@@ -42,6 +43,11 @@ export class AppContext {
   readonly notifier: AlbumNotifier;
   /** Journées annotées, et lieux déduits de l'EXIF. */
   readonly days: AlbumDayRepo;
+  /**
+   * Recherche d'entités dans les textes de la bibliothèque. Sans état : les
+   * index sont dans la base, tenus par les déclencheurs de la migration 11.
+   */
+  readonly search: SearchRepo;
   /** Agrégation des positions en journées puis géocodage, en tâche de fond. */
   readonly places: PlacesPass;
   readonly prewarmer: CachePrewarmer;
@@ -75,6 +81,7 @@ export class AppContext {
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
     this.days = new AlbumDayRepo(this.db);
+    this.search = new SearchRepo(this.db);
 
     bootstrapFromYaml(this.config, env, {
       info: (msg) => log.info(msg),

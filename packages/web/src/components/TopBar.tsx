@@ -41,6 +41,15 @@ interface TopBarProps {
   /** Contrôles propres à la page, à gauche de ceux du compte. */
   actions?: TopBarAction[];
   /**
+   * Champ de recherche, **centré** dans la barre : le titre et les contrôles du
+   * compte se partagent le reste à parts égales de part et d'autre.
+   *
+   * Un `ReactNode` et non un descripteur à la `TopBarAction` : le champ n'a
+   * qu'un seul rendu — il ne se replie pas en entrée de menu —, et son état
+   * appartient à la page qui le monte, pas à la barre qui l'héberge.
+   */
+  search?: ReactNode;
+  /**
    * Ouverture du tiroir d'activité, avec le nombre de messages arrivés depuis
    * le dernier passage. Absent sur les pages où le fil n'a pas de sens.
    */
@@ -94,6 +103,7 @@ export function TopBar({
   subtitle,
   back = false,
   actions = [],
+  search,
   feed,
 }: TopBarProps): ReactElement {
   const { data: user } = useMe();
@@ -155,50 +165,69 @@ export function TopBar({
           </Link>
         )}
 
-        <div className="min-w-0 flex-1">
+        {/* Le titre s'efface sous `sm` quand la page porte un champ de
+            recherche : la rangée reste unique à toutes les largeurs, et sur la
+            racine « Albums » ne dit rien que l'URL ne dise déjà. Le champ, lui,
+            ne se replie nulle part — un menu ne se cherche pas dedans. */}
+        <div className={`min-w-0 flex-1 ${search ? 'hidden sm:block' : ''}`}>
           <h1 className="truncate text-base font-medium tracking-tight">{title}</h1>
           {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
         </div>
 
-        {/* L'activité reste **en ligne à toutes les largeurs**, contrairement
+        {/* Centré, et c'est ce qui fixe la largeur : à partir de `sm` le champ
+            ne s'étire plus, il tient 20 rem et ce sont les deux côtés qui se
+            partagent le reste à parts égales — d'où le `flex-1` symétrique sur
+            le titre et sur le groupe de droite. Étiré, il collait aux contrôles
+            du compte et la barre paraissait pencher de ce côté.
+
+            Sous `sm` il reprend toute la ligne : le titre s'efface, et 20 rem
+            fixes y laisseraient un blanc au milieu d'un écran de 393 px. */}
+        {search && <div className="min-w-0 flex-1 sm:flex-none sm:basis-80">{search}</div>}
+
+        <div
+          className={`flex shrink-0 items-center gap-x-2 sm:gap-x-3 ${
+            search ? 'sm:flex-1 sm:justify-end' : ''
+          }`}
+        >
+          {/* L'activité reste **en ligne à toutes les largeurs**, contrairement
             aux contrôles de vue : son icône porte la pastille des non-lus, et
             c'est le seul signe qu'une conversation a bougé quelque part.
             Rangée dans le menu sous `sm`, elle ne signalerait plus rien — même
             raison que le bouton « Commentaires » de la visionneuse. */}
-        {feed && (
-          <button
-            type="button"
-            onClick={feed.onOpen}
-            title="Activité récente"
-            aria-label={feedLabel(feed.unread)}
-            className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="size-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinejoin="round"
-              aria-hidden="true"
+          {feed && (
+            <button
+              type="button"
+              onClick={feed.onOpen}
+              title="Activité récente"
+              aria-label={feedLabel(feed.unread)}
+              className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
             >
-              <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-            </svg>
-            {feed.unread > 0 && (
-              <span
+              <svg
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinejoin="round"
                 aria-hidden="true"
-                // Plafonnée à « 9+ », comme celle de la visionneuse : au-delà le
-                // chiffre déborde de l'icône, et savoir s'il y en a douze ou
-                // dix-sept ne change aucun geste.
-                className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
               >
-                {feed.unread > 9 ? '9+' : feed.unread}
-              </span>
-            )}
-          </button>
-        )}
+                <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+              </svg>
+              {feed.unread > 0 && (
+                <span
+                  aria-hidden="true"
+                  // Plafonnée à « 9+ », comme celle de la visionneuse : au-delà le
+                  // chiffre déborde de l'icône, et savoir s'il y en a douze ou
+                  // dix-sept ne change aucun geste.
+                  className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
+                >
+                  {feed.unread > 9 ? '9+' : feed.unread}
+                </span>
+              )}
+            </button>
+          )}
 
-        {/* À partir de `sm` : les contrôles de vue dans la barre, **en icônes
+          {/* À partir de `sm` : les contrôles de vue dans la barre, **en icônes
             seules à toutes les largeurs**. Le libellé y revenait au-delà de
             `lg`, et « Plus récentes d'abord » y tenait à lui seul plus de place
             que le sous-titre de l'album : deux réglages qu'on touche une fois
@@ -208,57 +237,58 @@ export function TopBar({
             L'infobulle dit l'état **et** l'effet du clic, la même phrase que le
             nom accessible : une icône seule ne dit ni l'un ni l'autre, et
             n'annoncer que l'effet laisserait deviner d'où l'on part. */}
-        <div className="hidden shrink-0 items-center gap-1 sm:flex lg:gap-2">
-          {actions.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={item.onSelect}
-              title={`${item.label} — ${item.action}`}
-              aria-label={`${item.label}. ${item.action}.`}
-              className={CLASSE_BOUTON}
-            >
-              <IconeAction taille="size-5">{item.icon}</IconeAction>
-            </button>
-          ))}
-        </div>
-
-        {/* Sous `sm` seulement, et seulement s'il y a quelque chose à y mettre :
-            un menu vide n'offrirait qu'une cible qui ne fait rien. */}
-        {actions.length > 0 && (
-          <div className="sm:hidden">
-            <ActionMenu
-              label="Affichage"
-              groupes={[
-                actions.map((item) => ({
-                  label: item.action,
-                  icon: <IconeAction taille="size-4">{item.icon}</IconeAction>,
-                  onSelect: item.onSelect,
-                })),
-              ]}
-            />
+          <div className="hidden shrink-0 items-center gap-1 sm:flex lg:gap-2">
+            {actions.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onSelect}
+                title={`${item.label} — ${item.action}`}
+                aria-label={`${item.label}. ${item.action}.`}
+                className={CLASSE_BOUTON}
+              >
+                <IconeAction taille="size-5">{item.icon}</IconeAction>
+              </button>
+            ))}
           </div>
-        )}
 
-        {/* Le compte, à toutes les largeurs. Rendu seulement une fois la session
+          {/* Sous `sm` seulement, et seulement s'il y a quelque chose à y mettre :
+            un menu vide n'offrirait qu'une cible qui ne fait rien. */}
+          {actions.length > 0 && (
+            <div className="sm:hidden">
+              <ActionMenu
+                label="Affichage"
+                groupes={[
+                  actions.map((item) => ({
+                    label: item.action,
+                    icon: <IconeAction taille="size-4">{item.icon}</IconeAction>,
+                    onSelect: item.onSelect,
+                  })),
+                ]}
+              />
+            </div>
+          )}
+
+          {/* Le compte, à toutes les largeurs. Rendu seulement une fois la session
             connue : une pastille sans initiale le temps d'un aller-retour
             réseau, puis une lettre, ferait sursauter la barre à chaque page. */}
-        {user && (
-          <ActionMenu
-            label="Compte"
-            // L'initiale de l'identifiant, pas celle du nom d'affichage : c'est
-            // la première ligne du menu qu'elle abrège, et deux lettres
-            // différentes de part et d'autre du clic se liraient comme un défaut.
-            trigger={initiale(user.username)}
-            triggerClassName={CLASSE_PASTILLE}
-            // L'identifiant ouvre des albums et peut être partagé par tout un
-            // foyer ; l'adresse, elle, dit qui signe les commentaires. Les deux
-            // quand elles diffèrent — c'est justement là qu'on se demande sous
-            // quel nom on écrit.
-            entete={[user.username, ...(user.identity ? [user.identity.email] : [])]}
-            groupes={[compte]}
-          />
-        )}
+          {user && (
+            <ActionMenu
+              label="Compte"
+              // L'initiale de l'identifiant, pas celle du nom d'affichage : c'est
+              // la première ligne du menu qu'elle abrège, et deux lettres
+              // différentes de part et d'autre du clic se liraient comme un défaut.
+              trigger={initiale(user.username)}
+              triggerClassName={CLASSE_PASTILLE}
+              // L'identifiant ouvre des albums et peut être partagé par tout un
+              // foyer ; l'adresse, elle, dit qui signe les commentaires. Les deux
+              // quand elles diffèrent — c'est justement là qu'on se demande sous
+              // quel nom on écrit.
+              entete={[user.username, ...(user.identity ? [user.identity.email] : [])]}
+              groupes={[compte]}
+            />
+          )}
+        </div>
       </div>
 
       {modeEmploi && <InstallInstructions onClose={() => setModeEmploi(false)} />}

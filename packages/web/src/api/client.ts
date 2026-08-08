@@ -20,6 +20,7 @@ import {
   type MediaDetail,
   type MediaItem,
   type ModerationFilter,
+  type SearchHit,
   type SessionUser,
   type SortOrder,
   type ThumbSize,
@@ -116,6 +117,13 @@ export const api = {
 
   albumDays: (albumId: string) =>
     request<AlbumDay[]>(`/albums/${encodeURIComponent(albumId)}/days`),
+
+  /**
+   * Entités trouvées dans les textes de la bibliothèque. Le périmètre est
+   * décidé par le serveur — les albums attribués à la session —, il n'y a rien
+   * à lui passer.
+   */
+  search: (q: string) => request<SearchHit[]>(`/search?${new URLSearchParams({ q })}`),
 
   /**
    * La saisie se fait dans l'album, mais l'écriture passe par `/api/admin` :

@@ -1,5 +1,6 @@
 import {
   DEFAULT_SORT_ORDER,
+  SEARCH_MIN_LENGTH,
   type AlbumDay,
   type CreateAlbumRequest,
   type CreateCommentRequest,
@@ -58,6 +59,9 @@ export const queryKeys = {
   // `['admin','comments']` les emporte toutes.
   adminComments: (query: AdminCommentsQuery) =>
     ['admin', 'comments', query.filter, query.albumId, query.q, query.cursor] as const,
+  // La saisie entre dans la clé : deux frappes voisines sont deux entrées de
+  // cache, et revenir en arrière d'un caractère réaffiche sa liste sans requête.
+  search: (q: string) => ['search', q] as const,
   adminStatus: ['admin', 'status'] as const,
   adminUsers: ['admin', 'users'] as const,
   adminAlbums: ['admin', 'albums'] as const,
@@ -184,6 +188,29 @@ export function useUpdateAlbumDay(albumId: string) {
         return next.sort((a, b) => b.day.localeCompare(a.day));
       });
     },
+  });
+}
+
+/**
+ * Suggestions de recherche. `q` est déjà retardé par `useDebounced` : ce hook
+ * ne connaît que la valeur qu'on lui donne.
+ *
+ * `placeholderData` garde la liste précédente affichée le temps de la requête
+ * suivante. Sans lui, chaque frappe la viderait puis la remplirait, et une
+ * liste qui clignote sous le doigt est illisible — c'est le seul endroit de
+ * l'application où une réponse arrive à la cadence du clavier.
+ */
+export function useSearch(q: string) {
+  return useQuery({
+    queryKey: queryKeys.search(q),
+    queryFn: () => api.search(q),
+    // Le serveur répond 400 en deçà, et il a raison : mieux vaut ne pas
+    // demander que d'afficher une erreur pour une saisie en cours.
+    enabled: q.length >= SEARCH_MIN_LENGTH,
+    placeholderData: keepPreviousData,
+    // Les textes cherchés changent rarement — un titre d'album, une note
+    // écrite une fois. Rouvrir le champ dans la minute ne relance rien.
+    staleTime: 60 * 1000,
   });
 }
 
