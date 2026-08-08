@@ -134,13 +134,17 @@ async function main(): Promise<void> {
     void context.prewarmer.run().catch((error: unknown) => {
       context.log.error({ err: error }, 'Préchauffage du cache en échec');
     });
-  }
 
-  // Même raison pour les lieux : une instance qu'on vient de mettre à jour a
-  // ses journées à agréger, et personne n'attendra une heure pour les voir.
-  void context.places.run().catch((error: unknown) => {
-    context.log.error({ err: error }, 'Passage des lieux en échec');
-  });
+    // Même raison pour les lieux, et même exclusion : une instance qu'on vient
+    // de mettre à jour a ses journées à agréger, et personne n'attendra une
+    // heure pour les voir. Quand la sync de démarrage part, c'est elle qui les
+    // déclenche (D91) — les lancer ici en plus ferait refuser celui qui doit la
+    // suivre comme passage concurrent, et les photos qui viennent d'arriver
+    // attendraient précisément le ménage horaire qu'on cherche à éviter.
+    void context.places.run().catch((error: unknown) => {
+      context.log.error({ err: error }, 'Passage des lieux en échec');
+    });
+  }
 
   const shutdown = async (signal: string): Promise<void> => {
     context.log.info(`${signal} reçu, arrêt en cours`);

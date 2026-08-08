@@ -228,12 +228,15 @@ navigateur ne lit pas n'est pas lisible du tout.
 
 **Les lieux d'une journée se déduisent en deux temps.** Une grille datée ne dit
 pas ce qu'on a fait ; les photos, elles, portent souvent leur position. Le
-passage `places.ts` est branché sur le ménage horaire de `main.ts` **et** sur le
-démarrage, pour la même raison que le préchauffage — la synchronisation peut être
-désactivée, et les lieux attendraient alors indéfiniment. La symétrie s'arrête
-là : le préchauffage a depuis un troisième déclencheur, la fin de chaque
-synchronisation (D58), que `places.ts` n'a pas. Il tourne en
-deux moitiés délibérément séparées :
+passage `places.ts` est branché sur le ménage horaire de `main.ts`, sur le
+démarrage **et sur la fin de chaque synchronisation** (`AppContext.syncThenPrewarm`),
+exactement comme le préchauffage et pour les mêmes raisons : la synchronisation
+peut être désactivée et les lieux attendraient alors indéfiniment (D45), mais
+une sync qui vient de verser des photos géolocalisées sait déjà nommer leur
+journée, et la laisser muette une heure de plus n'apporte rien (D91). Comme pour
+le préchauffage, le démarrage et la sync de démarrage **s'excluent** : lancés
+ensemble, celui qui doit suivre la sync se ferait refuser comme passage
+concurrent. Le passage tourne en deux moitiés délibérément séparées :
 
 1. **L'agrégation**, déterministe et hors réseau. Pour chaque album,
    `MediaRepo.geolocatedPoints` rend les positions par ordre chronologique ;
@@ -254,8 +257,11 @@ et **rien d'autre** — `description` et `place` appartiennent à l'administrate
 
 Rien de tout cela ne touche au chemin d'une requête : `better-sqlite3` est
 synchrone, et géocoder à la volée ferait attendre le lecteur une seconde par
-lieu. Le passage n'est pas armé par `buildApp`, seulement par `main.ts` — les
-tests ne joignent donc jamais le réseau.
+lieu. Le déclenchement par `/admin/resync` n'y déroge pas — la route répond 202
+et le passage part détaché, comme le préchauffage. Aucun minuteur n'est armé par
+`buildApp`, seulement par `main.ts` ; un test qui appelle `syncThenPrewarm`
+remplace en revanche `places` par un espion, sinon il joindrait Nominatim dès
+que l'album de test porte une position.
 
 **Le cache se remplit sans attendre qu'on clique.** `media/prewarm.ts` prépare
 les **trois tailles de vignette** des photos en fond, des plus récentes aux plus

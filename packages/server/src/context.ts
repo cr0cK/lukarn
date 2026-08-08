@@ -167,9 +167,25 @@ export class AppContext {
    * Le préchauffage garde ses autres déclencheurs — démarrage et ménage horaire
    * — parce que la synchronisation automatique peut être désactivée (D45) ; il
    * refuse de lui-même un second passage concurrent.
+   *
+   * Les lieux suivent la même logique et pour la même raison : une photo
+   * géolocalisée qui vient d'arriver donne son nom à sa journée, et attendre le
+   * ménage horaire ferait afficher pendant une heure une journée sans lieu que
+   * l'instance sait déjà nommer (D91).
    */
   async syncThenPrewarm(albums: StoredAlbum[]): Promise<void> {
     await this.syncer.syncAll(albums);
+
+    // Détaché, et avant le préchauffage : l'agrégation des grappes est
+    // instantanée, mais le géocodage qui la suit dure jusqu'à quelques minutes.
+    // L'attendre repousserait d'autant les vignettes, c'est-à-dire ce qui rend
+    // la grille rapide. Le passage refuse de lui-même un second appel
+    // concurrent, une resynchronisation répétée n'appelle donc pas Nominatim
+    // deux fois.
+    void this.places.run().catch((error: unknown) => {
+      this.log.error({ err: error }, 'Passage des lieux en échec');
+    });
+
     await this.prewarmer.run();
   }
 

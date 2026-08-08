@@ -10,14 +10,17 @@ import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Une synchronisation prépare les vignettes de ce qu'elle vient d'indexer.
+ * Une synchronisation prépare les vignettes de ce qu'elle vient d'indexer, et
+ * nomme les journées que ses photos géolocalisées permettent de nommer.
  *
  * C'est le seul moment où l'instance sait qu'il y a du neuf, et le neuf est
  * précisément ce qu'on ouvre. Sans cet enchaînement, un album fraîchement
  * synchronisé reste froid jusqu'au ménage horaire : sa grille demande une
  * plusieurs dizaines de vignettes d'un coup, le serveur n'en rend que deux à
  * quatre à la fois selon les cœurs, et chacune commence par un téléchargement
- * Drive de deux secondes.
+ * Drive de deux secondes. Les lieux ont le même défaut sous une autre forme :
+ * l'en-tête d'une journée resterait muet une heure alors que l'EXIF qu'on vient
+ * d'indexer dit déjà où elle s'est passée (D91).
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -69,12 +72,13 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Remplace les deux collaborateurs et note l'ordre dans lequel ils sont appelés. */
+/** Remplace les trois collaborateurs et note l'ordre dans lequel ils sont appelés. */
 function espionner(): string[] {
   const ordre: string[] = [];
   const remplacable = context as unknown as {
     syncer: { syncAll: (albums: unknown[]) => Promise<unknown[]> };
     prewarmer: { run: () => Promise<unknown> };
+    places: { run: () => Promise<unknown> };
   };
   remplacable.syncer = {
     syncAll: async () => {
@@ -89,6 +93,12 @@ function espionner(): string[] {
       return Promise.resolve({});
     },
   };
+  remplacable.places = {
+    run: () => {
+      ordre.push('lieux');
+      return Promise.resolve({});
+    },
+  };
   return ordre;
 }
 
@@ -100,7 +110,21 @@ describe('synchronisation puis préchauffage', () => {
 
     // L'ordre est le fond du sujet : préchauffer d'abord passerait sur l'index
     // d'avant, c'est-à-dire sur tout sauf les photos qui viennent d'arriver.
-    assert.deepEqual(ordre, ['sync', 'prechauffage']);
+    // Les lieux s'intercalent parce qu'ils sont détachés — le préchauffage
+    // n'attend pas leur géocodage, qui dure des minutes.
+    assert.deepEqual(ordre, ['sync', 'lieux', 'prechauffage']);
+  });
+
+  it('déduit les lieux des photos qui viennent d’arriver', async () => {
+    const ordre = espionner();
+
+    await context.syncThenPrewarm([]);
+
+    // Le cas qui motive le déclencheur : on verse dans le Drive des photos
+    // géolocalisées, et la journée porte son lieu sans attendre le ménage
+    // horaire. Les lieux après la sync et jamais avant, pour la même raison que
+    // le préchauffage : avant, ils agrégeraient les positions d'hier.
+    assert.equal(ordre.indexOf('lieux'), ordre.indexOf('sync') + 1);
   });
 
   it('une resynchronisation demandée depuis /admin y passe aussi', async () => {
@@ -120,6 +144,6 @@ describe('synchronisation puis préchauffage', () => {
     // Le cas qui a motivé tout ça : on crée un album, on le synchronise depuis
     // /admin, et on l'ouvre dans la foulée. Une route qui appellerait `syncer`
     // en direct rendrait cet album froid sans que rien ne le signale.
-    assert.deepEqual(ordre, ['sync', 'prechauffage']);
+    assert.deepEqual(ordre, ['sync', 'lieux', 'prechauffage']);
   });
 });
