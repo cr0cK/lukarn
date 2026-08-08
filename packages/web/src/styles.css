@@ -32,6 +32,22 @@
     height: 100%;
   }
 
+  /* La gouttière de la barre de défilement est réservée en permanence.
+
+     Sans elle, la largeur utile change en cours de session — entre une page
+     courte et une longue, et surtout à chaque ouverture de la visionneuse, qui
+     gèle le défilement du corps. Toute la mise en page glisse alors de la
+     largeur de la barre, en-tête compris ; la pastille du compte, seule à son
+     extrémité, est ce qui le montre le mieux.
+
+     Le prix est une bande vide de même largeur là où la barre est en
+     surimpression et ne prenait rien : mesuré à 10 px, la valeur fixée par la
+     règle `::-webkit-scrollbar` ci-dessous. Un décalage à chaque photo ouverte
+     coûte plus cher que dix pixels constants. */
+  html {
+    scrollbar-gutter: stable;
+  }
+
   body {
     margin: 0;
     background-color: var(--color-ink-900);

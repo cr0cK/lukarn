@@ -1,11 +1,5 @@
 import { useEffect, useRef } from 'react';
-
-/** Un champ de saisie a le focus : les raccourcis à une touche doivent se taire. */
-function isTyping(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
-}
+import { isTyping } from './typing';
 
 /**
  * Raccourci global à une touche. Ignoré pendant la saisie et lorsqu'un

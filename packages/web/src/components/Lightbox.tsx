@@ -6,6 +6,7 @@ import { useCaptionHidden } from '../lib/caption';
 import { dayKey, dayLabel } from '../lib/justify';
 import { previewOverlay } from '../lib/preview';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
+import { isTyping } from '../lib/typing';
 import { placeLabelOf } from '../lib/useGridLayout';
 import { useSwipe } from '../lib/useSwipe';
 import { ActionMenu } from './ActionMenu';
@@ -291,14 +292,7 @@ export function Lightbox({
       // écrire « info » ferait défiler les photos et ouvrirait le panneau sous
       // les doigts. Échap reste écouté : c'est la sortie de secours, et elle
       // doit marcher aussi depuis le champ.
-      const target = event.target;
-      if (
-        event.key !== 'Escape' &&
-        target instanceof HTMLElement &&
-        (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable)
-      ) {
-        return;
-      }
+      if (event.key !== 'Escape' && isTyping(event.target)) return;
 
       switch (event.key) {
         case 'Escape':

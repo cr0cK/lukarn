@@ -85,31 +85,48 @@ conservée désignerait autre chose.
 
 ## Barre supérieure — `components/TopBar.tsx`
 
-Une seule rangée, à toutes les largeurs — 65 px, mesurés. Ce qu'elle contient au
-maximum : le retour, le titre et son sous-titre, les contrôles de vue de la page,
-puis Admin, Déconnexion et Installer.
+Une seule rangée, à toutes les largeurs, et **65 px réservés** plutôt que déduits
+du contenu (`min-h-16` sur la rangée, plus le filet). Une page sans sous-titre —
+la liste des albums — donnait sinon une barre de 57 px là où une page d'album en
+fait 65 : tout ce qui y est centré verticalement sautait de 8 px d'une navigation
+à l'autre, et la pastille du compte, seule à son extrémité, était ce qui le
+montrait le mieux.
 
-| Largeur       | Ce qui est visible                                                      |
-| ------------- | ----------------------------------------------------------------------- |
-| `< sm` (640)  | Retour, titre, **Activité**, puis un menu kebab qui porte tout le reste |
-| `sm` – `lg`   | Tout dans la barre, **icônes seules**                                   |
-| `≥ lg` (1024) | Tout dans la barre, avec les libellés                                   |
+Deux familles s'y succèdent et ne se mélangent jamais : **ce que fait cette
+page** — le retour, le titre et son sous-titre, l'activité, les contrôles de vue
+— puis, tout à droite, **qui la regarde** : une pastille portant l'initiale du
+compte, qui ouvre Admin, Déconnexion et Installer.
 
-**`Activité` reste en ligne à toutes les largeurs**, et n'entre jamais dans le
-menu — c'est la seule exception au tableau ci-dessus. Son icône porte la pastille
-des non-lus, seul signe qu'une conversation a bougé quelque part ; rangée dans le
-menu, elle ne signalerait plus rien. Exactement la règle du bouton
-« Commentaires » de la visionneuse, pour le même motif. Le bouton est déclaré
-par la propriété `feed` et non dans le tableau `actions`, qui est précisément ce
-qui bascule dans le menu.
+| Largeur       | Ce qui est visible                                                    |
+| ------------- | --------------------------------------------------------------------- |
+| `< sm` (640)  | Retour, titre, **Activité**, un menu **Affichage**, la pastille       |
+| `sm` – `lg`   | Idem, les contrôles de vue dépliés dans la barre en **icônes seules** |
+| `≥ lg` (1024) | Idem, avec les libellés des contrôles de vue                          |
+
+**`Activité` reste en ligne à toutes les largeurs**, et n'entre jamais dans un
+menu. Son icône porte la pastille des non-lus, seul signe qu'une conversation a
+bougé quelque part ; rangée dans le menu, elle ne signalerait plus rien.
+Exactement la règle du bouton « Commentaires » de la visionneuse, pour le même
+motif. Le bouton est déclaré par la propriété `feed` et non dans le tableau
+`actions`, qui est précisément ce qui bascule dans le menu.
 
 Les seuils sortent de mesures, pas d'un choix d'esthétique. À 393 px, cinq
 contrôles alignés poussaient les bascules de vue sur **une seconde rangée à
 elles seules** — 101 px d'en-tête, le titre d'album réduit à `D.` et le
 sous-titre à `120 éléments · févri…`. Et à 768 px, afficher les cinq libellés
 ramenait le titre de 456 à 144 px en tronquant le sous-titre : c'est pourquoi
-les libellés n'arrivent qu'à `lg`, et non à `md`. Après : 277 px de titre à
-393 px, aucune troncature nulle part.
+les libellés n'arrivent qu'à `lg`, et non à `md`.
+
+Le menu **Affichage** ne se rend que si la page déclare des contrôles ; sans
+cette garde, `/` et `/admin` offriraient sous `sm` une cible qui n'ouvre rien.
+
+**La barre est une surface, pas une portion de page** : `ink-800` translucide sur
+un corps en `ink-900`, filet en `ink-700`. Elle valait `ink-900/85`, soit
+exactement la couleur du corps — la bande n'existait alors que par un filet d'un
+pixel, et sur un écran large la pastille, seule à son extrémité, paraissait posée
+sur le vide. Le filet monte du même cran, sans quoi il se dissoudrait dans le
+fond qu'il délimite. C'est le raisonnement déjà tenu pour le panneau de la
+visionneuse, un cran au-dessus du sien.
 
 **Les contrôles de page sont décrits, pas rendus.** `TopBar` ne prend plus de
 `children` mais un tableau d'`actions` :
@@ -128,10 +145,31 @@ la barre et en ligne libellée dans le menu. Avec des `children`, la page
 fournissait du JSX dont la barre ne savait rien : le libellé ne pouvait qu'être
 masqué, et les icônes se retrouvaient anonymes.
 
-**Installer est en dernier, après Déconnexion**, dans la barre comme dans le
-menu. La proposition apparaît et disparaît selon le navigateur et selon qu'on a
-déjà installé ; la placer ailleurs ferait bouger la position des contrôles
-permanents d'une visite à l'autre.
+**Le compte tient dans une pastille**, à toutes les largeurs. Admin, Déconnexion
+et Installer étaient auparavant trois boutons alignés dans la barre, et
+l'identifiant connecté vivait dans le sous-titre de la liste des albums — à
+gauche, sous « Albums », loin des boutons auxquels il se rapporte, et à
+l'emplacement qu'une page d'album donne au nombre d'éléments et à la période.
+Trois actions dont aucune ne sert au quotidien occupaient ainsi la place que
+réclamait le titre : les replier derrière une cible unique la lui rend, et
+regroupe enfin l'identité avec ce qu'on peut en faire.
+
+Ce que le menu affiche en tête : l'**identifiant**, puis l'**adresse** de
+l'identité de commentateur si la session en porte une. Les deux, parce qu'elles
+ne disent pas la même chose — l'identifiant ouvre des albums et peut être
+partagé par tout un foyer, l'adresse dit qui signe (voir
+[04 — Identités](./04-securite-et-acces.md#identité-de-commentateur)). La
+pastille abrège la **première ligne** : une initiale prise ailleurs se lirait
+comme un défaut au moment où le menu s'ouvre.
+
+Pas de photo, ni de service d'avatar distant : une seule lettre, rendue sur
+place. Aller chercher une image chez un tiers à partir de l'adresse la lui
+communiquerait à chaque chargement de page, pour un gain purement décoratif sur
+une application qu'on héberge précisément pour éviter cela (D86).
+
+**Installer est en dernier, après Déconnexion.** La proposition apparaît et
+disparaît selon le navigateur et selon qu'on a déjà installé ; la placer ailleurs
+ferait bouger la position des contrôles permanents d'une visite à l'autre.
 
 Le menu lui-même vit dans `components/ActionMenu.tsx`, partagé avec la
 visionneuse. Il se referme au clic dehors, à `Échap` — en rendant le focus à
@@ -580,8 +618,18 @@ marge de 24 px, et respecte `prefers-reduced-motion`.
 
 Les vignettes sont `tabIndex={-1}` : la navigation se fait aux flèches, les
 inclure dans l'ordre de tabulation doublerait le parcours clavier.
-`useShortcut` ignore les raccourcis à une touche quand un champ de saisie a le
-focus ou qu'un modificateur est enfoncé.
+
+**Aucune de ces touches ne part pendant une saisie**, ni lorsqu'un modificateur
+est enfoncé. Le test tient dans `lib/typing.ts` — `input`, `textarea`, `select`,
+`contenteditable` — et les trois gestionnaires l'appellent : la grille, la
+visionneuse, et `useShortcut` pour le `?`. Il y vit parce qu'ils en avaient
+chacun leur copie, et qu'une seule suffisait à diverger : celle de la
+grille ne connaissait que `input`, si bien que les flèches, `Début` et `Fin`
+déplaçaient la sélection au lieu du curseur dès qu'on éditait la description d'un
+album ou la note d'une journée — deux textes saisis dans un `textarea`, donc
+inéditables au clavier. La visionneuse garde une exception, et une seule :
+`Échap` lui parvient même depuis le champ de commentaire, c'est la sortie de
+secours.
 
 ## Visionneuse — `components/Lightbox.tsx`
 
@@ -1244,7 +1292,7 @@ panneau, et 16 rem alignées à gauche déborderaient de celui-ci.
 ait déjà ouvert la bonne, et sur un album de milliers de vues dont dix portent
 un message, personne ne tombe dessus. Un message écrit sans lecteur est un
 message perdu : le tiroir est le seul endroit d'où l'on voit qu'il a été écrit
-(D82).
+(D86).
 
 Un **tiroir** et non une page : la grille reste derrière, on referme et on est
 encore au même endroit. Pleine largeur sous `sm`, colonne de 384 px au-delà —
@@ -1373,6 +1421,18 @@ défilement discrètes, anneau de focus `:focus-visible` uniquement (l'app se
 pilote aux flèches, la cible active doit rester repérable), et deux animations —
 `fade-in` des vignettes décodées, `lightbox-enter` — toutes deux neutralisées
 sous `prefers-reduced-motion: reduce`.
+
+**`scrollbar-gutter: stable` sur `html`**, et c'est une correction, pas une
+coquetterie : la visionneuse gèle `document.body.style.overflow` à l'ouverture,
+donc la barre de défilement disparaît et toute la mise en page glisse de sa
+largeur — en-tête compris — à chaque photo ouverte, puis revient à la fermeture.
+Le même décalage se produit entre une page qui défile et une qui ne défile pas.
+Réserver la gouttière fixe la largeur utile une fois pour toutes.
+
+Le prix est une bande vide de 10 px — la largeur fixée par la règle
+`::-webkit-scrollbar` — là où le système dessine ses barres en surimpression et
+ne prenait rien. C'est le compromis assumé : un décalage à chaque photo ouverte
+se remarque, dix pixels constants non.
 
 **`cursor: pointer` est remis en base sur les éléments cliquables.** Tailwind 4 a
 retiré la règle que sa v3 posait sur les `button`, pour s'aligner sur le défaut

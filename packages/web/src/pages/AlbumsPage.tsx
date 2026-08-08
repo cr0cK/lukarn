@@ -63,11 +63,7 @@ export default function AlbumsPage(): ReactElement {
 
   return (
     <div className="min-h-full">
-      <TopBar
-        title="Albums"
-        subtitle={user ? `Connecté en tant que ${user.username}` : null}
-        feed={{ unread: activity.unread, onOpen: activity.open }}
-      />
+      <TopBar title="Albums" feed={{ unread: activity.unread, onOpen: activity.open }} />
 
       <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
         {isPending && <Spinner label="Chargement des albums" />}
