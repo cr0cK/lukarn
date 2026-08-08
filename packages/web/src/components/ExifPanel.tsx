@@ -80,7 +80,13 @@ export function ExifPanel({
   return (
     <dl className="divide-y divide-ink-800">
       {buildRows(detail, day).map((row) => (
-        <div key={row.label} className="flex gap-4 px-5 py-3">
+        // `items-baseline` : le libellé est en 12 px, sa valeur en 14 px. Alignés
+        // par le haut de leur boîte, leurs deux lignes de base tombent à trois
+        // pixels d'écart — assez pour que chaque libellé paraisse flotter
+        // au-dessus de sa valeur. La ligne de base est ce qui les accorde, et
+        // elle reste celle de la **première** ligne quand une valeur en occupe
+        // deux (« NIKON CORPORATION NIKON Z 6_2 »).
+        <div key={row.label} className="flex items-baseline gap-4 px-5 py-3">
           <dt className="w-28 shrink-0 text-xs tracking-wide text-ink-400 uppercase">
             {row.label}
           </dt>

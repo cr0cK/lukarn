@@ -367,12 +367,24 @@ synchrones repartiraient saturer les six mêmes connexions. Le réessai remonte
 l'`<img>` par sa `key` : l'URL ne change pas, c'est le remontage qui relance la
 requête.
 
-`Thumb` efface donc son `src` au démontage (`releaseIfDetached`), seul geste qui
-coupe réellement la requête. Le contrôle sur `isConnected` n'est pas une
-précaution de style : `StrictMode` rejoue montage et démontage **sans toucher au
-DOM**, et sans lui les vignettes du premier écran perdaient leur `src` à
-l'instant où elles s'affichaient — React ne le réécrit pas, sa vue du DOM le
-croyant inchangé.
+`Thumb` efface donc son `src` au démontage (`releaseIfDetached`, dans
+`lib/imageRelease.ts`), seul geste qui coupe réellement la requête. Le contrôle
+sur `isConnected` n'est pas une précaution de style : `StrictMode` rejoue montage
+et démontage **sans toucher au DOM**, et sans lui les vignettes du premier écran
+perdaient leur `src` à l'instant où elles s'affichaient — React ne le réécrit
+pas, sa vue du DOM le croyant inchangé.
+
+**La visionneuse doit le même geste, et pour bien plus lourd** ([D82](./08-decisions.md)).
+`ZoomableImage` est remonté à chaque photo (`key={item.id}`), et son `<img>`
+sortant emporte un `full` d'environ un mégaoctet que personne n'attend plus.
+Mesuré en parcourant vingt-cinq photos aux flèches puis en refermant la
+visionneuse : **89 requêtes en vol**, dont vingt-quatre `full` orphelins, et les
+soixante vignettes de la grille derrière eux dans la file — noires pendant une
+minute, ce qui se lit comme des vignettes qui ne chargeront jamais. Le même
+`releaseIfDetached` au démontage, plus l'abandon du `hd` s'il était en route,
+ramène la mesure à **dix requêtes en vol et zéro `full` orphelin**, et la grille
+se remplit en cinq secondes. Le helper vit donc dans `lib/` et non dans `Thumb` :
+deux appelants, une seule raison.
 
 Le filtrage des sections est un balayage linéaire de `layout.sections`, refait à
 chaque événement de défilement. Le découpage par jour multiplie ce tableau, ce
@@ -437,7 +449,8 @@ d'édition pour un administrateur en découpage par jour.
 
 ### Description de l'album — `components/AlbumDescription.tsx`
 
-Elle s'affiche en tête de `<main>` en `max-w-prose`, et **s'y modifie** pour un
+Elle s'affiche en tête de `<main>`, **sur toute la largeur de la grille**, et
+**s'y modifie** pour un
 administrateur. Elle ne se saisissait que depuis `/admin`, alors que la note
 d'une journée s'écrit d'un clic dans la grille juste en dessous : deux textes
 voisins, deux gestes. Le composant supprime cette asymétrie ; `/admin` reste le
@@ -453,6 +466,12 @@ seul endroit où changer le titre, le dossier Drive ou le découpage.
   raison de plus ici : le pousser dans le flux décalerait toute la grille vers
   le bas, or `useGridLayout` ne remesure `offsetTop` que sur redimensionnement —
   un simple glissement vertical lui échapperait.
+- **Le texte n'a pas de borne de largeur, l'éditeur en garde une.** La
+  description coiffe la grille et prend sa largeur : bornée à la mesure
+  typographique habituelle, elle laissait sur un grand écran deux tiers de la
+  ligne vides au-dessus d'une grille qui, elle, va jusqu'au bord. L'éditeur est
+  un formulaire, pas un texte à lire : un champ de saisie large de deux mille
+  pixels ne se relit pas, il reste donc en `max-w-prose`.
 - **La longueur est bornée par `ALBUM_DESCRIPTION_MAX_LENGTH`**, exporté par
   `@gdv/shared` et appliqué des deux côtés. Le serveur la bornait déjà, mais par
   un littéral que le front aurait redéclaré de son côté.
@@ -484,6 +503,7 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 | Visionneuse | `I` `C`         | Ouvre le panneau sur l'onglet Infos · Commentaires (referme si déjà là) |
 | Visionneuse | `F` `D`         | Plein écran · télécharger l'original                                    |
 | Visionneuse | `Z`             | Zoom à 100 % (un pixel du rendu disponible = un pixel d'écran)          |
+| Visionneuse | `H`             | Escamote l'habillage : en-tête et flèches, rien que la photo            |
 | Visionneuse | `Espace`        | Lecture / pause vidéo (sinon la page défilerait)                        |
 | Partout     | `?`             | Aide-mémoire des raccourcis                                             |
 
@@ -551,11 +571,18 @@ focus ou qu'un modificateur est enfoncé.
 
 ## Visionneuse — `components/Lightbox.tsx`
 
-- **L'en-tête empile trois informations de portée décroissante** : le nom du
-  fichier, puis la journée et son lieu, puis la note. Ouvrir une photo faisait
-  jusque-là perdre ce que son en-tête de section disait, alors que c'est lui qui
-  donne son sens à l'image. L'horodatage exact reste, lui, dans le panneau `i`,
-  où il vivait déjà.
+- **L'en-tête est un fil de contexte de portée décroissante** : l'album et la
+  journée sur la même ligne, puis le lieu, puis la note
+  ([D83](./08-decisions.md)). Ouvrir une photo faisait jusque-là perdre ce que
+  son en-tête de section disait, alors que c'est lui qui donne son sens à
+  l'image. L'horodatage exact reste, lui, dans le panneau `i`, où il vivait
+  déjà.
+
+  **Le nom du fichier a quitté cette place.** Il l'occupait en tête, en gras,
+  alors que `IMG_0004.jpg` ne dit ni où, ni quand, ni quoi — et il masquait
+  l'album, seule information qui manque vraiment quand on arrive par un lien
+  partagé. Il n'est pas perdu : `SidePanel` le porte en tête du panneau `i`,
+  auprès des données techniques qu'il accompagne.
 
   Les libellés de journée viennent de `dayKey`, `dayLabel` et `placeLabelOf`,
   **les mêmes fonctions que la grille**. Une visionneuse qui calculerait sa date
@@ -568,14 +595,25 @@ focus ou qu'un modificateur est enfoncé.
   et du compteur (6 px sous `sm`, 8 px au-delà) sont ceux qui amènent leur ligne
   au centre des boutons d'icône, hauts de 32 puis 36 px.
 
-  **La note est la seule des trois à disparaître sous `md`** (D70) : elle prend
-  deux lignes sur la photo, la grille la montre à toutes les largeurs, et `md`
-  est le seuil où `SidePanel` se docke — la frontière déjà tracée entre la mise
-  en page d'un téléphone et le reste. Le nom du fichier, la journée et son lieu
-  restent, eux, à toutes les largeurs : c'est ce qu'on perd en ouvrant une photo
-  depuis la grille, et le masquer annulerait la raison d'avoir porté ce contexte
-  jusqu'ici. Conséquence à connaître : sur mobile la note n'est plus atteignable
-  que depuis la grille, `ExifPanel` ne la portant pas.
+  **La note s'affiche désormais à toutes les largeurs**, deux lignes au doigt et
+  trois au clavier — là où D70 la réservait au desktop. Le motif d'alors valait
+  pour un panneau latéral qui prend 320 px à un écran de téléphone, pas pour
+  trois lignes sous un voile qu'on escamote d'un geste ([D83](./08-decisions.md)).
+  Elle reste par ailleurs dans le panneau `i`, qu'`ExifPanel` rend sans
+  condition de largeur.
+
+  **Le voile est ce qui rend tout cela lisible** : `from-black/90 via-black/60
+to-transparent`, sur `pb-10`. Un texte clair posé sur un ciel surexposé ne se
+  lit pas ; le dégradé est plus opaque en haut, là où les lignes s'accumulent,
+  et sa base transparente évite la barre noire franche au bord de la photo.
+
+  **`h` escamote tout l'habillage** — en-tête et flèches — pour ne laisser que
+  la photo. C'est la contrepartie assumée d'un fil de contexte plus fourni : il
+  couvre le haut du cadrage, et un geste doit pouvoir le rendre. Les touches
+  ←/→ et le balayage continuent de fonctionner : on escamote ce qui se voit,
+  pas ce qui se pilote. Un unique bouton reste au coin haut-droit, seule sortie
+  possible pour qui touche l'écran. L'état ne suit pas la photo : on le règle
+  une fois, pour regarder.
 
 - **La progression est une barre collée au bord haut**, sur toute la largeur et
   épaisse de 2 px — une barre de chargement, pas un élément de mise en page.

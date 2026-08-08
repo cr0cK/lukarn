@@ -2,6 +2,7 @@ import { THUMB_SIZES, type MediaItem, type ThumbSize } from '@gdv/shared';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { formatDuration } from '../lib/format';
+import { releaseIfDetached } from '../lib/imageRelease';
 
 /**
  * Plus petite variante qui couvre la taille d'affichage réelle, densité de
@@ -23,27 +24,6 @@ const THUMB_RETRY_JITTER_MS = 600;
 export function pickThumbSize(displayWidth: number, dpr = window.devicePixelRatio || 1): ThumbSize {
   const needed = displayWidth * Math.min(dpr, 2);
   return THUMB_SIZES.find((size) => size >= needed) ?? THUMB_SIZES[THUMB_SIZES.length - 1]!;
-}
-
-/**
- * Annule le chargement d'une vignette qui a quitté la grille.
- *
- * Retirer un `<img>` du DOM **n'annule pas** sa requête : le navigateur la mène
- * à terme, et une vignette que plus personne ne regarde continue d'occuper une
- * des six connexions que HTTP/1.1 accorde à une origine. Une grille froide en
- * met plusieurs dizaines en file d'attente ; tout ce qui part ensuite passe
- * derrière — y compris le `/items` dont dépend l'affichage. Le cas le plus net
- * est l'inversion du tri, qui laisse l'album sur « Chargement des photos » le
- * temps que se vident les vignettes de l'ordre précédent. Effacer `src` est ce
- * qui coupe réellement la requête.
- *
- * Le contrôle sur `isConnected` n'est pas une précaution de style : `StrictMode`
- * rejoue montage/démontage sans jamais toucher au DOM, et sans lui les vignettes
- * du premier écran perdaient leur `src` à l'instant où elles s'affichaient —
- * React ne le réécrit pas, sa vue du DOM le croit inchangé.
- */
-export function releaseIfDetached(image: HTMLImageElement | null): void {
-  if (image && !image.isConnected) image.removeAttribute('src');
 }
 
 interface ThumbProps {

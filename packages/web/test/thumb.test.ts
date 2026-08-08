@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pickThumbSize, releaseIfDetached } from '../src/components/Thumb';
+import { pickThumbSize } from '../src/components/Thumb';
+import { releaseIfDetached } from '../src/lib/imageRelease';
 
 /** Le strict minimum d'un `<img>` pour ce que la libération en observe. */
 function vignette(isConnected: boolean) {

@@ -2749,3 +2749,91 @@ visiteurs, pas au seul administrateur.
 Changer le périmètre Drive d'un album vide son index (D50) et donc sa
 couverture, le temps de la resynchronisation. Le choix survit : si la photo
 est encore dans le nouveau dossier, elle redevient la couverture sans geste.
+
+---
+
+## D82 — Une image qu'on quitte doit être abandonnée, sinon elle bouche la file de celles qu'on regarde
+
+**Contexte.** Des vignettes restaient noires dans la grille — parfois une
+minute, parfois assez longtemps pour qu'on les croie perdues. Ouvrir la photo
+correspondante la montrait sans attendre, ce qui écartait la piste d'un rendu
+serveur en échec : le fichier était là, c'est la vignette qui n'arrivait pas.
+
+La mesure a désigné le coupable ailleurs que dans la grille. Protocole :
+descendre dans un album, ouvrir une photo, parcourir vingt-cinq photos aux
+flèches, refermer, puis relever les requêtes en vol. Trois secondes après la
+fermeture, **89 requêtes**, en tête vingt-quatre `…/full` d'un mégaoctet
+vieilles de dix secondes. Les soixante vignettes du retour à la grille étaient
+derrière elles dans la file — les six connexions qu'un navigateur accorde à une
+origine HTTP/1.1 —, et mettaient une minute à se remplir.
+
+Ces `full` sont les photos **déjà quittées**. `ZoomableImage` est remonté à
+chaque photo (`key={item.id}`, qui remet zoom et cadrage à zéro sans les gérer
+à la main), et retirer un `<img>` du DOM **n'annule pas** son téléchargement.
+C'est le piège que la grille connaissait déjà et traitait par
+`releaseIfDetached` ; la visionneuse ne le traitait pas, alors qu'elle
+téléchargeait des fichiers cent fois plus gros.
+
+**Décision.** `releaseIfDetached` quitte `Thumb` pour `lib/imageRelease.ts` —
+deux appelants, une seule raison — et `ZoomableImage` l'appelle au démontage,
+en abandonnant du même geste le `hd` s'il était en route. Après : **dix
+requêtes en vol, zéro `full` orphelin**, et la grille se remplit en cinq
+secondes au lieu de soixante.
+
+**Écarté.** Faire du préchargement le suspect : il annulait déjà correctement,
+et `image.src = ''` comme `removeAttribute('src')` produisent tous deux un
+`net::ERR_ABORTED` — vérifié dans le navigateur avant de toucher au code.
+Écarté aussi : compter sur HTTP/2 derrière le proxy pour dissoudre la file. Le
+multiplexage lève la limite de six connexions, pas celle des quatre rendus
+simultanés du serveur (`media/semaphore.ts`), qui joue exactement le même rôle
+sur un album dont les vignettes ne sont pas encore en cache. Le vrai correctif
+est de ne pas demander ce qu'on ne regarde plus.
+
+**Conséquences.** La règle vaut désormais pour tout `<img>` que ce front monte
+puis démonte : la requête se coupe explicitement. Le contrôle sur `isConnected`
+la rend sûre sous `StrictMode`, qui rejoue montage et démontage sans toucher au
+DOM.
+
+---
+
+## D83 — La photo ouverte dit d'où elle vient, et s'en débarrasse d'une touche
+
+**Contexte.** L'en-tête de la visionneuse ouvrait sur le nom du fichier, en
+gras et en tête ([D74](#d74--la-visionneuse-range-ses-actions-et-rend-à-la-photo-la-note-de-sa-journée)).
+`IMG_0004.jpg` ne dit ni où, ni quand, ni quoi ; il tenait la place de la seule
+information qui manque vraiment quand on ouvre un lien partagé — de quel album
+vient cette photo. Le reste du fil, la journée et son lieu, était comprimé sur
+une ligne unique, et la note ne s'affichait qu'à partir de `md`
+([D70](#d70--la-note-dune-journée-quitte-len-tête-de-la-visionneuse-sur-mobile)).
+
+**Décision.** L'en-tête devient un fil de contexte, du plus large au plus
+étroit : **album · journée**, puis le lieu, puis la note. Le nom du fichier
+descend en tête du panneau `i`, où `SidePanel` l'affichait déjà, auprès des
+données techniques qu'il accompagne. La note s'affiche à toutes les largeurs,
+deux lignes au doigt et trois au clavier : le motif qui la réservait au desktop
+valait pour un panneau latéral prenant 320 px à un écran de téléphone, pas pour
+trois lignes de texte sous un voile.
+
+Le voile passe à `from-black/90 via-black/60 to-transparent` sur `pb-10` : plus
+opaque en haut, là où les lignes s'accumulent, et toujours transparent à sa
+base — un texte clair sur un ciel surexposé ne se lit pas, et une barre noire
+franche au bord de la photo se voit trop.
+
+**`h` escamote tout l'habillage**, en-tête et flèches comprises. C'est la
+contrepartie assumée d'un fil plus fourni : il couvre le haut du cadrage, et
+regarder une photo sans rien par-dessus doit rester à un geste. Les touches
+←/→ et le balayage continuent de fonctionner — on escamote ce qui se voit, pas
+ce qui se pilote. Un unique bouton reste au coin haut-droit : sans lui, la
+sortie ne tiendrait qu'au clavier, c'est-à-dire à rien pour qui touche l'écran.
+L'état ne suit pas la photo courante, il se règle une fois pour la séance.
+
+**Écarté.** Garder le nom du fichier sur une quatrième ligne : l'en-tête en
+compte déjà jusqu'à trois, et une ligne de plus pour l'information la moins
+utile du lot est exactement l'inverse du problème qu'on traite. Écarté aussi :
+faire du clic sur la photo la bascule d'habillage. Ce geste bascule déjà le
+zoom, et deux sens pour un même clic se disputeraient à chaque photo.
+
+**Conséquences.** `Lightbox` prend un `albumTitle` — la visionneuse est une vue
+à part entière, on y arrive par un lien sans avoir vu la grille. La grille, elle,
+ne change pas : son en-tête de section porte déjà la journée, elle est dans un
+album qu'on vient d'ouvrir, et rien n'y est posé sur une photo.

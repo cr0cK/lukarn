@@ -21,6 +21,12 @@ const PRELOAD_BEHIND = 1;
 
 interface LightboxProps {
   albumId: string;
+  /**
+   * Titre de l'album, en tête du fil de contexte. La visionneuse est une vue à
+   * part entière — on y arrive par un lien partagé, sans avoir vu la grille —
+   * et sans lui la photo ne dit plus de quel album elle vient.
+   */
+  albumTitle: string;
   items: MediaItem[];
   index: number;
   /**
@@ -56,6 +62,7 @@ interface LightboxProps {
  */
 export function Lightbox({
   albumId,
+  albumTitle,
   items,
   index,
   total,
@@ -82,6 +89,15 @@ export function Lightbox({
   const [failed, setFailed] = useState(false);
   /** Sens du dernier déplacement : oriente le préchargement. */
   const [direction, setDirection] = useState(1);
+  /**
+   * Habillage escamoté : plus d'en-tête ni de flèches, rien que la photo.
+   *
+   * Le fil de contexte est désormais assez fourni pour couvrir le haut d'un
+   * cadrage — c'est le prix à payer pour qu'il dise enfin d'où vient la photo,
+   * et le geste qui le rend est ce qui rend ce prix acceptable. L'état ne suit
+   * pas la photo : on le règle une fois, pour regarder.
+   */
+  const [bare, setBare] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -321,6 +337,11 @@ export function Lightbox({
           event.preventDefault();
           setZoomed((value) => !value);
           break;
+        case 'h':
+        case 'H':
+          event.preventDefault();
+          setBare((value) => !value);
+          break;
         case ' ': {
           // L'espace fait défiler la page par défaut : ici il pilote la vidéo.
           event.preventDefault();
@@ -411,6 +432,19 @@ export function Lightbox({
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
+    {
+      label: "Masquer l'habillage",
+      shortcut: 'h',
+      onSelect: () => setBare(true),
+      // Un œil barré : c'est ce qui disparaît, pas ce qui reste.
+      icon: (
+        <>
+          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+          <circle cx="12" cy="12" r="2.5" />
+          <path d="m4 20 16-16" />
+        </>
+      ),
+    },
     // Réservée à l'administrateur, et jamais sur une vidéo : le pipeline ne
     // décode pas de vignette vidéo, un album en couverture resterait vide.
     //
@@ -454,10 +488,17 @@ export function Lightbox({
           `min-w-0` est indispensable — sans lui, le contenu impose sa largeur
           et c'est le panneau qui déborde de l'écran. */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Le dégradé descend plus bas qu'avant : il porte désormais deux lignes
-            de texte et la barre de progression, et un voile trop court laissait
-            la note illisible sur une photo claire. */}
-        <header className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8">
+        {/* Le voile est ce qui rend le fil de contexte lisible : sans lui, du
+            texte clair sur un ciel surexposé ne se lit pas du tout. Il descend
+            d'autant plus bas qu'il porte maintenant jusqu'à cinq lignes —
+            album et jour, lieu, trois lignes de note — et il est plus opaque en
+            haut, là où le texte est le plus dense. La transparence de sa base
+            garde la transition douce plutôt que de poser une barre noire au
+            bord de la photo. */}
+        <header
+          hidden={bare}
+          className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/90 via-black/60 to-transparent pb-10"
+        >
           {/* Collée au bord haut, comme une barre de chargement : elle reste
               lisible sans mordre sur la photo. Plus bas, elle traversait
               l'image — un trait de couleur au milieu d'un cadrage. */}
@@ -504,34 +545,50 @@ export function Lightbox({
             </button>
 
             <div className="min-w-0 flex-1 pt-1.5 sm:pt-2">
-              <p className="truncate text-sm leading-5 font-semibold text-ink-100">{item.name}</p>
-              <p className="truncate text-xs leading-4 text-ink-300">
-                {dayLabel(dayKey(item.takenAt))}
-                {dayPlace && ` · ${dayPlace}`}
+              {/* Le fil de contexte, du plus large au plus étroit : l'album, la
+                  journée, son lieu, ce qu'on y a fait. Il remplace le nom de
+                  fichier, qui occupait cette ligne sans rien apprendre à
+                  personne — `IMG_0004.jpg` ne dit ni où ni quand. Le nom reste
+                  là où il sert : en tête du panneau `i`, à côté des données
+                  techniques qu'il accompagne. */}
+              {/* C'est le **titre d'album** qui se tronque, jamais la date : sur
+                  un téléphone, la ligne ne tient pas les deux, et un
+                  « Allemagne – Forêt Noire · Aujo… » sacrifie précisément ce
+                  qu'on cherchait à donner. D'où le `truncate` sur le seul album
+                  et un `shrink-0` sur la date, qui est courte et bornée. */}
+              <p className="flex min-w-0 items-baseline text-sm leading-5 font-semibold text-ink-100">
+                {albumTitle && (
+                  <>
+                    <span className="truncate">{albumTitle}</span>
+                    <span className="shrink-0 px-1.5 text-ink-400">·</span>
+                  </>
+                )}
+                <span className="shrink-0">{dayLabel(dayKey(item.takenAt))}</span>
               </p>
+              {dayPlace && (
+                <p className="truncate text-xs leading-4 text-ink-300" title={dayPlace}>
+                  {dayPlace}
+                </p>
+              )}
               {day?.description && (
-                // Deux lignes clampées, comme dans la grille : la note est un
-                // repère, pas un récit, et elle est posée sur la photo.
+                // La note passe **à toutes les largeurs**, là où elle était
+                // réservée au desktop (D70). Le motif d'alors — 320 px pris à
+                // un écran de téléphone ne laissent rien à voir — vaut pour un
+                // panneau latéral, pas pour trois lignes sous un voile qu'on
+                // escamote d'un geste. Elle reste par ailleurs dans le panneau
+                // `i`, qui la rend sans condition de largeur.
                 //
-                // **Desktop seulement** (D70). Le seuil est `md`, celui où
-                // `SidePanel` cesse d'être un tiroir en surimpression pour se
-                // docker : c'est la largeur à partir de laquelle la mise en
-                // page n'est plus celle d'un téléphone. Sous ce seuil, la note
-                // reste atteignable par le panneau `i`, où `ExifPanel` la rend
-                // sans condition de largeur.
-                //
-                // L'enveloppe porte le `hidden` plutôt que le paragraphe :
-                // `line-clamp-2` pose `display: -webkit-box`, et deux
-                // utilitaires de `display` sur le même élément se départagent
-                // par l'ordre de la feuille, pas par celui des classes.
-                <div className="hidden md:block">
-                  <p
-                    className="mt-0.5 line-clamp-2 max-w-prose text-xs leading-4 text-ink-400"
-                    title={day.description}
-                  >
-                    {day.description}
-                  </p>
-                </div>
+                // Deux lignes au doigt, trois au clavier : la note est un
+                // repère, pas un récit, et elle est posée sur une photo. Le
+                // clamp peut revenir sur le paragraphe maintenant qu'aucun
+                // `hidden` ne s'y dispute la propriété `display` — c'est cette
+                // collision, et non le style, qui imposait une enveloppe.
+                <p
+                  className="mt-0.5 line-clamp-2 text-xs leading-4 text-ink-200 md:line-clamp-3"
+                  title={day.description}
+                >
+                  {day.description}
+                </p>
               )}
             </div>
 
@@ -677,8 +734,11 @@ export function Lightbox({
           )}
 
           {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
-            l'image, et les flèches tomberaient sous le curseur. */}
-          {!zoomed && (
+            l'image, et les flèches tomberaient sous le curseur. Masquées aussi
+            quand l'habillage est escamoté — « rien que la photo » ne s'arrête
+            pas au texte. Les touches ←/→ et le balayage, eux, continuent : on
+            escamote ce qui se voit, pas ce qui se pilote. */}
+          {!zoomed && !bare && (
             <NavButton
               side="left"
               disabled={index === 0}
@@ -686,13 +746,39 @@ export function Lightbox({
               label="Précédent (←)"
             />
           )}
-          {!zoomed && (
+          {!zoomed && !bare && (
             <NavButton
               side="right"
               disabled={index === items.length - 1}
               onClick={() => goTo(index + 1)}
               label="Suivant (→)"
             />
+          )}
+
+          {/* Le seul retour possible une fois tout escamoté, et il doit se
+              trouver sans le chercher : au coin, à la place qu'occupaient les
+              actions. Sans lui, la sortie ne tiendrait qu'à `h` ou à `Échap`,
+              c'est-à-dire à rien pour qui touche l'écran. */}
+          {bare && (
+            <button
+              type="button"
+              onClick={() => setBare(false)}
+              title="Afficher l'habillage (h)"
+              aria-label="Afficher l'habillage (h)"
+              className="absolute top-[calc(0.5rem_+_env(safe-area-inset-top))] right-[calc(0.5rem_+_env(safe-area-inset-right))] z-10 rounded-full bg-black/40 p-2 text-ink-200 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+                <circle cx="12" cy="12" r="2.5" />
+              </svg>
+            </button>
           )}
 
           {/* Une couverture refusée — session expirée, rôle retiré entre-temps —

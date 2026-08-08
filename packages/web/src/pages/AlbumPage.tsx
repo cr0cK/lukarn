@@ -6,7 +6,7 @@ import {
   type GroupBy,
   type SortOrder,
 } from '@gdv/shared';
-import { type ReactElement, useCallback, useEffect, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
 import { AlbumDescription } from '../components/AlbumDescription';
@@ -210,9 +210,20 @@ export default function AlbumPage(): ReactElement {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, showShortcuts, grid.layout, items.length, selectedIndex, openAt, navigate]);
 
+  // Le layout est lu par une ref, et n'est **pas** une dépendance : c'est un
+  // objet neuf à chaque page chargée, à chaque redimensionnement et à chaque
+  // section repliée. En dépendance, l'effet se rejouait donc en plein
+  // défilement et ramenait la page — en douceur, ce qui la rendait d'autant
+  // plus déroutante — sur la dernière vignette sélectionnée. Mesuré : en
+  // descendant sans rien toucher, la vue repartait de y≈13000 à y≈2845 à
+  // chaque page d'items. La mise en vue suit la **sélection**, rien d'autre.
+  const gridRef = useRef(grid);
+  gridRef.current = grid;
   useEffect(() => {
-    if (!isOpen) scrollSelectionIntoView(grid.layout, grid.offsetTop, selectedIndex);
-  }, [selectedIndex, isOpen, grid.layout, grid.offsetTop]);
+    if (!isOpen) {
+      scrollSelectionIntoView(gridRef.current.layout, gridRef.current.offsetTop, selectedIndex);
+    }
+  }, [selectedIndex, isOpen]);
 
   useShortcut('?', () => setShowShortcuts(true), !isOpen);
 
@@ -338,6 +349,7 @@ export default function AlbumPage(): ReactElement {
       {isOpen && (
         <Lightbox
           albumId={albumId}
+          albumTitle={album.data?.title ?? ''}
           items={items}
           index={openedIndex}
           total={album.data?.itemCount ?? items.length}
