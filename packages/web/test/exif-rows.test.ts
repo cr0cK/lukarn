@@ -29,6 +29,7 @@ function detail(patch: DetailPatch = {}): MediaDetail {
     durationMs: null,
     hasPreview: true,
     version: 'abc',
+    videoCodec: null,
     description: null,
     commentCount: 0,
     ...patch,

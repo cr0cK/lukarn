@@ -237,6 +237,7 @@ async function main(): Promise<void> {
         // Drive : sans lui, la grille montrerait une tuile sobre et le chemin
         // du poster ne serait pas vérifiable hors compte Google.
         hasThumbnail: true,
+        videoCodec: null,
       });
 
       // Pré-remplit toutes les variantes que l'interface peut demander.

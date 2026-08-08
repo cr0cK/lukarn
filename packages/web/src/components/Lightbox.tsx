@@ -16,6 +16,7 @@ import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { isTyping } from '../lib/typing';
 import { placeLabelOf } from '../lib/useGridLayout';
 import { useSwipe } from '../lib/useSwipe';
+import { canPlayVideoType, chooseVideoSource } from '../lib/videoSource';
 import { ActionMenu } from './ActionMenu';
 import { MediaCaption } from './MediaCaption';
 import { SidePanel, type PanelTab } from './SidePanel';
@@ -430,6 +431,18 @@ export function Lightbox({
   // qu'on le feuillette : le compteur ne doit jamais afficher « 60 / 50 ».
   const count = Math.max(total, items.length);
 
+  /**
+   * D'où vient la vidéo. Le codec réel tranche : ce navigateur-ci prend la
+   * version préparée par le serveur, un autre qui décode l'HEVC — Safari, un
+   * iPhone — garde l'original en pleine qualité (D260809b).
+   *
+   * La détection de D98 reste le filet derrière ce choix, et pas seulement pour
+   * les vidéos sans codec connu : un navigateur qui annonce savoir lire un
+   * format sans y parvenir tombe encore dessus.
+   */
+  const transcoded =
+    isVideo && chooseVideoSource(item.videoCodec, canPlayVideoType) === 'transcoded';
+
   // Les actions sont décrites une fois et rendues de deux façons : en icônes
   // alignées à partir de `sm`, en lignes libellées dans le menu en dessous. Les
   // dupliquer laisserait un raccourci, une icône ou un état actif se désaccorder
@@ -746,10 +759,16 @@ export function Lightbox({
               {/* Le format en cause plutôt qu'un « une erreur est survenue » :
                   c'est presque toujours un codec que ce navigateur ne décode
                   pas (D79), et le fichier reste parfaitement lisible ailleurs.
-                  Sans le téléchargement, la vidéo serait simplement perdue. */}
+                  Sans le téléchargement, la vidéo serait simplement perdue.
+
+                  Quand le codec est connu pour être illisible ici, on sait en
+                  plus qu'une version lisible est en route : le dire évite de
+                  faire revenir dans dix minutes quelqu'un qui aurait renoncé
+                  (D260809b). */}
               <p className="text-xs text-ink-400">
-                Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste
-                téléchargeable.
+                {transcoded
+                  ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur — réessaie dans quelques minutes. Le fichier d'origine reste téléchargeable."
+                  : "Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste téléchargeable."}
               </p>
               <button
                 type="button"
@@ -763,7 +782,11 @@ export function Lightbox({
             <video
               ref={videoRef}
               key={item.id}
-              src={mediaUrl.original(item.id, item.version)}
+              src={
+                transcoded
+                  ? mediaUrl.playable(item.id, item.version)
+                  : mediaUrl.original(item.id, item.version)
+              }
               // La même vignette que la grille, donc déjà en cache disque et
               // souvent en cache navigateur : le rectangle noir de l'attente
               // disparaît sans une requête de plus (D92).

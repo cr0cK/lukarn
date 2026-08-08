@@ -54,25 +54,32 @@ function SettingsForm({
   const [onStartup, setOnStartup] = useState(settings.syncOnStartup);
   const [prewarm, setPrewarm] = useState(settings.prewarmCache);
   const [cacheSize, setCacheSize] = useState(String(settings.cacheMaxSizeGB));
+  const [transcode, setTranscode] = useState(settings.transcodeVideos);
+  const [videoCacheSize, setVideoCacheSize] = useState(String(settings.videoCacheMaxSizeGB));
   const [moderationEmail, setModerationEmail] = useState(settings.moderationEmail ?? '');
   const [touched, setTouched] = useState(false);
 
   const intervalError = validateIntervalMinutes(minutes);
   const cacheError = validateCacheSizeGB(cacheSize);
+  const videoCacheError = validateCacheSizeGB(videoCacheSize);
 
   const parsedInterval = parseNumber(minutes);
   const parsedCache = parseNumber(cacheSize);
+  const parsedVideoCache = parseNumber(videoCacheSize);
   const dirty =
     parsedInterval !== settings.syncIntervalMinutes ||
     onStartup !== settings.syncOnStartup ||
     prewarm !== settings.prewarmCache ||
     parsedCache !== settings.cacheMaxSizeGB ||
+    transcode !== settings.transcodeVideos ||
+    parsedVideoCache !== settings.videoCacheMaxSizeGB ||
     moderationEmail.trim() !== (settings.moderationEmail ?? '');
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     setTouched(true);
-    if (intervalError || cacheError || parsedInterval === null || parsedCache === null) return;
+    if (intervalError || cacheError || videoCacheError) return;
+    if (parsedInterval === null || parsedCache === null || parsedVideoCache === null) return;
 
     // Seuls les réglages modifiés partent, pour ne pas réécrire les autres.
     const body: UpdateSettingsRequest = {};
@@ -80,6 +87,10 @@ function SettingsForm({
     if (onStartup !== settings.syncOnStartup) body.syncOnStartup = onStartup;
     if (prewarm !== settings.prewarmCache) body.prewarmCache = prewarm;
     if (parsedCache !== settings.cacheMaxSizeGB) body.cacheMaxSizeGB = parsedCache;
+    if (transcode !== settings.transcodeVideos) body.transcodeVideos = transcode;
+    if (parsedVideoCache !== settings.videoCacheMaxSizeGB) {
+      body.videoCacheMaxSizeGB = parsedVideoCache;
+    }
     if (moderationEmail.trim() !== (settings.moderationEmail ?? '')) {
       body.moderationEmail = moderationEmail.trim();
     }
@@ -95,6 +106,8 @@ function SettingsForm({
     setOnStartup(settings.syncOnStartup);
     setPrewarm(settings.prewarmCache);
     setCacheSize(String(settings.cacheMaxSizeGB));
+    setTranscode(settings.transcodeVideos);
+    setVideoCacheSize(String(settings.videoCacheMaxSizeGB));
     setModerationEmail(settings.moderationEmail ?? '');
     setTouched(false);
   };
@@ -122,6 +135,17 @@ function SettingsForm({
           disabled={save.isPending}
           error={touched ? cacheError : null}
           hint="Vignettes et rendus. Au-delà, les entrées les plus anciennes sont évincées."
+        />
+
+        <TextField
+          id="settings-video-cache"
+          label="Taille maximale des vidéos préparées (Go)"
+          value={videoCacheSize}
+          onChange={setVideoCacheSize}
+          inputMode="decimal"
+          disabled={save.isPending}
+          error={touched ? videoCacheError : null}
+          hint="Budget distinct de celui des vignettes : une vidéo coûte des minutes de processeur, une vignette quelques secondes. Compter environ 95 Mo par minute de film en 1080p."
         />
       </div>
 
@@ -155,6 +179,15 @@ function SettingsForm({
         onChange={setPrewarm}
         disabled={save.isPending}
         hint="Rend les photos en fond, une à la fois, des plus récentes aux plus anciennes : la première ouverture passe de quelques secondes à instantanée. À décocher si la liaison Internet du serveur est comptée."
+      />
+
+      <Checkbox
+        id="settings-transcode"
+        label="Préparer les vidéos que le navigateur ne sait pas lire"
+        checked={transcode}
+        onChange={setTranscode}
+        disabled={save.isPending}
+        hint="Convertit en fond les vidéos HEVC, une à la fois et à priorité basse : compter environ une minute de processeur par minute de film. Sans cela, elles restent seulement téléchargeables."
       />
 
       <FormError

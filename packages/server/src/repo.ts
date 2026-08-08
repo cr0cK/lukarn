@@ -37,6 +37,7 @@ interface MediaRow {
   lng: number | null;
   md5: string | null;
   has_thumbnail: number;
+  video_codec: string | null;
   description: string | null;
 }
 
@@ -68,6 +69,12 @@ export interface MediaUpsert {
    * Toujours vrai sur une photo, pas toujours sur une vidéo.
    */
   hasThumbnail: boolean;
+  /**
+   * Codec de la piste image, lu dans l'en-tête du fichier. `null` sur une photo
+   * comme sur une vidéo dont l'en-tête n'a pas pu être atteint — voir la
+   * migration 14 pour les trois états de la colonne.
+   */
+  videoCodec: string | null;
 }
 
 function toItem(row: MediaRow): MediaItem {
@@ -90,6 +97,7 @@ function toItem(row: MediaRow): MediaItem {
     // Huit caractères de l'empreinte suffisent à distinguer deux versions
     // successives d'un même fichier ; l'URL reste lisible.
     version: row.md5 ? row.md5.slice(0, 8) : null,
+    videoCodec: row.video_codec,
     description: row.description,
   };
 }
@@ -348,16 +356,33 @@ export class MediaRepo {
   fileTakenAt(
     albumId: string,
     id: string,
-  ): { md5: string | null; takenAt: string; takenAtFromExif: boolean } | null {
+  ): {
+    md5: string | null;
+    takenAt: string;
+    takenAtFromExif: boolean;
+    /** `null` tant que l'en-tête n'a pas livré de codec : le court-circuit ne
+     *  s'applique alors pas, et le fichier est rouvert une fois de plus. */
+    videoCodec: string | null;
+  } | null {
     const row = this.db
-      .prepare('SELECT md5, taken_at, taken_at_from_exif FROM media WHERE album_id = ? AND id = ?')
+      .prepare(
+        `SELECT md5, taken_at, taken_at_from_exif, video_codec FROM media
+          WHERE album_id = ? AND id = ?`,
+      )
       .get(albumId, id) as
-      { md5: string | null; taken_at: string; taken_at_from_exif: number } | undefined;
+      | {
+          md5: string | null;
+          taken_at: string;
+          taken_at_from_exif: number;
+          video_codec: string | null;
+        }
+      | undefined;
     if (!row) return null;
     return {
       md5: row.md5,
       takenAt: row.taken_at,
       takenAtFromExif: row.taken_at_from_exif === 1,
+      videoCodec: row.video_codec,
     };
   }
 
@@ -468,12 +493,14 @@ export class MediaRepo {
          album_id, id, name, mime_type, kind, size, width, height,
          taken_at, taken_at_from_exif, modified_time, duration_ms,
          camera_make, camera_model, lens, iso_speed, exposure_time,
-         aperture, focal_length, lat, lng, md5, has_thumbnail, seen_at, added_at
+         aperture, focal_length, lat, lng, md5, has_thumbnail, video_codec,
+         seen_at, added_at
        ) VALUES (
          @albumId, @id, @name, @mimeType, @kind, @size, @width, @height,
          @takenAt, @takenAtFromExif, @modifiedTime, @durationMs,
          @cameraMake, @cameraModel, @lens, @isoSpeed, @exposureTime,
-         @aperture, @focalLength, @lat, @lng, @md5, @hasThumbnail, @seenAt, @seenAt
+         @aperture, @focalLength, @lat, @lng, @md5, @hasThumbnail, @videoCodec,
+         @seenAt, @seenAt
        )
        ON CONFLICT (album_id, id) DO UPDATE SET
          name = excluded.name,
@@ -497,6 +524,7 @@ export class MediaRepo {
          lng = excluded.lng,
          md5 = excluded.md5,
          has_thumbnail = excluded.has_thumbnail,
+         video_codec = excluded.video_codec,
          seen_at = excluded.seen_at
          -- added_at est délibérément absent de ce DO UPDATE : c'est la date
          -- d'entrée dans l'index, elle ne bouge plus. La réécrire ferait

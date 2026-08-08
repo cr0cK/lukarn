@@ -10,7 +10,7 @@ import {
   toText,
   type VideoTakenAt,
 } from './metadata.js';
-import { findMoovOffset, readCreationTime } from './mp4.js';
+import { findMoovOffset, readCreationTime, readVideoCodec } from './mp4.js';
 import { DriveRevokedError, type DriveService } from './service.js';
 
 const FIELDS =
@@ -43,6 +43,22 @@ const HEADER_MAX_WINDOWS = 4;
  * resterait `running` indéfiniment.
  */
 const HEADER_TIMEOUT_MS = 20_000;
+
+/** Ce qu'un passage de fenêtres apprend de l'en-tête d'une vidéo. */
+interface ContainerHeader {
+  /** `creation_time` du `moov`, `null` s'il est absent ou hors d'atteinte. */
+  time: string | null;
+  /**
+   * Codec de la piste image. Chaîne vide quand le `moov` a bien été lu sans
+   * qu'on y reconnaisse de piste image, `null` quand l'en-tête n'a pas été
+   * atteint. La distinction décide de ce que la sync suivante rouvrira — voir
+   * la migration 12.
+   */
+  codec: string | null;
+}
+
+/** Ce que la sync retient d'une vidéo : sa date, et de quoi la rendre lisible. */
+type VideoHeader = VideoTakenAt & { videoCodec: string | null };
 
 /**
  * Ce dont la synchronisation a besoin d'un album, et rien de plus : elle ne
@@ -338,13 +354,15 @@ export class Syncer {
     const exifTime = parseExifTime(image?.time);
     // Sans date EXIF (captures d'écran, photos ré-encodées), la date de
     // modification Drive est le seul repère chronologique disponible. Une vidéo,
-    // elle, n'en a jamais et se date sur son fichier (D97).
-    const { takenAt, fromFile } =
+    // elle, n'en a jamais et se date sur son fichier (D97) — d'où elle rapporte
+    // aussi son codec, dans le même passage de fenêtres (D260809b).
+    const { takenAt, fromFile, videoCodec } =
       kind === 'video'
-        ? await this.videoTakenAt(albumId, file)
+        ? await this.videoHeader(albumId, file)
         : {
             takenAt: exifTime ?? new Date(file.modifiedTime).toISOString(),
             fromFile: exifTime !== null,
+            videoCodec: null,
           };
 
     const width = toNumber(image?.width) ?? toNumber(video?.width);
@@ -386,68 +404,89 @@ export class Syncer {
       // quelques secondes, n'en ont pas encore. Le stocker évite que la grille
       // redemande à chaque chargement de page un aperçu qui n'existe pas (D92).
       hasThumbnail: file.hasThumbnail === true,
+      videoCodec,
     };
   }
 
   /**
-   * Date de prise de vue d'une vidéo, reconstruite depuis le fichier (D97).
+   * Date de prise de vue d'une vidéo (D97) et codec de sa piste image (D260809b),
+   * reconstruits depuis le fichier en une seule lecture.
    *
    * Le court-circuit sur le `md5` est ce qui rend la sync d'un album de vidéos
    * répétable : une vidéo déjà datée depuis son fichier et dont le contenu n'a
    * pas bougé garde sa date sans qu'un seul octet soit relu. Une vidéo restée
    * sur `modifiedTime` — en-tête illisible, Drive indisponible au moment de la
    * lecture — est réessayée au passage suivant.
+   *
+   * `videoCodec` entre dans la condition, et c'est ce qui peuple la colonne sans
+   * migration de données : les lignes écrites avant elle portent une date venue
+   * du fichier mais pas de codec, donc elles sont relues **une fois**, puis
+   * court-circuitées comme les autres.
    */
-  private async videoTakenAt(albumId: string, file: drive_v3.Schema$File): Promise<VideoTakenAt> {
+  private async videoHeader(albumId: string, file: drive_v3.Schema$File): Promise<VideoHeader> {
     const md5 = toText(file.md5Checksum);
     const known = this.media.fileTakenAt(albumId, file.id!);
-    if (known?.takenAtFromExif && md5 !== null && known.md5 === md5) {
-      return { takenAt: known.takenAt, fromFile: true };
+    if (known?.takenAtFromExif && md5 !== null && known.md5 === md5 && known.videoCodec !== null) {
+      return { takenAt: known.takenAt, fromFile: true, videoCodec: known.videoCodec };
     }
 
-    return resolveVideoTakenAt({
-      name: file.name,
-      containerTime: await this.containerTime(file.id!, toNumber(file.size)),
-      durationMs: toNumber(file.videoMediaMetadata?.durationMillis),
-      modifiedTime: file.modifiedTime!,
-    });
+    const header = await this.containerHeader(file.id!, toNumber(file.size));
+    return {
+      ...resolveVideoTakenAt({
+        name: file.name,
+        containerTime: header.time,
+        durationMs: toNumber(file.videoMediaMetadata?.durationMillis),
+        modifiedTime: file.modifiedTime!,
+      }),
+      videoCodec: header.codec,
+    };
   }
 
   /**
-   * `creation_time` du conteneur, en suivant la chaîne des boîtes de premier
-   * niveau d'une fenêtre à l'autre. `null` dès que le fichier ne se laisse pas
+   * Ce que porte le `moov`, en suivant la chaîne des boîtes de premier niveau
+   * d'une fenêtre à l'autre. Tout est `null` dès que le fichier ne se laisse pas
    * lire — format non ISOBMFF, `moov` hors d'atteinte, Drive indisponible :
    * l'appelant se rabat alors sur le nom, puis sur la date de modification.
+   *
+   * Les deux lectures partagent la fenêtre parce qu'elles partagent la boîte :
+   * les séparer doublerait le nombre de requêtes `Range` d'une sync d'album de
+   * vidéos, pour relire exactement les mêmes octets.
    */
-  private async containerTime(fileId: string, fileSize: number | null): Promise<string | null> {
+  private async containerHeader(fileId: string, fileSize: number | null): Promise<ContainerHeader> {
+    const absent: ContainerHeader = { time: null, codec: null };
+
     // Sans taille annoncée, la chaîne ne peut pas être bornée : une boîte de
     // taille nulle court « jusqu'à la fin », qu'on ne connaîtrait pas.
-    if (fileSize === null || fileSize <= 0) return null;
+    if (fileSize === null || fileSize <= 0) return absent;
 
     let start = 0;
 
     for (let fenetre = 0; fenetre < HEADER_MAX_WINDOWS; fenetre++) {
       const buffer = await this.readWindow(fileId, start, fileSize);
-      if (buffer === null) return null;
+      if (buffer === null) return absent;
 
       const { moovOffset, nextOffset } = findMoovOffset(buffer, start, fileSize);
 
       if (moovOffset !== null) {
         const time = readCreationTime(buffer, moovOffset - start);
-        if (time !== null) return time;
+        // Le `moov` a été atteint : un codec introuvable est une réponse, pas
+        // un manque, et la chaîne vide évite de rouvrir le fichier à chaque
+        // synchronisation pour relire ce qu'il n'a pas.
+        const codec = readVideoCodec(buffer, moovOffset - start) ?? '';
+        if (time !== null) return { time, codec };
         // Le `moov` est là mais son `mvhd` déborde de la fenêtre : rouvrir sur
         // la boîte elle-même. Si elle y commençait déjà, il n'y a plus rien à
         // en tirer et insister ferait boucler.
-        if (moovOffset === start) return null;
+        if (moovOffset === start) return { time: null, codec };
         start = moovOffset;
         continue;
       }
 
-      if (nextOffset === null) return null;
+      if (nextOffset === null) return absent;
       start = nextOffset;
     }
 
-    return null;
+    return absent;
   }
 
   /** Une fenêtre de l'en-tête, ou `null` si Drive ne l'a pas rendue. */

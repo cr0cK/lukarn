@@ -31,6 +31,18 @@ interface CacheLogger {
 const SILENT: CacheLogger = { warn: () => {} };
 
 /**
+ * Nom d'un rayon du cache : les deux premiers caractères hexadécimaux du hash
+ * d'une clé (voir `pathFor`).
+ *
+ * L'inventaire ne descend que dans ceux-là, et le vidage ne supprime que
+ * ceux-là. Sans cette borne, un cache monté sur `CACHE_DIR` inventorierait le
+ * magasin vidéo de `CACHE_DIR/video` comme s'il était à lui — il en compterait
+ * les octets dans son budget, et « vider le cache » depuis /admin emporterait
+ * des heures de transcodage avec les vignettes (D260809b).
+ */
+const RAYON = /^[0-9a-f]{2}$/;
+
+/**
  * Cache disque des dérivés d'images (vignettes et rendus pleine largeur).
  * Chaque entrée est un fichier ; l'inventaire des tailles est tenu en mémoire
  * pour décider des évictions sans re-parcourir l'arborescence.
@@ -81,7 +93,8 @@ export class MediaCache {
     for (const entry of listing) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
-        await this.scan(path);
+        // Un répertoire qui n'est pas un rayon appartient à quelqu'un d'autre.
+        if (RAYON.test(entry.name)) await this.scan(path);
         continue;
       }
       // Fichiers temporaires laissés par une écriture interrompue.
@@ -146,13 +159,56 @@ export class MediaCache {
     return path;
   }
 
+  /**
+   * Range un fichier **déjà écrit sur disque**, par simple renommage, et rend
+   * son chemin dans le cache.
+   *
+   * `put` charge son contenu en mémoire : c'est sans conséquence pour une
+   * vignette de quelques dizaines de Ko, ce ne l'est pas pour les trente Mo
+   * d'un dérivé vidéo, dont le producteur écrit de toute façon un fichier.
+   *
+   * `source` doit être sur le **même système de fichiers** que le cache — c'est
+   * pourquoi le transcodage écrit ses temporaires sous la racine du magasin :
+   * `rename` échouerait sinon en `EXDEV`, après plusieurs minutes de travail.
+   */
+  async putFile(key: string, source: string): Promise<string> {
+    const path = this.pathFor(key);
+    await mkdir(dirname(path), { recursive: true });
+
+    // La taille est relevée avant le renommage : après, le chemin source
+    // n'existe plus, et un `stat` sur la destination coûterait une syscall de
+    // plus pour la même valeur.
+    const { size } = await stat(source);
+    await rename(source, path);
+
+    const previous = this.entries.get(path);
+    if (previous) this.bytes -= previous.size;
+    this.entries.set(path, { size, lastAccess: Date.now(), stamp: ++this.clock });
+    this.bytes += size;
+
+    this.evictInBackground();
+    return path;
+  }
+
   stats(): CacheStats {
     return { entryCount: this.entries.size, bytes: this.bytes, maxBytes: this.maxBytes };
   }
 
+  /**
+   * Vide le cache. Ses rayons seulement : un `rm -rf` de la racine emporterait
+   * ce qu'un autre magasin y a déposé — le magasin vidéo vit sous
+   * `CACHE_DIR/video`, et « vider le cache » ne doit pas coûter des heures de
+   * transcodage à qui voulait récupérer quelques giga-octets de vignettes.
+   */
   async clear(): Promise<void> {
-    await rm(this.root, { recursive: true, force: true });
     await mkdir(this.root, { recursive: true });
+
+    const listing = await readdir(this.root, { withFileTypes: true });
+    for (const entry of listing) {
+      if (!entry.isDirectory() || !RAYON.test(entry.name)) continue;
+      await rm(join(this.root, entry.name), { recursive: true, force: true });
+    }
+
     this.entries.clear();
     this.bytes = 0;
   }

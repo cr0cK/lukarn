@@ -48,6 +48,7 @@ function media(id: string, md5: string | null): MediaUpsert {
     lng: null,
     md5,
     hasThumbnail: true,
+    videoCodec: null,
   };
 }
 

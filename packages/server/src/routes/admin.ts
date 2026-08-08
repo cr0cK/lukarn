@@ -138,6 +138,8 @@ const updateSettingsSchema = z.object({
   syncOnStartup: z.boolean().optional(),
   cacheMaxSizeGB: z.number().positive().max(10000).optional(),
   prewarmCache: z.boolean().optional(),
+  transcodeVideos: z.boolean().optional(),
+  videoCacheMaxSizeGB: z.number().positive().max(10000).optional(),
   moderationEmail,
 });
 

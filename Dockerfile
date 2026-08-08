@@ -58,8 +58,12 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # ---------------------------------------------------------------------------
 FROM node:24-slim AS runtime
 
+# ffmpeg prépare les vidéos dont aucun navigateur ne décode le codec (D99). Il
+# pèse environ 250 Mo dans l'image — le prix d'entrée, et le seul. Sans lui le
+# serveur démarre quand même : il le signale au démarrage, et ces vidéos restent
+# téléchargeables comme avant.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates tini \
+  && apt-get install -y --no-install-recommends ca-certificates tini ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production

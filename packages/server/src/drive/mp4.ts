@@ -14,7 +14,7 @@
  * complet — la signature tombe alors sur une date périmée, parfois de plusieurs
  * mois, sans que rien ne le signale.
  *
- * Les deux fonctions sont pures : aucun accès réseau, l'appelant fournit les
+ * Les trois fonctions sont pures : aucun accès réseau, l'appelant fournit les
  * tampons. C'est ce qui les rend vérifiables sur des cas construits à la main.
  */
 
@@ -139,21 +139,104 @@ export function readCreationTime(buffer: Buffer, moovOffset: number): string | n
   const moov = readBoxHeader(buffer, moovOffset);
   if (moov.kind !== 'box' || moov.type !== 'moov') return null;
 
-  // Le tampon borne la lecture aussi bien que la taille annoncée : une fenêtre
-  // peut s'arrêter au milieu du `moov`.
-  const declaredEnd = moov.size === 0 ? buffer.length : moovOffset + moov.size;
+  for (const child of children(buffer, moovOffset)) {
+    if (child.type === 'mvhd') return readMvhd(buffer, child.start, child.end);
+  }
+
+  return null;
+}
+
+/** Une boîte fille, située dans le tampon. */
+interface Box {
+  type: string;
+  /** Offset de son en-tête — c'est lui qu'on repasse à `children`. */
+  offset: number;
+  /** Premier octet du contenu, en-tête exclu. */
+  start: number;
+  /** Premier octet après la boîte, borné par le tampon. */
+  end: number;
+}
+
+/**
+ * Boîtes filles d'un conteneur, dans l'ordre du fichier.
+ *
+ * `offset` désigne l'**en-tête** du conteneur. Le parcours s'arrête à la fin de
+ * celui-ci comme à celle du tampon : une fenêtre peut couper au milieu d'une
+ * boîte, et lire au-delà reviendrait à interpréter des octets qui ne sont pas
+ * là. Il s'arrête aussi à la première fille incohérente — une taille plus courte
+ * que son en-tête ferait boucler sur place.
+ */
+function* children(buffer: Buffer, offset: number): Generator<Box> {
+  const box = readBoxHeader(buffer, offset);
+  if (box.kind !== 'box') return;
+
+  const declaredEnd = box.size === 0 ? buffer.length : offset + box.size;
   const end = Math.min(declaredEnd, buffer.length);
 
-  let offset = moovOffset + moov.headerSize;
-  while (offset < end) {
-    const child = readBoxHeader(buffer, offset);
-    if (child.kind !== 'box') return null;
+  let cursor = offset + box.headerSize;
+  while (cursor < end) {
+    const child = readBoxHeader(buffer, cursor);
+    if (child.kind !== 'box') return;
 
-    if (child.type === 'mvhd') return readMvhd(buffer, offset + child.headerSize, end);
+    const size = child.size === 0 ? end - cursor : child.size;
+    if (size < child.headerSize) return;
 
-    const size = child.size === 0 ? end - offset : child.size;
-    if (size < child.headerSize) return null;
-    offset += size;
+    yield {
+      type: child.type,
+      offset: cursor,
+      start: cursor + child.headerSize,
+      end: Math.min(cursor + size, end),
+    };
+    cursor += size;
+  }
+}
+
+/** Première fille de ce type, ou `null`. */
+function child(buffer: Buffer, offset: number, type: string): Box | null {
+  for (const box of children(buffer, offset)) {
+    if (box.type === type) return box;
+  }
+  return null;
+}
+
+/**
+ * Code à quatre lettres du codec de la piste image — `avc1`, `hvc1`, `hev1` —,
+ * ou `null` si le tampon ne va pas jusqu'au `stsd`, si le `moov` ne porte aucune
+ * piste image, ou si ce qui s'y trouve n'est pas un type de boîte.
+ *
+ * `moovOffset` est l'index de la boîte **dans le tampon**, comme pour
+ * `readCreationTime`.
+ *
+ * La descente est `moov → trak → mdia → minf → stbl → stsd`, et la piste est
+ * choisie sur son `hdlr` : une vidéo de téléphone porte au moins une piste son,
+ * souvent placée avant l'image, et parfois des pistes de métadonnées. Prendre le
+ * premier `stsd` venu rendrait `mp4a` un fichier sur deux.
+ */
+export function readVideoCodec(buffer: Buffer, moovOffset: number): string | null {
+  const moov = readBoxHeader(buffer, moovOffset);
+  if (moov.kind !== 'box' || moov.type !== 'moov') return null;
+
+  for (const trak of children(buffer, moovOffset)) {
+    if (trak.type !== 'trak') continue;
+
+    const mdia = child(buffer, trak.offset, 'mdia');
+    if (!mdia) continue;
+
+    // `hdlr` : version et drapeaux (4 octets), `pre_defined` (4), puis le type
+    // de gestionnaire — `vide` pour l'image, `soun` pour le son.
+    const hdlr = child(buffer, mdia.offset, 'hdlr');
+    if (!hdlr || hdlr.start + 12 > hdlr.end) continue;
+    if (buffer.toString('latin1', hdlr.start + 8, hdlr.start + 12) !== 'vide') continue;
+
+    const minf = child(buffer, mdia.offset, 'minf');
+    const stbl = minf && child(buffer, minf.offset, 'stbl');
+    const stsd = stbl && child(buffer, stbl.offset, 'stsd');
+    // `stsd` : version et drapeaux (4), nombre d'entrées (4), puis la première
+    // entrée — sa taille (4) et le code du format (4).
+    if (!stsd || stsd.start + 16 > stsd.end) return null;
+
+    const format = buffer.toString('latin1', stsd.start + 12, stsd.start + 16);
+    return isBoxType(format) ? format : null;
   }
 
   return null;

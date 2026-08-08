@@ -33,6 +33,7 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 | `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, tous nullables. Servis par `/items/:mediaId`.                                                                                   |
 | `md5`                                                                                                         | TEXT    | Empreinte du contenu Drive. Porte la version des URL et des ETag, et entre dans la clé du cache disque.                               |
 | `has_thumbnail`                                                                                               | INTEGER | 0/1, le `hasThumbnail` de Drive. Décide si une **vidéo** a une vignette — voir ci-dessous.                                            |
+| `video_codec`                                                                                                 | TEXT    | Codec de la piste image d'une vidéo, lu dans son `moov`. Trois états, voir ci-dessous.                                                |
 | `seen_at`                                                                                                     | TEXT    | Estampille de la sync qui a vu cette ligne. Base de `deleteStale`.                                                                    |
 | `added_at`                                                                                                    | TEXT    | Date d'entrée dans l'index, écrite à l'INSERT et **jamais** par le `ON CONFLICT DO UPDATE`. Nullable — voir ci-dessous.               |
 | **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                      |
@@ -55,6 +56,23 @@ téléversement restait : le panneau écrit alors « Modifié le », qui est
 exactement ce qu'on sait. Aucune migration n'accompagne ce changement — la sync
 ré-upserte chaque fichier, et une vidéo déjà datée depuis son fichier n'est
 relue que si son `md5` a bougé.
+
+**`video_codec` a trois états, et la distinction n'est pas cosmétique.** Il porte
+le code à quatre lettres écrit dans le `stsd` de la piste image — `avc1`, `hvc1`,
+`hev1` — et c'est lui qui décide de ce que le serveur prépare et de la source que
+le client demande ([D260809b](./decisions/D260809b-transcodage-video.md)) :
+
+| Valeur      | Sens                                                                                       | Conséquence                                                  |
+| ----------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| `NULL`      | Jamais examiné : photo, ligne d'avant la migration 14, ou en-tête que Drive n'a pas rendu. | La sync rouvrira le fichier.                                 |
+| `''`        | En-tête lu, aucune piste image reconnue.                                                   | Plus jamais relu — insister relirait pour rien.              |
+| `'hvc1'`, … | Le codec tel qu'il est écrit dans le fichier.                                              | `hvc1` et `hev1` sont préparés, le reste est servi tel quel. |
+
+Sans le deuxième état, un conteneur exotique serait rouvert à chaque
+synchronisation, indéfiniment. Le premier est ce qui peuple la colonne sans
+reprise de données : le court-circuit sur le `md5` exige que `video_codec` soit
+renseigné, donc les vidéos indexées par la PR précédente sont relues **une fois**,
+puis court-circuitées comme les autres.
 
 **`added_at` n'est pas un doublon de `seen_at`, et c'est le piège de la
 migration 5.** `seen_at` est réécrit sur _tous_ les médias à chaque passage de
@@ -515,6 +533,7 @@ reparte de la même étape.
 | 11      | Les quatre tables FTS5 de recherche, leurs déclencheurs, et leur `rebuild`.              |
 | 12      | `albums.sort_order` : le sens de lecture par défaut de l'album.                          |
 | 13      | `device_pairings` : appairer un écran sans clavier plutôt que d'y taper un mot de passe. |
+| 14      | `media.video_codec` : quel codec porte la piste image d'une vidéo ?                      |
 
 La migration 13 crée une table vide, et rien d'autre : une instance en service
 la traverse sans qu'aucune ligne ne bouge et sans qu'aucune session ouverte n'en
@@ -522,6 +541,11 @@ pâtisse. Elle n'ouvre pas non plus de chemin d'accès nouveau — l'appairage
 délègue une clé existante, et l'écran qui approuve doit déjà être connecté
 (D260809c). `packages/server/test/migrate.test.ts` le vérifie sur une base en
 version 12 portant un compte et une session.
+
+La migration 14 est additive et sans reprise de données : la colonne reste à
+`NULL` sur toutes les lignes existantes, et c'est la synchronisation suivante qui
+la remplit, une vidéo à la fois. Voir les trois états de `video_codec` plus haut —
+c'est le `NULL` qui déclenche la relecture, et la chaîne vide qui l'arrête.
 
 La migration 12 ajoute le sens de lecture, et c'est la seule à ce jour qui
 **change le comportement des albums en service** : la colonne arrive à `'asc'`,

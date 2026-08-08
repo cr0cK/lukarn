@@ -63,9 +63,17 @@ function startScheduler(context: AppContext): () => void {
     // clic pour se remplir, ce qui est exactement ce qu'on cherche à éviter.
     // Sans `await` : le passage dure des minutes, le ménage n'a pas à
     // l'attendre pour rendre la main.
-    void context.prewarmer.run().catch((error: unknown) => {
-      context.log.error({ err: error }, 'Préchauffage du cache en échec');
-    });
+    void context.prewarmer
+      .run()
+      .then(
+        // Enchaîné et non lancé en parallèle : les deux passages tirent des
+        // originaux depuis Drive, et le transcodage occuperait un cœur pendant
+        // que le préchauffage attend le sien.
+        () => context.transcoder.run(),
+      )
+      .catch((error: unknown) => {
+        context.log.error({ err: error }, 'Préparation des médias en fond en échec');
+      });
   }, HOUSEKEEPING_INTERVAL_MS);
   housekeeping.unref();
 
@@ -136,9 +144,12 @@ async function main(): Promise<void> {
       context.log.error({ err: error }, 'Synchronisation de démarrage en échec');
     });
   } else {
-    void context.prewarmer.run().catch((error: unknown) => {
-      context.log.error({ err: error }, 'Préchauffage du cache en échec');
-    });
+    void context.prewarmer
+      .run()
+      .then(() => context.transcoder.run())
+      .catch((error: unknown) => {
+        context.log.error({ err: error }, 'Préparation des médias en fond en échec');
+      });
 
     // Même raison pour les lieux, et même exclusion : une instance qu'on vient
     // de mettre à jour a ses journées à agréger, et personne n'attendra une
@@ -155,8 +166,11 @@ async function main(): Promise<void> {
     context.log.info(`${signal} reçu, arrêt en cours`);
     stopScheduler();
     // Un passage en cours tiendrait l'arrêt pendant des minutes, pour des
-    // rendus qui repartiront d'eux-mêmes au démarrage suivant.
+    // rendus qui repartiront d'eux-mêmes au démarrage suivant. Le transcodage
+    // tue en plus son ffmpeg : sans ça, un encodage de dix minutes survivrait
+    // au conteneur qui l'a lancé.
     context.prewarmer.stop();
+    context.transcoder.stop();
     try {
       await server.close();
       // Les notifications partent hors du chemin de la requête : sans cette

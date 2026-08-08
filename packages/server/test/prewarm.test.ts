@@ -50,6 +50,7 @@ function photo(albumId: string, id: string, jour: number): MediaUpsert {
     lng: null,
     md5: `empreinte-${id}`,
     hasThumbnail: true,
+    videoCodec: null,
   };
 }
 

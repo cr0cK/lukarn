@@ -553,6 +553,25 @@ export const MIGRATIONS: string[] = [
   -- Sert la purge horaire, et la borne du nombre de demandes en attente.
   CREATE INDEX idx_device_pairings_expires ON device_pairings (expires_at);
   `,
+
+  // 14 — le codec réellement contenu dans la piste image d'une vidéo, lu dans le
+  // `moov` au même passage de fenêtres que sa date. C'est lui qui décide de ce
+  // qui est transcodé, et de la source que le client demande (D260809b).
+  //
+  // Trois valeurs, et la distinction compte :
+  //
+  //   NULL          le fichier n'a jamais été examiné — ligne d'avant cette
+  //                 migration, ou en-tête que Drive n'a pas rendu. La sync le
+  //                 rouvrira.
+  //   ''            en-tête lu, aucune piste image reconnue. Le rouvrir à chaque
+  //                 passage relirait quelques centaines de Ko pour rien.
+  //   'hvc1', …     le code à quatre lettres tel qu'il est écrit dans le `stsd`.
+  //
+  // Sans le troisième état, un conteneur exotique serait relu à chaque
+  // synchronisation, indéfiniment.
+  `
+  ALTER TABLE media ADD COLUMN video_codec TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

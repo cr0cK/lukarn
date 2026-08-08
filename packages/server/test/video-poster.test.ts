@@ -52,6 +52,7 @@ function video(id: string, hasThumbnail: boolean): MediaUpsert {
     lng: null,
     md5: null,
     hasThumbnail,
+    videoCodec: null,
   };
 }
 

@@ -104,6 +104,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   syncOnStartup: true,
   cacheMaxSizeGB: 20,
   prewarmCache: true,
+  transcodeVideos: true,
+  // Cinq giga-octets, soit environ trois heures de 1080p transcodé : de quoi
+  // couvrir plusieurs albums de vacances. Un dixième du budget des vignettes,
+  // parce qu'une bibliothèque tient bien plus de photos que de films.
+  videoCacheMaxSizeGB: 5,
   moderationEmail: null,
 };
 
@@ -112,6 +117,8 @@ const settingsSchema = z.object({
   syncOnStartup: z.boolean(),
   cacheMaxSizeGB: z.number().positive(),
   prewarmCache: z.boolean(),
+  transcodeVideos: z.boolean(),
+  videoCacheMaxSizeGB: z.number().positive(),
   moderationEmail: z.string().nullable(),
 });
 

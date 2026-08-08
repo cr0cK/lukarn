@@ -59,6 +59,7 @@ function media(albumId: string, id: string): MediaUpsert {
     lng: null,
     md5: null,
     hasThumbnail: true,
+    videoCodec: null,
   };
 }
 

@@ -314,6 +314,13 @@ export const mediaUrl = {
   original: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/original${query(version)}`,
   /**
+   * Version préparée par le serveur, pour les codecs que ce navigateur ne décode
+   * pas (D260809b). Répond 404 tant qu'elle n'existe pas — la préparation est
+   * anticipée et lente, pas déclenchée par la demande.
+   */
+  playable: (id: string, version?: string | null) =>
+    `/api/media/${encodeURIComponent(id)}/playable${query(version)}`,
+  /**
    * Le téléchargement porte la version comme les autres : servi en `immutable`,
    * il resservirait sinon depuis le cache l'ancien contenu d'un fichier Drive
    * remplacé, pendant un an, alors que la photo affichée à côté est la neuve.
