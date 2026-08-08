@@ -13,6 +13,7 @@ import { createAuthRoutes } from './routes/auth.js';
 import { createCommentRoutes } from './routes/comments.js';
 import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
+import { createSearchRoutes } from './routes/search.js';
 import { createSubscriptionRoutes } from './routes/subscriptions.js';
 import { renderManifest, renderShell } from './shell.js';
 
@@ -61,6 +62,7 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
       api.get('/health', async () => ({ status: 'ok' }));
       await api.register(createAuthRoutes(context), { prefix: '/auth' });
       await api.register(createAlbumRoutes(context), { prefix: '/albums' });
+      await api.register(createSearchRoutes(context), { prefix: '/search' });
       await api.register(createMediaRoutes(context), { prefix: '/media' });
       await api.register(createCommentRoutes(context), { prefix: '/comments' });
       await api.register(createIdentityRoutes(context), { prefix: '/identity' });

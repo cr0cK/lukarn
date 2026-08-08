@@ -25,7 +25,7 @@ revenir après la connexion.
 Le serveur rend `index.html` sur toute URL non-`/api` et non-`/assets`, donc un
 rechargement direct sur `/album/vacances` fonctionne (voir [05](./05-api.md)).
 
-### Quatre paramètres de requête portent l'état de la vue
+### Cinq paramètres de requête portent l'état de la vue
 
 Sur `/album/:albumId` :
 
@@ -60,7 +60,26 @@ Sur `/album/:albumId` :
   sauter la page une seconde fois, après coup, sous le curseur de quelqu'un qui
   avait déjà commencé à défiler.
 
-Les quatre sont indépendants : `setParams` repart toujours des paramètres
+- `?day=YYYY-MM-DD` — **le seul paramètre éphémère**, et c'est ce qui le
+  distingue des quatre autres : il ne décrit pas un état de la vue mais une
+  destination. Un résultat de recherche l'écrit, la page défile jusqu'à la
+  section correspondante, puis l'efface en `replace`. Gardé, il ramènerait la
+  page sur cette journée à chaque recalcul du layout, et le bouton Retour
+  rejouerait le saut au lieu de revenir.
+
+  Il n'est honoré qu'en découpage par jour — d'où le `?group=day` que la
+  recherche écrit avec lui. En découpage par mois, les clés de section valent
+  `2026-07` : la journée n'y existe pas, et l'effet paginerait l'album entier à
+  la recherche d'une section qui ne viendra jamais.
+
+  Tant que la section n'est pas dans `grid.layout.sections` et qu'il reste des
+  pages, `fetchNextPage()` — exactement le motif déjà en place pour `?photo=`.
+  Si l'album s'épuise sans l'avoir trouvée, le paramètre est effacé plutôt que
+  laissé à repaginer indéfiniment. L'effet dépend de l'**ordonnée** de la
+  section et non de la section elle-même : `grid` est un objet neuf à chaque
+  rendu, et en dépendance l'effet se rejouerait en plein défilement.
+
+Les cinq sont indépendants : `setParams` repart toujours des paramètres
 courants, sinon ouvrir une photo effacerait le tri et le refermer le rétablirait
 tout seul. Il accepte **plusieurs clés d'un coup** pour les gestes qui en
 touchent deux : fermer la visionneuse retire la photo _et_ son panneau, et deux
@@ -200,6 +219,69 @@ seul appui ne doit pas faire les deux.
 
 Un composant partagé plutôt qu'un menu par emplacement : ce sont ces trois
 règles de fermeture qui se réécriraient de travers la deuxième fois.
+
+### Recherche — `components/SearchBox.tsx` et `lib/useDebounced.ts`
+
+**Sur la page d'accueil seulement.** La recherche porte sur toute la
+bibliothèque, et c'est passé une vingtaine d'albums que « où sont les photos de
+Marseille » cesse d'avoir une réponse : dans un album déjà ouvert, la question ne
+se pose plus.
+
+Elle arrive par une propriété `search?: ReactNode` de `TopBar`, rendue entre le
+titre et le bouton d'activité. Un `ReactNode` et non un descripteur à la
+`TopBarAction` : le champ n'a qu'**un** rendu — il ne se replie pas en entrée de
+menu, on ne cherche pas dans un menu — et son état appartient à la page qui le
+monte.
+
+**La rangée unique est préservée à toutes les largeurs.** Sous `sm`, le titre
+« Albums » s'efface (`hidden sm:block`) et le champ prend la ligne : sur la
+racine, le titre ne dit rien que l'URL ne dise déjà, alors qu'une seconde rangée
+coûterait 40 px d'en-tête sur une application où ce qui doit ressortir, ce sont
+les photos.
+
+**Ce qui est suggéré est navigable, pas textuel.** Trois groupes — Albums,
+Journées et lieux, Photos —, cinq entrées chacun au plus, et chaque entrée mène
+quelque part : `/album/:id`, `/album/:id?group=day&day=…`,
+`/album/:id?photo=…`. Un groupe vide disparaît avec son titre.
+
+**Combobox au sens ARIA** : `role="combobox"` sur le champ, `aria-expanded`,
+`aria-activedescendant`, liste en `role="listbox"` et groupes en `role="group"`.
+Le focus ne quitte jamais le champ — le déplacer sur les options couperait la
+frappe, qui est tout l'intérêt d'une suggestion. La liste est faite de `div`
+portant les rôles, et non de `ul`/`li` : un `listbox` ne possède que des `option`
+et des `group`, et le rôle `list` implicite d'un `ul` imbriqué s'interposerait
+entre les deux.
+
+| Touche   | Effet                                                        |
+| -------- | ------------------------------------------------------------ |
+| `/`      | Focalise le champ (`useShortcut`, ignoré pendant une saisie) |
+| `↑` `↓`  | Parcourt les suggestions, en boucle                          |
+| `Entrée` | Ouvre la suggestion en évidence                              |
+| `Échap`  | Referme la liste ; une seconde fois, vide le champ           |
+
+Le premier résultat est mis en évidence d'emblée : taper puis appuyer sur
+`Entrée` est le geste le plus fréquent, et exiger une flèche d'abord ferait d'un
+raccourci une manœuvre. `Échap` en deux temps parce que fermer et effacer d'un
+coup fait perdre une recherche qu'on voulait seulement masquer le temps de
+regarder la page.
+
+Le clic sur une option est pris sur `pointerdown` avec `preventDefault`, pas sur
+`click` : le pointeur sortant du champ lui fait perdre le focus, et l'écouteur
+« clic dehors » refermerait la liste avant que le clic n'atteigne l'option. La
+liste est positionnée en `absolute` et non `fixed`, pour la raison
+d'`ActionMenu` : la barre porte un `backdrop-blur`, qui en fait le bloc conteneur
+d'un élément fixé.
+
+**`lib/useDebounced.ts`** retarde la saisie de 150 ms avant qu'elle atteigne
+`useSearch`. Sans lui, chaque caractère part en requête : « Marseille » en
+lancerait neuf, dont huit périmées avant d'arriver. Au-delà de 150 ms la liste
+paraît traîner derrière les doigts.
+
+`useSearch` porte `placeholderData: keepPreviousData` : la liste précédente reste
+affichée le temps de la requête suivante. Sans lui, chaque frappe la viderait
+puis la remplirait — c'est le seul endroit de l'application où une réponse
+arrive à la cadence du clavier, et une liste qui clignote sous le doigt est
+illisible.
 
 ## Gestion d'état — `api/hooks.ts`
 
@@ -601,6 +683,9 @@ désactive quand la visionneuse ou l'aide sont ouvertes.
 
 | Contexte    | Touche          | Effet                                                                   |
 | ----------- | --------------- | ----------------------------------------------------------------------- |
+| Albums      | `/`             | Focalise la recherche de la barre supérieure                            |
+| Recherche   | `↑ ↓` `Entrée`  | Parcourt les suggestions · ouvre celle en évidence                      |
+| Recherche   | `Échap`         | Referme la liste, puis vide le champ                                    |
 | Grille      | `← ↑ ↓ →`       | `moveSelection` sur le layout réel                                      |
 | Grille      | `Début` / `Fin` | Premier / dernier média                                                 |
 | Grille      | `Entrée`        | Ouvrir la visionneuse                                                   |

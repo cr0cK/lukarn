@@ -2,6 +2,15 @@ import { type ReactElement, useEffect } from 'react';
 
 const GROUPS: { title: string; shortcuts: [string, string][] }[] = [
   {
+    title: 'Albums',
+    shortcuts: [
+      ['/', 'Rechercher un album, un lieu, une photo'],
+      ['↑ ↓', 'Parcourir les suggestions'],
+      ['Entrée', 'Ouvrir la suggestion'],
+      ['Échap', 'Fermer la liste, puis vider le champ'],
+    ],
+  },
+  {
     title: 'Grille',
     shortcuts: [
       ['← ↑ ↓ →', 'Se déplacer entre les photos'],

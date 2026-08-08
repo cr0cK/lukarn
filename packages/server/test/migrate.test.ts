@@ -282,6 +282,48 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('rend interrogeable une base en version 10 déjà remplie', () => {
+    const db = databaseAtVersion(10);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO albums (id, title, description, folder_id, recursive, position, created_at, updated_at)
+       VALUES ('corse', 'Été en Corse', 'Bonifacio et la plage', 'dossier', 1, 0, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO album_days (album_id, day, description, place, cells, updated_at)
+       VALUES ('corse', '2026-07-14', 'Marché du matin', 'Bonifacio', NULL, ?)`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO media_notes (album_id, media_id, description, updated_at)
+       VALUES ('corse', 'abc', 'Léa saute du ponton', ?)`,
+    ).run(date);
+    db.prepare('INSERT INTO geo_places (cell, label, fetched_at) VALUES (?, ?, ?)').run(
+      '41.39,9.16',
+      'Bonifacio, Corse-du-Sud',
+      date,
+    );
+
+    migrate(db);
+
+    // C'est le `rebuild` qu'on vérifie : sans lui, les déclencheurs
+    // n'indexeraient que les écritures **suivantes**, et une instance en
+    // service resterait muette sur tout ce qu'elle contient déjà — c'est-à-dire
+    // sur tout, pour un album qu'on ne retouche plus (D96).
+    const count = (table: string, match: string): number =>
+      (
+        db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${table} MATCH ?`).get(match) as {
+          n: number;
+        }
+      ).n;
+
+    assert.equal(count('albums_fts', '"ete"*'), 1);
+    assert.equal(count('album_days_fts', '"marche"*'), 1);
+    assert.equal(count('media_notes_fts', '"ponton"*'), 1);
+    assert.equal(count('geo_places_fts', '"corse"*'), 1);
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);

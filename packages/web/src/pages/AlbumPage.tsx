@@ -23,7 +23,15 @@ import { moveSelection, scrollSelectionIntoView, useGridLayout } from '../lib/us
 import { useShortcut } from '../lib/useShortcut';
 
 /** Les réglages de vue portés par la barre d'adresse de l'album. */
-type ViewParam = 'photo' | 'panel' | 'order' | 'group';
+type ViewParam = 'photo' | 'panel' | 'order' | 'group' | 'day';
+
+/**
+ * Marge laissée au-dessus d'une journée visée par l'URL. La barre supérieure
+ * est collante et haute de 64 px : poser la section pile à son ordonnée la
+ * glisserait dessous, et l'en-tête qu'on vient de chercher serait le seul
+ * élément invisible de l'écran.
+ */
+const DAY_SCROLL_MARGIN = 80;
 
 export default function AlbumPage(): ReactElement {
   const { albumId = '' } = useParams();
@@ -68,7 +76,7 @@ export default function AlbumPage(): ReactElement {
   // La visionneuse porte le contexte de la journée, elle a donc besoin des
   // notes même en découpage par mois. Même `queryKey` que la grille : ouvrir
   // une photo depuis un album par jour ne relance aucune requête.
-  const { byDay } = useAlbumDays(albumId, groupBy === 'day' || isOpen);
+  const { byDay, isPending: daysPending } = useAlbumDays(albumId, groupBy === 'day' || isOpen);
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -200,6 +208,62 @@ export default function AlbumPage(): ReactElement {
   useEffect(() => {
     if (isOpen) setSelectedIndex(openedIndex);
   }, [isOpen, openedIndex]);
+
+  // Une journée demandée par l'URL — un résultat de recherche. Le paramètre
+  // n'est honoré qu'en découpage par jour : en découpage par mois, les clés de
+  // section valent `2026-07`, la journée n'y existe pas, et l'effet chargerait
+  // l'album entier à la recherche d'une section qui ne viendra jamais.
+  const dayParam = searchParams.get('day');
+  const targetDay = dayParam && groupBy === 'day' ? dayParam : null;
+  // Une ordonnée, pas la section : `grid` est un objet neuf à chaque rendu, et
+  // en dépendance l'effet se rejouerait en plein défilement.
+  const targetY = targetDay
+    ? (grid.layout.sections.find((section) => section.key === targetDay)?.y ?? null)
+    : null;
+
+  // Après l'effet qui remonte en haut au changement de découpage, et après lui
+  // seulement : les deux tirent dans le même sens le temps d'un rendu quand
+  // l'album arrive déjà réglé sur « jour ».
+  useEffect(() => {
+    // Les journées annotées sont attendues : chaque lieu et chaque note ajoute
+    // une ligne à l'en-tête de sa section, donc tant qu'elles n'ont pas répondu
+    // toutes les ordonnées au-dessus de la cible peuvent encore grandir. En
+    // pratique cette requête-là arrive bien avant la seconde page de médias, et
+    // on ne voit pas la différence ; la garde est là pour l'album où ce ne
+    // serait pas le cas, où l'on atterrirait quelques centaines de pixels trop
+    // haut sans qu'aucune erreur ne le signale.
+    if (!albumLoaded || daysPending || targetDay === null) return;
+
+    if (targetY === null) {
+      // Pas encore chargée : on continue de paginer jusqu'à la trouver, exactement
+      // comme pour une photo demandée par `?photo=`.
+      if (hasNextPage) {
+        if (!isFetchingNextPage) void fetchNextPage();
+      } else if (items.length > 0) {
+        // Journée absente de cet album : le paramètre n'a plus rien à viser, et
+        // le laisser ferait repaginer tout l'album au rendu suivant.
+        setParams({ day: null }, true);
+      }
+      return;
+    }
+
+    window.scrollTo({ top: Math.max(0, targetY + grid.offsetTop - DAY_SCROLL_MARGIN) });
+    // En `replace`, et tout de suite : le paramètre a joué son rôle. Gardé, il
+    // ramènerait la page sur la journée à chaque défilement qui recalcule le
+    // layout, et le bouton Retour rejouerait le saut au lieu de revenir.
+    setParams({ day: null }, true);
+  }, [
+    albumLoaded,
+    daysPending,
+    targetDay,
+    targetY,
+    grid.offsetTop,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    items.length,
+    setParams,
+  ]);
 
   const loadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();

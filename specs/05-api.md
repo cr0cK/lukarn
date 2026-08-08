@@ -166,6 +166,79 @@ primaire de `media_notes`, sans effet sur la pagination.
 `MediaDetail` en hérite en étendant `MediaItem` : le panneau `i` n'a rien à
 demander de plus.
 
+## Recherche — `routes/search.ts`
+
+`requireAuth` en `preHandler` sur tout le préfixe.
+
+| Méthode | Chemin        | Accès   | Réponse       |
+| ------- | ------------- | ------- | ------------- |
+| GET     | `/api/search` | session | `SearchHit[]` |
+
+| Paramètre | Type   | Contrainte                                               |
+| --------- | ------ | -------------------------------------------------------- |
+| `q`       | chaîne | 2 à 100 caractères. Hors bornes ⇒ **400**, pas de repli. |
+
+**Le périmètre vient du serveur, jamais du client.** Il est celui de
+`context.albumsFor(session)` : aucun résultat ne peut désigner un album non
+attribué, et une session sans album répond `[]` sans interroger la base. Il n'y
+a donc pas de paramètre pour restreindre la recherche — la restreindre
+davantage serait un filtre d'affichage, pas une question de sécurité.
+
+**Ce qui est rendu est une entité navigable, pas un extrait de texte.**
+« Marseille » doit ouvrir la journée à Marseille, pas afficher la ligne où le mot
+apparaît — c'est ce qui distingue cette route d'un `grep`.
+
+```ts
+type SearchHitKind = 'album' | 'day' | 'media';
+
+interface SearchHit {
+  kind: SearchHitKind;
+  albumId: string;
+  albumTitle: string;
+  label: string; // titre d'album, lieu, ou début de note
+  context: string | null; // ce qui situe sans répéter le libellé
+  day?: string; // 'YYYY-MM-DD', présent pour kind: 'day'
+  mediaId?: string; // présent pour kind: 'media'
+}
+```
+
+Ni la date ni le nom d'album ne sont composés dans `context` : ils voyagent à
+part (`day`, `albumTitle`) parce que les dates s'affichent en UTC via
+`format.ts` (voir [07](./07-frontend.md)), et que les composer ici les figerait
+dans le fuseau du serveur.
+
+**Ce qui est indexé, et ce qui ne l'est pas :**
+
+| Source                               | Type rendu | Navigue vers                          |
+| ------------------------------------ | ---------- | ------------------------------------- |
+| `albums.title`, `albums.description` | `album`    | `/album/:id`                          |
+| `album_days.description`, `.place`   | `day`      | `/album/:id?group=day&day=YYYY-MM-DD` |
+| `geo_places.label` (via `.cells`)    | `day`      | idem                                  |
+| `media_notes.description`            | `media`    | `/album/:id?photo=<mediaId>`          |
+
+`media.name` est exclu : `IMG_1234.jpg` est du bruit, et l'indexer noierait les
+vrais libellés. `camera_make` et `camera_model` aussi — chercher « iPhone »
+rendrait la moitié de la bibliothèque. Les commentaires restent hors périmètre :
+chercher dans ce que d'autres ont écrit est une autre fonctionnalité, avec ses
+propres règles de visibilité ([08](./08-decisions.md), D96).
+
+**Le classement s'arrête à l'intérieur d'un type.** Chaque groupe est trié par
+`bm25()` et borné à `SEARCH_HITS_PER_KIND` (5) ; les résultats arrivent dans
+l'ordre des groupes affichés — albums, journées, photos. Aucun score n'est
+comparé d'un type à l'autre : celui d'un titre de trois mots et celui d'une note
+de trois lignes ne veulent pas dire la même chose, et l'affichage étant groupé,
+la question ne se pose pas.
+
+Deux filtrages ne sont pas décoratifs : une description dont le média a quitté
+l'index (`deleteStale`, D83) ne rend rien — un résultat vers une photo absente
+ouvrirait une visionneuse vide — et une journée qui correspond **à la fois** par
+sa note et par son lieu n'apparaît qu'une fois.
+
+L'index lui-même est décrit dans [03](./03-modele-de-donnees.md) : quatre tables
+FTS5 à contenu externe tenues par des déclencheurs SQL, migration 11.
+`packages/server/test/search.test.ts` verrouille le cloisonnement, les accents,
+les préfixes, la déduplication et le fait que l'index suive les écritures.
+
 ## Identité de commentateur — `routes/identity.ts`
 
 `requireAuth` sur tout le préfixe : on déclare une identité depuis une session

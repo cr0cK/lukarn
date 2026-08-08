@@ -342,6 +342,48 @@ verrouille en paginant un album dont deux photos sur cinq sont décrites.
 Vidéos comprises, contrairement à la couverture : une vidéo mérite une légende,
 et rien dans le pipeline ne s'y oppose.
 
+### Les quatre tables FTS5 de recherche
+
+Ce qui rend « où sont les photos de Marseille » interrogeable. Elles sont créées
+par la **migration 11** et lues par `SearchRepo` (`search.ts`) ; personne ne les
+écrit depuis le code.
+
+| Table             | Colonnes indexées      | Contenu externe |
+| ----------------- | ---------------------- | --------------- |
+| `albums_fts`      | `title`, `description` | `albums`        |
+| `album_days_fts`  | `description`, `place` | `album_days`    |
+| `media_notes_fts` | `description`          | `media_notes`   |
+| `geo_places_fts`  | `label`                | `geo_places`    |
+
+Toutes en `content='<table>', content_rowid='rowid'` — **contenu externe** : la
+table FTS ne stocke que l'index, jamais une copie du texte, et se joint à sa
+table d'origine par `rowid`.
+
+Quatre choix à connaître :
+
+- **Ce sont des déclencheurs SQL qui les tiennent, pas du code applicatif.**
+  Trois par table (`_ai`, `_ad`, `_au`), forme documentée de FTS5 : la
+  suppression passe par `INSERT INTO x_fts(x_fts, rowid, …) VALUES('delete', …)`
+  avec les **anciennes** valeurs, seule façon pour FTS5 de retrouver les termes à
+  retirer d'une ligne qui n'existe plus. Ces textes s'écrivent depuis six
+  endroits — `ConfigRepo.saveAlbum`, `AlbumDayRepo.upsertNote` et
+  `.replaceCells`, `Geocoder`, `MediaRepo.setDescription`, et les cascades sur
+  `albums`. Réindexer depuis le code demanderait de n'en oublier aucun,
+  aujourd'hui et dans tout chemin d'écriture écrit plus tard ; un index périmé ne
+  se voit pas, il rend simplement moins de résultats
+  ([08](./08-decisions.md), D96).
+- **Les déclencheurs `AFTER DELETE` couvrent les suppressions en cascade.**
+  Supprimer un album emporte ses journées et ses descriptions de photo par
+  `ON DELETE CASCADE`, et l'index suit sans qu'aucun `DELETE` n'ait été écrit —
+  vérifié sur `better-sqlite3@12.11.1` (SQLite 3.53.2), `integrity-check`
+  compris.
+- **Tokenizer `unicode61 remove_diacritics 2`** : « ete » trouve « été »,
+  « nim » trouve « Nîmes », sans colonne normalisée à tenir à la main.
+- **`geo_places` n'a pas d'`album_id`** — c'est un cache partagé entre albums.
+  Le rattachement d'un libellé à une journée passe par
+  `json_each(album_days.cells)`, ce qui laisse le cloisonnement à `album_days`,
+  seule table à savoir de quel album il s'agit.
+
 ## Index
 
 | Index                                                      | Ce qu'il sert                                                                                                                                                                                                                                                                                      |
@@ -427,6 +469,17 @@ reparte de la même étape.
 | 8       | `albums.cover_media_id`.                                                            |
 | 9       | `media_notes` : une description par photo, portée par l'album.                      |
 | 10      | `media.has_thumbnail` : Drive a-t-il un aperçu de ce fichier ?                      |
+| 11      | Les quatre tables FTS5 de recherche, leurs déclencheurs, et leur `rebuild`.         |
+
+La migration 11 rend la bibliothèque interrogeable. Elle crée les quatre tables
+FTS5 à contenu externe décrites plus haut, leurs douze déclencheurs, puis lance
+un `INSERT INTO x_fts(x_fts) VALUES('rebuild')` par table. **Ce `rebuild` est
+tout l'intérêt de la migration** : sans lui, les déclencheurs n'indexeraient que
+les écritures suivantes, et une instance en service resterait muette sur tout ce
+qu'elle contient déjà — c'est-à-dire sur tout, pour un album qu'on ne retouche
+plus. `packages/server/test/migrate.test.ts` le vérifie sur une base en
+version 10 portant un album, une journée annotée, une description de photo et un
+lieu géocodé : les quatre sont trouvables après la mise à jour.
 
 La migration 10 ajoute l'aperçu Drive, à `0` sur toutes les lignes existantes.
 Le défaut est délibéré : une vidéo déjà indexée n'affiche pas d'aperçu tant que

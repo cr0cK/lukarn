@@ -41,6 +41,14 @@ interface TopBarProps {
   /** Contrôles propres à la page, à gauche de ceux du compte. */
   actions?: TopBarAction[];
   /**
+   * Champ de recherche, rendu entre le titre et le bouton d'activité.
+   *
+   * Un `ReactNode` et non un descripteur à la `TopBarAction` : le champ n'a
+   * qu'un seul rendu — il ne se replie pas en entrée de menu —, et son état
+   * appartient à la page qui le monte, pas à la barre qui l'héberge.
+   */
+  search?: ReactNode;
+  /**
    * Ouverture du tiroir d'activité, avec le nombre de messages arrivés depuis
    * le dernier passage. Absent sur les pages où le fil n'a pas de sens.
    */
@@ -94,6 +102,7 @@ export function TopBar({
   subtitle,
   back = false,
   actions = [],
+  search,
   feed,
 }: TopBarProps): ReactElement {
   const { data: user } = useMe();
@@ -155,10 +164,16 @@ export function TopBar({
           </Link>
         )}
 
-        <div className="min-w-0 flex-1">
+        {/* Le titre s'efface sous `sm` quand la page porte un champ de
+            recherche : la rangée reste unique à toutes les largeurs, et sur la
+            racine « Albums » ne dit rien que l'URL ne dise déjà. Le champ, lui,
+            ne se replie nulle part — un menu ne se cherche pas dedans. */}
+        <div className={`min-w-0 flex-1 ${search ? 'hidden sm:block' : ''}`}>
           <h1 className="truncate text-base font-medium tracking-tight">{title}</h1>
           {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
         </div>
+
+        {search && <div className="min-w-0 flex-1 sm:max-w-xs lg:max-w-sm">{search}</div>}
 
         {/* L'activité reste **en ligne à toutes les largeurs**, contrairement
             aux contrôles de vue : son icône porte la pastille des non-lus, et
