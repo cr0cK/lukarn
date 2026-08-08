@@ -11,7 +11,8 @@ import {
 import { DriveRevokedError, type DriveService } from './service.js';
 
 const FIELDS =
-  'nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum, imageMediaMetadata, videoMediaMetadata)';
+  'nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum, hasThumbnail, ' +
+  'imageMediaMetadata, videoMediaMetadata)';
 
 const PAGE_SIZE = 1000;
 /** Garde-fou contre un dossier pointant sur toute une arborescence géante. */
@@ -347,6 +348,11 @@ export class Syncer {
       lat,
       lng,
       md5: toText(file.md5Checksum),
+      // Drive produit une image de la première seconde d'une vidéo, mais pas
+      // toujours : un codec qu'il ne lit pas, ou un fichier déposé il y a
+      // quelques secondes, n'en ont pas encore. Le stocker évite que la grille
+      // redemande à chaque chargement de page un aperçu qui n'existe pas (D92).
+      hasThumbnail: file.hasThumbnail === true,
     };
   }
 }

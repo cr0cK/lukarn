@@ -121,6 +121,7 @@ function photo(albumId: string, id: string): MediaUpsert {
     lat: null,
     lng: null,
     md5: 'abcdef0123456789',
+    hasThumbnail: true,
   };
 }
 

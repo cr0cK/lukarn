@@ -406,11 +406,12 @@ export function Lightbox({
   if (!item) return null;
 
   /**
-   * Même règle que la photo, sans l'aperçu flou : une vidéo n'a pas de rendu
-   * serveur, donc rien à montrer en attendant — d'où `measured: false`. La
-   * combinaison est décidée là plutôt qu'en JSX parce qu'elle échoue en
-   * silence : un tourniquet laissé sur un échec ne casse rien, il fait
-   * seulement croire que ça charge encore.
+   * Même règle que la photo, sans l'aperçu flou : l'attente d'une vidéo est
+   * couverte par le `poster` de la balise, que le navigateur affiche lui-même
+   * — d'où `measured: false`, il n'y a rien à superposer. La combinaison est
+   * décidée là plutôt qu'en JSX parce qu'elle échoue en silence : un tourniquet
+   * laissé sur un échec ne casse rien, il fait seulement croire que ça charge
+   * encore.
    */
   const videoOverlay = previewOverlay({ loaded, failed, measured: false });
 
@@ -490,8 +491,10 @@ export function Lightbox({
         </>
       ),
     },
-    // Réservée à l'administrateur, et jamais sur une vidéo : le pipeline ne
-    // décode pas de vignette vidéo, un album en couverture resterait vide.
+    // Réservée à l'administrateur, et jamais sur une vidéo : son aperçu
+    // appartient à Drive (D92), qui peut ne pas en avoir — et la couverture
+    // est la seule image dont l'absence se voit depuis la page d'accueil,
+    // sans repli.
     //
     // Pas de raccourci clavier, contrairement aux quatre autres : c'est un
     // geste qu'on fait une fois par album, pas une commande de lecture, et
@@ -755,6 +758,10 @@ export function Lightbox({
               ref={videoRef}
               key={item.id}
               src={mediaUrl.original(item.id, item.version)}
+              // La même vignette que la grille, donc déjà en cache disque et
+              // souvent en cache navigateur : le rectangle noir de l'attente
+              // disparaît sans une requête de plus (D92).
+              poster={item.hasPreview ? mediaUrl.thumb(item.id, 1280, item.version) : undefined}
               controls
               autoPlay
               playsInline

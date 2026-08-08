@@ -48,6 +48,7 @@ function media(id: string, takenAt: string): MediaUpsert {
     lat: null,
     lng: null,
     md5: null,
+    hasThumbnail: true,
   };
 }
 

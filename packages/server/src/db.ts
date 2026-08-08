@@ -385,6 +385,19 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (album_id, media_id)
   );
   `,
+
+  // 10 — Drive dit s'il a produit un aperçu du fichier. C'est ce qui permet à
+  // une vidéo d'avoir une vignette de grille sans qu'un seul octet de vidéo
+  // soit décodé ici (D92).
+  //
+  // Le défaut à 0 est délibéré : les lignes déjà indexées n'affichent pas
+  // d'aperçu tant que la synchronisation suivante n'a pas rempli la colonne. Un
+  // manque passager vaut mieux qu'une rafale de requêtes vouées au 415, une par
+  // vidéo et par chargement de grille, sur une information que seule la sync
+  // peut donner.
+  `
+  ALTER TABLE media ADD COLUMN has_thumbnail INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

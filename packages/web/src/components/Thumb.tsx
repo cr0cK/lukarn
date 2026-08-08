@@ -83,10 +83,15 @@ export function Thumb({
     retry.current = setTimeout(() => setAttempt((value) => value + 1), wait);
   };
 
-  // Les vidéos n'ont pas de rendu image côté serveur : elles s'affichent comme
-  // une tuile sobre portant leur durée.
   const isVideo = item.kind === 'video';
   const duration = formatDuration(item.durationMs);
+  /**
+   * Une vidéo a un aperçu quand Drive en produit un (D92) — c'est ce que dit
+   * `hasPreview`, et c'est la seule question que la tuile a à poser : la règle
+   * photo/vidéo se décide côté serveur. Sans aperçu, ou après trois échecs, la
+   * tuile sobre reste.
+   */
+  const showImage = item.hasPreview && !failed;
 
   return (
     <button
@@ -101,7 +106,7 @@ export function Thumb({
       }`}
       style={{ width, height, transform: 'translateZ(0)' }}
     >
-      {!isVideo && !failed && (
+      {showImage && (
         <img
           // Remonter l'élément est ce qui relance la requête : l'URL ne change
           // pas, et un 503 n'ayant pas d'en-tête de cache, le navigateur repart
@@ -122,18 +127,32 @@ export function Thumb({
         />
       )}
 
-      {isVideo && (
-        <div className="flex size-full items-center justify-center bg-ink-800">
-          <svg viewBox="0 0 24 24" className="size-10 text-ink-400" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </div>
-      )}
+      {/* Vidéo sans aperçu Drive, ou dont la vignette a échoué : le fond sobre
+          d'avant, sur lequel le badge de lecture reste la seule marque. */}
+      {isVideo && !showImage && <div className="size-full bg-ink-800" />}
 
       {failed && !isVideo && (
         <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-ink-400">
           Aperçu indisponible
         </div>
+      )}
+
+      {/* Le badge se pose **par-dessus** l'aperçu : c'est lui qui distingue une
+          vidéo d'une photo au premier coup d'œil, et le disque sombre est ce
+          qui le garde lisible sur une image claire. Le triangle est décalé
+          d'un pixel : centré géométriquement, il paraît penché à gauche. */}
+      {isVideo && (
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="flex size-10 items-center justify-center rounded-full bg-black/45">
+            <svg
+              viewBox="0 0 24 24"
+              className="size-5 translate-x-px text-white"
+              fill="currentColor"
+            >
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </span>
+        </span>
       )}
 
       {duration && (

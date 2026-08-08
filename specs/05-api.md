@@ -144,6 +144,14 @@ jointure de plus. Il compte les commentaires **visibles**, réponses comprises, 
 voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
 charger un fil que la plupart des visiteurs n'ouvriront pas.
 
+**`MediaItem.hasPreview`** — le serveur sait-il rendre une image de ce média ?
+Vrai pour toute photo, et pour une vidéo dont Drive a produit l'aperçu de la
+première seconde ([08](./08-decisions.md), D92). C'est une **question, pas une
+colonne** : le front demande une vignette « quand il y en a une » sans rejouer
+de son côté la règle photo/vidéo, et sans réclamer à chaque chargement de grille
+une image vouée au 415 sur la vidéo dont Drive n'a pas d'aperçu — codec qu'il ne
+lit pas, ou fichier déposé trop récemment pour avoir été traité.
+
 **`MediaItem.description`** — la légende écrite à la main sur cette photo,
 `null` si personne n'en a écrit. Elle est portée par le couple **(album,
 média)** : le même fichier indexé sous deux albums en porte deux, comme il porte
@@ -394,8 +402,21 @@ Les trois répondent :
 | 200  | `Content-Type: image/webp`, `Cache-Control: private, max-age=31536000, immutable`, `Vary: Cookie`, `ETag: "<mediaId>-<version>-<320\|640\|1280\|full\|hd>"` |
 | 304  | `If-None-Match` correspondant à l'ETag                                                                                                                      |
 | 404  | Média absent de l'index, ou album interdit                                                                                                                  |
-| 415  | `unsupported` — le média est une vidéo, il n'y a pas de rendu image                                                                                         |
+| 415  | `unsupported` — deux cas, tous deux propres aux vidéos, détaillés juste après                                                                               |
 | 503  | Drive non connecté ou révoqué                                                                                                                               |
+
+Une vidéo **a** une vignette : l'aperçu que Drive produit de sa première
+seconde, servi comme n'importe quel autre dérivé WebP et mis en cache disque de
+la même façon ([08](./08-decisions.md), D92). Rien n'en est décodé localement.
+Les deux refus qui restent :
+
+| Refus                             | Pourquoi                                                                                                                                             |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `full` ou `hd` sur une vidéo      | L'aperçu Drive fait quelques centaines de pixels : l'agrandir ne montrerait qu'une image floue, servie en `immutable` pour un an.                    |
+| `thumb` sur une vidéo sans aperçu | `media.has_thumbnail` vaut 0 — Drive n'a pas d'image à donner. Le savoir évite un appel dont on connaît déjà l'issue, à chaque chargement de grille. |
+
+Le front n'y arrive normalement pas : `MediaItem.hasPreview` lui dit d'avance
+s'il y a une image à demander.
 
 **`original`** — le fichier tel quel, relayé depuis Drive sans passer par le
 cache disque.
@@ -512,8 +533,10 @@ ayant un accès **explicite**, les détenteurs du joker n'y figurant pas.
 
 `coverId` de `UpdateAlbumRequest` désigne la photo de couverture ; `null` rend le
 choix automatique. La photo doit être indexée **dans cet album** et ne pas être
-une vidéo, sinon `400 unknown_cover` : elle ne s'afficherait jamais, et un repli
-silencieux ferait découvrir le problème depuis la page d'accueil. Deux champs
+une vidéo, sinon `400 unknown_cover`. Une vidéo a pourtant une vignette depuis
+D92 — mais celle-ci appartient à Drive et peut manquer sur un fichier ré-encodé,
+or la couverture est la seule image dont l'absence se voit depuis la page
+d'accueil, sans repli (D80 ne couvre que la photo sortie de l'index). Deux champs
 homonymes à ne pas confondre — `AdminAlbum.coverId` est le **choix** (`null` =
 automatique), `Album.coverId` la couverture **effectivement servie**, qui retombe
 sur la photo la plus récente quand la photo choisie a quitté l'index sans que le

@@ -76,6 +76,7 @@ before(async () => {
     lat: null,
     lng: null,
     md5: null,
+    hasThumbnail: true,
   };
   context.media.upsertMany([video], '2026-01-01T00:00:00.000Z');
 

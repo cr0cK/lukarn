@@ -58,6 +58,7 @@ function media(albumId: string, id: string, md5: string | null = null): MediaUps
     lat: null,
     lng: null,
     md5,
+    hasThumbnail: true,
   };
 }
 

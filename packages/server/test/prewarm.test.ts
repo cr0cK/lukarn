@@ -6,7 +6,7 @@ import { after, describe, it } from 'node:test';
 import { openDb } from '../src/db.js';
 import { MediaCache } from '../src/media/cache.js';
 import { CachePrewarmer, type PrewarmDeps } from '../src/media/prewarm.js';
-import type { MediaRenderer, Variant } from '../src/media/renderer.js';
+import type { MediaRenderer, RenderOrigin, Variant } from '../src/media/renderer.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
 /**
@@ -49,6 +49,19 @@ function photo(albumId: string, id: string, jour: number): MediaUpsert {
     lat: null,
     lng: null,
     md5: `empreinte-${id}`,
+    hasThumbnail: true,
+  };
+}
+
+/** Vidéo, avec ou sans l'aperçu que Drive produit de sa première seconde. */
+function video(albumId: string, id: string, jour: number, hasThumbnail: boolean): MediaUpsert {
+  return {
+    ...photo(albumId, id, jour),
+    name: `${id}.mp4`,
+    mimeType: 'video/mp4',
+    kind: 'video',
+    durationMs: 12_000,
+    hasThumbnail,
   };
 }
 
@@ -66,6 +79,8 @@ interface FauxRenderer {
   rendus: string[];
   /** Variantes réclamées à chaque appel, dans l'ordre. */
   demandes: Variant[][];
+  /** Source demandée pour chaque fichier : l'original, ou l'aperçu Drive. */
+  origines: Map<string, RenderOrigin>;
   enCache: Set<string>;
   renderer: MediaRenderer;
 }
@@ -73,20 +88,27 @@ interface FauxRenderer {
 function fauxRenderer(options: { echoue?: Set<string> } = {}): FauxRenderer {
   const rendus: string[] = [];
   const demandes: Variant[][] = [];
+  const origines = new Map<string, RenderOrigin>();
   const enCache = new Set<string>();
   const renderer = {
     // `prepare` porte lui-même le court-circuit du cache : c'est là que vit la
     // clé de variante, et le préchauffage n'a pas à la connaître.
-    prepare: (fileId: string, variants: Variant[]) => {
+    prepare: (
+      fileId: string,
+      variants: Variant[],
+      _md5: string | null,
+      origin: RenderOrigin = 'original',
+    ) => {
       if (options.echoue?.has(fileId)) return Promise.reject(new Error('illisible'));
       demandes.push(variants);
+      origines.set(fileId, origin);
       if (enCache.has(fileId)) return Promise.resolve(0);
       rendus.push(fileId);
       enCache.add(fileId);
       return Promise.resolve(variants.length);
     },
   } as unknown as MediaRenderer;
-  return { rendus, demandes, enCache, renderer };
+  return { rendus, demandes, origines, enCache, renderer };
 }
 
 function deps(
@@ -177,6 +199,29 @@ describe('préchauffage du cache', () => {
         { kind: 'thumb', size: 1280 },
       ],
     ]);
+  });
+
+  it('prépare la vidéo qui a un aperçu Drive, et saute celle qui n’en a pas', async () => {
+    media.upsertMany(
+      [
+        photo('videos', 'image', 3),
+        video('videos', 'clip-avec', 2, true),
+        video('videos', 'clip-sans', 1, false),
+      ],
+      '2026-07-03T12:00:00.000Z',
+    );
+    const { rendus, origines, renderer } = fauxRenderer();
+
+    const resultat = await new PrechauffeurInstantane(deps('videos', renderer)).run();
+
+    // La vidéo sans aperçu est celle que la route refuse en 415 : la préparer
+    // dépenserait un appel Drive par passage pour un dérivé impossible.
+    assert.deepEqual(rendus, ['image', 'clip-avec']);
+    // Et celle qui en a un part de l'aperçu, jamais de l'original : quelques
+    // dizaines de Ko contre les 48 Mo d'un MP4 qui serait tiré puis jeté.
+    assert.equal(origines.get('clip-avec'), 'poster');
+    assert.equal(origines.get('image'), 'original');
+    assert.equal(resultat.rendered, 2);
   });
 
   it('s’arrête quand le cache atteint sa part', async () => {

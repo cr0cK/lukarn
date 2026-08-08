@@ -233,21 +233,28 @@ async function main(): Promise<void> {
         // chronologique des grappes dans leur en-tête.
         ...position(index),
         md5: null,
+        // Les vidéos de démonstration ont un aperçu, comme celles d'un vrai
+        // Drive : sans lui, la grille montrerait une tuile sobre et le chemin
+        // du poster ne serait pas vérifiable hors compte Google.
+        hasThumbnail: true,
       });
 
+      // Pré-remplit toutes les variantes que l'interface peut demander.
+      // Les clés doivent suivre exactement `variantKey()` du renderer,
+      // sinon le serveur ne trouvera rien et ira interroger Drive.
+      const variantes: [string, number][] = [
+        [`${id}:t320`, 320],
+        [`${id}:t640`, 640],
+        [`${id}:t1280`, 1280],
+      ];
+      // Ni `full` ni `hd` sur une vidéo : la route les refuse en 415, l'aperçu
+      // d'une vidéo n'étant qu'une vignette.
       if (!isVideo) {
-        // Pré-remplit toutes les variantes que l'interface peut demander.
-        // Les clés doivent suivre exactement `variantKey()` du renderer,
-        // sinon le serveur ne trouvera rien et ira interroger Drive.
-        for (const [key, edge] of [
-          [`${id}:t320`, 320],
-          [`${id}:t640`, 640],
-          [`${id}:t1280`, 1280],
-          [`${id}:full`, 2560],
-          [`${id}:hd`, 4096],
-        ] as const) {
-          await cache.put(key, await renderPlaceholder(index, shape.width, shape.height, edge));
-        }
+        variantes.push([`${id}:full`, 2560], [`${id}:hd`, 4096]);
+      }
+
+      for (const [key, edge] of variantes) {
+        await cache.put(key, await renderPlaceholder(index, shape.width, shape.height, edge));
       }
 
       created++;

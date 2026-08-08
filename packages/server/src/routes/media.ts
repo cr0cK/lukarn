@@ -69,10 +69,23 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     if (!meta) {
       return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
     }
-    if (meta.kind !== 'photo') {
-      return reply
-        .code(415)
-        .send({ error: 'unsupported', message: 'Rendu image indisponible pour une vidéo' });
+    /**
+     * Une vidéo a une vignette — l'aperçu que Drive produit de sa première
+     * seconde (D92) —, mais rien de plus : `full` et `hd` agrandiraient une
+     * image de quelques centaines de pixels, et l'aperçu manque sur les
+     * fichiers que Drive n'a pas su lire ou pas encore traités.
+     */
+    if (meta.kind === 'video') {
+      if (variant.kind !== 'thumb') {
+        return reply
+          .code(415)
+          .send({ error: 'unsupported', message: 'Rendu plein écran indisponible pour une vidéo' });
+      }
+      if (!meta.hasThumbnail) {
+        return reply
+          .code(415)
+          .send({ error: 'unsupported', message: 'Aucun aperçu disponible pour cette vidéo' });
+      }
     }
 
     /**
@@ -92,7 +105,12 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
         .send();
     }
 
-    const rendered = await context.renderer.render(mediaId, variant, meta.md5);
+    const rendered = await context.renderer.render(
+      mediaId,
+      variant,
+      meta.md5,
+      meta.kind === 'video' ? 'poster' : 'original',
+    );
     return reply
       .header('Content-Type', rendered.contentType)
       .header('Cache-Control', IMMUTABLE)
