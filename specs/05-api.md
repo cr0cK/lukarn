@@ -40,7 +40,11 @@ Utilisée par le `HEALTHCHECK` du Dockerfile.
 | POST    | `/api/auth/device/:userCode/approve` | session |
 
 **`POST /api/auth/login`** — corps `{ username, password }` (1–64 et 1–512
-caractères).
+caractères). **L'identifiant est replié** avant d'être cherché — les bornes
+s'appliquent à la valeur repliée, `"   "` répond donc `400`. Aucun compte ne
+peut porter d'espace (`USERNAME_PATTERN`), et en refuser une venue d'une
+autocomplétion mobile ferait échouer une saisie juste sous le message d'un mot
+de passe faux. Le mot de passe n'est pas touché : il a le droit d'en contenir.
 
 | Code | Corps                                       | Quand                                                                               |
 | ---- | ------------------------------------------- | ----------------------------------------------------------------------------------- |

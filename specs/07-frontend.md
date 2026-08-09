@@ -130,6 +130,26 @@ Deux champs, et un second chemin sous eux : **« Connecter avec un téléphone �
 Il est là pour l'écran qui n'a pas de clavier — un téléviseur, où chaque
 caractère se compose à la télécommande (D260809c).
 
+**L'identifiant est replié avant l'envoi**, et le serveur le replie aussi
+(`05-api.md`) : `USERNAME_PATTERN` n'admet aucun espace, donc aucun compte n'en
+porte, et une espace de bord ne vient que d'une autocomplétion mobile ou d'un
+copier-coller. Sans ce repli, la saisie est juste à l'écran et le refus arrive
+avec le message d'un mot de passe faux — le pire diagnostic possible, puisqu'il
+désigne l'autre champ. Le mot de passe, lui, part tel quel : il a le droit d'en
+contenir aux deux bouts.
+
+### `components/PasswordInput.tsx`
+
+Le champ masqué et son **œil**, qui en montre les caractères. Une faute de
+frappe à l'aveugle ne se distingue pas d'un mot de passe oublié : sans ce
+bouton, le seul recours est d'effacer et de recommencer, au clavier mobile où
+la faute est justement la plus probable. Le composant sert aussi au `TextField`
+de `components/admin/ui.tsx` dès que son `type` vaut `password` — un seul geste
+pour la connexion et pour la création de compte.
+
+L'état repart **masqué à chaque montage** : on ne laisse pas un secret en clair
+derrière soi sur un écran qu'on quitte.
+
 Le panneau d'appairage vit dans `components/DeviceLogin.tsx`, et il ne demande
 rien tant qu'on ne l'ouvre pas : une demande d'appairage par affichage de la
 page de connexion remplirait la table pour rien. Une fois ouvert, il montre le
