@@ -218,9 +218,23 @@ récent album au plus ancien :
    lance `ffmpeg` reniçé à 15 et sur un seul fil, puis range le résultat par
    `MediaCache.putFile` — un `rename`, pas trente méga-octets chargés pour être
    réécrits. Les temporaires sont effacés même en cas d'échec.
-4. Le passage s'arrête quand le magasin atteint 90 % de son budget : à la limite,
+4. `plafondDebit` borne le débit image sur celui de la source — poids mesuré sur
+   le fichier reçu, durée lue dans l'index — et `ffmpegArgs` le pose en
+   `-maxrate`/`-bufsize` à côté du CRF. Sans cette borne, `-crf` est un débit
+   variable sans limite haute, et trois dérivés sur vingt sortaient plus lourds
+   que leur original (D260809g). Le plafond vaut 0,95 / 1,15 du débit source :
+   5 % pour le conteneur, et 15 % parce que `-maxrate` contraint une fenêtre VBV
+   et non une moyenne — mesuré, x264 le déborde de 9 à 14 %. Sous 500 kbit/s, ou
+   faute de durée, aucun plafond n'est posé : un 1080p bridé si bas serait
+   inregardable, et c'est la lisibilité qu'on achète.
+5. Le passage s'arrête quand le magasin atteint 90 % de son budget : à la limite,
    chaque nouvelle vidéo évincerait la plus ancienne, et le passage suivant
    referait ce que celui-ci vient de jeter.
+
+Une vidéo que `ffmpeg` refuse est journalisée en **`warn`**, pas en `debug` : une
+instance tourne en `LOG_LEVEL=info` et le résumé de fin ne donne qu'un compteur.
+Sans cette ligne, le fichier échouerait à chaque passage horaire sans qu'on
+puisse jamais savoir pourquoi.
 
 **Côté client, à l'ouverture.** `chooseVideoSource` interroge le navigateur sur
 le codec réel — `canPlayType('video/mp4; codecs="hvc1"')` — et non sur le type

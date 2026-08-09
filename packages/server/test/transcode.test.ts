@@ -7,6 +7,7 @@ import { openDb } from '../src/db.js';
 import { MediaCache } from '../src/media/cache.js';
 import {
   ffmpegArgs,
+  plafondDebit,
   playableKey,
   TranscodePass,
   type TranscodePassDeps,
@@ -76,6 +77,8 @@ function photo(albumId: string, id: string, jour: number): MediaUpsert {
 interface FauxTranscodeur extends Transcoder {
   /** Identifiants réellement transcodés, dans l'ordre. */
   faits: string[];
+  /** Durées reçues, dans le même ordre : le plafond de débit en dépend. */
+  durees: (number | null)[];
   /** Nombre de transcodages en cours à cet instant : jamais plus d'un. */
   simultanes: number;
   maxSimultanes: number;
@@ -86,9 +89,11 @@ function fauxTranscodeur(
 ): FauxTranscodeur {
   const faux: FauxTranscodeur = {
     faits: [],
+    durees: [],
     simultanes: 0,
     maxSimultanes: 0,
-    async transcode(fileId, md5) {
+    async transcode(fileId, md5, durationMs) {
+      faux.durees.push(durationMs);
       faux.simultanes++;
       faux.maxSimultanes = Math.max(faux.maxSimultanes, faux.simultanes);
       // Un tour de boucle d'événements : deux passages concurrents se
@@ -163,6 +168,60 @@ describe('ligne de commande ffmpeg', () => {
     assert.ok(args.includes('0:a?'));
     assert.equal(args.at(-1), '/tmp/b.mp4');
   });
+
+  it('ne borne pas le débit quand aucun plafond n’est connu', () => {
+    // CRF seul, comme avant : c'est le cas d'une vidéo dont l'index n'a pas la
+    // durée, et il vaut mieux un dérivé lourd qu'un dérivé bridé au hasard.
+    assert.equal(args.includes('-maxrate'), false);
+    assert.equal(args.includes('-bufsize'), false);
+  });
+
+  it('borne le débit sans lâcher le CRF quand un plafond est connu', () => {
+    const bornes = ffmpegArgs({ source: '/tmp/a.mov', cible: '/tmp/b.mp4', plafondKbps: 4000 });
+
+    // Les deux ensemble : x264 vise la qualité et n'écrête que si elle coûte
+    // plus que le plafond. Le CRF seul est un débit variable sans borne haute,
+    // c'est-à-dire exactement ce qui produisait un dérivé plus lourd que sa
+    // source (D260809g).
+    assert.equal(bornes[bornes.indexOf('-crf') + 1], '23');
+    assert.equal(bornes[bornes.indexOf('-maxrate') + 1], '4000k');
+    // Deux secondes de débit : plus court, on écrête des scènes chargées sans
+    // nécessité ; plus long, le fichier dépasse sur sa durée totale.
+    assert.equal(bornes[bornes.indexOf('-bufsize') + 1], '8000k');
+  });
+});
+
+describe('plafond de débit', () => {
+  it('tient sous la source une fois le débordement de x264 payé', () => {
+    // 50 Mo pour 20 s, le cas mesuré en production qui produisait 66,8 Mo :
+    // 20 000 kbit/s de source, moins 5 % de conteneur, divisés par les 15 % que
+    // `-maxrate` déborde, moins les 128 du son.
+    const plafond = plafondDebit(50_000_000, 20_000);
+    assert.equal(plafond, 16_393);
+
+    // C'est la promesse entière du plafond, et elle doit se vérifier sur le pire
+    // cas et non sur le nominal : le dérivé pèse moins que sa source **même**
+    // quand x264 déborde de 15 % et que le son prend ses 128 kbit/s. Une marge
+    // qui ne compterait que le conteneur laisserait passer 52,3 Mo pour 50, ce
+    // qui est exactement le défaut qu'on corrige.
+    const pireCas = ((plafond! + 128) * 1.15 * 20_000) / 8;
+    assert.ok(pireCas < 50_000_000, `${pireCas} octets doit rester sous la source`);
+  });
+
+  it('renonce plutôt que de rendre une vidéo inregardable', () => {
+    // Une source déjà très légère donnerait un plafond sous lequel un 1080p
+    // n'est plus regardable — or c'est la lisibilité qu'on cherche, le poids
+    // n'est qu'un effet secondaire (D260809g).
+    assert.equal(plafondDebit(500_000, 20_000), null);
+  });
+
+  it('renonce quand la durée manque ou est absurde', () => {
+    // Diviser par une durée nulle donnerait `Infinity`, et une durée absente
+    // est le cas d'une vidéo que l'index n'a pas encore sondée.
+    assert.equal(plafondDebit(50_000_000, null), null);
+    assert.equal(plafondDebit(50_000_000, 0), null);
+    assert.equal(plafondDebit(0, 20_000), null);
+  });
 });
 
 describe('passage de transcodage', () => {
@@ -184,6 +243,9 @@ describe('passage de transcodage', () => {
     // serait des minutes de processeur dépensées à dégrader l'image.
     assert.deepEqual(faux.faits, ['recente', 'ancienne']);
     assert.equal(resultat.transcoded, 2);
+    // La durée est transmise au producteur : sans elle il ne peut pas borner le
+    // débit, et le dérivé redeviendrait parfois plus lourd que sa source.
+    assert.deepEqual(faux.durees, [60_000, 60_000]);
   });
 
   it('saute une vidéo déjà au magasin', async () => {
@@ -326,7 +388,7 @@ describe('production d’un dérivé', () => {
       },
     });
 
-    await transcodeur.transcode('clip', 'empreinte', AbortSignal.timeout(5_000));
+    await transcodeur.transcode('clip', 'empreinte', 60_000, AbortSignal.timeout(5_000));
 
     const range = store.hit(playableKey('clip', 'empreinte'));
     assert.ok(range, 'la version lisible doit être au magasin');
@@ -349,7 +411,9 @@ describe('production d’un dérivé', () => {
       run: () => Promise.reject(new Error('ffmpeg a rendu 1')),
     });
 
-    await assert.rejects(() => transcodeur.transcode('casse', null, AbortSignal.timeout(5_000)));
+    await assert.rejects(() =>
+      transcodeur.transcode('casse', null, 60_000, AbortSignal.timeout(5_000)),
+    );
 
     // Un original de 150 Mo laissé derrière chaque tentative ratée remplirait
     // le disque sans que l'inventaire du magasin en sache rien.
