@@ -127,7 +127,9 @@ function releve(): Ligne[] {
     info('Survol possible', window.matchMedia('(hover: hover)').matches ? 'oui' : 'non'),
 
     test(
-      '@layer — Tailwind v4 en dépend entièrement',
+      // Un NON ne condamne plus l'application : la feuille produite est dépliée
+      // à la construction (D260809h). Reste un bon marqueur de génération.
+      '@layer — plus requis, déplié à la construction',
       regleAppliquee(
         '@layer diagnostic { #sonde-diagnostic { color: rgb(1, 2, 3) } }',
         (sonde) => getComputedStyle(sonde).color === 'rgb(1, 2, 3)',

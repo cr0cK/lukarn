@@ -1941,11 +1941,12 @@ cela.
 
 La cible est **Chromium 79**, relevée sur le navigateur d'un téléviseur, quand
 Tailwind v4 n'annonce que Chromium 111 et au-delà. Un greffon Vite retravaille
-donc la CSS produite juste avant qu'elle ne soit écrite, en trois passes :
+donc la CSS produite juste avant qu'elle ne soit écrite, en quatre passes :
 Lightning CSS ciblé Chromium 79 — ce qui convertit `oklch()` en `rgb()` —, un
 doublage des raccourcis logiques (`padding-inline`, `inset-inline`,
-`margin-block`…) par leurs équivalents physiques, et un `transform` composé à la
-place des propriétés `translate`, `rotate` et `scale`.
+`margin-block`…) par leurs équivalents physiques, un `transform` composé à la
+place des propriétés `translate`, `rotate` et `scale`, et le **dépliage des
+couches en cascade**.
 
 Sans lui, `px-*` et `py-*` ne posent **aucun** rembourrage sur ces moteurs,
 `inset-x-*` n'ancre rien, et `-translate-y-1/2` ne recentre rien. Le raccourci
@@ -1956,10 +1957,19 @@ déplacerait deux fois. La cible JS descend à `chrome79` pour la même raison,
 sans quoi `?.` et `??` laissent une page blanche plutôt qu'une page mal mise en
 page.
 
+**Le dépliage des couches décide de tout le reste** : 91 % de la feuille produite
+vit dans un `@layer`, une at-rule qui n'existe pas avant Chromium 99 et qu'un
+moteur conforme jette **avec son bloc**. Un second téléviseur, pourtant plus
+récent que le premier, fait exactement cela et n'affichait donc aucun style —
+sans que rien d'autre soit en cause. Déplier ne change rien pour un moteur
+récent, Tailwind déclarant ses couches dans l'ordre où il les émet
+([D260809h](./08-decisions/D260809h-les-couches-en-cascade-sont-depliees.md)).
+La source, elle, continue d'écrire ses `@layer` : seule la sortie est dépliée.
+
 Le greffon vérifie son propre travail et fait échouer la construction s'il reste
-un `oklch()` ou un raccourci sans repli. Il **ne tourne qu'à la construction** :
-sous `pnpm dev`, un vieux navigateur voit encore la feuille non abaissée. Le
-raisonnement complet, `color-mix()` et `@layer` compris, est en
+un `oklch()`, un raccourci sans repli ou une couche non dépliée. Il **ne tourne
+qu'à la construction** : sous `pnpm dev`, un vieux navigateur voit encore la
+feuille non abaissée. Le raisonnement complet, `color-mix()` compris, est en
 [D260809f](./08-decisions/D260809f-abaissement-css-pour-vieux-moteurs.md).
 
 ## Application installable
