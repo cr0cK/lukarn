@@ -812,6 +812,73 @@ export interface BulkModerationResult {
   affected: number;
 }
 
+/* --------------------------------------------------------------------------
+ * Télémétrie de visite
+ *
+ * Mesurée côté serveur et agrégée à l'écriture : une ligne par (album, clé,
+ * session, jour) avec des compteurs (D260809h). L'accès étant authentifié par
+ * clé, seule l'instance sait *qui* regarde — ce qu'un traceur tiers, qui ne
+ * verrait qu'un navigateur anonyme, raterait.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Classe d'appareil, déduite du user-agent à la création de la session **puis
+ * jetée** : seule la classe est conservée. Une valeur parmi quatre ne
+ * ré-identifie personne, là où le user-agent complet est une empreinte.
+ */
+export type DeviceKind = 'mobile' | 'tablette' | 'ordinateur' | 'tv';
+
+/** Ce qu'une clé d'accès a fait sur la fenêtre demandée. */
+export interface VisitorRow {
+  /** La clé d'accès, pas une personne : elle peut être partagée (D38). */
+  username: string;
+  /** Les visites de la clé d'administration sont montrées, pas exclues. */
+  admin: boolean;
+  /** Classes d'appareil vues sur les sessions ouvertes de cette clé. */
+  devices: DeviceKind[];
+  /** Dernière ouverture d'album, `null` si la clé s'est connectée sans rien ouvrir. */
+  lastAt: string | null;
+  /** Dernière requête reçue de cette clé, à l'heure près. */
+  lastSeenAt: string | null;
+  /** Jours distincts où quelque chose a été ouvert. */
+  days: number;
+  /** Sessions distinctes, c'est-à-dire navigateurs distincts. */
+  sessions: number;
+  albums: number;
+  visits: number;
+  photos: number;
+}
+
+/** Ce qu'un album a reçu sur la fenêtre demandée. */
+export interface AlbumVisitRow {
+  albumId: string;
+  /** `null` si l'album a été supprimé depuis : sa fréquentation passée reste vraie. */
+  title: string | null;
+  /** Sessions distinctes — la meilleure approximation d'un visiteur. */
+  visitors: number;
+  /** Clés d'accès distinctes. Toujours ≤ `visitors`, une clé étant partageable. */
+  keys: number;
+  visits: number;
+  photos: number;
+  lastAt: string;
+}
+
+export interface VisitsOverview {
+  /** Largeur de la fenêtre, telle que le serveur l'a retenue. */
+  days: number;
+  /** Premier jour compté, `YYYY-MM-DD` en UTC. */
+  since: string;
+  visitors: VisitorRow[];
+  albums: AlbumVisitRow[];
+}
+
+/** Fenêtres proposées par l'onglet « Visites ». */
+export const VISIT_WINDOWS = [7, 30, 90] as const;
+
+/** Défaut de `GET /api/admin/visits`, et borne haute de ce qu'il accepte. */
+export const VISIT_WINDOW_DEFAULT = 30;
+export const VISIT_WINDOW_MAX = 365;
+
 /** Contraintes de saisie, partagées pour valider des deux côtés à l'identique. */
 export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
 export const USERNAME_MAX_LENGTH = 64;

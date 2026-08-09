@@ -535,7 +535,37 @@ son échec est ignoré).
 | Les métadonnées et l'EXIF des médias de ses albums                                                         | Toute URL Google, tout id de dossier Drive, tout `folderId`                                               |
 | Les originaux de ses albums, en téléchargement                                                             | La liste des comptes, les réglages, l'état des synchros                                                   |
 | Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué                                                   |
+| —                                                                                                          | La télémétrie de visite : qui est venu, et ce que les autres ont regardé                                  |
 | Les commentaires des photos de ses albums, et le nom affiché de leurs auteurs                              | Les commentaires portant sur un album qui ne lui est pas attribué, et ceux qu'un administrateur a masqués |
+
+## Télémétrie de visite : ce qui est enregistré, et ce qui ne l'est pas
+
+`packages/server/src/telemetry.ts` pour les compteurs, `device.ts` pour la classe
+d'appareil. La mesure se fait **en base, côté serveur** : aucun script tiers, donc
+aucune donnée qui sorte de l'instance pour ça (D260809h).
+
+| Enregistré                                     | Non enregistré                        |
+| ---------------------------------------------- | ------------------------------------- |
+| La clé d'accès (`username`)                    | L'adresse IP                          |
+| L'identifiant de session, déjà en base         | Le user-agent brut                    |
+| L'album, le jour (UTC) et des compteurs        | Le média ouvert, un par un            |
+| La classe d'appareil : mobile/tablette/ordi/TV | Le référent, la résolution, la langue |
+
+Deux points portent tout le reste :
+
+- **La classe d'appareil est déduite du user-agent à la création de la session,
+  puis le user-agent est jeté.** Il est une empreinte — version de navigateur,
+  d'OS, modèle — quand une valeur parmi quatre ne ré-identifie personne. Le
+  distinguo est ce qui permet de savoir depuis quoi la galerie est regardée sans
+  pouvoir séparer deux personnes derrière une clé partagée.
+- **Jamais le média.** Compter photo par photo produirait l'historique de lecture
+  de quelqu'un, dans une application où un mot de passe est partagé par tout un
+  foyer. Les compteurs s'arrêtent à « combien de photos ouvertes dans cet album
+  ce jour-là ».
+
+La lecture est réservée aux administrateurs : `GET /api/admin/visits` est sous le
+`requireAdmin` de préfixe, comme le reste (voir [05](./05-api.md)). La rétention
+est de quatre cents jours, par la purge horaire de `main.ts`.
 
 ## Ce qui sort de l'instance
 

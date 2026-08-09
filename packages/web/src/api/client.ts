@@ -34,6 +34,7 @@ import {
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
+  type VisitsOverview,
 } from '@gdv/shared';
 
 /** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
@@ -237,6 +238,10 @@ export const api = {
     request<BulkModerationResult>(`/admin/commenters/${commenterId}/show`, { method: 'POST' }),
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
+
+  /** Qui est venu et ce qui a été regardé, sur les `days` derniers jours. */
+  visits: (days: number) =>
+    request<VisitsOverview>(`/admin/visits?${new URLSearchParams({ days: String(days) })}`),
 
   oauthStart: () => request<{ url: string }>('/admin/oauth/start'),
 

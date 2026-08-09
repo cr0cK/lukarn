@@ -12,9 +12,12 @@ import {
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
+  VISIT_WINDOW_DEFAULT,
+  VISIT_WINDOW_MAX,
   type AdminAlbum,
   type AdminStatus,
   type AppSettings,
+  type VisitsOverview,
 } from '@gdv/shared';
 import argon2 from 'argon2';
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
@@ -85,6 +88,15 @@ const moderationQuerySchema = z.object({
   q: z.string().trim().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.coerce.number().int().positive().optional(),
+});
+
+/**
+ * Fenêtre de la télémétrie de visite. Bornée à un an : au-delà, la purge
+ * horaire a déjà oublié les journées, et la requête rendrait une fenêtre que la
+ * base ne peut plus remplir.
+ */
+const visitsQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(VISIT_WINDOW_MAX).default(VISIT_WINDOW_DEFAULT),
 });
 
 const groupBy = z.enum(['month', 'day']);
@@ -208,6 +220,22 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         mailConfigured: context.mailer.enabled,
       };
       return reply.send(status);
+    });
+
+    /**
+     * Qui est venu, et ce qui a été regardé. Deux agrégations bornées à une
+     * fenêtre de jours, lues d'une table déjà agrégée à l'écriture (D260809h).
+     *
+     * Les visites de la clé d'administration sont **montrées, pas exclues** :
+     * les retirer ferait mentir les totaux, et la colonne « admin » suffit à
+     * les lire pour ce qu'elles sont.
+     */
+    app.get('/visits', async (request, reply) => {
+      const parsed = visitsQuerySchema.safeParse(request.query);
+      if (!parsed.success) return badRequest(reply, parsed.error);
+
+      const overview: VisitsOverview = context.visits.overview(parsed.data.days);
+      return reply.send(overview);
     });
 
     /* ------------------------------------------------------------- comptes */

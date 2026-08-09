@@ -633,6 +633,7 @@ une nouvelle clé de magasin, donc un nouveau dérivé.
 | Méthode | Chemin                            | Réponse                                                        |
 | ------- | --------------------------------- | -------------------------------------------------------------- |
 | GET     | `/api/admin/status`               | `200 AdminStatus`                                              |
+| GET     | `/api/admin/visits`               | `200 VisitsOverview` · `400`                                   |
 | GET     | `/api/admin/users`                | `200 AdminUser[]`                                              |
 | POST    | `/api/admin/users`                | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
 | PATCH   | `/api/admin/users/:username`      | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
@@ -654,6 +655,30 @@ une nouvelle clé de magasin, donc un nouveau dérivé.
 seulement ceux de l'administrateur), `cache: { entryCount, bytes, maxBytes }`.
 Le front réinterroge toutes les 2 s tant qu'un album est en `syncStatus:
 'running'`.
+
+**`visits`** — `?days=` (défaut 30, entier de 1 à 365) borne la fenêtre. Rend un
+`VisitsOverview` = `{ days, since, visitors, albums }`, où `since` est le premier
+jour compté (`YYYY-MM-DD` en UTC, la borne étant incluse).
+
+| Champ                     | Contenu                                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `visitors[]: VisitorRow`  | Par clé d'accès : `admin`, `devices`, `lastAt`, `lastSeenAt`, `days`, `sessions`, `albums`, `visits`, `photos`                            |
+| `albums[]: AlbumVisitRow` | Par album : `title` (`null` si supprimé depuis), `visitors` (sessions distinctes), `keys` (clés distinctes), `visits`, `photos`, `lastAt` |
+
+Trois points de lecture :
+
+- **Un visiteur est une session, pas une clé.** Une clé d'accès se partage (D38) ;
+  deux navigateurs derrière la même en font bien deux visiteurs. `keys` est donc
+  toujours inférieur ou égal à `visitors`.
+- **Une clé connectée sans rien ouvrir figure quand même**, à zéro : c'est une
+  réponse, et la faire disparaître ferait croire à une absence de visiteur. Sa
+  ligne vient alors de `sessions.last_seen_at` seul, et `lastAt` vaut `null`.
+- **Les visites de l'administrateur sont montrées, pas exclues.** Les retirer
+  ferait mentir les totaux ; la colonne `admin` suffit à les lire pour ce
+  qu'elles sont (D260809h).
+
+Les compteurs viennent d'`album_visits`, agrégée à l'écriture : la route ne fait
+que trois lectures bornées, sans balayage (voir [03](./03-modele-de-donnees.md)).
 
 **`oauth/start`** — `400 oauth_not_configured` si `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` sont absents. Sinon pose le cookie signé

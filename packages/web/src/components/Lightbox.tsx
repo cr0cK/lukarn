@@ -155,7 +155,22 @@ export function Lightbox({
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const { data: detail } = useMediaDetail(albumId, panel && item ? item.id : null);
+  /**
+   * Chargé dès qu'une photo est affichée, et non plus au seul moment où le
+   * panneau s'ouvre.
+   *
+   * Deux raisons. Le panneau « Infos » s'ouvre alors sur ses lignes déjà là,
+   * au lieu d'un indicateur d'attente sur un aller-retour que rien n'avait
+   * anticipé. Et c'est cette requête qui compte la photo comme ouverte
+   * (D260809h) : conditionnée au panneau, la télémétrie aurait mesuré les
+   * panneaux ouverts en croyant compter les photos regardées.
+   *
+   * Le coût est d'une requête par photo réellement affichée — le préchargement
+   * asymétrique de D21 porte sur les images, pas sur le détail, donc les
+   * voisines ne sont pas demandées. À côté du rendu de l'image elle-même, deux
+   * lectures indexées ne pèsent rien.
+   */
+  const { data: detail } = useMediaDetail(albumId, item ? item.id : null);
 
   const setCover = useUpdateAlbum();
   // L'échec ne doit pas suivre jusqu'à la photo suivante : le message y

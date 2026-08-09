@@ -432,7 +432,7 @@ Réglages par défaut du `QueryClient` (`main.tsx`) : `refetchOnWindowFocus: fal
 | `useAlbum`        | `['album', id]`                       |                                                                                                                                                                                                                                                                                           |
 | `useAlbumItems`   | `['items', id, order]`                | `useInfiniteQuery`, curseur serveur. **`order` fait partie de la clé** : sans lui, TanStack resservirait les pages chargées dans l'autre sens et continuerait de paginer à l'envers. Un troisième argument `enabled` la tient à l'arrêt tant que le sens n'est pas résolu.                |
 | `useAlbumDays`    | `['days', id]`                        | Activée **seulement en découpage par jour** : par mois, les notes sont masquées et la requête ne servirait à rien. Pas d'`order` dans la clé — les journées sont les mêmes dans les deux sens. Rend aussi une `Map` mémoïsée par clé de jour, dont dépend la mémoïsation du layout.       |
-| `useMediaDetail`  | `['detail', albumId, id]`             | `staleTime: Infinity`, activée dès qu'un onglet du panneau latéral est ouvert — pas seulement « Infos » : `MediaDetail.commentCount` alimente la pastille de l'onglet « Commentaires ».                                                                                                   |
+| `useMediaDetail`  | `['detail', albumId, id]`             | `staleTime: Infinity`, activée **dès qu'une photo est affichée** : le panneau « Infos » s'ouvre alors sur ses lignes déjà là, et c'est cette requête qui compte la photo comme ouverte (D260809h). Une par photo réellement affichée — le préchargement de D21 porte sur les images.      |
 | `useCommentsFeed` | `['comments', albumId ?? '', 'feed']` | `useInfiniteQuery`, curseur serveur, `staleTime` 30 s. Le littéral est **en dernier**, comme pour `commentCounts` : devant, il entrerait en collision avec le fil d'un album qui s'appellerait « feed ». Montée dès l'affichage d'une page de galerie — c'est elle qui porte la pastille. |
 | `useAdminStatus`  | `['admin','status']`                  | `refetchInterval` de 2 s tant qu'un album est `running`, sinon aucun sondage.                                                                                                                                                                                                             |
 | `useAdminUsers`   | `['admin','users']`                   | Liste d'administration des comptes.                                                                                                                                                                                                                                                       |
@@ -1452,6 +1452,7 @@ L'administration se navigue par **rubriques, une par URL** (D66) :
 | Comptes      | `/admin/comptes`      | `UsersSection`                                          |
 | Commentaires | `/admin/commentaires` | `CommentsSection`                                       |
 | Serveur      | `/admin/serveur`      | `DriveSection`, `SettingsSection`, `MaintenanceSection` |
+| Visites      | `/admin/visites`      | `VisitsSection`                                         |
 
 `ADMIN_TABS`, dans `AdminNav`, est la source unique : la navigation la rend, et
 `AdminPage` valide contre elle le paramètre `:tab`. Une rubrique inconnue
@@ -1479,12 +1480,13 @@ tout en haut passerait inaperçu depuis le bas de la file.
 
 | Composant                     | Rôle                                                                                                                        |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `AdminNav`                    | Navigation entre les quatre rubriques, en `NavLink`                                                                         |
+| `AdminNav`                    | Navigation entre les cinq rubriques, en `NavLink`                                                                           |
 | `DriveSection`                | État de la connexion OAuth, consentement, déconnexion                                                                       |
 | `UsersSection` / `UserForm`   | Liste des comptes, création, modification, suppression confirmée                                                            |
 | `AlbumsSection` / `AlbumForm` | Liste des albums, état de synchronisation, découpage par défaut, retour à la couverture automatique, création, modification |
 | `SettingsSection`             | Intervalle de synchronisation, synchronisation au démarrage, cache                                                          |
 | `MaintenanceSection`          | Occupation du cache et purge                                                                                                |
+| `VisitsSection`               | Qui est venu, et quels albums ont été ouverts, sur 7, 30 ou 90 jours                                                        |
 | `AlbumAccessPicker`           | Attribution des albums à un compte (voir plus bas)                                                                          |
 | `ConfirmDialog`               | Confirmation nommée, en remplacement de `window.confirm`                                                                    |
 | `ui.tsx`                      | Primitives partagées : bouton, champ, case à cocher, encadré de section, géométrie des lignes                               |
@@ -1593,6 +1595,30 @@ Deux garde-fous évitent de se verrouiller dehors : on ne supprime pas son propr
 compte, et on ne retire pas son propre rôle administrateur. Le serveur reste
 libre de les refuser aussi — ces règles ne sont ici que pour ne pas proposer un
 geste qui se retourne contre l'utilisateur.
+
+### Visites — `components/admin/VisitsSection.tsx`
+
+Deux tableaux, et rien d'autre : « Qui » liste les clés d'accès venues sur la
+période, « Quels albums » ce qui a été ouvert. Un sélecteur 7 / 30 / 90 jours
+(`VISIT_WINDOWS`) porte la fenêtre, qui entre dans la clé de requête — revenir à
+« 7 jours » après « 90 » réaffiche sa page sans appel réseau, et
+`placeholderData` garde le tableau en place le temps du chargement, sinon la
+section se replierait sous le curseur.
+
+Les lignes reprennent la géométrie de `UsersSection` — `ROW_CLASS`, empilé sous
+`xl` — parce que la rubrique se consulte depuis un téléphone, et qu'une rangée de
+six chiffres y tronquerait l'identifiant qu'elle décrit.
+
+Deux mentions figurent en pastille à côté de la clé : « administrateur », et la
+classe d'appareil vue sur ses sessions ouvertes. `tv` s'affiche « téléviseur » —
+la valeur stockée est le mot technique, l'affichée celle qu'on emploie.
+
+**Les dates sont en UTC**, par `formatDateTime`, alors que celles d'un
+commentaire sont locales. La raison est que les compteurs sont rangés par journée
+UTC : afficher l'heure locale à côté d'un décompte par jour UTC ferait deux
+échelles dans le même tableau, et une visite du 1er août à 00 h 30 se lirait sur
+la ligne du 31 juillet. Le relatif (`formatRelative`) est ce qui s'affiche, la
+date exacte reste au survol.
 
 ### Panneau latéral — `components/SidePanel.tsx`
 

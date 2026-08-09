@@ -382,6 +382,54 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('ajoute la télémétrie à une base en version 14 sans rien perdre', () => {
+    const db = databaseAtVersion(14);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('famille', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO sessions (id, username, created_at, expires_at)
+       VALUES ('session-en-cours', 'famille', ?, '2027-01-01T00:00:00.000Z')`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
+       VALUES ('corse', 'abc', 'IMG.jpg', 'image/jpeg', 'photo', ?, ?, ?)`,
+    ).run(date, date, date);
+
+    migrate(db);
+
+    const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get('session-en-cours') as {
+      username: string;
+      expires_at: string;
+      last_seen_at: string | null;
+      device: string | null;
+    };
+    // La session ouverte traverse la mise à jour : ni déconnexion, ni échéance
+    // rapprochée. Les deux colonnes arrivent vides — l'appareil ne se devine
+    // pas après coup, et la première requête relue datera la session.
+    assert.equal(session.username, 'famille');
+    assert.equal(session.expires_at, '2027-01-01T00:00:00.000Z');
+    assert.equal(session.last_seen_at, null);
+    assert.equal(session.device, null);
+
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS n FROM album_visits').get() as { n: number }).n,
+      0,
+      'la table arrive vide : rien ne reconstitue une fréquentation passée',
+    );
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM media').get() as { n: number }).n, 1);
+
+    // Aucune clé étrangère, ni vers `sessions` ni vers `albums` : c'est tout
+    // l'intérêt de la table, et ce qu'une migration ultérieure ne doit pas
+    // « corriger » — une déconnexion effacerait sinon l'historique de ce qui a
+    // été regardé (D260809h).
+    assert.deepEqual(db.pragma('foreign_key_list(album_visits)'), []);
+
+    db.close();
+  });
+
   it('est idempotente', () => {
     const db = databaseAtVersion(0);
     migrate(db);
