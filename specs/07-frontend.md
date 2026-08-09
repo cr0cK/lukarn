@@ -6,17 +6,18 @@ vue vit dans l'URL, le reste est du `useState` local.
 
 ## Routage
 
-`App.tsx`, cinq routes plus un fourre-tout.
+`App.tsx`, six routes plus un fourre-tout.
 
-| Chemin            | Page         | Garde                              |
-| ----------------- | ------------ | ---------------------------------- |
-| `/login`          | `LoginPage`  | aucune (redirige si déjà connecté) |
-| `/pair`           | `PairPage`   | `RequireAuth`                      |
-| `/`               | `AlbumsPage` | `RequireAuth`                      |
-| `/album/:albumId` | `AlbumPage`  | `RequireAuth`                      |
-| `/admin`          | —            | `Navigate to="/admin/albums"`      |
-| `/admin/:tab`     | `AdminPage`  | `RequireAuth admin`                |
-| `*`               | —            | `Navigate to="/"`                  |
+| Chemin            | Page             | Garde                              |
+| ----------------- | ---------------- | ---------------------------------- |
+| `/login`          | `LoginPage`      | aucune (redirige si déjà connecté) |
+| `/diagnostic`     | `DiagnosticPage` | aucune                             |
+| `/pair`           | `PairPage`       | `RequireAuth`                      |
+| `/`               | `AlbumsPage`     | `RequireAuth`                      |
+| `/album/:albumId` | `AlbumPage`      | `RequireAuth`                      |
+| `/admin`          | —                | `Navigate to="/admin/albums"`      |
+| `/admin/:tab`     | `AdminPage`      | `RequireAuth admin`                |
+| `*`               | —                | `Navigate to="/"`                  |
 
 `RequireAuth` s'appuie sur `useMe()`. **Ce n'est pas un contrôle de sécurité** :
 le serveur refuse déjà toute route protégée. Il évite d'afficher une page vide en
@@ -30,6 +31,31 @@ quoi approuver.
 
 Le serveur rend `index.html` sur toute URL non-`/api` et non-`/assets`, donc un
 rechargement direct sur `/album/vacances` fonctionne (voir [05](./05-api.md)).
+
+### Relevé du navigateur — `pages/DiagnosticPage.tsx`
+
+`/diagnostic` affiche ce que le navigateur qui l'ouvre sait faire : version du
+moteur, viewport réel, encoches, et le oui/non de la quinzaine de fonctions CSS
+dont dépend la feuille de styles. Elle existe parce qu'un défaut d'affichage
+signalé depuis un téléviseur ou un vieux téléphone ne se reproduit pas au
+bureau : sans relevé, on corrige au jugé.
+
+Deux choix méritent d'être dits, parce qu'ils paraissent des négligences :
+
+- **Elle n'utilise pas une seule classe Tailwind**, mais des styles en ligne.
+  Elle rend compte de navigateurs où la feuille de styles est justement en
+  défaut ; habillée comme le reste, elle mentirait sur ce qu'elle mesure, ou ne
+  s'afficherait pas du tout.
+- **Elle n'est pas gardée**, comme l'écran de connexion. Un navigateur trop
+  ancien pour afficher le formulaire est précisément celui dont on veut le
+  relevé. Elle n'expose que les capacités du visiteur, rien de l'instance.
+
+Les propriétés dites « appliquées (mesuré) » ne sont pas interrogées par
+`CSS.supports` mais par la géométrie obtenue sur un élément sonde : un moteur
+peut reconnaître la syntaxe d'une propriété sans en tirer le moindre effet, et
+c'est cet écart-là qu'on cherche. Même raison pour `@layer` et `@property`, que
+`CSS.supports` ne sait pas interroger — on injecte la règle et on regarde si
+elle a produit quelque chose.
 
 ### Cinq paramètres de requête portent l'état de la vue
 

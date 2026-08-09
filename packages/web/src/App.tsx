@@ -5,6 +5,7 @@ import { Spinner } from './components/Spinner';
 import AdminPage from './pages/AdminPage';
 import AlbumPage from './pages/AlbumPage';
 import AlbumsPage from './pages/AlbumsPage';
+import DiagnosticPage from './pages/DiagnosticPage';
 import LoginPage from './pages/LoginPage';
 import PairPage from './pages/PairPage';
 
@@ -46,6 +47,11 @@ export default function App(): ReactElement {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Non gardée, comme l'écran de connexion : elle sert à rendre compte
+          d'un navigateur qui affiche mal, et celui qui n'arrive pas à se
+          connecter est précisément celui dont on a besoin du relevé. Elle
+          n'expose que les capacités du visiteur, rien de l'instance. */}
+      <Route path="/diagnostic" element={<DiagnosticPage />} />
       {/* L'approbation d'un écran, ouverte depuis le téléphone. Gardée comme le
           reste : sans session, on passe par /login, qui ramène ici avec le code. */}
       <Route
