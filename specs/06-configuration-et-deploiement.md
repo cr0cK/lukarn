@@ -458,6 +458,10 @@ identifiant défini deux fois, un nom de fichier qui ne reprend pas le titre de
 sa décision, ou un renvoi `(Dxx)` vers une décision absente. `check-links.mjs`
 ne peut pas voir ce dernier cas — un `(D67)` en texte brut n'est pas un lien.
 
+Il vérifie de même qu'un document de specs **cité en texte** entre backticks
+existe bel et bien. Un chemin cité n'est ni un lien ni un renvoi de décision :
+il échappait aux deux, et survivait donc à un renommage.
+
 ### Voir les emails pour de vrai
 
 Les tests vérifient ce que `buildCommentMail`, `buildAlbumUpdateMail` et

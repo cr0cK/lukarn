@@ -40,6 +40,12 @@ nom du fichier, l'absence de doublon toutes sources confondues, et l'absence de
 renvoi `(Dxx)` — dans les specs comme dans le code — vers une décision qui
 n'existe pas. Ces défauts sont arrivés (D75).
 
+Il vérifie enfin qu'un **document de specs cité en texte** entre backticks —
+`specs/05-api.md`, `08-decisions/` — désigne un fichier qui existe. Ni les liens
+markdown ni les renvois `(Dxx)` ne couvrent ce cas, et un répertoire renommé y
+laissait un chemin faux que rien ne signalait (D260809d). Le répertoire des
+décisions en est exclu : un journal nomme ce qui a été remplacé.
+
 `pnpm check:links` complète les précédents sur l'autre défaut silencieux : un
 renvoi entre les trois documents qui ne mène plus nulle part. Il résout chaque
 lien relatif et chaque ancre, et n'appelle pas le réseau — un contrôle qui

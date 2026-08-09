@@ -13,7 +13,7 @@
  *
  *   node tools/check-specs.mjs
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -275,6 +275,44 @@ for (const chemin of porteursDeRenvois) {
         );
       }
     });
+}
+
+/* ------------------------------------------- Renvois d'une spec à une autre */
+
+/**
+ * Un document de specs cité en texte, entre backticks, désigne-t-il un fichier
+ * qui existe ?
+ *
+ * Entre `check-links.mjs`, qui suit les liens markdown, et le contrôle des
+ * renvois `(Dxx)` ci-dessus, ce cas passait : « une décision est un fichier de
+ * `specs/decisions/` » est resté vrai jusqu'au jour où le répertoire a changé de
+ * nom, et rien ne l'a signalé (D260809d).
+ *
+ * Le répertoire des décisions en est exclu : un journal parle du passé par
+ * nature — il nomme ce qui a été remplacé, et l'exiger présent le rendrait
+ * inécrivable.
+ */
+const ABREVIATION = /^specs\/0\d$/; // « voir specs/06 », l'usage du dépôt
+const DESIGNE_UNE_SPEC = /^(specs\/|0\d-[a-z-]+(\.md)?$|decisions\/|08-decisions)/;
+
+const citantDesSpecs = [
+  ...fichiers(SPECS, (n) => n.endsWith('.md')).filter(
+    (c) => !c.includes(`${join(SPECS, '08-decisions')}/`),
+  ),
+  join(RACINE, 'README.md'),
+  join(RACINE, 'CLAUDE.md'),
+  join(RACINE, 'deploy/README.md'),
+];
+
+for (const chemin of citantDesSpecs) {
+  for (const [, cite] of lire(chemin).matchAll(/`([^`\n]+)`/g)) {
+    if (!DESIGNE_UNE_SPEC.test(cite) || ABREVIATION.test(cite)) continue;
+    // Une forme (`D<AAMMJJ>`, un joker) ne promet aucun fichier précis.
+    if (cite.includes('<') || cite.includes('*')) continue;
+    const candidats = [join(RACINE, cite), join(SPECS, cite), join(SPECS, `${cite}.md`)];
+    if (candidats.some((c) => existsSync(c))) continue;
+    manques.push(`${relative(RACINE, chemin)} cite « ${cite} », qui n'existe pas`);
+  }
 }
 
 /* --------------------------------------------------------------- Verdict */

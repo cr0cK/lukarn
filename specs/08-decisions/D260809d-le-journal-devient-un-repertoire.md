@@ -60,6 +60,15 @@ vers les autres specs remontent d'un cran, et un lien intitulé « 08 » suivi d
 numéro en texte devient un lien intitulé par ce numéro, qui désigne enfin ce
 qu'il nomme.
 
-[D260809](./D260809-numerotation-des-decisions.md) mentionne un répertoire
-`specs/decisions/` qui n'existe plus sous ce nom. Elle n'est pas corrigée : une
-décision se lit à sa date, et celle-ci dit ce qui l'a remplacée.
+[D260809](./D260809-numerotation-des-decisions.md) nommait le répertoire
+`specs/decisions/`, et décrivait un journal séquentiel encore ouvert à la
+lecture. Les deux mentions sont **corrigées chez elle**, avec un renvoi vers
+cette entrée-ci : une décision garde son raisonnement, jamais un chemin faux. Un
+renvoi croisé qui ment coûte plus cher que la trace d'un renommage, et rien ne le
+signalait — ni le contrôle des renvois `(Dxx)`, qui porte sur les décisions, ni
+`check:links`, qui ne suit que les liens markdown.
+
+C'est ce trou que `check:specs` ferme désormais : un document de specs cité en
+texte entre backticks doit désigner un fichier existant. Ce répertoire-ci en est
+exclu, et ne pouvait pas ne pas l'être — un journal nomme ce qu'il a remplacé,
+et l'exiger présent le rendrait inécrivable.
