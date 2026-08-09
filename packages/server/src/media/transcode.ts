@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import { setPriority } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
@@ -59,6 +59,58 @@ const NICE = 15;
 
 const FFMPEG = 'ffmpeg';
 
+/** Débit du son produit, en kbit/s. Doit rester d'accord avec `-b:a` ci-dessous. */
+const AUDIO_KBPS = 128;
+
+/**
+ * Part du débit de la source laissée aux octets qui ne sont pas de l'image.
+ *
+ * Les 5 % retenus paient l'en-tête MP4 et l'index que `+faststart` remonte en
+ * tête : viser le débit de la source à l'octet près produirait un fichier
+ * légèrement plus gros qu'elle, ce que ce plafond existe précisément pour
+ * empêcher.
+ */
+const MARGE_CONTENEUR = 0.95;
+
+/**
+ * Ce que `-maxrate` dépasse réellement, dans le pire cas.
+ *
+ * `-maxrate` n'est pas un plafond sur la moyenne : c'est une contrainte VBV sur
+ * la fenêtre de `-bufsize`, et x264 la déborde quand la source est trop dure
+ * pour le débit accordé. Mesuré sur ffmpeg 7.1 en `veryfast` : **+9 à +10 %** sur
+ * une source réaliste, **+14 %** sur du bruit pur, qui est le pire cas
+ * théorique. Les 15 % retenus bornent les deux.
+ *
+ * Sans cette division, la marge de conteneur seule ne suffit pas et le dérivé
+ * repasse au-dessus de sa source — c'est-à-dire que le plafond échoue
+ * exactement dans le cas pour lequel il existe (D260809g).
+ */
+const DEBORDEMENT_VBV = 1.15;
+
+/**
+ * Plafond en deçà duquel on préfère ne pas en poser.
+ *
+ * Une source très courte ou à la durée mal déclarée donne un débit calculé
+ * absurde, et un 1080p bridé à 200 kbit/s serait illisible autrement — or c'est
+ * la lisibilité qu'on cherche, le poids n'est qu'un effet secondaire (D260809g).
+ * Mieux vaut alors un dérivé un peu lourd qu'un dérivé inregardable.
+ */
+const PLAFOND_MINIMAL_KBPS = 500;
+
+/**
+ * Débit maximal à laisser à l'image pour qu'un dérivé reste plus léger que sa
+ * source, en kbit/s — ou `null` s'il n'y a pas de plafond raisonnable à poser.
+ *
+ * `octets * 8 / durationMs` donne directement des kbit/s : les deux facteurs
+ * 1000 — millisecondes vers secondes, bits vers kilobits — s'annulent.
+ */
+export function plafondDebit(octets: number, durationMs: number | null): number | null {
+  if (durationMs === null || durationMs <= 0 || octets <= 0) return null;
+  const source = (octets * 8) / durationMs;
+  const plafond = Math.floor((source * MARGE_CONTENEUR) / DEBORDEMENT_VBV) - AUDIO_KBPS;
+  return plafond >= PLAFOND_MINIMAL_KBPS ? plafond : null;
+}
+
 interface Logger {
   info: (msg: string) => void;
   warn: (msg: string) => void;
@@ -93,6 +145,12 @@ export function needsTranscoding(codec: string | null): boolean {
  *   un cœur en 1080p. Le fichier produit est mesuré à 1,5 fois plus léger que
  *   l'HEVC d'origine ; le gain de place est un effet secondaire, pas le but
  *   (D260809b).
+ * - `-maxrate`/`-bufsize` quand `plafondKbps` est connu — CRF seul est un débit
+ *   *variable* sans borne haute, et sur une source déjà bien encodée il produit
+ *   parfois plus lourd qu'elle : mesuré en production, 3 dérivés sur 20 étaient
+ *   plus gros que leur original, jusqu'à 50,1 Mo devenus 66,8 Mo. Le plafond ne
+ *   mord que là où le CRF partait trop haut ; les vidéos qui sortaient déjà bien
+ *   en dessous de leur source sont encodées comme avant (D260809g).
  * - `-pix_fmt yuv420p` — un HEVC de téléphone est souvent en 10 bits, que le
  *   profil H.264 des navigateurs ne couvre pas : sans cette conversion, on
  *   produirait un fichier tout aussi illisible.
@@ -106,7 +164,25 @@ export function needsTranscoding(codec: string | null): boolean {
  *   « Error opening output files: Invalid argument », et le magasin reste vide
  *   sans que rien d'autre ne le signale.
  */
-export function ffmpegArgs(fichiers: { source: string; cible: string }): string[] {
+export function ffmpegArgs(fichiers: {
+  source: string;
+  cible: string;
+  /** Débit image maximal en kbit/s. Absent : CRF seul, sans borne haute. */
+  plafondKbps?: number | null;
+}): string[] {
+  const plafond = fichiers.plafondKbps
+    ? [
+        '-maxrate',
+        `${fichiers.plafondKbps}k`,
+        // Deux secondes de débit : la fenêtre sur laquelle x264 doit tenir le
+        // plafond. Plus courte, elle écrête les scènes chargées sans nécessité ;
+        // plus longue, elle laisse le fichier dépasser sur sa durée totale, ce
+        // qui est exactement ce qu'on veut empêcher.
+        '-bufsize',
+        `${fichiers.plafondKbps * 2}k`,
+      ]
+    : [];
+
   return [
     // Sans `-nostdin`, ffmpeg lit l'entrée standard du serveur et la consomme.
     '-nostdin',
@@ -125,6 +201,7 @@ export function ffmpegArgs(fichiers: { source: string; cible: string }): string[
     'veryfast',
     '-crf',
     '23',
+    ...plafond,
     '-pix_fmt',
     'yuv420p',
     '-threads',
@@ -192,7 +269,18 @@ export const spawnFfmpeg: FfmpegRunner = (args, signal) =>
 
 /** Ce que le passage attend de son producteur, et rien de plus. */
 export interface Transcoder {
-  transcode(fileId: string, md5: string | null, signal: AbortSignal): Promise<void>;
+  /**
+   * `durationMs` vient de l'index : c'est la seule chose que le producteur ne
+   * peut pas lire lui-même sans un `ffprobe` de plus, alors que le poids de la
+   * source, lui, se mesure sur le fichier une fois téléchargé. Les deux servent
+   * à borner le débit (D260809g) ; `null` renonce au plafond.
+   */
+  transcode(
+    fileId: string,
+    md5: string | null,
+    durationMs: number | null,
+    signal: AbortSignal,
+  ): Promise<void>;
 }
 
 export interface VideoTranscoderDeps {
@@ -222,7 +310,12 @@ export class VideoTranscoder implements Transcoder {
 
   constructor(private readonly deps: VideoTranscoderDeps) {}
 
-  async transcode(fileId: string, md5: string | null, signal: AbortSignal): Promise<void> {
+  async transcode(
+    fileId: string,
+    md5: string | null,
+    durationMs: number | null,
+    signal: AbortSignal,
+  ): Promise<void> {
     await mkdir(this.deps.root, { recursive: true });
 
     const prefixe = join(this.deps.root, `${process.pid}-${++this.serial}`);
@@ -231,7 +324,13 @@ export class VideoTranscoder implements Transcoder {
 
     try {
       await this.download(fileId, source, signal);
-      await this.deps.run(ffmpegArgs({ source, cible }), signal);
+      // Le poids est mesuré sur le fichier reçu, pas lu dans l'index : c'est ce
+      // que ffmpeg va réellement encoder, et Drive déclare parfois une taille
+      // absente ou périmée — un plafond calculé dessus borderait le mauvais
+      // débit.
+      const { size } = await stat(source);
+      const plafondKbps = plafondDebit(size, durationMs);
+      await this.deps.run(ffmpegArgs({ source, cible, plafondKbps }), signal);
       await this.deps.store.putFile(playableKey(fileId, md5), cible);
     } finally {
       // Même en cas d'échec, et surtout en cas d'échec : un original de 150 Mo
@@ -350,15 +449,26 @@ export class TranscodePass {
             }
 
             try {
-              await this.deps.transcoder.transcode(item.id, md5, this.controller.signal);
+              await this.deps.transcoder.transcode(
+                item.id,
+                md5,
+                item.durationMs,
+                this.controller.signal,
+              );
               result.transcoded++;
             } catch (error) {
               // Un fichier que ffmpeg refuse ne doit pas arrêter le passage :
               // les vidéos suivantes n'y sont pour rien, et le prochain tour
               // réessaiera celle-ci. Un abandon en fait partie — le passage
               // s'arrêtera de lui-même au tour de boucle suivant.
+              //
+              // `warn` et non `debug` : une instance tourne en `info`, et le
+              // résumé de fin ne donne qu'un compteur. Sans cette ligne, une
+              // vidéo que ffmpeg refuse échoue à chaque passage horaire sans
+              // qu'on puisse jamais savoir pourquoi — et le retour du binaire
+              // est précisément la seule chose qui le dise.
               result.failed++;
-              this.deps.log.debug(
+              this.deps.log.warn(
                 `Transcodage de ${item.id} en échec : ${(error as Error).message}`,
               );
             }
