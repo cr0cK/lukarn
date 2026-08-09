@@ -22,6 +22,7 @@ import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SearchRepo } from './search.js';
 import { SessionStore } from './sessions.js';
 import { SubscriptionRepo } from './subscriptions.js';
+import { VisitLog } from './telemetry.js';
 import { LoginThrottle } from './throttle.js';
 
 const GIB = 1024 ** 3;
@@ -61,6 +62,11 @@ export class AppContext {
   readonly transcoder: TranscodePass;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
+  /**
+   * Compteurs de visite, agrégés à l'écriture : qui ouvre quel album, et quand.
+   * Sa purge est branchée sur le ménage horaire de `main.ts` (D260809h).
+   */
+  readonly visits: VisitLog;
   /** Demandes d'appairage en attente — un écran sans clavier, cinq minutes. */
   readonly pairings: PairingStore;
   /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
@@ -101,6 +107,7 @@ export class AppContext {
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
+    this.visits = new VisitLog(this.db);
     this.pairings = new PairingStore(this.db, env.sessionSecret);
     this.days = new AlbumDayRepo(this.db);
     this.search = new SearchRepo(this.db);

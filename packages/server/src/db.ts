@@ -572,6 +572,59 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE media ADD COLUMN video_codec TEXT;
   `,
+
+  // 15 — qui regarde quoi, et depuis quand.
+  //
+  // L'instance ne disait rien de son usage : `sessions.created_at` répond
+  // « quelqu'un s'est connecté un jour », pas « ai-je des visiteurs cette
+  // semaine », ni « qui ouvre quel album ». Les commentaires étaient le seul
+  // signal disponible, et ils sous-estiment massivement la lecture — on regarde
+  // un album sans commenter (D260809h).
+  `
+  -- Dernière requête reçue de cette session. Écrite au plus une fois par heure
+  -- et par session : sans ce plafond, chaque vignette déclencherait un UPDATE.
+  ALTER TABLE sessions ADD COLUMN last_seen_at TEXT;
+
+  -- Classe d'appareil déduite du user-agent à la connexion, puis jetée : seule
+  -- la classe est stockée. Une valeur parmi quatre ne ré-identifie personne, là
+  -- où le user-agent complet est une empreinte. NULL sur les sessions ouvertes
+  -- avant cette migration, et sur celles dont la requête n'a pas d'en-tête.
+  ALTER TABLE sessions ADD COLUMN device TEXT;
+
+  -- Agrégée à l'écriture : une ligne par (album, clé, session, jour) avec des
+  -- compteurs, jamais une ligne par requête. La table reste de l'ordre de la
+  -- dizaine de lignes par jour au lieu de la dizaine de milliers, et il n'y a
+  -- aucune purge sérieuse à écrire.
+  --
+  -- Aucune clé étrangère, ni vers sessions ni vers albums, et c'est le point
+  -- de la table : une déconnexion détruit la session mais ne doit pas effacer
+  -- l'historique de ce qui a été regardé — session_id n'est ici qu'un seau
+  -- pour compter des visiteurs distincts, pas un lien. Un album supprimé suit
+  -- la même règle : sa fréquentation passée reste vraie.
+  --
+  -- WITHOUT ROWID : la table est entièrement définie par sa clé primaire
+  -- composite, l'index secondaire implicite ne servirait à rien.
+  CREATE TABLE album_visits (
+    album_id   TEXT NOT NULL,
+    -- COLLATE NOCASE comme users.username : « Alexis » et « alexis » sont la
+    -- même clé d'accès, les compter séparément ferait deux visiteurs d'un seul.
+    username   TEXT NOT NULL COLLATE NOCASE,
+    session_id TEXT NOT NULL,
+    -- 'YYYY-MM-DD' en UTC, comme toute date de ce dépôt.
+    day        TEXT NOT NULL,
+    -- Ouvertures de l'album : la première page de la grille, jamais les
+    -- suivantes qui sont le même geste.
+    visits     INTEGER NOT NULL DEFAULT 0,
+    -- Photos ouvertes en visionneuse.
+    photos     INTEGER NOT NULL DEFAULT 0,
+    last_at    TEXT NOT NULL,
+    PRIMARY KEY (album_id, username, session_id, day)
+  ) WITHOUT ROWID;
+
+  -- Sert les deux agrégations de l'onglet « Visites », toutes deux bornées par
+  -- « day >= ? », et la purge annuelle.
+  CREATE INDEX idx_album_visits_day ON album_visits (day);
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

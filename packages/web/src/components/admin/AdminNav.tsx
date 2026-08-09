@@ -13,6 +13,7 @@ export const ADMIN_TABS = [
   { slug: 'comptes', label: 'Comptes' },
   { slug: 'commentaires', label: 'Commentaires' },
   { slug: 'serveur', label: 'Serveur' },
+  { slug: 'visites', label: 'Visites' },
 ] as const;
 
 /** Rubrique d'administration, telle qu'elle apparaît dans l'URL. */

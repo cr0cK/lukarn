@@ -114,9 +114,25 @@ perdu son autorisation.
 ### `sessions`
 
 `id` (PK, 32 octets aléatoires en base64url), `username`, `created_at`,
-`expires_at`. TTL d'un an (`sessions.ts`), repoussé d'autant dès qu'une session
-passe sa mi-vie — le cookie est réémis en même temps, sans quoi le navigateur
-jetterait le sien à la date d'origine et la prolongation ne servirait à rien.
+`expires_at`, `commenter_id`, `last_seen_at`, `device`. TTL d'un an
+(`sessions.ts`), repoussé d'autant dès qu'une session passe sa mi-vie — le cookie
+est réémis en même temps, sans quoi le navigateur jetterait le sien à la date
+d'origine et la prolongation ne servirait à rien.
+
+Les deux dernières colonnes portent la télémétrie de visite (D260809h) :
+
+- **`last_seen_at`** — dernière requête reçue de cette session. Elle ne coûte
+  aucune lecture supplémentaire : `SessionStore.get()` relit déjà la ligne à
+  chaque requête, on ajoute une colonne au SELECT. Sa réécriture est plafonnée à
+  **une par heure et par session**, sur le raisonnement tenu pour la
+  prolongation d'échéance — sans ce seuil, chaque vignette d'une grille
+  déclencherait un UPDATE. `NULL` sur une session ouverte avant la migration 15,
+  jusqu'à sa requête suivante.
+- **`device`** — `'mobile'`, `'tablette'`, `'ordinateur'` ou `'tv'`, déduit du
+  user-agent par `device.ts` **à la création de la session, puis jeté**. Le
+  user-agent complet n'est stocké nulle part : c'est une empreinte, quand une
+  classe parmi quatre ne ré-identifie personne. `NULL` quand la requête de
+  connexion n'a pas d'en-tête, et sur les sessions antérieures à la migration.
 
 ### `device_pairings`
 
@@ -315,6 +331,41 @@ Deux choix à connaître :
   `INSERT … SELECT … WHERE verified_at IS NOT NULL` : une adresse seulement
   déclarée peut être celle d'un tiers, et cette galerie n'a rien à lui écrire.
 
+### `album_visits`
+
+Qui a ouvert quel album, et quand. Écrite par `telemetry.ts` depuis
+`routes/albums.ts`, lue par l'onglet « Visites » de `/admin` (D260809h).
+
+| Colonne      | Rôle                                                                         |
+| ------------ | ---------------------------------------------------------------------------- |
+| `album_id`   | L'album ouvert. **Aucune clé étrangère** — voir plus bas                     |
+| `username`   | La clé d'accès, `COLLATE NOCASE` comme `users.username`                      |
+| `session_id` | Le navigateur. Un seau pour compter des visiteurs distincts, **pas un lien** |
+| `day`        | `YYYY-MM-DD` en UTC                                                          |
+| `visits`     | Ouvertures de l'album — la première page de la grille, jamais les suivantes  |
+| `photos`     | Photos ouvertes en visionneuse                                               |
+| `last_at`    | Date ISO du dernier geste compté sur cette ligne                             |
+| **PK**       | `(album_id, username, session_id, day)`, table déclarée `WITHOUT ROWID`      |
+
+Trois choix à connaître :
+
+- **Agrégée à l'écriture**, par un `INSERT … ON CONFLICT DO UPDATE` qui
+  incrémente le compteur visé. Une ligne par requête produirait la dizaine de
+  milliers de lignes par jour qu'il faudrait indexer, agréger et purger ; il en
+  reste une dizaine. Ce qu'on perd est l'heure exacte de chaque geste, donc
+  toute courbe intra-journalière — assumé.
+- **Aucune clé étrangère**, ni vers `sessions` ni vers `albums`. Une déconnexion
+  détruit la session et une cascade emporterait avec elle l'historique de ce qui
+  a été regardé ; un album supprimé effacerait sa propre fréquentation passée,
+  qui reste vraie. Le titre de l'album vient donc d'une jointure externe et vaut
+  `null` dans ce cas, l'écran affichant l'identifiant.
+- **`WITHOUT ROWID`** : la table est entièrement définie par sa clé primaire
+  composite, l'index secondaire implicite ne servirait à rien.
+
+Ce qui n'y est **pas** : aucune adresse IP, aucun user-agent brut, et jamais le
+média ouvert — ce serait l'historique de lecture de quelqu'un, dans une
+application où une clé d'accès se partage.
+
 ### `album_days` et `geo_places`
 
 Ce qu'on a fait un jour donné, et où. Écrites par `places.ts` (les lieux
@@ -457,6 +508,7 @@ Quatre choix à connaître :
 | `idx_comments_parent (parent_id)`                          | Le rattachement des réponses à leur racine, et leur remontée en tête de fil quand le parent disparaît.                                                                                                                                                                                             |
 | `idx_comments_commenter (commenter_id)`                    | « Mes commentaires » : ceux que le lecteur courant peut supprimer.                                                                                                                                                                                                                                 |
 | `idx_album_subscriptions_album (album_id)`                 | « Qui est abonné à cet album », seule lecture du notifieur. Le sens inverse est déjà couvert par la clé primaire `(commenter_id, album_id)`.                                                                                                                                                       |
+| `idx_album_visits_day (day)`                               | Les deux agrégations de l'onglet « Visites », toutes deux bornées par `day >= ?`, et la purge annuelle. La clé primaire commence par `album_id` et ne sert donc pas ce filtre.                                                                                                                     |
 
 Pas d'index sur `(album_id, added_at)` : le comptage des nouveautés a lieu une
 fois par heure et par album, et la clé primaire `(album_id, id)` borne déjà le
@@ -534,6 +586,17 @@ reparte de la même étape.
 | 12      | `albums.sort_order` : le sens de lecture par défaut de l'album.                          |
 | 13      | `device_pairings` : appairer un écran sans clavier plutôt que d'y taper un mot de passe. |
 | 14      | `media.video_codec` : quel codec porte la piste image d'une vidéo ?                      |
+| 15      | `album_visits` et son index ; `sessions.last_seen_at` et `sessions.device`.              |
+
+La migration 15 est additive et ne touche à aucune ligne : la table arrive vide —
+rien ne reconstitue une fréquentation passée — et les deux colonnes de `sessions`
+arrivent à `NULL`. Une instance en service la traverse sans qu'une session soit
+fermée ni qu'une échéance bouge : l'appareil des sessions déjà ouvertes reste
+inconnu, et leur `last_seen_at` est renseigné à leur requête suivante.
+`packages/server/test/migrate.test.ts` le vérifie sur une base en version 14
+portant un compte, une session ouverte et un média — et vérifie aussi que
+`album_visits` ne référence **rien**, l'absence de clé étrangère étant tout
+l'intérêt de sa forme (D260809h).
 
 La migration 13 crée une table vide, et rien d'autre : une instance en service
 la traverse sans qu'aucune ligne ne bouge et sans qu'aucune session ouverte n'en

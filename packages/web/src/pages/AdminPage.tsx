@@ -12,6 +12,7 @@ import { DriveSection } from '../components/admin/DriveSection';
 import { MaintenanceSection } from '../components/admin/MaintenanceSection';
 import { SettingsSection } from '../components/admin/SettingsSection';
 import { UsersSection } from '../components/admin/UsersSection';
+import { VisitsSection } from '../components/admin/VisitsSection';
 import { FormError, type Notice } from '../components/admin/ui';
 
 /** Messages du retour de consentement Google, passés en `?oauth=`. */
@@ -88,6 +89,8 @@ export default function AdminPage(): ReactElement {
             {status.data && <MaintenanceSection status={status.data} notify={setNotice} />}
           </>
         );
+      case 'visites':
+        return <VisitsSection />;
     }
   };
 

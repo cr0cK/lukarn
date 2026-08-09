@@ -35,6 +35,12 @@ function startScheduler(context: AppContext): () => void {
     const abandoned = context.pairings.purgeExpired();
     if (abandoned > 0) context.log.debug(`${abandoned} demandes d'appairage expirées purgées`);
 
+    // Quatre cents jours de visites, pour que la comparaison d'une année sur
+    // l'autre reste possible. La table étant agrégée à l'écriture, il n'y a
+    // jamais grand-chose à effacer (D260809h).
+    const forgottenVisits = context.visits.purgeOld(400);
+    if (forgottenVisits > 0) context.log.debug(`${forgottenVisits} journées de visite oubliées`);
+
     // L'annonce des nouvelles photos est ici, et non à la fin d'une sync : avec
     // une synchronisation toutes les demi-heures écrivant par lots, verser deux
     // cents photos enverrait une dizaine d'emails dans la journée. Le notifieur

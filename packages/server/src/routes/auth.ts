@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import { classifyDevice } from '../device.js';
 import { requireAuth } from '../plugins/auth.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 
@@ -76,7 +77,12 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       throttle.succeed(attempt);
-      const session = context.sessions.create(user.username);
+      // La classe d'appareil est lue ici et nulle part ailleurs : le user-agent
+      // sert à la déduire puis est jeté, seule la classe est stockée (D260809h).
+      const session = context.sessions.create(
+        user.username,
+        classifyDevice(request.headers['user-agent']),
+      );
 
       return reply
         .setCookie(
@@ -184,7 +190,12 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       throttle.succeed(attempt);
-      const session = context.sessions.create(user.username);
+      // Le user-agent est celui de l'écran qui sonde, pas du téléphone qui a
+      // approuvé : c'est bien le téléviseur qu'on veut compter comme tel.
+      const session = context.sessions.create(
+        user.username,
+        classifyDevice(request.headers['user-agent']),
+      );
       request.log.info({ username: user.username }, 'Écran appairé');
 
       return noStore(reply)

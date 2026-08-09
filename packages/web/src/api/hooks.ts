@@ -63,6 +63,9 @@ export const queryKeys = {
   // cache, et revenir en arrière d'un caractère réaffiche sa liste sans requête.
   search: (q: string) => ['search', q] as const,
   adminStatus: ['admin', 'status'] as const,
+  // La fenêtre entre dans la clé : revenir à « 7 jours » après « 90 » réaffiche
+  // sa page sans requête, et les trois cohabitent en cache.
+  visits: (days: number) => ['admin', 'visits', days] as const,
   adminUsers: ['admin', 'users'] as const,
   adminAlbums: ['admin', 'albums'] as const,
   settings: ['admin', 'settings'] as const,
@@ -549,6 +552,22 @@ export function useAdminStatus() {
     // Une synchronisation en cours change l'état sans action de l'utilisateur.
     refetchInterval: (query) =>
       query.state.data?.albums.some((album) => album.syncStatus === 'running') ? 2000 : false,
+  });
+}
+
+/**
+ * Télémétrie de visite. `placeholderData` garde le tableau affiché le temps de
+ * la fenêtre suivante : sans lui, changer de période viderait la page et la
+ * section se replierait sous le curseur — même motif que la file de modération.
+ */
+export function useVisits(days: number) {
+  return useQuery({
+    queryKey: queryKeys.visits(days),
+    queryFn: () => api.visits(days),
+    placeholderData: keepPreviousData,
+    // Les compteurs bougent au rythme des visites, pas des secondes : rouvrir
+    // l'onglet dans la minute ne redemande rien.
+    staleTime: 60 * 1000,
   });
 }
 

@@ -83,8 +83,14 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
       // photo » d'une notification de commentaire abonnerait aux nouveautés de
       // l'album, ce que personne n'a demandé. Le dépôt écarte les identités non
       // vérifiées.
-      if (query.data.cursor === undefined && request.commenterId !== null) {
-        context.subscriptions.subscribe(request.commenterId, albumId);
+      if (query.data.cursor === undefined) {
+        if (request.commenterId !== null) {
+          context.subscriptions.subscribe(request.commenterId, albumId);
+        }
+        // Même geste, même condition — mais inconditionnel sur l'identité, là
+        // où l'abonnement exige un commentateur vérifié : on compte des
+        // visites, pas des abonnés (D260809h).
+        context.visits.recordAlbumOpen(albumId, request.user!.username, request.sessionId!);
       }
 
       const page: ItemsPage = context.media.listItems(
@@ -106,6 +112,10 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
       if (!detail) {
         return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
       }
+
+      // Après le 404, jamais avant : compter l'ouverture d'un identifiant
+      // inventé ferait des visites que personne n'a faites.
+      context.visits.recordPhotoOpen(albumId, request.user!.username, request.sessionId!);
 
       // Le compteur voyage avec le détail : la visionneuse l'affiche sur son
       // onglet sans avoir à charger un fil que la plupart des visiteurs
