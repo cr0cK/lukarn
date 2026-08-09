@@ -16,8 +16,7 @@ participé à sa conception puisse la reprendre.
 | [05 — API](./05-api.md)                                                   | Inventaire exhaustif des routes                                                         |
 | [06 — Configuration et déploiement](./06-configuration-et-deploiement.md) | Variables d'environnement, amorçage, Docker, `deploy/`, console Google Cloud            |
 | [07 — Frontend](./07-frontend.md)                                         | Routage, état, layout justifié, virtualisation, clavier, thème                          |
-| [08 — Décisions](./08-decisions.md)                                       | Journal des décisions techniques et des alternatives écartées, D1 à D99                 |
-| [Décisions suivantes](./decisions/)                                       | La suite du journal, une décision par fichier, identifiée par sa date                   |
+| [08 — Décisions](./08-decisions/)                                         | Journal des décisions techniques et des alternatives écartées, une par fichier          |
 
 ## Par où commencer
 

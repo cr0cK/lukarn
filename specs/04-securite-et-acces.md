@@ -174,7 +174,7 @@ Le coût est une lecture SQLite par requête — négligeable en process.
 
 `packages/server/src/pairings.ts` pour l'état, `routes/auth.ts` pour les quatre
 routes. Le raisonnement complet est en
-[D260809c](./decisions/D260809c-approbation-ecran.md) ; ce qui suit est ce qui
+[D260809c](./08-decisions/D260809c-approbation-ecran.md) ; ce qui suit est ce qui
 touche à l'accès.
 
 Un téléviseur n'a pas de caméra : c'est **lui** qui affiche le QR, et un
@@ -368,7 +368,7 @@ vérifie que l'action ne déborde pas sur les autres identités et qu'elle répo
 
 `subscriptions.ts` pour l'état, `notifier.ts` pour l'envoi,
 `routes/subscriptions.ts` pour le désabonnement. Le raisonnement complet est en
-[08](./08-decisions.md), D41 ; ce qui suit est ce qui touche à l'accès et au
+[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md) ; ce qui suit est ce qui touche à l'accès et au
 consentement.
 
 - **On s'abonne en ouvrant l'album**, sur la première page de

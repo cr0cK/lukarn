@@ -542,7 +542,7 @@ export const COMMENTS_FEED_PAGE_SIZE = 30;
  *
  * C'est une fenêtre de rattrapage de faute de frappe, pas un droit d'édition :
  * assez pour relire ce qu'on vient d'envoyer, trop court pour réécrire l'histoire
- * d'une conversation que d'autres ont déjà lue (voir `08-decisions.md`, D57).
+ * d'une conversation que d'autres ont déjà lue (D57).
  */
 export const COMMENT_EDIT_WINDOW_MS = 30_000;
 

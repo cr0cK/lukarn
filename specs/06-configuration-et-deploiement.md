@@ -67,7 +67,7 @@ synchronisation **réussie** est calme depuis une heure ; le délai entre l'arri
 des photos et l'email est donc de une à deux heures.
 
 **Le mail de code fait exception aux deux autres.** Son sujet nomme l'hôte de
-`PUBLIC_URL` et **jamais le code** ([D65](./08-decisions.md)), et il ne porte
+`PUBLIC_URL` et **jamais le code** ([D65](./08-decisions/D65-le-sujet-du-mail-de-code-nomme-l-instance-pas-le-code.md)), et il ne porte
 aucun lien cliquable : l'hôte y figure en texte seulement, parce qu'un lien
 ouvrirait une seconde session dans un autre navigateur alors que le code est
 attendu dans l'onglet resté ouvert. Le corps rappelle le geste qui a déclenché
@@ -453,11 +453,10 @@ aussi sur `pre-push`. Les liens externes ne sont pas suivis : cela demanderait
 le réseau, et un contrôle qui échoue parce qu'un site tiers est lent finit
 désactivé.
 
-`check-specs.mjs` porte en outre sur la **cohérence interne de
-`08-decisions.md`** : un numéro de décision défini deux fois, ou un renvoi
-`(Dxx)` vers une entrée absente. `check-links.mjs` ne peut pas les voir — un
-`(D67)` en texte brut n'est pas un lien, et un `[D67](./08-decisions.md)`
-désigne le fichier, jamais l'entrée.
+`check-specs.mjs` porte en outre sur la **cohérence des décisions** : un
+identifiant défini deux fois, un nom de fichier qui ne reprend pas le titre de
+sa décision, ou un renvoi `(Dxx)` vers une décision absente. `check-links.mjs`
+ne peut pas voir ce dernier cas — un `(D67)` en texte brut n'est pas un lien.
 
 ### Voir les emails pour de vrai
 

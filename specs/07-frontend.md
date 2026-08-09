@@ -215,7 +215,7 @@ elles seules** — 101 px d'en-tête, le titre d'album réduit à `D.` et le
 sous-titre à `120 éléments · févri…`. Et à 768 px, afficher les cinq libellés
 ramenait le titre de 456 à 144 px en tronquant le sous-titre.
 
-**Le libellé ne revient à aucune largeur** ([D90](./08-decisions.md)). Il
+**Le libellé ne revient à aucune largeur** ([D90](./08-decisions/D90-les-controles-de-vue-se-nomment-au-survol-a-toutes-les.md)). Il
 réapparaissait au-delà de `lg`, où la place ne manque pourtant pas : « Plus
 récentes d'abord » y tenait à lui seul plus large que le sous-titre de l'album,
 pour un réglage qu'on touche une fois par visite. Les deux contrôles se nomment
@@ -562,7 +562,7 @@ Ce qui a une raison :
   demanderait un calcul mental de plus que la date. La date complète passe par
   `formatDate` (`lib/format.ts`), donc en UTC.
 - **La comparaison à « aujourd'hui » est la seule date en heure locale de tout
-  le front** — voir [D31](./08-decisions.md).
+  le front** — voir [D31](./08-decisions/D31-le-regroupement-de-la-grille-vit-dans-l-url-mais-aujourd-hui.md).
 - **Par jour, la grille est beaucoup plus haute** : chaque section coûte un
   en-tête (56 px), une marge (28 px) et une dernière ligne non justifiée. Sur un
   album pathologique de 3 000 photos toutes de jours différents, 94 000 px par
@@ -636,7 +636,7 @@ et démontage **sans toucher au DOM**, et sans lui les vignettes du premier écr
 perdaient leur `src` à l'instant où elles s'affichaient — React ne le réécrit
 pas, sa vue du DOM le croyant inchangé.
 
-**La visionneuse doit le même geste, et pour bien plus lourd** ([D87](./08-decisions.md)).
+**La visionneuse doit le même geste, et pour bien plus lourd** ([D87](./08-decisions/D87-une-image-qu-on-quitte-doit-etre-abandonnee-sinon-elle-la-de.md)).
 `ZoomableImage` est remonté à chaque photo (`key={item.id}`), et son `<img>`
 sortant emporte un `full` d'environ un mégaoctet que personne n'attend plus.
 Mesuré en parcourant vingt-cinq photos aux flèches puis en refermant la
@@ -758,7 +758,7 @@ sur une grille de 200 vignettes. Les vignettes du premier écran sont en
 `loading="eager"`, le reste en `lazy`.
 
 L'`<img>` s'affiche dès que `item.hasPreview`, vidéos comprises : leur aperçu
-vient de Drive ([08](./08-decisions.md), D92). Le badge de lecture se pose alors
+vient de Drive ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). Le badge de lecture se pose alors
 **par-dessus** l'image — disque `bg-black/45`, triangle blanc, centré — parce
 que c'est lui qui distingue une vidéo d'une photo au premier coup d'œil et qu'il
 doit rester lisible sur un aperçu clair. Sans aperçu, ou après les réessais, la
@@ -868,7 +868,7 @@ secours.
   `MediaCaption` : les textes écrits à la main. L'horodatage exact reste, lui,
   dans le panneau `i`, où il vivait déjà.
 
-  **Le nom du fichier a quitté cette place** ([D88](./08-decisions.md)). Il
+  **Le nom du fichier a quitté cette place** ([D88](./08-decisions/D88-la-photo-ouverte-dit-d-ou-elle-vient-et-s-en-debarrasse-d.md)). Il
   l'occupait en tête, en gras, alors que `IMG_0004.jpg` ne dit ni où, ni quand,
   ni quoi — et il masquait l'album, seule information qui manque vraiment quand
   on arrive par un lien partagé. Il n'est pas perdu : `SidePanel` le porte en
@@ -897,7 +897,7 @@ secours.
   autres textes (D84). L'en-tête ne garde que ce qui situe.
 
   **`h` escamote tout l'habillage** — en-tête, flèches et bandeau — pour ne
-  laisser que la photo ([D88](./08-decisions.md)). Le raccourci ne double pas le
+  laisser que la photo ([D88](./08-decisions/D88-la-photo-ouverte-dit-d-ou-elle-vient-et-s-en-debarrasse-d.md)). Le raccourci ne double pas le
   `L` de la légende : `L` range le texte du bas et laisse le bouton qui le
   rappelle, `h` ne laisse rien. Les touches ←/→ et le balayage continuent de
   fonctionner : on escamote ce qui se voit, pas ce qui se pilote. Un unique
@@ -943,10 +943,10 @@ secours.
   de l'attente disparaît sans une requête de plus (D92).
   L'attente n'a **pas** d'indicateur propre : le `poster` l'occupe, et les
   contrôles natifs portent déjà le leur — en superposer un second en faisait
-  tourner deux, l'un sur l'autre ([D98](./08-decisions.md)). L'échec, lui,
+  tourner deux, l'un sur l'autre ([D98](./08-decisions/D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md)). L'échec, lui,
   remplace la balise par un message et un bouton de téléchargement : le fichier
   reste lisible ailleurs même quand ce navigateur n'en décode pas le codec
-  ([D79](./08-decisions.md)). Il se constate de deux façons — `error`, et un
+  ([D79](./08-decisions/D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)). Il se constate de deux façons — `error`, et un
   `videoWidth` nul sur `loadeddata` ou `playing`, qui est la seule trace d'un
   décodage à moitié réussi (D98). Photos :
   `ZoomableImage`, remonté à chaque photo (`key={item.id}`) pour réinitialiser
@@ -1038,7 +1038,7 @@ codecs="hvc1"`, et non sur le type nu, auquel tout le monde répond `maybe`
   393 px.
 - **Le panneau Infos s'ouvre sur la journée**, avant l'EXIF : « Lieu » puis
   « Ce jour-là ». `place` prime sur `autoPlaces`, comme partout ailleurs
-  ([D51](./08-decisions.md)).
+  ([D51](./08-decisions/D51-le-lieu-se-corrige-a-la-journee-jamais-a-la-photo.md)).
 
   Ces deux lignes sont désormais une **redite** du bandeau, et elles restent :
   ce sont les seules à rendre le texte **entier** sans dépliement, et les
@@ -1098,7 +1098,7 @@ sans préfixe — celle du dessous parle d'autre chose que de l'image qu'on
 regarde, et sans ce mot « Bonifacio, la plage » se lirait comme sa légende.
 
 **La description de l'album n'est pas une troisième ligne**
-([D89](./08-decisions.md)). Elle l'a été, et elle coûtait une ligne de bandeau
+([D89](./08-decisions/D89-la-description-de-l-album-quitte-la-legende-on-l-a-lue-en.md)). Elle l'a été, et elle coûtait une ligne de bandeau
 sur chacune des neuf cents photos d'un album pour un texte lu une fois, en
 ouvrant la grille — identique d'une photo à l'autre, donc invisible à force
 d'être là. Ce que la visionneuse doit à l'album, c'est de dire **lequel**, pas
@@ -1167,7 +1167,7 @@ nombre de commentaires vus par photo, dans `localStorage` sous
 `gdv:comments-seen:<albumId>` — un nombre et non une date : comparer deux entiers
 suffit à répondre à « y a-t-il du nouveau ? », là où une date obligerait le
 serveur à transporter l'horodatage de chaque fil. Le choix du navigateur plutôt
-que de la base est motivé en [08](./08-decisions.md), D55.
+que de la base est motivé en [D55](./08-decisions/D55-le-repere-de-lecture-vit-dans-le-navigateur-pas-en-base.md).
 
 Trois bords que le calcul doit tenir :
 
@@ -1322,9 +1322,9 @@ montrer — dimensions inconnues, un écran noir muet serait pire.
 attente appartient au navigateur : le `poster` l'occupe, les contrôles natifs
 l'annoncent. Elle est passée un temps par `previewOverlay` avec
 `measured: false`, ce qui posait un second tourniquet par-dessus celui des
-contrôles ([D98](./08-decisions.md)). Ce qu'elle en garde est l'invariant même :
+contrôles ([D98](./08-decisions/D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md)). Ce qu'elle en garde est l'invariant même :
 une attente doit se terminer sur une image ou sur un message
-([D79](./08-decisions.md)).
+([D79](./08-decisions/D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)).
 
 Le repère est **manipulable** : y cliquer ou y glisser amène le point visé au
 centre de la fenêtre. Il montrait où l'on se trouvait sans permettre d'y agir,
@@ -1400,7 +1400,7 @@ colonne de navigation et deux marges vides d'un tiers de fenêtre.
 Toute ligne d'administration — album, compte, état du Drive, occupation du
 cache, commentaire à modérer — se compose des deux mêmes blocs : ce qui décrit,
 et ce qui agit. `ROW_CLASS` et `ROW_ACTIONS_CLASS` (`ui.tsx`) en tiennent la
-géométrie unique : **empilée sous `xl`, en rangée au-delà** ([D95](./08-decisions.md)).
+géométrie unique : **empilée sous `xl`, en rangée au-delà** ([D95](./08-decisions/D95-l-administration-s-empile-plutot-que-de-tronquer-ce-qui-la.md)).
 Côte à côte, seul le bloc descriptif peut se rétracter — les boutons portent
 `whitespace-nowrap` — et il tombait à deux caractères suivis d'une ellipse.
 
@@ -1550,7 +1550,7 @@ d'écran sans EXIF n'apprendrait rien.
 **Sauf la position, dont l'absence se dit** : « Aucune donnée GPS », en `ink-400`
 comme tout ce qui constate plutôt qu'il n'informe. C'est la seule ligne dont on
 se demande, en ne la voyant pas, si la photo n'a rien à donner ou si
-l'application n'a pas fini son travail ([D94](./08-decisions.md)). Elle sort de
+l'application n'a pas fini son travail ([D94](./08-decisions/D94-une-photo-sans-position-le-dit-au-lieu-de-laisser-la-ligne.md)). Elle sort de
 l'EXIF de la photo et ne doit rien au géocodage inverse : elle s'affiche que
 « Lieu » ait un nom ou pas, et pointe vers OpenStreetMap. Réservée aux photos —
 Drive ne rend de position que dans `imageMediaMetadata`, jamais pour une vidéo,
@@ -1763,7 +1763,7 @@ de soirée. **Toute nouvelle date affichée doit passer par `lib/format.ts`.**
 heures d'appareil.
 
 - Le « aujourd'hui » auquel `dayLabel` compare une clé de jour est pris sur le
-  calendrier **local** du navigateur. Voir [D31](./08-decisions.md) — ce n'est pas
+  calendrier **local** du navigateur. Voir [D31](./08-decisions/D31-le-regroupement-de-la-grille-vit-dans-l-url-mais-aujourd-hui.md) — ce n'est pas
   une valeur venue du serveur, c'est l'horloge murale de celui qui regarde, la
   même que celle de l'appareil qui a horodaté la photo.
 - `formatLocalDateTime` rend la date d'un **commentaire** dans le fuseau du
@@ -1873,7 +1873,7 @@ démarrage. Deux fichiers, quatre emplacements :
 Une variable d'environnement plutôt qu'une constante de build : **une seule
 image sert toutes les installations**, et personne ne reconstruit un conteneur
 pour appeler sa galerie autrement. Un redémarrage suffit, comme pour le reste
-du `.env`. Le raisonnement complet est en [D72](./08-decisions.md).
+du `.env`. Le raisonnement complet est en [D72](./08-decisions/D72-le-nom-de-l-instance-vit-dans-le-env-et-le-serveur-le-pose.md).
 
 Le manifeste n'est surchargé que sur ses deux champs de nom : les icônes, les
 couleurs et `display` restent déclarés dans le seul fichier qui les liste, sans
@@ -1949,7 +1949,7 @@ Trois règles, dans cet ordre :
 
 **Il ne met en cache que la coquille** — l'HTML, le JS, le CSS. Jamais une
 photo, jamais une réponse d'API. Le pourquoi est dans
-[D71](./08-decisions.md) : sur un téléphone partagé, une photo mise en cache
+[D71](./08-decisions/D71-le-service-worker-met-en-cache-la-coquille-jamais-les-photos.md) : sur un téléphone partagé, une photo mise en cache
 par l'application survivrait à un changement de compte, et le cache HTTP privé
 posé par le serveur les garde déjà rapides sans ce risque.
 
