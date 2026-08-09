@@ -83,11 +83,12 @@ const TRANSFORM_DECLARATION = new RegExp(
  * propriétés personnalisées héritent, `transform` non. C'est la même précaution
  * que prend Tailwind pour ses propres variables.
  *
- * **Elle vit dans une couche, et c'est indispensable** : une règle hors couche
+ * **Elle vit dans une couche tant qu'il en reste une** : une règle hors couche
  * l'emporte sur tout ce qui est en couche, donc le reset écrasait l'utilitaire
  * qu'il devait seulement précéder, et plus rien ne se transformait. `properties`
- * est la première couche déclarée par Tailwind, donc la moins prioritaire ; là
- * où les couches sont ignorées, la spécificité de la classe tranche pareil.
+ * est la première couche déclarée par Tailwind, donc la moins prioritaire.
+ * `flattenLayers` retire ensuite ce vêtement à toutes les règles à la fois, et
+ * c'est alors la spécificité qui rend le même verdict : `*` ne bat pas `.rotate-90`.
  */
 const TRANSFORM_RESET =
   '@layer properties{*,::before,::after,::backdrop{--gdv-translate: ;--gdv-rotate: ;--gdv-scale: }}';
@@ -171,6 +172,84 @@ export function replaceIndependentTransforms(css: string): string {
   return touched ? `${TRANSFORM_RESET}${out}` : out;
 }
 
+/** Index du guillemet fermant d'une chaîne CSS ouverte en `debut`. */
+function finDeChaine(css: string, debut: number): number {
+  const quote = css[debut];
+  for (let i = debut + 1; i < css.length; i++) {
+    if (css[i] === '\\') i++;
+    else if (css[i] === quote) return i;
+  }
+  return css.length;
+}
+
+/**
+ * Index de l'accolade fermante qui répond à celle ouverte en `ouverture`.
+ *
+ * Les chaînes sont sautées : `content: "}"` existe dans la sortie de Tailwind,
+ * et compter cette accolade-là refermerait le bloc trop tôt — c'est-à-dire
+ * découperait la feuille en plein milieu sans que rien ne le signale.
+ */
+function accoladeFermante(css: string, ouverture: number): number {
+  let profondeur = 0;
+  for (let i = ouverture; i < css.length; i++) {
+    const c = css[i];
+    if (c === '"' || c === "'") i = finDeChaine(css, i);
+    else if (c === '{') profondeur++;
+    else if (c === '}' && --profondeur === 0) return i;
+  }
+  return css.length;
+}
+
+/**
+ * Retire les couches en cascade en laissant leur contenu à sa place.
+ *
+ * `@layer` n'existe pas avant Chromium 99, et une at-rule inconnue se jette
+ * **avec son bloc** : sur un moteur conforme, les 91 % de la feuille que
+ * Tailwind v4 enferme dans ses couches disparaissent, et l'application s'affiche
+ * entièrement sans style. Le téléviseur qui a motivé D260809f y échappait par un
+ * laxisme de son parseur, qui gardait le contenu ; celui d'à côté, pourtant plus
+ * récent, applique la règle et n'affichait plus rien (D260809h).
+ *
+ * **Le dépliage ne change rien à la cascade** parce que Tailwind déclare ses
+ * couches dans l'ordre où il les émet — `properties`, `theme`, `base`,
+ * `components`, `utilities` — et que rien hors couche n'est une règle de style :
+ * uniquement des `@property` et des `@keyframes`, que la cascade n'arbitre pas.
+ * L'ordre du texte et la spécificité rendent donc le même verdict que les
+ * couches, pour tous les moteurs.
+ */
+export function flattenLayers(css: string): string {
+  if (!css.includes('@layer')) return css;
+
+  let sortie = '';
+  let i = 0;
+  while (i < css.length) {
+    const debut = css.indexOf('@layer', i);
+    if (debut < 0) {
+      sortie += css.slice(i);
+      break;
+    }
+    sortie += css.slice(i, debut);
+
+    const accolade = css.indexOf('{', debut);
+    const pointVirgule = css.indexOf(';', debut);
+    // `@layer a, b;` ne fait qu'ordonner des couches : sans elles, plus rien à dire.
+    if (pointVirgule >= 0 && (accolade < 0 || pointVirgule < accolade)) {
+      i = pointVirgule + 1;
+      continue;
+    }
+    if (accolade < 0) {
+      sortie += css.slice(debut);
+      break;
+    }
+
+    const fin = accoladeFermante(css, accolade);
+    // Récursif : une couche peut en contenir une autre, et Tailwind le fait.
+    sortie += flattenLayers(css.slice(accolade + 1, fin));
+    i = fin + 1;
+  }
+  return sortie;
+}
+
 /**
  * Vérifie que l'abaissement n'a rien laissé passer, et dit quoi le cas échéant.
  *
@@ -184,6 +263,9 @@ export function findUnloweredDeclarations(css: string): string[] {
 
   const oklch = css.match(/oklch\([^)]*\)/g);
   if (oklch) problems.push(`${oklch.length} appel(s) à oklch() : ${oklch[0]}`);
+
+  const couches = css.match(/@layer[^{;]*[{;]/g);
+  if (couches) problems.push(`${couches.length} couche(s) @layer non dépliée(s) : ${couches[0]}`);
 
   const independent = css.match(TRANSFORM_DECLARATION);
   if (independent) {
@@ -210,7 +292,12 @@ export function findUnloweredDeclarations(css: string): string[] {
 
 /**
  * Abaisse une feuille de styles au niveau du moteur le plus ancien à servir :
- * `oklch()` en `rgb()`, propriétés logiques en physiques, préfixes manquants.
+ * `oklch()` en `rgb()`, propriétés logiques en physiques, préfixes manquants,
+ * couches en cascade dépliées.
+ *
+ * **Le dépliage vient en dernier**, parce que `replaceIndependentTransforms`
+ * pose lui-même une couche : l'inverser laisserait la seule at-rule que ces
+ * moteurs jettent avec son contenu.
  */
 export function lowerForLegacyEngines(css: string, filename = 'style.css'): string {
   const lowered = transform({
@@ -223,7 +310,7 @@ export function lowerForLegacyEngines(css: string, filename = 'style.css'): stri
     include: Features.LogicalProperties,
   }).code.toString();
 
-  return replaceIndependentTransforms(addPhysicalFallbacks(lowered));
+  return flattenLayers(replaceIndependentTransforms(addPhysicalFallbacks(lowered)));
 }
 
 /** Empreinte courte du contenu, dans la même forme que celle de Vite. */

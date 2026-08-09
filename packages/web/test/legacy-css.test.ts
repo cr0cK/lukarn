@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   addPhysicalFallbacks,
   findUnloweredDeclarations,
+  flattenLayers,
   legacyCss,
   lowerForLegacyEngines,
   replaceIndependentTransforms,
@@ -132,6 +133,55 @@ describe('propriétés de transformation indépendantes', () => {
     const problems = findUnloweredDeclarations('.a{scale:1.1}');
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /transformation/);
+  });
+});
+
+describe('dépliage des couches en cascade', () => {
+  it('retire la couche et garde son contenu', () => {
+    assert.equal(flattenLayers('@layer utilities{.a{color:red}}'), '.a{color:red}');
+  });
+
+  it('efface une déclaration d’ordre, qui n’a plus rien à ordonner', () => {
+    assert.equal(flattenLayers('@layer theme,base,utilities;.a{color:red}'), '.a{color:red}');
+  });
+
+  it('conserve l’ordre du texte, qui devient seul juge de la cascade', () => {
+    // C'est ce qui rend le dépliage sans effet sur un moteur récent : Tailwind
+    // déclare ses couches dans l'ordre où il les émet.
+    const out = flattenLayers('@layer base{.a{color:red}}@layer utilities{.a{color:blue}}');
+    assert.equal(out, '.a{color:red}.a{color:blue}');
+  });
+
+  it('déplie une couche imbriquée dans une autre', () => {
+    assert.equal(flattenLayers('@layer a{@layer b{.x{color:red}}}'), '.x{color:red}');
+  });
+
+  it('laisse intacte une at-rule que le moteur connaît', () => {
+    const out = flattenLayers('@media (min-width:40px){@layer utilities{.a{color:red}}}');
+    assert.equal(out, '@media (min-width:40px){.a{color:red}}');
+  });
+
+  it('ne referme pas un bloc sur une accolade tenue par une chaîne', () => {
+    // `content: "}"` existe dans la sortie de Tailwind ; compter cette
+    // accolade-là découperait la feuille en plein milieu, sans rien signaler.
+    const out = flattenLayers('@layer utilities{.a:before{content:"}"}}.b{color:red}');
+    assert.equal(out, '.a:before{content:"}"}.b{color:red}');
+  });
+
+  it('ne laisse aucune couche dans une feuille abaissée', () => {
+    // La sortie de Tailwind v4 est à 91 % dans des couches, et une at-rule
+    // inconnue se jette avec son bloc : sans dépliage, un moteur d'avant
+    // Chromium 99 conforme à la spécification n'affiche plus rien du tout.
+    const out = lowerForLegacyEngines('@layer utilities{.a{translate:0 -50%;padding-inline:4px}}');
+    assert.ok(!out.includes('@layer'));
+    assert.ok(out.includes('padding-left:4px'));
+    assert.ok(out.includes('--gdv-translate:translate(0,-50%)'));
+  });
+
+  it('signale une couche laissée en place', () => {
+    const problems = findUnloweredDeclarations('@layer utilities{.a{color:red}}');
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /@layer/);
   });
 });
 
