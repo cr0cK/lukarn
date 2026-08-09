@@ -1937,6 +1937,31 @@ worker qui change à chaque build ne serait jamais reconnue comme la même. Le
 `Dockerfile` copie `packages/web/dist` en entier, il n'a rien à savoir de tout
 cela.
 
+### La feuille de styles est abaissée en sortie — `tools/legacy-css.ts`
+
+La cible est **Chromium 79**, relevée sur le navigateur d'un téléviseur, quand
+Tailwind v4 n'annonce que Chromium 111 et au-delà. Un greffon Vite retravaille
+donc la CSS produite juste avant qu'elle ne soit écrite, en trois passes :
+Lightning CSS ciblé Chromium 79 — ce qui convertit `oklch()` en `rgb()` —, un
+doublage des raccourcis logiques (`padding-inline`, `inset-inline`,
+`margin-block`…) par leurs équivalents physiques, et un `transform` composé à la
+place des propriétés `translate`, `rotate` et `scale`.
+
+Sans lui, `px-*` et `py-*` ne posent **aucun** rembourrage sur ces moteurs,
+`inset-x-*` n'ancre rien, et `-translate-y-1/2` ne recentre rien. Le raccourci
+logique reste posé en **dernier** : un moteur qui le connaît l'applique, et le
+sens d'écriture continue d'être respecté. Les transformations, elles, sont
+**remplacées** et non doublées — un moteur récent appliquerait les deux et
+déplacerait deux fois. La cible JS descend à `chrome79` pour la même raison,
+sans quoi `?.` et `??` laissent une page blanche plutôt qu'une page mal mise en
+page.
+
+Le greffon vérifie son propre travail et fait échouer la construction s'il reste
+un `oklch()` ou un raccourci sans repli. Il **ne tourne qu'à la construction** :
+sous `pnpm dev`, un vieux navigateur voit encore la feuille non abaissée. Le
+raisonnement complet, `color-mix()` et `@layer` compris, est en
+[D260809f](./08-decisions/D260809f-abaissement-css-pour-vieux-moteurs.md).
+
 ## Application installable
 
 La visionneuse s'ajoute à l'écran d'accueil et s'ouvre sans barre d'adresse.
