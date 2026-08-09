@@ -135,6 +135,39 @@ describe('accès anonyme', () => {
     assert.equal(response.statusCode, 401);
   });
 
+  it("accepte un identifiant entouré d'espaces", async () => {
+    // Aucun compte ne peut en porter — le clavier mobile, lui, en colle une
+    // après l'autocomplétion. Un refus ici serait indistinguable d'un mot de
+    // passe faux.
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: '  famille\n', password: PASSWORD },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal((response.json() as { username: string }).username, 'famille');
+  });
+
+  it("refuse un identifiant fait d'espaces", async () => {
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: '   ', password: PASSWORD },
+    });
+    assert.equal(response.statusCode, 400);
+  });
+
+  it("n'ampute pas le mot de passe de ses espaces", async () => {
+    // Un mot de passe a le droit d'en contenir aux deux bouts : le replier
+    // ouvrirait la connexion à une saisie qui n'est pas la bonne.
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'famille', password: ` ${PASSWORD} ` },
+    });
+    assert.equal(response.statusCode, 401);
+  });
+
   it('refuse un mot de passe incorrect', async () => {
     const response = await server.inject({
       method: 'POST',

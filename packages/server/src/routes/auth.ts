@@ -14,8 +14,15 @@ import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 const DUMMY_HASH =
   '$argon2id$v=19$m=65536,t=3,p=4$P7YCCBMU6F1LYwExogSfjg$aGZdlIPlbgzTX9FhZKWXQp0G86Yl6A4MuXfFmVgZ868';
 
+/**
+ * L'identifiant est replié avant tout : `USERNAME_PATTERN` n'admet aucun espace,
+ * donc aucun compte n'en porte, et une espace de bord ne vient que du clavier
+ * mobile ou d'un copier-coller. La refuser ferait échouer une saisie juste sans
+ * pouvoir le dire — le message doit rester le même que pour un mot de passe
+ * faux. Le mot de passe, lui, n'est pas touché : il a le droit d'en contenir.
+ */
 const loginSchema = z.object({
-  username: z.string().min(1).max(64),
+  username: z.string().trim().min(1).max(64),
   password: z.string().min(1).max(512),
 });
 

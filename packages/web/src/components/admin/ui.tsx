@@ -1,4 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
+import { PasswordInput } from '../PasswordInput';
 
 /** Message d'issue d'une action, affiché en haut de la page d'administration. */
 export interface Notice {
@@ -171,6 +172,8 @@ export function TextField({
       </label>
       {multiline ? (
         <textarea {...shared} rows={2} onChange={(event) => onChange(event.target.value)} />
+      ) : type === 'password' ? (
+        <PasswordInput {...shared} onChange={(event) => onChange(event.target.value)} />
       ) : (
         <input
           {...shared}

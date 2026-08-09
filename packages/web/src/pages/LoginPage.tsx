@@ -3,6 +3,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useLogin, useMe, useSetupState, useStartPairing } from '../api/hooks';
 import { DeviceLogin } from '../components/DeviceLogin';
+import { PasswordInput } from '../components/PasswordInput';
 import { Spinner } from '../components/Spinner';
 import { appName } from '../lib/appName';
 
@@ -36,8 +37,12 @@ export default function LoginPage(): ReactElement {
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
+    // Un identifiant ne contient jamais d'espace (`USERNAME_PATTERN`), mais un
+    // clavier mobile en colle une après l'autocomplétion, et le copier-coller
+    // en rapporte des deux côtés. Sans ce repli, la saisie est juste à l'écran
+    // et la connexion refusée sans rien dire de plus.
     login.mutate(
-      { username, password },
+      { username: username.trim(), password },
       { onSuccess: () => void navigate(from, { replace: true }) },
     );
   };
@@ -101,10 +106,9 @@ export default function LoginPage(): ReactElement {
                 <label htmlFor="password" className="mb-1.5 block text-sm text-ink-300">
                   Mot de passe
                 </label>
-                <input
+                <PasswordInput
                   id="password"
                   name="password"
-                  type="password"
                   autoComplete="current-password"
                   required
                   value={password}
