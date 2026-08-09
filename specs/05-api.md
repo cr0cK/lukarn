@@ -71,7 +71,7 @@ réponse ne dit jamais **qui** existe, seulement s'il existe quelqu'un
 
 Quatre routes pour un même échange : un écran sans clavier affiche un code, un
 téléphone déjà connecté l'approuve, l'écran relève la session. Le raisonnement
-est en [D260809c](./decisions/D260809c-approbation-ecran.md), ses règles d'accès
+est en [D260809c](./08-decisions/D260809c-approbation-ecran.md), ses règles d'accès
 en [04](./04-securite-et-acces.md).
 
 **`POST /api/auth/device/start`** — sans corps. Ouvre une demande.
@@ -185,7 +185,7 @@ le contrôle d'accès passe **avant** la validation des paramètres.
 **Effet de bord assumé** : sur la **première page** seulement (`cursor` absent),
 si la session porte une identité vérifiée, un `INSERT OR IGNORE` abonne cette
 personne aux nouveautés de l'album (voir [04](./04-securite-et-acces.md) et
-[08](./08-decisions.md), D41). Une écriture par ouverture d'album, négligeable.
+[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md)). Une écriture par ouverture d'album, négligeable.
 Ni les pages suivantes ni `/items/:mediaId` ne le font.
 
 Le défaut est `DEFAULT_SORT_ORDER`, la même constante que la colonne
@@ -211,7 +211,7 @@ charger un fil que la plupart des visiteurs n'ouvriront pas.
 
 **`MediaItem.hasPreview`** — le serveur sait-il rendre une image de ce média ?
 Vrai pour toute photo, et pour une vidéo dont Drive a produit l'aperçu de la
-première seconde ([08](./08-decisions.md), D92). C'est une **question, pas une
+première seconde ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). C'est une **question, pas une
 colonne** : le front demande une vignette « quand il y en a une » sans rejouer
 de son côté la règle photo/vidéo, et sans réclamer à chaque chargement de grille
 une image vouée au 415 sur la vidéo dont Drive n'a pas d'aperçu — codec qu'il ne
@@ -296,7 +296,7 @@ dans le fuseau du serveur.
 vrais libellés. `camera_make` et `camera_model` aussi — chercher « iPhone »
 rendrait la moitié de la bibliothèque. Les commentaires restent hors périmètre :
 chercher dans ce que d'autres ont écrit est une autre fonctionnalité, avec ses
-propres règles de visibilité ([08](./08-decisions.md), D96).
+propres règles de visibilité ([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
 
 **Le classement s'arrête à l'intérieur d'un type.** Chaque groupe est trié par
 `bm25()` et borné à `SEARCH_HITS_PER_KIND` (5) ; les résultats arrivent dans
@@ -407,7 +407,7 @@ quelques centaines d'octets. Une photo absente vaut donc zéro.
 Un appel pour l'album entier, et non un par photo : la pastille de la visionneuse
 doit être là dès qu'on atteint une photo, et parcourir un album à la flèche
 déclencherait sinon une requête par photo traversée (voir
-[08](./08-decisions.md), D54). Le compteur de `MediaDetail.commentCount` reste :
+[D54](./08-decisions/D54-les-compteurs-de-commentaires-se-demandent-par-album-pas-par.md)). Le compteur de `MediaDetail.commentCount` reste :
 il sert l'onglet du panneau ouvert, sur une photo précise.
 
 Cette route paramétrique **ne masque pas `/api/comments/unsubscribe`** : la table
@@ -443,7 +443,7 @@ découpé aux espaces avant contrôle : 1 à `COMMENT_MAX_LENGTH` (2000) caract�
   média** — sans ce second contrôle, un client pourrait greffer sa réponse sur un
   fil qu'il n'a pas le droit de lire en devinant un identifiant.
 - Répondre à une réponse **n'échoue pas** : le message est rattaché à la racine
-  du fil (voir [08](./08-decisions.md), D35).
+  du fil (voir [D35](./08-decisions/D35-repondre-a-une-reponse-rattache-a-la-racine-plutot-que-de.md)).
 
 **`PATCH`** — corps `UpdateCommentRequest` = `{ body }`, mêmes bornes que le
 `POST`. **Son auteur seulement**, et seulement pendant `COMMENT_EDIT_WINDOW_MS`
@@ -453,7 +453,7 @@ enverrait un répond `200` sans avoir déplacé le message, il ne répond pas `4
 Corriger une faute de frappe ne doit pas permettre de changer de conversation.
 `created_at` ne bouge
 pas non plus — le message reste à sa place dans un fil que d'autres lisaient
-déjà. Voir [08](./08-decisions.md), D57.
+déjà. Voir [D57](./08-decisions/D57-trente-secondes-pour-corriger-une-faute-de-frappe-et-rien-de.md).
 
 - **`409 edit_window_closed`** quand le délai est passé. Ni 403 ni 404 : le refus
   porte sur l'**état** du message et non sur un droit d'accès — son auteur le
@@ -557,7 +557,7 @@ Les trois répondent :
 
 Une vidéo **a** une vignette : l'aperçu que Drive produit de sa première
 seconde, servi comme n'importe quel autre dérivé WebP et mis en cache disque de
-la même façon ([08](./08-decisions.md), D92). Rien n'en est décodé localement.
+la même façon ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). Rien n'en est décodé localement.
 Les deux refus qui restent :
 
 | Refus                             | Pourquoi                                                                                                                                             |
@@ -598,7 +598,7 @@ cache disque.
 
 **`playable`** — la version H.264 préparée par le serveur pour les vidéos dont
 aucun navigateur courant ne décode le codec
-([D260809b](./decisions/D260809b-transcodage-video.md)). Elle
+([D260809b](./08-decisions/D260809b-transcodage-video.md)). Elle
 vient du magasin disque, pas de Drive : les plages sont donc résolues ici plutôt
 que relayées.
 

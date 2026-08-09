@@ -1,14 +1,14 @@
 # D260809b — Le transcodage vidéo, écarté par D6, devient possible avec des chiffres
 
-**Contexte.** [D6](../08-decisions.md#d6--pas-de-transcodage-vidéo) écartait le transcodage sur
+**Contexte.** [D6](./D6-pas-de-transcodage-video.md) écartait le transcodage sur
 trois objections, formulées sans mesure : « le CPU d'un VPS modeste ne suit pas,
 il faudrait stocker les versions transcodées, et gérer une file de travaux ».
 Elle n'avait pas tort ; elle n'avait simplement aucun ordre de grandeur.
 
 L'album qui a motivé cette décision les donne : **25 fichiers sur 38 sont en
 HEVC**, tous sortis d'un même téléphone. Sur un ordinateur, deux vidéos sur trois
-ne s'ouvrent pas — [D79](../08-decisions.md#d79--une-vidéo-illisible-le-dit-et-se-laisse-télécharger-au-lieu-de-charger-indéfiniment)
-et [D98](../08-decisions.md#d98--un-décodage-qui-échoue-sans-erreur-et-un-tourniquet-de-trop) les
+ne s'ouvrent pas — [D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)
+et [D98](./D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md) les
 ont rendues honnêtes, pas lisibles. Les trois objections ont maintenant chacune
 une réponse chiffrée :
 
@@ -31,7 +31,7 @@ Quatre points portent cette décision.
 première piste dont le `hdlr` vaut `vide` — une vidéo de téléphone porte au moins
 une piste son, souvent placée avant l'image, et prendre le premier `stsd` venu
 rendrait `mp4a` un fichier sur deux. La lecture partage la fenêtre `Range` de
-[D97](../08-decisions.md#d97--la-date-dune-vidéo-vient-du-fichier-pas-de-sa-date-de-téléversement) :
+[D97](./D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md) :
 les séparer doublerait le nombre de requêtes pour relire les mêmes octets. La
 colonne `video_codec` a trois états — jamais examiné, examiné sans résultat, et
 le codec lui-même — et c'est le premier qui la peuple sans reprise de données,

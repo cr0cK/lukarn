@@ -27,7 +27,7 @@ RFC 8628 — celui qu'emploient les applications de télévision :
 Rien de neuf du côté des droits : la session porte le compte de celui qui
 approuve, donc ses albums, et `plugins/auth.ts` continue de les réévaluer à
 chaque requête. Un compte étant une clé d'accès partagée et non une personne
-([D38](../08-decisions.md#d38--une-clé-daccès-nest-pas-une-personne)),
+([D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)),
 déléguer cette clé à l'écran du salon ne transmet rien de nominatif.
 
 **Ce que chaque valeur protège :**
@@ -42,7 +42,7 @@ sans identité, comme après une connexion au mot de passe : elle vaut pour la
 personne, pas pour la clé. Sans cette règle, approuver depuis son téléphone
 laisserait le téléviseur du salon signer « Mamie » à tout le foyer — soit
 exactement l'usurpation que la vérification par code de
-[D39](../08-decisions.md#d39--ladresse-est-vérifiée-par-un-code-à-usage-unique) écarte.
+[D39](./D39-l-adresse-est-verifiee-par-un-code-a-usage-unique.md) écarte.
 
 **Le risque assumé, et pourquoi il l'est.** Le défaut connu de ce flux est
 social : faire scanner à quelqu'un un QR qui n'est pas le sien, et obtenir de

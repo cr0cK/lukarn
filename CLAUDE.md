@@ -27,18 +27,24 @@ pas l'environnement de l'hôte, et `.env` ne sert qu'à l'interpolation. Une
 variable oubliée là est inchangeable en production tout en paraissant réglable
 partout ailleurs (D78). Si tu ajoutes une variable, câble-la dans le même geste.
 
-**Une décision est un fichier**, `specs/decisions/D<AAMMJJ>-<slug>.md`, et son
+**Une décision est un fichier**, `specs/08-decisions/D<AAMMJJ>-<slug>.md`, et son
 identifiant est la **date du jour**, pas le rang suivant : `D260809`, puis une
-lettre — `b`, `c` — si le jour en porte déjà une. `08-decisions.md` garde D1 à
-D99 et n'accepte plus d'entrée. Le rang obligeait à connaître le dernier numéro
-de `main`, qu'une branche ne voit pas des autres, et l'ajout en fin d'un fichier
-unique faisait conflit à chaque fusion parallèle même quand les numéros
-différaient (D260809).
+lettre — `b`, `c` — si le jour en porte déjà une. Le rang obligeait à connaître
+le dernier numéro de `main`, qu'une branche ne voit pas des autres, et l'ajout en
+fin d'un fichier unique faisait conflit à chaque fusion parallèle même quand les
+numéros différaient (D260809). D1 à D99 gardent leur rang : les renommer
+traverserait les trois cents renvois que le code leur adresse.
 
 `check:specs` contrôle le format de l'identifiant, l'accord entre le titre et le
 nom du fichier, l'absence de doublon toutes sources confondues, et l'absence de
 renvoi `(Dxx)` — dans les specs comme dans le code — vers une décision qui
 n'existe pas. Ces défauts sont arrivés (D75).
+
+Il vérifie enfin qu'un **document de specs cité en texte** entre backticks —
+`specs/05-api.md`, `08-decisions/` — désigne un fichier qui existe. Ni les liens
+markdown ni les renvois `(Dxx)` ne couvrent ce cas, et un répertoire renommé y
+laissait un chemin faux que rien ne signalait (D260809d). Le répertoire des
+décisions en est exclu : un journal nomme ce qui a été remplacé.
 
 `pnpm check:links` complète les précédents sur l'autre défaut silencieux : un
 renvoi entre les trois documents qui ne mène plus nulle part. Il résout chaque
@@ -54,27 +60,27 @@ Si un manque signalé est un faux positif — un composant trivial dont le rôle
 décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 `tools/check-specs.mjs`, avec la raison. Un contrôle bruyant finit désactivé.
 
-| Si tu touches…                                                               | Mets à jour…                                                                 |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `packages/server/src/routes/*.ts` (route, code de retour, payload)           | `specs/05-api.md`                                                            |
-| `packages/shared/src/index.ts`                                               | `specs/05-api.md`, et `03` si le modèle bouge                                |
-| `packages/server/src/db.ts` (`MIGRATIONS`, index, pragmas)                   | `specs/03-modele-de-donnees.md`                                              |
-| `packages/server/src/repo.ts` (curseurs, requêtes)                           | `specs/03-modele-de-donnees.md`                                              |
-| `packages/server/src/comments.ts` (fils, modération)                         | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`             |
-| `packages/server/src/commenters.ts` (identités, vérification par code)       | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`             |
-| `packages/server/src/mail.ts` (transport, file, composition)                 | `specs/06-configuration-et-deploiement.md`, et `08` si un compromis change   |
-| `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                   |
-| `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`             |
-| `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                   |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et `deploy/README.md`            |
-| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, règles d'accès | `specs/04-securite-et-acces.md`                                              |
-| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                             |
-| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                      | `specs/02-architecture.md`, et `08` si un compromis change                   |
-| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, composants            | `specs/07-frontend.md`                                                       |
-| `packages/server/src/shell.ts` (nom d'instance, coquille, manifeste)         | `specs/05-api.md`, `specs/07-frontend.md`                                    |
-| `packages/web/src/styles.css` (tokens `@theme`)                              | `specs/07-frontend.md`                                                       |
-| Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/decisions/` — **un nouveau fichier**, on ne réécrit pas les anciennes |
-| Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                            |
+| Si tu touches…                                                               | Mets à jour…                                                                    |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `packages/server/src/routes/*.ts` (route, code de retour, payload)           | `specs/05-api.md`                                                               |
+| `packages/shared/src/index.ts`                                               | `specs/05-api.md`, et `03` si le modèle bouge                                   |
+| `packages/server/src/db.ts` (`MIGRATIONS`, index, pragmas)                   | `specs/03-modele-de-donnees.md`                                                 |
+| `packages/server/src/repo.ts` (curseurs, requêtes)                           | `specs/03-modele-de-donnees.md`                                                 |
+| `packages/server/src/comments.ts` (fils, modération)                         | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`                |
+| `packages/server/src/commenters.ts` (identités, vérification par code)       | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`                |
+| `packages/server/src/mail.ts` (transport, file, composition)                 | `specs/06-configuration-et-deploiement.md`, et `08` si un compromis change      |
+| `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                      |
+| `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`                |
+| `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                      |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et `deploy/README.md`               |
+| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, règles d'accès | `specs/04-securite-et-acces.md`                                                 |
+| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                                |
+| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                      | `specs/02-architecture.md`, et `08` si un compromis change                      |
+| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, composants            | `specs/07-frontend.md`                                                          |
+| `packages/server/src/shell.ts` (nom d'instance, coquille, manifeste)         | `specs/05-api.md`, `specs/07-frontend.md`                                       |
+| `packages/web/src/styles.css` (tokens `@theme`)                              | `specs/07-frontend.md`                                                          |
+| Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/08-decisions/` — **un nouveau fichier**, on ne réécrit pas les anciennes |
+| Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                               |
 
 Trois documentations, trois lecteurs, aucune duplication entre elles :
 

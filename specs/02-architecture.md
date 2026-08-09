@@ -190,8 +190,8 @@ imageMediaMetadata, videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
     cela ne dit **pas** : l'index n'est pas revenu en arrière. Les lots déjà
     écrits sont validés, `deleteStale` n'a pas eu lieu, donc l'index mélange
     l'ancien et le nouveau contenu. Il reste cohérent — tout ce qui a été écrit
-    existe bien dans Drive — simplement incomplet (voir [08](./08-decisions.md),
-    D27).
+    existe bien dans Drive — simplement incomplet (voir [D27](./08-decisions/D27-une-sync-interrompue-laisse-un-index-melange-et-c-est-assume.md)
+    ).
 11. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
     s'arrête net sur `DriveRevokedError` — les suivants échoueraient de la même
     façon.

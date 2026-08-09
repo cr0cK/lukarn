@@ -41,7 +41,7 @@ L'index. Une ligne = un fichier Drive **dans un album**.
 **`has_thumbnail` ne concerne en pratique que les vidéos.** Une photo a toujours
 un rendu — le pipeline la décode, et retombe sur l'aperçu Drive quand libvips ne
 la lit pas —, alors qu'une vidéo n'a d'image que si Drive en a produit une de sa
-première seconde ([08](./08-decisions.md), D92). L'API n'expose donc pas la
+première seconde ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). L'API n'expose donc pas la
 colonne mais la question qu'on lui pose : `MediaItem.hasPreview`, calculé par
 `toItem()` comme `kind === 'photo' || has_thumbnail === 1`. Le front demande une
 vignette « quand il y en a une », sans rejouer la règle photo/vidéo de son côté.
@@ -50,7 +50,7 @@ vignette « quand il y en a une », sans rejouer la règle photo/vidéo de son c
 à `{width, height, durationMillis}` : aucune date de prise de vue. La sync lit
 donc le `creation_time` du conteneur par quelques requêtes `Range`, et le
 confronte à l'horodatage du nom du fichier — `resolveVideoTakenAt`, quatre
-règles décrites en [08](./08-decisions.md), D97. `taken_at_from_exif` vaut 1
+règles décrites en [D97](./08-decisions/D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md). `taken_at_from_exif` vaut 1
 dans les trois premières et 0 dans la dernière, celle où seule la date de
 téléversement restait : le panneau écrit alors « Modifié le », qui est
 exactement ce qu'on sait. Aucune migration n'accompagne ce changement — la sync
@@ -60,7 +60,7 @@ relue que si son `md5` a bougé.
 **`video_codec` a trois états, et la distinction n'est pas cosmétique.** Il porte
 le code à quatre lettres écrit dans le `stsd` de la piste image — `avc1`, `hvc1`,
 `hev1` — et c'est lui qui décide de ce que le serveur prépare et de la source que
-le client demande ([D260809b](./decisions/D260809b-transcodage-video.md)) :
+le client demande ([D260809b](./08-decisions/D260809b-transcodage-video.md)) :
 
 | Valeur      | Sens                                                                                       | Conséquence                                                  |
 | ----------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -336,7 +336,7 @@ Quatre choix à connaître :
   Un libellé figé une fois pour toutes obligerait à choisir entre ne jamais
   recalculer les journées et rappeler Nominatim à chaque passage — séparées, le
   recalcul est gratuit et les libellés s'allument tout seuls quand ils arrivent
-  (voir [08](./08-decisions.md), D48).
+  (voir [D48](./08-decisions/D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)).
 - **Le recalcul n'écrase jamais une saisie.** `replaceCells` fait un
   `DO UPDATE SET cells = excluded.cells` **et rien d'autre** : un
   `excluded.description` glissé là effacerait, à chaque ménage horaire, tout ce
@@ -382,7 +382,7 @@ Quatre choix à connaître :
   arrière, dossier renommé, sync interrompue. Une cascade détruirait sur un
   contretemps d'indexation un texte écrit à la main, que rien ne régénère.
   L'identifiant Drive est stable : la photo revenue retrouve sa description
-  (voir [08](./08-decisions.md), D83).
+  (voir [D83](./08-decisions/D83-une-description-par-photo-portee-par-l-album.md)).
 - **Aucun ménage n'y touche.** Ni `deleteStale`, ni `clearAlbum`, ni
   `pruneAlbums`, ni le `ON CONFLICT DO UPDATE` d'`upsertMany` — même invariant
   que `AlbumDayRepo` : le passage de fond n'écrase jamais une saisie. La seule
@@ -432,7 +432,7 @@ Quatre choix à connaître :
   `albums`. Réindexer depuis le code demanderait de n'en oublier aucun,
   aujourd'hui et dans tout chemin d'écriture écrit plus tard ; un index périmé ne
   se voit pas, il rend simplement moins de résultats
-  ([08](./08-decisions.md), D96).
+  ([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
 - **Les déclencheurs `AFTER DELETE` couvrent les suppressions en cascade.**
   Supprimer un album emporte ses journées et ses descriptions de photo par
   `ON DELETE CASCADE`, et l'index suit sans qu'aucun `DELETE` n'ait été écrit —
@@ -707,7 +707,7 @@ fait traverser les commentaires des quarante-neuf autres avant de réunir sa pag
 - Les dérivés d'images : fichiers sur disque sous `CACHE_DIR`, inventoriés en
   mémoire au démarrage.
 - Les compteurs du throttle de connexion : en mémoire, perdus au redémarrage —
-  volontairement (voir [08](./08-decisions.md)). Bornés en nombre et purgés à
+  volontairement (voir [08](./08-decisions/)). Bornés en nombre et purgés à
   l'heure, faute de quoi une rafale d'identifiants inventés les ferait croître
   sans limite.
 
@@ -715,7 +715,7 @@ fait traverser les commentaires des quarante-neuf autres avant de réunir sa pag
 
 Trois colonnes n'apparaissent dans aucune requête de lecture. Elles sont
 **conservées** — SQLite ne retire une colonne qu'en recréant la table, ce qui ne
-vaut pas le gain sur une base en service (voir [08](./08-decisions.md), D28) —
+vaut pas le gain sur une base en service (voir [D28](./08-decisions/D28-trois-colonnes-ecrites-sans-etre-relues-sont-conservees.md)) —
 et `db.ts` dit à quoi elles servent :
 
 | Colonne               | Pourquoi elle reste                                                                                    |

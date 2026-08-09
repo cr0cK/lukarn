@@ -18,17 +18,21 @@ signale, il ne l'évite pas, et il ne dit rien du second défaut.
 **Choix.** L'identifiant d'une décision est **la date où elle est prise**, au
 format `D<AAMMJJ>` — `D260809` pour celle-ci — suivie d'un `b`, puis d'un `c`,
 si le jour en porte déjà une. Une décision est **un fichier**,
-`specs/decisions/D<AAMMJJ>-<slug>.md`.
+`specs/08-decisions/D<AAMMJJ>-<slug>.md`.
 
 Une date se connaît sans regarder les autres branches, ce qu'un rang ne permet
 pas. Un fichier par décision fait disparaître le point d'insertion commun : deux
 branches créent deux fichiers, et la fusion n'a rien à arbitrer.
 
-`08-decisions.md` reste ce qu'il est, clos à D99, et `check:specs` refuse
-désormais toute entrée qui s'y ajouterait. Il contrôle aussi que l'identifiant
-respecte le format, que le nom du fichier reprend le titre, qu'aucun identifiant
-n'est pris deux fois, et que chaque renvoi `(Dxx)` — dans les specs comme dans le
-code — mène à une décision qui existe.
+Le journal séquentiel, lui, garde D1 à D99 et n'accepte plus d'entrée : le
+découper aurait mis en conflit les deux branches ouvertes au moment de ce choix.
+Il l'a été dès qu'elles ont été fusionnées, et le répertoire porte depuis le
+numéro du document ([D260809d](./D260809d-le-journal-devient-un-repertoire.md)).
+
+`check:specs` contrôle que l'identifiant respecte le format, que le nom du
+fichier reprend le titre, qu'aucun identifiant n'est pris deux fois, et que
+chaque renvoi `(Dxx)` — dans les specs comme dans le code — mène à une décision
+qui existe.
 
 **Écarté.** _Renuméroter à la fusion_, une branche posant un rang provisoire :
 c'est un renommage, et un renommage traverse les trois cents renvois `(Dxx)` que
@@ -50,7 +54,7 @@ connu seulement une fois la PR ouverte, donc renommage systématique après coup
 
 _Un index généré listant le dossier_ : ce fichier redeviendrait le point
 d'insertion commun qu'on vient de supprimer. Le dossier trié par nom donne déjà
-l'ordre chronologique.
+l'ordre chronologique des décisions datées.
 
 **Conséquences.** Deux formats d'identifiant coexistent — trois chiffres au plus
 pour l'ancien journal, six pour la suite — et c'est sans ambiguïté à la lecture
