@@ -815,18 +815,58 @@ en revenir —, glisser pour se déplacer dans l'image agrandie. « Bref » veut
 moins de `TAP_SLOP_PX` (5 px) de déplacement entre l'appui et le relâchement :
 au-delà, c'est un glisser, et il ne bascule rien. Voir la section Zoom.
 
-**Au doigt** (`lib/useSwipe.ts`) : un balayage horizontal passe à la photo
-suivante ou précédente. Trois conditions, chacune pour une raison :
+**Au doigt** (`lib/useSwipe.ts` et `lib/swipeTrack.ts`) : la colonne photo est un
+**rail** de trois médias — la précédente, la courante, la suivante — que le doigt
+déplace au pixel près, et qui rejoint sa place au relâchement.
+
+Le balayage existait avant le rail, mais **rien ne le montrait** : l'écran
+restait immobile pendant tout le geste et la photo changeait d'un coup, une fois
+le doigt levé. Un geste qu'on ne voit pas ne se découvre pas, et ne se reprend
+pas non plus. C'est le mouvement du rail, et lui seul, qui enseigne le geste
+([D260809e](./08-decisions/D260809e-la-photo-suit-le-doigt-c-est-le-mouvement-qui-apprend-le.md)).
 
 - **Tactile et stylet seulement.** À la souris, le clic sert déjà à zoomer ;
   y ajouter un changement de photo rendrait le clic imprévisible selon qu'on a
   bougé de trois pixels ou non.
-- **Franchement horizontal** (50 px, et 1,5 fois plus que la composante
-  verticale) : sans ce rapport, un défilement vertical un peu oblique — le geste
-  le plus courant sur un téléphone — ferait sauter une photo.
+- **Le sens se décide une fois**, au dixième pixel parcouru et selon le même
+  rapport 1,5 qu'avant : sans lui, un défilement vertical un peu oblique — le
+  geste le plus courant sur un téléphone — ferait sauter une photo. En deçà de
+  ces dix pixels, rien ne bouge. Au-delà, le geste ne change plus de nature,
+  même s'il s'incurve.
+- **Deux façons de valider**, parce qu'il y a deux gestes : traverser 22 % de la
+  largeur (`COMMIT_FRACTION`), ou lancer le rail à plus de 0,35 px/ms
+  (`FLICK_VELOCITY`) sans regarder. N'en retenir qu'une rendrait l'autre
+  inopérante.
+- **La remise en place dure ce que le geste appelle** — 160 à 320 ms selon ce
+  qu'il reste à parcourir et la vitesse du doigt. Une durée fixe s'englue après
+  un lancer sec et part d'un coup après un glissement lent presque abouti.
+- **Le bord se sent** : au premier et au dernier média, le rail ne rend que 35 %
+  du geste au lieu de l'ignorer.
 - **Désactivé pendant le zoom et sur les vidéos**, où le doigt sert
   respectivement à se déplacer dans l'image et à atteindre les contrôles natifs
   de lecture.
+
+Deux points d'implémentation, tous deux visibles si on les prend à l'envers :
+
+- **La photo ne change qu'une fois le rail arrivé.** La demander plus tôt
+  remonterait `ZoomableImage` au milieu de l'animation, sur une photo qui n'est
+  pas encore celle que l'écran montre.
+- **Le rail ne revient à zéro qu'au changement d'index**, dans un
+  `useLayoutEffect`. La visionneuse ne décide pas de son index, elle le demande
+  et il lui revient par l'URL : entre les deux, le rail reste là où l'animation
+  l'a laissé — sur la voisine, déjà à l'écran.
+
+Les voisines sont montées à la reconnaissance du balayage et démontées avec lui,
+et n'ajoutent **aucune requête** : le préchargement décrit plus bas a déjà mis
+leur rendu `full` en cache navigateur. Elles sont `aria-hidden` et sans
+gestionnaire — la vraie photo les remplace dans l'instant, avec son zoom et son
+panneau. Le rail est le seul à bouger : flèches, en-tête et bandeau de légende
+restent immobiles, sans quoi c'est la visionneuse entière qu'on croirait faire
+glisser.
+
+Les touches ←/→ et les flèches de l'écran, elles, ne l'empruntent pas : une
+visionneuse au clavier se parcourt vite, et 250 ms d'animation par photo
+mettraient une barrière entre deux pressions.
 
 #### Aucun geste au doigt n'aboutit sans `touch-action`
 
