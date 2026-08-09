@@ -47,7 +47,11 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
   // seul le chemin parcouru permet de revenir en arrière. `null` est la
   // première page.
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
-  const cursor = cursors.at(-1)!;
+  // Indice explicite plutôt que `.at(-1)` : cette méthode n'existe qu'à partir
+  // de Chromium 92, et le navigateur du téléviseur visé est en 79 (D260809f).
+  // Elle ne casse pas la mise en page, elle jette — la page d'administration
+  // resterait blanche.
+  const cursor = cursors[cursors.length - 1]!;
 
   const [bulkTarget, setBulkTarget] = useState<AdminComment | null>(null);
 
