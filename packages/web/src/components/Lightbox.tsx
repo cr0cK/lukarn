@@ -906,28 +906,6 @@ export function Lightbox({
             )}
           </div>
 
-          {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
-            l'image, et les flèches tomberaient sous le curseur. Masquées aussi
-            quand l'habillage est escamoté — « rien que la photo » ne s'arrête
-            pas au texte. Les touches ←/→ et le balayage, eux, continuent : on
-            escamote ce qui se voit, pas ce qui se pilote. */}
-          {!zoomed && !bare && (
-            <NavButton
-              side="left"
-              disabled={index === 0}
-              onClick={() => goTo(index - 1)}
-              label="Précédent (←)"
-            />
-          )}
-          {!zoomed && !bare && (
-            <NavButton
-              side="right"
-              disabled={index === items.length - 1}
-              onClick={() => goTo(index + 1)}
-              label="Suivant (→)"
-            />
-          )}
-
           {/* Le seul retour possible une fois tout escamoté, et il doit se
               trouver sans le chercher : au coin, à la place qu'occupaient les
               actions. Sans lui, la sortie ne tiendrait qu'à `h` ou à `Échap`,
@@ -971,6 +949,37 @@ export function Lightbox({
             </p>
           )}
         </div>
+
+        {/* Sœurs de la colonne, et non de la zone du média : leur `top-1/2` se
+            calcule alors sur toute la hauteur de l'écran, qui ne bouge jamais.
+            Placées dans la zone du média, elles suivaient sa hauteur — celle-ci
+            rétrécit du bandeau de légende quand il entre dans le flux, sur une
+            vidéo, et de ce qu'il grandit quand il porte une description ou une
+            note de journée. Les flèches remontaient alors de quelques dizaines
+            de pixels, d'un média à l'autre et jusqu'au pli de la légende, ce qui
+            obligeait à repointer la souris à chaque fois.
+
+            Masquées pendant le zoom : le glisser sert alors à se déplacer dans
+            l'image, et les flèches tomberaient sous le curseur. Masquées aussi
+            quand l'habillage est escamoté — « rien que la photo » ne s'arrête
+            pas au texte. Les touches ←/→ et le balayage, eux, continuent : on
+            escamote ce qui se voit, pas ce qui se pilote. */}
+        {!zoomed && !bare && (
+          <NavButton
+            side="left"
+            disabled={index === 0}
+            onClick={() => goTo(index - 1)}
+            label="Précédent (←)"
+          />
+        )}
+        {!zoomed && !bare && (
+          <NavButton
+            side="right"
+            disabled={index === items.length - 1}
+            onClick={() => goTo(index + 1)}
+            label="Suivant (→)"
+          />
+        )}
 
         {/* Masqué pendant le zoom, comme les flèches de navigation : le doigt y
             sert à se déplacer dans l'image, et le bandeau tomberait dessous.

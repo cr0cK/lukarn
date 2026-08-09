@@ -1085,6 +1085,19 @@ codecs="hvc1"`, et non sur le type nu, auquel tout le monde répond `maybe`
   qui écoute, plutôt qu'en `stopPropagation` dispersé dans les formulaires.
 - Les flèches de navigation sont masquées pendant le zoom : le glisser sert alors
   à se déplacer dans l'image, et elles tomberaient sous le curseur.
+- **Les flèches de navigation sont filles de la colonne, pas de la zone du
+  média.** Leur `top-1/2` se calcule donc sur toute la hauteur de l'écran, la
+  seule grandeur qui ne bouge pas d'un média à l'autre. Filles de la zone du
+  média, elles suivaient sa hauteur, et celle-ci varie : le bandeau de légende
+  entre dans le flux sur une vidéo (`overlay={false}`) et lui prend d'autant,
+  puis grandit encore lorsqu'il porte une description ou une note de journée, et
+  rétrécit au pli de `l`. Les flèches remontaient de quelques dizaines de pixels
+  — mesuré : 428 px sur une photo, 388 px sur une vidéo légendée, 404 px la
+  légende repliée, sur un écran de 856 px — si bien qu'il fallait repointer la
+  souris d'un média au suivant. Le point à retenir : **tout ce qui doit rester
+  sous le curseur d'un média à l'autre se positionne sur la colonne**, dont la
+  hauteur est celle de l'écran ; la zone du média, elle, est un `flex-1` que ses
+  voisins de flux font respirer.
 - **La visionneuse est une rangée, pas une colonne.** La photo occupe une colonne
   `flex-1 min-w-0`, le panneau latéral la suivante à partir de `md`. `min-w-0`
   n'est pas décoratif : sans lui, l'image impose sa largeur et c'est le panneau
@@ -1149,11 +1162,14 @@ codecs="hvc1"`, et non sur le type nu, auquel tout le monde répond `maybe`
   la photo zoomerait. Interrompre à la descente laisse le premier clic à la
   fermeture, le suivant zoome normalement.
 
-  Les `button` de cette zone sont **exclus** : les flèches de navigation y vivent,
-  et les compter comme un « dehors » refermerait le panneau à chaque photo —
-  exactement le défaut que sa mise en colonne venait de corriger. Le repère de
-  position du zoom (`role="img"`) est exclu de même : une capture s'exécutant
-  avant sa cible, son `stopPropagation` ne peut pas le protéger.
+  Les `button` de cette zone sont **exclus** : agir sur le média — télécharger
+  une vidéo illisible, ressortir de l'habillage escamoté — n'est pas un « dehors »,
+  et le panneau se refermerait sous un clic qui ne le visait pas. Les flèches de
+  navigation, elles, ne dépendent plus de cette exclusion depuis qu'elles ont
+  quitté la zone du média pour la colonne : le gestionnaire ne les voit plus
+  passer. Le repère de position du zoom (`role="img"`) est exclu de même : une
+  capture s'exécutant avant sa cible, son `stopPropagation` ne peut pas le
+  protéger.
 
   **Le balayage tactile est avalé de la même façon**, et c'est une conséquence
   qu'il faut connaître : `useSwipe` pose son `onPointerDown` en phase bulle sur
