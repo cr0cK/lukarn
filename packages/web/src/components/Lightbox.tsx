@@ -14,8 +14,9 @@ import { useCaptionHidden } from '../lib/caption';
 import { dayKey, dayLabel } from '../lib/justify';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { isTyping } from '../lib/typing';
+import { GUTTER_PX } from '../lib/swipeTrack';
 import { placeLabelOf } from '../lib/useGridLayout';
-import { useSwipe } from '../lib/useSwipe';
+import { SETTLE_EASING, useSwipeTrack } from '../lib/useSwipe';
 import { canPlayVideoType, chooseVideoSource } from '../lib/videoSource';
 import { ActionMenu } from './ActionMenu';
 import { MediaCaption } from './MediaCaption';
@@ -295,7 +296,12 @@ export function Lightbox({
 
   // Désactivé pendant le zoom, où le doigt sert à se déplacer dans l'image, et
   // sur une vidéo, où il traverserait les contrôles natifs de lecture.
-  const swipe = useSwipe((towards) => goTo(index + towards), !zoomed && !isVideo);
+  const swipe = useSwipeTrack({
+    index,
+    count: items.length,
+    onNavigate: (towards) => goTo(index + towards),
+    enabled: !zoomed && !isVideo,
+  });
 
   // Gèle le défilement de la page derrière la visionneuse — sans ça, la molette
   // ferait défiler la grille sous l'image.
@@ -803,13 +809,39 @@ export function Lightbox({
           className={`relative flex flex-1 items-center justify-center overflow-hidden ${
             isVideo ? '' : 'touch-pinch-zoom'
           }`}
-          {...swipe}
+          {...swipe.handlers}
           onPointerDownCapture={dismissPanelOnOutsideClick}
         >
-          {isVideo && failed ? (
-            <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
-              <p className="text-sm text-ink-300">Cette vidéo n'a pas pu être lue.</p>
-              {/* Le format en cause plutôt qu'un « une erreur est survenue » :
+          {/* Le rail : les trois photos se déplacent ensemble sous le doigt, et
+              c'est ce mouvement qui apprend le geste. Il ne porte rien d'autre
+              — ni flèches, ni légende, ni message d'erreur : ce qui appartient
+              à la visionneuse reste immobile pendant qu'on feuillette, comme
+              dans n'importe quelle visionneuse native (D260809e).
+
+              Au repos, `offset` vaut zéro et la transition est coupée : la
+              transformation est alors sans effet, et l'arbre est exactement
+              celui qu'on avait avant le rail. */}
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{
+              transform: `translate3d(${swipe.offset}px, 0, 0)`,
+              transition: swipe.settleMs
+                ? `transform ${swipe.settleMs}ms ${SETTLE_EASING}`
+                : 'none',
+            }}
+          >
+            {/* Montées le temps du geste seulement. Leur rendu vient du
+                préchargement des voisines, donc du cache navigateur : elles
+                apparaissent sans une requête de plus. Les garder en place hors
+                balayage ferait décoder deux images plein écran de plus pour
+                chaque photo regardée. */}
+            {swipe.active && <SwipeNeighbour item={items[index - 1]} side="left" />}
+            {swipe.active && <SwipeNeighbour item={items[index + 1]} side="right" />}
+
+            {isVideo && failed ? (
+              <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
+                <p className="text-sm text-ink-300">Cette vidéo n'a pas pu être lue.</p>
+                {/* Le format en cause plutôt qu'un « une erreur est survenue » :
                   c'est presque toujours un codec que ce navigateur ne décode
                   pas (D79), et le fichier reste parfaitement lisible ailleurs.
                   Sans le téléchargement, la vidéo serait simplement perdue.
@@ -818,60 +850,61 @@ export function Lightbox({
                   plus qu'une version lisible est en route, et la visionneuse la
                   guette : le message annonce donc ce qui va se passer, sans
                   demander de revenir ni de recharger (D260809b). */}
-              <p className="text-xs text-ink-400">
-                {transcoded
-                  ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur : elle démarrera ici dès qu'elle sera prête. Le fichier d'origine reste téléchargeable."
-                  : "Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste téléchargeable."}
-              </p>
-              <button
-                type="button"
-                onClick={download}
-                className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
-              >
-                Télécharger
-              </button>
-            </div>
-          ) : isVideo ? (
-            <video
-              ref={videoRef}
-              key={item.id}
-              src={
-                transcoded
-                  ? mediaUrl.playable(item.id, item.version)
-                  : mediaUrl.original(item.id, item.version)
-              }
-              // La même vignette que la grille, donc déjà en cache disque et
-              // souvent en cache navigateur : le rectangle noir de l'attente
-              // disparaît sans une requête de plus (D92).
-              poster={item.hasPreview ? mediaUrl.thumb(item.id, 1280, item.version) : undefined}
-              controls
-              autoPlay
-              playsInline
-              className="max-h-full max-w-full"
-              // À ce stade, une piste vidéo décodable a forcément livré une
-              // image : un `videoWidth` nul dit que le navigateur n'a gardé que
-              // le son. Il ne lève alors aucune erreur — conteneur et piste
-              // audio sont valides — si bien que `error` seul laisserait le
-              // `poster` en place, qu'on prendrait pour une image figée (D98).
-              onLoadedData={checkVideoTrack}
-              onPlaying={checkVideoTrack}
-              onError={() => setFailed(true)}
-            />
-          ) : (
-            <ZoomableImage
-              // Remonter le composant à chaque photo réinitialise zoom et cadrage
-              // sans avoir à les remettre à zéro à la main.
-              key={item.id}
-              src={mediaUrl.full(item.id, item.version)}
-              hdSrc={mediaUrl.hd(item.id, item.version)}
-              placeholderSrc={mediaUrl.thumb(item.id, 320, item.version)}
-              alt={item.name}
-              naturalWidth={item.width}
-              naturalHeight={item.height}
-              zoomed={zoomed}
-              onZoomedChange={setZoomed}
-            />
-          )}
+                <p className="text-xs text-ink-400">
+                  {transcoded
+                    ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur : elle démarrera ici dès qu'elle sera prête. Le fichier d'origine reste téléchargeable."
+                    : "Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste téléchargeable."}
+                </p>
+                <button
+                  type="button"
+                  onClick={download}
+                  className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
+                >
+                  Télécharger
+                </button>
+              </div>
+            ) : isVideo ? (
+              <video
+                ref={videoRef}
+                key={item.id}
+                src={
+                  transcoded
+                    ? mediaUrl.playable(item.id, item.version)
+                    : mediaUrl.original(item.id, item.version)
+                }
+                // La même vignette que la grille, donc déjà en cache disque et
+                // souvent en cache navigateur : le rectangle noir de l'attente
+                // disparaît sans une requête de plus (D92).
+                poster={item.hasPreview ? mediaUrl.thumb(item.id, 1280, item.version) : undefined}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-full max-w-full"
+                // À ce stade, une piste vidéo décodable a forcément livré une
+                // image : un `videoWidth` nul dit que le navigateur n'a gardé que
+                // le son. Il ne lève alors aucune erreur — conteneur et piste
+                // audio sont valides — si bien que `error` seul laisserait le
+                // `poster` en place, qu'on prendrait pour une image figée (D98).
+                onLoadedData={checkVideoTrack}
+                onPlaying={checkVideoTrack}
+                onError={() => setFailed(true)}
+              />
+            ) : (
+              <ZoomableImage
+                // Remonter le composant à chaque photo réinitialise zoom et cadrage
+                // sans avoir à les remettre à zéro à la main.
+                key={item.id}
+                src={mediaUrl.full(item.id, item.version)}
+                hdSrc={mediaUrl.hd(item.id, item.version)}
+                placeholderSrc={mediaUrl.thumb(item.id, 320, item.version)}
+                alt={item.name}
+                naturalWidth={item.width}
+                naturalHeight={item.height}
+                zoomed={zoomed}
+                onZoomedChange={setZoomed}
+              />
+            )}
+          </div>
 
           {/* Masquées pendant le zoom : le glisser sert alors à se déplacer dans
             l'image, et les flèches tomberaient sous le curseur. Masquées aussi
@@ -982,6 +1015,52 @@ export function Lightbox({
           onTabChange={onPanelChange}
           onClose={() => onPanelChange(null)}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Photo voisine sur le rail, pendant un balayage.
+ *
+ * Elle n'existe que pour être vue arriver : purement décorative, donc
+ * `aria-hidden`, et sans le moindre gestionnaire — la vraie photo la remplacera
+ * dans un instant, avec son zoom, sa légende et son panneau.
+ *
+ * Le même rendu `full` que la visionneuse, et non la vignette : c'est celui que
+ * le préchargement des voisines vient de mettre en cache, si bien que le rail
+ * ne déclenche aucune requête. Une vidéo n'a que son aperçu Drive à montrer
+ * (D92), et quand elle n'en a pas, le rail glisse sur un vide — ce qui reste
+ * juste : il n'y a rien à afficher de cette vidéo tant qu'elle n'est pas ouverte.
+ */
+function SwipeNeighbour({
+  item,
+  side,
+}: {
+  item: MediaItem | undefined;
+  side: 'left' | 'right';
+}): ReactElement | null {
+  if (!item) return null;
+
+  const src =
+    item.kind === 'video'
+      ? item.hasPreview
+        ? mediaUrl.thumb(item.id, 1280, item.version)
+        : null
+      : mediaUrl.full(item.id, item.version);
+
+  return (
+    <div
+      aria-hidden="true"
+      className="absolute inset-y-0 flex w-full items-center justify-center"
+      style={
+        side === 'left'
+          ? { right: `calc(100% + ${GUTTER_PX}px)` }
+          : { left: `calc(100% + ${GUTTER_PX}px)` }
+      }
+    >
+      {src && (
+        <img src={src} alt="" draggable={false} className="max-h-full max-w-full select-none" />
       )}
     </div>
   );
