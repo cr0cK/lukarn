@@ -15,7 +15,7 @@ qu'il faut obtenir — une image Debian 12+ ou Ubuntu LTS, un cloud-init passé 
 enregistrement DNS — et les CLI de trois hébergeurs figurent dans un bloc
 `<details>`, à égalité, présentés comme des illustrations de la même opération.
 Le compte système devient `deploy` : un rôle, pas une personne. Le remote de
-sauvegarde par défaut devient `sauvegardes:nonni`, sans marque.
+sauvegarde par défaut devient `backups:nonni`, sans marque.
 
 **Écarté.** Ne garder aucune commande d'hébergeur : le plus neutre, mais on perd
 le chemin prêt-à-coller, y compris pour qui déploie pour la première fois — et

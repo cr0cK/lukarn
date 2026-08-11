@@ -372,10 +372,10 @@ sauvegardes.
 Deux scripts bash, lancés depuis la machine, qui se replacent seuls à la racine
 du dépôt depuis `$0`.
 
-| Script             | Effet                                                                                                                                                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `nonni-data`, redémarrage, copie du `.env` et archive de `config/` à côté, rétention des 7 derniers de chaque. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `NONNI_BACKUP_REMOTE`.                                              |
-| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, puis `docker compose pull app` et `up -d` — ou `up -d --build` avec la surcharge de construction si `--build` est passé —, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul. |
+| Script             | Effet                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `nonni-data`, redémarrage, copie du `.env` et archive de `config/` à côté, rétention des 7 derniers de chaque. Écrit dans `NONNI_BACKUP_DIR`, `./backups` par défaut. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `NONNI_BACKUP_REMOTE`, `backups:nonni` par défaut. |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, puis `docker compose pull app` et `up -d` — ou `up -d --build` avec la surcharge de construction si `--build` est passé —, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul.                                       |
 
 **Pourquoi arrêter `app` pour sauvegarder.** SQLite est en WAL : copier le
 fichier pendant une écriture donne une base à recomposer. L'arrêt dure quelques

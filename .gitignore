@@ -2,30 +2,33 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Données locales — jamais committées
+# Local data — never committed
 data/
 cache/
 .env
 config/albums.yaml
-# Archives produites par deploy/backup.sh — elles contiennent une copie du .env.
+# Archives produced by deploy/backup.sh — they contain a copy of the .env.
+# `sauvegardes/` stays ignored: an instance bootstrapped before 1.0.0 has one.
+backups/
 sauvegardes/
-# Clé privée d'un compte de service : elle vaut l'accès en lecture aux dossiers
-# partagés, et rien ne l'expire.
+# A service account's private key: it is worth read access to the shared folders,
+# and nothing expires it.
 config/*.json
 
-# Artefacts d'automatisation navigateur (captures, snapshots, journaux console)
+# Browser automation artefacts (screenshots, snapshots, console logs)
 .playwright-cli/
-# Cache du plugin de design impeccable, propre à chaque poste
+# Design plugin cache, specific to each workstation
 .impeccable/
 
-# Worktrees git montées par l'outillage d'agents : des branches du dépôt, pas
-# du contenu à y committer.
+# Git worktrees mounted by agent tooling: branches of this repository, not content
+# to commit into it.
 .claude/worktrees/
-# Réglages d'agent propres à un poste : le `.local` du nom dit déjà qu'ils ne
-# valent que là, et les versionner impose ses permissions à qui clone.
+# Per-workstation agent settings: the `.local` in the name already says they only
+# apply there, and committing them imposes one machine's permissions on everyone
+# who clones.
 .claude/settings.local.json
 
-# Divers
+# Misc
 .DS_Store
 *.log
 .eslintcache

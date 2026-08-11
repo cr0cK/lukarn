@@ -167,15 +167,20 @@ seule langue, donc, et c'est celle du plus grand nombre de lecteurs possibles.
 est en anglais, sans obligation de traduire les alentours d'un changement. Ordre
 de traversée, du plus lu au moins lu :
 
-| Lot | Périmètre                                                        | État    |
-| --- | ---------------------------------------------------------------- | ------- |
-| 4   | `.env.example`, `docker-compose.yml`, `Caddyfile`, `deploy/*.sh` | à faire |
-| 5   | Interface et messages du serveur — libellés, erreurs, journaux   | à faire |
-| 6   | Commentaires du code, noms de tests, `specs/`, ce fichier        | à faire |
+| Lot | Périmètre                                                      | État    |
+| --- | -------------------------------------------------------------- | ------- |
+| 4   | Surface d'installation — voir ci-dessous                       | fait    |
+| 5   | Interface et messages du serveur — libellés, erreurs, journaux | à faire |
+| 6   | Commentaires du code, noms de tests, `specs/`, ce fichier      | à faire |
 
 Ce qui est déjà en anglais : les deux `README.md`, `CONTRIBUTING.md`,
-`SECURITY.md`, `CODE_OF_CONDUCT.md`, les gabarits de `.github/`, les commits et
-les PR.
+`SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, les gabarits et les
+workflows de `.github/`, les commits et les PR, et toute la surface
+d'installation — `.env.example`, `Dockerfile`, les deux `docker-compose*.yml`,
+`Caddyfile`, `config/albums.example.yaml`, `deploy/` en entier, `.gitignore`,
+`eslint.config.js`, `pnpm-workspace.yaml`.
+
+Reste donc le code (`packages/`), les `specs/` et ce fichier.
 
 Tant que la bascule n'est pas finie, un exemple peut diverger d'un document à
 l'autre — les README disent `photos.example.com`, les specs encore

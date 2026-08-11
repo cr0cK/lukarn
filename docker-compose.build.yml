@@ -1,26 +1,26 @@
-# Surcharge de construction locale, à empiler sur `docker-compose.yml` :
+# Local build overlay, to stack on top of `docker-compose.yml`:
 #
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-#   ./deploy/deploy.sh --build          # fait la même chose, sauvegarde comprise
+#   ./deploy/deploy.sh --build          # the same, backup included
 #
-# Trois raisons de passer par là plutôt que par l'image publiée : une machine qui
-# n'est pas amd64 (l'image n'est publiée que pour celle-là), une modification
-# locale à essayer, ou le refus de dépendre d'un registre tiers — le dépôt est la
-# source, l'image n'en est qu'une commodité.
+# Three reasons to come this way rather than take the published image: a machine
+# that is not amd64 (the image is published for that one only), a local change to
+# try, or a refusal to depend on someone else's registry — the repository is the
+# source, the image only a convenience.
 #
-# La construction demande environ 4 Go de mémoire : les trois modules natifs se
-# compilent quand aucun binaire prébuilt ne correspond, et l'OOM killer arrête
-# une machine à 1 Go avant la fin.
+# The build wants around 4 GB of memory: the three native modules compile whenever
+# no prebuilt binary matches, and the OOM killer stops a 1 GB machine before the
+# end.
 services:
   app:
     build:
       context: .
       args:
-        # Ce que le workflow de publication passe autrement. `dev` signale une
-        # image construite à la main dans les métadonnées OCI, plutôt qu'un
-        # numéro de version qui laisserait croire à une image publiée.
+        # What the release workflow passes otherwise. `dev` marks a hand-built
+        # image in the OCI metadata, rather than a version number that would
+        # suggest a published one.
         VERSION: dev
-    # Écrase la référence au registre : sans cette ligne, compose reconstruirait
-    # l'image puis la marquerait du nom du registre, et un `docker compose pull`
-    # ultérieur remplacerait silencieusement la construction locale.
+    # Overrides the registry reference: without this line, compose would rebuild
+    # the image and then tag it with the registry name, and a later
+    # `docker compose pull` would silently replace the local build.
     image: nonni:local

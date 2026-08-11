@@ -1,87 +1,87 @@
 #!/usr/bin/env bash
 #
-# Mise à jour d'une instance en service.
+# Updates a live instance.
 #
-#   ./deploy/deploy.sh            tire l'image publiée (défaut)
-#   ./deploy/deploy.sh --build    construit depuis les sources
+#   ./deploy/deploy.sh            pull the published image (default)
+#   ./deploy/deploy.sh --build    build from source
 #
-# Sauvegarde, met à jour, redémarre — et **attend la confirmation** que
-# l'application est revenue. Un `docker compose up -d` rend la main dès que le
-# conteneur est lancé, pas quand il fonctionne : une migration qui échoue ou un
-# `.env` incomplet laisse un conteneur qui redémarre en boucle pendant qu'on
-# croit le déploiement terminé.
+# Backs up, updates, restarts — and **waits for confirmation** that the
+# application came back. A `docker compose up -d` returns as soon as the container
+# has started, not when it works: a failed migration or an incomplete `.env`
+# leaves a container restarting in a loop while the deployment looks finished.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-construire=false
+build=false
 case "${1:-}" in
 '') ;;
---build) construire=true ;;
+--build) build=true ;;
 *)
   echo "usage: $0 [--build]" >&2
   exit 2
   ;;
 esac
 
-# `--ff-only` : sur une instance, un merge automatique n'a rien à faire. Si la
-# copie locale a divergé, il faut le savoir avant de mettre à jour. Les sources
-# servent même quand on ne construit pas : c'est d'elles que viennent le
-# `docker-compose.yml`, le `Caddyfile` et les scripts de cette mise à jour.
-echo "▸ récupération des sources"
+# `--ff-only`: an automatic merge has no business happening on an instance. If the
+# local copy has diverged, that is worth knowing before updating anything. The
+# sources matter even when not building: they are where `docker-compose.yml`, the
+# `Caddyfile` and the scripts of this very update come from.
+echo "▸ fetching sources"
 git pull --ff-only
 
-# Les migrations sont append-only et jamais retouchées : si l'une se passe mal,
-# cette archive est le seul retour en arrière.
-echo "▸ sauvegarde"
+# Migrations are append-only and never touched again: if one goes wrong, this
+# archive is the only way back.
+echo "▸ backup"
 ./deploy/backup.sh --local
 
-if $construire; then
-  echo "▸ construction et redémarrage"
+if $build; then
+  echo "▸ building and restarting"
   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 else
-  # `pull` séparé du `up` pour que l'échec porte son vrai nom : registre
-  # injoignable ou version inexistante se distinguent alors d'un conteneur qui
-  # démarre mal, et l'instance en service n'est pas arrêtée pour rien.
-  echo "▸ récupération de l'image"
+  # `pull` kept separate from `up` so a failure carries its real name: an
+  # unreachable registry or a version that does not exist are then told apart
+  # from a container that starts badly, and the live instance is not stopped for
+  # nothing.
+  echo "▸ pulling the image"
   docker compose pull app
-  echo "▸ redémarrage"
+  echo "▸ restarting"
   docker compose up -d
 fi
 
-# `start-period` 20 s, puis un contrôle toutes les 30 s et 3 essais avant
-# `unhealthy` : 110 s au pire pour un verdict, arrondi à 150 s de marge.
-PLAFOND=150
+# `start-period` 20s, then a check every 30s and 3 attempts before `unhealthy`:
+# 110s at worst for a verdict, rounded up to 150s of margin.
+CEILING=150
 
-conteneur=$(docker compose ps -q app)
-if [[ -z $conteneur ]]; then
-  echo '✗ aucun conteneur app après le up — voir docker compose ps.' >&2
+container=$(docker compose ps -q app)
+if [[ -z $container ]]; then
+  echo '✗ no app container after the up — see docker compose ps.' >&2
   exit 1
 fi
 
-echouer() {
+fail() {
   echo "✗ $1" >&2
   echo >&2
   docker compose logs --tail=50 app >&2
   exit 1
 }
 
-echo "▸ attente de la porte de santé (au plus ${PLAFOND}s)"
-debut=$SECONDS
+echo "▸ waiting on the health gate (up to ${CEILING}s)"
+start=$SECONDS
 while :; do
-  etat=$(docker inspect -f '{{.State.Health.Status}}' "$conteneur" 2>/dev/null || echo absente)
+  state=$(docker inspect -f '{{.State.Health.Status}}' "$container" 2>/dev/null || echo missing)
 
-  case $etat in
+  case $state in
   healthy) break ;;
-  unhealthy) echouer "l'application répond, mais /api/health la déclare en panne." ;;
-  absente) echouer "conteneur disparu ou sans HEALTHCHECK." ;;
+  unhealthy) fail "the application answers, but /api/health declares it broken." ;;
+  missing) fail "container gone, or without a HEALTHCHECK." ;;
   esac
 
-  if ((SECONDS - debut >= PLAFOND)); then
-    echouer "toujours « $etat » après ${PLAFOND}s."
+  if ((SECONDS - start >= CEILING)); then
+    fail "still \"$state\" after ${CEILING}s."
   fi
   sleep 3
 done
 
-echo "✓ déployé — application saine après $((SECONDS - debut))s"
+echo "✓ deployed — application healthy after $((SECONDS - start))s"

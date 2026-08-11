@@ -104,6 +104,14 @@ cookies and browser keys carried a `gdv` prefix. **They do not rename themselves
 - Backup archives already on disk keep their `gdv-` prefix, which pruning no
   longer recognises. Delete them by hand once a `nonni-` archive has restored
   successfully.
+- **Backups are written to `backups/`**, not `sauvegardes/`, and the default
+  rclone remote is `backups:nonni`. Rename both, or keep the old ones by setting
+  `NONNI_BACKUP_DIR` and `NONNI_BACKUP_REMOTE`. Pruning only looks in the
+  directory it is given.
+- The SSH hardening file laid down by `cloud-init.yaml` is now
+  `99-hardening.conf`. Machines already bootstrapped keep
+  `99-durcissement.conf`, and there is nothing to migrate — the rename only
+  applies to machines created afterwards.
 
 [unreleased]: https://github.com/cr0cK/nonni/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/cr0cK/nonni/releases/tag/v1.0.0

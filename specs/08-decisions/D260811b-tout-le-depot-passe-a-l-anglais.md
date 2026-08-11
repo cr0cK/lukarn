@@ -58,6 +58,22 @@ du mainteneur, qui reste sous son contrôle.
 les README parlent de `photos.example.com` quand les specs disent encore
 `photos.exemple.fr`. Sans conséquence, chacun étant idiomatique dans sa langue.
 
+Trois noms qui n'étaient pas du texte mais des chemins changent avec le reste,
+parce qu'un exploitant anglophone les voit passer :
+
+- le répertoire de sauvegarde local, `sauvegardes/` → `backups/`, et le remote
+  rclone par défaut, `sauvegardes:nonni` → `backups:nonni`. `NONNI_BACKUP_DIR` et
+  `NONNI_BACKUP_REMOTE` permettent de garder les anciens. L'élagage ne regarde que
+  le répertoire qu'on lui désigne : les archives restées dans l'ancien y
+  demeurent ;
+- le fichier de durcissement SSH posé par le cloud-init,
+  `99-durcissement.conf` → `99-hardening.conf`. Rien à migrer, pour la raison
+  qu'invoquait déjà D63 à propos du compte système : le cloud-init ne vaut que
+  pour les machines créées ensuite ;
+- les identifiants de `config/albums.example.yaml`, qui devient un exemple
+  neutre (`alice`, `family`, `holidays-2025`). Ceux des specs et des tests, eux,
+  restent tels quels : ils ne s'adressent pas à qui installe.
+
 Les identifiants de code, eux, n'ont jamais changé de langue : ils étaient déjà en
 anglais, et c'est ce qui rend la bascule mécanique plutôt que risquée. Aucun
 renommage de symbole n'est en jeu, donc aucune régression silencieuse à craindre

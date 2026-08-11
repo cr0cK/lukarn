@@ -1,56 +1,56 @@
 services:
   app:
-    # Image publiée à chaque `v*` : mettre à jour ne compile plus rien sur la
-    # machine, ce qui retire au VPS le besoin des 4 Go que la compilation de
-    # sharp, argon2 et better-sqlite3 exigeait pour ne pas finir tuée par l'OOM
-    # killer.
+    # Published on every `v*` tag: updating compiles nothing on the machine, which
+    # relieves the VPS of the 4 GB that compiling sharp, argon2 and better-sqlite3
+    # needed in order not to be killed by the OOM killer.
     #
-    # `latest` par défaut, une version épinglée si on préfère décider quand on
-    # bouge : NONNI_VERSION=1.0.0 dans le `.env`.
+    # `latest` by default, a pinned version if an update should be a decision
+    # rather than a surprise: NONNI_VERSION=1.0.0 in the `.env`.
     #
-    # Pour construire depuis les sources — architecture autre qu'amd64, ou
-    # modification locale à essayer — la surcharge est un fichier :
+    # To build from source — an architecture other than amd64, or a local change
+    # to try — the overlay is one file:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
     image: ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}
     restart: unless-stopped
-    # Aucun port publié sur l'hôte : seul Caddy joint l'application, par le
-    # réseau interne du compose. Rien n'écoute sur une interface publique en
-    # dehors du frontal, donc rien à filtrer côté pare-feu pour cette app.
+    # No port published on the host: only Caddy reaches the application, over the
+    # compose-internal network. Nothing listens on a public interface apart from
+    # the front end, so there is nothing to filter firewall-side for this app.
     expose:
       - '8080'
     environment:
-      PUBLIC_URL: ${PUBLIC_URL:?définis PUBLIC_URL dans .env}
-      # Les deux suivantes emploient `-` et non `:-`, et la nuance porte tout
-      # leur sens : `:-` substituerait le défaut à une valeur **vide**, or vide
-      # veut dire quelque chose ici. Pour `GEOCODING_URL`, c'est « n'appelle
-      # aucun service de géocodage » ; pour `APP_NAME`, c'est une erreur que le
-      # schéma zod doit pouvoir refuser au lieu qu'on la masque.
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      # The next two use `-` and not `:-`, and the whole point is in that nuance:
+      # `:-` would substitute the default for an **empty** value, and empty means
+      # something here. For `GEOCODING_URL` it means "call no geocoding service";
+      # for `APP_NAME` it is a mistake the zod schema must be able to reject
+      # rather than have it papered over.
       APP_NAME: ${APP_NAME-Photos}
-      SESSION_SECRET: ${SESSION_SECRET:?génère-le avec openssl rand -hex 32}
-      TOKEN_KEY: ${TOKEN_KEY:?génère-le avec openssl rand -hex 32}
-      # Chemin **dans le conteneur** : la clé est lue sous /app/config, monté
-      # depuis ./config. Renseignée, elle prend le pas sur GOOGLE_CLIENT_*.
+      SESSION_SECRET: ${SESSION_SECRET:?generate it with openssl rand -hex 32}
+      TOKEN_KEY: ${TOKEN_KEY:?generate it with openssl rand -hex 32}
+      # A path **inside the container**: the key is read under /app/config, mounted
+      # from ./config. When set, it takes precedence over GOOGLE_CLIENT_*.
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      # Sans ces deux-là, les commentaires restent indisponibles : le code de
-      # vérification d'adresse ne peut pas partir.
+      # Without these two, comments stay unavailable: the address verification
+      # code has no way out.
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-}
-      # Facultative, et sans effet sur les deux précédentes : où répondre quand
-      # l'adresse d'envoi ne reçoit pas de courrier.
+      # Optional, and without effect on the two above: where to reply when the
+      # sending address receives no mail.
       MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
-      # Vide ⇒ aucune coordonnée ne sort de la machine, et les journées gardent
-      # leurs grappes sans libellé. C'est le seul réglage de confidentialité de
-      # l'application : il doit atteindre le conteneur pour exister.
+      # Empty ⇒ no coordinate leaves the machine, and days keep their clusters
+      # without a label. This is the application's only privacy setting: it has to
+      # reach the container in order to exist.
       GEOCODING_URL: ${GEOCODING_URL-https://nominatim.openstreetmap.org}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
-      # Configuration en lecture seule : l'application ne la modifie jamais.
+      # Configuration, read-only: the application never modifies it.
       - ./config:/app/config:ro
-      # Index SQLite et refresh token chiffré — la seule donnée irremplaçable.
+      # SQLite index and encrypted refresh token — the only irreplaceable data.
       - nonni-data:/app/data
-      # Vignettes générées : perdre ce volume ne coûte qu'une regénération.
+      # Generated thumbnails: losing this volume costs a regeneration, nothing
+      # more.
       - nonni-cache:/app/cache
     logging:
       driver: json-file
@@ -58,24 +58,24 @@ services:
         max-size: '10m'
         max-file: '3'
 
-  # TLS et frontal public. Voir `Caddyfile`. Si un proxy tourne déjà sur l'hôte,
-  # supprimer ce service et rendre à `app` un `ports: ['127.0.0.1:8080:8080']`.
+  # TLS and public front end. See `Caddyfile`. If a proxy already runs on the
+  # host, drop this service and give `app` back a `ports: ['127.0.0.1:8080:8080']`.
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - '80:80' # redirection vers HTTPS et défi ACME
+      - '80:80' # HTTPS redirect and ACME challenge
       - '443:443'
       - '443:443/udp' # HTTP/3
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Certificats et clé de compte ACME. **À conserver** : les perdre force
-      # une réémission à chaque redéploiement, et Let's Encrypt plafonne le
-      # nombre de certificats par domaine et par semaine.
+      # Certificates and ACME account key. **Keep these**: losing them forces a
+      # reissue on every redeploy, and Let's Encrypt caps certificates per domain
+      # per week.
       - caddy-data:/data
       - caddy-config:/config
     environment:
-      PUBLIC_URL: ${PUBLIC_URL:?définis PUBLIC_URL dans .env}
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
     depends_on:
       - app
     logging:
@@ -84,12 +84,12 @@ services:
         max-size: '10m'
         max-file: '3'
 
-# Sans `name:`, compose préfixe chaque volume du nom du projet — celui du
-# répertoire dans lequel on a cloné. Le volume `nonni-data` s'appelle alors
-# `nonni_nonni-data`, et un `docker run -v nonni-data:/data` en crée un
-# neuf et vide au lieu de monter le bon : une sauvegarde ainsi écrite est vide,
-# sans le moindre message. Le nom explicite rend les commandes du README justes
-# quel que soit le répertoire (D53).
+# Without `name:`, compose prefixes every volume with the project name — that of
+# the directory it was cloned into. The `nonni-data` volume is then really called
+# `nonni_nonni-data`, and a `docker run -v nonni-data:/data` creates a brand-new
+# empty one instead of mounting the right one: a backup written that way is empty,
+# without a single message. The explicit name keeps the README's commands correct
+# whatever the directory (D53).
 volumes:
   nonni-data:
     name: nonni-data

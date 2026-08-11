@@ -192,9 +192,13 @@ ssh deploy@<tailnet-name>              # must work
 # Only then, in the first one:
 sudo ufw delete allow OpenSSH
 sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
-  /etc/ssh/sshd_config.d/99-durcissement.conf
+  /etc/ssh/sshd_config.d/99-hardening.conf
 sudo systemctl reload ssh
 ```
+
+On a machine bootstrapped before 1.0.0 that file is still called
+`99-durcissement.conf`; the rename only applies to machines created afterwards,
+and there is nothing to migrate.
 
 Then remove the port 22 rule from the provider's firewall, if it offers one in
 front of the machine — most do, under the name security group, firewall or
@@ -651,7 +655,7 @@ Three files per run, then:
 
 The script stops `app` for the duration of the `tar` — a few seconds, the price
 of a SQLite at rest rather than a file copied with a WAL in flight — writes
-`sauvegardes/nonni-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
+`backups/nonni-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
 **last 7** and deletes the older ones. It checks that the archive really contains
 `nonni.db`: an empty archive would otherwise go unnoticed until restore time.
 
@@ -661,9 +665,16 @@ remote configured **outside the repository**:
 
 ```bash
 rclone config     # any backend: S3 and compatibles, B2, SFTP…
-# The default remote is `sauvegardes:nonni`. Another name?
+# The default remote is `backups:nonni`. Another name?
 # NONNI_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
 ```
+
+`NONNI_BACKUP_DIR` moves the local directory the same way. An instance
+bootstrapped before 1.0.0 wrote into `sauvegardes/` and configured its rclone
+remote as `sauvegardes:` — either rename both, or keep them by setting
+`NONNI_BACKUP_DIR` and `NONNI_BACKUP_REMOTE`. Pruning only looks in the directory
+it is pointed at, so archives left in the old one stay there until removed by
+hand.
 
 **Automating.** Two units, and nothing to install: Debian and Ubuntu cloud
 images ship systemd but frequently **no `cron` at all** — `crontab` is simply not
