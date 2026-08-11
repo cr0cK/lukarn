@@ -344,7 +344,7 @@ export default function AlbumPage(): ReactElement {
 
   const subtitle = album.data
     ? [
-        `${album.data.itemCount.toLocaleString('fr-FR')} ${album.data.itemCount > 1 ? 'éléments' : 'élément'}`,
+        `${album.data.itemCount.toLocaleString('en-GB')} ${album.data.itemCount > 1 ? 'items' : 'item'}`,
         formatRange(album.data.oldestAt, album.data.newestAt),
       ]
         .filter(Boolean)
@@ -352,16 +352,13 @@ export default function AlbumPage(): ReactElement {
     : null;
 
   // Le bouton annonce l'état courant ; l'infobulle annonce ce que le clic fera.
-  const orderLabel = shownOrder === 'desc' ? "Plus récentes d'abord" : "Plus anciennes d'abord";
-  const orderAction =
-    shownOrder === 'desc'
-      ? "Afficher les plus anciennes d'abord"
-      : "Afficher les plus récentes d'abord";
+  const orderLabel = shownOrder === 'desc' ? 'Newest first' : 'Oldest first';
+  const orderAction = shownOrder === 'desc' ? 'Show oldest first' : 'Show newest first';
 
   // Même règle pour le regroupement : le libellé dit l'état, l'infobulle dit
   // l'effet du clic.
-  const groupLabel = groupBy === 'month' ? 'Par mois' : 'Par jour';
-  const groupAction = groupBy === 'month' ? 'Regrouper par jour' : 'Regrouper par mois';
+  const groupLabel = groupBy === 'month' ? 'By month' : 'By day';
+  const groupAction = groupBy === 'month' ? 'Group by day' : 'Group by month';
 
   return (
     <div className="min-h-full">
@@ -409,7 +406,7 @@ export default function AlbumPage(): ReactElement {
           />
         )}
 
-        {isPending && <Spinner label="Chargement des photos" />}
+        {isPending && <Spinner label="Loading photos" />}
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -423,7 +420,7 @@ export default function AlbumPage(): ReactElement {
             <p className="mt-1 text-xs text-ink-400">
               {album.data?.syncStatus === 'never'
                 ? "Lance une synchronisation depuis la page d'administration."
-                : 'Vérifie le dossier Drive associé.'}
+                : 'Check the Drive folder it points at.'}
             </p>
           </div>
         )}
@@ -447,7 +444,7 @@ export default function AlbumPage(): ReactElement {
 
         {isFetchingNextPage && (
           <div className="flex justify-center py-8">
-            <Spinner label="Chargement…" />
+            <Spinner label="Loading…" />
           </div>
         )}
       </main>

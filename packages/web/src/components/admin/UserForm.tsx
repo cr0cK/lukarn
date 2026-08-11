@@ -56,7 +56,7 @@ export function UserForm({
         { username: username.trim(), password, admin, albums: userAlbums },
         {
           onSuccess: (created) => {
-            notify({ tone: 'ok', text: `Compte « ${created.username} » créé.` });
+            notify({ tone: 'ok', text: `Account "${created.username}" created.` });
             onClose();
           },
         },
@@ -80,7 +80,7 @@ export function UserForm({
       { username: user.username, body },
       {
         onSuccess: (saved) => {
-          notify({ tone: 'ok', text: `Compte « ${saved.username} » modifié.` });
+          notify({ tone: 'ok', text: `Account "${saved.username}" saved.` });
           onClose();
         },
       },
@@ -92,7 +92,7 @@ export function UserForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id={`${fieldId}-username`}
-          label="Identifiant"
+          label="Username"
           value={username}
           onChange={setUsername}
           autoComplete="off"
@@ -102,14 +102,14 @@ export function UserForm({
           error={touched ? usernameError : null}
           hint={
             editing
-              ? "L'identifiant ne se change pas ; supprime et recrée le compte au besoin."
+              ? 'The username does not change; delete and recreate the account if needed.'
               : 'Lettres, chiffres, point, tiret ou tiret bas.'
           }
         />
 
         <TextField
           id={`${fieldId}-password`}
-          label={editing ? 'Nouveau mot de passe' : 'Mot de passe'}
+          label={editing ? 'New password' : 'Password'}
           type="password"
           value={password}
           onChange={setPassword}
@@ -118,22 +118,22 @@ export function UserForm({
           error={touched ? passwordError : null}
           hint={
             editing
-              ? 'Laisse vide pour conserver le mot de passe actuel.'
-              : `${PASSWORD_MIN_LENGTH} caractères au minimum.`
+              ? 'Leave empty to keep the current password.'
+              : `${PASSWORD_MIN_LENGTH} characters minimum.`
           }
         />
       </div>
 
       <Checkbox
         id={`${fieldId}-admin`}
-        label="Rôle administrateur"
+        label="Administrator role"
         checked={admin}
         onChange={setAdmin}
         disabled={pending || isSelf}
         hint={
           isSelf
-            ? 'Tu ne peux pas retirer ton propre rôle : il faut un administrateur pour cette page.'
-            : "Donne accès à cette page. L'accès aux albums reste celui choisi ci-dessous."
+            ? 'You cannot remove your own role: this page needs an administrator.'
+            : 'Grants access to this page. Album access stays the one chosen below.'
         }
       />
 
@@ -144,16 +144,14 @@ export function UserForm({
         disabled={pending}
       />
 
-      <FormError
-        message={serverError ? errorText(serverError, "L'enregistrement a échoué.") : null}
-      />
+      <FormError message={serverError ? errorText(serverError, 'Saving failed.') : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={onClose} disabled={pending}>
-          Annuler
+          Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer le compte'}
+          {pending ? 'Saving…' : editing ? 'Save' : 'Create the account'}
         </Button>
       </div>
     </form>

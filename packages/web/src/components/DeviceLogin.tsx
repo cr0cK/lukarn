@@ -52,9 +52,9 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
   return (
     <div className="space-y-5 text-center">
       <div>
-        <h2 className="text-sm font-medium text-ink-100">Connecter avec un téléphone</h2>
+        <h2 className="text-sm font-medium text-ink-100">Sign in with a phone</h2>
         <p className="mt-1 text-sm text-ink-400">
-          Scanne ce code avec un téléphone déjà connecté, puis autorise cet écran.
+          Scan this code with a phone that is already signed in, then approve this screen.
         </p>
       </div>
 
@@ -74,7 +74,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
             onClick={onRetry}
             className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
           >
-            Réessayer
+            Try again
           </button>
         </div>
       )}
@@ -118,7 +118,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
           {expired ? (
             <div className="space-y-3">
               <p role="alert" className="text-sm text-amber-300">
-                Ce code a expiré.
+                This code has expired.
               </p>
               <button
                 type="button"

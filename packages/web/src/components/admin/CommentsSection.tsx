@@ -25,9 +25,9 @@ const PAGE_SIZE = 25;
 const SEARCH_DELAY_MS = 300;
 
 const FILTER_LABELS: Record<ModerationFilter, string> = {
-  all: 'Tous',
-  visible: 'Visibles',
-  hidden: 'Masqués',
+  all: 'All',
+  visible: 'Visible',
+  hidden: 'Hidden',
 };
 
 /**
@@ -74,8 +74,8 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 
   return (
     <Section
-      title="Commentaires"
-      description="Les commentaires masqués disparaissent de la galerie pour tout le monde, leur auteur compris."
+      title="Comments"
+      description="Hidden comments disappear from the gallery for everyone, their author included."
     >
       {/* La barre de filtres est dans le corps et non dans l'en-tête de section :
           trois onglets, un sélecteur d'album et un champ de recherche ne tiennent
@@ -100,8 +100,8 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Rechercher un mot, un nom, une adresse"
-          aria-label="Rechercher dans les commentaires"
+          placeholder="Search a word, a name, an address"
+          aria-label="Search the comments"
           maxLength={200}
           className="min-w-0 flex-1 basis-64 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
         />
@@ -109,11 +109,11 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 
       {isPending ? (
         <div className="flex justify-center py-8">
-          <Spinner label="Chargement des commentaires" />
+          <Spinner label="Loading comments" />
         </div>
       ) : error ? (
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Les commentaires n’ont pas pu être chargés.')} />
+          <FormError message={errorText(error, 'Comments could not be loaded.')} />
         </div>
       ) : days.length === 0 ? (
         <p className="px-4 py-6 text-sm text-ink-400">{emptyMessage(filter, q, albumId)}</p>
@@ -144,7 +144,7 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
               onClick={() => setCursors(cursors.slice(0, -1))}
               disabled={cursors.length === 1}
             >
-              ‹ Précédent
+              ‹ Previous
             </Button>
 
             <p className="text-xs text-ink-400">
@@ -178,11 +178,11 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
  * selon qu'on n'a rien reçu ou qu'on cherche mal.
  */
 function emptyMessage(filter: ModerationFilter, q: string | null, albumId: string | null): string {
-  if (q) return `Aucun commentaire ne correspond à « ${q} ».`;
+  if (q) return `No comment matches "${q}".`;
   if (albumId) return 'Aucun commentaire dans cet album.';
-  if (filter === 'hidden') return 'Aucun commentaire masqué.';
+  if (filter === 'hidden') return 'No hidden comment.';
   if (filter === 'visible') return 'Aucun commentaire visible.';
-  return 'Aucun commentaire pour l’instant.';
+  return 'No comment yet.';
 }
 
 /** Reporte la recherche : sans ce délai, chaque frappe partirait au serveur. */
@@ -222,10 +222,10 @@ function AlbumFilter({
     <select
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value || null)}
-      aria-label="Filtrer par album"
+      aria-label="Filter by album"
       className="w-full min-w-0 truncate rounded-lg border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-sm text-ink-200 outline-none focus:border-accent-dim sm:w-auto sm:max-w-64"
     >
-      <option value="">Tous les albums</option>
+      <option value="">Every album</option>
       {albums?.map((album) => (
         <option key={album.id} value={album.id}>
           {album.title}
@@ -265,7 +265,7 @@ function PhotoBlock({
             {photo.mediaName}
           </Link>
         ) : (
-          <span className="italic">photo retirée de l’index</span>
+          <span className="italic">photo removed from the index</span>
         )}
         <span> — {photo.albumTitle}</span>
       </p>
@@ -298,10 +298,9 @@ function CommentRow({
         onSuccess: () =>
           notify({
             tone: 'ok',
-            text: hidden ? 'Commentaire rendu visible.' : 'Commentaire masqué.',
+            text: hidden ? 'Comment made visible again.' : 'Comment hidden.',
           }),
-        onError: (error) =>
-          notify({ tone: 'error', text: errorText(error, 'La modération a échoué.') }),
+        onError: (error) => notify({ tone: 'error', text: errorText(error, 'Moderation failed.') }),
       },
     );
   };
@@ -318,20 +317,20 @@ function CommentRow({
           type="button"
           onClick={() => onBulk(comment)}
           className="rounded text-ink-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-ink-100"
-          title={`Modérer tous les messages de ${comment.authorEmail}`}
+          title={`Moderate every message from ${comment.authorEmail}`}
         >
           {comment.authorEmail}
         </button>
         <time dateTime={comment.createdAt} title={formatLocalDateTime(comment.createdAt)}>
           {formatRelative(comment.createdAt)}
         </time>
-        {comment.parentId !== null && <span>· en réponse</span>}
+        {comment.parentId !== null && <span>· in reply</span>}
         {/* La clé d'accès employée pour écrire : c'est elle qu'on change quand
             un mot de passe partagé a trop circulé. */}
         {comment.account && <span>· via {comment.account}</span>}
         {hidden && (
           <span className="rounded bg-ink-700 px-1.5 py-0.5 text-ink-200">
-            masqué{comment.hiddenBy ? ` par ${comment.hiddenBy}` : ''}
+            hidden{comment.hiddenBy ? ` by ${comment.hiddenBy}` : ''}
           </span>
         )}
       </div>
@@ -350,7 +349,7 @@ function CommentRow({
             disabled={moderate.isPending}
             variant={hidden ? 'default' : 'danger'}
           >
-            {hidden ? 'Rendre visible' : 'Masquer'}
+            {hidden ? 'Make visible' : 'Hide'}
           </Button>
         </div>
       </div>
@@ -388,15 +387,15 @@ function BulkDialog({
       { commenterId: comment.commenterId, hide: !restore },
       {
         onSuccess: ({ affected }) => {
-          const accord = affected > 1 ? 's' : '';
+          const plural = affected > 1 ? 's' : '';
           notify({
             tone: 'ok',
-            text: `${affected} message${accord} ${restore ? 'rendu' : 'masqué'}${accord}.`,
+            text: `${affected} message${plural} ${restore ? 'restored' : 'hidden'}.`,
           });
           onClose();
         },
         onError: (error) => {
-          notify({ tone: 'error', text: errorText(error, 'La modération groupée a échoué.') });
+          notify({ tone: 'error', text: errorText(error, 'Bulk moderation failed.') });
           onClose();
         },
       },
@@ -407,22 +406,22 @@ function BulkDialog({
     <ConfirmDialog
       title={
         restore
-          ? `Rendre visibles tous les messages de ${comment.authorEmail} ?`
-          : `Masquer tous les messages de ${comment.authorEmail} ?`
+          ? `Make every message from ${comment.authorEmail} visible again?`
+          : `Hide every message from ${comment.authorEmail}?`
       }
-      confirmLabel={restore ? 'Tout rendre visible' : 'Tout masquer'}
+      confirmLabel={restore ? 'Restore all' : 'Hide all'}
       busy={moderate.isPending}
       onConfirm={confirm}
       onCancel={onClose}
     >
       <p>
-        L’action porte sur <strong>tous les albums</strong>, pas seulement sur celui-ci ni sur la
-        page affichée.
+        This acts on <strong>every album</strong>, not only on this one and not only on the page
+        shown.
       </p>
       <p>
         {restore
-          ? 'Ses messages redeviennent lisibles pour tout le monde.'
-          : 'Réversible : l’onglet « Masqués » permet de tout rétablir d’un coup.'}
+          ? 'Their messages become readable by everyone again.'
+          : 'Reversible: the "Hidden" tab restores everything in one go.'}
       </p>
     </ConfirmDialog>
   );

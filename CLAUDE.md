@@ -167,17 +167,26 @@ seule langue, donc, et c'est celle du plus grand nombre de lecteurs possibles.
 est en anglais, sans obligation de traduire les alentours d'un changement. Ordre
 de traversée, du plus lu au moins lu :
 
-| Lot | Périmètre                                                       | État    |
-| --- | --------------------------------------------------------------- | ------- |
-| 4   | Surface d'installation — voir ci-dessous                        | fait    |
-| 5a  | Serveur : messages HTTP, journaux, exceptions, commandes, démo  | fait    |
-| 5b  | Emails (`mail.ts`, `notifier.ts`) et interface (`packages/web`) | à faire |
-| 6   | Commentaires du code, noms de tests, `specs/`, ce fichier       | à faire |
+| Lot | Périmètre                                                      | État    |
+| --- | -------------------------------------------------------------- | ------- |
+| 4   | Surface d'installation — voir ci-dessous                       | fait    |
+| 5a  | Serveur : messages HTTP, journaux, exceptions, commandes, démo | fait    |
+| 5b  | Emails, pages de désabonnement, interface (`packages/web`)     | fait    |
+| 6   | Commentaires du code, noms de tests, `specs/`, ce fichier      | à faire |
 
-Le lot 5b se vérifie au navigateur, pas seulement par `pnpm verify` : une chaîne
-anglaise plus longue que la française casse une mise en page sans qu'aucun test ne
-le voie. Les tests qui affirment un sujet d'email (`mail.test.ts`) sont à corriger
-dans le même geste.
+**Le lot 5b ne se vérifiait pas par `pnpm verify`.** Une quinzaine de libellés
+n'ont été trouvés qu'en parcourant l'application au navigateur : ils étaient
+courts et sans accent (`Chargement`, `Modifier`, `Supprimer`), seuls sur leur
+ligne dans du JSX, ou noyés dans un gabarit interpolé
+(`` `Supprimer l'album ${album.title}` ``). Aucun grep de littéral ne les voyait,
+et aucun test n'échouait. C'est aussi le navigateur qui a montré qu'un
+remplacement global de `label="Identifiant"` avait posé « Username » sur le champ
+**identifiant d'album**, où il ne veut rien dire.
+
+Le lot 6 hérite d'un reliquat : les identifiants de code encore en français
+(`titre` dans `SearchBox`, `Mesure`/`valeur`/`unite`/`visiteur` dans
+`VisitsSection`, `elaguer`, `accord`) contredisent la règle « les identifiants
+restent en anglais » depuis plus longtemps que cette bascule.
 
 Ce qui est déjà en anglais : les deux `README.md`, `CONTRIBUTING.md`,
 `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, les gabarits et les

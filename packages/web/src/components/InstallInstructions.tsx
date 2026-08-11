@@ -2,9 +2,9 @@ import { type ReactElement, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 const ETAPES = [
-  ['Partager', "Le carré avec une flèche, en bas de l'écran sur iPhone."],
-  ["Sur l'écran d'accueil", 'Un peu plus bas dans la liste.'],
-  ['Ajouter', 'En haut à droite. Une connexion sera redemandée, une seule fois.'],
+  ['Share', 'The square with an arrow, at the bottom of the screen on iPhone.'],
+  ['Add to Home Screen', 'A little further down the list.'],
+  ['Add', 'Top right. You will be asked to sign in once more, only once.'],
 ] as const;
 
 /**
@@ -31,7 +31,7 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Ajouter à l'écran d'accueil"
+      aria-label="Add to home screen"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
@@ -40,12 +40,12 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-medium">Ajouter à l'écran d'accueil</h2>
+          <h2 className="text-base font-medium">Add to home screen</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-            aria-label="Fermer"
+            aria-label="Close"
           >
             <svg
               viewBox="0 0 24 24"

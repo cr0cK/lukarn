@@ -30,7 +30,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
           />
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-ink-400">
-            {album.syncStatus === 'never' ? 'Pas encore synchronisé' : 'Album vide'}
+            {album.syncStatus === 'never' ? 'Not synced yet' : 'Empty album'}
           </div>
         )}
       </div>
@@ -46,7 +46,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
           </p>
         )}
         <p className="mt-0.5 truncate text-xs text-ink-400">
-          {album.itemCount.toLocaleString('fr-FR')} {album.itemCount > 1 ? 'éléments' : 'élément'}
+          {album.itemCount.toLocaleString('en-US')} {album.itemCount > 1 ? 'items' : 'item'}
           {period ? ` · ${period}` : ''}
         </p>
       </div>
@@ -74,7 +74,7 @@ export default function AlbumsPage(): ReactElement {
       />
 
       <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
-        {isPending && <Spinner label="Chargement des albums" />}
+        {isPending && <Spinner label="Loading albums" />}
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
@@ -84,14 +84,14 @@ export default function AlbumsPage(): ReactElement {
 
         {albums && albums.length === 0 && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
-            <p className="text-sm text-ink-300">Aucun album ne t'est attribué.</p>
+            <p className="text-sm text-ink-300">No album is assigned to you.</p>
             {/* Plus de renvoi vers `config/albums.yaml` : la base fait autorité
                 dès qu'un compte existe, et le fichier n'est plus relu. Suivre
                 cette consigne revenait à éditer un fichier sans effet. */}
             <p className="mt-1 text-xs text-ink-400">
               {user?.admin
-                ? 'Crée un album depuis /admin, puis attribue-le à un compte.'
-                : "Demande à l'administrateur de l'instance de t'en attribuer un."}
+                ? 'Create an album from /admin, then assign it to an account.'
+                : 'Ask the administrator of this instance to assign you one.'}
             </p>
           </div>
         )}

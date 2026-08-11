@@ -501,14 +501,14 @@ export function ZoomableImage({
       {overlay.spinner && (
         <span
           role="status"
-          aria-label="Chargement de la photo"
+          aria-label="Loading the photo"
           className="absolute flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-ink-100"
         >
           <span
             className="size-3.5 animate-spin rounded-full border-2 border-ink-600 border-t-accent"
             aria-hidden="true"
           />
-          Chargement…
+          Loading…
         </span>
       )}
 
@@ -561,9 +561,7 @@ export function ZoomableImage({
         </span>
       )}
 
-      {overlay.error && (
-        <p className="text-sm text-ink-400">Cette image n'a pas pu être affichée.</p>
-      )}
+      {overlay.error && <p className="text-sm text-ink-400">This image could not be displayed.</p>}
     </div>
   );
 }
@@ -614,7 +612,7 @@ function Minimap({
       className="absolute right-4 bottom-4 cursor-crosshair overflow-hidden rounded border border-white/25 shadow-lg transition-colors hover:border-white/60"
       style={{ width, height }}
       role="img"
-      aria-label="Repère de position : cliquer ou glisser pour se déplacer dans la photo"
+      aria-label="Position locator: click or drag to move inside the photo"
       onPointerDown={(event) => {
         // Sans cette interruption, le conteneur démarrerait en plus son propre
         // déplacement : l'image partirait dans le sens du glissement pendant

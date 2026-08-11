@@ -55,10 +55,10 @@ export function AlbumAccessPicker({
           id={`${groupId}-all`}
           checked={wildcard}
           onSelect={() => onChange([ALL_ALBUMS])}
-          label="Tous les albums"
+          label="Every album"
           hint={
             <>
-              Y compris ceux créés plus tard. Enregistré sous la forme du joker{' '}
+              Including those created later. Stored as the wildcard{' '}
               <code className="text-ink-300">{ALL_ALBUMS}</code>.
             </>
           }
@@ -69,8 +69,8 @@ export function AlbumAccessPicker({
           id={`${groupId}-pick`}
           checked={!wildcard}
           onSelect={() => select(remembered)}
-          label="Une sélection d'albums"
-          hint="Seulement les albums cochés. Un album créé plus tard devra être attribué à la main."
+          label="A selection of albums"
+          hint="Only the albums ticked. An album created later has to be assigned by hand."
         />
       </div>
 
@@ -78,7 +78,7 @@ export function AlbumAccessPicker({
         <div className="mt-3">
           {albums.length === 0 && orphans.length === 0 ? (
             <p className="rounded-lg border border-dashed border-ink-700 px-3 py-4 text-xs text-ink-400">
-              Aucun album n'existe encore. Crée-en un dans la section Albums, ou donne le joker.
+              No album exists yet. Create one in the Albums section, or grant the wildcard.
             </p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-ink-700 p-2">
@@ -89,7 +89,7 @@ export function AlbumAccessPicker({
                   checked={selected.includes(album.id)}
                   onChange={(checked) => toggle(album.id, checked)}
                   title={album.title}
-                  detail={`${album.id} · ${album.itemCount.toLocaleString('fr-FR')} éléments`}
+                  detail={`${album.id} · ${album.itemCount.toLocaleString('en-GB')} items`}
                 />
               ))}
 
@@ -100,7 +100,7 @@ export function AlbumAccessPicker({
                   checked
                   onChange={() => toggle(albumId, false)}
                   title={albumId}
-                  detail="album inconnu — décoche pour le retirer"
+                  detail="unknown album — untick to remove it"
                 />
               ))}
             </div>
@@ -108,8 +108,8 @@ export function AlbumAccessPicker({
 
           {allChecked && (
             <p className="mt-2 text-xs text-amber-300">
-              Tous les albums actuels sont cochés, ce qui n'est pas la même chose que « Tous les
-              albums » : les prochains ne seront pas attribués automatiquement.
+              Every current album is ticked, which is not the same as "Every album": the next ones
+              will not be assigned automatically.
             </p>
           )}
         </div>

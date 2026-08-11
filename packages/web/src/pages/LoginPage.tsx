@@ -51,14 +51,14 @@ export default function LoginPage(): ReactElement {
     login.error instanceof ApiError
       ? login.error.message
       : login.error
-        ? 'Connexion impossible. Réessaie.'
+        ? 'Cannot sign in. Try again.'
         : null;
 
   return (
     <div className="flex min-h-full items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">{appName()}</h1>
-        <p className="mb-8 text-sm text-ink-400">Connecte-toi pour accéder aux albums.</p>
+        <p className="mb-8 text-sm text-ink-400">Sign in to reach the albums.</p>
 
         {!pairing.isIdle ? (
           <DeviceLogin
@@ -74,12 +74,12 @@ export default function LoginPage(): ReactElement {
             n'y a qu'une étape d'installation qui reste à faire. */}
             {setup?.needsSetup && (
               <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                <p className="font-medium">Aucun compte n'est encore configuré.</p>
+                <p className="font-medium">No account is configured yet.</p>
                 <p className="mt-1 text-amber-200/80">
-                  Crée le premier administrateur sur le serveur :
+                  Create the first administrator on the server:
                 </p>
                 <code className="mt-2 block rounded bg-black/30 px-2 py-1 font-mono text-xs text-amber-100">
-                  pnpm create-admin &lt;identifiant&gt;
+                  pnpm create-admin &lt;username&gt;
                 </code>
               </div>
             )}
@@ -87,7 +87,7 @@ export default function LoginPage(): ReactElement {
             <form onSubmit={submit} className="space-y-4">
               <div>
                 <label htmlFor="username" className="mb-1.5 block text-sm text-ink-300">
-                  Identifiant
+                  Username
                 </label>
                 <input
                   id="username"
@@ -104,7 +104,7 @@ export default function LoginPage(): ReactElement {
 
               <div>
                 <label htmlFor="password" className="mb-1.5 block text-sm text-ink-300">
-                  Mot de passe
+                  Password
                 </label>
                 <PasswordInput
                   id="password"
@@ -128,7 +128,7 @@ export default function LoginPage(): ReactElement {
                 disabled={login.isPending}
                 className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {login.isPending ? 'Connexion…' : 'Se connecter'}
+                {login.isPending ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
 
@@ -140,7 +140,7 @@ export default function LoginPage(): ReactElement {
               onClick={() => pairing.mutate()}
               className="mt-6 w-full rounded-lg border border-ink-700 px-3 py-2.5 text-sm text-ink-300 transition-colors hover:border-ink-500 hover:text-ink-100"
             >
-              Connecter avec un téléphone
+              Sign in with a phone
             </button>
           </>
         )}

@@ -42,12 +42,12 @@ export function extractFolderId(input: string): string | null {
 /** Message d'erreur, ou `null` si la valeur est acceptable. */
 export function validateUsername(value: string): string | null {
   const username = value.trim();
-  if (!username) return 'Renseigne un identifiant.';
+  if (!username) return 'Enter a username.';
   if (username.length > USERNAME_MAX_LENGTH) {
-    return `L'identifiant ne peut pas dépasser ${USERNAME_MAX_LENGTH} caractères.`;
+    return `A username cannot be longer than ${USERNAME_MAX_LENGTH} characters.`;
   }
   if (!USERNAME_PATTERN.test(username)) {
-    return 'Lettres, chiffres, point, tiret ou tiret bas, en commençant par une lettre ou un chiffre.';
+    return 'Letters, digits, dot, dash or underscore, starting with a letter or a digit.';
   }
   return null;
 }
@@ -55,9 +55,9 @@ export function validateUsername(value: string): string | null {
 /** Message d'erreur, ou `null`. Un identifiant d'album sert aussi d'URL. */
 export function validateAlbumId(value: string): string | null {
   const id = value.trim();
-  if (!id) return 'Renseigne un identifiant.';
+  if (!id) return 'Enter an identifier.';
   if (!ALBUM_ID_PATTERN.test(id)) {
-    return 'Lettres, chiffres, point, tiret ou tiret bas, en commençant par une lettre ou un chiffre.';
+    return 'Letters, digits, dot, dash or underscore, starting with a letter or a digit.';
   }
   return null;
 }
@@ -67,23 +67,23 @@ export function validateAlbumId(value: string): string | null {
  * « ne pas changer le mot de passe » : c'est le seul cas où le vide est valide.
  */
 export function validatePassword(value: string, required = true): string | null {
-  if (!value) return required ? 'Renseigne un mot de passe.' : null;
+  if (!value) return required ? 'Enter a password.' : null;
   if (value.length < PASSWORD_MIN_LENGTH) {
-    return `Le mot de passe doit faire au moins ${PASSWORD_MIN_LENGTH} caractères.`;
+    return `A password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
   }
   return null;
 }
 
 /** Message d'erreur, ou `null`. */
 export function validateTitle(value: string): string | null {
-  return value.trim() ? null : 'Renseigne un titre.';
+  return value.trim() ? null : 'Enter a title.';
 }
 
 /** Message d'erreur pour le champ « dossier Drive », ou `null`. */
 export function validateFolderInput(value: string): string | null {
-  if (!value.trim()) return 'Renseigne le dossier Drive.';
+  if (!value.trim()) return 'Enter the Drive folder.';
   if (extractFolderId(value) === null) {
-    return "Colle l'URL du dossier Drive ou son identifiant — le segment après /folders/.";
+    return 'Paste the Drive folder URL or its identifier — the segment after /folders/.';
   }
   return null;
 }
@@ -114,7 +114,7 @@ export function parseNumber(value: string): number | null {
 export function validateIntervalMinutes(value: string): string | null {
   const minutes = parseNumber(value);
   if (minutes === null || !Number.isInteger(minutes)) {
-    return 'Indique un nombre entier de minutes (0 pour désactiver).';
+    return 'Give a whole number of minutes (0 to disable).';
   }
   return null;
 }
@@ -122,8 +122,8 @@ export function validateIntervalMinutes(value: string): string | null {
 /** Message d'erreur pour la taille maximale du cache, ou `null`. */
 export function validateCacheSizeGB(value: string): string | null {
   const size = parseNumber(value);
-  if (size === null) return 'Indique une taille en gigaoctets.';
-  if (size <= 0) return 'La taille du cache doit être supérieure à 0.';
+  if (size === null) return 'Give a size in gigabytes.';
+  if (size <= 0) return 'The cache size must be greater than 0.';
   return null;
 }
 
@@ -136,8 +136,8 @@ const NAMED_ALBUMS = 3;
  * dire la même chose une fois le treizième créé.
  */
 export function formatAlbumAccess(albums: string[], titles: ReadonlyMap<string, string>): string {
-  if (albums.includes(ALL_ALBUMS)) return 'Tous les albums, présents et à venir';
-  if (albums.length === 0) return 'Aucun album';
+  if (albums.includes(ALL_ALBUMS)) return 'Every album, present and future';
+  if (albums.length === 0) return 'No album';
 
   // Un album supprimé peut subsister dans la liste d'un compte : on affiche
   // alors son identifiant brut plutôt que de le passer sous silence.

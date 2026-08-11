@@ -73,7 +73,7 @@ describe('lignes du panneau d’informations', () => {
   it('dit qu’une photo n’a pas de position, au lieu de taire la ligne', () => {
     const row = position(exifRows(detail(), undefined));
 
-    assert.equal(row?.value, 'Aucune donnée GPS');
+    assert.equal(row?.value, 'No GPS data');
     assert.equal(row?.absent, true);
     // Une absence ne se clique pas : sans coordonnées, il n'y a nulle part où
     // ouvrir une carte.
@@ -85,6 +85,6 @@ describe('lignes du panneau d’informations', () => {
 
     assert.equal(position(rows), undefined);
     // La ligne manquante n'emporte pas le reste du panneau avec elle.
-    assert.equal(rows.find((row) => row.label === 'Durée')?.value, '0:12');
+    assert.equal(rows.find((row) => row.label === 'Duration')?.value, '0:12');
   });
 });

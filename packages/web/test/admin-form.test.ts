@@ -149,7 +149,7 @@ describe('formatAlbumAccess', () => {
   ]);
 
   it('nomme le joker au lieu de le confondre avec une liste complète', () => {
-    assert.equal(formatAlbumAccess([ALL_ALBUMS], titles), 'Tous les albums, présents et à venir');
+    assert.equal(formatAlbumAccess([ALL_ALBUMS], titles), 'Every album, present and future');
     assert.notEqual(
       formatAlbumAccess(['a', 'b', 'c', 'd'], titles),
       formatAlbumAccess([ALL_ALBUMS], titles),
@@ -157,7 +157,7 @@ describe('formatAlbumAccess', () => {
   });
 
   it('dit explicitement quand aucun album n’est attribué', () => {
-    assert.equal(formatAlbumAccess([], titles), 'Aucun album');
+    assert.equal(formatAlbumAccess([], titles), 'No album');
   });
 
   it('abrège au-delà de trois albums', () => {

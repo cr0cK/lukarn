@@ -11,19 +11,16 @@ export function SettingsSection({ notify }: { notify: Notify }): ReactElement {
   const { data: settings, isPending, error } = useSettings();
 
   return (
-    <Section
-      title="Réglages"
-      description="Rythme des synchronisations et place occupée sur disque."
-    >
+    <Section title="Settings" description="How often it syncs, and how much disk it takes.">
       {isPending && (
         <div className="px-4 py-6">
-          <Spinner label="Chargement des réglages" />
+          <Spinner label="Loading settings" />
         </div>
       )}
 
       {error && (
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Impossible de charger les réglages.')} />
+          <FormError message={errorText(error, 'Cannot load the settings.')} />
         </div>
       )}
 
@@ -97,7 +94,7 @@ function SettingsForm({
     if (Object.keys(body).length === 0) return;
 
     save.mutate(body, {
-      onSuccess: () => notify({ tone: 'ok', text: 'Réglages enregistrés.' }),
+      onSuccess: () => notify({ tone: 'ok', text: 'Settings saved.' }),
     });
   };
 
@@ -117,89 +114,87 @@ function SettingsForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id="settings-interval"
-          label="Intervalle de synchronisation (minutes)"
+          label="Sync interval (minutes)"
           value={minutes}
           onChange={setMinutes}
           inputMode="numeric"
           disabled={save.isPending}
           error={touched ? intervalError : null}
-          hint="0 désactive la synchronisation automatique ; la resynchronisation manuelle reste possible."
+          hint="0 disables automatic syncing; a manual resync stays available."
         />
 
         <TextField
           id="settings-cache"
-          label="Taille maximale du cache (Go)"
+          label="Maximum cache size (GB)"
           value={cacheSize}
           onChange={setCacheSize}
           inputMode="decimal"
           disabled={save.isPending}
           error={touched ? cacheError : null}
-          hint="Vignettes et rendus. Au-delà, les entrées les plus anciennes sont évincées."
+          hint="Thumbnails and renders. Past it, the oldest entries are evicted."
         />
 
         <TextField
           id="settings-video-cache"
-          label="Taille maximale des vidéos préparées (Go)"
+          label="Maximum size of prepared videos (GB)"
           value={videoCacheSize}
           onChange={setVideoCacheSize}
           inputMode="decimal"
           disabled={save.isPending}
           error={touched ? videoCacheError : null}
-          hint="Budget distinct de celui des vignettes : une vidéo coûte des minutes de processeur, une vignette quelques secondes. Compter environ 95 Mo par minute de film en 1080p."
+          hint="A budget of its own, separate from thumbnails: a video costs minutes of CPU, a thumbnail a few seconds. Reckon about 95 MB per minute of 1080p footage."
         />
       </div>
 
       <TextField
         id="settings-moderation-email"
-        label="Adresse prévenue des nouveaux commentaires"
+        label="Address told about new comments"
         type="email"
         value={moderationEmail}
         onChange={setModerationEmail}
         disabled={save.isPending}
         hint={
           mailConfigured
-            ? 'Reçoit un email à chaque commentaire posté. Vide : aucune alerte de modération.'
-            : 'Aucun serveur SMTP configuré : renseignée, elle ne recevra rien — et personne ne peut commenter tant que les codes de vérification ne peuvent pas partir.'
+            ? 'Gets an email for every comment posted. Empty: no moderation alert.'
+            : 'No SMTP server configured: filled in, it will receive nothing — and nobody can comment for as long as verification codes cannot be sent.'
         }
       />
 
       <Checkbox
         id="settings-startup"
-        label="Synchroniser au démarrage du serveur"
+        label="Sync when the server starts"
         checked={onStartup}
         onChange={setOnStartup}
         disabled={save.isPending}
-        hint="Utile après un redémarrage ; à éviter si le démarrage doit être immédiat."
+        hint="Useful after a restart; avoid it if startup has to be immediate."
       />
 
       <Checkbox
         id="settings-prewarm"
-        label="Préparer les photos à l'avance"
+        label="Prepare photos in advance"
         checked={prewarm}
         onChange={setPrewarm}
         disabled={save.isPending}
-        hint="Rend les photos en fond, une à la fois, des plus récentes aux plus anciennes : la première ouverture passe de quelques secondes à instantanée. À décocher si la liaison Internet du serveur est comptée."
+        hint="Renders photos in the background, one at a time, newest to oldest: the first opening goes from a few seconds to instant. Untick it if the bandwidth of the server is metered."
       />
 
       <Checkbox
         id="settings-transcode"
-        label="Préparer les vidéos que le navigateur ne sait pas lire"
+        label="Prepare the videos the browser cannot play"
         checked={transcode}
         onChange={setTranscode}
         disabled={save.isPending}
-        hint="Convertit en fond les vidéos HEVC, une à la fois et à priorité basse : compter environ une minute de processeur par minute de film. Sans cela, elles restent seulement téléchargeables."
+        hint="Converts HEVC videos in the background, one at a time and at low priority: reckon about a minute of CPU per minute of footage. Without it, they stay downloadable only."
       />
 
-      <FormError
-        message={save.error ? errorText(save.error, "L'enregistrement a échoué.") : null}
-      />
+      <FormError message={save.error ? errorText(save.error, 'Saving failed.') : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={reset} disabled={!dirty || save.isPending}>
-          Annuler
+          Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={!dirty || save.isPending}>
-          {save.isPending ? 'Enregistrement…' : 'Enregistrer'}
+          {save.isPending ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </form>

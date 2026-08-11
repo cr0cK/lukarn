@@ -120,7 +120,7 @@ function releve(): Ligne[] {
 
   return [
     info('Viewport CSS', `${window.innerWidth} × ${window.innerHeight}`),
-    info('Écran', `${window.screen.width} × ${window.screen.height}`),
+    info('Screen', `${window.screen.width} × ${window.screen.height}`),
     info('devicePixelRatio', String(window.devicePixelRatio)),
     info('Encoches h/d/b/g', encoches()),
     info('Pointeur fin', window.matchMedia('(pointer: fine)').matches ? 'oui' : 'non'),
@@ -129,7 +129,7 @@ function releve(): Ligne[] {
     test(
       // Un NON ne condamne plus l'application : la feuille produite est dépliée
       // à la construction (D260809h). Reste un bon marqueur de génération.
-      '@layer — plus requis, déplié à la construction',
+      '@layer — no longer required, unwrapped at build time',
       regleAppliquee(
         '@layer diagnostic { #sonde-diagnostic { color: rgb(1, 2, 3) } }',
         (sonde) => getComputedStyle(sonde).color === 'rgb(1, 2, 3)',
@@ -147,12 +147,12 @@ function releve(): Ligne[] {
     test('color-mix()', supporte('color', 'color-mix(in oklab, red 50%, blue)')),
     test('oklch()', supporte('color', 'oklch(63.7% .237 25.331)')),
 
-    test('inset-inline appliqué (mesuré)', insetInline),
-    test('padding-inline appliqué (mesuré)', paddingInline),
-    test('flex: 1 1 0% appliqué (mesuré)', flexUn),
+    test('inset-inline applied (measured)', insetInline),
+    test('padding-inline applied (measured)', paddingInline),
+    test('flex: 1 1 0% applied (measured)', flexUn),
 
     test(':has()', supporteCondition('selector(:has(a))')),
-    test('unités dvh', supporte('height', '100dvh')),
+    test('dvh units', supporte('height', '100dvh')),
     test('backdrop-filter', supporte('backdrop-filter', 'blur(4px)')),
     test('scrollbar-gutter', supporte('scrollbar-gutter', 'stable')),
     test('scrollbar-width', supporte('scrollbar-width', 'thin')),

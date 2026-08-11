@@ -14,7 +14,7 @@ const APPAREILS: Record<DeviceKind, string> = {
   mobile: 'mobile',
   tablette: 'tablette',
   ordinateur: 'ordinateur',
-  tv: 'téléviseur',
+  tv: 'television',
 };
 
 /** Une mesure et son intitulé. Le chiffre d'abord : c'est lui qu'on parcourt. */
@@ -68,18 +68,15 @@ function LigneVisiteur({ visiteur }: { visiteur: VisitorRow }): ReactElement {
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <Quand iso={visiteur.lastSeenAt ?? visiteur.lastAt} />
           <span className="text-xs text-ink-600">·</span>
-          <Mesure valeur={visiteur.days} unite={visiteur.days > 1 ? 'jours' : 'jour'} />
+          <Mesure valeur={visiteur.days} unite={visiteur.days > 1 ? 'days' : 'day'} />
           <span className="text-xs text-ink-600">·</span>
-          <Mesure
-            valeur={visiteur.sessions}
-            unite={visiteur.sessions > 1 ? 'appareils' : 'appareil'}
-          />
+          <Mesure valeur={visiteur.sessions} unite={visiteur.sessions > 1 ? 'devices' : 'device'} />
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 xl:justify-end">
         <Mesure valeur={visiteur.albums} unite={visiteur.albums > 1 ? 'albums' : 'album'} />
-        <Mesure valeur={visiteur.visits} unite={visiteur.visits > 1 ? 'visites' : 'visite'} />
+        <Mesure valeur={visiteur.visits} unite={visiteur.visits > 1 ? 'visits' : 'visit'} />
         <Mesure valeur={visiteur.photos} unite={visiteur.photos > 1 ? 'photos' : 'photo'} />
       </div>
     </div>
@@ -96,20 +93,20 @@ function LigneAlbum({ album }: { album: AlbumVisitRow }): ReactElement {
           <span className="truncate">{album.title ?? album.albumId}</span>
           {album.title === null && (
             <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs font-normal text-ink-400">
-              supprimé
+              deleted
             </span>
           )}
         </p>
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
           <Quand iso={album.lastAt} />
           <span className="text-xs text-ink-600">·</span>
-          <Mesure valeur={album.keys} unite={album.keys > 1 ? 'clés' : 'clé'} />
+          <Mesure valeur={album.keys} unite={album.keys > 1 ? 'keys' : 'key'} />
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 xl:justify-end">
-        <Mesure valeur={album.visitors} unite={album.visitors > 1 ? 'visiteurs' : 'visiteur'} />
-        <Mesure valeur={album.visits} unite={album.visits > 1 ? 'visites' : 'visite'} />
+        <Mesure valeur={album.visitors} unite={album.visitors > 1 ? 'visitors' : 'visitor'} />
+        <Mesure valeur={album.visits} unite={album.visits > 1 ? 'visits' : 'visit'} />
         <Mesure valeur={album.photos} unite={album.photos > 1 ? 'photos' : 'photo'} />
       </div>
     </div>
@@ -128,15 +125,15 @@ export function VisitsSection(): ReactElement {
   const { data, isPending, error } = useVisits(days);
 
   const fenetre = (
-    <div className="flex gap-1" role="group" aria-label="Fenêtre de mesure">
+    <div className="flex gap-1" role="group" aria-label="Measurement window">
       {VISIT_WINDOWS.map((valeur) => (
         <Button
           key={valeur}
           variant={valeur === days ? 'primary' : 'default'}
           onClick={() => setDays(valeur)}
-          ariaLabel={`Les ${valeur} derniers jours`}
+          ariaLabel={`The last ${valeur} days`}
         >
-          {valeur} j
+          {valeur} d
         </Button>
       ))}
     </div>
@@ -144,9 +141,9 @@ export function VisitsSection(): ReactElement {
 
   if (error) {
     return (
-      <Section title="Visites" action={fenetre}>
+      <Section title="Visits" action={fenetre}>
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Impossible de charger les visites.')} />
+          <FormError message={errorText(error, 'Cannot load the visits.')} />
         </div>
       </Section>
     );
@@ -154,9 +151,9 @@ export function VisitsSection(): ReactElement {
 
   if (isPending) {
     return (
-      <Section title="Visites" action={fenetre}>
+      <Section title="Visits" action={fenetre}>
         <div className="px-4 py-6">
-          <Spinner label="Chargement des visites" />
+          <Spinner label="Loading visits" />
         </div>
       </Section>
     );
@@ -165,14 +162,12 @@ export function VisitsSection(): ReactElement {
   return (
     <>
       <Section
-        title="Qui"
-        description={`Les clés d'accès venues depuis le ${formatDate(`${data.since}T00:00:00.000Z`)}.`}
+        title="Who"
+        description={`The access keys seen since ${formatDate(`${data.since}T00:00:00.000Z`)}.`}
         action={fenetre}
       >
         {data.visitors.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-ink-400">
-            Personne ne s'est connecté sur cette période.
-          </p>
+          <p className="px-4 py-6 text-sm text-ink-400">Nobody signed in over this period.</p>
         ) : (
           data.visitors.map((visiteur) => (
             <LigneVisiteur key={visiteur.username} visiteur={visiteur} />
@@ -181,13 +176,11 @@ export function VisitsSection(): ReactElement {
       </Section>
 
       <Section
-        title="Quels albums"
-        description="Un visiteur est une session : deux navigateurs derrière la même clé en font deux."
+        title="Which albums"
+        description="A visitor is a session: two browsers behind the same key make two."
       >
         {data.albums.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-ink-400">
-            Aucun album n'a été ouvert sur cette période.
-          </p>
+          <p className="px-4 py-6 text-sm text-ink-400">No album was opened over this period.</p>
         ) : (
           data.albums.map((album) => <LigneAlbum key={album.albumId} album={album} />)
         )}

@@ -17,7 +17,7 @@ export function ExifPanel({
   detail: MediaDetail | undefined;
   day: AlbumDay | undefined;
 }): ReactElement {
-  if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">Chargement…</p>;
+  if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">Loading…</p>;
 
   return (
     <dl className="divide-y divide-ink-800">

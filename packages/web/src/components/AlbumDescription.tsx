@@ -48,10 +48,7 @@ export function AlbumDescription({
         <p className="text-sm leading-relaxed whitespace-pre-line text-ink-300">
           {description}
           {editable && (
-            <EditButton
-              label="Modifier la description de l'album"
-              onClick={() => setEditing(true)}
-            />
+            <EditButton label="Edit the album description" onClick={() => setEditing(true)} />
           )}
         </p>
       ) : (
@@ -60,7 +57,7 @@ export function AlbumDescription({
           onClick={() => setEditing(true)}
           className="rounded-lg text-sm text-ink-500 transition-colors hover:text-ink-200"
         >
-          + Décrire cet album
+          + Describe this album
         </button>
       )}
 
@@ -139,14 +136,14 @@ function DescriptionEditor({
         maxLength={ALBUM_DESCRIPTION_MAX_LENGTH}
         rows={4}
         placeholder="Ce que contient cet album"
-        aria-label="Description de l'album"
+        aria-label="Album description"
         autoFocus
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, "L'enregistrement a échoué.")}
+          {errorText(update.error, 'Saving failed.')}
         </p>
       )}
 
@@ -161,14 +158,14 @@ function DescriptionEditor({
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Annuler
+            Cancel
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            {update.isPending ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

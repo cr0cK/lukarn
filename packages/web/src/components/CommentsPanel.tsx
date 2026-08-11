@@ -40,7 +40,7 @@ export function CommentsPanel({
   if (isPending) {
     return (
       <div className="flex justify-center py-8">
-        <Spinner label="Chargement des commentaires" />
+        <Spinner label="Loading comments" />
       </div>
     );
   }
@@ -48,7 +48,7 @@ export function CommentsPanel({
   if (error) {
     return (
       <p className="px-5 py-4 text-sm text-ink-400">
-        {errorText(error, 'Les commentaires n’ont pas pu être chargés.')}
+        {errorText(error, 'Comments could not be loaded.')}
       </p>
     );
   }
@@ -59,9 +59,7 @@ export function CommentsPanel({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto">
         {threads.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-ink-400">
-            Aucun commentaire. Sois le premier à en écrire un.
-          </p>
+          <p className="px-5 py-6 text-sm text-ink-400">No comments. Be the first to write one.</p>
         ) : (
           <ul className="divide-y divide-ink-800">
             {threads.map((thread) => (
@@ -132,8 +130,7 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
   if (me && !me.commentsEnabled) {
     return (
       <p className="text-sm text-ink-400">
-        Les commentaires sont indisponibles : cette galerie n’a pas de serveur d’envoi d’emails
-        configuré.
+        Comments are unavailable: this gallery has no mail server configured.
       </p>
     );
   }
@@ -198,7 +195,7 @@ function ThreadView({
             albumId={albumId}
             mediaId={mediaId}
             parentId={thread.root.id}
-            placeholder={`Répondre à ${thread.root.author.displayName}…`}
+            placeholder={`Reply to ${thread.root.author.displayName}…`}
             autoFocus
             onDone={() => onReplyTo(null)}
           />
@@ -275,9 +272,7 @@ function CommentView({
           initial={comment.body}
           pending={update.isPending}
           error={
-            update.isError
-              ? errorText(update.error, 'La correction n’a pas pu être enregistrée.')
-              : null
+            update.isError ? errorText(update.error, 'The correction could not be saved.') : null
           }
           onCancel={() => {
             update.reset();
@@ -299,7 +294,7 @@ function CommentView({
       <div className="mt-1.5 flex gap-3 text-xs text-ink-400">
         {onReply && !editing && (
           <button type="button" onClick={onReply} className="transition-colors hover:text-ink-100">
-            Répondre
+            Reply
           </button>
         )}
         {secondsLeft !== null && !editing && (
@@ -321,7 +316,7 @@ function CommentView({
             // pas à peser autant que « Répondre » dans la lecture d'un fil.
             className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:text-red-400 disabled:opacity-50"
           >
-            Supprimer
+            Delete
           </button>
         )}
       </div>
@@ -383,14 +378,14 @@ function EditForm({
           onClick={onCancel}
           className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
         >
-          Annuler
+          Cancel
         </button>
         <button
           type="submit"
           disabled={!body.trim() || pending}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {pending ? 'Envoi…' : 'Enregistrer'}
+          {pending ? 'Sending…' : 'Save'}
         </button>
       </div>
     </form>
@@ -563,7 +558,7 @@ function CommentForm({
 
       {create.isError && (
         <p className="mt-1 text-xs text-red-400">
-          {errorText(create.error, 'Le commentaire n’a pas pu être publié.')}
+          {errorText(create.error, 'The comment could not be posted.')}
         </p>
       )}
 
@@ -579,7 +574,7 @@ function CommentForm({
             onClick={onDone}
             className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
           >
-            Annuler
+            Cancel
           </button>
         )}
         <EmojiPicker onPick={addEmoji} />
@@ -588,7 +583,7 @@ function CommentForm({
           disabled={!body.trim() || create.isPending}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {create.isPending ? 'Envoi…' : 'Publier'}
+          {create.isPending ? 'Sending…' : 'Post'}
         </button>
       </div>
     </form>

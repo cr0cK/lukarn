@@ -547,7 +547,7 @@ export function Lightbox({
       ? []
       : [
           {
-            label: zoomed ? 'Revenir à la taille écran' : 'Zoomer',
+            label: zoomed ? 'Back to screen size' : 'Zoom in',
             shortcut: 'z',
             active: zoomed,
             onSelect: () => setZoomed((value) => !value),
@@ -560,19 +560,19 @@ export function Lightbox({
           },
         ]),
     {
-      label: "Télécharger l'original",
+      label: 'Download the original',
       shortcut: 'd',
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
     {
-      label: 'Plein écran',
+      label: 'Fullscreen',
       shortcut: 'f',
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
     {
-      label: "Masquer l'habillage",
+      label: 'Hide the chrome',
       shortcut: 'h',
       onSelect: () => setBare(true),
       // Un œil barré : c'est ce qui disparaît, pas ce qui reste.
@@ -600,7 +600,7 @@ export function Lightbox({
     ...(isAdmin && !isVideo
       ? [
           {
-            label: isCover ? "Couverture de l'album" : 'Définir comme couverture',
+            label: isCover ? 'Album cover' : 'Set as cover',
             active: isCover,
             onSelect: () => setCover.mutate({ albumId, body: { coverId: item.id } }),
             icon: (
@@ -696,8 +696,8 @@ export function Lightbox({
               type="button"
               onClick={onClose}
               className="shrink-0 rounded-full p-1.5 text-ink-200 transition-colors sm:p-2 hover:bg-white/10 hover:text-white"
-              aria-label="Fermer (Échap)"
-              title="Fermer (Échap)"
+              aria-label="Close (Esc)"
+              title="Close (Esc)"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -855,7 +855,7 @@ export function Lightbox({
 
             {isVideo && failed ? (
               <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
-                <p className="text-sm text-ink-300">Cette vidéo n'a pas pu être lue.</p>
+                <p className="text-sm text-ink-300">This video could not be played.</p>
                 {/* Le format en cause plutôt qu'un « une erreur est survenue » :
                   c'est presque toujours un codec que ce navigateur ne décode
                   pas (D79), et le fichier reste parfaitement lisible ailleurs.
@@ -867,15 +867,15 @@ export function Lightbox({
                   demander de revenir ni de recharger (D260809b). */}
                 <p className="text-xs text-ink-400">
                   {transcoded
-                    ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur : elle démarrera ici dès qu'elle sera prête. Le fichier d'origine reste téléchargeable."
-                    : "Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste téléchargeable."}
+                    ? 'This browser does not decode its format. A playable version is being prepared on the server: it will start here as soon as it is ready. The original file stays downloadable.'
+                    : 'Its format may not be playable by this browser. The original file stays downloadable.'}
                 </p>
                 <button
                   type="button"
                   onClick={download}
                   className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
                 >
-                  Télécharger
+                  Download
                 </button>
               </div>
             ) : isVideo ? (
@@ -929,8 +929,8 @@ export function Lightbox({
             <button
               type="button"
               onClick={() => setBare(false)}
-              title="Afficher l'habillage (h)"
-              aria-label="Afficher l'habillage (h)"
+              title="Show the chrome (h)"
+              aria-label="Show the chrome (h)"
               className="absolute top-[calc(0.5rem_+_env(safe-area-inset-top))] right-[calc(0.5rem_+_env(safe-area-inset-right))] z-10 rounded-full bg-black/40 p-2 text-ink-200 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
             >
               <svg
@@ -960,7 +960,7 @@ export function Lightbox({
               role="alert"
               className="absolute inset-x-4 bottom-28 mx-auto max-w-md rounded-lg bg-red-950/90 px-3 py-2 text-center text-xs text-red-200 shadow-lg"
             >
-              {errorText(setCover.error, "La couverture n'a pas pu être enregistrée.")}
+              {errorText(setCover.error, 'The cover could not be saved.')}
             </p>
           )}
         </div>
@@ -984,7 +984,7 @@ export function Lightbox({
             side="left"
             disabled={index === 0}
             onClick={() => goTo(index - 1)}
-            label="Précédent (←)"
+            label="Previous (←)"
           />
         )}
         {!zoomed && !bare && (
@@ -992,7 +992,7 @@ export function Lightbox({
             side="right"
             disabled={index === items.length - 1}
             onClick={() => goTo(index + 1)}
-            label="Suivant (→)"
+            label="Next (→)"
           />
         )}
 
@@ -1171,7 +1171,7 @@ function CommentBadge({ total, unread }: { total: number; unread: number }): Rea
  * pastille, celle-ci étant purement visuelle.
  */
 function commentsLabel(total: number, unread: number): string {
-  if (total === 0) return 'Commentaires (c)';
+  if (total === 0) return 'Comments (c)';
   if (unread === 0) return `Commentaires : ${total} (c)`;
   return `Commentaires : ${total}, dont ${unread} non ${unread > 1 ? 'lus' : 'lu'} (c)`;
 }

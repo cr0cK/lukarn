@@ -106,7 +106,7 @@ export function CommentsFeed({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Activité récente"
+      aria-label="Recent activity"
       className="fixed inset-0 z-40 flex justify-end bg-black/60"
       onClick={onClose}
     >
@@ -119,7 +119,7 @@ export function CommentsFeed({
       >
         <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-sm font-medium text-ink-100">Activité récente</h2>
+            <h2 className="text-sm font-medium text-ink-100">Recent activity</h2>
             <p className="mt-0.5 text-xs text-ink-400">
               Les derniers messages, toutes photos confondues.
             </p>
@@ -128,7 +128,7 @@ export function CommentsFeed({
             type="button"
             onClick={onClose}
             className="shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-            aria-label="Fermer l’activité (Échap)"
+            aria-label="Close activity (Esc)"
           >
             <svg
               viewBox="0 0 24 24"
@@ -147,7 +147,7 @@ export function CommentsFeed({
         {albumId && (
           <div className="flex gap-1 border-b border-ink-800 px-5 py-2.5">
             <ScopeTab active={scope === 'all'} onSelect={() => setScope('all')}>
-              Tous les albums
+              Every album
             </ScopeTab>
             <ScopeTab active={scope === 'album'} onSelect={() => setScope('album')}>
               {albumTitle ?? 'Cet album'}
@@ -158,19 +158,19 @@ export function CommentsFeed({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isPending && (
             <div className="flex justify-center py-8">
-              <Spinner label="Chargement de l’activité" />
+              <Spinner label="Loading activity" />
             </div>
           )}
 
           {error && (
             <p role="alert" className="px-5 py-4 text-sm text-ink-400">
-              {errorText(error, 'L’activité n’a pas pu être chargée.')}
+              {errorText(error, 'Activity could not be loaded.')}
             </p>
           )}
 
           {!isPending && !error && days.length === 0 && (
             <p className="px-5 py-6 text-sm text-ink-400">
-              Aucun commentaire pour l’instant. Ouvre une photo pour en écrire le premier.
+              No comments yet. Open a photo to write the first one.
             </p>
           )}
 
@@ -204,7 +204,7 @@ export function CommentsFeed({
                 disabled={isFetchingNextPage}
                 className="w-full rounded-lg border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 disabled:opacity-60"
               >
-                {isFetchingNextPage ? 'Chargement…' : 'Messages plus anciens'}
+                {isFetchingNextPage ? 'Loading…' : 'Older messages'}
               </button>
             </div>
           )}
@@ -270,7 +270,7 @@ function PhotoBlock({
             to={target}
             onClick={onNavigate}
             className="group shrink-0"
-            aria-label={`Voir ${photo.mediaName} dans ${photo.albumTitle}`}
+            aria-label={`View ${photo.mediaName} in ${photo.albumTitle}`}
           >
             <img
               src={mediaUrl.thumb(photo.mediaId, 320, version)}
@@ -295,7 +295,7 @@ function PhotoBlock({
                 {photo.mediaName}
               </Link>
             ) : (
-              <span className="italic">photo retirée de l’index</span>
+              <span className="italic">photo removed from the index</span>
             )}
             {showAlbum && <span> · {photo.albumTitle}</span>}
           </p>
@@ -316,7 +316,7 @@ function PhotoBlock({
                   <time dateTime={comment.createdAt} title={formatLocalDateTime(comment.createdAt)}>
                     {formatRelative(comment.createdAt)}
                   </time>
-                  {comment.parentId !== null && <span>· en réponse</span>}
+                  {comment.parentId !== null && <span>· in reply</span>}
                 </p>
                 {/* Trois lignes au plus : le tiroir est un survol de ce qui a
                     été dit, pas la conversation — celle-ci s'ouvre sous la

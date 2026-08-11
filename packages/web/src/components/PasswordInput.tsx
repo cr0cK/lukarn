@@ -26,8 +26,8 @@ export function PasswordInput({ className = '', ...props }: PasswordInputProps):
         disabled={props.disabled}
         // Le libellé annonce ce que le clic **fera**, comme les contrôles de la
         // barre : « Afficher » sur un champ masqué.
-        aria-label={revealed ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-        title={revealed ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+        aria-label={revealed ? 'Hide the password' : 'Show the password'}
+        title={revealed ? 'Hide the password' : 'Show the password'}
         // Décollé du bord plutôt que collé à `inset-y-0` : l'anneau de focus au
         // clavier déborde de 2 px, il serait rogné par le bord du champ.
         className="absolute top-1/2 right-1.5 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-ink-400 transition-colors hover:text-ink-100 disabled:opacity-60"

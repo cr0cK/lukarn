@@ -128,7 +128,7 @@ export function TopBar({
     ...(user?.admin
       ? [{ label: 'Administration', icon: <IconeAdmin />, onSelect: () => void navigate('/admin') }]
       : []),
-    { label: 'Déconnexion', icon: <IconeDeconnexion />, onSelect: seDeconnecter },
+    { label: 'Sign out', icon: <IconeDeconnexion />, onSelect: seDeconnecter },
     ...(install.disponible
       ? [{ label: 'Installer', icon: <IconeInstaller />, onSelect: proposerInstallation }]
       : []),
@@ -151,7 +151,7 @@ export function TopBar({
           <Link
             to="/"
             className="-ml-1 rounded-full p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
-            aria-label="Retour aux albums"
+            aria-label="Back to the albums"
           >
             <svg
               viewBox="0 0 24 24"
@@ -198,7 +198,7 @@ export function TopBar({
             <button
               type="button"
               onClick={feed.onOpen}
-              title="Activité récente"
+              title="Recent activity"
               aria-label={feedLabel(feed.unread)}
               className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
             >
@@ -257,7 +257,7 @@ export function TopBar({
           {actions.length > 0 && (
             <div className="sm:hidden">
               <ActionMenu
-                label="Affichage"
+                label="View"
                 groupes={[
                   actions.map((item) => ({
                     label: item.action,
@@ -274,7 +274,7 @@ export function TopBar({
             réseau, puis une lettre, ferait sursauter la barre à chaque page. */}
           {user && (
             <ActionMenu
-              label="Compte"
+              label="Account"
               // L'initiale de l'identifiant, pas celle du nom d'affichage : c'est
               // la première ligne du menu qu'elle abrège, et deux lettres
               // différentes de part et d'autre du clic se liraient comme un défaut.
@@ -300,8 +300,8 @@ export function TopBar({
  * pastille, celle-ci étant purement visuelle.
  */
 function feedLabel(unread: number): string {
-  if (unread === 0) return 'Activité récente';
-  return `Activité récente : ${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`;
+  if (unread === 0) return 'Recent activity';
+  return `Recent activity: ${unread} unread message${unread > 1 ? 's' : ''}`;
 }
 
 /**

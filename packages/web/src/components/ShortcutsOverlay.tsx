@@ -4,36 +4,36 @@ const GROUPS: { title: string; shortcuts: [string, string][] }[] = [
   {
     title: 'Albums',
     shortcuts: [
-      ['/', 'Rechercher un album, un lieu, une photo'],
-      ['↑ ↓', 'Parcourir les suggestions'],
-      ['Entrée', 'Ouvrir la suggestion'],
-      ['Échap', 'Fermer la liste, puis vider le champ'],
+      ['/', 'Search an album, a place, a photo'],
+      ['↑ ↓', 'Walk through the suggestions'],
+      ['Enter', 'Open the suggestion'],
+      ['Esc', 'Close the list, then clear the field'],
     ],
   },
   {
-    title: 'Grille',
+    title: 'Grid',
     shortcuts: [
-      ['← ↑ ↓ →', 'Se déplacer entre les photos'],
-      ['Entrée', 'Ouvrir en plein écran'],
-      ['Début / Fin', 'Première / dernière photo'],
-      ['Échap', 'Revenir aux albums'],
+      ['← ↑ ↓ →', 'Move between photos'],
+      ['Enter', 'Open fullscreen'],
+      ['Home / End', 'First / last photo'],
+      ['Esc', 'Back to the albums'],
     ],
   },
   {
-    title: 'Visionneuse',
+    title: 'Viewer',
     shortcuts: [
-      ['← →', 'Photo précédente / suivante'],
-      ['Échap', 'Quitter le zoom, puis fermer'],
-      ['F', 'Plein écran'],
+      ['← →', 'Previous / next photo'],
+      ['Esc', 'Leave the zoom, then close'],
+      ['F', 'Fullscreen'],
       ['I', 'Informations et EXIF'],
-      ['C', 'Commentaires'],
-      ['D', "Télécharger l'original"],
-      ['Z', 'Zoom à 100 %'],
-      ['L', 'Masquer / afficher la légende'],
-      ['H', "Masquer l'habillage, rien que la photo"],
+      ['C', 'Comments'],
+      ['D', 'Download the original'],
+      ['Z', 'Zoom to 100%'],
+      ['L', 'Hide / show the caption'],
+      ['H', 'Hide the chrome, nothing but the photo'],
       ['Molette', 'Zoom progressif'],
-      ['Glisser', "Se déplacer dans l'image, ou dans le repère en bas à droite"],
-      ['Espace', 'Lecture / pause vidéo'],
+      ['Drag', 'Move inside the image, or inside the locator at bottom right'],
+      ['Space', 'Play / pause video'],
     ],
   },
 ];
@@ -52,7 +52,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }): ReactEle
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Raccourcis clavier"
+      aria-label="Keyboard shortcuts"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
@@ -61,12 +61,12 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }): ReactEle
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-medium">Raccourcis clavier</h2>
+          <h2 className="text-base font-medium">Keyboard shortcuts</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-            aria-label="Fermer"
+            aria-label="Close"
           >
             <svg
               viewBox="0 0 24 24"

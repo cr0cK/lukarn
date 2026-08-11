@@ -115,7 +115,7 @@ export function dayKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
-export function monthLabel(key: string, locale = 'fr-FR'): string {
+export function monthLabel(key: string, locale = 'en-GB'): string {
   const [year, month] = key.split('-');
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
   const label = new Intl.DateTimeFormat(locale, {
@@ -162,8 +162,8 @@ function previousDayKey(key: string): string {
  * `today` est injectable pour que les tests ne dépendent pas de la date du jour.
  */
 export function dayLabel(key: string, today = localDayKey(new Date())): string {
-  if (key === today) return "Aujourd'hui";
-  if (key === previousDayKey(today)) return 'Hier';
+  if (key === today) return 'Today';
+  if (key === previousDayKey(today)) return 'Yesterday';
   // Midi et non minuit : une clé de jour n'est qu'un quantième, et si un
   // formateur de `format.ts` cessait un jour d'être en UTC, minuit basculerait
   // de jour dans la moitié des fuseaux — midi ne bascule dans aucun.

@@ -29,11 +29,10 @@ export function DriveSection({
   const disconnect = useMutation({
     mutationFn: api.driveDisconnect,
     onSuccess: () => {
-      notify({ tone: 'ok', text: 'Google Drive déconnecté.' });
+      notify({ tone: 'ok', text: 'Google Drive disconnected.' });
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
-    onError: (error) =>
-      notify({ tone: 'error', text: errorText(error, 'Déconnexion impossible.') }),
+    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot disconnect.') }),
   });
 
   /**
@@ -45,15 +44,15 @@ export function DriveSection({
    */
   if (status.driveMode === 'service_account') {
     return (
-      <Section title="Connexion Google Drive">
+      <Section title="Google Drive connection">
         <div className="px-4 py-4">
           <p className="text-sm text-ink-200">
             Compte de service{status.driveAccount ? ` — ${status.driveAccount}` : ''}
           </p>
           <p className="mt-1 text-xs text-ink-400">
-            Aucun consentement à donner, aucun jeton à renouveler. Chaque dossier d'album doit être
-            partagé en lecture avec cette adresse depuis Google Drive — sans quoi il reste
-            invisible, et sa synchronisation ne trouve rien.
+            No consent to give, no token to renew. Every album folder has to be shared read-only
+            with this address from Google Drive — otherwise it stays invisible, et sa
+            synchronisation ne trouve rien.
           </p>
         </div>
       </Section>
@@ -61,36 +60,35 @@ export function DriveSection({
   }
 
   return (
-    <Section title="Connexion Google Drive">
+    <Section title="Google Drive connection">
       <div className={`${ROW_CLASS} px-4 py-4 xl:items-center`}>
         <div className="min-w-0 flex-1">
           {!status.oauthConfigured ? (
             <p className="text-sm text-amber-300">
-              GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET ne sont pas définis dans le fichier{' '}
-              <code>.env</code>.
+              GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set in the <code>.env</code> file.
             </p>
           ) : status.driveRevokedAt ? (
             // L'autorisation a existé mais Google la refuse désormais.
             // Le dire explicitement évite de chercher la panne ailleurs.
             <>
               <p className="text-sm text-red-300">
-                Autorisation révoquée
+                Authorisation revoked
                 {status.driveAccount ? ` pour ${status.driveAccount}` : ''} —{' '}
                 {formatRelative(status.driveRevokedAt)}
               </p>
               <p className="mt-1 text-xs text-ink-400">
-                L'accès a été retiré côté Google, ou le jeton a expiré. Les albums restent
+                Access was withdrawn on the Google side, or the token expired. The albums stay
                 consultables tant que les vignettes sont en cache. Reconnecte pour reprendre les
                 synchronisations.
               </p>
             </>
           ) : status.driveConnected ? (
             <p className="text-sm text-ink-200">
-              Connecté{status.driveAccount ? ` — ${status.driveAccount}` : ''}
+              Connected{status.driveAccount ? ` — ${status.driveAccount}` : ''}
             </p>
           ) : (
             <p className="text-sm text-ink-300">
-              Aucun compte connecté. Autorise l'accès en lecture à ton Drive.
+              No account connected. Authorise read access to your Drive.
             </p>
           )}
         </div>
@@ -102,7 +100,7 @@ export function DriveSection({
               onClick={() => disconnect.mutate()}
               disabled={disconnect.isPending}
             >
-              Déconnecter
+              Disconnect
             </Button>
           ) : (
             <Button
@@ -110,7 +108,7 @@ export function DriveSection({
               onClick={() => connect.mutate()}
               disabled={!status.oauthConfigured || connect.isPending}
             >
-              {status.driveRevokedAt ? 'Reconnecter Google Drive' : 'Connecter Google Drive'}
+              {status.driveRevokedAt ? 'Reconnect Google Drive' : 'Connect Google Drive'}
             </Button>
           )}
         </div>

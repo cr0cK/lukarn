@@ -19,15 +19,15 @@ import { FormError, type Notice } from '../components/admin/ui';
 const OAUTH_MESSAGES: Record<string, Notice> = {
   connected: {
     tone: 'ok',
-    text: 'Google Drive est connecté. La première synchronisation a démarré.',
+    text: 'Google Drive is connected. The first sync has started.',
   },
-  denied: { tone: 'error', text: 'Autorisation refusée côté Google.' },
-  invalid: { tone: 'error', text: 'Réponse Google incomplète. Recommence la connexion.' },
+  denied: { tone: 'error', text: 'Authorisation refused on the Google side.' },
+  invalid: { tone: 'error', text: 'Incomplete response from Google. Start the connection again.' },
   state_mismatch: {
     tone: 'error',
-    text: 'Le jeton anti-CSRF ne correspond pas. Relance la connexion depuis cette page.',
+    text: 'The anti-CSRF token does not match. Start the connection again from this page.',
   },
-  error: { tone: 'error', text: 'La connexion a échoué. Consulte les logs du serveur.' },
+  error: { tone: 'error', text: 'The connection failed. Check the server logs.' },
 };
 
 export default function AdminPage(): ReactElement {
@@ -50,10 +50,8 @@ export default function AdminPage(): ReactElement {
   // connaître, sous peine d'annoncer « aucun album » à tort.
   const avecAlbums = (rendu: (liste: AdminAlbum[]) => ReactElement): ReactElement => (
     <>
-      {albums.isPending && <Spinner label="Chargement des albums" />}
-      {albums.error && (
-        <FormError message={errorText(albums.error, 'Impossible de charger les albums.')} />
-      )}
+      {albums.isPending && <Spinner label="Loading albums" />}
+      {albums.error && <FormError message={errorText(albums.error, 'Cannot load the albums.')} />}
       {albums.data && rendu(albums.data)}
     </>
   );
@@ -71,25 +69,23 @@ export default function AdminPage(): ReactElement {
             notify={setNotice}
           />
         ));
-      case 'comptes':
+      case 'accounts':
         return avecAlbums((liste) => <UsersSection albums={liste} notify={setNotice} />);
-      case 'commentaires':
+      case 'comments':
         return <CommentsSection notify={setNotice} />;
-      case 'serveur':
+      case 'server':
         return (
           <>
             {status.isPending && <Spinner />}
             {status.error && (
-              <FormError
-                message={errorText(status.error, "Impossible de charger l'état du serveur.")}
-              />
+              <FormError message={errorText(status.error, 'Cannot load the server state.')} />
             )}
             {status.data && <DriveSection status={status.data} notify={setNotice} />}
             <SettingsSection notify={setNotice} />
             {status.data && <MaintenanceSection status={status.data} notify={setNotice} />}
           </>
         );
-      case 'visites':
+      case 'visits':
         return <VisitsSection />;
     }
   };

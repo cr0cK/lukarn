@@ -5,15 +5,15 @@
  * 16 h pour un navigateur en Europe/Paris.
  */
 
-const DATE_TIME = new Intl.DateTimeFormat('fr-FR', {
+const DATE_TIME = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'long',
   timeStyle: 'short',
   timeZone: 'UTC',
 });
 
-const DATE_ONLY = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeZone: 'UTC' });
+const DATE_ONLY = new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' });
 
-const MONTH_YEAR = new Intl.DateTimeFormat('fr-FR', {
+const MONTH_YEAR = new Intl.DateTimeFormat('en-GB', {
   month: 'long',
   year: 'numeric',
   timeZone: 'UTC',
@@ -31,7 +31,7 @@ const MONTH_YEAR = new Intl.DateTimeFormat('fr-FR', {
  * Même logique que « Aujourd'hui » / « Hier » dans la grille (D31) : ce qui se
  * rapporte à l'horloge du lecteur se lit sur son horloge.
  */
-const LOCAL_DATE_TIME = new Intl.DateTimeFormat('fr-FR', {
+const LOCAL_DATE_TIME = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'long',
   timeStyle: 'short',
 });
@@ -64,7 +64,7 @@ export function formatRange(oldest: string | null, newest: string | null): strin
 export function formatBytes(bytes: number | null): string {
   if (bytes === null) return '—';
   if (bytes < 1024) return `${bytes} o`;
-  const units = ['Ko', 'Mo', 'Go', 'To'];
+  const units = ['kB', 'MB', 'GB', 'TB'];
   let value = bytes / 1024;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {
@@ -118,10 +118,10 @@ export function formatRelative(iso: string | null): string | null {
   const deltaMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(deltaMs / 60000);
 
-  if (minutes < 1) return "à l'instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `il y a ${hours} h`;
+  if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
-  return days === 1 ? 'hier' : `il y a ${days} jours`;
+  return days === 1 ? 'yesterday' : `${days} days ago`;
 }

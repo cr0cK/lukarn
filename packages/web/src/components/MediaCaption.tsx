@@ -80,7 +80,7 @@ export function MediaCaption({
           onClick={() => onHiddenChange(false)}
           className="rounded-full bg-black/40 px-2.5 py-1 text-xs text-ink-400 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-ink-100"
         >
-          Afficher la légende (l)
+          Show the caption (l)
         </button>
       </div>
     );
@@ -107,7 +107,7 @@ export function MediaCaption({
               onClick={() => onEditingChange(true)}
               className="rounded text-sm text-ink-400 transition-colors hover:text-ink-100"
             >
-              + Décrire cette photo
+              + Describe this photo
             </button>
           )}
 
@@ -119,7 +119,7 @@ export function MediaCaption({
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
                 aria-expanded={expanded}
-                aria-label={expanded ? 'Replier la légende' : 'Déplier la légende'}
+                aria-label={expanded ? 'Collapse the caption' : 'Expand the caption'}
                 className="block w-full space-y-0.5 text-left"
               >
                 {entries.map((entry) => (
@@ -134,10 +134,7 @@ export function MediaCaption({
             qu'il commande — la description de la photo, et le bandeau entier. */}
         <div className="flex shrink-0 flex-col justify-between">
           {editable && description ? (
-            <IconButton
-              label="Modifier la description de cette photo"
-              onClick={() => onEditingChange(true)}
-            >
+            <IconButton label="Edit this photo description" onClick={() => onEditingChange(true)}>
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
             </IconButton>
@@ -145,7 +142,7 @@ export function MediaCaption({
             <span />
           )}
 
-          <IconButton label="Masquer la légende (l)" onClick={() => onHiddenChange(true)}>
+          <IconButton label="Hide the caption (l)" onClick={() => onHiddenChange(true)}>
             <path d="m6 9 6 6 6-6" />
           </IconButton>
         </div>
@@ -261,14 +258,14 @@ function CaptionEditor({
         maxLength={MEDIA_DESCRIPTION_MAX_LENGTH}
         rows={3}
         placeholder="Ce qui se passe sur cette photo"
-        aria-label="Description de la photo"
+        aria-label="Photo description"
         autoFocus
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, "L'enregistrement a échoué.")}
+          {errorText(update.error, 'Saving failed.')}
         </p>
       )}
 
@@ -283,14 +280,14 @@ function CaptionEditor({
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Annuler
+            Cancel
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            {update.isPending ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

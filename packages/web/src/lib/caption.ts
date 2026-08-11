@@ -49,7 +49,7 @@ export interface CaptionEntry {
 export function captionEntries(source: CaptionSource): CaptionEntry[] {
   const candidates: { scope: CaptionScope; label: string | null; value: string | null }[] = [
     { scope: 'photo', label: null, value: source.description ?? null },
-    { scope: 'day', label: 'Ce jour-là', value: source.day ?? null },
+    { scope: 'day', label: 'That day', value: source.day ?? null },
   ];
 
   return candidates

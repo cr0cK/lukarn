@@ -260,7 +260,7 @@ export function buildAlbumUpdateMail(
     '',
     '—',
     `You are getting this because you have opened this album.`,
-    `Stop hearing about new photos in "${notification.albumTitle}" : ${unsubscribe}`,
+    `Stop hearing about new photos in "${notification.albumTitle}": ${unsubscribe}`,
   ].join('\n');
 
   // Même sobriété que les notifications de commentaires : styles en ligne, rien

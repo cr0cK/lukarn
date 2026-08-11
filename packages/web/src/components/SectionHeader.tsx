@@ -52,7 +52,7 @@ export function SectionHeader({
 }: SectionHeaderProps): ReactElement {
   const [editing, setEditing] = useState(false);
   const place = placeLabelOf(day);
-  const unit = section.count > 1 ? 'éléments' : 'élément';
+  const unit = section.count > 1 ? 'items' : 'item';
 
   return (
     <div
@@ -77,7 +77,7 @@ export function SectionHeader({
             onClick={onToggle}
             aria-expanded={!section.collapsed}
             aria-label={`${section.label}, ${section.count} ${unit}`}
-            title={section.collapsed ? 'Déplier' : 'Replier'}
+            title={section.collapsed ? 'Expand' : 'Collapse'}
             // `h-6` explicite : aligner sur la ligne de base décale la boîte du
             // compte (12 px) par rapport à celle du titre (16 px), ce qui
             // grandit la rangée de deux pixels. Sur une section repliée, dont
@@ -123,10 +123,10 @@ export function SectionHeader({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            title={day?.description || day?.place ? 'Modifier la note' : 'Annoter cette journée'}
+            title={day?.description || day?.place ? 'Edit the note' : 'Annotate this day'}
             // « la journée du Aujourd'hui » : les libellés relatifs de
             // `dayLabel` ne se laissent pas introduire par un article.
-            aria-label={`Annoter la journée « ${section.label} »`}
+            aria-label={`Annotate ${section.label}`}
             // Discret à la souris : un crayon par journée, tous visibles à la
             // fois, transformeraient la grille en formulaire. Mais le masquage
             // est réservé au **pointeur fin**, seul endroit où le survol peut
@@ -240,7 +240,7 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
         // Le placeholder montre ce que l'EXIF a déduit : on voit exactement ce
         // qu'on remplace en saisissant quelque chose.
         placeholder={day?.autoPlaces.join(' · ') || 'Lieu (facultatif)'}
-        aria-label="Lieu"
+        aria-label="Place"
         autoFocus
         className="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
@@ -250,14 +250,14 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
         onChange={(event) => setDescription(event.target.value)}
         maxLength={ALBUM_DAY_DESCRIPTION_MAX_LENGTH}
         rows={2}
-        placeholder="Ce qu'on a fait ce jour-là"
-        aria-label="Note de la journée"
+        placeholder="What happened that day"
+        aria-label="Note for the day"
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, "L'enregistrement a échoué.")}
+          {errorText(update.error, 'Saving failed.')}
         </p>
       )}
 
@@ -272,14 +272,14 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Annuler
+            Cancel
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            {update.isPending ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

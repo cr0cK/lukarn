@@ -264,7 +264,7 @@ async function main(): Promise<void> {
 
     media.upsertMany(items, seenAt);
     syncState.set(album.id, { lastSyncAt: seenAt, status: 'ok', error: null });
-    console.log(`Album "${album.id}" : ${items.length} demo media`);
+    console.log(`Album "${album.id}": ${items.length} demo media`);
   }
 
   // Les journées, comme le serveur les calculerait — mais sans géocodeur : les

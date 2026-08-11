@@ -8,9 +8,9 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 const SYNC_LABELS: Record<SyncStatus, { text: string; className: string }> = {
-  never: { text: 'jamais synchronisé', className: 'text-ink-400' },
+  never: { text: 'never synced', className: 'text-ink-400' },
   running: { text: 'synchronisation en cours', className: 'text-accent' },
-  ok: { text: 'à jour', className: 'text-emerald-400' },
+  ok: { text: 'up to date', className: 'text-emerald-400' },
   error: { text: 'en erreur', className: 'text-red-400' },
 };
 
@@ -40,9 +40,7 @@ export function AlbumsSection({
       onSuccess: ({ started }) =>
         notify({
           tone: 'ok',
-          text: started.length
-            ? `Synchronisation lancée : ${started.join(', ')}`
-            : 'Aucun album à synchroniser.',
+          text: started.length ? `Sync started: ${started.join(', ')}` : 'No album to sync.',
         }),
       onError: (error) =>
         notify({ tone: 'error', text: errorText(error, 'Synchronisation impossible.') }),
@@ -62,7 +60,7 @@ export function AlbumsSection({
         onSuccess: () =>
           notify({
             tone: 'ok',
-            text: `L'album « ${album.title} » reprend sa photo la plus récente en couverture.`,
+            text: `Album "${album.title}" takes its most recent photo as cover again.`,
           }),
         onError: (error) =>
           notify({ tone: 'error', text: errorText(error, 'Modification impossible.') }),
@@ -73,7 +71,7 @@ export function AlbumsSection({
   const confirmDelete = (album: AdminAlbum): void => {
     remove.mutate(album.id, {
       onSuccess: () => {
-        notify({ tone: 'ok', text: `Album « ${album.title} » supprimé.` });
+        notify({ tone: 'ok', text: `Album "${album.title}" deleted.` });
         setConfirming(null);
       },
       onError: (error) => {
@@ -86,15 +84,15 @@ export function AlbumsSection({
   return (
     <Section
       title="Albums"
-      description="Un album = un dossier Google Drive indexé. Sa couverture se choisit sur la photo, depuis l'album."
+      description="One album = one indexed Google Drive folder. Its cover is chosen on the photo, from the album."
       action={
         <div className="flex gap-2">
           <Button
             onClick={() => startResync(undefined)}
             disabled={!driveConnected || resync.isPending}
-            title={driveConnected ? undefined : 'Aucun compte Google Drive connecté.'}
+            title={driveConnected ? undefined : 'No Google Drive account connected.'}
           >
-            Tout resynchroniser
+            Resync everything
           </Button>
           <Button
             variant="primary"
@@ -104,7 +102,7 @@ export function AlbumsSection({
             }}
             disabled={creating}
           >
-            Nouvel album
+            New album
           </Button>
         </div>
       }
@@ -113,7 +111,7 @@ export function AlbumsSection({
 
       {albums.length === 0 && !creating && (
         <p className="px-4 py-6 text-sm text-ink-400">
-          Aucun album. Crée-en un à partir d'un dossier de ton Drive.
+          No album. Create one from a folder of your Drive.
         </p>
       )}
 
@@ -133,16 +131,16 @@ export function AlbumsSection({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-ink-100">{album.title}</p>
               <p className="truncate text-xs text-ink-400">
-                <code>{album.id}</code> · {album.itemCount.toLocaleString('fr-FR')} éléments
-                {album.recursive ? ' · sous-dossiers inclus' : ''}
+                <code>{album.id}</code> · {album.itemCount.toLocaleString('en-GB')} items
+                {album.recursive ? ' · subfolders included' : ''}
                 {formatRelative(album.lastSyncAt)
-                  ? ` · synchronisé ${formatRelative(album.lastSyncAt)}`
+                  ? ` · synced ${formatRelative(album.lastSyncAt)}`
                   : ''}
               </p>
               <p className="truncate text-xs text-ink-400">
                 {album.members.length > 0
-                  ? `Attribué à ${album.members.join(', ')}`
-                  : 'Attribué à aucun compte nommément'}
+                  ? `Assigned to ${album.members.join(', ')}`
+                  : 'Assigned to no account by name'}
               </p>
               {album.syncError && (
                 <p className="mt-1 text-xs break-words text-red-400">{album.syncError}</p>
@@ -161,9 +159,9 @@ export function AlbumsSection({
               <Button
                 onClick={() => startResync(album.id)}
                 disabled={album.syncStatus === 'running' || !driveConnected}
-                ariaLabel={`Resynchroniser l'album ${album.title}`}
+                ariaLabel={`Resync album ${album.title}`}
               >
-                Resynchroniser
+                Resync
               </Button>
 
               {/* Sa seule présence dit qu'une couverture a été choisie : la ligne
@@ -173,7 +171,7 @@ export function AlbumsSection({
                 <Button
                   onClick={() => clearCover(album)}
                   disabled={update.isPending}
-                  title="Une photo a été choisie comme couverture. Rendre à l'album sa photo la plus récente."
+                  title="A photo was chosen as cover. Give the album its most recent photo back."
                   ariaLabel={`Rendre automatique la couverture de l'album ${album.title}`}
                 >
                   Couverture automatique
@@ -185,17 +183,17 @@ export function AlbumsSection({
                   setCreating(false);
                   setEditing(album.id);
                 }}
-                ariaLabel={`Modifier l'album ${album.title}`}
+                ariaLabel={`Edit album ${album.title}`}
               >
-                Modifier
+                Edit
               </Button>
 
               <Button
                 variant="danger"
                 onClick={() => setConfirming(album)}
-                ariaLabel={`Supprimer l'album ${album.title}`}
+                ariaLabel={`Delete album ${album.title}`}
               >
-                Supprimer
+                Delete
               </Button>
             </div>
           </div>
@@ -204,20 +202,20 @@ export function AlbumsSection({
 
       {confirming && (
         <ConfirmDialog
-          title={`Supprimer l'album « ${confirming.title} » ?`}
-          confirmLabel="Supprimer l'album"
+          title={`Delete album "${confirming.title}"?`}
+          confirmLabel="Delete the album"
           busy={remove.isPending}
           onConfirm={() => confirmDelete(confirming)}
           onCancel={() => setConfirming(null)}
         >
           <p>
-            Les {confirming.itemCount.toLocaleString('fr-FR')} médias indexés sont retirés de la
-            visionneuse, et l'album disparaît pour les comptes qui y avaient accès.
+            The {confirming.itemCount.toLocaleString('en-GB')} indexed media are removed from the
+            viewer, and the album disappears for the accounts that could reach it.
           </p>
           <p className="text-ink-200">
-            Rien n'est supprimé dans Google Drive : les fichiers restent dans le dossier{' '}
-            <code className="break-all">{confirming.folderId}</code>. Recréer l'album sur le même
-            dossier le réindexera.
+            Nothing is deleted in Google Drive: the files stay in folder{' '}
+            <code className="break-all">{confirming.folderId}</code>. Recreating the album on the
+            same folder will reindex it.
           </p>
         </ConfirmDialog>
       )}

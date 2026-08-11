@@ -45,17 +45,17 @@ export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRo
   // `place` prime sur `autoPlaces` — c'est une correction saisie à la main, et
   // une correction que le géocodage écraserait ne servirait à rien (D51).
   push('Lieu', day?.place ?? day?.autoPlaces.join(' · '));
-  push('Ce jour-là', day?.description);
+  push('That day', day?.description);
 
-  push(detail.takenAtFromExif ? 'Prise de vue' : 'Modifié le', formatDateTime(detail.takenAt));
+  push(detail.takenAtFromExif ? 'Taken' : 'Modified', formatDateTime(detail.takenAt));
   push('Dimensions', detail.width && detail.height ? `${detail.width} × ${detail.height}` : null);
-  push('Taille', formatBytes(detail.size));
-  push('Durée', formatDuration(detail.durationMs));
-  push('Appareil', formatCamera(detail.exif.cameraMake, detail.exif.cameraModel));
-  push('Objectif', detail.exif.lens);
-  push('Focale', formatFocalLength(detail.exif.focalLength));
-  push('Ouverture', formatAperture(detail.exif.aperture));
-  push('Vitesse', formatExposure(detail.exif.exposureTime));
+  push('Size', formatBytes(detail.size));
+  push('Duration', formatDuration(detail.durationMs));
+  push('Camera', formatCamera(detail.exif.cameraMake, detail.exif.cameraModel));
+  push('Lens', detail.exif.lens);
+  push('Focal length', formatFocalLength(detail.exif.focalLength));
+  push('Aperture', formatAperture(detail.exif.aperture));
+  push('Shutter', formatExposure(detail.exif.exposureTime));
   push('ISO', detail.exif.isoSpeed ? String(detail.exif.isoSpeed) : null);
 
   // La position sort de l'EXIF de **cette** photo, et ne doit donc rien au
@@ -79,7 +79,7 @@ export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRo
       href: `https://www.openstreetmap.org/?mlat=${detail.exif.latitude}&mlon=${detail.exif.longitude}#map=15/${detail.exif.latitude}/${detail.exif.longitude}`,
     });
   } else if (detail.kind === 'photo') {
-    rows.push({ label: 'Position', value: 'Aucune donnée GPS', absent: true });
+    rows.push({ label: 'Position', value: 'No GPS data', absent: true });
   }
 
   return rows;

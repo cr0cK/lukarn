@@ -75,7 +75,7 @@ export function SidePanel({
           // à droite que la colonne de contenu — deux décalages qu'on ne sait
           // pas nommer en regardant, mais qu'on voit.
           className="-my-1 -mr-1 shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-          aria-label="Fermer le panneau (Échap)"
+          aria-label="Close the panel (Esc)"
         >
           <svg
             viewBox="0 0 24 24"

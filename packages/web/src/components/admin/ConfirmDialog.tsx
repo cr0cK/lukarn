@@ -63,10 +63,10 @@ export function ConfirmDialog({
 
         <div className="mt-5 flex justify-end gap-2">
           <Button onClick={onCancel} disabled={busy}>
-            Annuler
+            Cancel
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Suppression…' : confirmLabel}
+            {busy ? 'Deleting…' : confirmLabel}
           </Button>
         </div>
       </div>

@@ -29,7 +29,7 @@ export function UsersSection({
   const confirmDelete = (user: AdminUser): void => {
     remove.mutate(user.username, {
       onSuccess: () => {
-        notify({ tone: 'ok', text: `Compte « ${user.username} » supprimé.` });
+        notify({ tone: 'ok', text: `Account "${user.username}" deleted.` });
         setConfirming(null);
       },
       onError: (deleteError) => {
@@ -41,8 +41,8 @@ export function UsersSection({
 
   return (
     <Section
-      title="Comptes"
-      description="Qui peut se connecter, et à quels albums."
+      title="Accounts"
+      description="Who can sign in, and to which albums."
       action={
         <Button
           variant="primary"
@@ -52,7 +52,7 @@ export function UsersSection({
           }}
           disabled={creating}
         >
-          Nouveau compte
+          New account
         </Button>
       }
     >
@@ -60,19 +60,19 @@ export function UsersSection({
 
       {isPending && (
         <div className="px-4 py-6">
-          <Spinner label="Chargement des comptes" />
+          <Spinner label="Loading accounts" />
         </div>
       )}
 
       {error && (
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Impossible de charger les comptes.')} />
+          <FormError message={errorText(error, 'Cannot load the accounts.')} />
         </div>
       )}
 
       {users?.length === 0 && !creating && (
         <p className="px-4 py-6 text-sm text-ink-400">
-          Aucun compte. Crée-en un pour permettre une connexion.
+          No account. Create one so that someone can sign in.
         </p>
       )}
 
@@ -119,23 +119,23 @@ export function UsersSection({
                   setCreating(false);
                   setEditing(user.username);
                 }}
-                ariaLabel={`Modifier le compte ${user.username}`}
+                ariaLabel={`Edit account ${user.username}`}
               >
-                Modifier
+                Edit
               </Button>
 
               <Button
                 variant="danger"
                 onClick={() => setConfirming(user)}
                 disabled={user.username === me?.username}
-                ariaLabel={`Supprimer le compte ${user.username}`}
+                ariaLabel={`Delete account ${user.username}`}
                 title={
                   user.username === me?.username
                     ? 'Tu ne peux pas supprimer ton propre compte.'
                     : undefined
                 }
               >
-                Supprimer
+                Delete
               </Button>
             </div>
           </div>
@@ -144,14 +144,14 @@ export function UsersSection({
 
       {confirming && (
         <ConfirmDialog
-          title={`Supprimer le compte « ${confirming.username} » ?`}
-          confirmLabel={`Supprimer ${confirming.username}`}
+          title={`Delete account "${confirming.username}"?`}
+          confirmLabel={`Delete ${confirming.username}`}
           busy={remove.isPending}
           onConfirm={() => confirmDelete(confirming)}
           onCancel={() => setConfirming(null)}
         >
           <p>Ce compte ne pourra plus se connecter.</p>
-          <p>Les albums et les médias indexés ne sont pas touchés.</p>
+          <p>The albums and the indexed media are untouched.</p>
         </ConfirmDialog>
       )}
     </Section>

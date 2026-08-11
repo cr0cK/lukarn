@@ -14,7 +14,7 @@ describe('lignes de légende', () => {
   it('rend les deux portées dans l’ordre, du plus précis au plus général', () => {
     const entries = captionEntries({
       description: 'Léa saute du ponton',
-      day: 'Bonifacio, puis la plage',
+      day: 'Bonifacio, then the beach',
     });
 
     assert.deepEqual(
@@ -25,15 +25,15 @@ describe('lignes de légende', () => {
     // d'autre chose que de l'image qu'on regarde.
     assert.deepEqual(
       entries.map((entry) => entry.label),
-      [null, 'Ce jour-là'],
+      [null, 'That day'],
     );
     assert.equal(entries[0]?.text, 'Léa saute du ponton');
   });
 
   it('écarte les lignes absentes sans décaler les autres', () => {
-    const entries = captionEntries({ description: null, day: 'Bonifacio, puis la plage' });
+    const entries = captionEntries({ description: null, day: 'Bonifacio, then the beach' });
     assert.deepEqual(entries, [
-      { scope: 'day', label: 'Ce jour-là', text: 'Bonifacio, puis la plage' },
+      { scope: 'day', label: 'That day', text: 'Bonifacio, then the beach' },
     ]);
   });
 

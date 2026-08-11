@@ -180,7 +180,7 @@ describe('regroupement par mois', () => {
   });
 
   it('rend un libellé lisible avec majuscule', () => {
-    assert.equal(monthLabel('2024-07'), 'Juillet 2024');
+    assert.equal(monthLabel('2024-07'), 'July 2024');
   });
 });
 
@@ -198,22 +198,22 @@ describe('regroupement par jour', () => {
   });
 
   it('rend une date lisible plutôt que la clé technique', () => {
-    assert.equal(dayLabel('2026-07-14', '2026-08-01'), '14 juillet 2026');
+    assert.equal(dayLabel('2026-07-14', '2026-08-01'), '14 July 2026');
   });
 
   it('nomme les deux jours les plus récents plutôt que de les dater', () => {
     // Dans un album qu'on vient d'alimenter, « Aujourd'hui » se repère d'un
     // coup d'œil là où deux quantièmes voisins demandent de lire les chiffres.
-    assert.equal(dayLabel('2026-08-01', '2026-08-01'), "Aujourd'hui");
-    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Hier');
-    assert.equal(dayLabel('2026-07-30', '2026-08-01'), '30 juillet 2026');
+    assert.equal(dayLabel('2026-08-01', '2026-08-01'), 'Today');
+    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Yesterday');
+    assert.equal(dayLabel('2026-07-30', '2026-08-01'), '30 July 2026');
   });
 
   it('trouve la veille par-dessus un changement de mois et une année bissextile', () => {
     // Un décalage naïf sur le quantième daterait « Hier » au 0 mars.
-    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Hier');
-    assert.equal(dayLabel('2024-02-29', '2024-03-01'), 'Hier');
-    assert.equal(dayLabel('2025-12-31', '2026-01-01'), 'Hier');
+    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Yesterday');
+    assert.equal(dayLabel('2024-02-29', '2024-03-01'), 'Yesterday');
+    assert.equal(dayLabel('2025-12-31', '2026-01-01'), 'Yesterday');
   });
 });
 

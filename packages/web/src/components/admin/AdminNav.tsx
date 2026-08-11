@@ -10,10 +10,10 @@ import { NavLink } from 'react-router-dom';
  */
 export const ADMIN_TABS = [
   { slug: 'albums', label: 'Albums' },
-  { slug: 'comptes', label: 'Comptes' },
-  { slug: 'commentaires', label: 'Commentaires' },
-  { slug: 'serveur', label: 'Serveur' },
-  { slug: 'visites', label: 'Visites' },
+  { slug: 'accounts', label: 'Accounts' },
+  { slug: 'comments', label: 'Comments' },
+  { slug: 'server', label: 'Server' },
+  { slug: 'visits', label: 'Visits' },
 ] as const;
 
 /** Rubrique d'administration, telle qu'elle apparaît dans l'URL. */
@@ -34,7 +34,7 @@ export function isAdminTab(valeur: string | undefined): valeur is AdminTab {
 export function AdminNav(): ReactElement {
   return (
     <nav
-      aria-label="Rubriques d'administration"
+      aria-label="Administration sections"
       // Deux régimes selon la largeur, comme `SidePanel`. À partir de `md`, une
       // colonne collante : elle reste sous les yeux pendant qu'on fait défiler
       // la file de modération, qui est paginée et donc longue. En dessous, une

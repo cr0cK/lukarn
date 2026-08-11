@@ -133,7 +133,7 @@ export function Thumb({
 
       {failed && !isVideo && (
         <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-ink-400">
-          Aperçu indisponible
+          Preview unavailable
         </div>
       )}
 

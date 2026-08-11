@@ -44,7 +44,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
     return (
       <form onSubmit={submitCode} className="space-y-3">
         <p className="text-sm text-ink-300">
-          Un code à {VERIFICATION_CODE_LENGTH} chiffres vient d’être envoyé à{' '}
+          A {VERIFICATION_CODE_LENGTH}-digit code has just been sent to{' '}
           <span className="text-ink-100">{email}</span>.
         </p>
 
@@ -55,13 +55,13 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
           autoComplete="one-time-code"
           maxLength={VERIFICATION_CODE_LENGTH}
           placeholder="123456"
-          aria-label="Code de vérification"
+          aria-label="Verification code"
           className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
         />
 
         {verify.isError && (
           <p className="text-xs text-red-400">
-            {errorText(verify.error, 'Le code n’a pas pu être vérifié.')}
+            {errorText(verify.error, 'The code could not be checked.')}
           </p>
         )}
 
@@ -81,7 +81,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
             disabled={code.length !== VERIFICATION_CODE_LENGTH || verify.isPending}
             className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
           >
-            {verify.isPending ? 'Vérification…' : 'Valider'}
+            {verify.isPending ? 'Checking…' : 'Confirm'}
           </button>
         </div>
       </form>
@@ -96,17 +96,17 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
           dans un cercle privé à condition d'être annoncé et défait en un clic —
           pas s'il se découvre à la réception du premier email. */}
       <p className="text-sm text-ink-300">
-        Pour commenter, dis-nous qui tu es. Ton adresse sert à signer tes messages, à te prévenir
-        des réponses, et à t’annoncer les nouvelles photos des albums que tu ouvres ; elle n’est
-        jamais montrée aux autres. Chaque email reçu porte un lien pour s’en désabonner.
+        To comment, tell us who you are. Your address signs your messages, tells you about replies,
+        and announces new photos in the albums you open; it is never shown to anyone else. Every
+        email carries a link to stop them.
       </p>
 
       <input
         value={displayName}
         onChange={(event) => setDisplayName(event.target.value)}
         maxLength={64}
-        placeholder="Ton nom, tel qu’il s’affichera"
-        aria-label="Nom affiché"
+        placeholder="Your name, as it will appear"
+        aria-label="Display name"
         className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
@@ -116,13 +116,13 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         type="email"
         autoComplete="email"
         placeholder="ton@adresse.fr"
-        aria-label="Adresse email"
+        aria-label="Email address"
         className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
       {requestCode.isError && (
         <p className="text-xs text-red-400">
-          {errorText(requestCode.error, 'Le code n’a pas pu être envoyé.')}
+          {errorText(requestCode.error, 'The code could not be sent.')}
         </p>
       )}
 
@@ -131,7 +131,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         disabled={!email.trim() || !displayName.trim() || requestCode.isPending}
         className="w-full rounded bg-accent px-3 py-2 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
       >
-        {requestCode.isPending ? 'Envoi…' : 'Recevoir un code'}
+        {requestCode.isPending ? 'Sending…' : 'Get a code'}
       </button>
     </form>
   );

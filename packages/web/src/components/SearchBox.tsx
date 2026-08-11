@@ -21,7 +21,7 @@ import { useShortcut } from '../lib/useShortcut';
 
 const GROUPES: { kind: SearchHitKind; titre: string }[] = [
   { kind: 'album', titre: 'Albums' },
-  { kind: 'day', titre: 'Journées et lieux' },
+  { kind: 'day', titre: 'Days and places' },
   { kind: 'media', titre: 'Photos' },
 ];
 
@@ -165,12 +165,12 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
         ref={champ}
         type="search"
         role="combobox"
-        aria-label="Rechercher"
+        aria-label="Search"
         aria-expanded={deplie}
         aria-controls="recherche-resultats"
         aria-autocomplete="list"
         aria-activedescendant={deplie && hits[actif] ? `recherche-option-${actif}` : undefined}
-        placeholder="Rechercher…"
+        placeholder="Search…"
         value={saisie}
         onChange={(event) => {
           setSaisie(event.target.value);
@@ -192,7 +192,7 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
           {/* Des `div` et non des listes : un `role="listbox"` ne possède que
               des `option` et des `group`, et le rôle `list` implicite d'un `ul`
               imbriqué s'interposerait entre les deux. */}
-          <div id="recherche-resultats" role="listbox" aria-label="Résultats de recherche">
+          <div id="recherche-resultats" role="listbox" aria-label="Search results">
             {groupes.map((groupe) => (
               <div key={groupe.kind} role="group" aria-label={groupe.titre}>
                 <p
@@ -237,7 +237,7 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
               clignoter un constat faux entre deux caractères. */}
           {hits.length === 0 && (
             <p className="px-3 py-4 text-center text-sm text-ink-400">
-              {isFetching ? 'Recherche…' : 'Aucun résultat'}
+              {isFetching ? 'Searching…' : 'No result'}
             </p>
           )}
         </div>
