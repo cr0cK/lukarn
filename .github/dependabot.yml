@@ -1,0 +1,90 @@
+# Dependency updates, grouped on purpose.
+#
+# Ungrouped, this repository would produce a dozen pull requests a week — sharp,
+# eslint, the typescript-eslint pair, six @types — each costing a full CI run and
+# a review. A wall of pull requests nobody reads is worse than no automation: the
+# security update sits in the middle of it, indistinguishable.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    # Enough for a single-maintainer project; a security advisory is opened
+    # immediately regardless of this ceiling.
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # Tooling never reaches production. One pull request a week, merged on a
+      # green build.
+      dev-tooling:
+        patterns:
+          - '@eslint/*'
+          - 'eslint'
+          - 'typescript-eslint'
+          - 'prettier'
+          - 'globals'
+          - '@types/*'
+          - 'tsx'
+        update-types: [minor, patch]
+      # Vite, Tailwind, React and their plugins move together often enough that
+      # splitting them means merging one and reverting the next.
+      frontend:
+        patterns:
+          - 'vite'
+          - '@vitejs/*'
+          - 'tailwindcss'
+          - '@tailwindcss/*'
+          - 'lightningcss'
+          - 'react'
+          - 'react-dom'
+          - 'react-router-dom'
+          - '@tanstack/*'
+        update-types: [minor, patch]
+      server:
+        patterns:
+          - 'fastify'
+          - 'fastify-plugin'
+          - '@fastify/*'
+          - 'zod'
+          - 'js-yaml'
+          - 'nodemailer'
+          - 'pino-pretty'
+          - '@googleapis/*'
+        update-types: [minor, patch]
+    ignore:
+      # The three native modules are deliberately left out of the groups and out
+      # of minor bumps. A sharp or better-sqlite3 upgrade changes an image
+      # decoder or a SQLite build, which is a change to test by hand — thumbnails
+      # rendered, a migration replayed — not to merge on a green typecheck.
+      # Majors always arrive as their own pull request; these lines only keep the
+      # weekly noise down.
+      - dependency-name: sharp
+        update-types: [version-update:semver-minor]
+      - dependency-name: better-sqlite3
+        update-types: [version-update:semver-minor]
+      - dependency-name: argon2
+        update-types: [version-update:semver-minor]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ['*']
+
+  # Watches the `node:24-slim` base image, which is where a patched OpenSSL or
+  # zlib reaches this application.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore

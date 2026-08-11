@@ -1,0 +1,26 @@
+# Surcharge de construction locale, à empiler sur `docker-compose.yml` :
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   ./deploy/deploy.sh --build          # fait la même chose, sauvegarde comprise
+#
+# Trois raisons de passer par là plutôt que par l'image publiée : une machine qui
+# n'est pas amd64 (l'image n'est publiée que pour celle-là), une modification
+# locale à essayer, ou le refus de dépendre d'un registre tiers — le dépôt est la
+# source, l'image n'en est qu'une commodité.
+#
+# La construction demande environ 4 Go de mémoire : les trois modules natifs se
+# compilent quand aucun binaire prébuilt ne correspond, et l'OOM killer arrête
+# une machine à 1 Go avant la fin.
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Ce que le workflow de publication passe autrement. `dev` signale une
+        # image construite à la main dans les métadonnées OCI, plutôt qu'un
+        # numéro de version qui laisserait croire à une image publiée.
+        VERSION: dev
+    # Écrase la référence au registre : sans cette ligne, compose reconstruirait
+    # l'image puis la marquerait du nom du registre, et un `docker compose pull`
+    # ultérieur remplacerait silencieusement la construction locale.
+    image: nonni:local

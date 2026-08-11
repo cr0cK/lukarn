@@ -22,6 +22,7 @@ open them — enough to share one album without exposing the rest of the Drive.
 | Understand how it is built  | [`specs/README.md`](./specs/README.md)   |
 | Contribute                  | [`CONTRIBUTING.md`](./CONTRIBUTING.md)   |
 | Report a vulnerability      | [`SECURITY.md`](./SECURITY.md)           |
+| See what changed            | [`CHANGELOG.md`](./CHANGELOG.md)         |
 
 ## Two authentications, not to be confused
 

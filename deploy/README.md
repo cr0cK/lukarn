@@ -17,17 +17,42 @@ This needs a Debian or Ubuntu VPS and a domain name whose `A` record — and
 `AAAA` if the VPS has IPv6 — already points at its address. The TLS certificate
 is obtained automatically from that name: without DNS in place, step 5 fails.
 
-**Sizing: 2 vCPU, 4 GB RAM, 60 GB disk.** This is not a demo machine, and two
-items explain the gap:
+## Two ways in, and the sizing follows from which one you pick
 
-- **The build runs on the machine.** `docker compose up --build` runs `tsc` and,
-  when no prebuilt binary fits, compiles `better-sqlite3`, `argon2` and `sharp`.
-  With 1 GB the build is killed by the OOM killer before it finishes. Building
-  elsewhere and pushing an image is possible, but that is no longer the procedure
-  described here.
-- **The disk cache targets 20 GB by default** (`cache.maxSizeGB`, adjustable in
-  `/admin`), on top of the Docker image and the system. 60 GB leaves room; a
-  20 GB disk keeps LRU eviction running permanently.
+**The published image**, `ghcr.io/cr0ck/nonni`, is what `docker-compose.yml`
+references by default. Updating pulls a few hundred megabytes and restarts:
+nothing is compiled on the machine.
+
+**Building from source** is one overlay file away, and it is the answer whenever
+the image does not fit — a host that is not `linux/amd64`, a local modification to
+try, or a plain refusal to depend on someone else's registry. The repository is
+the source of truth; the image is a convenience.
+
+```bash
+./deploy/deploy.sh            # pull the published image
+./deploy/deploy.sh --build    # build from source
+```
+
+| Sizing   | From the image | Building on the machine |
+| -------- | -------------- | ----------------------- |
+| **vCPU** | 1              | 2                       |
+| **RAM**  | 1 GB           | **4 GB**                |
+| **Disk** | 40 GB          | 60 GB                   |
+
+The RAM gap is the whole story: `tsc` plus `better-sqlite3`, `argon2` and `sharp`
+compiling from source when no prebuilt binary fits. At 1 GB the OOM killer ends
+the build before it finishes, and the message it leaves behind looks nothing like
+the cause.
+
+Disk is dominated by neither: **the cache targets 20 GB by default**
+(`cache.maxSizeGB`, adjustable in `/admin`), on top of the image and the system.
+Below 40 GB, LRU eviction runs permanently — it works, it just throws away
+thumbnails it will regenerate an hour later.
+
+**Pinning a version.** `latest` follows every release. `NONNI_VERSION=1.0.0` in
+the `.env` freezes it, and a `docker compose pull` then changes nothing until you
+raise the number — which is what you want if an update should be a decision
+rather than a surprise.
 
 ## 0. On the administration workstation
 
@@ -343,8 +368,8 @@ openssl rand -hex 32   # TOKEN_KEY
 ```
 
 There is **no `pnpm install` here**: the machine has neither Node nor pnpm, and
-needs neither. The `docker compose up --build` of the next step builds everything
-inside the image, and the first administrator is created from the container.
+needs neither. Everything runs inside the image — pulled or built in the next
+step — and the first administrator is created from the container.
 
 Accounts, albums and settings are then administered **from `/admin`**, with no
 file to edit and no restart.
@@ -371,7 +396,14 @@ from its URL. That identifier survives renames and moves.
 ## 5. Startup and first administrator
 
 ```bash
-docker compose up -d --build
+docker compose up -d
+```
+
+Building from source instead — a host that is not `linux/amd64`, or a local
+change to try:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 Two containers start: the application, and **Caddy**, which handles TLS. The
@@ -726,7 +758,7 @@ folders are shared with the service account, never with one of its keys.
 >   [ -e /new/gdv.db-wal ] && mv /new/gdv.db-wal /new/nonni.db-wal
 >   [ -e /new/gdv.db-shm ] && mv /new/gdv.db-shm /new/nonni.db-shm
 >   exit 0'
-> docker compose up -d --build
+> docker compose up -d
 > ```
 >
 > `nonni-cache` is not worth copying: it regenerates. Once the instance is

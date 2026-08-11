@@ -1,7 +1,17 @@
 services:
   app:
-    build: .
-    image: nonni
+    # Image publiée à chaque `v*` : mettre à jour ne compile plus rien sur la
+    # machine, ce qui retire au VPS le besoin des 4 Go que la compilation de
+    # sharp, argon2 et better-sqlite3 exigeait pour ne pas finir tuée par l'OOM
+    # killer.
+    #
+    # `latest` par défaut, une version épinglée si on préfère décider quand on
+    # bouge : NONNI_VERSION=1.0.0 dans le `.env`.
+    #
+    # Pour construire depuis les sources — architecture autre qu'amd64, ou
+    # modification locale à essayer — la surcharge est un fichier :
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+    image: ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}
     restart: unless-stopped
     # Aucun port publié sur l'hôte : seul Caddy joint l'application, par le
     # réseau interne du compose. Rien n'écoute sur une interface publique en

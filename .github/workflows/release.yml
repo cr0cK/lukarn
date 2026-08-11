@@ -1,0 +1,103 @@
+# Publishes an image and a GitHub release when a `v*` tag is pushed.
+#
+# The tag is the trigger and the single source of the version: nothing here reads
+# package.json, so a release cannot claim a version the tag does not carry.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write # create the release
+  packages: write # push to ghcr.io
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Release notes are written by hand in CHANGELOG.md, but the full
+          # history is what lets `gh release` link a comparison against the
+          # previous tag.
+          fetch-depth: 0
+
+      # The gate runs again here rather than trusting the run on main. A tag can
+      # be pushed on any commit, including one that never went through a pull
+      # request.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @nonni/shared build
+      - run: pnpm verify
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # Provided by Actions: no secret to create, and it cannot push
+          # anywhere outside this repository's namespace.
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive the version from the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # Only linux/amd64. Building arm64 here means QEMU emulation, and sharp,
+      # argon2 and better-sqlite3 compile from source under it — around an hour
+      # per release for an architecture nobody has asked for yet. An arm64 host
+      # is not left out: the compose override builds locally, which is what the
+      # deploy README points such a host at.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          # `latest` moves, the version does not. An instance that pins the
+          # version is never surprised by a `docker compose pull`.
+          tags: |
+            ghcr.io/cr0ck/nonni:${{ steps.version.outputs.value }}
+            ghcr.io/cr0ck/nonni:latest
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The section of CHANGELOG.md matching this tag becomes the release body,
+      # so the notes are written once, reviewed in a pull request, and not
+      # rewritten in a web form afterwards.
+      - name: Extract the changelog section
+        run: |
+          awk -v version="${GITHUB_REF_NAME#v}" '
+            $0 ~ "^## \\[?" version "\\]?" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md carries no section for ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+
+          {
+            echo
+            echo '---'
+            echo
+            echo "Image: \`ghcr.io/cr0ck/nonni:${GITHUB_REF_NAME#v}\` (linux/amd64)."
+            echo "Upgrading an instance: see [deploy/README.md](https://github.com/cr0cK/nonni/blob/main/deploy/README.md)."
+          } >> notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md

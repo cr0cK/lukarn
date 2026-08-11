@@ -198,6 +198,39 @@ récolte les zombies. Le `HEALTHCHECK` interroge `/api/health` toutes les 30 s.
 Le cache pnpm est monté en `--mount=type=cache`, donc il n'entre pas dans les
 couches de l'image.
 
+L'étape `runtime` porte les **métadonnées OCI**, dont `image.source` : c'est ce
+label qui rattache l'image publiée à son dépôt sur GHCR, sans quoi la page du
+paquet n'affiche ni README ni licence, et rien ne relie un conteneur qui tourne
+au code qu'il exécute. `version` et `revision` sont passées en `ARG` par le
+workflow de publication ; une construction locale les laisse à `dev` et
+`unknown`, ce qui distingue au passage une image bricolée d'une image publiée.
+
+## Deux chemins d'installation, une image publiée (D260811c)
+
+`docker-compose.yml` référence **`ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}`**,
+publiée par `.github/workflows/release.yml` à chaque tag `v*` pour `linux/amd64`
+seulement. Mettre à jour ne compile donc rien sur la machine, et le
+dimensionnement tombe de 2 vCPU / 4 Go à 1 vCPU / 1 Go — les 4 Go n'étaient là
+que pour que la compilation de `sharp`, `argon2` et `better-sqlite3` ne finisse
+pas tuée par l'OOM killer.
+
+`docker-compose.build.yml` est la **surcharge** qui rend le `build:` :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+./deploy/deploy.sh --build      # identique, sauvegarde comprise
+```
+
+Elle est nécessaire hors `linux/amd64`, utile pour essayer une modification
+locale, et elle est la réponse à qui ne veut pas dépendre d'un registre tiers. Le
+dépôt reste la source ; l'image n'est qu'une commodité. Cette surcharge réécrit
+`image:` en `nonni:local` : sans quoi compose marquerait la construction locale du
+nom du registre, et un `docker compose pull` la remplacerait en silence.
+
+`NONNI_VERSION` n'est pas lue par `env.ts` — c'est une interpolation de compose,
+donc `check:specs` ne la surveille pas. Elle épingle une version quand une mise à
+jour doit rester une décision plutôt qu'une surprise.
+
 ## docker-compose et volumes
 
 `docker-compose.yml` déclare **deux services** :
@@ -322,9 +355,8 @@ c'est le genre d'omission qu'on ne constate qu'au pire moment — juste après
 avoir fermé le port 22. `deploy/README.md` en fait donc son § 0, avant même la
 création de la machine.
 
-**La machine n'a ni Node ni pnpm**, et c'est délibéré : le `docker compose
-up --build` construit tout dans l'image, il n'y a pas de second runtime à tenir
-à jour sur l'hôte. Conséquence à ne pas oublier en documentant : les commandes
+**La machine n'a ni Node ni pnpm**, et c'est délibéré : tout vit dans l'image,
+tirée ou construite, il n'y a pas de second runtime à tenir à jour sur l'hôte. Conséquence à ne pas oublier en documentant : les commandes
 d'administration hors application — `create-admin`, `reset-password` — n'ont pas
 d'invocation `pnpm` sur un serveur. Elles se lancent dans le conteneur, sur leur
 forme compilée (voir « Scripts » plus bas).
@@ -340,10 +372,10 @@ sauvegardes.
 Deux scripts bash, lancés depuis la machine, qui se replacent seuls à la racine
 du dépôt depuis `$0`.
 
-| Script             | Effet                                                                                                                                                                                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `nonni-data`, redémarrage, copie du `.env` et archive de `config/` à côté, rétention des 7 derniers de chaque. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `NONNI_BACKUP_REMOTE`. |
-| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, `docker compose up -d --build`, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul.                                               |
+| Script             | Effet                                                                                                                                                                                                                                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `nonni-data`, redémarrage, copie du `.env` et archive de `config/` à côté, rétention des 7 derniers de chaque. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `NONNI_BACKUP_REMOTE`.                                              |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, puis `docker compose pull app` et `up -d` — ou `up -d --build` avec la surcharge de construction si `--build` est passé —, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul. |
 
 **Pourquoi arrêter `app` pour sauvegarder.** SQLite est en WAL : copier le
 fichier pendant une écriture donne une base à recomposer. L'arrêt dure quelques

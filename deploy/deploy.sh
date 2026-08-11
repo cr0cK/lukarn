@@ -2,9 +2,10 @@
 #
 # Mise à jour d'une instance en service.
 #
-#   ./deploy/deploy.sh
+#   ./deploy/deploy.sh            tire l'image publiée (défaut)
+#   ./deploy/deploy.sh --build    construit depuis les sources
 #
-# Sauvegarde, reconstruit, redémarre — et **attend la confirmation** que
+# Sauvegarde, met à jour, redémarre — et **attend la confirmation** que
 # l'application est revenue. Un `docker compose up -d` rend la main dès que le
 # conteneur est lancé, pas quand il fonctionne : une migration qui échoue ou un
 # `.env` incomplet laisse un conteneur qui redémarre en boucle pendant qu'on
@@ -14,8 +15,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+construire=false
+case "${1:-}" in
+'') ;;
+--build) construire=true ;;
+*)
+  echo "usage: $0 [--build]" >&2
+  exit 2
+  ;;
+esac
+
 # `--ff-only` : sur une instance, un merge automatique n'a rien à faire. Si la
-# copie locale a divergé, il faut le savoir avant de reconstruire.
+# copie locale a divergé, il faut le savoir avant de mettre à jour. Les sources
+# servent même quand on ne construit pas : c'est d'elles que viennent le
+# `docker-compose.yml`, le `Caddyfile` et les scripts de cette mise à jour.
 echo "▸ récupération des sources"
 git pull --ff-only
 
@@ -24,8 +37,18 @@ git pull --ff-only
 echo "▸ sauvegarde"
 ./deploy/backup.sh --local
 
-echo "▸ construction et redémarrage"
-docker compose up -d --build
+if $construire; then
+  echo "▸ construction et redémarrage"
+  docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+else
+  # `pull` séparé du `up` pour que l'échec porte son vrai nom : registre
+  # injoignable ou version inexistante se distinguent alors d'un conteneur qui
+  # démarre mal, et l'instance en service n'est pas arrêtée pour rien.
+  echo "▸ récupération de l'image"
+  docker compose pull app
+  echo "▸ redémarrage"
+  docker compose up -d
+fi
 
 # `start-period` 20 s, puis un contrôle toutes les 30 s et 3 essais avant
 # `unhealthy` : 110 s au pire pour un verdict, arrondi à 150 s de marge.

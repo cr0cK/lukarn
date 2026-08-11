@@ -58,6 +58,21 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # ---------------------------------------------------------------------------
 FROM node:24-slim AS runtime
 
+# Métadonnées OCI. `org.opencontainers.image.source` est ce qui rattache l'image
+# publiée à son dépôt sur GHCR — sans lui, la page du paquet n'affiche ni README
+# ni licence, et rien ne relie un conteneur qui tourne au code qu'il exécute.
+# `revision` et `version` sont passées par le workflow de publication ; en build
+# local elles restent vides, ce qui est sans conséquence.
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="nonni" \
+  org.opencontainers.image.description="Self-hosted photo and video gallery for a Google Drive account" \
+  org.opencontainers.image.source="https://github.com/cr0cK/nonni" \
+  org.opencontainers.image.documentation="https://github.com/cr0cK/nonni/blob/main/deploy/README.md" \
+  org.opencontainers.image.licenses="AGPL-3.0-only" \
+  org.opencontainers.image.version="${VERSION}" \
+  org.opencontainers.image.revision="${REVISION}"
+
 # ffmpeg prépare les vidéos dont aucun navigateur ne décode le codec (D99). Il
 # pèse environ 250 Mo dans l'image — le prix d'entrée, et le seul. Sans lui le
 # serveur démarre quand même : il le signale au démarrage, et ces vidéos restent
