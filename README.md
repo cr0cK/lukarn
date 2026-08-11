@@ -20,6 +20,8 @@ open them — enough to share one album without exposing the rest of the Drive.
 | Run it locally              | [Below](#run-it-locally)                 |
 | Deploy and operate a server | [`deploy/README.md`](./deploy/README.md) |
 | Understand how it is built  | [`specs/README.md`](./specs/README.md)   |
+| Contribute                  | [`CONTRIBUTING.md`](./CONTRIBUTING.md)   |
+| Report a vulnerability      | [`SECURITY.md`](./SECURITY.md)           |
 
 ## Two authentications, not to be confused
 
@@ -176,7 +178,8 @@ this way. Start with [`specs/README.md`](./specs/README.md).
   otherwise a client would forge its own on every attempt and never be slowed by
   the login backoff.
 
-Details in [`specs/04`](./specs/04-securite-et-acces.md).
+Details in [`specs/04`](./specs/04-securite-et-acces.md). Found a hole? Please
+report it privately — [`SECURITY.md`](./SECURITY.md) says how, and what counts.
 
 ## License
 

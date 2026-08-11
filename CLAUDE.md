@@ -82,16 +82,18 @@ décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
 | Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/08-decisions/` — **un nouveau fichier**, on ne réécrit pas les anciennes |
 | Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                               |
 
-Trois documentations, trois lecteurs, aucune duplication entre elles :
+Cinq documentations, cinq lecteurs, aucune duplication entre elles :
 
-| Fichier            | Lecteur                 | Répond à                                           |
-| ------------------ | ----------------------- | -------------------------------------------------- |
-| `README.md`        | Qui découvre le projet  | Qu'est-ce que c'est, et comment le lancer en local |
-| `deploy/README.md` | Qui exploite un serveur | Installer, mettre à jour, sauvegarder, restaurer   |
-| `specs/`           | Qui reprend le code     | Pourquoi c'est fait ainsi                          |
+| Fichier            | Lecteur                    | Répond à                                           |
+| ------------------ | -------------------------- | -------------------------------------------------- |
+| `README.md`        | Qui découvre le projet     | Qu'est-ce que c'est, et comment le lancer en local |
+| `deploy/README.md` | Qui exploite un serveur    | Installer, mettre à jour, sauvegarder, restaurer   |
+| `specs/`           | Qui reprend le code        | Pourquoi c'est fait ainsi                          |
+| `CONTRIBUTING.md`  | Qui veut proposer un patch | Comment travailler ici, et ce qui sera refusé      |
+| `SECURITY.md`      | Qui trouve une faille      | Où le dire, et ce qui compte comme faille          |
 
 Le `README.md` de la racine reste **court** : ce qu'est l'application, ce qu'elle
-fait, comment la lancer en local, et trois liens. Toute procédure serveur va dans
+fait, comment la lancer en local, et le tableau de liens. Toute procédure serveur va dans
 `deploy/README.md`, à côté des scripts qu'elle décrit (D64).
 
 ## Commandes
@@ -132,8 +134,10 @@ un diff brouillé pour un correctif qui n'était pas le sien (D75).
 
 ## Conventions de code
 
-- **Français partout** : commentaires, messages d'erreur, libellés d'interface,
-  noms de tests, journaux. Les identifiants de code restent en anglais.
+- **Anglais partout**, y compris ce qui l'était en français jusqu'ici :
+  commentaires, messages d'erreur, libellés d'interface, noms de tests, journaux.
+  Voir « Langue » plus bas : la bascule est en cours, et la règle vaut dès
+  maintenant pour tout ce qu'on écrit.
 - **Les commentaires expliquent le pourquoi, jamais le quoi.** Un commentaire qui
   paraphrase la ligne suivante est à supprimer. Le bon commentaire dit ce qui
   casserait si on faisait autrement — c'est le style en vigueur dans tout le
@@ -144,42 +148,52 @@ un diff brouillé pour un correctif qui n'était pas le sien (D75).
   désactivé pour ça.
 - **JSDoc sur les exports** : chaque fonction, classe et type exporté porte une
   phrase qui dit son rôle et, si utile, sa raison d'être.
-- **Tests en français**, avec le runner natif de Node et `node:assert/strict`.
-  Ils portent sur les invariants (cloisonnement, réversibilité des migrations,
-  absence de doublon en pagination), pas sur les détails d'implémentation.
+- **Tests**, avec le runner natif de Node et `node:assert/strict`. Ils portent
+  sur les invariants (cloisonnement, réversibilité des migrations, absence de
+  doublon en pagination), pas sur les détails d'implémentation.
 - **Formatage** : Prettier, 100 colonnes, guillemets simples, virgules finales.
 - Le contrat d'API vit dans `packages/shared` ; le front ne redéclare jamais une
   forme de réponse de son côté.
 
-## Ton de la documentation et des PR
+## Langue
 
-Ce dépôt part en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
-l'équipe qui l'a écrit.
+**Tout est en anglais.** Le dépôt est public sous AGPL (D260811) : le partage par
+audience — anglais pour ce qui se lit depuis GitHub, français pour le reste — ne
+tenait plus dès lors qu'un contributeur inconnu doit lire le code, ses
+commentaires, les specs qui les expliquent, et éditer un `.env.example`. Une
+seule langue, donc, et c'est celle du plus grand nombre de lecteurs possibles.
 
-**Ce qui se lit depuis GitHub est en anglais** — `README.md`, commits et pull
-requests, titre compris. C'est la seule exception à la règle « français
-partout » ci-dessus, et la ligne de partage est l'audience :
+**La bascule est progressive et la règle vaut dès maintenant** : ce qu'on écrit
+est en anglais, sans obligation de traduire les alentours d'un changement. Ordre
+de traversée, du plus lu au moins lu :
 
-| En anglais                      | En français                                     |
-| ------------------------------- | ----------------------------------------------- |
-| `README.md`, `deploy/README.md` | `specs/` — conception, pour qui reprend le code |
-| Commits, PR (titre et corps)    | `CLAUDE.md` — instructions internes             |
-|                                 | Code, commentaires, tests, interface, journaux  |
+| Lot | Périmètre                                                        | État    |
+| --- | ---------------------------------------------------------------- | ------- |
+| 4   | `.env.example`, `docker-compose.yml`, `Caddyfile`, `deploy/*.sh` | à faire |
+| 5   | Interface et messages du serveur — libellés, erreurs, journaux   | à faire |
+| 6   | Commentaires du code, noms de tests, `specs/`, ce fichier        | à faire |
 
-Les deux README s'adressent à qui découvre ou installe, souvent sans parler
-français ; les `specs/` s'adressent au développeur qui reprend le projet, et
-restent cohérentes avec le code et les tests. Un exemple qui apparaît des deux
-côtés peut donc diverger — les README disent `photos.example.com`, les specs
-`photos.exemple.fr` : c'est sans conséquence, chacun est idiomatique dans sa
-langue.
+Ce qui est déjà en anglais : les deux `README.md`, `CONTRIBUTING.md`,
+`SECURITY.md`, `CODE_OF_CONDUCT.md`, les gabarits de `.github/`, les commits et
+les PR.
+
+Tant que la bascule n'est pas finie, un exemple peut diverger d'un document à
+l'autre — les README disent `photos.example.com`, les specs encore
+`photos.exemple.fr`. C'est sans conséquence : chacun est idiomatique dans sa
+langue, et le lot 6 les réunira.
 
 > **Les PR #1 à #11 ont été retitrées en anglais le 2026-08-07, mais les commits
 > correspondants restent en français dans `main`.** La liste des PR et
 > `git log` divergent donc sur ces onze entrées, et c'est **voulu** : les
 > réaligner supposerait de réécrire l'historique de la branche principale, ce
 > qui casse tous les clones existants pour un gain cosmétique. Ne pas « corriger »
-> cette divergence. Elle s'éteint d'elle-même : tout ce qui est écrit à partir
-> de maintenant est en anglais des deux côtés.
+> cette divergence.
+
+## Ton de la documentation et des PR
+
+Ce dépôt est en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
+l'équipe qui l'a écrit. `CONTRIBUTING.md` dit à ce lecteur-là ce que cette page
+dit à un agent : garde les deux d'accord.
 
 **Une PR dit ce qu'elle apporte ou corrige, pas ce que son auteur a vécu.**
 Concrètement :

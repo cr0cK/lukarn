@@ -1,0 +1,78 @@
+name: Bug report
+description: Something behaves differently from what the documentation says
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. If this is a **security** issue, please close
+        this form and follow [SECURITY.md](../blob/main/SECURITY.md) instead — a
+        public issue is the one place a vulnerability should not go.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what you expected instead
+      placeholder: |
+        Opening an album of about 4,000 photos shows an empty grid. The API
+        answers 200 with the items, so the layout seems to be the part at fault.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence that shows it. If it only happens with particular data, say what is particular about it.
+      placeholder: |
+        1. Sign in as a non-admin account
+        2. Open /album/vacances
+        3. Scroll to the bottom
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release tag, or the output of `git rev-parse --short HEAD`.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: how
+    attributes:
+      label: How is it running?
+      options:
+        - Docker Compose, as deploy/README.md describes
+        - Docker Compose, behind my own reverse proxy
+        - Locally with pnpm dev
+        - Something else — described below
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      description: Only for an interface problem. The engine version matters more than the brand — an old TV browser is a different animal from a current Chrome.
+      placeholder: Chrome 141 on Android 14 / Safari 18 on iPhone / Chromium 79 on an LG TV
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server logs and browser console
+      description: |
+        `docker compose logs --tail=100 app`, and the console if the problem is visible in the interface.
+        **Read them before pasting**: logs carry usernames, album names and mail addresses.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I restarted the server if I had rebuilt the front end or written to the cache by hand — a running server serves the HTML and the cache inventory it read at startup
+          required: true
+        - label: I searched the existing issues
+          required: true
