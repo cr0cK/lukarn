@@ -25,11 +25,11 @@ import { promptPassword } from './prompt.js';
 async function main(): Promise<void> {
   const username = process.argv[2];
   if (!username) {
-    throw new Error('Usage : pnpm create-admin <identifiant> [mot de passe]');
+    throw new Error('Usage: pnpm create-admin <username> [password]');
   }
   if (username.length > USERNAME_MAX_LENGTH || !USERNAME_PATTERN.test(username)) {
     throw new Error(
-      `Identifiant invalide : lettres, chiffres, point, tiret et underscore uniquement, ` +
+      `Invalid username: letters, digits, dot, dash and underscore only, ` +
         `${USERNAME_MAX_LENGTH} characters at most.`,
     );
   }

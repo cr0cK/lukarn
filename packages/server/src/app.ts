@@ -108,7 +108,7 @@ async function registerFrontend(
         error: 'not_found',
         message: request.url.startsWith('/api/')
           ? 'Route inconnue'
-          : 'Front non buildé — lance `pnpm dev` ou `pnpm build`.',
+          : 'Front end not built — run `pnpm dev` or `pnpm build`.',
       }),
     );
     return;
@@ -168,7 +168,7 @@ async function registerFrontend(
     // s'installe simplement plus : un avertissement, pas un refus de démarrer.
     // C'est le même arbitrage que pour un front absent, quelques lignes plus haut.
     server.log.warn(
-      `manifest.webmanifest absent de ${webDir} — l'application ne pourra pas être installée.`,
+      `manifest.webmanifest missing from ${webDir} — the application will not be installable.`,
     );
   }
 

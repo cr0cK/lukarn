@@ -15,7 +15,7 @@ const DEFAULT_WEB_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url)
  * par `openssl rand -hex 32` divisée par deux, donc largement atteignable, et
  * ça écarte les valeurs de test laissées par erreur en production.
  */
-const secret = z.string().min(32, 'doit faire au moins 32 caractères (openssl rand -hex 32)');
+const secret = z.string().min(32, 'must be at least 32 characters (openssl rand -hex 32)');
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -137,8 +137,8 @@ function readServiceAccount(file: string): { email: string; privateKey: string; 
   const result = shape.safeParse(parsed);
   if (!result.success) {
     throw new Error(
-      `GOOGLE_SERVICE_ACCOUNT_FILE : « ${file} » ne porte pas « client_email » et ` +
-        '« private_key ». Télécharge la clé au format JSON depuis la console Google Cloud.',
+      `GOOGLE_SERVICE_ACCOUNT_FILE: "${file}" carries neither "client_email" nor ` +
+        '"private_key". Download the key in JSON format from the Google Cloud console.',
     );
   }
 
@@ -164,9 +164,9 @@ function validateSmtpUrl(url: string): void {
     parsed = new URL(url);
   } catch {
     throw new Error(
-      "SMTP_URL n'est pas une URL valide. Un mot de passe contenant « / », « ? » ou " +
-        "« # » coupe l'adresse : encode ces caractères (%2F, %3F, %23), comme le « @ » " +
-        "d'une adresse email en %40.",
+      'SMTP_URL is not a valid URL. A password containing "/", "?" or "#" cuts the ' +
+        'address short: percent-encode those characters (%2F, %3F, %23), the same way ' +
+        'an email address\'s "@" becomes %40.',
     );
   }
 
@@ -217,8 +217,8 @@ export function parseMailAddress(valeur: string): string | null {
 function validateMailAddress(variable: string, valeur: string): void {
   if (parseMailAddress(valeur)) return;
   throw new Error(
-    `${variable} ne porte pas d'adresse email exploitable : « ${valeur} ». Formes ` +
-      'acceptées : « galerie@exemple.fr » ou « Galerie <galerie@exemple.fr> ».',
+    `${variable} carries no usable email address: "${valeur}". Accepted forms: ` +
+      '"gallery@example.com" or "Gallery <gallery@example.com>".',
   );
 }
 
@@ -248,9 +248,7 @@ export function loadEnv(
   const hasId = Boolean(env.GOOGLE_CLIENT_ID);
   const hasSecret = Boolean(env.GOOGLE_CLIENT_SECRET);
   if (hasId !== hasSecret) {
-    throw new Error(
-      'GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET doivent être renseignés ensemble (ou aucun des deux).',
-    );
+    throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together (or neither).');
   }
 
   // Même raison que ci-dessus : une instance configurée avec un serveur SMTP
@@ -270,8 +268,8 @@ export function loadEnv(
   const geocodingUrl = env.GEOCODING_URL.trim().replace(/\/+$/, '');
   if (geocodingUrl && !URL.canParse(geocodingUrl)) {
     throw new Error(
-      `GEOCODING_URL n'est pas une URL valide : « ${geocodingUrl} ». Laisse la variable ` +
-        'vide pour désactiver le géocodage des lieux.',
+      `GEOCODING_URL is not a valid URL: "${geocodingUrl}". Leave the variable ` +
+        'empty to disable place geocoding.',
     );
   }
 

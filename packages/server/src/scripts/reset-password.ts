@@ -24,7 +24,7 @@ import { promptPassword } from './prompt.js';
 async function main(): Promise<void> {
   const username = process.argv[2];
   if (!username) {
-    throw new Error('Usage : pnpm reset-password <identifiant> [mot de passe]');
+    throw new Error('Usage: pnpm reset-password <username> [password]');
   }
 
   const password = process.argv[3] ?? (await promptPassword());

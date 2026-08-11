@@ -448,7 +448,7 @@ describe('migrations', () => {
     // Migration volontairement invalide, ajoutée le temps du test.
     MIGRATIONS.push('CECI N EST PAS DU SQL;');
     try {
-      assert.throws(() => migrate(db), /Échec de la migration/);
+      assert.throws(() => migrate(db), /Migration \d+ failed/);
       // La version n'a pas bougé : la reprise repartira de la même étape.
       assert.equal(db.pragma('user_version', { simple: true }), before);
     } finally {

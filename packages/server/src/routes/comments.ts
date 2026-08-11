@@ -202,7 +202,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         if (!parsed.success) {
           return reply.code(400).send({
             error: 'bad_request',
-            message: `Le commentaire doit contenir entre 1 et ${COMMENT_MAX_LENGTH} caractères.`,
+            message: `A comment must be between 1 and ${COMMENT_MAX_LENGTH} characters.`,
           });
         }
 
@@ -255,7 +255,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         if (!parsed.success) {
           return reply.code(400).send({
             error: 'bad_request',
-            message: `Le commentaire doit contenir entre 1 et ${COMMENT_MAX_LENGTH} caractères.`,
+            message: `A comment must be between 1 and ${COMMENT_MAX_LENGTH} characters.`,
           });
         }
 
@@ -373,23 +373,23 @@ function notify(
  */
 function unsubscribePage(publicUrl: string, found: boolean): string {
   const message = found
-    ? 'Tu ne recevras plus d’email lors d’un nouveau commentaire.'
-    : 'Ce compte n’existe plus : il n’y a rien à désabonner.';
+    ? 'You will no longer get an email when a new comment arrives.'
+    : 'That account no longer exists: there is nothing to unsubscribe from.';
 
   return `<!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Désabonnement</title>
+    <title>Unsubscribed</title>
   </head>
   <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6; color: #1a1a1a;">
-    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">C’est fait</h1>
+    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">Done</h1>
     <p style="margin: 0 0 1.5rem;">${message}</p>
     <p style="margin: 0; font-size: 0.9rem; color: #666;">
-      Pour les réactiver, demande-le à l’administrateur de l’instance.
+      To turn them back on, ask the administrator of this instance.
       <br>
-      <a href="${publicUrl}" style="color: #2563eb;">Retour à la galerie</a>
+      <a href="${publicUrl}" style="color: #2563eb;">Back to the gallery</a>
     </p>
   </body>
 </html>`;

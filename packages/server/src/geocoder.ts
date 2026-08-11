@@ -117,8 +117,8 @@ export class Geocoder {
     const budget = missing.slice(0, MAX_LOOKUPS_PER_RUN);
     if (missing.length > budget.length) {
       this.log.info(
-        `Géocodage : ${budget.length} cellules ce passage, ${missing.length - budget.length} ` +
-          'reportées à la suivante',
+        `Geocoding: ${budget.length} cells this pass, ${missing.length - budget.length} ` +
+          'deferred to the next',
       );
     }
 
@@ -135,7 +135,7 @@ export class Geocoder {
       } catch (error) {
         // Rien n'est écrit : la cellule repassera. Une ligne « échec » serait
         // indistinguable d'un « pas de résultat », qu'on ne redemande jamais.
-        this.log.debug(`Geocoding ${cell} failed : ${(error as Error).message}`);
+        this.log.debug(`Geocoding ${cell} failed: ${(error as Error).message}`);
       }
     }
 
@@ -183,7 +183,7 @@ export class Geocoder {
 
     if (!response.ok) {
       if (response.status === 429 || response.status >= 500) {
-        throw new Error(`Nominatim a répondu ${response.status}`);
+        throw new Error(`Nominatim answered ${response.status}`);
       }
       // Un 4xx sur une coordonnée valide ne s'améliorera pas en réessayant :
       // c'est un « pas de résultat », qu'on enregistre pour ne plus demander.

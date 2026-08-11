@@ -109,7 +109,7 @@ export class AlbumNotifier {
 
       announced++;
       this.deps.log.info(
-        `Album "${album.id}" : ${count} nouveautés annoncées à ${subscribers.length} abonné(s)`,
+        `Album "${album.id}": ${count} new photos announced to ${subscribers.length} subscriber(s)`,
       );
     }
 

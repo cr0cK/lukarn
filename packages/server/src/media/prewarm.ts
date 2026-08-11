@@ -156,9 +156,7 @@ export class CachePrewarmer {
               // le passage : les photos suivantes n'y sont pour rien, et le
               // prochain tour réessaiera celle-ci.
               result.failed++;
-              this.deps.log.debug(
-                `Préchauffage de ${item.id} en échec : ${(error as Error).message}`,
-              );
+              this.deps.log.debug(`Prewarming ${item.id} failed: ${(error as Error).message}`);
             }
 
             await this.wait(PAUSE_MS);
@@ -171,8 +169,8 @@ export class CachePrewarmer {
       this.running = false;
       if (result.rendered > 0 || result.failed > 0) {
         this.deps.log.info(
-          `Préchauffage : ${result.rendered} rendus, ${result.skipped} déjà en cache, ` +
-            `${result.failed} en échec (${result.stopped})`,
+          `Prewarm: ${result.rendered} rendered, ${result.skipped} already cached, ` +
+            `${result.failed} failed (${result.stopped})`,
         );
       }
     }

@@ -65,24 +65,24 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
  */
 function unsubscribePage(publicUrl: string, albumTitle: string | null): string {
   const message = albumTitle
-    ? `Tu ne recevras plus d’email quand de nouvelles photos arriveront dans «&nbsp;${escapeHtml(albumTitle)}&nbsp;».`
-    : 'Cet album ou ce compte n’existe plus : il n’y a rien à désabonner.';
+    ? `You will no longer get an email when new photos arrive in &quot;${escapeHtml(albumTitle)}&quot;.`
+    : 'That album or that account no longer exists: there is nothing to unsubscribe from.';
 
   return `<!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Désabonnement</title>
+    <title>Unsubscribed</title>
   </head>
   <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6; color: #1a1a1a;">
-    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">C’est fait</h1>
+    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">Done</h1>
     <p style="margin: 0 0 1.5rem;">${message}</p>
     <p style="margin: 0; font-size: 0.9rem; color: #666;">
-      Les réponses à tes commentaires, elles, continuent d’arriver : elles se
-      coupent depuis le lien d’un de ces emails.
+      Replies to your comments keep arriving: those are stopped from the link in
+      one of those emails.
       <br>
-      <a href="${publicUrl}" style="color: #2563eb;">Retour à la galerie</a>
+      <a href="${publicUrl}" style="color: #2563eb;">Back to the gallery</a>
     </p>
   </body>
 </html>`;

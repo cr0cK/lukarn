@@ -71,7 +71,7 @@ export interface FeedQuery {
  */
 export class UnknownParentError extends Error {
   constructor() {
-    super('Le commentaire auquel tu réponds n’existe plus.');
+    super('The comment you are replying to no longer exists.');
     this.name = 'UnknownParentError';
   }
 }
@@ -83,7 +83,7 @@ export class UnknownParentError extends Error {
  */
 export class EditWindowClosedError extends Error {
   constructor() {
-    super('Le délai pour corriger ce commentaire est passé.');
+    super('The window for correcting this comment has closed.');
     this.name = 'EditWindowClosedError';
   }
 }

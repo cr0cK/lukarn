@@ -231,7 +231,7 @@ export class MediaRenderer {
         // échec ne ferait que rejouer le même appel.
         if (origin === 'poster') throw error;
         this.log.warn(
-          `Décodage local impossible pour ${fileId} (${(error as Error).message}), ` +
+          `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
             'repli sur la vignette Drive',
         );
         source = await this.downloadDriveThumbnail(fileId, premiere);
@@ -293,7 +293,7 @@ export class MediaRenderer {
       // quoi la seule issue serait une erreur, pour une photo que Drive sait
       // pourtant afficher.
       this.log.warn(
-        `Décodage local impossible pour ${fileId} (${(error as Error).message}), ` +
+        `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
           'repli sur la vignette Drive',
       );
       const fallback = await this.downloadDriveThumbnail(fileId, variant);
@@ -336,13 +336,13 @@ export class MediaRenderer {
 
     const annoncee = Number(response.headers.get('content-length'));
     if (Number.isFinite(annoncee) && annoncee > MAX_DECODE_BYTES) {
-      throw new Error(`original de ${Math.round(annoncee / 1024 / 1024)} Mo, trop lourd à décoder`);
+      throw new Error(`original of ${Math.round(annoncee / 1024 / 1024)} MB, too heavy to decode`);
     }
 
     const source = Buffer.from(await response.arrayBuffer());
     if (source.byteLength > MAX_DECODE_BYTES) {
       throw new Error(
-        `original de ${Math.round(source.byteLength / 1024 / 1024)} Mo, trop lourd à décoder`,
+        `original of ${Math.round(source.byteLength / 1024 / 1024)} MB, too heavy to decode`,
       );
     }
     return source;

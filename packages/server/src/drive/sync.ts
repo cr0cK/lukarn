@@ -90,7 +90,7 @@ export interface SyncResult {
  */
 class SyncSupersededError extends Error {
   constructor(albumId: string) {
-    super(`Sync de "${albumId}" abandonnée : l'album a été reconfiguré entre-temps`);
+    super(`Sync of "${albumId}" abandoned: the album was reconfigured in the meantime`);
   }
 }
 
@@ -178,7 +178,7 @@ export class Syncer {
       try {
         results.push(await this.sync(album));
       } catch (error) {
-        this.log.error(`Sync of "${album.id}" failed : ${(error as Error).message}`);
+        this.log.error(`Sync of "${album.id}" failed: ${(error as Error).message}`);
         // Autorisation révoquée : les albums suivants échoueraient tous de la
         // même façon. On s'arrête, l'erreur déjà inscrite dans `sync_state`
         // expliquant à chacun ce qui s'est passé.
@@ -226,8 +226,8 @@ export class Syncer {
 
         if (visited.size > MAX_FOLDERS) {
           throw new Error(
-            `Plus de ${MAX_FOLDERS} dossiers parcourus pour l'album "${album.id}" — ` +
-              'cible un dossier plus précis ou passe `recursive: false`.',
+            `More than ${MAX_FOLDERS} folders walked for album "${album.id}" — ` +
+              'target a more specific folder, or set `recursive: false`.',
           );
         }
 
@@ -262,7 +262,7 @@ export class Syncer {
 
       this.syncState.set(album.id, { lastSyncAt: seenAt, status: 'ok', error: null });
       this.log.info(
-        `Album "${album.id}" : ${indexed} médias, ${removed} retirés, ` +
+        `Album "${album.id}": ${indexed} media, ${removed} removed, ` +
           `${visited.size} dossiers, ${durationMs} ms`,
       );
 
@@ -514,7 +514,7 @@ export class Syncer {
       // téléversement avant de s'en apercevoir.
       if (error instanceof DriveRevokedError) throw error;
       this.log.warn(
-        `En-tête de la vidéo ${fileId} illisible : ${(error as Error).message} — ` +
+        `Header of video ${fileId} unreadable: ${(error as Error).message} — ` +
           'la date vient du nom du fichier ou de sa date de modification.',
       );
       return null;

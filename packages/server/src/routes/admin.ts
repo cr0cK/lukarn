@@ -48,7 +48,7 @@ const albumId = z
 
 const password = z
   .string()
-  .min(PASSWORD_MIN_LENGTH, `au moins ${PASSWORD_MIN_LENGTH} caractères`)
+  .min(PASSWORD_MIN_LENGTH, `at least ${PASSWORD_MIN_LENGTH} characters`)
   // Argon2 accepte des mots de passe bien plus longs ; la borne protège
   // simplement le CPU d'un hachage démesuré demandé par mégarde.
   .max(512);
@@ -164,9 +164,9 @@ function commenterIdOf(params: unknown): number | null {
 /** Message d'erreur lisible : le chemin du champ fautif, puis la raison. */
 function badRequest(reply: FastifyReply, error: z.ZodError): FastifyReply {
   const details = error.issues
-    .map((issue) => `${issue.path.join('.') || '(racine)'} : ${issue.message}`)
+    .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
     .join(' ; ');
-  return reply.code(400).send({ error: 'bad_request', message: `Requête invalide — ${details}` });
+  return reply.code(400).send({ error: 'bad_request', message: `Invalid request — ${details}` });
 }
 
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
@@ -254,7 +254,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (context.config.user(input.username)) {
         return reply.code(409).send({
           error: 'conflict',
-          message: `L'identifiant "${input.username}" est déjà pris.`,
+          message: `The username "${input.username}" is already taken.`,
         });
       }
 
@@ -294,8 +294,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(409).send({
           error: 'last_admin',
           message:
-            "Impossible de retirer le rôle du dernier administrateur : l'instance " +
-            "deviendrait inadministrable. Nomme un autre administrateur d'abord.",
+            'The last administrator cannot have the role removed: the instance would ' +
+            'become unadministrable. Appoint another administrator first.',
         });
       }
 
@@ -328,9 +328,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
        */
       if (patch.password) {
         context.sessions.destroyForUser(stored.username);
-        request.log.info(
-          `Sessions de "${stored.username}" fermées après changement de mot de passe`,
-        );
+        request.log.info(`Sessions of "${stored.username}" closed after password change`);
       }
 
       return reply.send(toAdminUser(user));
@@ -441,7 +439,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       const affected = context.comments.hideAllFrom(id, request.user!.username);
       request.log.info(
-        `${affected} commentaire(s) de l'identité ${id} masqués par "${request.user!.username}"`,
+        `${affected} comment(s) from identity ${id} hidden by "${request.user!.username}"`,
       );
       return reply.send({ affected });
     });
@@ -457,7 +455,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       const affected = context.comments.showAllFrom(id);
       request.log.info(
-        `${affected} commentaire(s) de l'identité ${id} rendus visibles par ` +
+        `${affected} comment(s) from identity ${id} made visible again by ` +
           `"${request.user!.username}"`,
       );
       return reply.send({ affected });
@@ -477,7 +475,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (context.findAlbum(input.id)) {
         return reply
           .code(409)
-          .send({ error: 'conflict', message: `L'album "${input.id}" existe déjà.` });
+          .send({ error: 'conflict', message: `Album "${input.id}" already exists.` });
       }
 
       const album = context.config.createAlbum({
@@ -518,7 +516,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         if (!chosen || chosen.kind !== 'photo') {
           return reply.code(400).send({
             error: 'unknown_cover',
-            message: "Cette couverture n'est pas une photo indexée dans cet album.",
+            message: 'That cover is not a photo indexed in this album.',
           });
         }
       }
@@ -547,7 +545,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         const removed = context.media.clearAlbum(id);
         context.syncState.set(id, { lastSyncAt: null, status: 'never', error: null });
         request.log.info(
-          `Album "${id}" : périmètre Drive changé, ${removed} médias retirés de l'index`,
+          `Album "${id}": Drive scope changed, ${removed} media removed from the index`,
         );
         startSync(album, request.log);
       }
@@ -660,8 +658,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(409).send({
           error: 'service_account_mode',
           message:
-            "Cette instance s'authentifie avec un compte de service : il n'y a pas de " +
-            'consentement à donner. Partage le dossier avec son adresse depuis Google Drive.',
+            'This instance authenticates with a service account: there is no consent to ' +
+            'give. Share the folder with its address from Google Drive.',
         });
       }
       if (!context.drive.configured) {
@@ -692,8 +690,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(409).send({
           error: 'service_account_mode',
           message:
-            "Cette instance s'authentifie avec un compte de service : retire " +
-            'GOOGLE_SERVICE_ACCOUNT_FILE, ou le partage du dossier côté Drive.',
+            'This instance authenticates with a service account: remove ' +
+            'GOOGLE_SERVICE_ACCOUNT_FILE, or the folder share on the Drive side.',
         });
       }
       context.drive.disconnect();

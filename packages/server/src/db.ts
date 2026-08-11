@@ -653,7 +653,7 @@ export function migrate(db: Db): void {
       db.exec('COMMIT');
     } catch (error) {
       db.exec('ROLLBACK');
-      throw new Error(`Échec de la migration ${version + 1} : ${(error as Error).message}`);
+      throw new Error(`Migration ${version + 1} failed: ${(error as Error).message}`);
     }
   }
 }

@@ -55,7 +55,7 @@ describe('SMTP_URL', () => {
     for (const motDePasse of ['a/b', 'a?b', 'a#b']) {
       assert.throws(
         () => loadEnv(avecSmtp(`smtp://user:${motDePasse}@smtp.exemple.fr:587`)),
-        /SMTP_URL n'est pas une URL valide/,
+        /SMTP_URL is not a valid URL/,
         `« ${motDePasse} » doit être refusé`,
       );
     }
@@ -135,12 +135,12 @@ describe('forme des adresses', () => {
     ]) {
       assert.throws(
         () => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025', MAIL_FROM: valeur })),
-        /MAIL_FROM ne porte pas d'adresse email exploitable/,
+        /MAIL_FROM carries no usable email address/,
         `« ${valeur} » doit être refusé`,
       );
       assert.throws(
         () => loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: valeur })),
-        /MAIL_REPLY_TO ne porte pas d'adresse email exploitable/,
+        /MAIL_REPLY_TO carries no usable email address/,
         `« ${valeur} » doit être refusé`,
       );
     }

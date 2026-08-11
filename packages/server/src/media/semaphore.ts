@@ -21,7 +21,7 @@ export class Semaphore {
   private readonly attente: (() => void)[] = [];
 
   constructor(readonly limite: number) {
-    if (limite < 1) throw new Error('La limite doit être au moins 1');
+    if (limite < 1) throw new Error('The limit must be at least 1');
     this.disponibles = limite;
   }
 

@@ -196,12 +196,12 @@ async function main(): Promise<void> {
   await server.listen({ port: env.port, host: env.host });
 
   server.log.info(
-    `Pool de fils : ${threadPoolSize} · rendus simultanés : ${context.renderer.load.limit}`,
+    `Thread pool: ${threadPoolSize} · concurrent renders: ${context.renderer.load.limit}`,
   );
 
   if (!context.drive.configured) {
     server.log.warn(
-      'OAuth Google non configuré : renseigne GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans .env',
+      'Google OAuth not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env',
     );
   } else if (!context.drive.connected) {
     server.log.warn(`Google Drive not connected: open ${env.publicUrl}/admin to authorise`);

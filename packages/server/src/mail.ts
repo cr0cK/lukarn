@@ -55,17 +55,17 @@ export class Mailer {
   static fromEnv(env: Env, log: Logger): Mailer {
     if (!env.mail) {
       log.info(
-        "SMTP non configuré : ni les notifications de commentaires ni l'annonce des " +
-          "nouvelles photos n'enverront rien.",
+        'SMTP not configured: neither comment notifications nor new-photo ' +
+          'announcements will send anything.',
       );
       // Avertir plutôt que refuser de démarrer : couper SMTP le temps d'une
       // intervention est légitime, et on ne laisse pas au passage une variable
       // qui n'a rien d'invalide bloquer l'instance.
       if (env.mailReplyTo) {
         log.warn(
-          "MAIL_REPLY_TO est renseignée mais aucun relais n'est configuré : sans " +
-            "SMTP_URL ni MAIL_FROM, aucun message ne part, et l'adresse de réponse " +
-            'ne sert à rien.',
+          'MAIL_REPLY_TO is set but no relay is configured: without SMTP_URL and ' +
+            'MAIL_FROM nothing is sent at all, so the reply address serves no ' +
+            'purpose.',
         );
       }
       return new Mailer(null, log);
@@ -76,9 +76,9 @@ export class Mailer {
     // d'aller exactement là où elles n'arrivaient pas.
     if (env.mailReplyTo && parseMailAddress(env.mailReplyTo) === parseMailAddress(env.mail.from)) {
       log.warn(
-        `MAIL_REPLY_TO désigne la même adresse que MAIL_FROM (${env.mailReplyTo}) : ` +
-          "l'en-tête Reply-To ne détourne alors rien. Mets-y une adresse qui reçoit " +
-          'vraiment du courrier, ou laisse la variable vide.',
+        `MAIL_REPLY_TO points at the same address as MAIL_FROM (${env.mailReplyTo}): ` +
+          'the Reply-To header then redirects nothing. Put an address that really ' +
+          'receives mail, or leave the variable empty.',
       );
     }
 
@@ -111,7 +111,7 @@ export class Mailer {
         // Journalisé et abandonné : pas de réessai. Une notification manquée
         // est un désagrément, une file de réessais est un mécanisme à
         // surveiller — et le commentaire, lui, est bien enregistré.
-        this.log.warn(`Delivery to ${message.to} : ${(error as Error).message}`);
+        this.log.warn(`Delivery to ${message.to} failed: ${(error as Error).message}`);
       }
     });
   }
@@ -180,23 +180,21 @@ export function buildCommentMail(
   // qu'il est au bon endroit.
   const subject =
     recipient.reason === 'reply'
-      ? `${notification.authorDisplayName} a répondu à ton commentaire`
-      : `${notification.authorDisplayName} a commenté une photo`;
+      ? `${notification.authorDisplayName} replied to your comment`
+      : `${notification.authorDisplayName} commented on a photo`;
 
   const where = notification.mediaName
     ? `${notification.mediaName} — ${notification.albumTitle}`
     : notification.albumTitle;
 
   const text = [
-    `${subject} :`,
+    `${subject}:`,
     '',
     quote(notification.body),
     '',
     where,
     link,
-    ...(unsubscribe
-      ? ['', '—', `Ne plus recevoir aucun email de cette galerie : ${unsubscribe}`]
-      : []),
+    ...(unsubscribe ? ['', '—', `Stop receiving any email from this gallery: ${unsubscribe}`] : []),
   ].join('\n');
 
   // HTML volontairement pauvre : styles en ligne, pas d'image, pas de police
@@ -204,15 +202,15 @@ export function buildCommentMail(
   // qui ne charge rien depuis le serveur ne signale pas non plus sa lecture.
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
-      <p style="margin: 0 0 16px;">${escapeHtml(subject)} :</p>
+      <p style="margin: 0 0 16px;">${escapeHtml(subject)}:</p>
       <blockquote style="margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid #d4d4d4; background: #fafafa; white-space: pre-wrap;">${escapeHtml(notification.body)}</blockquote>
       <p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>
-      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">Voir la photo</a></p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">View the photo</a></p>
       ${
         unsubscribe
           ? `<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Ne plus recevoir aucun email de cette galerie</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Stop receiving any email from this gallery</a>
       </p>`
           : ''
       }
@@ -253,7 +251,7 @@ export function buildAlbumUpdateMail(
     `&t=${signAlbumUnsubscribeToken(email, notification.albumId, env.sessionSecret)}`;
 
   const plural = notification.count > 1;
-  const subject = `${notification.count} nouvelle${plural ? 's' : ''} photo${plural ? 's' : ''} dans ${notification.albumTitle}`;
+  const subject = `${notification.count} new photo${plural ? 's' : ''} in ${notification.albumTitle}`;
 
   const text = [
     `${subject}.`,
@@ -261,8 +259,8 @@ export function buildAlbumUpdateMail(
     link,
     '',
     '—',
-    `Tu reçois ce message parce que tu as ouvert cet album.`,
-    `Ne plus être prévenu des nouveautés de « ${notification.albumTitle} » : ${unsubscribe}`,
+    `You are getting this because you have opened this album.`,
+    `Stop hearing about new photos in "${notification.albumTitle}" : ${unsubscribe}`,
   ].join('\n');
 
   // Même sobriété que les notifications de commentaires : styles en ligne, rien
@@ -270,12 +268,12 @@ export function buildAlbumUpdateMail(
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}.</p>
-      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">Voir l’album</a></p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">View the album</a></p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        Tu reçois ce message parce que tu as ouvert cet album.
+        You are getting this because you have opened this album.
         <br>
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Ne plus être prévenu des nouveautés de «&nbsp;${escapeHtml(notification.albumTitle)}&nbsp;»</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Stop hearing about new photos in &quot;${escapeHtml(notification.albumTitle)}&quot;</a>
       </p>
     </div>
   `.trim();
@@ -336,40 +334,40 @@ export function buildVerificationMail(
   env: Env,
 ): MailMessage {
   const host = new URL(env.publicUrl).host;
-  const subject = `Code de vérification — ${host}`;
+  const subject = `Verification code — ${host}`;
 
   const text = [
-    `Bonjour ${displayName},`,
+    `Hello ${displayName},`,
     '',
-    `Tu viens de renseigner cette adresse sur ${host} pour signer tes commentaires.`,
-    'Voici ton code :',
+    `You have just given this address on ${host} to sign your comments.`,
+    'Here is your code:',
     '',
     code,
     '',
-    'Recopie-le dans la page restée ouverte. Il est valable quinze minutes et ne',
-    'sert qu’une fois.',
+    'Type it into the page you left open. It lasts fifteen minutes and works',
+    'once.',
     '',
     '—',
-    "Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,",
-    "rien n'est associé à cette adresse. Ne le communique à personne.",
+    'If you did not ask for this, ignore the message: until the code is entered,',
+    'nothing is tied to this address. Do not pass it on to anyone.',
   ].join('\n');
 
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
-      <p style="margin: 0 0 16px;">Bonjour ${escapeHtml(displayName)},</p>
+      <p style="margin: 0 0 16px;">Hello ${escapeHtml(displayName)},</p>
       <p style="margin: 0 0 8px;">
         Tu viens de renseigner cette adresse sur ${escapeHtml(host)} pour signer tes
-        commentaires. Voici ton code :
+        commentaires. Here is your code:
       </p>
       <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
       <p style="margin: 0 0 24px; color: #666;">
-        Recopie-le dans la page restée ouverte. Il est valable quinze minutes et ne sert
+        Type it into the page you left open. It lasts fifteen minutes and works sert
         qu’une fois.
       </p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,
-        rien n'est associé à cette adresse. Ne le communique à personne.
+        If you did not ask for this, ignore the message: until the code is entered,
+        nothing is tied to this address. Do not pass it on to anyone.
       </p>
     </div>
   `.trim();

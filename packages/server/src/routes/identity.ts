@@ -54,9 +54,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       if (!context.mailer.enabled) {
         return reply.code(503).send({
           error: 'mail_not_configured',
-          message:
-            "Cette galerie n'a pas de serveur d'envoi configuré : les commentaires sont " +
-            'indisponibles.',
+          message: 'This gallery has no mail server configured: comments are unavailable.',
         });
       }
 
@@ -78,14 +76,12 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
           .header('Retry-After', String(seconds))
           .send({
             error: 'too_soon',
-            message: `Un code vient d'être envoyé. Réessaie dans ${seconds} s.`,
+            message: `A code has just been sent. Try again in ${seconds} s.`,
           });
       }
 
       context.mailer.queue(buildVerificationMail(email, displayName, result.code, context.env));
-      request.log.info(
-        `Code de vérification envoyé à une adresse depuis "${request.user!.username}"`,
-      );
+      request.log.info(`Verification code sent to an address from "${request.user!.username}"`);
 
       return reply.code(202).send({ ok: true });
     });
@@ -109,7 +105,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
         const message =
           result.failure === 'too_many_attempts'
             ? 'Trop de tentatives. Demande un nouveau code.'
-            : 'Code incorrect ou expiré. Demande un nouveau code si besoin.';
+            : 'Wrong or expired code. Ask for a new one if needed.';
         return reply.code(400).send({ error: result.failure, message });
       }
 

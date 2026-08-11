@@ -255,10 +255,10 @@ describe('composition des messages', () => {
       env,
     );
 
-    assert.match(versAuteur.subject, /a répondu à ton commentaire/);
+    assert.match(versAuteur.subject, /replied to your comment/);
     assert.match(versAuteur.text, /unsubscribe\?u=papi2%40exemple\.fr/);
 
-    assert.match(versModeration.subject, /a commenté une photo/);
+    assert.match(versModeration.subject, /commented on a photo/);
     // L'adresse de modération n'est pas une identité : elle se retire depuis
     // /admin, pas par un lien qui couperait les alertes de l'instance.
     assert.ok(!versModeration.text.includes('unsubscribe'));

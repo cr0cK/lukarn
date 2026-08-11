@@ -222,7 +222,7 @@ export class MediaCache {
    */
   private evictInBackground(): void {
     void this.evictIfNeeded().catch((error: unknown) => {
-      this.log.warn(`Éviction du cache interrompue : ${(error as Error).message}`);
+      this.log.warn(`Cache eviction interrupted: ${(error as Error).message}`);
     });
   }
 
@@ -266,9 +266,7 @@ export class MediaCache {
         // L'entrée reste inventoriée : le fichier est toujours là, l'oublier
         // ferait mentir `stats()` et perdrait sa taille pour toutes les
         // évictions suivantes.
-        this.log.warn(
-          `Entrée de cache non supprimable (${candidate.path}) : ${(error as Error).message}`,
-        );
+        this.log.warn(`Cache entry not removable (${candidate.path}): ${(error as Error).message}`);
         continue;
       }
 

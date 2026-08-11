@@ -48,7 +48,7 @@ describe('avertissements de configuration du transport', () => {
   it('signale une adresse de réponse sans relais pour l’utiliser', () => {
     const { avertissements, log } = journal();
     Mailer.fromEnv(config({ MAIL_REPLY_TO: 'moi@exemple.fr' }), log);
-    assert.match(avertissements.join('\n'), /MAIL_REPLY_TO est renseignée mais aucun relais/);
+    assert.match(avertissements.join('\n'), /MAIL_REPLY_TO is set but no relay/);
   });
 
   it('signale une adresse de réponse identique à l’expéditeur', () => {
@@ -57,7 +57,7 @@ describe('avertissements de configuration du transport', () => {
     // d'un côté, casse de l'autre — mais l'adresse est la même, et le Reply-To
     // ne détourne alors rien.
     Mailer.fromEnv(config({ ...RELAIS, MAIL_REPLY_TO: 'Galerie@Exemple.fr' }), log);
-    assert.match(avertissements.join('\n'), /la même adresse que MAIL_FROM/);
+    assert.match(avertissements.join('\n'), /the same address as MAIL_FROM/);
   });
 
   it('se tait quand la configuration est cohérente', () => {

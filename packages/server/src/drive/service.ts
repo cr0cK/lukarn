@@ -31,7 +31,7 @@ type AuthorizedClient = OAuth2Client | JwtClient;
 
 export class DriveNotConnectedError extends Error {
   constructor() {
-    super("Google Drive n'est pas connecté. Va sur /admin pour autoriser l'accès.");
+    super('Google Drive is not connected. Go to /admin to authorise access.');
     this.name = 'DriveNotConnectedError';
   }
 }
@@ -47,15 +47,15 @@ export class DriveKeyMismatchError extends DriveNotConnectedError {
   constructor() {
     super();
     this.message =
-      'Le refresh token stocké ne se déchiffre pas avec TOKEN_KEY. Rétablis la clé ' +
-      "d'origine, ou reconnecte Google Drive depuis /admin pour en obtenir un nouveau.";
+      'The stored refresh token does not decrypt with TOKEN_KEY. Restore the original ' +
+      'key, or reconnect Google Drive from /admin to obtain a new one.';
     this.name = 'DriveKeyMismatchError';
   }
 }
 
 export class DriveNotConfiguredError extends Error {
   constructor() {
-    super('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET ne sont pas définis dans .env.');
+    super('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set in .env.');
     this.name = 'DriveNotConfiguredError';
   }
 }
@@ -63,7 +63,7 @@ export class DriveNotConfiguredError extends Error {
 export class DriveRevokedError extends Error {
   constructor() {
     super(
-      "L'autorisation Google a été révoquée ou a expiré. Reconnecte Google Drive depuis /admin.",
+      'The Google authorisation was revoked or has expired. Reconnect Google Drive from /admin.',
     );
     this.name = 'DriveRevokedError';
   }
@@ -83,7 +83,7 @@ export class DriveUnavailableError extends Error {
     readonly retryAfterSeconds: number,
     cause: string,
   ) {
-    super(`Drive n'a pas pu servir ${label} (${cause}). Réessaie dans un instant.`);
+    super(`Drive could not serve ${label} (${cause}). Try again in a moment.`);
     this.name = 'DriveUnavailableError';
   }
 }
@@ -263,8 +263,8 @@ export class DriveService {
 
     if (!tokens.refresh_token) {
       throw new Error(
-        "Google n'a pas renvoyé de refresh token. Révoque l'accès de l'application " +
-          'dans https://myaccount.google.com/permissions puis recommence.',
+        "Google returned no refresh token. Revoke the application's access at " +
+          'https://myaccount.google.com/permissions, then start again.',
       );
     }
 
@@ -348,8 +348,8 @@ export class DriveService {
 
     if (used === null || row.ciphertext !== used) {
       this.log.warn(
-        "Google a refusé un jeton qui n'est plus celui enregistré : une reconnexion a eu " +
-          'lieu pendant la requête, la connexion actuelle est laissée intacte.',
+        'Google rejected a token that is no longer the stored one: a reconnection ' +
+          'happened during the request, so the current connection is left intact.',
       );
       return;
     }
@@ -359,7 +359,7 @@ export class DriveService {
       .run(new Date().toISOString());
     this.cachedClient = null;
     this.log.warn(
-      'Google a refusé le refresh token (invalid_grant). Reconnecte Google Drive depuis /admin.',
+      'Google rejected the refresh token (invalid_grant). Reconnect Google Drive from /admin.',
     );
   }
 
@@ -400,7 +400,7 @@ export class DriveService {
       if (attempt < RATE_LIMIT_ATTEMPTS && isRateLimited(response.status, body)) {
         const wait = retryDelayMs(response.headers.get('retry-after'), attempt);
         this.log.warn(
-          `Drive limite le débit (${response.status}) pour ${label} : nouvelle tentative dans ${Math.round(wait / 1000)} s`,
+          `Drive is rate limiting (${response.status}) for ${label}: retrying in ${Math.round(wait / 1000)} s`,
         );
         await this.delay(wait);
         continue;
@@ -413,7 +413,7 @@ export class DriveService {
         throw new DriveUnavailableError(label, RETRY_AFTER_SECONDS, `Drive ${response.status}`);
       }
 
-      throw new Error(`Drive a répondu ${response.status} pour ${label}: ${body.slice(0, 200)}`);
+      throw new Error(`Drive answered ${response.status} for ${label}: ${body.slice(0, 200)}`);
     }
   }
 
@@ -470,7 +470,7 @@ export class DriveService {
       // `AbortSignal.timeout` rejette avec un `TimeoutError` ; tout le reste est
       // une panne réseau ordinaire, qui a déjà ses propres chemins.
       if (error instanceof Error && error.name === 'TimeoutError') {
-        throw new DriveUnavailableError(url, RETRY_AFTER_SECONDS, 'délai dépassé');
+        throw new DriveUnavailableError(url, RETRY_AFTER_SECONDS, 'timed out');
       }
       throw error;
     }
@@ -531,8 +531,8 @@ export class DriveService {
        */
       this.unreadableToken = true;
       this.log.warn(
-        'Le refresh token stocké est illisible (TOKEN_KEY a changé ?). Il est conservé : ' +
-          "rétablis la clé d'origine, ou reconnecte Drive depuis /admin.",
+        'The stored refresh token is unreadable (did TOKEN_KEY change?). It is kept: ' +
+          'restore the original key, or reconnect Drive from /admin.',
       );
       throw new DriveKeyMismatchError();
     }

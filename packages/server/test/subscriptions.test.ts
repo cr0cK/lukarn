@@ -358,7 +358,7 @@ describe('annonce des nouveautés', () => {
     assert.equal(passage.run(Date.parse('2026-07-01T01:30:00.000Z')), 1);
     await vider();
     assert.equal(envoyes.length, 1);
-    assert.match(envoyes[0]!.subject, /1 nouvelle photo dans Vacances/);
+    assert.match(envoyes[0]!.subject, /1 new photo in Vacances/);
     assert.equal(envoyes[0]!.to, 'abo-papi@exemple.fr');
     // Le lien mène à ce que le message annonce. Depuis que les albums se lisent
     // du début (D99), l'ouvrir sans `?order=desc` poserait le lecteur sur les
@@ -385,7 +385,7 @@ describe('annonce des nouveautés', () => {
 
     assert.equal(passage.run(maintenant), 1);
     await vider();
-    assert.match(envoyes[0]!.subject, /2 nouvelles photos dans Vacances/);
+    assert.match(envoyes[0]!.subject, /2 new photos in Vacances/);
 
     // Sans la borne, chaque passage horaire réannoncerait le même lot.
     assert.equal(passage.run(maintenant + HEURE_MS), 0);

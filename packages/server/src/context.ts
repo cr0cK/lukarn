@@ -213,8 +213,8 @@ export class AppContext {
     this.ffmpeg = await ffmpegAvailable();
     if (this.ffmpeg || !this.settings.transcodeVideos) return;
     this.log.warn(
-      'ffmpeg est introuvable : les vidéos que le navigateur ne décode pas ne seront pas ' +
-        'préparées, elles resteront seulement téléchargeables.',
+      'ffmpeg is missing: videos the browser cannot decode will not be ' +
+        'prepared, they will only stay downloadable.',
     );
   }
 

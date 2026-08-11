@@ -32,6 +32,6 @@ describe('chiffrement du refresh token', () => {
   });
 
   it('rejette une entrée tronquée', () => {
-    assert.throws(() => decryptSecret('AAAA', KEY), /tronqu/);
+    assert.throws(() => decryptSecret('AAAA', KEY), /truncated/);
   });
 });

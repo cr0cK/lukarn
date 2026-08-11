@@ -55,7 +55,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           .header('Retry-After', String(Math.ceil(retryAfter / 1000)))
           .send({
             error: 'too_many_attempts',
-            message: `Trop de tentatives. Réessaie dans ${Math.ceil(retryAfter / 1000)} s.`,
+            message: `Too many attempts. Try again in ${Math.ceil(retryAfter / 1000)} s.`,
           });
       }
 
@@ -292,7 +292,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
  */
 const UNKNOWN_CODE = {
   error: 'unknown_code',
-  message: "Ce code n'est plus valide. Relance la connexion depuis l'écran.",
+  message: 'That code is no longer valid. Start the sign-in again from the screen.',
 };
 
 /**
@@ -312,6 +312,6 @@ function blockedReply(reply: FastifyReply, retryAfterMs: number): FastifyReply |
     .header('Retry-After', String(seconds))
     .send({
       error: 'too_many_attempts',
-      message: `Trop de tentatives. Réessaie dans ${seconds} s.`,
+      message: `Too many attempts. Try again in ${seconds} s.`,
     });
 }

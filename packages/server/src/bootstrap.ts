@@ -26,9 +26,9 @@ export function bootstrapFromYaml(config: ConfigRepo, env: Env, log: BootstrapLo
 
   if (!existsSync(env.configPath)) {
     log.warn(
-      `Aucun compte en base et aucun fichier ${env.configPath} : ` +
-        'crée le premier administrateur avec « pnpm create-admin <identifiant> », ' +
-        'puis connecte-toi sur /admin.',
+      `No account in the database and no ${env.configPath} file: ` +
+        'create the first administrator with "pnpm create-admin <username>", ' +
+        'then sign in at /admin.',
     );
     return;
   }
@@ -62,8 +62,8 @@ export function bootstrapFromYaml(config: ConfigRepo, env: Env, log: BootstrapLo
   });
 
   log.info(
-    `Configuration amorcée depuis ${env.configPath} : ` +
-      `${yaml.users.length} compte(s), ${yaml.albums.length} album(s). ` +
-      "Le fichier ne sera plus relu : l'administration se fait désormais depuis /admin.",
+    `Configuration bootstrapped from ${env.configPath}: ` +
+      `${yaml.users.length} account(s), ${yaml.albums.length} album(s). ` +
+      'The file will not be read again: administration now happens from /admin.',
   );
 }

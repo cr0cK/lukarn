@@ -356,9 +356,7 @@ export class PlacesPass {
       }
 
       if (result.lookups > 0) {
-        this.deps.log.info(
-          `Places: ${result.days} journées agrégées, ${result.lookups} géocodages`,
-        );
+        this.deps.log.info(`Places: ${result.days} days aggregated, ${result.lookups} geocodings`);
       } else {
         this.deps.log.debug(`Places: ${result.days} days aggregated, no geocoding`);
       }

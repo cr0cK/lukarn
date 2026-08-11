@@ -22,7 +22,7 @@ const identifier = z
 const userSchema = z.object({
   username: identifier,
   /** Hash argon2id produit par `pnpm hash-password`. */
-  passwordHash: z.string().startsWith('$argon2', 'doit être un hash argon2 (pnpm hash-password)'),
+  passwordHash: z.string().startsWith('$argon2', 'must be an argon2 hash (pnpm hash-password)'),
   admin: z.boolean().default(false),
   /** Liste d'ids d'albums, ou `["*"]` pour tous. */
   albums: z.array(z.string().min(1)).default([]),
@@ -44,8 +44,8 @@ const albumSchema = z.object({
 
 const configSchema = z
   .object({
-    users: z.array(userSchema).min(1, 'au moins un utilisateur est nécessaire'),
-    albums: z.array(albumSchema).min(1, 'au moins un album est nécessaire'),
+    users: z.array(userSchema).min(1, 'at least one user is required'),
+    albums: z.array(albumSchema).min(1, 'at least one album is required'),
     sync: z
       .object({
         intervalMinutes: z.number().int().min(0).default(30),
@@ -130,7 +130,7 @@ export function loadConfig(path: string): AppConfig {
     const err = error as NodeJS.ErrnoException;
     if (err.code === 'ENOENT') {
       throw new Error(
-        `Fichier de configuration introuvable : ${path}\n` +
+        `Configuration file not found: ${path}\n` +
           'Copy config/albums.example.yaml to config/albums.yaml to get started.',
       );
     }

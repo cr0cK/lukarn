@@ -346,7 +346,7 @@ export class VideoTranscoder implements Transcoder {
       this.deps.drive.fetchFile(fileId, undefined, signal),
     );
     if (!response.ok || !response.body) {
-      throw new Error(`Drive a répondu ${response.status} pour ${fileId}`);
+      throw new Error(`Drive answered ${response.status} for ${fileId}`);
     }
     await pipeline(
       Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
@@ -468,9 +468,7 @@ export class TranscodePass {
               // qu'on puisse jamais savoir pourquoi — et le retour du binaire
               // est précisément la seule chose qui le dise.
               result.failed++;
-              this.deps.log.warn(
-                `Transcodage de ${item.id} en échec : ${(error as Error).message}`,
-              );
+              this.deps.log.warn(`Transcoding ${item.id} failed: ${(error as Error).message}`);
             }
           }
         } while (cursor !== null);
@@ -481,8 +479,8 @@ export class TranscodePass {
       this.running = false;
       if (result.transcoded > 0 || result.failed > 0) {
         this.deps.log.info(
-          `Transcodage : ${result.transcoded} vidéos préparées, ${result.skipped} déjà prêtes, ` +
-            `${result.failed} en échec (${result.stopped})`,
+          `Transcode: ${result.transcoded} videos prepared, ${result.skipped} already ready, ` +
+            `${result.failed} failed (${result.stopped})`,
         );
       }
     }

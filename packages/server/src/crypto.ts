@@ -39,7 +39,7 @@ export function encryptSecret(plaintext: string, secret: string): string {
 export function decryptSecret(encoded: string, secret: string): string {
   const raw = Buffer.from(encoded, 'base64');
   if (raw.length <= SALT_BYTES + IV_BYTES + TAG_BYTES) {
-    throw new Error('Données chiffrées tronquées');
+    throw new Error('Encrypted data truncated');
   }
 
   const salt = raw.subarray(0, SALT_BYTES);
