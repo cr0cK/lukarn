@@ -22,24 +22,24 @@ const HOUSEKEEPING_INTERVAL_MS = 60 * 60 * 1000;
 function startScheduler(context: AppContext): () => void {
   const housekeeping = setInterval(() => {
     const purged = context.sessions.purgeExpired();
-    if (purged > 0) context.log.debug(`${purged} sessions expirées purgées`);
+    if (purged > 0) context.log.debug(`${purged} expired sessions purged`);
 
     // Les compteurs de connexion vivent en mémoire : sans cette purge, une
     // rafale d'identifiants inventés laisserait ses entrées jusqu'au
     // redémarrage, même une fois la pénalité expirée.
     const forgotten = context.throttle.purge();
-    if (forgotten > 0) context.log.debug(`${forgotten} compteurs de connexion oubliés`);
+    if (forgotten > 0) context.log.debug(`${forgotten} sign-in counters forgotten`);
 
     // Les demandes d'appairage vivent cinq minutes ; celles que personne n'a
     // relevées ne s'effacent pas d'elles-mêmes, et la table est bornée.
     const abandoned = context.pairings.purgeExpired();
-    if (abandoned > 0) context.log.debug(`${abandoned} demandes d'appairage expirées purgées`);
+    if (abandoned > 0) context.log.debug(`${abandoned} expired pairing requests purged`);
 
     // Quatre cents jours de visites, pour que la comparaison d'une année sur
     // l'autre reste possible. La table étant agrégée à l'écriture, il n'y a
     // jamais grand-chose à effacer (D260809h).
     const forgottenVisits = context.visits.purgeOld(400);
-    if (forgottenVisits > 0) context.log.debug(`${forgottenVisits} journées de visite oubliées`);
+    if (forgottenVisits > 0) context.log.debug(`${forgottenVisits} visit days forgotten`);
 
     // L'annonce des nouvelles photos est ici, et non à la fin d'une sync : avec
     // une synchronisation toutes les demi-heures écrivant par lots, verser deux
@@ -52,7 +52,7 @@ function startScheduler(context: AppContext): () => void {
       // ci-dessus ont déjà eu lieu, mais le prochain tour aurait lieu quand
       // même — c'est la même règle qu'en D37, une notification manquée est un
       // désagrément.
-      context.log.error({ err: error }, 'Annonce des nouvelles photos en échec');
+      context.log.error({ err: error }, 'Announcing new photos failed');
     }
 
     // Les lieux sont ici pour la même raison que l'annonce : le géocodage est
@@ -60,7 +60,7 @@ function startScheduler(context: AppContext): () => void {
     // d'une synchronisation, ni dans celui d'une requête. Sans `await` : un
     // premier passage sur une grosse bibliothèque dure des minutes.
     void context.places.run().catch((error: unknown) => {
-      context.log.error({ err: error }, 'Passage des lieux en échec');
+      context.log.error({ err: error }, 'Places pass failed');
     });
 
     // Le préchauffage est ici plutôt qu'à la fin d'une synchronisation : la
@@ -78,7 +78,7 @@ function startScheduler(context: AppContext): () => void {
         () => context.transcoder.run(),
       )
       .catch((error: unknown) => {
-        context.log.error({ err: error }, 'Préparation des médias en fond en échec');
+        context.log.error({ err: error }, 'Background media preparation failed');
       });
   }, HOUSEKEEPING_INTERVAL_MS);
   housekeeping.unref();
@@ -98,7 +98,7 @@ function startScheduler(context: AppContext): () => void {
       periodic = null;
     }
     if (minutes <= 0) {
-      context.log.info('Synchronisation automatique désactivée');
+      context.log.info('Automatic sync disabled');
       return;
     }
 
@@ -106,7 +106,7 @@ function startScheduler(context: AppContext): () => void {
       () => {
         if (!context.drive.connected) return;
         void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
-          context.log.error({ err: error }, 'Synchronisation périodique en échec');
+          context.log.error({ err: error }, 'Periodic sync failed');
         });
       },
       minutes * 60 * 1000,
@@ -147,14 +147,14 @@ async function main(): Promise<void> {
   // remplit, l'ancien index restant servi entre-temps.
   if (context.settings.syncOnStartup && context.drive.connected) {
     void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
-      context.log.error({ err: error }, 'Synchronisation de démarrage en échec');
+      context.log.error({ err: error }, 'Startup sync failed');
     });
   } else {
     void context.prewarmer
       .run()
       .then(() => context.transcoder.run())
       .catch((error: unknown) => {
-        context.log.error({ err: error }, 'Préparation des médias en fond en échec');
+        context.log.error({ err: error }, 'Background media preparation failed');
       });
 
     // Même raison pour les lieux, et même exclusion : une instance qu'on vient
@@ -164,12 +164,12 @@ async function main(): Promise<void> {
     // suivre comme passage concurrent, et les photos qui viennent d'arriver
     // attendraient précisément le ménage horaire qu'on cherche à éviter.
     void context.places.run().catch((error: unknown) => {
-      context.log.error({ err: error }, 'Passage des lieux en échec');
+      context.log.error({ err: error }, 'Places pass failed');
     });
   }
 
   const shutdown = async (signal: string): Promise<void> => {
-    context.log.info(`${signal} reçu, arrêt en cours`);
+    context.log.info(`${signal} received, shutting down`);
     stopScheduler();
     // Un passage en cours tiendrait l'arrêt pendant des minutes, pour des
     // rendus qui repartiront d'eux-mêmes au démarrage suivant. Le transcodage
@@ -185,7 +185,7 @@ async function main(): Promise<void> {
       await context.mailer.drain();
       context.close();
     } catch (error) {
-      context.log.error({ err: error }, "Erreur pendant l'arrêt");
+      context.log.error({ err: error }, 'Error during shutdown');
     }
     process.exit(0);
   };
@@ -204,13 +204,13 @@ async function main(): Promise<void> {
       'OAuth Google non configuré : renseigne GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans .env',
     );
   } else if (!context.drive.connected) {
-    server.log.warn(`Google Drive non connecté : ouvre ${env.publicUrl}/admin pour autoriser`);
+    server.log.warn(`Google Drive not connected: open ${env.publicUrl}/admin to authorise`);
   }
 }
 
 main().catch((error: unknown) => {
   // Avant `listen`, le logger Fastify n'existe pas forcément : on écrit le
   // message d'erreur brut, qui est déjà rédigé pour être lisible.
-  console.error(`\nDémarrage impossible :\n${(error as Error).message}\n`);
+  console.error(`\nCannot start:\n${(error as Error).message}\n`);
   process.exit(1);
 });

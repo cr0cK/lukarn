@@ -357,10 +357,10 @@ export class PlacesPass {
 
       if (result.lookups > 0) {
         this.deps.log.info(
-          `Lieux : ${result.days} journées agrégées, ${result.lookups} géocodages`,
+          `Places: ${result.days} journées agrégées, ${result.lookups} géocodages`,
         );
       } else {
-        this.deps.log.debug(`Lieux : ${result.days} journées agrégées, aucun géocodage`);
+        this.deps.log.debug(`Places: ${result.days} days aggregated, no geocoding`);
       }
 
       return result;

@@ -87,16 +87,16 @@ export default fp(authPlugin, { name: 'auth', dependencies: ['@fastify/cookie'] 
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
-    await reply.code(401).send({ error: 'unauthorized', message: 'Authentification requise' });
+    await reply.code(401).send({ error: 'unauthorized', message: 'Authentication required' });
   }
 }
 
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
-    await reply.code(401).send({ error: 'unauthorized', message: 'Authentification requise' });
+    await reply.code(401).send({ error: 'unauthorized', message: 'Authentication required' });
     return;
   }
   if (!request.user.admin) {
-    await reply.code(403).send({ error: 'forbidden', message: 'Réservé aux administrateurs' });
+    await reply.code(403).send({ error: 'forbidden', message: 'Administrators only' });
   }
 }

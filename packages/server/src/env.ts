@@ -177,7 +177,7 @@ function validateSmtpUrl(url: string): void {
   }
 
   if (!parsed.hostname) {
-    throw new Error("SMTP_URL ne désigne aucun serveur : il manque le nom d'hôte.");
+    throw new Error('SMTP_URL points at no server: the host name is missing.');
   }
 }
 
@@ -259,7 +259,7 @@ export function loadEnv(
   const hasSmtp = Boolean(env.SMTP_URL);
   const hasFrom = Boolean(env.MAIL_FROM);
   if (hasSmtp !== hasFrom) {
-    throw new Error('SMTP_URL et MAIL_FROM doivent être renseignés ensemble (ou aucun des deux).');
+    throw new Error('SMTP_URL and MAIL_FROM must be set together (or neither).');
   }
   if (hasSmtp) validateSmtpUrl(env.SMTP_URL!);
   if (hasFrom) validateMailAddress('MAIL_FROM', env.MAIL_FROM!);

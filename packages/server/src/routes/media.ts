@@ -72,7 +72,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     const allowed = albums.some((albumId) => context.canSee(username, albumId));
 
     if (!allowed) {
-      await reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+      await reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       return false;
     }
     return true;
@@ -87,7 +87,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
 
     const meta = context.media.getFileMeta(mediaId);
     if (!meta) {
-      return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+      return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
     }
     /**
      * Une vidéo a une vignette — l'aperçu que Drive produit de sa première
@@ -99,12 +99,12 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (variant.kind !== 'thumb') {
         return reply
           .code(415)
-          .send({ error: 'unsupported', message: 'Rendu plein écran indisponible pour une vidéo' });
+          .send({ error: 'unsupported', message: 'No fullscreen render for a video' });
       }
       if (!meta.hasThumbnail) {
         return reply
           .code(415)
-          .send({ error: 'unsupported', message: 'Aucun aperçu disponible pour cette vidéo' });
+          .send({ error: 'unsupported', message: 'No preview available for this video' });
       }
     }
 
@@ -174,7 +174,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (!isThumbSize(size)) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Taille de vignette non supportée' });
+          .send({ error: 'bad_request', message: 'Unsupported thumbnail size' });
       }
       return serveRendered(request, reply, { kind: 'thumb', size });
     });
@@ -208,7 +208,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       const { mediaId } = request.params as { mediaId: string };
       const meta = context.media.getFileMeta(mediaId);
       if (!meta) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
       const path = context.videoStore.hit(playableKey(mediaId, meta.md5));
@@ -224,7 +224,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (path === null || size === null) {
         return reply
           .code(404)
-          .send({ error: 'not_ready', message: 'Version lisible pas encore préparée' });
+          .send({ error: 'not_ready', message: 'Playable version not prepared yet' });
       }
 
       const etag = `"${mediaId}-${meta.md5 ?? 'v0'}-playable"`;
@@ -274,7 +274,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       const { mediaId } = request.params as { mediaId: string };
       const meta = context.media.getFileMeta(mediaId);
       if (!meta) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
       const wantsDownload = (request.query as { download?: string }).download === '1';
@@ -299,7 +299,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       if (!upstream.body) {
-        return reply.code(502).send({ error: 'bad_gateway', message: 'Réponse Drive vide' });
+        return reply.code(502).send({ error: 'bad_gateway', message: 'Empty response from Drive' });
       }
 
       reply

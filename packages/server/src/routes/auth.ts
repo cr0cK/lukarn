@@ -42,7 +42,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Identifiant et mot de passe requis' });
+          .send({ error: 'bad_request', message: 'Username and password required' });
       }
 
       const { username, password } = parsed.data;
@@ -73,7 +73,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         request.log.warn({ username, ip: request.ip }, 'Échec de connexion');
         return reply
           .code(401)
-          .send({ error: 'invalid_credentials', message: 'Identifiant ou mot de passe incorrect' });
+          .send({ error: 'invalid_credentials', message: 'Incorrect username or password' });
       }
 
       throttle.succeed(attempt);
@@ -107,7 +107,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/me', async (request, reply) => {
       if (!request.user) {
-        return reply.code(401).send({ error: 'unauthorized', message: 'Non connecté' });
+        return reply.code(401).send({ error: 'unauthorized', message: 'Not signed in' });
       }
       return reply.send(request.user);
     });
@@ -148,7 +148,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         // demandes en cours expirent.
         return reply.code(429).header('Retry-After', '60').send({
           error: 'too_many_pairings',
-          message: 'Trop de demandes en cours. Réessaie dans une minute.',
+          message: 'Too many requests in flight. Try again in a minute.',
         });
       }
       return noStore(reply).send(started);
@@ -196,7 +196,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         user.username,
         classifyDevice(request.headers['user-agent']),
       );
-      request.log.info({ username: user.username }, 'Écran appairé');
+      request.log.info({ username: user.username }, 'Screen paired');
 
       return noStore(reply)
         .setCookie(
@@ -274,7 +274,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           // qui approuve tient le code sous les yeux.
           return noStore(reply).code(409).send({
             error: 'already_paired',
-            message: 'Cet écran a déjà été connecté par un autre compte.',
+            message: 'This screen has already been paired by another account.',
           });
         }
 

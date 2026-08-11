@@ -29,7 +29,7 @@ async function main(): Promise<void> {
 
   const password = process.argv[3] ?? (await promptPassword());
   if (password.length < PASSWORD_MIN_LENGTH) {
-    throw new Error(`Mot de passe trop court : ${PASSWORD_MIN_LENGTH} caractères au minimum.`);
+    throw new Error(`Password too short: ${PASSWORD_MIN_LENGTH} characters minimum.`);
   }
 
   const envFile = loadDotEnv();
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
     db.close();
     throw new Error(
       `Aucun compte "${username}". Les comptes existants se listent depuis /admin, ` +
-        'ou se créent avec `pnpm create-admin`.',
+        'or are created with `pnpm create-admin`.',
     );
   }
 
@@ -56,8 +56,8 @@ async function main(): Promise<void> {
   new SessionStore(db).destroyForUser(stored.username);
   db.close();
 
-  console.log(`\n  Mot de passe de "${stored.username}" remplacé.`);
-  console.log('  Ses sessions ouvertes ont été fermées.\n');
+  console.log(`\n  Password of "${stored.username}" replaced.`);
+  console.log('  Its open sessions have been closed.\n');
 }
 
 main().catch((error: unknown) => {

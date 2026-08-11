@@ -114,7 +114,7 @@ async function renderPlaceholder(
             fill="rgba(255,255,255,0.82)">${label}</text>
       <text x="50%" y="${outHeight * 0.62}" text-anchor="middle" dominant-baseline="central"
             font-family="monospace" font-size="${Math.max(6, Math.round(fontSize * 0.07))}"
-            fill="rgba(255,255,255,0.75)">rendu ${outWidth}×${outHeight} px</text>
+            fill="rgba(255,255,255,0.75)">render ${outWidth}×${outHeight} px</text>
     </svg>`;
 
   return sharp(Buffer.from(svg)).webp({ quality: 80 }).toBuffer();
@@ -166,7 +166,7 @@ async function main(): Promise<void> {
 
   const count = Number(process.argv[2] ?? 240);
   if (!Number.isFinite(count) || count <= 0) {
-    throw new Error('Nombre de médias invalide');
+    throw new Error('Invalid media count');
   }
 
   const env = loadEnv(process.env, envFile ? dirname(envFile) : process.cwd());
@@ -182,8 +182,8 @@ async function main(): Promise<void> {
   const albums = config.albums();
   if (albums.length === 0) {
     throw new Error(
-      'Aucun album en base : crée-en un depuis /admin (ou amorce une installation ' +
-        'avec config/albums.yaml) avant de lancer la démo.',
+      'No album in the database: create one from /admin (or bootstrap an install ' +
+        'with config/albums.yaml) before running the demo.',
     );
   }
 
@@ -259,12 +259,12 @@ async function main(): Promise<void> {
       }
 
       created++;
-      if (created % 50 === 0) process.stdout.write(`  ${created} médias générés\r`);
+      if (created % 50 === 0) process.stdout.write(`  ${created} media generated\r`);
     }
 
     media.upsertMany(items, seenAt);
     syncState.set(album.id, { lastSyncAt: seenAt, status: 'ok', error: null });
-    console.log(`Album "${album.id}" : ${items.length} médias de démonstration`);
+    console.log(`Album "${album.id}" : ${items.length} demo media`);
   }
 
   // Les journées, comme le serveur les calculerait — mais sans géocodeur : les
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
       .all(firstAlbum.id) as { day: string }[]
   ).map((row) => row.day);
 
-  const notes = ['Bonifacio, puis la plage jusqu’au coucher du soleil.', 'Retour par la montagne.'];
+  const notes = ['Bonifacio, then the beach until sunset.', 'Back over the mountains.'];
   recent.forEach((day, index) =>
     days.upsertNote(firstAlbum.id, day, { description: notes[index]! }),
   );
@@ -300,39 +300,37 @@ async function main(): Promise<void> {
   // le bandeau de légende de la visionneuse ne se voit pas hors compte Drive.
   // La troisième est longue exprès — c'est le cas qui montre le clampage et le
   // dépliement au clic.
-  const legendes = [
-    'Léa saute du ponton, troisième essai — le seul où elle ne se pince pas le nez.',
-    'La lumière de 19 h sur les falaises, dix minutes avant qu’elle tombe.',
-    'Le petit port au réveil, avant que les bateaux de promenade ne sortent. ' +
-      'On y était seuls, avec le patron du café qui rentrait ses chaises de la veille ' +
-      'et deux pêcheurs qui remontaient des filets vides en discutant du vent. ' +
-      'C’est la photo que tout le monde a redemandée en rentrant.',
+  const captions = [
+    'Léa jumping off the pier, third try — the only one where she doesn’t hold her nose.',
+    'The seven o’clock light on the cliffs, ten minutes before it goes.',
+    'The little harbour at waking hour, before the tour boats head out. ' +
+      'We had it to ourselves, with the café owner bringing in the chairs from the night ' +
+      'before and two fishermen hauling up empty nets, talking about the wind. ' +
+      'This is the photo everybody asked for again once we were home.',
   ];
-  const decrites = (
+  const described = (
     db
       .prepare(
         `SELECT id FROM media WHERE album_id = ? AND kind = 'photo'
           ORDER BY taken_at DESC, id DESC LIMIT ?`,
       )
-      .all(firstAlbum.id, legendes.length) as { id: string }[]
+      .all(firstAlbum.id, captions.length) as { id: string }[]
   ).map((row) => row.id);
 
-  decrites.forEach((mediaId, index) =>
-    media.setDescription(firstAlbum.id, mediaId, { description: legendes[index]! }),
+  described.forEach((mediaId, index) =>
+    media.setDescription(firstAlbum.id, mediaId, { description: captions[index]! }),
   );
 
   db.close();
   console.log(
-    `\n${created} médias créés, ${named} lieux nommés, ${recent.length} journées annotées ` +
-      `et ${decrites.length} photos décrites sur "${firstAlbum.id}". ` +
-      `Cache : ${cache.stats().entryCount} entrées.`,
+    `\n${created} media created, ${named} places named, ${recent.length} days annotated ` +
+      `and ${described.length} photos described on "${firstAlbum.id}". ` +
+      `Cache: ${cache.stats().entryCount} entries.`,
   );
-  console.log(
-    'Regarde un album réglé sur « par jour » : les lieux et les notes ne s’affichent que là.',
-  );
+  console.log('Look at an album set to "by day": places and notes only show up there.');
   // Le serveur inventorie le cache au démarrage : sans redémarrage, il ne verra
   // pas les fichiers écrits ici et tentera d'aller les chercher sur Drive.
-  console.log("Redémarre le serveur pour qu'il prenne en compte le cache généré.");
+  console.log('Restart the server so it picks up the generated cache.');
 }
 
 main().catch((error: unknown) => {

@@ -272,7 +272,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         albums: input.albums,
       });
 
-      request.log.info(`Compte "${user.username}" créé`);
+      request.log.info(`Compte "${user.username}" created`);
       return reply.code(201).send(toAdminUser(user));
     });
 
@@ -280,7 +280,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { username } = request.params as { username: string };
       const stored = context.config.user(username);
       if (!stored) {
-        return reply.code(404).send({ error: 'not_found', message: 'Compte introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Account not found' });
       }
 
       const parsed = updateUserSchema.safeParse(request.body ?? {});
@@ -340,7 +340,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { username } = request.params as { username: string };
       const stored = context.config.user(username);
       if (!stored) {
-        return reply.code(404).send({ error: 'not_found', message: 'Compte introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Account not found' });
       }
 
       if (stored.admin && context.config.adminCount() <= 1) {
@@ -355,7 +355,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       context.config.deleteUser(stored.username);
       // Un compte supprimé ne doit pas continuer à naviguer avec sa session.
       context.sessions.destroyForUser(stored.username);
-      request.log.info(`Compte "${stored.username}" supprimé, ses sessions sont fermées`);
+      request.log.info(`Compte "${stored.username}" deleted, its sessions are closed`);
 
       return reply.send({ ok: true });
     });
@@ -387,7 +387,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/comments/:commentId/hide', async (request, reply) => {
       const id = Number((request.params as { commentId: string }).commentId);
       if (!Number.isInteger(id) || id <= 0) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
       }
 
       // Masquer deux fois n'est pas une erreur, mais ne doit pas réécrire la
@@ -395,22 +395,22 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!context.comments.hide(id, request.user!.username)) {
         const existing = context.comments.byId(id, { commenterId: null, admin: true });
         if (!existing) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
       }
 
-      request.log.info(`Commentaire ${id} masqué par "${request.user!.username}"`);
+      request.log.info(`Commentaire ${id} hidden by "${request.user!.username}"`);
       return reply.send({ ok: true });
     });
 
     app.post('/comments/:commentId/show', async (request, reply) => {
       const id = Number((request.params as { commentId: string }).commentId);
       if (!Number.isInteger(id) || id <= 0) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
       }
 
       if (!context.comments.show(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
       }
 
       request.log.info(`Commentaire ${id} rendu visible par "${request.user!.username}"`);
@@ -431,12 +431,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/commenters/:commenterId/hide', async (request, reply) => {
       const id = commenterIdOf(request.params);
       if (id === null) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
       }
       // Sans cette vérification, un identifiant inventé rendrait
       // « 0 message touché » — indiscernable d'une identité qui n'a rien écrit.
       if (!context.commenters.byId(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Identité introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Identity not found' });
       }
 
       const affected = context.comments.hideAllFrom(id, request.user!.username);
@@ -449,10 +449,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/commenters/:commenterId/show', async (request, reply) => {
       const id = commenterIdOf(request.params);
       if (id === null) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
       }
       if (!context.commenters.byId(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Identité introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Identity not found' });
       }
 
       const affected = context.comments.showAllFrom(id);
@@ -490,7 +490,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         sortOrder: input.sortOrder,
       });
 
-      request.log.info(`Album "${album.id}" créé`);
+      request.log.info(`Album "${album.id}" created`);
       startSync(album, request.log);
 
       return reply.code(201).send(toAdminAlbum(album));
@@ -500,7 +500,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { id } = request.params as { id: string };
       const stored = context.findAlbum(id);
       if (!stored) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const parsed = updateAlbumSchema.safeParse(request.body ?? {});
@@ -558,7 +558,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.delete('/albums/:id', async (request, reply) => {
       const { id } = request.params as { id: string };
       if (!context.findAlbum(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       context.config.deleteAlbum(id);
@@ -576,7 +576,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
        * « vider le cache ». Ils sont régénérables, contrairement à l'index.
        */
       const removed = context.media.pruneAlbums(context.albums.map((album) => album.id));
-      request.log.info(`Album "${id}" supprimé, ${removed} médias retirés de l'index`);
+      request.log.info(`Album "${id}" deleted, ${removed} media removed from the index`);
 
       return reply.send({ ok: true });
     });
@@ -590,7 +590,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.patch('/albums/:id/days/:day', async (request, reply) => {
       const params = request.params as { id: string; day: string };
       if (!context.findAlbum(params.id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const day = dayKey.safeParse(params.day);
@@ -611,7 +611,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.patch('/albums/:id/items/:mediaId', async (request, reply) => {
       const params = request.params as { id: string; mediaId: string };
       if (!context.findAlbum(params.id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const parsed = updateMediaSchema.safeParse(request.body ?? {});
@@ -621,7 +621,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // n'affiche jamais, sur un identifiant peut-être inventé.
       const item = context.media.setDescription(params.id, params.mediaId, parsed.data);
       if (!item) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
       return reply.send(item);
@@ -703,13 +703,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/resync', async (request, reply) => {
       const parsed = resyncSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Paramètres invalides' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid parameters' });
       }
 
       if (!context.drive.connected) {
         return reply.code(503).send({
           error: 'drive_disconnected',
-          message: 'Connecte Google Drive avant de lancer une synchronisation.',
+          message: 'Connect Google Drive before starting a sync.',
         });
       }
 
@@ -718,14 +718,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         : context.albums;
 
       if (targets.length === 0) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       // La sync tourne en tâche de fond : sur un gros album elle dépasse
       // largement le timeout d'une requête HTTP. L'avancement se suit via
       // `syncStatus` dans /status.
       void context.syncThenPrewarm(targets).catch((error: unknown) => {
-        request.log.error({ err: error }, 'Synchronisation en échec');
+        request.log.error({ err: error }, 'Sync failed');
       });
 
       return reply.code(202).send({ started: targets.map((album) => album.id) });
@@ -741,7 +741,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   function startSync(album: StoredAlbum, log: FastifyBaseLogger): void {
     if (!context.drive.connected) return;
     void context.syncThenPrewarm([album]).catch((error: unknown) => {
-      log.error({ err: error }, `Synchronisation de l'album "${album.id}" en échec`);
+      log.error({ err: error }, `Sync of album "${album.id}" failed`);
     });
   }
 }
@@ -769,7 +769,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       const cookie = request.cookies[OAUTH_STATE_COOKIE];
       const unsigned = cookie ? request.unsignCookie(cookie) : null;
       if (!unsigned?.valid || unsigned.value !== query.state) {
-        request.log.warn('State OAuth invalide, callback rejeté');
+        request.log.warn('Invalid OAuth state, callback rejected');
         return reply.redirect(`/admin/serveur?oauth=state_mismatch`);
       }
 
@@ -778,14 +778,14 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       try {
         await context.drive.completeAuth(query.code);
       } catch (error) {
-        request.log.error({ err: error }, 'Connexion Drive en échec');
+        request.log.error({ err: error }, 'Connecting Drive failed');
         return reply.redirect(`/admin/serveur?oauth=error`);
       }
 
       // Première connexion : l'index est vide, autant le remplir sans attendre
       // que l'administrateur clique sur « resynchroniser ».
       void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
-        request.log.error({ err: error }, 'Synchronisation initiale en échec');
+        request.log.error({ err: error }, 'Initial sync failed');
       });
 
       return reply.redirect(`/admin/serveur?oauth=connected`);

@@ -109,7 +109,7 @@ export function parseConfig(raw: string): AppConfig {
   try {
     document = yaml.load(raw);
   } catch (error) {
-    throw new Error(`YAML invalide : ${(error as Error).message}`);
+    throw new Error(`Invalid YAML: ${(error as Error).message}`);
   }
 
   const parsed = configSchema.safeParse(document ?? {});
@@ -117,7 +117,7 @@ export function parseConfig(raw: string): AppConfig {
     const details = parsed.error.issues
       .map((issue) => `  ${issue.path.join('.') || '(racine)'}: ${issue.message}`)
       .join('\n');
-    throw new Error(`Configuration invalide :\n${details}`);
+    throw new Error(`Invalid configuration:\n${details}`);
   }
   return parsed.data;
 }
@@ -131,7 +131,7 @@ export function loadConfig(path: string): AppConfig {
     if (err.code === 'ENOENT') {
       throw new Error(
         `Fichier de configuration introuvable : ${path}\n` +
-          'Copie config/albums.example.yaml vers config/albums.yaml pour démarrer.',
+          'Copy config/albums.example.yaml to config/albums.yaml to get started.',
       );
     }
     throw error;

@@ -30,13 +30,13 @@ async function main(): Promise<void> {
   if (username.length > USERNAME_MAX_LENGTH || !USERNAME_PATTERN.test(username)) {
     throw new Error(
       `Identifiant invalide : lettres, chiffres, point, tiret et underscore uniquement, ` +
-        `${USERNAME_MAX_LENGTH} caractères au plus.`,
+        `${USERNAME_MAX_LENGTH} characters at most.`,
     );
   }
 
   const password = process.argv[3] ?? (await promptPassword());
   if (password.length < PASSWORD_MIN_LENGTH) {
-    throw new Error(`Mot de passe trop court : ${PASSWORD_MIN_LENGTH} caractères au minimum.`);
+    throw new Error(`Password too short: ${PASSWORD_MIN_LENGTH} characters minimum.`);
   }
 
   const envFile = loadDotEnv();
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   if (config.user(username)) {
     db.close();
     throw new Error(
-      `Le compte "${username}" existe déjà. Modifie-le depuis /admin, ou choisis un autre identifiant.`,
+      `Account "${username}" already exists. Edit it from /admin, or pick another username.`,
     );
   }
 
@@ -62,8 +62,8 @@ async function main(): Promise<void> {
   });
   db.close();
 
-  console.log(`\n  Administrateur "${username}" créé, avec accès à tous les albums.`);
-  console.log('  Connecte-toi, puis crée tes albums depuis /admin.\n');
+  console.log(`\n  Administrator "${username}" created, with access to every album.`);
+  console.log('  Sign in, then create your albums from /admin.\n');
 }
 
 main().catch((error: unknown) => {

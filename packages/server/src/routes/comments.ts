@@ -66,12 +66,12 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/unsubscribe', async (request, reply) => {
       const parsed = unsubscribeSchema.safeParse(request.query);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Lien incomplet' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Incomplete link' });
       }
 
       const { u: email, t: token } = parsed.data;
       if (!verifyUnsubscribeToken(email, token, context.env.sessionSecret)) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Lien invalide ou expiré' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid or expired link' });
       }
 
       const commenter = context.commenters.byEmail(email);
@@ -105,7 +105,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       scoped.get('/feed', async (request, reply) => {
         const parsed = feedSchema.safeParse(request.query);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Requête invalide' });
+          return reply.code(400).send({ error: 'bad_request', message: 'Invalid request' });
         }
 
         const account = request.user!;
@@ -115,7 +115,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
           album !== undefined &&
           (!context.findAlbum(album) || !context.canSee(account.username, album))
         ) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         const albumIds =
@@ -150,7 +150,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { albumId } = request.params as { albumId: string };
         const account = request.user!;
         if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         const counts: AlbumCommentCounts = { counts: context.comments.countsByAlbum(albumId) };
@@ -161,7 +161,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
         const account = request.user!;
         if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         const page: CommentsPage = context.comments.thread(albumId, mediaId, {
@@ -176,7 +176,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const account = request.user!;
         const album = context.findAlbum(albumId);
         if (!album || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         // Commenter suppose une identité vérifiée. Ce 403 est la seconde
@@ -187,7 +187,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         if (commenterId === null) {
           return reply.code(403).send({
             error: 'identity_required',
-            message: 'Renseigne et vérifie ton adresse email pour pouvoir commenter.',
+            message: 'Add and verify your email address in order to comment.',
           });
         }
 
@@ -195,7 +195,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         // laisserait des fils que la modération afficherait sans nom de fichier.
         const detail = context.media.getDetail(albumId, mediaId);
         if (!detail) {
-          return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
         }
 
         const parsed = createSchema.safeParse(request.body);
@@ -248,7 +248,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { commentId } = request.params as { commentId: string };
         const id = Number(commentId);
         if (!Number.isInteger(id) || id <= 0) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+          return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
         }
 
         const parsed = updateSchema.safeParse(request.body);
@@ -264,7 +264,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const account = request.user!;
         const location = context.comments.locate(id);
         if (!location || !context.canSee(account.username, location.albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
 
         let comment: Comment | null;
@@ -282,7 +282,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         }
 
         if (!comment) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
         return reply.send(comment);
       });
@@ -296,7 +296,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { commentId } = request.params as { commentId: string };
         const id = Number(commentId);
         if (!Number.isInteger(id) || id <= 0) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+          return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
         }
 
         const account = request.user!;
@@ -304,13 +304,13 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         // contrôle, un accès retiré laisserait subsister un droit d'écriture.
         const location = context.comments.locate(id);
         if (!location || (!account.admin && !context.canSee(account.username, location.albumId))) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
 
         if (
           !context.comments.remove(id, { commenterId: request.commenterId, admin: account.admin })
         ) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
         return reply.code(204).send();
       });

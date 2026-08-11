@@ -99,7 +99,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Code invalide — six chiffres attendus.' });
+          .send({ error: 'bad_request', message: 'Invalid code — six digits expected.' });
       }
 
       const result = context.commenters.verify(parsed.data.email, parsed.data.code);

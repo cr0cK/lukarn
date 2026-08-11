@@ -80,8 +80,8 @@ describe('SMTP_URL', () => {
   });
 
   it('exige MAIL_FROM avec SMTP_URL, et réciproquement', () => {
-    assert.throws(() => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025' })), /ensemble/);
-    assert.throws(() => loadEnv(env({ MAIL_FROM: 'Galerie <galerie@exemple.fr>' })), /ensemble/);
+    assert.throws(() => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025' })), /together/);
+    assert.throws(() => loadEnv(env({ MAIL_FROM: 'Galerie <galerie@exemple.fr>' })), /together/);
   });
 
   it('n’exige rien quand l’instance n’envoie pas d’email', () => {

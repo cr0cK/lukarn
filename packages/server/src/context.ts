@@ -262,7 +262,7 @@ export class AppContext {
     // concurrent, une resynchronisation répétée n'appelle donc pas Nominatim
     // deux fois.
     void this.places.run().catch((error: unknown) => {
-      this.log.error({ err: error }, 'Passage des lieux en échec');
+      this.log.error({ err: error }, 'Places pass failed');
     });
 
     await this.prewarmer.run();

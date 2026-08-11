@@ -135,7 +135,7 @@ export class Geocoder {
       } catch (error) {
         // Rien n'est écrit : la cellule repassera. Une ligne « échec » serait
         // indistinguable d'un « pas de résultat », qu'on ne redemande jamais.
-        this.log.debug(`Géocodage de ${cell} en échec : ${(error as Error).message}`);
+        this.log.debug(`Geocoding ${cell} failed : ${(error as Error).message}`);
       }
     }
 

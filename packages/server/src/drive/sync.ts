@@ -178,7 +178,7 @@ export class Syncer {
       try {
         results.push(await this.sync(album));
       } catch (error) {
-        this.log.error(`Sync de "${album.id}" en échec : ${(error as Error).message}`);
+        this.log.error(`Sync of "${album.id}" failed : ${(error as Error).message}`);
         // Autorisation révoquée : les albums suivants échoueraient tous de la
         // même façon. On s'arrête, l'erreur déjà inscrite dans `sync_state`
         // expliquant à chacun ce qui s'est passé.

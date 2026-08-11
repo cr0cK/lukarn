@@ -319,7 +319,7 @@ describe('fichier invalide', () => {
     await assert.rejects(async () => {
       const built = await buildApp(env(dir, configPath));
       context = built.context;
-    }, /YAML invalide/);
+    }, /Invalid YAML/);
     (context as AppContext | null)?.close();
   });
 });

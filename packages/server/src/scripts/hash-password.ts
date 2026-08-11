@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const password = fromArgs ?? (await promptPassword());
 
   if (!password) {
-    console.error('Mot de passe vide, rien à faire.');
+    console.error('Empty password, nothing to do.');
     process.exit(1);
   }
 

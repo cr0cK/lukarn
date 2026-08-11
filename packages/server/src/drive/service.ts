@@ -292,14 +292,14 @@ export class DriveService {
 
     this.cachedClient = null;
     this.unreadableToken = false;
-    this.log.info(`Google Drive connecté${account ? ` (${account})` : ''}`);
+    this.log.info(`Google Drive connected${account ? ` (${account})` : ''}`);
   }
 
   disconnect(): void {
     this.db.prepare('DELETE FROM oauth_token').run();
     this.cachedClient = null;
     this.unreadableToken = false;
-    this.log.info('Google Drive déconnecté');
+    this.log.info('Google Drive disconnected');
   }
 
   /** Client Drive authentifié pour les appels de métadonnées (files.list, ...). */

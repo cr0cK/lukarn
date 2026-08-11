@@ -81,7 +81,7 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
 
   server.setErrorHandler(async (error: FastifyError, request, reply) => {
     const status = error.statusCode ?? 500;
-    if (status >= 500) request.log.error({ err: error }, 'Erreur non gérée');
+    if (status >= 500) request.log.error({ err: error }, 'Unhandled error');
     return reply.code(status).send({
       error: status >= 500 ? 'internal_error' : 'request_error',
       // Le détail d'une 500 peut contenir des chemins ou des identifiants :
@@ -102,7 +102,7 @@ async function registerFrontend(
 
   if (!hasBuild) {
     // Développement : Vite sert le front sur son propre port et proxie /api.
-    server.log.warn(`Front non trouvé dans ${webDir} — seule l'API est servie.`);
+    server.log.warn(`Front end not found in ${webDir} — only the API is served.`);
     server.setNotFoundHandler(async (request, reply) =>
       reply.code(404).send({
         error: 'not_found',
@@ -174,14 +174,14 @@ async function registerFrontend(
 
   server.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) {
-      return reply.code(404).send({ error: 'not_found', message: 'Route inconnue' });
+      return reply.code(404).send({ error: 'not_found', message: 'Unknown route' });
     }
 
     // Un fichier manquant sous /assets/ est un déploiement incomplet. Lui
     // répondre index.html donnerait une erreur de type MIME au lieu du 404 qui
     // désigne le vrai problème.
     if (request.url.startsWith('/assets/')) {
-      return reply.code(404).send({ error: 'not_found', message: 'Fichier introuvable' });
+      return reply.code(404).send({ error: 'not_found', message: 'File not found' });
     }
     // Le routage vit dans le front : toute autre URL lui rend index.html, sans
     // quoi un rechargement sur /album/vacances tomberait en 404.

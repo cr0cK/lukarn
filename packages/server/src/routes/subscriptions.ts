@@ -35,14 +35,14 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
     app.get('/unsubscribe', async (request, reply) => {
       const parsed = unsubscribeSchema.safeParse(request.query);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Lien incomplet' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Incomplete link' });
       }
 
       const { u: email, a: albumId, t: token } = parsed.data;
       // Le jeton couvre le couple : celui d'un album ne vaut pas pour un autre,
       // sinon un lien recopié couperait un abonnement qu'on n'a pas visé.
       if (!verifyAlbumUnsubscribeToken(email, albumId, token, context.env.sessionSecret)) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Lien invalide' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid link' });
       }
 
       const commenter = context.commenters.byEmail(email);

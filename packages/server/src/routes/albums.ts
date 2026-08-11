@@ -42,7 +42,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
       // Un album interdit et un album inexistant renvoient la même chose :
       // la liste des albums d'autrui ne doit pas être devinable.
       if (!album || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
       return reply.send(buildAlbum(album, context.media, context.syncState));
     });
@@ -58,7 +58,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:albumId/days', async (request, reply) => {
       const { albumId } = request.params as { albumId: string };
       if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const days: AlbumDay[] = context.days.list(albumId);
@@ -68,12 +68,12 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:albumId/items', async (request, reply) => {
       const { albumId } = request.params as { albumId: string };
       if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const query = querySchema.safeParse(request.query);
       if (!query.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Paramètres invalides' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid parameters' });
       }
 
       // Ouvrir un album vaut abonnement à ses nouveautés (D41) : c'est un
@@ -105,12 +105,12 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:albumId/items/:mediaId', async (request, reply) => {
       const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
       if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const detail = context.media.getDetail(albumId, mediaId);
       if (!detail) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
       // Après le 404, jamais avant : compter l'ouverture d'un identifiant

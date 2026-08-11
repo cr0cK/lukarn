@@ -82,16 +82,16 @@ albums:
     sortOrder: aleatoire
 `),
         ),
-      /Configuration invalide/,
+      /Invalid configuration/,
     );
   });
 
   it('rejette un YAML mal formé', () => {
-    assert.throws(() => parseConfig('users: [unclosed'), /YAML invalide/);
+    assert.throws(() => parseConfig('users: [unclosed'), /Invalid YAML/);
   });
 
   it('rejette une config sans utilisateur ni album', () => {
-    assert.throws(() => parseConfig('users: []\nalbums: []'), /Configuration invalide/);
+    assert.throws(() => parseConfig('users: []\nalbums: []'), /Invalid configuration/);
   });
 
   it("rejette un hash qui n'est pas de l'argon2", () => {

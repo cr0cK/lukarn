@@ -106,12 +106,12 @@ export class Mailer {
     this.tail = this.tail.then(async () => {
       try {
         await deliver(message);
-        this.log.debug(`Notification envoyée à ${message.to}`);
+        this.log.debug(`Notification sent to ${message.to}`);
       } catch (error) {
         // Journalisé et abandonné : pas de réessai. Une notification manquée
         // est un désagrément, une file de réessais est un mécanisme à
         // surveiller — et le commentaire, lui, est bien enregistré.
-        this.log.warn(`Échec de l'envoi à ${message.to} : ${(error as Error).message}`);
+        this.log.warn(`Delivery to ${message.to} : ${(error as Error).message}`);
       }
     });
   }
