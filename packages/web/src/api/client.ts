@@ -35,7 +35,7 @@ import {
   type UpdateUserRequest,
   type VerifyIdentityRequest,
   type VisitsOverview,
-} from '@gdv/shared';
+} from '@nonni/shared';
 
 /** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
 export class ApiError extends Error {
@@ -79,7 +79,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /**
  * Ce que la file de modération demande au serveur.
  *
- * Reprend `ModerationQuery` de `@gdv/shared`, au curseur près : il voyage en
+ * Reprend `ModerationQuery` de `@nonni/shared`, au curseur près : il voyage en
  * texte dans l'URL, et n'est reconverti en entier qu'à l'arrivée.
  */
 export interface AdminCommentsQuery {

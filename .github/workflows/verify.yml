@@ -32,6 +32,6 @@ jobs:
 
       # `shared` doit être compilé avant que les deux autres paquets ne
       # typecheckent : ils importent ses déclarations depuis `dist`.
-      - run: pnpm --filter @gdv/shared build
+      - run: pnpm --filter @nonni/shared build
 
       - run: pnpm verify

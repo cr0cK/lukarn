@@ -16,7 +16,7 @@ import { MediaRepo, type MediaUpsert } from '../src/repo.js';
  * interrupteur serait pire que l'attente qu'il supprime.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-prewarm-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-prewarm-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

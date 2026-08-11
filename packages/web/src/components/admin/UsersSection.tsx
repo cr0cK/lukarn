@@ -1,4 +1,4 @@
-import type { AdminAlbum, AdminUser } from '@gdv/shared';
+import type { AdminAlbum, AdminUser } from '@nonni/shared';
 import { type ReactElement, useMemo, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useAdminUsers, useDeleteUser, useMe } from '../../api/hooks';

@@ -1,4 +1,4 @@
-import type { SessionUser } from '@gdv/shared';
+import type { SessionUser } from '@nonni/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { toIdentity } from '../commenters.js';

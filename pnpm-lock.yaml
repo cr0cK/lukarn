@@ -35,15 +35,15 @@ importers:
       '@fastify/static':
         specifier: ^8.0.3
         version: 8.3.0
-      '@gdv/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@googleapis/drive':
         specifier: ^20.2.0
         version: 20.2.0
       '@googleapis/oauth2':
         specifier: ^5.0.1
         version: 5.0.1
+      '@nonni/shared':
+        specifier: workspace:*
+        version: link:../shared
       argon2:
         specifier: ^0.41.1
         version: 0.41.1
@@ -99,7 +99,7 @@ importers:
 
   packages/web:
     dependencies:
-      '@gdv/shared':
+      '@nonni/shared':
         specifier: workspace:*
         version: link:../shared
       '@tanstack/react-query':

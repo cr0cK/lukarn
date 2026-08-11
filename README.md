@@ -1,8 +1,14 @@
-# Google Drive Photo Viewer
+# Nonni
+
+[![verify](https://github.com/cr0cK/nonni/actions/workflows/verify.yml/badge.svg)](https://github.com/cr0cK/nonni/actions/workflows/verify.yml)
+[![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](./LICENSE)
 
 A self-hosted gallery for browsing the photos and videos of a Google Drive
 account, in place of Drive's own preview: justified grid grouped by month,
 keyboard-driven fullscreen viewer, dark theme.
+
+_Nonni_ is Italian for grandparents — who this was built for, and who wanted to
+see the photos without being handed a Google account first.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment.
@@ -74,13 +80,13 @@ name or a Google account. Node ≥ 22 and pnpm are all that is needed.
 
 ```bash
 pnpm install
-pnpm --filter @gdv/shared build   # before anything else — see below
+pnpm --filter @nonni/shared build   # before anything else — see below
 ```
 
-**Building `shared` is not optional.** `@gdv/shared` is exposed through its
+**Building `shared` is not optional.** `@nonni/shared` is exposed through its
 `dist/`, not through its sources: on a fresh clone, `pnpm dev` and
 `pnpm create-admin` both fail with
-`ERR_MODULE_NOT_FOUND … @gdv/shared/dist/index.js` until it has been built. It is
+`ERR_MODULE_NOT_FOUND … @nonni/shared/dist/index.js` until it has been built. It is
 the same reason the full `pnpm build` imposes the order `shared` → `web` →
 `server`.
 
@@ -98,15 +104,15 @@ development, and without Google credentials the application starts and simply
 reports that Drive is not configured.
 
 ```bash
-pnpm create-admin alexis   # first account, password prompted
-pnpm dev                   # API on :8080, front on :5173 (proxying /api)
+pnpm create-admin alice   # first account, password prompted
+pnpm dev                  # API on :8080, front on :5173 (proxying /api)
 ```
 
 **Without a Drive account**, a demo dataset fills the index and the cache with
 locally generated media:
 
 ```bash
-pnpm --filter @gdv/server seed-demo 300
+pnpm --filter @nonni/server seed-demo 300
 ```
 
 Restart the server afterwards: the disk cache is inventoried only at startup, so
@@ -171,3 +177,16 @@ this way. Start with [`specs/README.md`](./specs/README.md).
   the login backoff.
 
 Details in [`specs/04`](./specs/04-securite-et-acces.md).
+
+## License
+
+[AGPL-3.0-only](./LICENSE) — Copyright (C) 2026 Alexis Mineaud.
+
+Run it, study it, change it, pass it on. The one obligation worth knowing: if you
+deploy a modified version and let anyone reach it over a network, section 13
+requires you to offer those users the source of _your_ version. Running it
+unmodified for your family asks nothing of you.
+
+Nonni is not affiliated with, endorsed by, or sponsored by Google LLC. Google
+Drive is a trademark of Google LLC, named here only to say which service the
+application reads.

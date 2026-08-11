@@ -6,7 +6,7 @@ de réponse sont les types de `packages/shared/src/index.ts`.
 Colonne « Accès » :
 
 - **aucun** — route ouverte ;
-- **session** — cookie `gdv_session` valide, sinon 401 `unauthorized` ;
+- **session** — cookie `nonni_session` valide, sinon 401 `unauthorized` ;
 - **admin** — session **et** `admin: true`, sinon 401 ou 403 `forbidden`.
 
 ## Réponses d'erreur
@@ -48,7 +48,7 @@ de passe faux. Le mot de passe n'est pas touché : il a le droit d'en contenir.
 
 | Code | Corps                                       | Quand                                                                               |
 | ---- | ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 200  | `SessionUser` = `{ username, admin }`       | Succès. Pose le cookie `gdv_session`.                                               |
+| 200  | `SessionUser` = `{ username, admin }`       | Succès. Pose le cookie `nonni_session`.                                             |
 | 400  | `bad_request`                               | Corps absent ou hors bornes.                                                        |
 | 401  | `invalid_credentials`                       | Identifiant inconnu **ou** mot de passe faux — message identique dans les deux cas. |
 | 429  | `too_many_attempts` + en-tête `Retry-After` | Throttle actif sur l'un des trois axes : couple IP/identifiant, identifiant, IP.    |
@@ -92,13 +92,13 @@ octets rendus **une seule fois**, au demandeur, et jamais affichés.
 **`POST /api/auth/device/poll`** — corps `{ deviceCode }`. Le sondage de
 l'écran, toutes les `intervalMs` (2 s).
 
-| Code | Corps                               | Quand                                                               |
-| ---- | ----------------------------------- | ------------------------------------------------------------------- |
-| 200  | `{ status: 'approved', user }`      | Approuvée. Pose le cookie `gdv_session` et **supprime la demande**. |
-| 202  | `{ status: 'pending' }`             | Personne n'a encore approuvé.                                       |
-| 400  | `bad_request`                       | Corps absent ou hors bornes.                                        |
-| 404  | `unknown_code`                      | Inconnue, expirée, déjà relevée, ou compte approbateur disparu.     |
-| 429  | `too_many_attempts` + `Retry-After` | Throttle, sur les trois axes de la connexion.                       |
+| Code | Corps                               | Quand                                                                 |
+| ---- | ----------------------------------- | --------------------------------------------------------------------- |
+| 200  | `{ status: 'approved', user }`      | Approuvée. Pose le cookie `nonni_session` et **supprime la demande**. |
+| 202  | `{ status: 'pending' }`             | Personne n'a encore approuvé.                                         |
+| 400  | `bad_request`                       | Corps absent ou hors bornes.                                          |
+| 404  | `unknown_code`                      | Inconnue, expirée, déjà relevée, ou compte approbateur disparu.       |
+| 429  | `too_many_attempts` + `Retry-After` | Throttle, sur les trois axes de la connexion.                         |
 
 Un POST et non un GET : la réponse pose un cookie, et le `deviceCode` n'a rien à
 faire dans une URL — journaux d'accès et historique la gardent.
@@ -682,7 +682,7 @@ que trois lectures bornées, sans balayage (voir [03](./03-modele-de-donnees.md)
 
 **`oauth/start`** — `400 oauth_not_configured` si `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` sont absents. Sinon pose le cookie signé
-`gdv_oauth_state` et renvoie l'URL de consentement, que le front suit en
+`nonni_oauth_state` et renvoie l'URL de consentement, que le front suit en
 redirection pleine page.
 
 **`drive/disconnect`** — supprime la ligne `oauth_token`. L'index et le cache
@@ -782,7 +782,7 @@ endroit qui sache distinguer une couverture choisie d'une couverture par défaut
 La **description de l'album** suit exactement la même règle : son crayon vit sur
 la page de l'album, son écriture passe par `PATCH /api/admin/albums/:id`, avec le
 champ `description` de `UpdateAlbumRequest`. Sa borne est
-`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exportée par `@gdv/shared` plutôt
+`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exportée par `@nonni/shared` plutôt
 qu'écrite en littéral dans le schéma Zod : le compteur de caractères du front la
 lit désormais, et deux limites divergentes rendraient une saisie acceptée à
 l'écran refusée par le serveur.
@@ -797,7 +797,7 @@ son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
 `{ description? }`. Champ absent = inchangé (la réponse rend alors l'item tel
 quel), `null` **ou chaîne vide** = effacé — la ligne de `media_notes` est
 supprimée, une description vide ne disant rien de plus qu'une absente. Borne :
-`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exportée par `@gdv/shared` et appliquée
+`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exportée par `@nonni/shared` et appliquée
 des deux côtés, sinon `400`. La réponse est le `MediaItem` à jour.
 
 Deux `404` distincts, et il faut les deux : album inconnu ou supprimé, et média

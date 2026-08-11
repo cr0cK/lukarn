@@ -1,4 +1,4 @@
-import type { AdminStatus } from '@gdv/shared';
+import type { AdminStatus } from '@nonni/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';

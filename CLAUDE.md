@@ -99,8 +99,8 @@ fait, comment la lancer en local, et trois liens. Toute procédure serveur va da
 ```bash
 pnpm install
 
-pnpm --filter @gdv/server dev      # API sur :8080 (tsx watch)
-pnpm --filter @gdv/web dev         # front sur :5173, proxy /api vers :8080
+pnpm --filter @nonni/server dev      # API sur :8080 (tsx watch)
+pnpm --filter @nonni/web dev         # front sur :5173, proxy /api vers :8080
 pnpm dev                           # les deux en parallèle
 
 pnpm build                         # shared, puis web, puis server — l'ordre compte
@@ -116,7 +116,7 @@ pnpm verify                        # les six d'un coup — la porte avant de pub
 pnpm create-admin <identifiant>    # premier administrateur d'une base vide
 pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
 pnpm hash-password                 # hash argon2id, pour un config/albums.yaml d'amorçage
-pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compte Drive
+pnpm --filter @nonni/server seed-demo 300   # jeu de données de démo, sans compte Drive
 ```
 
 Avant de déclarer un travail terminé : **`pnpm verify`** — typecheck, lint,

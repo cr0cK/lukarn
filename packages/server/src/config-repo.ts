@@ -6,7 +6,7 @@ import {
   type AppSettings,
   type GroupBy,
   type SortOrder,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import { z } from 'zod';
 import type { Db } from './db.js';
 

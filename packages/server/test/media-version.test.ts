@@ -16,7 +16,7 @@ import { MediaRepo, type MediaUpsert } from '../src/repo.js';
  * dans son ancienne version indéfiniment.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-version-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-version-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

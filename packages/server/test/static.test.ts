@@ -15,7 +15,7 @@ import { loadEnv } from '../src/env.js';
  * rechargement de page tomberait en erreur.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-static-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-static-'));
 const webDir = join(root, 'web');
 
 let server: FastifyInstance;

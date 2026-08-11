@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    image: googledrive-viewer
+    image: nonni
     restart: unless-stopped
     # Aucun port publié sur l'hôte : seul Caddy joint l'application, par le
     # réseau interne du compose. Rien n'écoute sur une interface publique en
@@ -39,9 +39,9 @@ services:
       # Configuration en lecture seule : l'application ne la modifie jamais.
       - ./config:/app/config:ro
       # Index SQLite et refresh token chiffré — la seule donnée irremplaçable.
-      - gdv-data:/app/data
+      - nonni-data:/app/data
       # Vignettes générées : perdre ce volume ne coûte qu'une regénération.
-      - gdv-cache:/app/cache
+      - nonni-cache:/app/cache
     logging:
       driver: json-file
       options:
@@ -75,16 +75,16 @@ services:
         max-file: '3'
 
 # Sans `name:`, compose préfixe chaque volume du nom du projet — celui du
-# répertoire dans lequel on a cloné. Le volume `gdv-data` s'appelle alors
-# `googledrive-viewer_gdv-data`, et un `docker run -v gdv-data:/data` en crée un
+# répertoire dans lequel on a cloné. Le volume `nonni-data` s'appelle alors
+# `nonni_nonni-data`, et un `docker run -v nonni-data:/data` en crée un
 # neuf et vide au lieu de monter le bon : une sauvegarde ainsi écrite est vide,
 # sans le moindre message. Le nom explicite rend les commandes du README justes
 # quel que soit le répertoire (D53).
 volumes:
-  gdv-data:
-    name: gdv-data
-  gdv-cache:
-    name: gdv-cache
+  nonni-data:
+    name: nonni-data
+  nonni-cache:
+    name: nonni-cache
   caddy-data:
     name: caddy-data
   caddy-config:

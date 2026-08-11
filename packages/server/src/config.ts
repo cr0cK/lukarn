@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { DEFAULT_GROUP_BY, DEFAULT_SORT_ORDER } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, DEFAULT_SORT_ORDER } from '@nonni/shared';
 import yaml from 'js-yaml';
 import { z } from 'zod';
 

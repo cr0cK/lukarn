@@ -1,4 +1,4 @@
-import type { Album } from '@gdv/shared';
+import type { Album } from '@nonni/shared';
 import { type ReactElement, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { mediaUrl } from '../api/client';

@@ -46,8 +46,8 @@ gagner la version physique partout, et sacrifierait le RTL pour tout le monde.
 récent, qui appliquerait les deux. On passe donc par `transform` partout, au
 prix d'une propriété moins moderne pour un rendu identique partout.
 
-Le `transform` composé passe par trois emplacements — `--gdv-translate`,
-`--gdv-rotate`, `--gdv-scale` — plutôt que d'écrire la fonction directement.
+Le `transform` composé passe par trois emplacements — `--nonni-translate`,
+`--nonni-rotate`, `--nonni-scale` — plutôt que d'écrire la fonction directement.
 Sans eux, `rotate-90` et `-translate-y-1/2` sur le même élément se disputeraient
 `transform`, et le dernier effacerait le premier ; avec eux ils se composent,
 dans l'ordre prescrit. Deux pièges se sont présentés là :

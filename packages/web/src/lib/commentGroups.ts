@@ -1,4 +1,4 @@
-import type { Comment } from '@gdv/shared';
+import type { Comment } from '@nonni/shared';
 import { dayLabel, localDayKey } from './justify';
 
 /**

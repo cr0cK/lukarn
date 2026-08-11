@@ -1,6 +1,6 @@
 # D76 — La sauvegarde emporte `config/`, parce que la clé du compte de service ne se retéléchargesse pas
 
-**Contexte.** `deploy/backup.sh` prenait le volume `gdv-data` et le `.env`. Les
+**Contexte.** `deploy/backup.sh` prenait le volume `nonni-data` et le `.env`. Les
 deux vont ensemble, D14 l'explique : le refresh token est chiffré, `TOKEN_KEY`
 seul le déchiffre, une archive sans son `.env` impose un nouveau consentement.
 
@@ -21,14 +21,14 @@ démarre, `/admin` répond, les albums sont là. Elle apparaît à la première
 synchronisation, quand plus rien ne remonte.
 
 **Décision.** `backup.sh` archive `config/` en troisième pièce, à côté du `.env`,
-sous `gdv-<horodatage>.config.tgz`.
+sous `nonni-<horodatage>.config.tgz`.
 
 Le répertoire entier plutôt qu'une liste de fichiers : filtrer supposerait de
 tenir un motif en phase avec `.gitignore`, et l'exemple d'albums suivi par git
 qui voyage avec pèse deux kilo-octets.
 
 L'extension `.tgz` n'est pas une coquetterie. L'élagage distingue les archives
-par motif, et `gdv-*.tar.gz` engloberait celle-ci : la rétention tomberait de
+par motif, et `nonni-*.tar.gz` engloberait celle-ci : la rétention tomberait de
 sept sauvegardes réelles à trois, sans un message. Un troisième `elaguer` lui est
 consacré.
 

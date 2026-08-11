@@ -17,7 +17,7 @@ fichier comme source de vérité avec une écriture au retour, qui aurait laiss�
 deux vérités à réconcilier — et un redémarrage aurait pu écraser une
 modification faite dans l'application.
 
-**Conséquences.** Le volume `gdv-data` contient désormais les comptes : c'est la
+**Conséquences.** Le volume `nonni-data` contient désormais les comptes : c'est la
 seule chose à sauvegarder, et sa perte fait perdre les accès en plus de l'index.
 `POST /api/admin/reload` et `AppContext.reloadConfig()` disparaissent. Une
 installation neuve sans fichier a besoin de `pnpm create-admin`, sinon personne

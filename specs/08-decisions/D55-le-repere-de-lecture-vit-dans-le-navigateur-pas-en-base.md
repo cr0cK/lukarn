@@ -3,7 +3,7 @@
 **Contexte.** Afficher « 3 nouveaux commentaires » demande de savoir où en était
 le lecteur. Une table côté serveur serait la réponse réflexe.
 
-**Choix.** `localStorage`, sous `gdv:comments-seen:<albumId>`, un **nombre de
+**Choix.** `localStorage`, sous `nonni:comments-seen:<albumId>`, un **nombre de
 commentaires vus** par photo. Le total vient du serveur, l'écart se calcule à
 l'affichage (`unreadCount`).
 

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS, type DevicePairingStart } from '@gdv/shared';
+import { ALL_ALBUMS, type DevicePairingStart } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -21,7 +21,7 @@ import { MAX_PENDING, PairingStore } from '../src/pairings.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-pairing-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-pairing-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -40,9 +40,9 @@ async function login(username: string): Promise<string> {
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  return `nonni_session=${cookie.value}`;
 }
 
 function approve(userCode: string, cookie?: string) {
@@ -182,7 +182,7 @@ describe('sondage', () => {
     assert.equal(body.status, 'approved');
     assert.equal(body.user.username, 'famille');
     assert.equal(body.user.admin, false);
-    assert.ok(response.cookies.some((entry) => entry.name === 'gdv_session'));
+    assert.ok(response.cookies.some((entry) => entry.name === 'nonni_session'));
   });
 
   it('n’ouvre que les albums de ce compte', async () => {
@@ -191,13 +191,13 @@ describe('sondage', () => {
     await approve(pairing.userCode, cookie);
 
     const claimed = await poll(pairing.deviceCode);
-    const session = claimed.cookies.find((entry) => entry.name === 'gdv_session');
+    const session = claimed.cookies.find((entry) => entry.name === 'nonni_session');
     assert.ok(session);
 
     const albums = await server.inject({
       method: 'GET',
       url: '/api/albums',
-      headers: { cookie: `gdv_session=${session.value}` },
+      headers: { cookie: `nonni_session=${session.value}` },
     });
     assert.deepEqual(
       albums.json<{ id: string }[]>().map((album) => album.id),

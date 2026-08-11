@@ -91,9 +91,10 @@ const TRANSFORM_DECLARATION = new RegExp(
  * c'est alors la spécificité qui rend le même verdict : `*` ne bat pas `.rotate-90`.
  */
 const TRANSFORM_RESET =
-  '@layer properties{*,::before,::after,::backdrop{--gdv-translate: ;--gdv-rotate: ;--gdv-scale: }}';
+  '@layer properties{*,::before,::after,::backdrop{--nonni-translate: ;--nonni-rotate: ;--nonni-scale: }}';
 
-const COMPOSED_TRANSFORM = 'transform:var(--gdv-translate) var(--gdv-rotate) var(--gdv-scale)';
+const COMPOSED_TRANSFORM =
+  'transform:var(--nonni-translate) var(--nonni-rotate) var(--nonni-scale)';
 
 /** Découpe une valeur sur ses espaces de premier niveau — `var(--a) var(--b)`. */
 function topLevelParts(value: string): string[] {
@@ -165,7 +166,7 @@ export function replaceIndependentTransforms(css: string): string {
     TRANSFORM_DECLARATION,
     (_whole, before: string, property: string, value: string) => {
       touched = true;
-      const slot = `--gdv-${property}`;
+      const slot = `--nonni-${property}`;
       return `${before}${slot}:${transformFunction(property, value)};${COMPOSED_TRANSFORM}`;
     },
   );
@@ -208,7 +209,7 @@ function accoladeFermante(css: string, ouverture: number): number {
  * Tailwind v4 enferme dans ses couches disparaissent, et l'application s'affiche
  * entièrement sans style. Le téléviseur qui a motivé D260809f y échappait par un
  * laxisme de son parseur, qui gardait le contenu ; celui d'à côté, pourtant plus
- * récent, applique la règle et n'affichait plus rien (D260809h).
+ * récent, applique la règle et n'affichait plus rien (D260809i).
  *
  * **Le dépliage ne change rien à la cascade** parce que Tailwind déclare ses
  * couches dans l'ordre où il les émet — `properties`, `theme`, `base`,
@@ -342,7 +343,7 @@ function contentHash(content: string): string {
  */
 export function legacyCss(): Plugin {
   return {
-    name: 'gdv-legacy-css',
+    name: 'nonni-legacy-css',
     apply: 'build',
     // En dernier : `index.html` doit déjà être dans le lot pour que le renvoi
     // vers la feuille y soit réécrit avec le nouveau nom.

@@ -18,7 +18,7 @@ quelqu'un qui préfère l'autre sens ne doit le dire qu'une fois.
 
 **Choix.** Un défaut **par album**, en base et réglable dans /admin
 (`albums.sort_order`, migration 12, défaut `asc`), et une mémoire **par album
-dans le navigateur** (`gdv:album-order:<albumId>`). Priorité **URL >
+dans le navigateur** (`nonni:album-order:<albumId>`). Priorité **URL >
 navigateur > album** :
 
 - l'URL d'abord, parce qu'elle est une vue exacte — partagée, ou reçue par

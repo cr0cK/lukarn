@@ -7,7 +7,7 @@ utiles, mais tout le front affiche ses dates en UTC (voir `CLAUDE.md`), et un
 découpage par jour en heure locale ferait basculer de section les photos de fin
 de soirée.
 
-**Choix.** `GroupBy = 'month' | 'day'` dans `@gdv/shared`, `?group=day` dans
+**Choix.** `GroupBy = 'month' | 'day'` dans `@nonni/shared`, `?group=day` dans
 l'URL comme `?order=asc`, et `LayoutOptions.groupBy` dans `computeLayout`. Les
 deux clés de section sont des tranches de la chaîne ISO (`slice(0, 7)`,
 `slice(0, 10)`), donc en UTC par construction : aucun objet `Date` n'intervient

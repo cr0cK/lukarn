@@ -52,7 +52,7 @@ describe('mémoire par album', () => {
   }
 
   it('lit le sens retenu sous une clé par album', () => {
-    stockage((key) => (key === 'gdv:album-order:corse' ? 'desc' : null));
+    stockage((key) => (key === 'nonni:album-order:corse' ? 'desc' : null));
 
     assert.equal(readStoredOrder('corse'), 'desc');
     // Une clé par album : « Corse » se lit dans l'ordre du séjour et « Les

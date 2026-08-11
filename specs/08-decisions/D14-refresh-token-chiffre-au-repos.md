@@ -11,7 +11,7 @@ sel aléatoire par chiffrement écarte aussi la variante « clé dérivée une f
 démarrage », qui rendrait deux chiffrements du même jeton identiques et
 révélerait qu'il n'a pas changé.
 
-**Conséquences.** Sauvegarder `gdv-data` sans le `.env` ne sert à rien : le jeton
+**Conséquences.** Sauvegarder `nonni-data` sans le `.env` ne sert à rien : le jeton
 serait indéchiffrable. Si `TOKEN_KEY` change, le tag GCM échoue, le jeton est
 supprimé et `/admin` affiche « non connecté » plutôt que de boucler sur une
 erreur.

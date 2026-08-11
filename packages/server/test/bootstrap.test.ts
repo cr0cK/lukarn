@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { AdminStatus, AdminUser } from '@gdv/shared';
+import type { AdminStatus, AdminUser } from '@nonni/shared';
 import argon2 from 'argon2';
 import Database from 'better-sqlite3';
 import { buildApp } from '../src/app.js';
@@ -26,7 +26,7 @@ import { loadEnv } from '../src/env.js';
 const PASSWORD = 'mot-de-passe-de-test';
 const INDEXED = 471;
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-bootstrap-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-bootstrap-'));
 let hash: string;
 
 function env(dir: string, configPath: string): ReturnType<typeof loadEnv> {
@@ -75,7 +75,7 @@ cache:
  */
 function databaseInUse(dataDir: string): void {
   mkdirSync(dataDir, { recursive: true });
-  const db = new Database(join(dataDir, 'gdv.db'));
+  const db = new Database(join(dataDir, 'nonni.db'));
   for (let index = 0; index < 2; index++) db.exec(MIGRATIONS[index]!);
   db.pragma('user_version = 2');
 
@@ -334,7 +334,7 @@ async function login(
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  return `nonni_session=${cookie.value}`;
 }

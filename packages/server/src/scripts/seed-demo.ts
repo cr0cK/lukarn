@@ -12,7 +12,7 @@ import { MediaRepo, SyncStateRepo, type MediaUpsert } from '../repo.js';
  * Jeu de données de démonstration, pour développer et vérifier l'interface
  * sans compte Google Drive.
  *
- *   pnpm --filter @gdv/server seed-demo [nombre]
+ *   pnpm --filter @nonni/server seed-demo [nombre]
  *
  * Insère des médias dans l'index **et** pré-remplit le cache avec des images
  * générées localement : le pipeline de rendu trouve tout en cache et ne

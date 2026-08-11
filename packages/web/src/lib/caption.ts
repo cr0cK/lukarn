@@ -69,7 +69,7 @@ export function captionEntries(source: CaptionSource): CaptionEntry[] {
  * Une seule clé pour toute l'application, contrairement aux repères de lecture
  * des commentaires : c'est un réglage d'affichage, pas une donnée d'album.
  */
-const STORAGE_KEY = 'gdv:caption-hidden';
+const STORAGE_KEY = 'nonni:caption-hidden';
 
 /**
  * Lecture tolérante, sur le modèle de `lib/seenComments.ts` : un `localStorage`

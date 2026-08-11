@@ -24,7 +24,7 @@ import { loadEnv } from '../src/env.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-sync-prewarm-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-sync-prewarm-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -63,7 +63,7 @@ before(async () => {
     url: '/api/auth/login',
     payload: { username: 'patron', password: PASSWORD },
   });
-  cookie = `gdv_session=${response.cookies.find((c) => c.name === 'gdv_session')!.value}`;
+  cookie = `nonni_session=${response.cookies.find((c) => c.name === 'nonni_session')!.value}`;
 });
 
 after(async () => {

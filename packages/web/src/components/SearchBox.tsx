@@ -1,4 +1,4 @@
-import { SEARCH_MIN_LENGTH, type SearchHit, type SearchHitKind } from '@gdv/shared';
+import { SEARCH_MIN_LENGTH, type SearchHit, type SearchHitKind } from '@nonni/shared';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearch } from '../api/hooks';

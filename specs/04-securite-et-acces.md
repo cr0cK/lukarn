@@ -130,7 +130,7 @@ cookie posé ici est persistant. Repousser l'échéance à mi-vie plutôt qu'à 
 requête ramène le coût à une écriture par visiteur et par semestre, au lieu
 d'une par vignette.
 
-Le cookie `gdv_session` est `httpOnly`, `sameSite: 'lax'`, **signé** avec
+Le cookie `nonni_session` est `httpOnly`, `sameSite: 'lax'`, **signé** avec
 `SESSION_SECRET` via `@fastify/cookie`, et `secure` uniquement si `PUBLIC_URL`
 commence par `https://` — sinon le navigateur ne le renverrait jamais en
 développement local. Ses options sortent d'une seule fonction
@@ -421,7 +421,7 @@ Le sel étant aléatoire, deux chiffrements du même jeton donnent deux chaînes
 différentes — un observateur de la base ne peut pas déduire que le jeton n'a pas
 changé.
 
-Le modèle de menace est explicite : **un dump de `gdv.db` ne doit pas suffire à
+Le modèle de menace est explicite : **un dump de `nonni.db` ne doit pas suffire à
 accéder au Drive.** Il faut aussi `TOKEN_KEY`, qui vit dans l'environnement du
 process et n'est jamais écrite en base. Le VPS n'est pas un HSM ; quelqu'un qui
 obtient un shell dans le conteneur a les deux.
@@ -511,7 +511,7 @@ recopie dans le partage Drive.
 ## Consentement OAuth
 
 - `GET /api/admin/oauth/start` exige une session administrateur, tire un `state`
-  aléatoire de 24 octets, le dépose dans un cookie signé `gdv_oauth_state`
+  aléatoire de 24 octets, le dépose dans un cookie signé `nonni_oauth_state`
   (path `/api`, TTL 600 s) et renvoie l'URL de consentement.
 - `authUrl()` demande `access_type: 'offline'` et `prompt: 'consent'` : sans ce
   dernier, une seconde autorisation ne renverrait pas de refresh token et la

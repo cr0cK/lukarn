@@ -4,7 +4,7 @@ import {
   type AlbumDay,
   type ItemsPage,
   type MediaDetail,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';

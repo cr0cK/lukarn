@@ -33,7 +33,7 @@ export function unreadCount(total: number, seen: number | undefined): number {
 }
 
 function storageKey(albumId: string): string {
-  return `gdv:comments-seen:${albumId}`;
+  return `nonni:comments-seen:${albumId}`;
 }
 
 /**
@@ -80,7 +80,7 @@ export interface SeenComments {
  * Fil d'activité
  * ------------------------------------------------------------------------ */
 
-const FEED_KEY = 'gdv:comments-feed-seen';
+const FEED_KEY = 'nonni:comments-feed-seen';
 
 /**
  * Repère de lecture du fil d'activité : le plus grand identifiant déjà vu.

@@ -40,7 +40,7 @@ dans l'URL, comme `photo`, `order` et `group`, et les emails de notification en
 profitent — un message annoncé par email menait jusque-là à une image muette.
 
 **La pastille compte des identifiants, pas des messages.** Le repère de lecture
-du fil, `gdv:comments-feed-seen`, est le plus grand id vu. Le fil est paginé et
+du fil, `nonni:comments-feed-seen`, est le plus grand id vu. Le fil est paginé et
 sans total : compter ce qu'on a lu supposerait de le parcourir en entier, alors
 qu'`AUTOINCREMENT` fait de l'id un jalon exact. Le repère reste dans le
 navigateur pour la raison de D55 — une clé d'accès est partagée par tout un

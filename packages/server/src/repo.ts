@@ -9,7 +9,7 @@ import {
   type SortOrder,
   type SyncStatus,
   type UpdateMediaRequest,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import type { Db } from './db.js';
 
 /** Ligne brute de `media`, augmentée de la description jointe. */

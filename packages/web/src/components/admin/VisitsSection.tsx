@@ -1,4 +1,4 @@
-import { VISIT_WINDOWS, type AlbumVisitRow, type DeviceKind, type VisitorRow } from '@gdv/shared';
+import { VISIT_WINDOWS, type AlbumVisitRow, type DeviceKind, type VisitorRow } from '@nonni/shared';
 import { type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useVisits } from '../../api/hooks';

@@ -1,4 +1,4 @@
-import { VERIFICATION_CODE_LENGTH } from '@gdv/shared';
+import { VERIFICATION_CODE_LENGTH } from '@nonni/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useRequestIdentityCode, useVerifyIdentity } from '../api/hooks';

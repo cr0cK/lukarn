@@ -15,7 +15,7 @@ import { loadEnv, type Env } from '../src/env.js';
  * « Connecté » pendant que chaque vignette échoue.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-revoke-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-revoke-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const TOKEN_KEY = 'k'.repeat(48);

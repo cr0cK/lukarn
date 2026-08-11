@@ -21,7 +21,7 @@ import { Mailer, buildCommentMail, buildVerificationMail, type MailMessage } fro
  * réponses qu'il reçoit, et personne n'est prévenu de ce qu'il vient d'écrire.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-notif-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-notif-'));
 
 const env = loadEnv({
   NODE_ENV: 'test',

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS, type AdminCommentsPage, type Comment } from '@gdv/shared';
+import { ALL_ALBUMS, type AdminCommentsPage, type Comment } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -23,7 +23,7 @@ import type { MediaUpsert } from '../src/repo.js';
 
 const PASSWORD = 'mot-de-passe-de-test';
 const silencieux = { info: () => {}, warn: () => {}, debug: () => {} };
-const root = mkdtempSync(join(tmpdir(), 'gdv-moderation-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-moderation-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -70,9 +70,9 @@ async function login(username: string): Promise<string> {
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  return `nonni_session=${cookie.value}`;
 }
 
 async function identify(cookie: string, email: string, displayName: string): Promise<void> {

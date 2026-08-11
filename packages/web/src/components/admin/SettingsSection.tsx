@@ -1,4 +1,4 @@
-import type { AppSettings, UpdateSettingsRequest } from '@gdv/shared';
+import type { AppSettings, UpdateSettingsRequest } from '@nonni/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useAdminStatus, useSettings, useUpdateSettings } from '../../api/hooks';

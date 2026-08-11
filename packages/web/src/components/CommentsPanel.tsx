@@ -1,4 +1,9 @@
-import { COMMENT_MAX_LENGTH, remainingEditMs, type Comment, type CommentThread } from '@gdv/shared';
+import {
+  COMMENT_MAX_LENGTH,
+  remainingEditMs,
+  type Comment,
+  type CommentThread,
+} from '@nonni/shared';
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react';
 import { errorText } from '../api/client';
 import {

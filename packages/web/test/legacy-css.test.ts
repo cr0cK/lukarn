@@ -97,8 +97,10 @@ describe('abaissement de la feuille de styles', () => {
 describe('propriétés de transformation indépendantes', () => {
   it('remplace translate par un transform composé', () => {
     const out = replaceIndependentTransforms('.a{translate:0 -50%}');
-    assert.ok(out.includes('--gdv-translate:translate(0,-50%)'));
-    assert.ok(out.includes('transform:var(--gdv-translate) var(--gdv-rotate) var(--gdv-scale)'));
+    assert.ok(out.includes('--nonni-translate:translate(0,-50%)'));
+    assert.ok(
+      out.includes('transform:var(--nonni-translate) var(--nonni-rotate) var(--nonni-scale)'),
+    );
     assert.ok(!/[{;]\s*translate\s*:/.test(out), 'la propriété indépendante ne doit plus rester');
   });
 
@@ -106,8 +108,8 @@ describe('propriétés de transformation indépendantes', () => {
     // `rotate-90 -translate-y-1/2` sur le même élément : en écrivant `transform`
     // en dur, la seconde classe effacerait la première.
     const out = replaceIndependentTransforms('.a{translate:0 -50%}.b{rotate:90deg}');
-    assert.ok(out.includes('--gdv-rotate:rotate(90deg)'));
-    assert.equal(out.match(/transform:var\(--gdv-translate\)/g)?.length, 2);
+    assert.ok(out.includes('--nonni-rotate:rotate(90deg)'));
+    assert.equal(out.match(/transform:var\(--nonni-translate\)/g)?.length, 2);
   });
 
   it('remet les emplacements à vide dans une couche, jamais hors couche', () => {
@@ -175,7 +177,7 @@ describe('dépliage des couches en cascade', () => {
     const out = lowerForLegacyEngines('@layer utilities{.a{translate:0 -50%;padding-inline:4px}}');
     assert.ok(!out.includes('@layer'));
     assert.ok(out.includes('padding-left:4px'));
-    assert.ok(out.includes('--gdv-translate:translate(0,-50%)'));
+    assert.ok(out.includes('--nonni-translate:translate(0,-50%)'));
   });
 
   it('signale une couche laissée en place', () => {

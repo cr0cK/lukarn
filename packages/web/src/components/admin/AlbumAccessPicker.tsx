@@ -1,4 +1,4 @@
-import { ALL_ALBUMS, type AdminAlbum } from '@gdv/shared';
+import { ALL_ALBUMS, type AdminAlbum } from '@nonni/shared';
 import { type ReactElement, useId, useState } from 'react';
 
 interface AlbumAccessPickerProps {

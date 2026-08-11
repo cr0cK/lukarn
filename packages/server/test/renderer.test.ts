@@ -14,7 +14,7 @@ import { MediaRenderer } from '../src/media/renderer.js';
  * pieds, et une image que la libvips embarquée ne sait pas décoder.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-renderer-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-renderer-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const silencieux = { warn: () => {} };

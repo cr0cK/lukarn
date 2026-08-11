@@ -1,4 +1,4 @@
-import { EMAIL_MAX_LENGTH, VERIFICATION_CODE_LENGTH, type SessionUser } from '@gdv/shared';
+import { EMAIL_MAX_LENGTH, VERIFICATION_CODE_LENGTH, type SessionUser } from '@nonni/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { toIdentity } from '../commenters.js';

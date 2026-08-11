@@ -295,9 +295,7 @@ export function loadEnv(
     // La politique d'usage de Nominatim exige un `User-Agent` qui identifie
     // l'appelant : l'instance publique bloque les agents anonymes, et un
     // `node-fetch` générique se ferait couper sans qu'on sache pourquoi.
-    geocoding: geocodingUrl
-      ? { baseUrl: geocodingUrl, userAgent: `googledrive-viewer (+${publicUrl})` }
-      : null,
+    geocoding: geocodingUrl ? { baseUrl: geocodingUrl, userAgent: `nonni (+${publicUrl})` } : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),
     cacheDir: resolve(baseDir, env.CACHE_DIR),

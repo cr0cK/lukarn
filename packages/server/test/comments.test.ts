@@ -9,7 +9,7 @@ import {
   type Comment,
   type CommentsPage,
   type MediaDetail,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -31,7 +31,7 @@ import type { MediaUpsert } from '../src/repo.js';
 
 const PASSWORD = 'mot-de-passe-de-test';
 const silencieux = { info: () => {}, warn: () => {}, debug: () => {} };
-const root = mkdtempSync(join(tmpdir(), 'gdv-comments-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-comments-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -72,9 +72,9 @@ async function login(username: string): Promise<string> {
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  return `nonni_session=${cookie.value}`;
 }
 
 /**

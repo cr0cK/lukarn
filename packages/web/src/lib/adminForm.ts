@@ -3,7 +3,7 @@
  *
  * Fonctions pures, sans React ni réseau. Elles ne remplacent pas le contrôle du
  * serveur — qui reste seul juge — elles évitent un aller-retour pour dire ce qui
- * cloche. Les règles viennent de `@gdv/shared`, pour que les deux côtés refusent
+ * cloche. Les règles viennent de `@nonni/shared`, pour que les deux côtés refusent
  * exactement les mêmes valeurs.
  */
 
@@ -13,7 +13,7 @@ import {
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
-} from '@gdv/shared';
+} from '@nonni/shared';
 
 /**
  * Extrait l'identifiant d'un dossier Drive de ce qui a été collé : URL complète,

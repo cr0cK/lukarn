@@ -17,7 +17,7 @@ import { loadEnv } from '../src/env.js';
  * seulement `pnpm create-admin`. L'écran de connexion doit pouvoir le dire.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-setup-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-setup-'));
 
 let server: FastifyInstance;
 let context: AppContext;

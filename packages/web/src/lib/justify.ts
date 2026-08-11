@@ -1,4 +1,4 @@
-import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@nonni/shared';
 import { formatDate } from './format';
 
 /**

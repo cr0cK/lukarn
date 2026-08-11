@@ -79,7 +79,7 @@ Sur `/album/:albumId` :
   pour ne pas laisser une URL bricolée à la main provoquer un 400.
 
   S'y ajoute une **mémoire par album dans le navigateur**, que le découpage n'a
-  pas : `gdv:album-order:<albumId>` (voir `lib/albumOrder.ts`). La priorité est
+  pas : `nonni:album-order:<albumId>` (voir `lib/albumOrder.ts`). La priorité est
   **URL > navigateur > album**. L'URL d'abord parce qu'elle est une vue exacte,
   partagée ou reçue par email, et que la mémoire locale du destinataire n'a pas
   à la contredire ; le navigateur ensuite, parce que rebasculer le même album à
@@ -578,7 +578,7 @@ tout l'intérêt d'une journée repliée.
 ### Par mois ou par jour — `GroupBy`
 
 `LayoutOptions.groupBy` choisit le découpage ; omis, c'est `DEFAULT_GROUP_BY`,
-donc le mois. Le type vient de `@gdv/shared` bien qu'aucune route ne le
+donc le mois. Le type vient de `@nonni/shared` bien qu'aucune route ne le
 transporte : c'est une valeur d'interface, pas de payload, et la dupliquer côté
 front pour la seule raison qu'elle ne traverse pas le réseau ferait deux
 sources pour un même vocabulaire.
@@ -791,7 +791,7 @@ seul endroit où changer le titre, le dossier Drive ou le découpage.
   un formulaire, pas un texte à lire : un champ de saisie large de deux mille
   pixels ne se relit pas, il reste donc en `max-w-prose`.
 - **La longueur est bornée par `ALBUM_DESCRIPTION_MAX_LENGTH`**, exporté par
-  `@gdv/shared` et appliqué des deux côtés. Le serveur la bornait déjà, mais par
+  `@nonni/shared` et appliqué des deux côtés. Le serveur la bornait déjà, mais par
   un littéral que le front aurait redéclaré de son côté.
 
 Sur `AlbumsPage`, la description est clampée à deux lignes sous le titre : la
@@ -1266,7 +1266,7 @@ bouton, sinon un lecteur d'écran annoncerait un chiffre nu.
 **Le total vient du serveur, le repère de lecture du navigateur.** Le premier est
 `GET /api/comments/:albumId`, chargé une fois pour l'album. Le second est un
 nombre de commentaires vus par photo, dans `localStorage` sous
-`gdv:comments-seen:<albumId>` — un nombre et non une date : comparer deux entiers
+`nonni:comments-seen:<albumId>` — un nombre et non une date : comparer deux entiers
 suffit à répondre à « y a-t-il du nouveau ? », là où une date obligerait le
 serveur à transporter l'horodatage de chaque fil. Le choix du navigateur plutôt
 que de la base est motivé en [D55](./08-decisions/D55-le-repere-de-lecture-vit-dans-le-navigateur-pas-en-base.md).
@@ -1281,7 +1281,7 @@ Trois bords que le calcul doit tenir :
   moment effacerait le repère pour le reconstituer faux à l'arrivée des vrais
   totaux.
 
-**Le fil d'activité a son propre repère**, `gdv:comments-feed-seen`, et c'est un
+**Le fil d'activité a son propre repère**, `nonni:comments-feed-seen`, et c'est un
 **identifiant** de commentaire, pas un compte. Le fil est paginé et sans total :
 compter ce qu'on a lu supposerait de le parcourir en entier, alors
 qu'`AUTOINCREMENT` fait de l'id un jalon exact — tout ce qui le dépasse est
@@ -1989,7 +1989,7 @@ moteur conforme jette **avec son bloc**. Un second téléviseur, pourtant plus
 récent que le premier, fait exactement cela et n'affichait donc aucun style —
 sans que rien d'autre soit en cause. Déplier ne change rien pour un moteur
 récent, Tailwind déclarant ses couches dans l'ordre où il les émet
-([D260809h](./08-decisions/D260809h-les-couches-en-cascade-sont-depliees.md)).
+([D260809i](./08-decisions/D260809i-les-couches-en-cascade-sont-depliees.md)).
 La source, elle, continue d'écrire ses `@layer` : seule la sortie est dépliée.
 
 Le greffon vérifie son propre travail et fait échouer la construction s'il reste
@@ -2078,7 +2078,7 @@ Les PNG sont dérivés une fois pour toutes, avec `sharp` — déjà dépendance
 serveur :
 
 ```bash
-cd packages/web/public/icons && pnpm --filter @gdv/server exec node -e "
+cd packages/web/public/icons && pnpm --filter @nonni/server exec node -e "
 const sharp = require('sharp'); const s = () => sharp('icon.svg', { density: 384 });
 Promise.all([
   s().resize(192).png().toFile('icon-192.png'),

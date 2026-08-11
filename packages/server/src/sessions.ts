@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import type { DeviceKind } from '@gdv/shared';
+import type { DeviceKind } from '@nonni/shared';
 import type { Db } from './db.js';
 
-export const SESSION_COOKIE = 'gdv_session';
+export const SESSION_COOKIE = 'nonni_session';
 
 /**
  * Un an, prolongé en cours de route (voir `get`). En pratique on ne se

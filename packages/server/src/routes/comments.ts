@@ -6,7 +6,7 @@ import {
   type Comment,
   type CommentsFeedPage,
   type CommentsPage,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { EditWindowClosedError, UnknownParentError } from '../comments.js';

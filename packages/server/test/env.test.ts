@@ -13,7 +13,7 @@ import { loadEnv } from '../src/env.js';
  * des semaines plus tard, au premier usage de ce qu'elle a mal lu.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-env-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-env-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 function env(surcharges: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {

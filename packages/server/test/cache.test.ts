@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { MediaCache } from '../src/media/cache.js';
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-cache-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-cache-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 /** Laisse l'éviction asynchrone se terminer avant d'observer le cache. */

@@ -1,4 +1,4 @@
-import type { MediaDetail, MediaExif } from '@gdv/shared';
+import type { MediaDetail, MediaExif } from '@nonni/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { exifRows } from '../src/lib/exifRows';

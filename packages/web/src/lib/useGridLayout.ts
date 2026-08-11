@@ -1,4 +1,4 @@
-import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@nonni/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 import { measureLines } from './measureLines';

@@ -16,7 +16,7 @@ import { MediaRepo, SyncStateRepo } from '../src/repo.js';
  * quitter.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-sync-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-sync-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

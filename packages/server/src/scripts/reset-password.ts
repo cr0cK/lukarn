@@ -1,5 +1,5 @@
 import { dirname } from 'node:path';
-import { PASSWORD_MIN_LENGTH } from '@gdv/shared';
+import { PASSWORD_MIN_LENGTH } from '@nonni/shared';
 import argon2 from 'argon2';
 import { ConfigRepo } from '../config-repo.js';
 import { openDb } from '../db.js';

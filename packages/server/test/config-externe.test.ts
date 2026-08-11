@@ -20,7 +20,7 @@ import { openDb, type Db } from '../src/db.js';
  * faite précisément pour reprendre la main quand on a perdu son mot de passe.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-externe-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-externe-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 let serveur: Db;

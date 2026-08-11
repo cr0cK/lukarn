@@ -1,4 +1,4 @@
-import { SEARCH_MIN_LENGTH, type SearchHit } from '@gdv/shared';
+import { SEARCH_MIN_LENGTH, type SearchHit } from '@nonni/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';

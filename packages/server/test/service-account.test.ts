@@ -24,7 +24,7 @@ import { loadEnv } from '../src/env.js';
  * sens.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-sa-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-sa-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const silencieux = { info: () => {}, warn: () => {} };
@@ -160,9 +160,9 @@ describe('administration en compte de service', () => {
         url: '/api/auth/login',
         payload: { username: 'patron', password: 'mot-de-passe-de-test' },
       });
-      const session = login.cookies.find((entry) => entry.name === 'gdv_session');
+      const session = login.cookies.find((entry) => entry.name === 'nonni_session');
       assert.ok(session);
-      const cookie = `gdv_session=${session.value}`;
+      const cookie = `nonni_session=${session.value}`;
 
       const statut = await server.inject({
         method: 'GET',

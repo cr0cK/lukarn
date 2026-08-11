@@ -14,7 +14,7 @@ import { Mailer } from '../src/mail.js';
  * qu'en constatant l'absence d'une réponse qu'on n'attendait plus.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-mail-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-mail-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 function journal() {

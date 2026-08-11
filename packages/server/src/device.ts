@@ -1,4 +1,4 @@
-import type { DeviceKind } from '@gdv/shared';
+import type { DeviceKind } from '@nonni/shared';
 
 /**
  * Classe d'appareil déduite du user-agent, à la création de la session.

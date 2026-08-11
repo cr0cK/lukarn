@@ -5,11 +5,11 @@ running. For what the application is and how to run it locally, see the
 [root README](../README.md); for why it is built this way, see
 [`specs/06`](../specs/06-configuration-et-deploiement.md).
 
-| File              | Role                                                                     |
-| ----------------- | ------------------------------------------------------------------------ |
-| `cloud-init.yaml` | Provisions a fresh machine: account, security updates, Docker, ufw, VPN  |
-| `deploy.sh`       | Updates a live instance and waits for it to come back healthy            |
-| `backup.sh`       | Archives the `gdv-data` volume and its `.env`, then ships it off-machine |
+| File              | Role                                                                       |
+| ----------------- | -------------------------------------------------------------------------- |
+| `cloud-init.yaml` | Provisions a fresh machine: account, security updates, Docker, ufw, VPN    |
+| `deploy.sh`       | Updates a live instance and waits for it to come back healthy              |
+| `backup.sh`       | Archives the `nonni-data` volume and its `.env`, then ships it off-machine |
 
 ---
 
@@ -91,7 +91,7 @@ The file is read **from a local clone** of the repository, not from the server,
 which does not exist yet:
 
 ```bash
-git clone <this-repo> && cd googledrive-viewer
+git clone <this-repo> && cd nonni
 ```
 
 <details>
@@ -330,7 +330,7 @@ authorisation request.
 administration workstation, for cloud-init.
 
 ```bash
-git clone <this-repo> && cd googledrive-viewer
+git clone <this-repo> && cd nonni
 
 cp .env.example .env
 # Generate both secrets and paste them into .env
@@ -581,7 +581,7 @@ Google.
 | Turn off place geocoding       | `GEOCODING_URL=` (empty) in `.env`. By default, coordinates rounded to the kilometre go to Nominatim/OSM to name days; a private Nominatim instance goes in the same variable |
 | Administrator password lost    | `docker compose exec app node packages/server/dist/scripts/reset-password.js <username>` — also closes that account's open sessions                                           |
 | Update                         | `./deploy/deploy.sh` — backs up, rebuilds, and **waits** for the health check to go green again                                                                               |
-| Back up                        | `./deploy/backup.sh` — the `gdv-data` volume **and** the `.env`, see below. `gdv-cache` is regenerable                                                                        |
+| Back up                        | `./deploy/backup.sh` — the `nonni-data` volume **and** the `.env`, see below. `nonni-cache` is regenerable                                                                    |
 | Read the logs                  | `docker compose logs -f` (or `logs -f caddy` for the certificate)                                                                                                             |
 
 Updating an instance that was running on `config/albums.yaml`: nothing to do. At
@@ -594,7 +594,7 @@ is ever written to Drive: the requested scope is read-only.
 
 ## Backup
 
-Two things, and they go together: the `gdv-data` volume holds the accounts, the
+Two things, and they go together: the `nonni-data` volume holds the accounts, the
 index and the **encrypted** refresh token, which only `TOKEN_KEY` decrypts. A
 backup of the volume without the `.env` yields an unreadable token and forces a
 new Google consent. `backup.sh` takes both.
@@ -606,11 +606,11 @@ access to Drive at all — a failure that only shows up at the first sync.
 
 Three files per run, then:
 
-| File                         | Holds                                          |
-| ---------------------------- | ---------------------------------------------- |
-| `gdv-<timestamp>.tar.gz`     | the `gdv-data` volume — accounts, index, token |
-| `gdv-<timestamp>.env`        | the secrets, `TOKEN_KEY` first among them      |
-| `gdv-<timestamp>.config.tgz` | `config/`, absent on an OAuth-only install     |
+| File                           | Holds                                            |
+| ------------------------------ | ------------------------------------------------ |
+| `nonni-<timestamp>.tar.gz`     | the `nonni-data` volume — accounts, index, token |
+| `nonni-<timestamp>.env`        | the secrets, `TOKEN_KEY` first among them        |
+| `nonni-<timestamp>.config.tgz` | `config/`, absent on an OAuth-only install       |
 
 ```bash
 ./deploy/backup.sh            # local archive, then upload through rclone
@@ -619,9 +619,9 @@ Three files per run, then:
 
 The script stops `app` for the duration of the `tar` — a few seconds, the price
 of a SQLite at rest rather than a file copied with a WAL in flight — writes
-`sauvegardes/gdv-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
+`sauvegardes/nonni-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
 **last 7** and deletes the older ones. It checks that the archive really contains
-`gdv.db`: an empty archive would otherwise go unnoticed until restore time.
+`nonni.db`: an empty archive would otherwise go unnoticed until restore time.
 
 **Off the machine.** A backup that lives on the machine it protects protects
 nothing. Without `--local`, the script copies the archive through `rclone` to a
@@ -629,8 +629,8 @@ remote configured **outside the repository**:
 
 ```bash
 rclone config     # any backend: S3 and compatibles, B2, SFTP…
-# The default remote is `sauvegardes:gdv`. Another name?
-# GDV_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
+# The default remote is `sauvegardes:nonni`. Another name?
+# NONNI_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
 ```
 
 **Automating.** Two units, and nothing to install: Debian and Ubuntu cloud
@@ -638,26 +638,26 @@ images ship systemd but frequently **no `cron` at all** — `crontab` is simply 
 a command there.
 
 ```ini
-# /etc/systemd/system/gdv-backup.service
+# /etc/systemd/system/nonni-backup.service
 [Unit]
-Description=Gallery backup (gdv-data volume and its .env)
+Description=Gallery backup (nonni-data volume and its .env)
 After=docker.service network-online.target
 Requires=docker.service
 
 [Service]
 Type=oneshot
 User=deploy
-WorkingDirectory=/home/deploy/googledrive-viewer
+WorkingDirectory=/home/deploy/nonni
 # rclone reads ~/.config/rclone/rclone.conf. Without HOME it finds no remote,
 # and the off-machine copy fails while the local archive succeeds — the kind of
 # half-failure that goes unnoticed until a restore.
 Environment=HOME=/home/deploy
-ExecStart=/home/deploy/googledrive-viewer/deploy/backup.sh
+ExecStart=/home/deploy/nonni/deploy/backup.sh
 TimeoutStartSec=30min
 ```
 
 ```ini
-# /etc/systemd/system/gdv-backup.timer
+# /etc/systemd/system/nonni-backup.timer
 [Unit]
 Description=Daily gallery backup
 
@@ -673,10 +673,10 @@ WantedBy=timers.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now gdv-backup.timer
-systemctl list-timers gdv-backup.timer   # when it next fires
-sudo systemctl start gdv-backup.service  # run one now, without waiting
-journalctl -u gdv-backup.service         # what it did
+sudo systemctl enable --now nonni-backup.timer
+systemctl list-timers nonni-backup.timer   # when it next fires
+sudo systemctl start nonni-backup.service  # run one now, without waiting
+journalctl -u nonni-backup.service         # what it did
 ```
 
 The output goes to the journal, so there is no log file to rotate and nothing
@@ -684,21 +684,21 @@ appended to a file nobody reads. Where `cron` **is** installed, one `crontab -e`
 line does the same job, minus the catch-up after downtime:
 
 ```cron
-0 4 * * * cd /home/deploy/googledrive-viewer && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
+0 4 * * * cd /home/deploy/nonni && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
 ```
 
-`gdv-cache` does not need backing up: it regenerates.
+`nonni-cache` does not need backing up: it regenerates.
 
 **Restoring**, on a fresh machine, from a clone of the repository and **before**
 the first `docker compose up`:
 
 ```bash
-cp gdv-<timestamp>.env .env          # the secrets, TOKEN_KEY included
-tar xzf gdv-<timestamp>.config.tgz   # recreates config/, service account key and all
+cp nonni-<timestamp>.env .env          # the secrets, TOKEN_KEY included
+tar xzf nonni-<timestamp>.config.tgz   # recreates config/, service account key and all
 
-docker volume create gdv-data
-docker run --rm -v gdv-data:/data -v "$PWD:/e" alpine \
-  tar xzf /e/gdv-<timestamp>.tar.gz -C /data
+docker volume create nonni-data
+docker run --rm -v nonni-data:/data -v "$PWD:/e" alpine \
+  tar xzf /e/nonni-<timestamp>.tar.gz -C /data
 ```
 
 The volume archive keeps the layout it has always had — the files sit at its
@@ -708,23 +708,40 @@ ones is the key, and a new one costs three clicks in the console
 (**Keys → Add key**, then revoke the old one). No album has to be re-shared:
 folders are shared with the service account, never with one of its keys.
 
-> **Updating an instance older than these scripts.** Volumes now carry an
-> explicit name. Before that, compose prefixed them with the working directory
-> name, so the volume is called `<directory>_gdv-data` —
-> `googledrive-viewer_gdv-data` when cloned under that name. Copy it to
-> `gdv-data` **before** the first `docker compose up` on this version, otherwise
-> the application starts on an empty database (accounts and index included).
+> **Updating an instance that ran under the project's former name.** The project
+> was called `googledrive-viewer` until version 1.0.0, and its volumes and
+> database carried a `gdv` prefix. Nothing adopts the new names on its own: run
+> this **before** the first `docker compose up` on this version, or the
+> application starts on an empty database — accounts and index included.
 >
 > ```bash
 > docker compose down
-> docker volume create gdv-data
-> docker run --rm -v googledrive-viewer_gdv-data:/old -v gdv-data:/new alpine \
->   sh -c 'cp -a /old/. /new/'
-> docker run --rm -v googledrive-viewer_caddy-data:/old -v caddy-data:/new alpine \
->   sh -c 'cp -a /old/. /new/'   # avoids a certificate reissue
+> docker volume create nonni-data
+> docker run --rm -v gdv-data:/old -v nonni-data:/new alpine sh -c '
+>   cp -a /old/. /new/
+>   mv /new/gdv.db /new/nonni.db
+>   # A clean shutdown checkpoints the WAL, so these two are usually absent.
+>   # Leaving them behind under the old name would silently drop whatever the
+>   # last transactions had not yet folded into the database file.
+>   [ -e /new/gdv.db-wal ] && mv /new/gdv.db-wal /new/nonni.db-wal
+>   [ -e /new/gdv.db-shm ] && mv /new/gdv.db-shm /new/nonni.db-shm
+>   exit 0'
 > docker compose up -d --build
 > ```
 >
-> `docker volume ls` gives the exact name. `gdv-cache` is not worth copying: it
-> regenerates. Once the instance is verified, the old volumes can be removed with
-> `docker volume rm`.
+> `nonni-cache` is not worth copying: it regenerates. Once the instance is
+> verified, `docker volume rm gdv-data gdv-cache` reclaims the space. Backups
+> already on disk keep their `gdv-` prefix, and pruning no longer sees them —
+> delete them by hand once a `nonni-` archive has been restored successfully.
+
+> **Updating an instance older than the explicit volume names.** Volumes carry a
+> `name:` of their own since D53. Before that, compose prefixed them with the
+> working directory, so the volume is called `<directory>_gdv-data` —
+> `googledrive-viewer_gdv-data` when cloned under that name; `docker volume ls`
+> gives the exact one. Substitute it for `gdv-data` in the commands above, and
+> copy the certificates across too, which spares a reissue:
+>
+> ```bash
+> docker run --rm -v googledrive-viewer_caddy-data:/old -v caddy-data:/new alpine \
+>   sh -c 'cp -a /old/. /new/'
+> ```

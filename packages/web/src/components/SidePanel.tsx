@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaDetail } from '@gdv/shared';
+import type { AlbumDay, MediaDetail } from '@nonni/shared';
 import type { ReactElement } from 'react';
 import { CommentsPanel } from './CommentsPanel';
 import { ExifPanel } from './ExifPanel';

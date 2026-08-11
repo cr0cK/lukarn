@@ -21,6 +21,9 @@ config/*.json
 # Worktrees git montées par l'outillage d'agents : des branches du dépôt, pas
 # du contenu à y committer.
 .claude/worktrees/
+# Réglages d'agent propres à un poste : le `.local` du nom dit déjà qu'ils ne
+# valent que là, et les versionner impose ses permissions à qui clone.
+.claude/settings.local.json
 
 # Divers
 .DS_Store

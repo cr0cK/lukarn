@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { USER_CODE_ALPHABET, USER_CODE_LENGTH, type DevicePairingStart } from '@gdv/shared';
+import { USER_CODE_ALPHABET, USER_CODE_LENGTH, type DevicePairingStart } from '@nonni/shared';
 import { hashDeviceCode } from './crypto.js';
 import type { Db } from './db.js';
 

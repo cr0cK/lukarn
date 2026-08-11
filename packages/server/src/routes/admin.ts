@@ -18,7 +18,7 @@ import {
   type AdminStatus,
   type AppSettings,
   type VisitsOverview,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -29,7 +29,7 @@ import { DriveNotConfiguredError } from '../drive/service.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { buildAlbum } from '../repo.js';
 
-const OAUTH_STATE_COOKIE = 'gdv_oauth_state';
+const OAUTH_STATE_COOKIE = 'nonni_oauth_state';
 const OAUTH_STATE_TTL_S = 600;
 
 const resyncSchema = z.object({ albumId: z.string().min(1).optional() });

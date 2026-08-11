@@ -1,4 +1,4 @@
-import { USER_CODE_LENGTH, normalizeUserCode } from '@gdv/shared';
+import { USER_CODE_LENGTH, normalizeUserCode } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';

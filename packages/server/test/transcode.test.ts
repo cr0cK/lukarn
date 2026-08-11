@@ -26,7 +26,7 @@ import { MediaRepo, type MediaUpsert } from '../src/repo.js';
  * le lui demande — et la ligne de commande, qui est pure.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-transcode-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-transcode-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

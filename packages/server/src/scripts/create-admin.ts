@@ -4,7 +4,7 @@ import {
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import argon2 from 'argon2';
 import { ConfigRepo } from '../config-repo.js';
 import { openDb } from '../db.js';

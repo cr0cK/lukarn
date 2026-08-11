@@ -1,4 +1,4 @@
-import { MEDIA_DESCRIPTION_MAX_LENGTH } from '@gdv/shared';
+import { MEDIA_DESCRIPTION_MAX_LENGTH } from '@nonni/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateMedia } from '../api/hooks';

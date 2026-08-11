@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaDetail } from '@gdv/shared';
+import type { AlbumDay, MediaDetail } from '@nonni/shared';
 import {
   formatAperture,
   formatBytes,

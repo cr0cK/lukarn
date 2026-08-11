@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { AppSettings } from '@gdv/shared';
+import type { AppSettings } from '@nonni/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { bootstrapFromYaml } from './bootstrap.js';
 import { CommentRepo } from './comments.js';

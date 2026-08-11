@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatUserCode, normalizeUserCode } from '@gdv/shared';
+import { formatUserCode, normalizeUserCode } from '@nonni/shared';
 import { qrCode } from '../src/lib/qr';
 
 /**

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS } from '@gdv/shared';
+import { ALL_ALBUMS } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -18,7 +18,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-access-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-access-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -60,9 +60,9 @@ async function login(username: string): Promise<string> {
   });
   assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
 
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  return `nonni_session=${cookie.value}`;
 }
 
 before(async () => {
@@ -260,14 +260,14 @@ describe('cycle de session', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/auth/me',
-      headers: { cookie: 'gdv_session=identifiant-invente' },
+      headers: { cookie: 'nonni_session=identifiant-invente' },
     });
     assert.equal(response.statusCode, 401);
   });
 
   it('repose le cookie quand la session est prolongée', async () => {
     const cookie = await login('famille');
-    const sessionId = cookie.slice('gdv_session='.length);
+    const sessionId = cookie.slice('nonni_session='.length);
 
     // Session arrivée à mi-vie : la lecture suivante repousse son échéance en
     // base. Le cookie, lui, porte encore la date de la connexion — sans
@@ -286,7 +286,7 @@ describe('cycle de session', () => {
     });
     assert.equal(response.statusCode, 200);
 
-    const repose = response.cookies.find((entry) => entry.name === 'gdv_session');
+    const repose = response.cookies.find((entry) => entry.name === 'nonni_session');
     assert.ok(repose, 'la prolongation doit réémettre le cookie');
     assert.ok(
       (repose.maxAge ?? 0) > context.sessions.ttlMs / 1000 / 2,

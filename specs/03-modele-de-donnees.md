@@ -1,6 +1,6 @@
 # 03 — Modèle de données
 
-Base unique : `${DATA_DIR}/gdv.db`, ouverte par `packages/server/src/db.ts`.
+Base unique : `${DATA_DIR}/nonni.db`, ouverte par `packages/server/src/db.ts`.
 
 ## Pragmas
 
@@ -789,5 +789,5 @@ et `db.ts` dit à quoi elles servent :
 
 En revanche, les comptes, les albums et les réglages **y sont** depuis la
 migration 3. `config/albums.yaml` ne sert plus qu'à amorcer une installation
-neuve. Conséquence d'exploitation : le volume `gdv-data` contient désormais les
+neuve. Conséquence d'exploitation : le volume `nonni-data` contient désormais les
 comptes, c'est la seule chose à sauvegarder.

@@ -629,7 +629,7 @@ export const MIGRATIONS: string[] = [
 
 export function openDb(dataDir: string): Db {
   mkdirSync(dataDir, { recursive: true });
-  const db = new Database(join(dataDir, 'gdv.db'));
+  const db = new Database(join(dataDir, 'nonni.db'));
 
   // WAL : les lectures de la grille ne bloquent pas la sync qui écrit en fond.
   db.pragma('journal_mode = WAL');

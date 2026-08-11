@@ -16,7 +16,7 @@ import { loadEnv } from '../src/env.js';
  * qu'un en-tête posé au reverse-proxy ne garantit pas.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-headers-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-headers-'));
 const webDir = join(root, 'web');
 
 /** Monte une instance dont seule `PUBLIC_URL` varie. */

@@ -1,4 +1,4 @@
-import type { AlbumVisitRow, DeviceKind, VisitorRow, VisitsOverview } from '@gdv/shared';
+import type { AlbumVisitRow, DeviceKind, VisitorRow, VisitsOverview } from '@nonni/shared';
 import type { Db } from './db.js';
 
 /**

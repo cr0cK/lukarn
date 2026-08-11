@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AdminAlbum, AdminUser, AppSettings } from '@gdv/shared';
+import type { AdminAlbum, AdminUser, AppSettings } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -20,7 +20,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-admin-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-admin-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -63,9 +63,9 @@ async function login(username: string, password = PASSWORD): Promise<string> {
     payload: { username, password },
   });
   assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const entry = response.cookies.find((c) => c.name === 'gdv_session');
+  const entry = response.cookies.find((c) => c.name === 'nonni_session');
   assert.ok(entry, 'cookie de session absent');
-  return `gdv_session=${entry.value}`;
+  return `nonni_session=${entry.value}`;
 }
 
 /** Remet la configuration à un état connu avant chaque test. */

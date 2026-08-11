@@ -18,7 +18,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-order-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-order-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -114,9 +114,9 @@ sync:
     url: '/api/auth/login',
     payload: { username: 'famille', password: PASSWORD },
   });
-  const session = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const session = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(session, 'cookie de session absent');
-  cookie = `gdv_session=${session.value}`;
+  cookie = `nonni_session=${session.value}`;
 });
 
 after(async () => {

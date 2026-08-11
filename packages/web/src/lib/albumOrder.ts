@@ -16,11 +16,11 @@
  * elle-même.
  */
 
-import { isSortOrder, type SortOrder } from '@gdv/shared';
+import { isSortOrder, type SortOrder } from '@nonni/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 function storageKey(albumId: string): string {
-  return `gdv:album-order:${albumId}`;
+  return `nonni:album-order:${albumId}`;
 }
 
 /**

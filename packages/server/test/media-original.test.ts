@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS } from '@gdv/shared';
+import { ALL_ALBUMS } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -18,7 +18,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-original-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-original-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -86,9 +86,9 @@ before(async () => {
     url: '/api/auth/login',
     payload: { username: 'alexis', password: PASSWORD },
   });
-  const session = login.cookies.find((entry) => entry.name === 'gdv_session');
+  const session = login.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(session);
-  cookie = `gdv_session=${session.value}`;
+  cookie = `nonni_session=${session.value}`;
 });
 
 after(async () => {

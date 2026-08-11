@@ -17,7 +17,7 @@ import {
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import {
   type InfiniteData,
   type QueryClient,
