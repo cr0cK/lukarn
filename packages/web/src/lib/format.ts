@@ -1,37 +1,35 @@
 /**
- * Formatages d'affichage. Toutes les dates venant du serveur sont en UTC et
- * représentent l'heure de prise de vue telle que l'appareil l'a enregistrée :
- * elles sont donc rendues en UTC, sinon une photo prise à 14 h s'afficherait à
- * 16 h pour un navigateur en Europe/Paris.
+ * Display formatting. Every server date is UTC and represents capture time as
+ * recorded by the camera: render it in UTC or a photo taken at 14:00 would appear
+ * at 16:00 in a browser using Europe/Paris.
  */
 
-const DATE_TIME = new Intl.DateTimeFormat('fr-FR', {
+const DATE_TIME = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'long',
   timeStyle: 'short',
   timeZone: 'UTC',
 });
 
-const DATE_ONLY = new Intl.DateTimeFormat('fr-FR', { dateStyle: 'long', timeZone: 'UTC' });
+const DATE_ONLY = new Intl.DateTimeFormat('en-GB', { dateStyle: 'long', timeZone: 'UTC' });
 
-const MONTH_YEAR = new Intl.DateTimeFormat('fr-FR', {
+const MONTH_YEAR = new Intl.DateTimeFormat('en-GB', {
   month: 'long',
   year: 'numeric',
   timeZone: 'UTC',
 });
 
 /**
- * Seul formateur de ce module à ne pas être en UTC, et c'est délibéré.
+ * The only formatter in this module not using UTC, deliberately.
  *
- * Le raisonnement du fichier vaut pour les dates de prise de vue : `taken_at`
- * est l'heure qu'affichait l'appareil, une heure murale sans fuseau, qu'on
- * rendrait fausse en la convertissant. La date d'un commentaire est l'inverse :
- * un instant réel, celui où quelqu'un a appuyé sur « Publier ». L'afficher en
- * UTC montrerait 19:14 à qui vient d'écrire à 21:14 depuis Paris.
+ * The file's reasoning applies to capture dates: `taken_at` is the camera's wall
+ * time without a zone, which conversion would falsify. A comment date is the
+ * opposite: a real instant when somebody pressed "Post". Showing UTC would tell
+ * someone who wrote at 21:14 in Paris that it was 19:14.
  *
- * Même logique que « Aujourd'hui » / « Hier » dans la grille (D31) : ce qui se
- * rapporte à l'horloge du lecteur se lit sur son horloge.
+ * The same logic as "Today" / "Yesterday" in the grid (D31): anything relating
+ * to the reader's clock is read on that clock.
  */
-const LOCAL_DATE_TIME = new Intl.DateTimeFormat('fr-FR', {
+const LOCAL_DATE_TIME = new Intl.DateTimeFormat('en-GB', {
   dateStyle: 'long',
   timeStyle: 'short',
 });
@@ -40,7 +38,7 @@ export function formatDateTime(iso: string): string {
   return DATE_TIME.format(new Date(iso));
 }
 
-/** Date d'un événement réel — un commentaire —, dans le fuseau du lecteur. */
+/** Date of a real event — a comment — in the reader's time zone. */
 export function formatLocalDateTime(iso: string): string {
   return LOCAL_DATE_TIME.format(new Date(iso));
 }
@@ -53,7 +51,7 @@ export function formatMonthYear(iso: string): string {
   return MONTH_YEAR.format(new Date(iso));
 }
 
-/** Intervalle couvert par un album, en une ligne. */
+/** Date range covered by an album, in one line. */
 export function formatRange(oldest: string | null, newest: string | null): string | null {
   if (!oldest || !newest) return null;
   const from = formatMonthYear(oldest);
@@ -64,7 +62,7 @@ export function formatRange(oldest: string | null, newest: string | null): strin
 export function formatBytes(bytes: number | null): string {
   if (bytes === null) return '—';
   if (bytes < 1024) return `${bytes} o`;
-  const units = ['Ko', 'Mo', 'Go', 'To'];
+  const units = ['kB', 'MB', 'GB', 'TB'];
   let value = bytes / 1024;
   let unit = 0;
   while (value >= 1024 && unit < units.length - 1) {
@@ -84,7 +82,7 @@ export function formatDuration(ms: number | null): string | null {
   return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
 }
 
-/** Temps de pose : `1/250 s` sous la seconde, `2 s` au-delà. */
+/** Exposure time: `1/250 s` below one second, `2 s` above. */
 export function formatExposure(seconds: number | null): string | null {
   if (seconds === null || seconds <= 0) return null;
   if (seconds >= 1) return `${Number(seconds.toFixed(1))} s`;
@@ -99,7 +97,7 @@ export function formatFocalLength(mm: number | null): string | null {
   return mm === null || mm <= 0 ? null : `${Math.round(mm)} mm`;
 }
 
-/** « Canon Canon EOS R6 » → « Canon EOS R6 ». */
+/** "Canon Canon EOS R6" → "Canon EOS R6". */
 export function formatCamera(make: string | null, model: string | null): string | null {
   if (!model) return make;
   if (!make) return model;
@@ -118,10 +116,10 @@ export function formatRelative(iso: string | null): string | null {
   const deltaMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(deltaMs / 60000);
 
-  if (minutes < 1) return "à l'instant";
-  if (minutes < 60) return `il y a ${minutes} min`;
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
   const hours = Math.round(minutes / 60);
-  if (hours < 24) return `il y a ${hours} h`;
+  if (hours < 24) return `${hours} h ago`;
   const days = Math.round(hours / 24);
-  return days === 1 ? 'hier' : `il y a ${days} jours`;
+  return days === 1 ? 'yesterday' : `${days} days ago`;
 }

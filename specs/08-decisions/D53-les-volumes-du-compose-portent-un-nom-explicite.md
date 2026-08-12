@@ -1,38 +1,34 @@
-# D53 — Les volumes du compose portent un nom explicite
+# D53 — Compose volumes have explicit names
 
-**Contexte.** Les volumes étaient déclarés `gdv-data`, `gdv-cache`,
-`caddy-data`, `caddy-config`. Compose les préfixe du nom du projet, c'est-à-dire
-du répertoire de travail : ils s'appelaient en réalité
-`googledrive-viewer_gdv-data`, et autre chose encore selon le nom du clone. La
-procédure de sauvegarde du `README.md`, elle, écrivait
+**Context.** The volumes were declared as `gdv-data`, `gdv-cache`, `caddy-data`,
+and `caddy-config`. Compose prefixes them with the project name, meaning the
+working directory: they were actually named `googledrive-viewer_gdv-data`, and
+something else again depending on the clone's name. Meanwhile, the backup
+procedure in `README.md` used
 `docker run --rm -v gdv-data:/data … tar czf`.
 
-Docker crée en silence un volume nommé qui n'existe pas. Cette commande montait
-donc un volume **neuf et vide**, produisait une archive vide, et rendait 0. La
-sauvegarde documentée ne sauvegardait rien, sans un message d'erreur, et on ne
-s'en apercevait qu'en restaurant.
+Docker silently creates a named volume that does not exist. This command
+therefore mounted a **new, empty** volume, produced an empty archive, and returned 0. The documented backup backed up nothing, with no error message, and the issue
+was only discovered during restoration.
 
-**Choix.** `name:` explicite sur les quatre volumes. Le nom cesse de dépendre du
-répertoire de clonage, et toutes les commandes déjà écrites deviennent justes.
-`deploy/backup.sh` vérifie en plus que l'archive contient `gdv.db` avant de la
-garder.
+**Choice.** An explicit `name:` on all four volumes. The name no longer depends
+on the clone directory, and all existing commands become correct.
+`deploy/backup.sh` additionally checks that the archive contains `gdv.db` before
+keeping it.
 
-**Écarté.** Corriger seulement le `README.md` en y écrivant
-`googledrive-viewer_gdv-data` : cela suppose que tout le monde clone sous ce
-nom, et laisse le piège intact pour toute commande écrite de mémoire. Écarté
-aussi `COMPOSE_PROJECT_NAME` dans le `.env` — une variable de plus à ne pas
-oublier, pour un résultat que quatre lignes de `docker-compose.yml` obtiennent
-sans condition.
+**Rejected.** Only correcting `README.md` to use
+`googledrive-viewer_gdv-data`: that assumes everyone clones under that name and
+leaves the trap intact for any command written from memory. Also rejected:
+`COMPOSE_PROJECT_NAME` in `.env` — one more variable not to forget, for a result
+that four lines of `docker-compose.yml` achieve unconditionally.
 
-**Conséquences.** Une instance déjà en service tourne sur des volumes préfixés,
-que la nouvelle déclaration **n'adopte pas** : sans migration, le premier
-`docker compose up` démarre sur une base vide — comptes, albums et index
-compris. La copie de `<projet>_gdv-data` vers `gdv-data`, et de
-`<projet>_caddy-data` vers `caddy-data` pour éviter une réémission de
-certificat, est donc une étape obligatoire, encadrée dans le `README.md`.
-`gdv-cache` ne vaut pas la copie.
+**Consequences.** A live instance already runs on prefixed volumes, which the new
+declaration **does not adopt**: without migration, the first `docker compose up`
+starts with an empty database — including accounts, albums, and index. Copying
+`<projet>_gdv-data` to `gdv-data`, and `<projet>_caddy-data` to `caddy-data` to
+avoid certificate reissuance, is therefore a mandatory step documented in a box
+in `README.md`. `gdv-cache` is not worth copying.
 
-C'est aussi la raison pour laquelle la vérification de bout en bout de ces
-scripts se fait en produisant une vraie archive et en listant son contenu :
-l'erreur d'origine se lisait dans le contenu du fichier, pas dans un code de
-sortie.
+This is also why end-to-end verification of these scripts produces a real
+archive and lists its contents: the original error was visible in the file's
+contents, not in an exit code.

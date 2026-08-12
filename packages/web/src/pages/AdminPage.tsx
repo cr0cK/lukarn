@@ -1,4 +1,4 @@
-import type { AdminAlbum } from '@gdv/shared';
+import type { AdminAlbum } from '@nonni/shared';
 import { type ReactElement, useState } from 'react';
 import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { errorText } from '../api/client';
@@ -15,19 +15,19 @@ import { UsersSection } from '../components/admin/UsersSection';
 import { VisitsSection } from '../components/admin/VisitsSection';
 import { FormError, type Notice } from '../components/admin/ui';
 
-/** Messages du retour de consentement Google, passés en `?oauth=`. */
+/** Messages from the Google consent return, passed in `?oauth=`. */
 const OAUTH_MESSAGES: Record<string, Notice> = {
   connected: {
     tone: 'ok',
-    text: 'Google Drive est connecté. La première synchronisation a démarré.',
+    text: 'Google Drive is connected. The first sync has started.',
   },
-  denied: { tone: 'error', text: 'Autorisation refusée côté Google.' },
-  invalid: { tone: 'error', text: 'Réponse Google incomplète. Recommence la connexion.' },
+  denied: { tone: 'error', text: 'Authorisation refused on the Google side.' },
+  invalid: { tone: 'error', text: 'Incomplete response from Google. Start the connection again.' },
   state_mismatch: {
     tone: 'error',
-    text: 'Le jeton anti-CSRF ne correspond pas. Relance la connexion depuis cette page.',
+    text: 'The anti-CSRF token does not match. Start the connection again from this page.',
   },
-  error: { tone: 'error', text: 'La connexion a échoué. Consulte les logs du serveur.' },
+  error: { tone: 'error', text: 'The connection failed. Check the server logs.' },
 };
 
 export default function AdminPage(): ReactElement {
@@ -45,22 +45,19 @@ export default function AdminPage(): ReactElement {
     if (oauthResult) setSearchParams({}, { replace: true });
   };
 
-  // Deux rubriques attendent la même liste d'albums : ni l'attribution d'un
-  // compte ni l'état de synchronisation ne peuvent s'afficher avant de la
-  // connaître, sous peine d'annoncer « aucun album » à tort.
+  // Two sections await the same album list: neither account assignment nor sync
+  // status can appear before it is known, or they would wrongly announce "no albums".
   const avecAlbums = (rendu: (liste: AdminAlbum[]) => ReactElement): ReactElement => (
     <>
-      {albums.isPending && <Spinner label="Chargement des albums" />}
-      {albums.error && (
-        <FormError message={errorText(albums.error, 'Impossible de charger les albums.')} />
-      )}
+      {albums.isPending && <Spinner label="Loading albums" />}
+      {albums.error && <FormError message={errorText(albums.error, 'Cannot load the albums.')} />}
       {albums.data && rendu(albums.data)}
     </>
   );
 
-  // Chaque rubrique monte ses sections *et* les attentes qui les concernent :
-  // la file de modération n'a que faire du chargement des albums ou d'une erreur
-  // sur l'état du serveur, qui ne changeraient rien à ce qu'elle affiche.
+  // Each section mounts its contents *and* relevant waits: the moderation queue
+  // does not care about album loading or a server-status error, neither of which
+  // changes what it displays.
   const rubrique = (courante: AdminTab): ReactElement => {
     switch (courante) {
       case 'albums':
@@ -71,49 +68,45 @@ export default function AdminPage(): ReactElement {
             notify={setNotice}
           />
         ));
-      case 'comptes':
+      case 'accounts':
         return avecAlbums((liste) => <UsersSection albums={liste} notify={setNotice} />);
-      case 'commentaires':
+      case 'comments':
         return <CommentsSection notify={setNotice} />;
-      case 'serveur':
+      case 'server':
         return (
           <>
             {status.isPending && <Spinner />}
             {status.error && (
-              <FormError
-                message={errorText(status.error, "Impossible de charger l'état du serveur.")}
-              />
+              <FormError message={errorText(status.error, 'Cannot load the server state.')} />
             )}
             {status.data && <DriveSection status={status.data} notify={setNotice} />}
             <SettingsSection notify={setNotice} />
             {status.data && <MaintenanceSection status={status.data} notify={setNotice} />}
           </>
         );
-      case 'visites':
+      case 'visits':
         return <VisitsSection />;
     }
   };
 
-  // Une rubrique inconnue — lien vieilli, faute de frappe — vaut mieux ramenée
-  // à la première qu'affichée en page vide.
+  // An unknown section — stale link or typo — is better redirected to the
+  // first than displayed as a blank page.
   if (!isAdminTab(tab)) return <Navigate to="/admin/albums" replace />;
 
   return (
     <div className="min-h-full">
       <TopBar title="Administration" back />
 
-      {/* 90 rem plutôt que les 64 rem d'origine : la colonne de contenu passe de
-          760 à 1170 px sur un écran de portable, où les rangées d'albums
-          tronquaient leur titre alors qu'un tiers de l'écran restait vide de
-          chaque côté. */}
+      {/* Use 90 rem rather than the original 64 rem: the content column grows from
+          760 to 1170 px on a laptop, where album rows truncated their title while
+          one third of the screen remained empty on either side. */}
       <main className="mx-auto flex max-w-[90rem] flex-col gap-6 px-4 py-6 sm:px-6 md:flex-row">
         <AdminNav />
 
         <div className="min-w-0 flex-1 space-y-6">
           {message && (
-            // Collé sous la barre : la rubrique des commentaires reste longue,
-            // et un message affiché tout en haut passerait inaperçu depuis le
-            // bas de la file.
+            // Keep it beneath the bar: the comments section remains long, and a
+            // message at the very top would go unnoticed from the bottom of the queue.
             <p
               role="status"
               className={`sticky top-16 z-20 rounded-lg px-4 py-3 text-sm ${

@@ -1,47 +1,46 @@
-# D57 — Trente secondes pour corriger une faute de frappe, et rien de plus
+# D57 — Thirty seconds to correct a typo, and nothing more
 
-**Contexte.** On publie un commentaire d'une phrase depuis un téléphone, souvent
-d'un pouce, et on voit la coquille une seconde après l'avoir envoyé. Le seul
-recours était de supprimer et de réécrire — ce qui, sur une réponse, emporte
-aussi le fil que d'autres y avaient accroché.
+**Context.** A one-sentence comment is posted from a phone, often with one thumb,
+and the typo becomes visible a second after sending it. The only remedy was to
+delete and rewrite it — which, for a reply, also removes the thread others had
+attached to it.
 
-**Choix.** `PATCH /api/comments/:commentId`, réservé à l'auteur, pendant
-`COMMENT_EDIT_WINDOW_MS` (30 s) après la publication. `created_at` ne bouge pas,
-`parent_id` non plus. Le délai est contrôlé **par le serveur** — une règle que
-seule l'interface applique n'est pas une règle — et `remainingEditMs` est
-partagée pour que les deux côtés tranchent à l'identique.
+**Choice.** `PATCH /api/comments/:commentId`, restricted to the author, during
+`COMMENT_EDIT_WINDOW_MS` (30 s) after publication. `created_at` does not change,
+nor does `parent_id`. The deadline is enforced **by the server** — a rule applied
+only by the interface is not a rule — and `remainingEditMs` is shared so that both
+sides decide identically.
 
-Trois refus distincts, et c'est délibéré. Un commentaire qui n'est pas le sien
-répond **404**, indistinguable d'un identifiant inexistant, comme partout
-ailleurs. Un délai dépassé répond **409 `edit_window_closed`** : le refus porte
-sur l'**état** du message et non sur un droit d'accès, son auteur l'a déjà sous
-les yeux, et le lui expliquer ne révèle rien. Un corps vide répond **400**.
+There are three distinct refusals, deliberately. A comment belonging to someone
+else responds with **404**, indistinguishable from a nonexistent identifier, as
+elsewhere. An elapsed window responds with **409 `edit_window_closed`**: the
+refusal concerns the message's **state**, not an access right; its author already
+has it in front of them, and explaining it reveals nothing. An empty body responds
+with **400**.
 
-**L'administrateur n'a aucun privilège ici.** Il masque, il supprime, il ne
-réécrit pas. Retirer un propos et mettre d'autres mots dans la bouche de
-quelqu'un sous son nom sont deux pouvoirs de nature différente ; le second n'a
-pas sa place dans un outil dont toute la modération repose sur la réversibilité
-assumée (D36).
+**The administrator has no privilege here.** They hide and delete; they do not
+rewrite. Removing someone's words and putting different words in their mouth
+under their name are two different kinds of power; the latter has no place in a
+tool whose entire moderation model rests on explicit reversibility (D36).
 
-**Écarté.** _L'édition libre et sans limite_, qui transforme un fil en document
-révisable : on répond à un message, l'auteur le réécrit, et la réponse devient
-incompréhensible pour qui lit ensuite. C'est la raison pour laquelle les
-messageries qui autorisent l'édition affichent toutes une mention « modifié » —
-un aveu qu'on ne peut plus faire confiance à ce qu'on lit. Trente secondes
-n'appellent pas cette mention : personne n'a eu le temps de lire.
+**Rejected.** _Unrestricted, unlimited editing_, which turns a thread into a
+revisable document: someone replies to a message, the author rewrites it, and the
+reply becomes incomprehensible to later readers. This is why messaging services
+that allow editing all display an "edited" label — an admission that what is
+being read can no longer be trusted. Thirty seconds does not require that label:
+nobody has had time to read it.
 
-_Une fenêtre plus longue_, cinq ou quinze minutes : elle rendrait la mention
-« modifié » nécessaire, donc l'horodatage d'édition, donc une colonne de plus —
-tout un appareillage pour un cas que la suppression couvre déjà.
+_A longer window_, five or fifteen minutes: it would make the "edited" label
+necessary, then an editing timestamp, then another column — an entire apparatus
+for a case deletion already covers.
 
-_Le suivi de la fenêtre côté client seulement_, sans contrôle serveur : il aurait
-suffi d'un `curl` pour réécrire un commentaire d'il y a six mois.
+_Tracking the window only on the client_, with no server enforcement: a `curl`
+would be enough to rewrite a six-month-old comment.
 
-**Conséquences.** Le décompte est affiché sur le bouton (« Modifier (12 s) »)
-parce qu'un bouton qui disparaît sans prévenir se lit comme un défaut, alors que
-sa disparition est ici la règle. Le formulaire ouvert n'est pas refermé
-d'autorité à l'échéance : c'est le serveur qui refuse, et son message s'affiche
-— fermer le champ ferait disparaître sans prévenir un texte en cours de frappe.
-`Comment.canEdit` est la première valeur du contrat qui **périme d'elle-même** ;
-tout consommateur doit la recouper avec `createdAt`, ce que le type dit
-explicitement.
+**Consequences.** The countdown is displayed on the button ("Edit (12 s)")
+because a button that disappears without warning looks like a defect, whereas
+its disappearance is the rule here. An open form is not forcibly closed at the
+deadline: the server rejects the request and its message is displayed — closing
+the field would silently discard text being typed. `Comment.canEdit` is the first
+contract value that **expires by itself**; every consumer must cross-check it
+with `createdAt`, as the type explicitly states.

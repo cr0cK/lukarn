@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import { DEFAULT_SORT_ORDER } from '@gdv/shared';
+import { DEFAULT_SORT_ORDER } from '@nonni/shared';
 import { openDb } from '../src/db.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-repo-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-repo-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);
@@ -44,7 +44,7 @@ function media(albumId: string, id: string, takenAt: string): MediaUpsert {
 
 const seenAt = '2025-01-01T00:00:00.000Z';
 
-// 12 photos dans « vacances », plus une photo présente dans deux albums.
+// 12 photos in "vacances", plus one photo present in two albums.
 const items = Array.from({ length: 12 }, (_, index) =>
   media(
     'vacances',
@@ -54,16 +54,15 @@ const items = Array.from({ length: 12 }, (_, index) =>
 );
 repo.upsertMany(items, seenAt);
 repo.upsertMany([media('prive', 'p01', '2024-05-05T10:00:00.000Z')], seenAt);
-// Dossiers imbriqués : le même fichier Drive indexé sous deux albums.
+// Nested folders: the same Drive file indexed under two albums.
 repo.upsertMany([media('vacances', 'shared', '2024-06-06T10:00:00.000Z')], seenAt);
 repo.upsertMany([media('prive', 'shared', '2024-06-06T10:00:00.000Z')], seenAt);
 
-describe('pagination par curseur', () => {
-  it('applique le sens partagé par défaut', () => {
-    // Le défaut du dépôt est celui du contrat, pas un choix local : les deux
-    // ont déjà divergé le temps que `DEFAULT_SORT_ORDER` passe à `asc` (D99),
-    // et un dépôt resté en `desc` aurait servi l'inverse de ce que la route
-    // annonce sans qu'aucun appel échoue.
+describe('cursor pagination', () => {
+  it('applies the shared default order', () => {
+    // The repository default is the contract, not a local choice: they diverged
+    // when `DEFAULT_SORT_ORDER` moved to `asc` (D99), and a repository left at
+    // `desc` would serve the opposite of what the route claims without failures.
     const page = repo.listItems('vacances', 100, null);
     assert.deepEqual(
       page.items.map((item) => item.id),
@@ -72,7 +71,7 @@ describe('pagination par curseur', () => {
     assert.equal(page.nextCursor, null);
   });
 
-  it('parcourt toutes les pages sans doublon ni oubli', () => {
+  it('traverses every page without duplicates or omissions', () => {
     const seen: string[] = [];
     let cursor: string | null = null;
     let pages = 0;
@@ -82,7 +81,7 @@ describe('pagination par curseur', () => {
       seen.push(...page.items.map((item) => item.id));
       cursor = page.nextCursor;
       pages++;
-      assert.ok(pages < 20, 'pagination qui ne se termine pas');
+      assert.ok(pages < 20, 'pagination does not terminate');
     } while (cursor);
 
     const total = repo.stats('vacances').itemCount;
@@ -90,25 +89,24 @@ describe('pagination par curseur', () => {
     assert.equal(new Set(seen).size, total);
   });
 
-  it('rend les médias du plus ancien au plus récent en ordre ascendant', () => {
+  it('returns media from oldest to newest in ascending order', () => {
     const page = repo.listItems('vacances', 100, null, 'asc');
     const dates = page.items.map((item) => item.takenAt);
     assert.deepEqual(dates, [...dates].sort());
     assert.equal(page.nextCursor, null);
   });
 
-  it("l'ordre ascendant rend exactement l'inverse du descendant", () => {
-    // Plusieurs photos partagent la même date de prise de vue : seul le
-    // départage par `id`, inversé lui aussi, fait des deux sens la même liste
-    // lue à l'envers. S'il ne l'était pas, les ex æquo resteraient dans le même
-    // ordre relatif et une photo changerait de voisine selon le sens.
+  it('returns ascending order as the exact reverse of descending', () => {
+    // Several photos share a capture date: only reversing the `id` tie-breaker
+    // too makes both directions the same list read backwards. Otherwise ties
+    // keep their relative order and neighbours change with direction.
     const asc = repo.listItems('vacances', 100, null, 'asc').items.map((item) => item.id);
     const desc = repo.listItems('vacances', 100, null, 'desc').items.map((item) => item.id);
 
     assert.deepEqual(asc, [...desc].reverse());
   });
 
-  it('parcourt toutes les pages ascendantes sans doublon ni oubli', () => {
+  it('traverses every ascending page without duplicates or omissions', () => {
     const expected = repo.listItems('vacances', 1000, null, 'asc').items.map((item) => item.id);
     const seen: string[] = [];
     let cursor: string | null = null;
@@ -119,46 +117,45 @@ describe('pagination par curseur', () => {
       seen.push(...page.items.map((item) => item.id));
       cursor = page.nextCursor;
       pages++;
-      assert.ok(pages < 20, 'pagination qui ne se termine pas');
+      assert.ok(pages < 20, 'pagination does not terminate');
     } while (cursor);
 
-    // Comparer la liste entière, et pas seulement son cardinal : une
-    // comparaison de curseur mal inversée redonnerait le bon nombre de médias
-    // tout en les servant dans le désordre d'une page à l'autre.
+    // Compare the full list, not only its size: an incorrectly reversed cursor
+    // comparison could return the right count in the wrong order across pages.
     assert.deepEqual(seen, expected);
     assert.equal(new Set(seen).size, expected.length);
   });
 
-  it('ignore un curseur illisible et repart du début', () => {
+  it('ignores an unreadable cursor and restarts from the beginning', () => {
     const page = repo.listItems('vacances', 3, 'curseur-invalide');
     assert.equal(page.items.length, 3);
   });
 
-  it('cloisonne les albums', () => {
+  it('isolates albums', () => {
     const page = repo.listItems('prive', 100, null);
     assert.deepEqual(page.items.map((item) => item.id).sort(), ['p01', 'shared']);
   });
 });
 
-describe('pagination pendant une synchronisation', () => {
-  // Album à part : ce cas insère des médias en cours de parcours, ce qui
-  // fausserait les comptages des autres tests.
+describe('pagination during synchronisation', () => {
+  // Separate album: this case inserts media during traversal, which would
+  // distort other test counts.
   const chrono = ['2024-02-01', '2024-04-01', '2024-06-01', '2024-08-01'].map((day, index) =>
     media('chrono', `c${index}`, `${day}T10:00:00.000Z`),
   );
   repo.upsertMany(chrono, seenAt);
 
-  it('ne saute ni ne duplique de média quand une sync insère des lignes en ascendant', () => {
-    // C'est la raison d'être du curseur : un OFFSET décalerait toutes les pages
-    // suivantes dès qu'une ligne s'insère avant la position courante.
+  it('neither skips nor duplicates media when sync inserts rows in ascending order', () => {
+    // This is why the cursor exists: OFFSET would shift every later page as
+    // soon as a row is inserted before the current position.
     const first = repo.listItems('chrono', 2, null, 'asc');
     assert.deepEqual(
       first.items.map((item) => item.id),
       ['c0', 'c1'],
     );
 
-    // Une synchronisation ajoute une photo derrière le curseur (déjà dépassée
-    // en ascendant) et une autre devant lui.
+    // Synchronisation adds one photo behind the cursor (already passed in
+    // ascending order) and another ahead of it.
     repo.upsertMany(
       [media('chrono', 'ancienne', '2023-11-01T10:00:00.000Z')],
       '2025-03-01T00:00:00.000Z',
@@ -176,26 +173,25 @@ describe('pagination pendant une synchronisation', () => {
       cursor = page.nextCursor;
     }
 
-    // `ancienne` manque légitimement : elle est apparue derrière le curseur.
-    // L'essentiel est qu'aucune des lignes déjà servies ne revienne et
-    // qu'aucune de celles restant devant ne disparaisse.
+    // `ancienne` is legitimately absent: it appeared behind the cursor. What
+    // matters is that served rows do not return and rows ahead do not disappear.
     assert.deepEqual(seen, ['c0', 'c1', 'c2', 'intercalee', 'c3']);
     assert.equal(new Set(seen).size, seen.length);
   });
 });
 
-describe('résolution média → albums', () => {
-  it('rend tous les albums contenant le fichier', () => {
+describe('media → albums resolution', () => {
+  it('returns every album containing the file', () => {
     assert.deepEqual(repo.albumsContaining('shared').sort(), ['prive', 'vacances']);
     assert.deepEqual(repo.albumsContaining('p01'), ['prive']);
     assert.deepEqual(repo.albumsContaining('inexistant'), []);
   });
 });
 
-describe('métadonnées de fichier', () => {
-  it('rend la ligne revue le plus récemment quand le fichier est dans deux albums', () => {
-    // Le même fichier Drive indexé sous deux albums a deux lignes, qui
-    // divergent le temps qu'une synchronisation rattrape l'autre.
+describe('file metadata', () => {
+  it('returns the most recently seen row when a file is in two albums', () => {
+    // The same Drive file indexed under two albums has two rows, which diverge
+    // until one synchronisation catches up with the other.
     const ancienne = { ...media('archives-a', 'double', '2024-03-03T10:00:00.000Z') };
     ancienne.md5 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     ancienne.size = 1000;
@@ -206,21 +202,20 @@ describe('métadonnées de fichier', () => {
     recente.size = 2000;
     repo.upsertMany([recente], '2025-06-01T00:00:00.000Z');
 
-    // Servir l'ancienne ferait produire un dérivé à partir d'une empreinte
-    // périmée, sous un ETag qui le déclare immuable : la photo corrigée
-    // resterait affichée dans sa version d'avant.
+    // Serving the old row would derive from a stale hash under an immutable ETag:
+    // the corrected photo would remain displayed in its previous version.
     const meta = repo.getFileMeta('double');
     assert.equal(meta?.md5, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
     assert.equal(meta?.size, 2000);
   });
 
-  it('répond la même chose à deux appels consécutifs', () => {
+  it('returns the same result on consecutive calls', () => {
     assert.deepEqual(repo.getFileMeta('double'), repo.getFileMeta('double'));
   });
 });
 
-describe('statistiques', () => {
-  it("compte et borne l'album", () => {
+describe('statistics', () => {
+  it('counts and bounds the album', () => {
     const stats = repo.stats('prive');
     assert.equal(stats.itemCount, 2);
     assert.equal(stats.newestAt, '2024-06-06T10:00:00.000Z');
@@ -228,22 +223,19 @@ describe('statistiques', () => {
     assert.equal(stats.coverId, 'shared');
   });
 
-  it('sert la couverture choisie, et retombe sur la plus récente sans elle', () => {
-    // Une photo qui n'est ni la plus récente ni la plus ancienne : sans le
-    // choix, rien ne la ferait remonter.
+  it('serves the chosen cover and falls back to the most recent without it', () => {
+    // A photo that is neither newest nor oldest: nothing else would promote it.
     assert.equal(repo.stats('prive', 'p01').coverId, 'p01');
 
-    // Le repli est permanent, et c'est ce qui compte : une photo retirée de
-    // l'index par une synchronisation — corbeille Drive, dossier renommé —
-    // laisserait sinon l'album sans vignette sur la page d'accueil.
+    // Fallback is permanent: a photo removed from the index by sync — Drive bin
+    // or renamed folder — would otherwise leave the album without a home thumbnail.
     assert.equal(repo.stats('prive', 'disparue').coverId, 'shared');
-    // Une photo bien indexée, mais dans un autre album : même repli.
+    // A properly indexed photo in another album gets the same fallback.
     assert.equal(repo.stats('prive', 'v00').coverId, 'shared');
   });
 
-  it('refuse une vidéo en couverture, dont l’aperçu appartient à Drive', () => {
-    // Album à part : ajouter une ligne à « prive » fausserait les comptes des
-    // tests de nettoyage, qui s'appuient sur son contenu exact.
+  it('rejects a video cover whose preview belongs to Drive', () => {
+    // Separate album: adding a row to "prive" would distort cleanup test counts.
     const clip: MediaUpsert = {
       ...media('fete', 'clip', '2024-07-07T10:00:00.000Z'),
       kind: 'video',
@@ -252,18 +244,17 @@ describe('statistiques', () => {
     };
     repo.upsertMany([media('fete', 'f01', '2024-07-06T10:00:00.000Z'), clip], seenAt);
 
-    // Ni par choix explicite — la route le refuse déjà, le dépôt ne s'y fie
-    // pas — ni par le repli, où elle serait pourtant la plus récente. La vidéo
-    // a bien une vignette depuis D92, mais celle-ci vient de Drive et peut
-    // manquer : la couverture est la seule image dont l'absence se voit depuis
-    // la page d'accueil, sans repli.
+    // Neither by explicit choice — the route already refuses it and the
+    // repository does not trust that — nor by fallback despite being newest.
+    // Videos have thumbnails since D92, but Drive supplies them and they may be
+    // absent; a cover is the only image whose absence has no home-page fallback.
     assert.equal(repo.stats('fete', 'clip').coverId, 'f01');
     assert.equal(repo.stats('fete').coverId, 'f01');
   });
 });
 
-describe('aperçu disponible', () => {
-  it('est toujours vrai pour une photo, et suit Drive pour une vidéo', () => {
+describe('preview availability', () => {
+  it('is always true for a photo and follows Drive for a video', () => {
     const avec: MediaUpsert = {
       ...media('apercus', 'clip-avec', '2024-08-02T10:00:00.000Z'),
       kind: 'video',
@@ -279,28 +270,26 @@ describe('aperçu disponible', () => {
       repo.listItems('apercus', 10, null).items.map((item) => [item.id, item.hasPreview]),
     );
 
-    // Le front demande une image « quand il y en a une » : la règle
-    // photo/vidéo ne se rejoue pas de son côté. Une photo en a toujours une —
-    // le pipeline la décode, ou retombe sur l'aperçu Drive ; une vidéo n'en a
-    // une que si Drive l'a produite.
+    // The front end requests an image "when one exists" and does not repeat the
+    // photo/video rule. A photo always has one through decode or Drive fallback;
+    // a video only has one if Drive produced it.
     assert.equal(apercus.get('photo'), true);
     assert.equal(apercus.get('clip-avec'), true);
     assert.equal(apercus.get('clip-sans'), false);
   });
 
-  it('suit la colonne jusque dans le détail d’un média', () => {
-    // Même règle sur `/items/:mediaId` que dans la liste : la visionneuse pose
-    // son `poster` à partir de l'item, et les deux chemins ne doivent pas
-    // diverger.
+  it('carries the column into media details', () => {
+    // Same rule on `/items/:mediaId` as in the list: the viewer derives its
+    // `poster` from the item, and both paths must agree.
     assert.equal(repo.getDetail('apercus', 'clip-sans')?.hasPreview, false);
     assert.equal(repo.getDetail('apercus', 'clip-avec')?.hasPreview, true);
   });
 });
 
-describe('nettoyage', () => {
-  it('retire les médias non revus par la dernière synchronisation', () => {
+describe('cleanup', () => {
+  it('removes media not seen by the latest synchronisation', () => {
     const later = '2025-02-01T00:00:00.000Z';
-    // Une seule photo est revue : les autres ont disparu du dossier Drive.
+    // Only one photo is seen again: the others disappeared from the Drive folder.
     repo.upsertMany([media('prive', 'p01', '2024-05-05T10:00:00.000Z')], later);
     const removed = repo.deleteStale('prive', later);
 
@@ -309,11 +298,11 @@ describe('nettoyage', () => {
       repo.listItems('prive', 10, null).items.map((item) => item.id),
       ['p01'],
     );
-    // Le fichier partagé reste indexé dans l'autre album.
+    // The shared file remains indexed in the other album.
     assert.deepEqual(repo.albumsContaining('shared'), ['vacances']);
   });
 
-  it('supprime les albums absents de la config', () => {
+  it('deletes albums absent from configuration', () => {
     repo.pruneAlbums(['vacances']);
     assert.equal(repo.stats('prive').itemCount, 0);
     assert.ok(repo.stats('vacances').itemCount > 0);

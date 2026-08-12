@@ -3,19 +3,19 @@ import { describe, it } from 'node:test';
 import { formatRange, parseRange } from '../src/media/range.js';
 
 describe('parseRange', () => {
-  it('lit une plage complète', () => {
+  it('reads a complete range', () => {
     assert.deepEqual(parseRange('bytes=0-1023'), { start: 0, end: 1023 });
   });
 
-  it('lit une plage ouverte', () => {
+  it('reads an open range', () => {
     assert.deepEqual(parseRange('bytes=1024-'), { start: 1024, end: null });
   });
 
-  it('lit une plage suffixe', () => {
+  it('reads a suffix range', () => {
     assert.deepEqual(parseRange('bytes=-500'), { start: null, end: 500 });
   });
 
-  it('tolère les espaces autour', () => {
+  it('tolerates surrounding spaces', () => {
     assert.deepEqual(parseRange('  bytes=0-99  '), { start: 0, end: 99 });
   });
 
@@ -25,27 +25,27 @@ describe('parseRange', () => {
     'bytes=-',
     'bytes=abc-def',
     'items=0-10',
-    // Plages multiples : la réponse serait multipart, que le proxy ne recompose pas.
+    // Multiple ranges: the response would be multipart, which the proxy does not reassemble.
     'bytes=0-50, 100-150',
-    // Fin avant le début.
+    // End before start.
     'bytes=500-100',
-    // Zéro octet depuis la fin.
+    // Zero bytes from the end.
     'bytes=-0',
   ]) {
-    it(`ignore ${JSON.stringify(header)}`, () => {
+    it(`ignores ${JSON.stringify(header)}`, () => {
       assert.equal(parseRange(header), null);
     });
   }
 });
 
 describe('formatRange', () => {
-  it('reconstruit chaque forme', () => {
+  it('reconstructs every form', () => {
     assert.equal(formatRange({ start: 0, end: 1023 }), 'bytes=0-1023');
     assert.equal(formatRange({ start: 1024, end: null }), 'bytes=1024-');
     assert.equal(formatRange({ start: null, end: 500 }), 'bytes=-500');
   });
 
-  it('fait un aller-retour fidèle', () => {
+  it('round-trips faithfully', () => {
     for (const header of ['bytes=0-1023', 'bytes=1024-', 'bytes=-500']) {
       assert.equal(formatRange(parseRange(header)!), header);
     }

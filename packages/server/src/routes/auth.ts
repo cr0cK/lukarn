@@ -1,4 +1,4 @@
-import { USER_CODE_LENGTH, normalizeUserCode } from '@gdv/shared';
+import { USER_CODE_LENGTH, normalizeUserCode } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
@@ -8,29 +8,29 @@ import { requireAuth } from '../plugins/auth.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 
 /**
- * Hash jetable comparé lorsqu'aucun utilisateur ne correspond au login fourni.
- * Sans lui, un login inexistant répondrait bien plus vite qu'un mot de passe
- * faux, ce qui permettrait d'énumérer les comptes au chronomètre.
+ * Disposable hash compared when no user matches the supplied login. Without it, an
+ * unknown login would respond much faster than an incorrect password, allowing
+ * accounts to be enumerated with a stopwatch.
  */
 const DUMMY_HASH =
   '$argon2id$v=19$m=65536,t=3,p=4$P7YCCBMU6F1LYwExogSfjg$aGZdlIPlbgzTX9FhZKWXQp0G86Yl6A4MuXfFmVgZ868';
 
 /**
- * L'identifiant est replié avant tout : `USERNAME_PATTERN` n'admet aucun espace,
- * donc aucun compte n'en porte, et une espace de bord ne vient que du clavier
- * mobile ou d'un copier-coller. La refuser ferait échouer une saisie juste sans
- * pouvoir le dire — le message doit rester le même que pour un mot de passe
- * faux. Le mot de passe, lui, n'est pas touché : il a le droit d'en contenir.
+ * The username is folded first: `USERNAME_PATTERN` allows no spaces, so no account
+ * contains one, and leading or trailing whitespace only comes from a mobile keyboard
+ * or copy and paste. Rejecting it would fail correct input without being able to say
+ * why — the message must remain the same as for an incorrect password. The password
+ * is untouched because it may contain spaces.
  */
 const loginSchema = z.object({
   username: z.string().trim().min(1).max(64),
   password: z.string().min(1).max(512),
 });
 
-/** Le `deviceCode` fait 43 caractères en base64url ; la borne laisse de la marge. */
+/** `deviceCode` is 43 base64url characters; the limit leaves some margin. */
 const pollSchema = z.object({ deviceCode: z.string().min(1).max(128) });
 
-/** Le code affiché, une fois replié : huit caractères de l'alphabet sans ambiguïté. */
+/** The displayed code after folding: eight characters from the unambiguous alphabet. */
 const USER_CODE_PATTERN = new RegExp(`^[A-HJ-NP-Z2-9]{${USER_CODE_LENGTH}}$`);
 
 export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
@@ -42,7 +42,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Identifiant et mot de passe requis' });
+          .send({ error: 'bad_request', message: 'Username and password required' });
       }
 
       const { username, password } = parsed.data;
@@ -55,7 +55,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           .header('Retry-After', String(Math.ceil(retryAfter / 1000)))
           .send({
             error: 'too_many_attempts',
-            message: `Trop de tentatives. Réessaie dans ${Math.ceil(retryAfter / 1000)} s.`,
+            message: `Too many attempts. Try again in ${Math.ceil(retryAfter / 1000)} s.`,
           });
       }
 
@@ -64,21 +64,21 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       try {
         valid = await argon2.verify(user?.passwordHash ?? DUMMY_HASH, password);
       } catch {
-        // Empreinte illisible en base : traitée comme un échec, pas comme un 500.
+        // An unreadable database hash is treated as a failure, not a 500.
         valid = false;
       }
 
       if (!user || !valid) {
         throttle.fail(attempt);
-        request.log.warn({ username, ip: request.ip }, 'Échec de connexion');
+        request.log.warn({ username, ip: request.ip }, 'Login failure');
         return reply
           .code(401)
-          .send({ error: 'invalid_credentials', message: 'Identifiant ou mot de passe incorrect' });
+          .send({ error: 'invalid_credentials', message: 'Incorrect username or password' });
       }
 
       throttle.succeed(attempt);
-      // La classe d'appareil est lue ici et nulle part ailleurs : le user-agent
-      // sert à la déduire puis est jeté, seule la classe est stockée (D260809h).
+      // The device class is read here and nowhere else: the user-agent is used to infer
+      // it and then discarded, with only the class stored (D260809h).
       const session = context.sessions.create(
         user.username,
         classifyDevice(request.headers['user-agent']),
@@ -93,8 +93,8 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         .send({
           username: user.username,
           admin: user.admin,
-          // Une connexion fraîche ne porte aucune identité : elle se déclare
-          // ensuite, et vaut pour la personne, pas pour la clé d'accès.
+          // A fresh sign-in carries no identity: it is declared afterwards and belongs
+          // to the person, not the access key.
           identity: null,
           commentsEnabled: context.mailer.enabled,
         });
@@ -107,62 +107,58 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/me', async (request, reply) => {
       if (!request.user) {
-        return reply.code(401).send({ error: 'unauthorized', message: 'Non connecté' });
+        return reply.code(401).send({ error: 'unauthorized', message: 'Not signed in' });
       }
       return reply.send(request.user);
     });
 
     /**
-     * Une installation dont la base ne contient aucun compte accepte les
-     * requêtes mais refuse toute connexion : l'application paraît cassée alors
-     * qu'il manque seulement `pnpm create-admin`. Le seul indice était une
-     * ligne dans les journaux, que personne ne lit avant d'avoir un problème.
+     * An installation whose database contains no account accepts requests but refuses
+     * every sign-in: the application appears broken when only `pnpm create-admin` is
+     * missing. The sole clue used to be a log line nobody reads before a problem occurs.
      *
-     * Route publique : sur une instance sans aucun compte, il n'y a rien à
-     * protéger, et l'écran de connexion doit pouvoir le dire avant qu'on ait
-     * saisi quoi que ce soit.
+     * Public route: an instance with no accounts has nothing to protect, and the
+     * sign-in screen must be able to say so before any input is entered.
      */
     app.get('/setup-state', async (_request, reply) =>
       reply.send({ needsSetup: context.config.users().length === 0 }),
     );
 
     /* ------------------------------------------------------------------------
-     * Appairage d'un écran sans clavier (D260809c)
+     * Pairing a keyboardless screen (D260809c)
      *
-     * Un téléviseur n'a pas de caméra : c'est lui qui affiche le QR, et un
-     * téléphone déjà connecté qui le scanne. L'appairage délègue donc un accès
-     * existant, il n'en crée aucun.
+     * A television has no camera: it displays the QR code, which an already signed-in
+     * phone scans. Pairing therefore delegates existing access; it creates none.
      * --------------------------------------------------------------------- */
 
     /**
-     * Ouvre une demande. Publique, et elle doit l'être : c'est le premier geste
-     * d'un écran qui n'a pas de session. Elle ne divulgue rien — un code tiré au
-     * sort, et un secret que seul son destinataire reçoit.
+     * Opens a request. It is public by necessity: this is the first action of a screen
+     * without a session. It reveals nothing — a random code and a secret received only
+     * by its intended recipient.
      */
     app.post('/device/start', async (_request, reply) => {
       const started = context.pairings.start();
       if (!started) {
-        // La borne est atteinte : la table est en base, et une rafale de
-        // demandes ne doit pas la faire grossir sans fin. Personne n'y gagne un
-        // accès, l'appairage devient seulement indisponible le temps que les
-        // demandes en cours expirent.
+        // The limit has been reached: the table lives in the database, and a burst of
+        // requests must not make it grow without bound. Nobody gains access; pairing
+        // merely becomes unavailable until current requests expire.
         return reply.code(429).header('Retry-After', '60').send({
           error: 'too_many_pairings',
-          message: 'Trop de demandes en cours. Réessaie dans une minute.',
+          message: 'Too many requests in flight. Try again in a minute.',
         });
       }
       return noStore(reply).send(started);
     });
 
     /**
-     * Le sondage de l'écran. POST et non GET : la réponse pose un cookie, et le
-     * `deviceCode` n'a rien à faire dans une URL — journaux d'accès, historique
-     * et `Referer` la gardent.
+     * The screen's poll. POST rather than GET: the response sets a cookie, and the
+     * `deviceCode` must not appear in a URL retained by access logs, history and
+     * `Referer`.
      */
     app.post('/device/poll', async (request, reply) => {
       const parsed = pollSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: "Code d'appareil requis" });
+        return reply.code(400).send({ error: 'bad_request', message: 'Device code required' });
       }
 
       const { deviceCode } = parsed.data;
@@ -179,10 +175,9 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         return noStore(reply).code(404).send(UNKNOWN_CODE);
       }
 
-      // La configuration fait autorité, comme pour toute session : un compte
-      // supprimé entre l'approbation et la relève n'ouvre rien. La clé
-      // étrangère `ON DELETE CASCADE` couvre déjà le cas ; cette vérification
-      // couvre celui d'un compte disparu autrement.
+      // Configuration is authoritative, as for every session: an account deleted
+      // between approval and claiming opens nothing. The `ON DELETE CASCADE` foreign
+      // key already covers that case; this check covers an account missing otherwise.
       const user = context.config.user(claimed.username);
       if (!user) {
         throttle.fail(attempt);
@@ -190,13 +185,13 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       throttle.succeed(attempt);
-      // Le user-agent est celui de l'écran qui sonde, pas du téléphone qui a
-      // approuvé : c'est bien le téléviseur qu'on veut compter comme tel.
+      // The user-agent belongs to the polling screen, not the phone that approved:
+      // the television is the device that should be counted as such.
       const session = context.sessions.create(
         user.username,
         classifyDevice(request.headers['user-agent']),
       );
-      request.log.info({ username: user.username }, 'Écran appairé');
+      request.log.info({ username: user.username }, 'Screen paired');
 
       return noStore(reply)
         .setCookie(
@@ -209,17 +204,16 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           user: {
             username: user.username,
             admin: user.admin,
-            // L'écran appairé arrive sans identité, comme après une connexion
-            // au mot de passe : elle vaut pour la personne, pas pour la clé
-            // d'accès. Sans cette règle, le téléviseur du salon signerait du
-            // nom de celui qui a approuvé.
+            // The paired screen arrives without an identity, as after password sign-in:
+            // identity belongs to the person, not the access key. Without this rule,
+            // the living-room television would sign with the approver's name.
             identity: null,
             commentsEnabled: context.mailer.enabled,
           },
         });
     });
 
-    /** Ce que le téléphone affiche avant d'approuver. */
+    /** What the phone displays before approval. */
     app.get<{ Params: { userCode: string } }>(
       '/device/:userCode',
       { preHandler: requireAuth },
@@ -238,18 +232,17 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         return noStore(reply).send({
           userCode: pairing.userCode,
           expiresAt: pairing.expiresAt,
-          // Une demande déjà approuvée n'est pas une erreur : c'est ce qui
-          // permet de dire « c'est fait » à qui rouvre la page, au lieu de
-          // « ce code n'existe pas ».
+          // An already approved request is not an error: this makes it possible to say
+          // "done" to someone reopening the page rather than "this code does not exist".
           approved: pairing.username !== null,
         });
       },
     );
 
     /**
-     * L'approbation. Elle inscrit qui approuve, et rien de plus : c'est le
-     * sondage qui crée la session, sinon un écran éteint entre-temps laisserait
-     * derrière lui une session d'un an que personne n'a ouverte.
+     * Approval. It records who approves and nothing more: polling creates the session,
+     * otherwise a screen switched off in the meantime would leave behind a year-long
+     * session nobody opened.
      */
     app.post<{ Params: { userCode: string } }>(
       '/device/:userCode/approve',
@@ -269,12 +262,12 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           return noStore(reply).code(404).send(UNKNOWN_CODE);
         }
         if (result === 'taken') {
-          // 409 et non 404 : le refus porte sur l'état de la demande, pas sur
-          // l'existence d'une ressource d'autrui qu'il faudrait cacher — celui
-          // qui approuve tient le code sous les yeux.
+          // 409 rather than 404: refusal concerns the request state, not the existence
+          // of someone else's resource that must be hidden — the approver has the code
+          // in front of them.
           return noStore(reply).code(409).send({
             error: 'already_paired',
-            message: 'Cet écran a déjà été connecté par un autre compte.',
+            message: 'This screen has already been paired by another account.',
           });
         }
 
@@ -286,24 +279,23 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
 }
 
 /**
- * Réponse commune à un code inconnu, expiré, déjà relevé ou mal formé.
- * Distinguer ces cas dirait à qui essaie des codes au hasard lesquels ont
- * existé.
+ * Shared response for an unknown, expired, already claimed or malformed code.
+ * Distinguishing these cases would tell someone trying random codes which ones existed.
  */
 const UNKNOWN_CODE = {
   error: 'unknown_code',
-  message: "Ce code n'est plus valide. Relance la connexion depuis l'écran.",
+  message: 'That code is no longer valid. Start the sign-in again from the screen.',
 };
 
 /**
- * Aucune réponse d'appairage ne doit être gardée : elles portent un secret, un
- * état qui change toutes les deux secondes, ou un cookie de session.
+ * No pairing response may be retained: each carries a secret, state that changes
+ * every two seconds, or a session cookie.
  */
 function noStore(reply: FastifyReply): FastifyReply {
   return reply.header('Cache-Control', 'no-store');
 }
 
-/** Le 429 du throttle, ou `null` si la voie est libre. */
+/** The throttle's 429, or `null` when the attempt may proceed. */
 function blockedReply(reply: FastifyReply, retryAfterMs: number): FastifyReply | null {
   if (retryAfterMs <= 0) return null;
   const seconds = Math.ceil(retryAfterMs / 1000);
@@ -312,6 +304,6 @@ function blockedReply(reply: FastifyReply, retryAfterMs: number): FastifyReply |
     .header('Retry-After', String(seconds))
     .send({
       error: 'too_many_attempts',
-      message: `Trop de tentatives. Réessaie dans ${seconds} s.`,
+      message: `Too many attempts. Try again in ${seconds} s.`,
     });
 }

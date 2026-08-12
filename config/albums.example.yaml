@@ -1,68 +1,65 @@
-# Amorçage d'une installation neuve.
+# Bootstrapping a fresh install.
 #
-# Les comptes, les albums et les réglages vivent en base et s'administrent
-# depuis /admin. Ce fichier ne sert qu'à peupler une base vide, une seule fois :
-# dès qu'un compte existe, il n'est plus jamais relu et le modifier ne fait plus
-# rien.
+# Accounts, albums and settings live in the database and are administered from
+# /admin. This file only ever populates an empty database, once: as soon as one
+# account exists it is never read again, and editing it does nothing.
 #
-# Copier vers config/albums.yaml (non suivi par git), ou l'ignorer complètement
-# et créer le premier administrateur avec :
+# Copy it to config/albums.yaml (not tracked by git), or ignore it entirely and
+# create the first administrator with:
 #
-#     pnpm create-admin <identifiant>
+#     pnpm create-admin <username>
 
 users:
-  # Génère chaque hash avec : pnpm hash-password
-  - username: alexis
-    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$REMPLACE_MOI$REMPLACE_MOI'
-    # Un administrateur peut connecter le Drive, synchroniser et vider le cache.
+  # Generate each hash with: pnpm hash-password
+  - username: alice
+    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$REPLACE_ME$REPLACE_ME'
+    # An administrator can connect the Drive, sync, and clear the cache.
     admin: true
-    # "*" donne accès à tous les albums déclarés plus bas.
+    # "*" grants access to every album declared below.
     albums: ['*']
 
-  # Compte à accès restreint : ne voit que les albums listés.
-  - username: famille
-    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$REMPLACE_MOI$REMPLACE_MOI'
-    albums: ['vacances-2025']
+  # Restricted account: sees only the albums listed.
+  - username: family
+    passwordHash: '$argon2id$v=19$m=65536,t=3,p=4$REPLACE_ME$REPLACE_ME'
+    albums: ['holidays-2025']
 
 albums:
-  # `folderId` est le segment après /folders/ dans l'URL du dossier Drive :
+  # `folderId` is the segment after /folders/ in the Drive folder's URL:
   # https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
-  #                                        ^--------- ceci ----------^
+  #                                        ^--------- this ----------^
   #
-  # Ce n'est pas un chemin : `/Vacances/photos/2026-07-Allemagne` ne fonctionne
-  # pas. L'API Drive ne connaît que des identifiants — ouvre le dossier voulu et
-  # copie le segment de son URL. L'identifiant reste valable si tu renommes ou
-  # déplaces le dossier ensuite.
-  - id: vacances-2025
-    title: 'Vacances 2025'
-    description: 'Corse, juillet et août'
+  # It is not a path: `/Holidays/photos/2026-07-Germany` will not work. The Drive
+  # API only knows identifiers — open the folder you want and copy the segment
+  # from its URL. That identifier survives renaming or moving the folder later.
+  - id: holidays-2025
+    title: 'Holidays 2025'
+    description: 'Corsica, July and August'
     folderId: '1AbCdEfGhIjKlMnOpQrStUvWxYz'
-    # Descendre dans les sous-dossiers. Passer à false pour n'indexer que la
-    # racine du dossier.
+    # Walk into subfolders. Set to false to index the folder's root only.
     recursive: true
-    # Découpage de la grille à l'ouverture : "month" (défaut) ou "day".
-    # "day" convient à un séjour, et c'est le seul découpage où s'affichent les
-    # notes de journée et les lieux déduits des photos.
+    # How the grid is split on opening: "month" (default) or "day".
+    # "day" suits a single trip, and it is the only split where day notes and
+    # places derived from the photos are displayed.
     groupBy: day
-    # Sens de lecture à l'ouverture : "asc" (défaut) part des plus anciennes,
-    # "desc" des plus récentes. Un séjour se raconte dans l'ordre où il a été
-    # vécu ; une bibliothèque qu'on alimente au fil de l'eau se lit par la fin.
-    # Le visiteur peut toujours rebasculer, et son navigateur s'en souvient.
+    # Reading direction on opening: "asc" (default) starts from the oldest,
+    # "desc" from the newest. A trip is told in the order it was lived; a library
+    # fed as things happen is read from the end. A visitor can always flip it
+    # back, and their browser remembers.
     sortOrder: asc
 
-  - id: famille
-    title: 'Photos de famille'
+  - id: family
+    title: 'Family photos'
     folderId: '1ZyXwVuTsRqPoNmLkJiHgFeDcBa'
     recursive: true
 
 sync:
-  # Intervalle de resynchronisation automatique, en minutes. 0 pour désactiver
-  # (la synchronisation reste déclenchable depuis /admin).
+  # Automatic resync interval, in minutes. 0 disables it (syncing stays available
+  # from /admin).
   intervalMinutes: 30
-  # Synchroniser tous les albums au démarrage du serveur.
+  # Sync every album when the server starts.
   onStartup: true
 
 cache:
-  # Espace disque maximal des vignettes générées. Au-delà, les moins récemment
-  # consultées sont supprimées et régénérées à la demande.
+  # Maximum disk space for generated thumbnails. Past it, the least recently
+  # viewed are removed and regenerated on demand.
   maxSizeGB: 20

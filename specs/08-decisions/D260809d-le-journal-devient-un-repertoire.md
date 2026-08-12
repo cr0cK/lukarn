@@ -1,74 +1,72 @@
-# D260809d — Le journal devient un répertoire, et l'archive est découpée avec
+# D260809d — The log becomes a directory, and the archive is split with it
 
-**Contexte.** [D260809](./D260809-numerotation-des-decisions.md) a fait de toute
-décision **nouvelle** un fichier, et laissé les quatre-vingt-dix-neuf premières
-dans le journal d'origine. Ce partage tenait à une contrainte du moment : deux
-branches étaient ouvertes, et déplacer quatre mille lignes les aurait mises en
-conflit. Elles sont fusionnées.
+**Context.** [D260809](./D260809-numerotation-des-decisions.md) made every
+**new** decision a file, while leaving the first ninety-nine in the original
+log. This division reflected a constraint at the time: two branches were open,
+and moving four thousand lines would have made them conflict. They have now been
+merged.
 
-Ce qui restait, une fois la contrainte levée, n'était plus un compromis mais une
-incohérence, et elle coûtait de trois façons :
+Once the constraint was removed, what remained was no longer a compromise but
+an inconsistency, with three costs:
 
-- **Amender une décision ancienne** — la nuancer, la marquer dépassée — c'était
-  éditer un fichier de quatre mille lignes, donc reprendre exactement le conflit
-  que D260809 venait de supprimer pour les ajouts. La propriété ne valait que
-  pour les créations.
-- **Deux façons de lire une décision** selon son âge, alors que rien ne les
-  distingue à l'usage.
-- **Un fichier `08-decisions.md` toujours là**, vers lequel `CLAUDE.md` envoyait
-  encore écrire à deux endroits. Le contrôle refusait l'écriture ; la
-  documentation la demandait.
+- **Amending an old decision** — qualifying it or marking it superseded — meant
+  editing a four-thousand-line file, recreating exactly the conflict that
+  D260809 had just removed for additions. The benefit applied only to creation.
+- **Two ways to read a decision** depending on its age, although nothing
+  distinguishes them in use.
+- **An `08-decisions.md` file still present**, which `CLAUDE.md` still directed
+  writers to in two places. The check rejected the write; the documentation
+  required it.
 
-**Choix.** Le document `08` **est** le répertoire `specs/08-decisions/`. Les
-quatre-vingt-dix-neuf entrées y deviennent un fichier chacune, et le fichier
-unique disparaît.
+**Decision.** Document `08` **is** the `specs/08-decisions/` directory. Each of
+the ninety-nine entries becomes its own file there, and the single file
+disappears.
 
-Le répertoire porte le numéro de la série plutôt qu'un nom à part : « 01 → 02 →
-08 » reste vrai partout où c'était écrit, et il n'existe plus de `08` où l'on
-puisse croire écrire.
+The directory carries the series number rather than a separate name: "01 → 02 →
+08" remains true everywhere it was written, and there is no longer an `08` that
+might appear writable.
 
-**D1 à D99 gardent leur rang.** Les renommer par date traverserait les trois
-cents renvois que le code leur adresse, et un identifiant qui change après coup
-n'en est plus un. Deux familles cohabitent donc — le rang pour l'ancien, la date
-pour le reste — et `check:specs` accepte les deux. Le répertoire n'est
-chronologique qu'à l'intérieur de chaque famille : c'est le prix d'un identifiant
-stable, et il est petit devant un renommage.
+**D1 to D99 keep their numbers.** Renaming them by date would cross the three
+hundred references to them in the code, and an identifier that changes after the
+fact is no longer an identifier. Two families therefore coexist — sequential
+numbers for the old decisions, dates for the rest — and `check:specs` accepts
+both. The directory is chronological only within each family: that is the cost
+of a stable identifier, and it is small compared with a rename.
 
-**Écarté.** _Zéro-padder les noms de l'archive_, le rang sur trois chiffres, pour
-que le répertoire se trie d'un bout à l'autre. Le nom du fichier aurait cessé de
-reprendre exactement l'identifiant du titre, c'est-à-dire la règle que
-`check:specs` fait respecter, pour un ordre d'affichage que personne ne demande.
+**Rejected.** _Zero-padding the archive filenames_ to three digits so the whole
+directory sorts from end to end. The filename would no longer exactly reflect
+the identifier in the title — the very rule enforced by `check:specs` — for a
+display order nobody needs.
 
-_Garder l'archive en fichier unique_, en corrigeant simplement les deux renvois
-de `CLAUDE.md` devenus faux. Cela traitait le symptôme le plus visible et
-laissait le premier coût entier : une décision ancienne resterait inamendable
-sans conflit.
+_Keeping the archive in one file_ and simply correcting the two now-false
+references in `CLAUDE.md`. This addressed the most visible symptom while leaving
+the first cost intact: an old decision would remain impossible to amend without
+a conflict.
 
-_Un `08-decisions.md` réduit à un sommaire_ pointant vers le répertoire. Un
-sommaire est un index, et un index redevient le point d'insertion commun que tout
-ce travail supprime.
+_An `08-decisions.md` reduced to a contents page_ pointing to the directory. A
+contents page is an index, and an index becomes once again the shared insertion
+point that all this work removes.
 
-**Conséquences.** Le déplacement porte sur 2 907 lignes, et rien ne garantissait
-qu'aucune ne se perde en chemin. Le découpage a donc été fait par un script,
-puis vérifié par un second, écrit séparément : il compare le multiensemble des
-lignes significatives du journal d'origine à celui des fichiers produits. Les
-deux comptes tombent à 2 907, aucune ligne absente.
+**Consequences.** The move covers 2,907 lines, with no guarantee that none would
+be lost along the way. The split was therefore performed by one script and then
+checked by a second, written independently: it compares the multiset of
+significant lines in the original log with that of the resulting files. Both
+counts are 2,907, with no missing line.
 
-Les liens ont suivi trois traitements distincts, tous contrôlés par
-`check:links` : les ancres `#dxx--…` deviennent des liens de fichier, les renvois
-vers les autres specs remontent d'un cran, et un lien intitulé « 08 » suivi d'un
-numéro en texte devient un lien intitulé par ce numéro, qui désigne enfin ce
-qu'il nomme.
+The links underwent three separate transformations, all checked by
+`check:links`: `#dxx--…` anchors became file links, references to the other specs
+moved up one level, and a link labelled "08" followed by a number in text became
+a link labelled with that number, finally pointing to what it names.
 
-[D260809](./D260809-numerotation-des-decisions.md) nommait le répertoire
-`specs/decisions/`, et décrivait un journal séquentiel encore ouvert à la
-lecture. Les deux mentions sont **corrigées chez elle**, avec un renvoi vers
-cette entrée-ci : une décision garde son raisonnement, jamais un chemin faux. Un
-renvoi croisé qui ment coûte plus cher que la trace d'un renommage, et rien ne le
-signalait — ni le contrôle des renvois `(Dxx)`, qui porte sur les décisions, ni
-`check:links`, qui ne suit que les liens markdown.
+[D260809](./D260809-numerotation-des-decisions.md) named the directory
+`specs/decisions/` and described a sequential log still open for reading. Both
+statements are **corrected in that decision**, with a reference to this entry: a
+decision keeps its reasoning, never a false path. A cross-reference that lies
+costs more than the trace of a rename, and nothing reported it — neither the
+`(Dxx)` reference check, which covers decisions, nor `check:links`, which only
+follows Markdown links.
 
-C'est ce trou que `check:specs` ferme désormais : un document de specs cité en
-texte entre backticks doit désigner un fichier existant. Ce répertoire-ci en est
-exclu, et ne pouvait pas ne pas l'être — un journal nomme ce qu'il a remplacé,
-et l'exiger présent le rendrait inécrivable.
+`check:specs` now closes that gap: a specs document cited as text in backticks
+must name an existing file. This directory is excluded, as it has to be — a log
+names what it replaced, and requiring that target to exist would make the log
+impossible to write.

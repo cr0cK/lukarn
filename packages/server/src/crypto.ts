@@ -8,13 +8,13 @@ import {
 } from 'node:crypto';
 
 /**
- * Chiffrement du refresh token Google au repos. Le VPS n'est pas un HSM, mais
- * un dump de la base SQLite ne doit pas suffire à donner accès au Drive : il
- * faut aussi TOKEN_KEY, qui vit dans l'environnement du process.
+ * Encryption of the Google refresh token at rest. The VPS is not an HSM, but a
+ * dump of the SQLite database must not be enough to access Drive: TOKEN_KEY,
+ * which lives in the process environment, is also required.
  *
- * Format : base64( salt(16) | iv(12) | tag(16) | ciphertext ).
- * Le sel est tiré à chaque chiffrement, donc deux chiffrements du même token
- * produisent des sorties différentes.
+ * Format: base64( salt(16) | iv(12) | tag(16) | ciphertext ).
+ * The salt is generated for every encryption, so encrypting the same token twice
+ * produces different output.
  */
 
 const SALT_BYTES = 16;
@@ -23,8 +23,8 @@ const TAG_BYTES = 16;
 const KEY_BYTES = 32;
 
 function deriveKey(secret: string, salt: Buffer): Buffer {
-  // Coût scrypt par défaut de Node (N=16384) : ~50 ms ici, imperceptible
-  // puisqu'on ne déchiffre qu'au démarrage et à chaque refresh de token.
+  // Node's default scrypt cost (N=16384): ~50 ms here, imperceptible because
+  // decryption only happens at startup and on each token refresh.
   return scryptSync(secret, salt, KEY_BYTES);
 }
 
@@ -39,7 +39,7 @@ export function encryptSecret(plaintext: string, secret: string): string {
 export function decryptSecret(encoded: string, secret: string): string {
   const raw = Buffer.from(encoded, 'base64');
   if (raw.length <= SALT_BYTES + IV_BYTES + TAG_BYTES) {
-    throw new Error('Données chiffrées tronquées');
+    throw new Error('Encrypted data truncated');
   }
 
   const salt = raw.subarray(0, SALT_BYTES);
@@ -49,19 +49,19 @@ export function decryptSecret(encoded: string, secret: string): string {
 
   const decipher = createDecipheriv('aes-256-gcm', deriveKey(secret, salt), iv);
   decipher.setAuthTag(tag);
-  // `final()` lève si le tag ne colle pas : TOKEN_KEY a changé, ou la base a
-  // été altérée. Dans les deux cas il faut refaire le consentement OAuth.
+  // `final()` throws if the tag does not match: TOKEN_KEY has changed or the database
+  // has been altered. Either way, OAuth consent must be completed again.
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
 }
 
 /**
- * Jeton du lien « se désabonner » porté par les emails de notification.
+ * Token in the "unsubscribe" link carried by notification emails.
  *
- * Un HMAC du seul identifiant, sans état en base et **sans expiration** : le
- * lien se trouve dans un email qui peut être rouvert des mois plus tard, et un
- * jeton périmé renverrait l'utilisateur vers un formulaire de connexion alors
- * qu'il cherche justement à ne plus être dérangé. Ce qu'il ouvre est sans
- * gravité — couper ses propres notifications — et se rétablit depuis /admin.
+ * An HMAC of the identifier alone, with no database state and **no expiry**: the
+ * link is in an email that may be reopened months later, and an expired token would
+ * send users to a sign-in form when they specifically want to stop being disturbed.
+ * Its effect is harmless — disabling their own notifications — and reversible
+ * from /admin.
  */
 export function signUnsubscribeToken(username: string, secret: string): string {
   return createHmac('sha256', secret)
@@ -69,25 +69,24 @@ export function signUnsubscribeToken(username: string, secret: string): string {
     .digest('base64url');
 }
 
-/** Comparaison en temps constant : un jeton ne se devine pas au chronomètre. */
+/** Constant-time comparison so a token cannot be guessed with a stopwatch. */
 export function verifyUnsubscribeToken(username: string, token: string, secret: string): boolean {
   return safeEqual(signUnsubscribeToken(username, secret), token);
 }
 
 /**
- * Jeton du lien « se désabonner » porté par l'annonce des nouvelles photos.
+ * Token in the "unsubscribe" link carried by new-photo announcements.
  *
- * Il couvre l'adresse **et** l'album : sans l'album dans le message signé, le
- * jeton reçu pour « Noël 2019 » vaudrait pour « Vacances », et un lien
- * recopié d'un email à l'autre couperait un abonnement qu'on n'a pas voulu
- * couper. Le préfixe le distingue du jeton global de D37 : les deux ne doivent
- * pas être interchangeables, ils ne coupent pas la même chose.
+ * It covers both the address **and** the album: without the album in the signed
+ * message, a token received for "Christmas 2019" would work for "Holidays", and a
+ * link copied from one email to another would disable an unintended subscription.
+ * The prefix distinguishes it from the global token in D37: the two must not be
+ * interchangeable because they disable different things.
  */
 export function signAlbumUnsubscribeToken(email: string, albumId: string, secret: string): string {
-  // `ALBUM_ID_PATTERN` interdit le « : » dans un id d'album, et zod l'interdit
-  // dans une adresse : le message signé se découpe donc sans ambiguïté, là où
-  // un séparateur permis des deux côtés laisserait deux couples produire le
-  // même jeton.
+  // `ALBUM_ID_PATTERN` forbids ":" in an album ID, and zod forbids it in an address,
+  // so the signed message can be split unambiguously; a separator allowed on both
+  // sides would let two pairs produce the same token.
   return createHmac('sha256', secret)
     .update(`unsubscribe-album:${email.toLowerCase()}:${albumId}`)
     .digest('base64url');
@@ -103,12 +102,11 @@ export function verifyAlbumUnsubscribeToken(
 }
 
 /**
- * Empreinte du code de vérification d'une adresse email.
+ * Fingerprint of an email address verification code.
  *
- * Le code est court et vit quinze minutes, mais il n'a aucune raison d'être
- * lisible dans un dump de la base : un HMAC coûte moins qu'une requête SQL. Il
- * est lié à l'adresse, pour qu'un code valide pour l'une ne le soit pour aucune
- * autre.
+ * The code is short and lives for fifteen minutes, but it need not be readable in
+ * a database dump: an HMAC costs less than a SQL query. It is bound to the address
+ * so a code valid for one is valid for no other.
  */
 export function hashVerificationCode(email: string, code: string, secret: string): string {
   return createHmac('sha256', secret)
@@ -117,22 +115,21 @@ export function hashVerificationCode(email: string, code: string, secret: string
 }
 
 /**
- * Empreinte du `deviceCode` d'une demande d'appairage.
+ * Fingerprint of a pairing request's `deviceCode`.
  *
- * C'est le seul secret de l'échange — le code affiché à l'écran ne relève rien.
- * Il vit cinq minutes, ce qui ne justifie pas de le laisser lisible dans un
- * dump : le HMAC coûte moins que la requête SQL qui le cherche. Le préfixe le
- * distingue des autres empreintes du même secret, qui n'ouvrent pas la même
- * chose.
+ * It is the exchange's only secret — the code displayed on screen claims nothing.
+ * It lives for five minutes, which does not justify leaving it readable in a dump:
+ * the HMAC costs less than the SQL query that looks it up. The prefix distinguishes
+ * it from other fingerprints made with the same secret, which unlock different things.
  */
 export function hashDeviceCode(deviceCode: string, secret: string): string {
   return createHmac('sha256', secret).update(`device:${deviceCode}`).digest('base64url');
 }
 
 /**
- * Comparaison en temps constant tolérante aux longueurs différentes.
- * `timingSafeEqual` lève quand elles diffèrent — ce qui est déjà une réponse,
- * mais sous forme d'exception plutôt que de `false`.
+ * Constant-time comparison that tolerates different lengths. `timingSafeEqual`
+ * throws when they differ — which is already an answer, but in the form of an
+ * exception rather than `false`.
  */
 export function safeEqual(a: string, b: string): boolean {
   const left = Buffer.from(a, 'utf8');

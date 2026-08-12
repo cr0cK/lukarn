@@ -10,13 +10,13 @@ import type { MediaRenderer, RenderOrigin, Variant } from '../src/media/renderer
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
 /**
- * Préchauffage du cache. Ce qui est vérifié ici n'est pas qu'il rend des
- * images — c'est qu'il reste **discret** : un préchauffage qui sature la
- * liaison, remplit le cache au détriment des vignettes ou ignore son
- * interrupteur serait pire que l'attente qu'il supprime.
+ * Cache prewarming. This verifies not merely that it renders images but that it
+ * remains **unobtrusive**: prewarming that saturates the connection, fills the
+ * cache at the expense of thumbnails or ignores its switch would be worse than
+ * the wait it removes.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-prewarm-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-prewarm-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);
@@ -54,7 +54,7 @@ function photo(albumId: string, id: string, jour: number): MediaUpsert {
   };
 }
 
-/** Vidéo, avec ou sans l'aperçu que Drive produit de sa première seconde. */
+/** Video, with or without the preview Drive produces from its first second. */
 function video(albumId: string, id: string, jour: number, hasThumbnail: boolean): MediaUpsert {
   return {
     ...photo(albumId, id, jour),
@@ -66,7 +66,7 @@ function video(albumId: string, id: string, jour: number, hasThumbnail: boolean)
   };
 }
 
-/** Préchauffeur dont l'attente est enregistrée au lieu d'être subie. */
+/** Prewarmer whose waits are recorded rather than incurred. */
 class PrechauffeurInstantane extends CachePrewarmer {
   readonly attentes: number[] = [];
 
@@ -78,9 +78,9 @@ class PrechauffeurInstantane extends CachePrewarmer {
 
 interface FauxRenderer {
   rendus: string[];
-  /** Variantes réclamées à chaque appel, dans l'ordre. */
+  /** Variants requested on each call, in order. */
   demandes: Variant[][];
-  /** Source demandée pour chaque fichier : l'original, ou l'aperçu Drive. */
+  /** Source requested for each file: original or Drive preview. */
   origines: Map<string, RenderOrigin>;
   enCache: Set<string>;
   renderer: MediaRenderer;
@@ -92,15 +92,15 @@ function fauxRenderer(options: { echoue?: Set<string> } = {}): FauxRenderer {
   const origines = new Map<string, RenderOrigin>();
   const enCache = new Set<string>();
   const renderer = {
-    // `prepare` porte lui-même le court-circuit du cache : c'est là que vit la
-    // clé de variante, et le préchauffage n'a pas à la connaître.
+    // `prepare` owns the cache short circuit because the variant key lives
+    // there; prewarming need not know it.
     prepare: (
       fileId: string,
       variants: Variant[],
       _md5: string | null,
       origin: RenderOrigin = 'original',
     ) => {
-      if (options.echoue?.has(fileId)) return Promise.reject(new Error('illisible'));
+      if (options.echoue?.has(fileId)) return Promise.reject(new Error('unreadable'));
       demandes.push(variants);
       origines.set(fileId, origin);
       if (enCache.has(fileId)) return Promise.resolve(0);
@@ -128,8 +128,8 @@ function deps(
   };
 }
 
-describe('préchauffage du cache', () => {
-  it('rend les photos les plus récentes en premier', async () => {
+describe('cache prewarming', () => {
+  it('renders the most recent photos first', async () => {
     media.upsertMany(
       [photo('recent', 'vieille', 1), photo('recent', 'moyenne', 15), photo('recent', 'neuve', 28)],
       '2026-07-28T12:00:00.000Z',
@@ -138,27 +138,25 @@ describe('préchauffage du cache', () => {
 
     const resultat = await new PrechauffeurInstantane(deps('recent', renderer)).run();
 
-    // L'ordre n'est pas cosmétique : le cache est purgé en LRU, et ce sont les
-    // photos récentes qu'on ouvre. Commencer par les vieilles reviendrait à
-    // remplir le cache de ce que personne ne regarde plus.
+    // Order is not cosmetic: the cache uses LRU eviction and people open recent
+    // photos. Starting with old ones would fill it with unwatched content.
     assert.deepEqual(rendus, ['neuve', 'moyenne', 'vieille']);
     assert.equal(resultat.rendered, 3);
   });
 
-  it('marque une pause entre deux photos', async () => {
+  it('pauses between photos', async () => {
     media.upsertMany([photo('pause', 'a', 1), photo('pause', 'b', 2)], '2026-07-02T12:00:00.000Z');
     const { renderer } = fauxRenderer();
 
     const prechauffeur = new PrechauffeurInstantane(deps('pause', renderer));
     await prechauffeur.run();
 
-    // Une photo à la fois, avec un temps mort : le limiteur de rendu a quatre
-    // places, et le préchauffage ne doit jamais en occuper plus d'une — sans
-    // quoi il passerait devant quelqu'un qui navigue.
+    // One photo at a time with idle time: the rendering limiter has four slots,
+    // and prewarming must never occupy more than one or it would overtake a user.
     assert.deepEqual(prechauffeur.attentes, [1000, 1000]);
   });
 
-  it('saute ce qui est déjà en cache', async () => {
+  it('skips what is already cached', async () => {
     media.upsertMany([photo('deja', 'x', 1), photo('deja', 'y', 2)], '2026-07-02T12:00:00.000Z');
     const { rendus, enCache, renderer } = fauxRenderer();
     enCache.add('y');
@@ -169,7 +167,7 @@ describe('préchauffage du cache', () => {
     assert.equal(resultat.skipped, 1);
   });
 
-  it('ne prépare pas non plus la pause pour une photo déjà en cache', async () => {
+  it('does not pause for an already cached photo either', async () => {
     media.upsertMany([photo('sanspause', 's1', 1)], '2026-07-01T12:00:00.000Z');
     const { enCache, renderer } = fauxRenderer();
     enCache.add('s1');
@@ -177,22 +175,20 @@ describe('préchauffage du cache', () => {
     const prechauffeur = new PrechauffeurInstantane(deps('sanspause', renderer));
     await prechauffeur.run();
 
-    // Une seconde par photo déjà prête, c'est un passage entier — quinze
-    // minutes sur mille photos — passé à ne rien faire, alors que rien
-    // n'attend : la pause ne protège que du travail réel.
+    // One second per ready photo is an entire pass — fifteen minutes for a
+    // thousand photos — spent idle when nothing waits. Pauses protect real work.
     assert.deepEqual(prechauffeur.attentes, []);
   });
 
-  it('ne prépare que les vignettes, jamais le rendu pleine page', async () => {
+  it('prepares only thumbnails, never full-page rendering', async () => {
     media.upsertMany([photo('tailles', 't1', 1)], '2026-07-01T12:00:00.000Z');
     const { demandes, renderer } = fauxRenderer();
 
     await new PrechauffeurInstantane(deps('tailles', renderer)).run();
 
-    // C'est la grille qui fait attendre, et elle ne demande que ces trois
-    // tailles. Le plein écran pèse une dizaine de fois une vignette pour un
-    // besoin que le préchargement des voisines de la visionneuse couvre déjà :
-    // le préparer remplirait le cache au détriment de ce qu'on regarde.
+    // The grid causes the wait and requests only these three sizes. Fullscreen
+    // weighs about ten thumbnails and neighbour preloading already covers it;
+    // preparing it would displace viewed content from the cache.
     assert.deepEqual(demandes, [
       [
         { kind: 'thumb', size: 320 },
@@ -202,7 +198,7 @@ describe('préchauffage du cache', () => {
     ]);
   });
 
-  it('prépare la vidéo qui a un aperçu Drive, et saute celle qui n’en a pas', async () => {
+  it('prepares a video with a Drive preview and skips one without it', async () => {
     media.upsertMany(
       [
         photo('videos', 'image', 3),
@@ -215,27 +211,25 @@ describe('préchauffage du cache', () => {
 
     const resultat = await new PrechauffeurInstantane(deps('videos', renderer)).run();
 
-    // La vidéo sans aperçu est celle que la route refuse en 415 : la préparer
-    // dépenserait un appel Drive par passage pour un dérivé impossible.
+    // The route rejects the video without a preview with 415: preparing it would
+    // spend one Drive call per pass on an impossible derivative.
     assert.deepEqual(rendus, ['image', 'clip-avec']);
-    // Et celle qui en a un part de l'aperçu, jamais de l'original : quelques
-    // dizaines de Ko contre les 48 Mo d'un MP4 qui serait tiré puis jeté.
+    // A video with one starts from the preview, never the original: tens of KB
+    // rather than a 48 MB MP4 that would be fetched and discarded.
     assert.equal(origines.get('clip-avec'), 'poster');
     assert.equal(origines.get('image'), 'original');
     assert.equal(resultat.rendered, 2);
   });
 
-  it('s’arrête quand le cache atteint sa part', async () => {
+  it('stops when the cache reaches its share', async () => {
     media.upsertMany(
       [photo('budget', 'p1', 1), photo('budget', 'p2', 2), photo('budget', 'p3', 3)],
       '2026-07-03T12:00:00.000Z',
     );
     const { rendus, renderer } = fauxRenderer();
 
-    // Cache déjà rempli au-delà de la part autorisée : l'éviction est LRU
-    // globale, et continuer évincerait les vignettes de la grille — 15 Ko
-    // chacune, contre 1 Mo par rendu pleine page — pour des photos que
-    // personne n'a demandées.
+    // Cache already beyond its share: eviction is global LRU, so continuing
+    // would evict 15 KB grid thumbnails for 1 MB full-page renders nobody asked for.
     const plein = {
       stats: () => ({ entryCount: 0, bytes: 8_000_000, maxBytes: 10_000_000 }),
     } as unknown as MediaCache;
@@ -248,7 +242,7 @@ describe('préchauffage du cache', () => {
     assert.equal(resultat.stopped, 'budget');
   });
 
-  it('ne fait rien quand le réglage est décoché', async () => {
+  it('does nothing when the setting is disabled', async () => {
     media.upsertMany([photo('coupe', 'z', 1)], '2026-07-01T12:00:00.000Z');
     const { rendus, renderer } = fauxRenderer();
 
@@ -260,7 +254,7 @@ describe('préchauffage du cache', () => {
     assert.equal(resultat.rendered, 0);
   });
 
-  it('s’arrête en cours de route si le réglage est décoché', async () => {
+  it('stops midway if the setting is disabled', async () => {
     media.upsertMany(
       [photo('bascule', 'b1', 1), photo('bascule', 'b2', 2), photo('bascule', 'b3', 3)],
       '2026-07-03T12:00:00.000Z',
@@ -269,8 +263,8 @@ describe('préchauffage du cache', () => {
 
     let actif = true;
     const resultat = await new PrechauffeurInstantane(
-      // Décocher pendant un passage doit l'arrêter, pas seulement empêcher le
-      // suivant : on décoche précisément parce qu'on constate que ça gêne.
+      // Disabling during a pass must stop it, not merely prevent the next one:
+      // it is disabled precisely because it is causing disruption.
       deps('bascule', renderer, {
         enabled: () => {
           const valeur = actif;
@@ -281,10 +275,10 @@ describe('préchauffage du cache', () => {
     ).run();
 
     assert.equal(rendus.length, 0);
-    assert.equal(resultat.stopped, 'arret');
+    assert.equal(resultat.stopped, 'stopped');
   });
 
-  it('poursuit après une photo illisible', async () => {
+  it('continues after an unreadable photo', async () => {
     media.upsertMany(
       [photo('casse', 'bonne1', 3), photo('casse', 'cassee', 2), photo('casse', 'bonne2', 1)],
       '2026-07-03T12:00:00.000Z',
@@ -293,19 +287,19 @@ describe('préchauffage du cache', () => {
 
     const resultat = await new PrechauffeurInstantane(deps('casse', renderer)).run();
 
-    // Un fichier illisible ou un refus de Drive ne doit pas interrompre le
-    // passage : les photos suivantes n'y sont pour rien.
+    // An unreadable file or Drive refusal must not stop the pass: subsequent
+    // photos are unrelated.
     assert.deepEqual(rendus, ['bonne1', 'bonne2']);
     assert.equal(resultat.failed, 1);
   });
 
-  it('refuse deux passages concurrents', async () => {
+  it('rejects two concurrent passes', async () => {
     media.upsertMany([photo('double', 'd1', 1)], '2026-07-01T12:00:00.000Z');
     const { rendus, renderer } = fauxRenderer();
     const prechauffeur = new PrechauffeurInstantane(deps('double', renderer));
 
-    // Deux passages doubleraient l'occupation du limiteur et le débit vers
-    // Drive, ce que toute la conception cherche à éviter.
+    // Two passes would double limiter occupancy and Drive traffic, precisely
+    // what the design avoids.
     const [premier, second] = await Promise.all([prechauffeur.run(), prechauffeur.run()]);
 
     assert.equal(premier.rendered + second.rendered, 1);

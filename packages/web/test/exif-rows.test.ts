@@ -1,17 +1,17 @@
-import type { MediaDetail, MediaExif } from '@gdv/shared';
+import type { MediaDetail, MediaExif } from '@nonni/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { exifRows } from '../src/lib/exifRows';
 
 /**
- * Les lignes du panneau d'informations.
+ * Information panel rows.
  *
- * L'invariant tient à la position : elle se lit sans attendre le géocodage, et
- * son absence se dit — sur une photo seulement, parce que Drive ne rend jamais
- * de position pour une vidéo (D94).
+ * The invariant concerns position: it can be read without waiting for
+ * geocoding, and its absence is stated — for photos only, because Drive never
+ * returns a position for video (D94).
  */
 
-/** L'EXIF est le seul champ qu'on retouche partiellement — d'où son type à part. */
+/** EXIF is the only field patched partially, hence its separate type. */
 type DetailPatch = Partial<Omit<MediaDetail, 'exif'>> & { exif?: Partial<MediaExif> };
 
 function detail(patch: DetailPatch = {}): MediaDetail {
@@ -51,14 +51,14 @@ function detail(patch: DetailPatch = {}): MediaDetail {
 const position = (rows: ReturnType<typeof exifRows>): (typeof rows)[number] | undefined =>
   rows.find((row) => row.label === 'Position');
 
-describe('lignes du panneau d’informations', () => {
-  it('affiche la position sans attendre que la journée soit nommée', () => {
+describe('information panel rows', () => {
+  it('shows the position without waiting for the day to be named', () => {
     const rows = exifRows(detail({ exif: { latitude: 41.3878, longitude: 9.1597 } }), {
       day: '2026-08-07',
       description: null,
       place: null,
-      // Le géocodage inverse n'a encore rien rendu : la ligne « Lieu » manque,
-      // la position se lit quand même.
+      // Reverse geocoding has not returned anything yet: the "Lieu" row is
+      // missing, but the position remains readable.
       autoPlaces: [],
     });
 
@@ -70,21 +70,21 @@ describe('lignes du panneau d’informations', () => {
     assert.match(position(rows)?.href ?? '', /openstreetmap\.org/);
   });
 
-  it('dit qu’une photo n’a pas de position, au lieu de taire la ligne', () => {
+  it('states that a photo has no position instead of omitting the row', () => {
     const row = position(exifRows(detail(), undefined));
 
-    assert.equal(row?.value, 'Aucune donnée GPS');
+    assert.equal(row?.value, 'No GPS data');
     assert.equal(row?.absent, true);
-    // Une absence ne se clique pas : sans coordonnées, il n'y a nulle part où
-    // ouvrir une carte.
+    // An absence is not clickable: without coordinates, there is nowhere to
+    // open a map.
     assert.equal(row?.href, undefined);
   });
 
-  it('ne dit rien de la position d’une vidéo, que Drive ne géolocalise jamais', () => {
+  it('says nothing about the position of video, which Drive never geolocates', () => {
     const rows = exifRows(detail({ kind: 'video', durationMs: 12_000 }), undefined);
 
     assert.equal(position(rows), undefined);
-    // La ligne manquante n'emporte pas le reste du panneau avec elle.
-    assert.equal(rows.find((row) => row.label === 'Durée')?.value, '0:12');
+    // The missing row must not remove the rest of the panel with it.
+    assert.equal(rows.find((row) => row.label === 'Duration')?.value, '0:12');
   });
 });

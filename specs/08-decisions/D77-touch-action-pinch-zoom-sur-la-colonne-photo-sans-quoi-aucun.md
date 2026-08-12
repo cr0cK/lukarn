@@ -1,63 +1,58 @@
-# D77 — `touch-action: pinch-zoom` sur la colonne photo, sans quoi aucun geste au doigt n'aboutit
+# D77 — `touch-action: pinch-zoom` on the photo column, otherwise no touch gesture completes
 
-**Contexte.** Sur téléphone, le déplacement dans une photo agrandie était décrit
-comme « très très lent, quasi inutilisable », et le repère de position
-« décrochait » dès qu'on bougeait. Ce n'était pas de la lenteur : le geste
-mourait en route. Aucun `touch-action` n'était déclaré nulle part dans le front,
-et avec la valeur par défaut `auto` le navigateur garde le droit de lire un
-glissement d'un doigt comme un défilement. Il tranche en ce sens au bout d'un ou
-deux `pointermove`, émet `pointercancel`, et les gestionnaires abandonnent —
-seuls les quelques mouvements reçus avant l'arbitrage s'appliquent.
+**Context.** On a phone, panning around an enlarged photo was described as "very,
+very slow, almost unusable", and the position indicator "slipped" as soon as it
+moved. It was not slow: the gesture died midway. No `touch-action` was declared
+anywhere in the frontend, and with the default `auto` value the browser retains
+the right to interpret a one-finger drag as scrolling. It decides to do so after
+one or two `pointermove` events, emits `pointercancel`, and the handlers give up —
+only the few movements received before arbitration take effect.
 
-`setPointerCapture` ne protège pas de ça, contrairement à ce que son nom laisse
-espérer : la capture garantit de recevoir la suite des événements, elle n'empêche
-pas le navigateur d'annuler le geste.
+Contrary to what its name suggests, `setPointerCapture` does not prevent this:
+capture guarantees delivery of subsequent events; it does not stop the browser
+from cancelling the gesture.
 
-La mesure a montré que **le balayage d'une photo à l'autre tombait de la même
-façon** — il n'atteignait jamais son `pointerup`, donc ne changeait jamais de
-photo. Deux gestes, un seul défaut.
+Measurement showed that **swiping between photos failed in the same way** — it
+never reached `pointerup`, so the photo never changed. Two gestures, one defect.
 
-| Geste, en émulation Pixel 10 | `pointermove` | `pointercancel` | Résultat            |
-| ---------------------------- | ------------- | --------------- | ------------------- |
-| Déplacement zoomé, `auto`    | 2             | 1               | 24 px sur 240       |
-| Déplacement zoomé, corrigé   | 20            | 0               | 240 px sur 240      |
-| Repère de position, `auto`   | 2             | 1               | atterrit à l'opposé |
-| Repère de position, corrigé  | 12            | 0               | le point visé       |
-| Balayage, `auto`             | 1             | 1               | aucun changement    |
-| Balayage, corrigé            | 10            | 0               | photo suivante      |
+| Gesture, in Pixel 10 emulation | `pointermove` | `pointercancel` | Result                 |
+| ------------------------------ | ------------- | --------------- | ---------------------- |
+| Zoomed pan, `auto`             | 2             | 1               | 24 px out of 240       |
+| Zoomed pan, fixed              | 20            | 0               | 240 px out of 240      |
+| Position indicator, `auto`     | 2             | 1               | lands on opposite side |
+| Position indicator, fixed      | 12            | 0               | targeted point         |
+| Swipe, `auto`                  | 1             | 1               | no change              |
+| Swipe, fixed                   | 10            | 0               | next photo             |
 
-**Choix.** `touch-action: pinch-zoom` sur la colonne photo de la visionneuse,
-en permanence.
+**Choice.** Permanent `touch-action: pinch-zoom` on the viewer's photo column.
 
-**`pinch-zoom` plutôt que `none`.** Les deux suppriment l'arbitrage, mais `none`
-emporte aussi le pincement à deux doigts — le geste de zoom spontané sur
-téléphone, que la visionneuse ne cherche pas à remplacer et dont elle guette
-l'échelle pour charger la variante `hd` ([D20](./D20-zoom-sur-variante-haute-resolution-plutot-que-scale-sur-le-d.md)). `pinch-zoom`
-ne retire que le défilement à un doigt, ce qui est exactement ce dont personne
-n'a besoin là : sous la visionneuse, rien ne défile.
+**`pinch-zoom` rather than `none`.** Both remove arbitration, but `none` also
+removes two-finger pinching — the instinctive zoom gesture on a phone, which the
+viewer does not attempt to replace and whose scale it watches to load the `hd`
+variant ([D20](./D20-zoom-sur-variante-haute-resolution-plutot-que-scale-sur-le-d.md)).
+`pinch-zoom` only removes one-finger scrolling, exactly what nobody needs there:
+nothing beneath the viewer scrolls.
 
-**Sur la colonne plutôt que sur le conteneur de `ZoomableImage`.** La règle est
-la même pour tout ce qui vit dans cette colonne, et un descendant en hérite par
-intersection — le repère de position, qui déclare `auto`, est protégé par la
-colonne sans avoir à le dire. Une déclaration au lieu de trois, et le balayage,
-qui vit dans `Lightbox`, est couvert par la même.
+**On the column rather than the `ZoomableImage` container.** The rule is the same
+for everything in that column, and a descendant inherits it by intersection —
+the position indicator, which declares `auto`, is protected by the column without
+having to say so. One declaration instead of three, and swiping, which lives in
+`Lightbox`, is covered by the same one.
 
-**En permanence plutôt que pendant le seul zoom.** Poser la valeur à
-l'agrandissement aurait laissé le balayage cassé, et fait dépendre un
-comportement du navigateur d'un changement de classe entre deux rendus. Le seul
-geste au doigt qu'on retire hors zoom est un défilement qui n'a rien à faire
-défiler.
+**Permanently rather than only while zoomed.** Applying the value on enlargement
+would leave swiping broken and make browser behaviour depend on a class change
+between two renders. The only touch gesture removed outside zoom is scrolling
+when there is nothing to scroll.
 
-**Écarté.** La vidéo, exclue : ses contrôles natifs de lecture ont leur propre
-traitement du toucher, et le balayage y est déjà désactivé — rien ne justifiait
-d'y toucher sans pouvoir l'éprouver.
+**Rejected.** Video, excluded: its native playback controls have their own touch
+handling, and swiping is already disabled there — nothing justified changing it
+without being able to test it.
 
-**Conséquences.** Le double-tap pour zoomer, que le navigateur ajoute sous
-`auto`, disparaît sur la colonne photo. C'est sans perte : un tap bref y bascule
-déjà le zoom au point visé.
+**Consequences.** Double-tap to zoom, which the browser adds under `auto`,
+disappears on the photo column. Nothing is lost: a brief tap already toggles zoom
+at the targeted point.
 
-La vérification en automatisation s'arrête là où commence le téléphone.
-L'émulation Chromium reproduit l'arbitrage — les chiffres ci-dessus en viennent —
-mais pas le pincement à deux doigts, ni la sensation d'un déplacement, qui était
-le défaut d'origine. Ces deux-là ne se contrôlent que sur un vrai appareil :
-Playwright synthétise des pointeurs, il ne remplace pas la main.
+Automated verification stops where the phone begins. Chromium emulation reproduces
+the arbitration — the figures above come from it — but not two-finger pinching or
+the feel of panning, which was the original defect. Those can only be checked on
+a real device: Playwright synthesises pointers; it does not replace a hand.

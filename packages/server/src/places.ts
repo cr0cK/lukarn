@@ -1,38 +1,36 @@
-import type { AlbumDay, UpdateAlbumDayRequest } from '@gdv/shared';
+import type { AlbumDay, UpdateAlbumDayRequest } from '@nonni/shared';
 import type { Db } from './db.js';
 import type { Geocoder } from './geocoder.js';
 import type { MediaRepo } from './repo.js';
 
 /**
- * Les journées d'un album : la note qu'on y a écrite, et le lieu que ses
- * photos portent déjà.
+ * An album's days: the note written for them and the place already carried by their
+ * photos.
  *
- * **Pourquoi deux moitiés séparées.** L'agrégation des positions en grappes est
- * déterministe, instantanée et hors réseau ; le géocodage inverse est lent,
- * plafonné à une requête par seconde et faillible. Les mélanger obligerait à
- * choisir entre ne jamais recalculer les journées et rappeler Nominatim à
- * chaque passage. Séparées, le recalcul est gratuit et les libellés s'allument
- * tout seuls quand ils arrivent (D48).
+ * **Why there are two separate halves.** Grouping positions into clusters is
+ * deterministic, immediate and offline; reverse geocoding is slow, capped at one
+ * request per second and fallible. Combining them would force a choice between never
+ * recalculating days and calling Nominatim on every pass. Kept separate, recalculation
+ * is free and labels appear on their own when they arrive (D48).
  *
- * L'invariant qui compte : **le recalcul n'écrase jamais une saisie.** Seule la
- * colonne `cells` est réécrite ; `description` et `place` appartiennent à
- * l'administrateur, pas au passage de fond.
+ * The important invariant: **recalculation never overwrites manual input.** Only the
+ * `cells` column is rewritten; `description` and `place` belong to the administrator,
+ * not the background pass.
  */
 
-/** Cellule de ~1,1 km : la maille en deçà de laquelle le nom de lieu est le même. */
+/** ~1.1 km cell: the grid size below which the place name remains the same. */
 const CELL_DECIMALS = 2;
 
 /**
- * Distance d'agglomération. Quinze kilomètres, c'est le rayon dans lequel on dit
- * « on était à Bonifacio » sans mentir ; au-delà on a bougé, et la journée porte
- * deux lieux.
+ * Clustering distance. Fifteen kilometres is the radius within which "we were in
+ * Bonifacio" remains true; beyond it, the group moved and the day carries two places.
  */
 const CLUSTER_RADIUS_KM = 15;
 
 /**
- * Grappes retenues par journée. Une journée de route en produirait dix, et dix
- * noms de lieu dans un en-tête ne se lisent pas — on garde les trois où le plus
- * de photos ont été prises, c'est-à-dire là où on s'est arrêté.
+ * Clusters retained per day. A day on the road could produce ten, and ten place names
+ * in a heading are unreadable — retain the three where most photos were taken,
+ * meaning where the group stopped.
  */
 const MAX_CLUSTERS = 3;
 
@@ -43,18 +41,18 @@ interface Logger {
   debug: (msg: string) => void;
 }
 
-/** Une position, telle que `MediaRepo.geolocatedPoints` la rend. */
+/** A position as returned by `MediaRepo.geolocatedPoints`. */
 export interface GeoPoint {
   lat: number;
   lng: number;
 }
 
 /**
- * Clé de cache d'un point : latitude et longitude arrondies à deux décimales.
+ * Cache key for a point: latitude and longitude rounded to two decimal places.
  *
- * `toFixed` et non un arrondi flottant : la clé est comparée en SQL, donc deux
- * écritures du même endroit doivent produire exactement la même chaîne —
- * `-0.00` et `0.00` en sont deux, d'où le `+ 0` qui normalise le zéro négatif.
+ * `toFixed` rather than floating-point rounding: the key is compared in SQL, so two
+ * writes of the same place must produce exactly the same string — `-0.00` and `0.00`
+ * are different, hence the `+ 0` that normalises negative zero.
  */
 export function cellKey(lat: number, lng: number): string {
   const round = (value: number): string =>
@@ -62,7 +60,7 @@ export function cellKey(lat: number, lng: number): string {
   return `${round(lat)},${round(lng)}`;
 }
 
-/** Distance orthodromique en kilomètres. */
+/** Great-circle distance in kilometres. */
 function distanceKm(a: GeoPoint, b: GeoPoint): number {
   const toRad = (deg: number): number => (deg * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
@@ -74,18 +72,16 @@ function distanceKm(a: GeoPoint, b: GeoPoint): number {
 }
 
 /**
- * Regroupe les positions d'une journée en cellules, dans l'ordre du déroulé.
+ * Groups a day's positions into cells in chronological sequence.
  *
- * Agglomération gloutonne : chaque point rejoint la grappe dont le barycentre
- * est à moins de `CLUSTER_RADIUS_KM`, sinon il en ouvre une. Les points doivent
- * arriver **triés chronologiquement** — c'est ce qui fait que l'ordre de
- * création des grappes est celui de leur première photo, et donc que
- * « Bonifacio, puis la plage » se lit dans le bon sens sans tri supplémentaire.
+ * Greedy clustering: each point joins the cluster whose centroid is less than
+ * `CLUSTER_RADIUS_KM` away, or opens a new one. Points must arrive **chronologically
+ * sorted** — this makes cluster creation order follow their first photo, so
+ * "Bonifacio, then the beach" reads in the right order without additional sorting.
  *
- * Un k-means donnerait des grappes plus régulières, au prix d'un nombre de
- * grappes à choisir d'avance et d'un résultat qui dépend de l'initialisation :
- * deux passages sur les mêmes photos écriraient des cellules différentes, donc
- * relanceraient le géocodage pour rien.
+ * K-means would produce more regular clusters at the cost of choosing the number of
+ * clusters in advance and a result dependent on initialisation: two passes over the
+ * same photos could write different cells and rerun geocoding for no reason.
  */
 export function clusterDay(points: GeoPoint[]): string[] {
   const clusters: { lat: number; lng: number; count: number; rank: number }[] = [];
@@ -93,8 +89,8 @@ export function clusterDay(points: GeoPoint[]): string[] {
   for (const point of points) {
     const near = clusters.find((cluster) => distanceKm(cluster, point) <= CLUSTER_RADIUS_KM);
     if (near) {
-      // Barycentre incrémental : la grappe suit le groupe de photos plutôt que
-      // de rester accrochée à la première d'entre elles.
+      // Incremental centroid: the cluster follows the group of photos rather than
+      // remaining anchored to the first one.
       near.lat += (point.lat - near.lat) / (near.count + 1);
       near.lng += (point.lng - near.lng) / (near.count + 1);
       near.count++;
@@ -109,17 +105,17 @@ export function clusterDay(points: GeoPoint[]): string[] {
       : [...clusters]
           .sort((a, b) => b.count - a.count)
           .slice(0, MAX_CLUSTERS)
-          // Le tri par effectif choisit lesquelles garder, pas dans quel ordre
-          // les lire : l'en-tête raconte la journée, donc l'ordre reste celui
-          // de la première photo de chaque grappe.
+          // Sorting by size chooses which clusters to retain, not their reading order:
+          // the heading tells the day's story, so order still follows each cluster's
+          // first photo.
           .sort((a, b) => a.rank - b.rank);
 
-  // Deux barycentres peuvent dériver jusqu'à tomber dans la même cellule ; le
-  // même nom deux fois dans un en-tête n'apprend rien.
+  // Two centroids may drift into the same cell; repeating a name in a heading adds
+  // no information.
   return [...new Set(kept.map((cluster) => cellKey(cluster.lat, cluster.lng)))];
 }
 
-/** Ligne d'`album_days` telle qu'elle est stockée. */
+/** An `album_days` row as stored. */
 interface AlbumDayRow {
   day: string;
   description: string | null;
@@ -135,30 +131,30 @@ function parseCells(raw: string | null): string[] {
       ? parsed.filter((cell): cell is string => typeof cell === 'string')
       : [];
   } catch {
-    // Colonne éditée à la main : la journée perd ses lieux déduits, pas sa note.
+    // Manually edited column: the day loses inferred places, not its note.
     return [];
   }
 }
 
-/** Une chaîne vide venue d'un formulaire vaut « pas de valeur ». */
+/** An empty string from a form means "no value". */
 function normalize(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
 /**
- * Dépôt des journées annotées. Il lit aussi `geo_places`, parce que c'est là que
- * les clés de `cells` prennent un sens : rendre une clé `41.39,9.16` au front
- * l'obligerait à faire la jointure lui-même.
+ * Annotated-day repository. It also reads `geo_places`, because that is where `cells`
+ * keys acquire meaning: returning a `41.39,9.16` key to the front end would force it
+ * to perform the join itself.
  */
 export class AlbumDayRepo {
   constructor(private readonly db: Db) {}
 
   /**
-   * Les journées de cet album **qui ont quelque chose à montrer** : une note, un
-   * lieu saisi, ou au moins un lieu déduit déjà résolu. Une journée réduite à
-   * des cellules dont aucune n'est encore géocodée n'a rien à afficher, et la
-   * transporter grossirait la réponse d'une ligne par jour d'album.
+   * Days in this album **that have something to show**: a note, a manually entered
+   * place, or at least one already resolved inferred place. A day containing only
+   * cells that have not yet been geocoded has nothing to display, and returning it
+   * would add one row per album day to the response.
    */
   list(albumId: string): AlbumDay[] {
     const rows = this.db
@@ -187,9 +183,9 @@ export class AlbumDayRepo {
   }
 
   /**
-   * Écrit la note d'une journée. Les champs absents restent inchangés, `null`
-   * efface. La ligne est créée si la journée n'en avait pas — on peut annoter
-   * une journée dont aucune photo ne porte de position.
+   * Writes a day's note. Absent fields remain unchanged; `null` clears them. The row
+   * is created if the day had none — a day can be annotated even when none of its
+   * photos carries a position.
    */
   upsertNote(albumId: string, day: string, patch: UpdateAlbumDayRequest): AlbumDay {
     const now = new Date().toISOString();
@@ -218,12 +214,12 @@ export class AlbumDayRepo {
   }
 
   /**
-   * Réécrit les cellules de toutes les journées géolocalisées d'un album, et
-   * retire celles qui n'ont plus ni photo positionnée ni saisie.
+   * Rewrites the cells for every geolocated day in an album and removes those with
+   * neither positioned photos nor manual input remaining.
    *
-   * `DO UPDATE SET cells` **et rien d'autre** : c'est l'invariant du module. Un
-   * `excluded.description` glissé ici effacerait, à chaque passage horaire,
-   * tout ce que l'administrateur a écrit.
+   * `DO UPDATE SET cells` **and nothing else**: this is the module's invariant. An
+   * `excluded.description` added here would erase everything the administrator wrote
+   * on every hourly pass.
    */
   replaceCells(albumId: string, rows: { day: string; cells: string[] }[]): void {
     const now = new Date().toISOString();
@@ -237,14 +233,13 @@ export class AlbumDayRepo {
     this.db.transaction(() => {
       for (const row of rows) upsert.run(albumId, row.day, JSON.stringify(row.cells), now);
 
-      // Une journée dont les photos positionnées ont disparu de l'index —
-      // dossier Drive réorganisé, `deleteStale` passé par là — ne doit pas
-      // garder les lieux qu'elles portaient. Sa note, si elle en a une,
-      // survit : elle ne vient pas des photos, et la journée a bien eu lieu.
+      // A day whose positioned photos have disappeared from the index — after a Drive
+      // folder reorganisation and `deleteStale` — must not retain their places. Its
+      // note, if any, survives: it does not come from the photos, and the day happened.
       //
-      // Le tri est fait en JavaScript et non par un `NOT IN (…)` : un album
-      // couvrant dix ans compte des milliers de journées, soit autant de
-      // paramètres liés, là où SQLite en plafonne le nombre.
+      // Filtering happens in JavaScript rather than through `NOT IN (…)`: an album
+      // spanning ten years contains thousands of days and therefore as many bound
+      // parameters, whose number SQLite limits.
       const keep = new Set(rows.map((row) => row.day));
       const existing = this.db
         .prepare('SELECT day, description, place, cells FROM album_days WHERE album_id = ?')
@@ -266,7 +261,7 @@ export class AlbumDayRepo {
     })();
   }
 
-  /** Toutes les cellules citées par cet album, dédupliquées. */
+  /** All cells referenced by this album, deduplicated. */
   cells(albumId: string): string[] {
     const rows = this.db
       .prepare('SELECT cells FROM album_days WHERE album_id = ? AND cells IS NOT NULL')
@@ -279,9 +274,8 @@ export class AlbumDayRepo {
       day: row.day,
       description: row.description,
       place: row.place,
-      // Les cellules sans libellé disparaissent au lieu de laisser un trou :
-      // soit le géocodage n'est pas encore passé, soit il n'a rien trouvé, et
-      // dans les deux cas il n'y a rien à afficher.
+      // Cells without labels disappear rather than leaving a gap: either geocoding
+      // has not run yet or it found nothing, and in both cases there is nothing to show.
       autoPlaces: parseCells(row.cells)
         .map((cell) => labels.get(cell) ?? null)
         .filter((label): label is string => label !== null),
@@ -300,29 +294,29 @@ export class AlbumDayRepo {
 }
 
 export interface PlacesPassDeps {
-  /** Relu à chaque passage : un album créé depuis le démarrage compte aussi. */
+  /** Read again on every pass so an album created since startup is included too. */
   albums: () => { id: string }[];
   media: MediaRepo;
   days: AlbumDayRepo;
-  /** `null` quand `GEOCODING_URL` est vide : les grappes sont calculées quand même. */
+  /** `null` when `GEOCODING_URL` is empty: clusters are still calculated. */
   geocoder: Geocoder | null;
   log: Logger;
 }
 
 export interface PlacesResult {
-  /** Journées dont les cellules ont été (ré)écrites. */
+  /** Days whose cells were (re)written. */
   days: number;
-  /** Appels réellement passés au géocodeur. */
+  /** Calls actually made to the geocoder. */
   lookups: number;
 }
 
 /**
- * Un passage sur tous les albums : agrégation des positions en journées, puis
- * résolution des cellules encore inconnues.
+ * One pass over all albums: aggregates positions into days, then resolves cells that
+ * are still unknown.
  *
- * Branché sur le ménage horaire de `main.ts` et sur le démarrage, comme le
- * préchauffage du cache et pour la même raison : la synchronisation peut être
- * désactivée, et les lieux attendraient alors indéfiniment.
+ * Runs with hourly housekeeping in `main.ts` and at startup, like cache prewarming
+ * and for the same reason: synchronisation may be disabled, in which case places
+ * would otherwise wait indefinitely.
  */
 export class PlacesPass {
   private running = false;
@@ -332,8 +326,8 @@ export class PlacesPass {
   async run(): Promise<PlacesResult> {
     const result: PlacesResult = { days: 0, lookups: 0 };
 
-    // Deux passages concurrents doubleraient le débit vers Nominatim, dont la
-    // politique est précisément ce que le limiteur de `geocoder.ts` respecte.
+    // Two concurrent passes would double the request rate to Nominatim, whose policy
+    // is precisely what the limiter in `geocoder.ts` respects.
     if (this.running) return result;
     this.running = true;
 
@@ -356,11 +350,9 @@ export class PlacesPass {
       }
 
       if (result.lookups > 0) {
-        this.deps.log.info(
-          `Lieux : ${result.days} journées agrégées, ${result.lookups} géocodages`,
-        );
+        this.deps.log.info(`Places: ${result.days} days aggregated, ${result.lookups} geocodings`);
       } else {
-        this.deps.log.debug(`Lieux : ${result.days} journées agrégées, aucun géocodage`);
+        this.deps.log.debug(`Places: ${result.days} days aggregated, no geocoding`);
       }
 
       return result;

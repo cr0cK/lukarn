@@ -1,17 +1,15 @@
-# D4 — Proxy média plutôt que liens Google signés
+# D4 — Media proxy rather than signed Google links
 
-**Contexte.** Il faut afficher des images stockées dans Drive à des visiteurs qui
-n'ont pas de compte Google.
+**Context.** Images stored in Drive must be displayed to visitors who do not have a
+Google account.
 
-**Choix.** Toutes les images passent par `/api/media/...`. Aucune URL Google
-n'atteint le navigateur.
+**Decision.** All images pass through `/api/media/...`. No Google URL reaches the browser.
 
-**Écarté.** Renvoyer les `webContentLink` / `thumbnailLink` de Drive, ou une
-redirection 302 vers une URL signée. Trois problèmes : un lien signé qui fuit
-échappe définitivement au contrôle d'accès ; il expire, donc casse le cache
-navigateur et l'`ETag` ; et il exposerait indirectement l'arborescence du Drive
-du propriétaire.
+**Rejected.** Returning Drive's `webContentLink` / `thumbnailLink`, or a 302 redirect to
+a signed URL. Three problems: a leaked signed link permanently bypasses access control;
+it expires, breaking the browser cache and the `ETag`; and it would indirectly expose
+the owner's Drive folder structure.
 
-**Conséquences.** Toute la bande passante transite par le VPS. C'est le coût
-accepté — atténué par le cache disque et par des dérivés WebP nettement plus
-légers que les originaux.
+**Consequences.** All bandwidth passes through the VPS. This is the accepted cost —
+mitigated by the disk cache and WebP derivatives that are considerably lighter than the
+originals.

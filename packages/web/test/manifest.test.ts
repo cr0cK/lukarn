@@ -5,18 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 /**
- * Le manifeste et ses icônes.
+ * The manifest and its icons.
  *
- * L'invariant qui compte : un chemin d'icône fautif ne casse rien de visible —
- * la grille s'affiche, la console reste muette — il rend seulement l'application
- * non installable, et personne ne s'en aperçoit avant qu'un proche renonce à
- * poser l'icône sur son écran d'accueil.
+ * The important invariant is that a wrong icon path breaks nothing visible —
+ * the grid renders and the console stays silent — but makes the application
+ * impossible to install. Nobody notices until a relative gives up adding the
+ * icon to their home screen.
  */
 
 const WEB = fileURLToPath(new URL('..', import.meta.url));
 const PUBLIC = join(WEB, 'public');
 
-/** Vite recopie `public/` tel quel à la racine de `dist/` : `/x` y devient `public/x`. */
+/** Vite copies `public/` unchanged to the root of `dist/`: `/x` becomes `public/x`. */
 function surDisque(url: string): string {
   return join(PUBLIC, url.replace(/^\//, ''));
 }
@@ -24,22 +24,22 @@ function surDisque(url: string): string {
 const manifeste = JSON.parse(readFileSync(join(PUBLIC, 'manifest.webmanifest'), 'utf8'));
 const html = readFileSync(join(WEB, 'index.html'), 'utf8');
 
-describe('manifeste', () => {
-  it('déclare ce qu’exige une installation', () => {
+describe('manifest', () => {
+  it('declares what installation requires', () => {
     assert.equal(manifeste.start_url, '/');
     assert.equal(manifeste.scope, '/');
     assert.equal(manifeste.display, 'standalone');
     assert.ok(manifeste.name && manifeste.short_name);
   });
 
-  it('accorde ses couleurs à celles de l’interface', () => {
-    // `--color-ink-900` de `styles.css` : l'écran de démarrage doit prolonger
-    // le fond de l'application, pas clignoter en blanc avant elle.
+  it('matches its colours to the interface', () => {
+    // `--color-ink-900` from `styles.css`: the splash screen must continue the
+    // application background rather than flashing white before it.
     assert.equal(manifeste.background_color, '#0b0b0d');
     assert.equal(manifeste.theme_color, '#0b0b0d');
   });
 
-  it('porte une icône masquable, pour qu’Android ne rogne pas le motif', () => {
+  it('provides a maskable icon so Android does not crop the design', () => {
     const masquables = manifeste.icons.filter((icone: { purpose?: string }) =>
       icone.purpose?.split(' ').includes('maskable'),
     );
@@ -47,25 +47,25 @@ describe('manifeste', () => {
   });
 });
 
-describe('icônes', () => {
-  it('existent toutes sur disque', () => {
+describe('icons', () => {
+  it('all exist on disk', () => {
     for (const icone of manifeste.icons as { src: string }[]) {
-      assert.ok(existsSync(surDisque(icone.src)), `${icone.src} n'existe pas`);
+      assert.ok(existsSync(surDisque(icone.src)), `${icone.src} does not exist`);
     }
   });
 
-  it('couvrent l’écran d’accueil iOS, que le manifeste ne suffit pas à servir', () => {
-    // Safari ignore `icons` pour l'icône d'accueil : sans ce lien, iOS pose une
-    // capture de la page à la place du motif.
+  it('cover the iOS home screen, which the manifest alone cannot serve', () => {
+    // Safari ignores `icons` for the home-screen icon: without this link, iOS
+    // uses a screenshot of the page instead of the design.
     const lien = /<link[^>]+rel="apple-touch-icon"[^>]+href="([^"]+)"/.exec(html);
-    assert.ok(lien, 'index.html ne déclare pas d’apple-touch-icon');
-    assert.ok(existsSync(surDisque(lien[1]!)), `${lien[1]} n'existe pas`);
+    assert.ok(lien, 'index.html does not declare an apple-touch-icon');
+    assert.ok(existsSync(surDisque(lien[1]!)), `${lien[1]} does not exist`);
   });
 
-  it('sont annoncées au navigateur depuis index.html', () => {
+  it('are announced to the browser from index.html', () => {
     assert.match(html, /<link[^>]+rel="manifest"[^>]+href="\/manifest\.webmanifest"/);
     assert.match(html, /<link[^>]+rel="icon"[^>]+href="([^"]+)"/);
     const favicon = /<link[^>]+rel="icon"[^>]+href="([^"]+)"/.exec(html);
-    assert.ok(existsSync(surDisque(favicon![1]!)), `${favicon![1]} n'existe pas`);
+    assert.ok(existsSync(surDisque(favicon![1]!)), `${favicon![1]} does not exist`);
   });
 });

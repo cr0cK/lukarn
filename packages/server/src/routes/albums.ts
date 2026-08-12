@@ -4,7 +4,7 @@ import {
   type AlbumDay,
   type ItemsPage,
   type MediaDetail,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -17,9 +17,9 @@ const MAX_LIMIT = 500;
 const querySchema = z.object({
   cursor: z.string().max(512).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
-  // Un sens de tri inconnu est refusé plutôt que ramené au défaut : un client
-  // qui se trompe de valeur doit l'apprendre, pas recevoir silencieusement
-  // l'album à l'envers de ce qu'il affiche.
+  // An unknown sort order is rejected rather than reduced to the default: a client
+  // supplying the wrong value must learn about it, not silently receive the album in
+  // the opposite order from what it displays.
   order: z.enum(['desc', 'asc']).default(DEFAULT_SORT_ORDER),
 });
 
@@ -39,26 +39,26 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
       const { albumId } = request.params as { albumId: string };
       const album = context.findAlbum(albumId);
 
-      // Un album interdit et un album inexistant renvoient la même chose :
-      // la liste des albums d'autrui ne doit pas être devinable.
+      // A forbidden album and a non-existent album return the same response so nobody
+      // can infer another person's album list.
       if (!album || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
       return reply.send(buildAlbum(album, context.media, context.syncState));
     });
 
     /**
-     * Les journées annotées de l'album — note, lieu saisi, lieux déduits de
-     * l'EXIF. Seules celles qui ont quelque chose à montrer sont rendues : une
-     * ligne par jour d'album ne servirait qu'à grossir la réponse.
+     * The album's annotated days — note, manually entered place and places inferred
+     * from EXIF. Only days with something to show are returned: one row per album day
+     * would only enlarge the response.
      *
-     * Route de lecture, donc côté galerie : c'est la grille qui les affiche.
-     * L'écriture, elle, est sous `/api/admin` (D50).
+     * This is a read route and therefore belongs to the gallery, where the grid
+     * displays the data. Writes live under `/api/admin` (D50).
      */
     app.get('/:albumId/days', async (request, reply) => {
       const { albumId } = request.params as { albumId: string };
       if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const days: AlbumDay[] = context.days.list(albumId);
@@ -68,28 +68,26 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:albumId/items', async (request, reply) => {
       const { albumId } = request.params as { albumId: string };
       if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const query = querySchema.safeParse(request.query);
       if (!query.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Paramètres invalides' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid parameters' });
       }
 
-      // Ouvrir un album vaut abonnement à ses nouveautés (D41) : c'est un
-      // signal d'intérêt bien meilleur qu'une case à cocher, que personne ne
-      // coche. Sur la première page seulement — les suivantes sont le même
-      // geste — et jamais sur le détail d'un média, sinon le lien « Voir la
-      // photo » d'une notification de commentaire abonnerait aux nouveautés de
-      // l'album, ce que personne n'a demandé. Le dépôt écarte les identités non
-      // vérifiées.
+      // Opening an album subscribes to its new items (D41): this is a much better
+      // signal of interest than a checkbox nobody selects. Only on the first page —
+      // subsequent pages are the same action — and never on media details, otherwise
+      // the "View photo" link in a comment notification would subscribe to album
+      // updates nobody requested. The repository excludes unverified identities.
       if (query.data.cursor === undefined) {
         if (request.commenterId !== null) {
           context.subscriptions.subscribe(request.commenterId, albumId);
         }
-        // Même geste, même condition — mais inconditionnel sur l'identité, là
-        // où l'abonnement exige un commentateur vérifié : on compte des
-        // visites, pas des abonnés (D260809h).
+        // Same action and condition, but independent of identity where subscription
+        // requires a verified commenter: this counts visits, not subscribers
+        // (D260809h).
         context.visits.recordAlbumOpen(albumId, request.user!.username, request.sessionId!);
       }
 
@@ -105,21 +103,20 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:albumId/items/:mediaId', async (request, reply) => {
       const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
       if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
       const detail = context.media.getDetail(albumId, mediaId);
       if (!detail) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
-      // Après le 404, jamais avant : compter l'ouverture d'un identifiant
-      // inventé ferait des visites que personne n'a faites.
+      // After the 404 check, never before: counting an invented identifier as opened
+      // would create visits nobody made.
       context.visits.recordPhotoOpen(albumId, request.user!.username, request.sessionId!);
 
-      // Le compteur voyage avec le détail : la visionneuse l'affiche sur son
-      // onglet sans avoir à charger un fil que la plupart des visiteurs
-      // n'ouvriront pas.
+      // The count travels with details: the viewer displays it on its tab without
+      // loading a thread that most visitors will not open.
       const media: MediaDetail = {
         ...detail,
         commentCount: context.comments.countFor(albumId, mediaId),

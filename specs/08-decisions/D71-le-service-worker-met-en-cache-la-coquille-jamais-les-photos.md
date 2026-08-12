@@ -1,59 +1,54 @@
-# D71 — Le service worker met en cache la coquille, jamais les photos
+# D71 — The service worker caches the shell, never the photos
 
-**Contexte.** L'application se consulte dans un onglet : il faut retenir l'URL,
-la retaper, et la barre du navigateur mange une bande d'un écran de téléphone.
-On veut qu'un proche pose l'icône sur son écran d'accueil et ouvre les photos
-comme n'importe quelle autre application. Rendre installable oblige à déclarer
-un service worker — et un service worker, une fois là, invite à mettre les
-albums hors-ligne.
+**Context.** The application is viewed in a tab: its URL must be remembered and
+retyped, while the browser bar consumes part of a phone screen. A relative should
+be able to place its icon on their home screen and open photos like any other
+application. Making it installable requires declaring a service worker — and
+once a service worker exists, it invites making albums available offline.
 
-**Choix.** Il met en cache l'HTML, le JS et le CSS, et **rien d'autre**.
-`/api/…`, les requêtes non-GET et les autres origines passent au réseau sans
-qu'il les intercepte. Les photos restent servies par le réseau, avec le cache
-HTTP privé que le serveur pose déjà sur les dérivés
-(`private, max-age=31536000, immutable`).
+**Choice.** It caches HTML, JS, and CSS, and **nothing else**. `/api/…`, non-GET
+requests, and other origins go to the network without being intercepted. Photos
+remain served over the network, with the private HTTP cache the server already
+sets on derivatives (`private, max-age=31536000, immutable`).
 
-**Écarté.** Mettre les albums hors-ligne. Trois raisons, dans cet ordre. Le
-cloisonnement d'abord : un cache applicatif n'est indexé par rien — ni par la
-session, ni par le cookie — là où le cache HTTP l'est par la valeur du cookie.
-Sur le téléphone d'un foyer où deux comptes se succèdent, le second rouvrirait
-une photo d'un album qu'il n'a jamais eu le droit de voir, sans qu'aucune
-requête n'atteigne `authorize()`. Le quota ensuite : un album de vacances pèse
-plus que ce qu'un navigateur mobile accorde à une origine. L'éviction enfin :
-quand le quota est atteint, le navigateur vide le cache **en entier**, coquille
-comprise — l'application deviendrait moins fiable hors-ligne à mesure qu'on lui
-demanderait d'en faire plus.
+**Rejected.** Making albums available offline. Three reasons, in this order.
+First, partitioning: an application cache is indexed by nothing — neither session
+nor cookie — whereas the HTTP cache is indexed by the cookie value. On a family
+phone where two accounts are used in succession, the second would reopen a photo
+from an album they had never had the right to see, without any request reaching
+`authorize()`. Next, quota: a holiday album weighs more than a mobile browser
+allows one origin. Finally, eviction: when the quota is reached, the browser
+clears the cache **entirely**, including the shell — the application would become
+less reliable offline as it was asked to do more.
 
-Écarté aussi : Workbox. Trois règles tiennent en quatre-vingts lignes lisibles,
-là où un générateur ajouterait une dépendance de build, un fichier généré à ne
-pas relire, et une couche à comprendre pour le prochain qui reprend le code.
-Ce dépôt écrit déjà lui-même son dotenv et son throttle.
+Also rejected: Workbox. Three rules fit in eighty readable lines, whereas a
+generator would add a build dependency, a generated file nobody rereads, and a
+layer for the next maintainer to understand. This repository already writes its
+own dotenv and throttle.
 
-Écarté enfin : `skipWaiting()`. Remplacer le service worker à chaud fait
-demander à un onglet ouvert des bundles que le déploiement vient de supprimer,
-en pleine session. La nouvelle version prend la main au lancement suivant, ce
-qui est très exactement le comportement qu'on attend d'une application posée sur
-un écran d'accueil.
+Finally rejected: `skipWaiting()`. Replacing the service worker while live makes
+an open tab request bundles the deployment has just removed, in mid-session. The
+new version takes control at the next launch, exactly the expected behaviour for
+an application placed on a home screen.
 
-**Conséquences.** Hors-ligne, l'application s'ouvre et affiche sa coquille ;
-les albums, eux, ne chargent pas. C'est assumé : le repli utile n'est pas de
-consulter ses photos dans le métro, c'est que l'icône ne mène pas à une page
-d'erreur du navigateur quand le réseau vacille.
+**Consequences.** Offline, the application opens and displays its shell; albums
+do not load. This is accepted: the useful fallback is not viewing photos on the
+underground, but ensuring the icon does not lead to a browser error page when the
+network falters.
 
-Concrètement, ce qui s'affiche alors est **l'écran de connexion** : `RequireAuth`
-ne distingue pas un `useMe()` en échec réseau d'une session absente, et redirige
-vers `/login` dans les deux cas. Ce n'est pas satisfaisant, mais c'est le
-comportement existant et il ne dépend pas du service worker — le corriger
-demanderait de séparer « pas connecté » de « serveur injoignable » dans toute
-l'application, ce qui n'est pas le sujet ici.
+In concrete terms, what appears then is **the login screen**: `RequireAuth` does
+not distinguish a network failure in `useMe()` from an absent session, and
+redirects to `/login` in both cases. This is unsatisfactory, but it is existing
+behaviour and does not depend on the service worker — fixing it would require
+separating "not logged in" from "server unreachable" throughout the application,
+which is not the subject here.
 
-Le cache d'assets réclame une purge à l'activation, sans quoi il grossit d'un
-build à chaque déploiement, indéfiniment — les noms portent un hash, rien
-n'écrase jamais rien.
+The asset cache requires purging on activation, otherwise it grows by one build
+with every deployment indefinitely — names carry a hash, so nothing ever
+overwrites anything.
 
-**Le piège iOS**, qui n'a rien à voir avec le cache et qu'on découvrira
-autrement à l'usage : une application posée sur l'écran d'accueil a son
-**propre** stockage de cookies, séparé de celui de Safari. Le premier
-lancement redemande donc une connexion, même si l'on venait de se connecter
-dans le navigateur. Une fois, pour l'année que dure la session — mais il faut
-le savoir pour ne pas le prendre pour une régression.
+**The iOS trap**, unrelated to caching and otherwise discovered in use: an
+application placed on the home screen has its **own** cookie storage, separate
+from Safari's. Its first launch therefore requests login again even if the user
+has just logged in through the browser. Once, for the year-long session — but it
+must be known so it is not mistaken for a regression.

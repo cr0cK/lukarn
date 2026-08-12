@@ -2,12 +2,11 @@ import { useEffect, useRef } from 'react';
 import { isTyping } from './typing';
 
 /**
- * Raccourci global à une touche. Ignoré pendant la saisie et lorsqu'un
- * modificateur est enfoncé, pour ne jamais recouvrir un raccourci navigateur.
+ * One-key global shortcut. Ignored while typing and when a modifier is pressed,
+ * so it never overrides a browser shortcut.
  */
 export function useShortcut(key: string, handler: () => void, enabled = true): void {
-  // Le handler est lu au moment de l'événement : pas besoin de réattacher
-  // l'écouteur à chaque rendu.
+  // Read the handler at event time, avoiding listener reattachment on every render.
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 

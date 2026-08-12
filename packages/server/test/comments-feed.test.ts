@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS, type Comment, type CommentsFeedPage } from '@gdv/shared';
+import { ALL_ALBUMS, type Comment, type CommentsFeedPage } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -13,19 +13,19 @@ import { Mailer, type MailMessage } from '../src/mail.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Fil d'activité : ce qu'un visiteur voit des derniers commentaires, tous
- * albums et toutes photos confondus.
+ * Activity feed: what a visitor sees of the latest comments across all albums
+ * and photos.
  *
- * L'invariant qui prime est le cloisonnement. Cette route est le premier
- * endroit de l'application qui rend, en une réponse, des messages venus
- * d'albums différents : une erreur de portée n'y produit pas une page vide mais
- * une fuite, et rien dans l'affichage ne la signalerait — la conversation d'un
- * album qu'on n'a pas s'y lit comme les autres.
+ * Isolation is the primary invariant. This route is the first place in the
+ * application to return messages from different albums in a single response:
+ * a scoping error produces a leak rather than an empty page, and nothing in the
+ * display would reveal it — a conversation from an inaccessible album looks
+ * like any other.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
 const silencieux = { info: () => {}, warn: () => {}, debug: () => {} };
-const root = mkdtempSync(join(tmpdir(), 'gdv-feed-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-feed-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -69,10 +69,10 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
-  assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
+  assert.ok(cookie, 'session cookie missing');
+  return `nonni_session=${cookie.value}`;
 }
 
 async function identify(cookie: string, email: string, displayName: string): Promise<void> {
@@ -87,9 +87,9 @@ async function identify(cookie: string, email: string, displayName: string): Pro
   await context.mailer.drain();
 
   const message = envoyes.at(-1);
-  assert.ok(message, 'aucun code envoyé');
+  assert.ok(message, 'no code sent');
   const code = /\b(\d{6})\b/.exec(message.text)?.[1];
-  assert.ok(code, 'code introuvable');
+  assert.ok(code, 'code not found');
 
   const verified = await server.inject({
     method: 'POST',
@@ -116,7 +116,7 @@ async function post(
   return response.json<Comment>();
 }
 
-/** Interroge le fil, comme le fait le tiroir d'activité. */
+/** Queries the feed as the activity drawer does. */
 async function feed(
   cookie: string,
   query: Record<string, string | number> = {},
@@ -166,8 +166,8 @@ before(async () => {
     folderId: 'folder-prive',
     recursive: true,
   });
-  // Un album dont l'identifiant est le segment de la route : c'est le cas qui
-  // dirait si la table de routage laissait `/:albumId` capter `/feed`.
+  // An album whose identifier is the route segment: this reveals whether the
+  // routing table lets `/:albumId` capture `/feed`.
   context.config.createAlbum({
     id: 'feed',
     title: 'Piège',
@@ -187,8 +187,8 @@ before(async () => {
     admin: false,
     albums: ['vacances'],
   });
-  // Sans aucun album : la liste vide est le cas où un `IN ()` oublié rendrait
-  // tout le corpus au lieu de rien.
+  // With no albums, an empty list is the case where a forgotten `IN ()` would
+  // return the entire corpus instead of nothing.
   context.config.createUser({
     username: 'voisin',
     passwordHash: hash,
@@ -226,23 +226,23 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('cloisonnement du fil d’activité', () => {
-  it('n’expose jamais un commentaire d’un album non attribué', async () => {
+describe('activity feed isolation', () => {
+  it('never exposes a comment from an unassigned album', async () => {
     const page = await feed(familleCookie);
 
-    assert.ok(page.comments.length > 0, 'le fil est vide alors que l’album partagé est commenté');
+    assert.ok(page.comments.length > 0, 'the feed is empty despite comments on the shared album');
     assert.ok(
       page.comments.every((comment) => comment.albumId === 'vacances'),
-      'un commentaire d’un album non attribué est passé dans le fil',
+      'a comment from an unassigned album entered the feed',
     );
   });
 
-  it('rend une page vide à un compte sans album, et non tout le corpus', async () => {
+  it('returns an empty page to an account without albums, not the whole corpus', async () => {
     const page = await feed(voisinCookie);
     assert.deepEqual(page, { comments: [], nextCursor: null });
   });
 
-  it('répond 404 sur un album non attribué, comme sur un album inexistant', async () => {
+  it('returns 404 for an unassigned album as it does for a missing album', async () => {
     const interdit = await server.inject({
       method: 'GET',
       url: '/api/comments/feed?album=prive',
@@ -256,25 +256,25 @@ describe('cloisonnement du fil d’activité', () => {
 
     assert.equal(interdit.statusCode, 404);
     assert.equal(inexistant.statusCode, 404);
-    // Indistinguables : sonder des identifiants ne doit rien apprendre (D12).
+    // Indistinguishable: probing identifiers must reveal nothing (D12).
     assert.deepEqual(interdit.json(), inexistant.json());
   });
 
-  it('refuse un fil anonyme', async () => {
+  it('rejects an anonymous feed', async () => {
     const response = await server.inject({ method: 'GET', url: '/api/comments/feed' });
     assert.equal(response.statusCode, 401);
   });
 
-  it('reste atteignable même si un album porte « feed » pour identifiant', async () => {
+  it('remains reachable when an album uses "feed" as its identifier', async () => {
     const page = await feed(adminCookie, { limit: 1 });
-    // Les compteurs de l'album homonyme rendraient `{ counts: {} }`, sans
-    // `comments` : c'est cette confusion-là qu'on écarte.
-    assert.ok(Array.isArray(page.comments), 'le fil a été capté par la route d’album');
+    // The counters for the namesake album would return `{ counts: {} }`, without
+    // `comments`: this is the ambiguity being prevented.
+    assert.ok(Array.isArray(page.comments), 'the feed was captured by the album route');
   });
 });
 
-describe('contenu d’une entrée du fil', () => {
-  it('situe le message dans son album et sur sa photo', async () => {
+describe('feed entry content', () => {
+  it('places the message in its album and on its photo', async () => {
     const page = await feed(adminCookie, { limit: 1, album: 'vacances' });
     const dernier = page.comments[0];
 
@@ -284,48 +284,48 @@ describe('contenu d’une entrée du fil', () => {
     assert.equal(dernier.albumTitle, 'Vacances');
     assert.equal(dernier.mediaId, 'plage');
     assert.equal(dernier.mediaName, 'plage.jpg');
-    // Huit caractères de l'empreinte, comme partout ailleurs : la vignette est
-    // servie en `immutable`, son URL doit changer avec le contenu du fichier.
+    // Eight hash characters, as everywhere else: the thumbnail is served as
+    // `immutable`, so its URL must change with the file content.
     assert.equal(dernier.mediaVersion, 'abcdef01');
   });
 
-  it('garde le message d’une photo disparue de l’index, sans vignette', async () => {
+  it('keeps the message for a photo missing from the index, without a thumbnail', async () => {
     const commentaire = await post(adminCookie, 'vacances', 'ephemere', 'Elle existait ce jour-là');
-    // La photo quitte Drive : la synchronisation suivante la retire de l'index.
+    // The photo leaves Drive: the next synchronisation removes it from the index.
     context.media.upsertMany([media('vacances', 'plage')], '2025-02-01T00:00:00.000Z');
     assert.equal(context.media.deleteStale('vacances', '2025-02-01T00:00:00.000Z') > 0, true);
 
     const page = await feed(adminCookie, { album: 'vacances' });
     const orphelin = page.comments.find((entry) => entry.id === commentaire.id);
 
-    assert.ok(orphelin, 'le commentaire a disparu avec sa photo');
+    assert.ok(orphelin, 'the comment disappeared with its photo');
     assert.equal(orphelin.mediaName, null);
     assert.equal(orphelin.mediaVersion, null);
     assert.equal(orphelin.body, 'Elle existait ce jour-là');
   });
 });
 
-describe('pagination du fil d’activité', () => {
-  it('ne recouvre ni ne saute une ligne entre deux pages consécutives', async () => {
+describe('activity feed pagination', () => {
+  it('neither overlaps nor skips a row between consecutive pages', async () => {
     const complet = await feed(adminCookie);
-    assert.ok(complet.comments.length >= 4, 'trop peu de messages pour éprouver la pagination');
+    assert.ok(complet.comments.length >= 4, 'too few messages to exercise pagination');
 
     const premiere = await feed(adminCookie, { limit: 2 });
     assert.equal(premiere.comments.length, 2);
-    assert.ok(premiere.nextCursor, 'la première page annonce la fin alors qu’il reste des lignes');
+    assert.ok(premiere.nextCursor, 'the first page marks the end while rows remain');
 
     const seconde = await feed(adminCookie, { limit: 2, cursor: premiere.nextCursor });
     const ids = [...premiere.comments, ...seconde.comments].map((entry) => entry.id);
 
-    assert.equal(new Set(ids).size, ids.length, 'un commentaire apparaît sur les deux pages');
+    assert.equal(new Set(ids).size, ids.length, 'a comment appears on both pages');
     assert.deepEqual(
       ids,
       complet.comments.slice(0, 4).map((entry) => entry.id),
-      'les deux pages ne reconstituent pas le début du fil complet',
+      'the two pages do not reconstruct the start of the full feed',
     );
   });
 
-  it('rend le plus récent en premier', async () => {
+  it('returns the most recent first', async () => {
     const page = await feed(adminCookie);
     const ids = page.comments.map((entry) => entry.id);
     assert.deepEqual(
@@ -334,14 +334,14 @@ describe('pagination du fil d’activité', () => {
     );
   });
 
-  it('annonce la fin par un curseur nul', async () => {
+  it('marks the end with a null cursor', async () => {
     const page = await feed(adminCookie, { limit: 100 });
     assert.equal(page.nextCursor, null);
   });
 });
 
-describe('modération et fil d’activité', () => {
-  it('retire du fil un commentaire masqué', async () => {
+describe('moderation and activity feed', () => {
+  it('removes a hidden comment from the feed', async () => {
     const cible = await post(adminCookie, 'vacances', 'plage', 'À masquer');
 
     const avant = await feed(adminCookie, { album: 'vacances' });
@@ -357,7 +357,7 @@ describe('modération et fil d’activité', () => {
     const apres = await feed(adminCookie, { album: 'vacances' });
     assert.ok(
       !apres.comments.some((entry) => entry.id === cible.id),
-      'un commentaire masqué reste lisible depuis le fil',
+      'a hidden comment remains visible in the feed',
     );
   });
 });

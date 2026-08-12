@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
-import { isThumbSize } from '@gdv/shared';
+import { isThumbSize } from '@nonni/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
@@ -16,37 +16,33 @@ import { playableKey } from '../media/transcode.js';
 import { requireAuth } from '../plugins/auth.js';
 
 /**
- * Les dérivés se comportent comme immuables : l'ETag intègre l'empreinte du
- * contenu, si bien qu'une nouvelle version du fichier produit un nouvel ETag et
- * force le rechargement, même à URL identique.
+ * Derivatives behave as immutable: the ETag includes the content fingerprint, so a
+ * new file version produces a new ETag and forces a reload even at the same URL.
  */
 const IMMUTABLE = 'private, max-age=31536000, immutable';
 
 /**
- * Le cache privé du navigateur est indexé par la valeur du cookie, donc par la
- * session. Sans cela, deux comptes qui se succèdent dans le même profil —
- * l'ordinateur du salon — partagent les mêmes entrées : le second rouvre depuis
- * l'historique une photo d'un album qu'il n'a jamais eu le droit de voir, sans
- * qu'aucune requête n'atteigne `authorize()`.
+ * The browser's private cache is keyed by cookie value and therefore by session.
+ * Without this, two accounts used successively in the same profile — the living-room
+ * computer — share entries: the second reopens from history a photo in an album they
+ * were never allowed to view, without any request reaching `authorize()`.
  *
- * Ce que cet en-tête ne règle pas, et qu'aucun autre ne réglerait : celui à qui
- * on retire un album garde dans son cache les photos qu'il avait déjà chargées.
- * Il les a eues — on n'efface pas ce qui est déjà sur son disque (D43).
+ * What this header does not solve, and no other could: someone whose album access is
+ * revoked retains photos already loaded in their cache. They had those photos — data
+ * already on their disk cannot be erased (D43).
  */
 const VARY_COOKIE = 'Cookie';
 
 const thumbQuery = z.object({ s: z.coerce.number().int().default(320) });
 
 /**
- * Ramène une plage demandée aux bornes réelles du fichier.
+ * Clamps a requested range to the file's actual bounds.
  *
- * `null` quand elle n'a aucune intersection avec lui : c'est le 416, que le
- * lecteur provoque couramment en changeant de vidéo pendant qu'une requête est
- * en vol.
+ * `null` when it does not intersect the file: this becomes the 416 commonly caused
+ * when the player changes videos while a request is in flight.
  */
 function resolveRange(range: ByteRange, size: number): { start: number; end: number } | null {
-  // Plage suffixe (`bytes=-500`) : les derniers octets, jamais plus que le
-  // fichier entier.
+  // Suffix range (`bytes=-500`): the final bytes, never more than the whole file.
   if (range.start === null) {
     const length = Math.min(range.end ?? 0, size);
     return length > 0 ? { start: size - length, end: size - 1 } : null;
@@ -57,12 +53,12 @@ function resolveRange(range: ByteRange, size: number): { start: number; end: num
 
 export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
   /**
-   * Contrôle d'accès de tout le pipeline média. Un même fichier Drive peut
-   * être indexé dans plusieurs albums (dossiers imbriqués) : l'accès est
-   * accordé dès qu'un de ces albums est visible par l'utilisateur.
+   * Access control for the entire media pipeline. The same Drive file may be indexed
+   * in several albums (nested folders): access is granted as soon as one of those
+   * albums is visible to the user.
    *
-   * En cas de refus, la réponse est un 404 et non un 403 — l'existence d'un
-   * média dans un album non autorisé ne doit pas être observable.
+   * A refusal returns 404 rather than 403 — the existence of media in an unauthorised
+   * album must not be observable.
    */
   async function authorize(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
     const { mediaId } = request.params as { mediaId: string };
@@ -72,7 +68,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     const allowed = albums.some((albumId) => context.canSee(username, albumId));
 
     if (!allowed) {
-      await reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+      await reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       return false;
     }
     return true;
@@ -87,32 +83,32 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
 
     const meta = context.media.getFileMeta(mediaId);
     if (!meta) {
-      return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+      return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
     }
     /**
-     * Une vidéo a une vignette — l'aperçu que Drive produit de sa première
-     * seconde (D92) —, mais rien de plus : `full` et `hd` agrandiraient une
-     * image de quelques centaines de pixels, et l'aperçu manque sur les
-     * fichiers que Drive n'a pas su lire ou pas encore traités.
+     * A video has a thumbnail — the preview Drive produces from its first second
+     * (D92) — but nothing larger: `full` and `hd` would enlarge an image only a few
+     * hundred pixels wide, and files Drive could not read or has not yet processed
+     * have no preview.
      */
     if (meta.kind === 'video') {
       if (variant.kind !== 'thumb') {
         return reply
           .code(415)
-          .send({ error: 'unsupported', message: 'Rendu plein écran indisponible pour une vidéo' });
+          .send({ error: 'unsupported', message: 'No fullscreen render for a video' });
       }
       if (!meta.hasThumbnail) {
         return reply
           .code(415)
-          .send({ error: 'unsupported', message: 'Aucun aperçu disponible pour cette vidéo' });
+          .send({ error: 'unsupported', message: 'No preview available for this video' });
       }
     }
 
     /**
-     * L'ETag distingue les variantes — sans quoi `full` et `hd` partageraient
-     * la même entrée de cache navigateur et le zoom resservirait l'image basse
-     * résolution — et la version du contenu, puisque Drive garde le même
-     * identifiant quand un fichier est remplacé par une nouvelle version.
+     * The ETag distinguishes variants — otherwise `full` and `hd` would share the
+     * same browser-cache entry and zoom would serve the low-resolution image again —
+     * and content versions, because Drive keeps the same identifier when a file is
+     * replaced by a new version.
      */
     const version = meta.md5 ?? 'v0';
     const etag = `"${mediaId}-${version}-${variant.kind === 'thumb' ? variant.size : variant.kind}"`;
@@ -145,9 +141,9 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       await authorize(request, reply);
     });
 
-    // Drive indisponible : message explicite plutôt qu'un 500 opaque répété sur
-    // chaque vignette de la grille. Les deux cas sont distingués pour que
-    // l'administrateur sache s'il doit connecter ou reconnecter.
+    // Drive unavailable: an explicit message rather than an opaque 500 repeated for
+    // every grid thumbnail. The two cases are distinguished so the administrator
+    // knows whether to connect or reconnect.
     app.setErrorHandler(async (error, _request, reply) => {
       if (error instanceof DriveRevokedError) {
         return reply.code(503).send({ error: 'drive_revoked', message: error.message });
@@ -155,10 +151,10 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (error instanceof DriveNotConnectedError) {
         return reply.code(503).send({ error: 'drive_disconnected', message: error.message });
       }
-      // Délai dépassé ou débit limité : **transitoire**. Le 503 et le
-      // `Retry-After` disent au client de revenir, là où le 500 par défaut lui
-      // ferait abandonner la vignette jusqu'au prochain rechargement de page.
-      // Aucun en-tête de cache n'est posé : un échec ne doit jamais être gardé.
+      // Timeout or rate limit: **transient**. The 503 and `Retry-After` tell the client
+      // to return, whereas a default 500 would make it abandon the thumbnail until
+      // the next page reload. No cache header is set because a failure must never be
+      // retained.
       if (error instanceof DriveUnavailableError) {
         return reply
           .code(503)
@@ -174,7 +170,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (!isThumbSize(size)) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Taille de vignette non supportée' });
+          .send({ error: 'bad_request', message: 'Unsupported thumbnail size' });
       }
       return serveRendered(request, reply, { kind: 'thumb', size });
     });
@@ -184,37 +180,36 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     );
 
     /**
-     * Rendu haute résolution, demandé uniquement au premier zoom. Plafonné à
-     * 4096 px, il pèse une fraction de l'original — quelques centaines de Ko
-     * là où un JPEG d'appareil dépasse souvent 9 Mo — tout en montrant les
-     * mêmes détails à l'écran.
+     * High-resolution render requested only on first zoom. Capped at 4096 px, it
+     * weighs a fraction of the original — a few hundred KB where a camera JPEG often
+     * exceeds 9 MB — while showing the same on-screen detail.
      */
     app.get('/:mediaId/hd', async (request, reply) =>
       serveRendered(request, reply, { kind: 'hd' }),
     );
 
     /**
-     * Version transcodée, servie depuis le magasin disque (D260809b).
+     * Transcoded version served from the disk store (D260809b).
      *
-     * **404 quand elle n'est pas là**, et c'est le contrat avec le front : la
-     * préparation est anticipée et lente, une vidéo arrivée il y a dix minutes
-     * n'a pas encore la sienne. Le front en fait « en préparation », avec le
-     * bouton Télécharger de D79 — pas une erreur.
+     * **404 when it is absent**, as agreed with the front end: preparation is
+     * anticipatory and slow, so a video added ten minutes ago may not have one yet.
+     * The front end presents this as "being prepared", with the Download button from
+     * D79 — not an error.
      *
-     * Le fichier est local, contrairement à `/original` : les plages sont donc
-     * résolues ici plutôt que relayées à Drive.
+     * Unlike `/original`, the file is local, so ranges are resolved here rather than
+     * relayed to Drive.
      */
     app.get('/:mediaId/playable', async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
       const meta = context.media.getFileMeta(mediaId);
       if (!meta) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
       const path = context.videoStore.hit(playableKey(mediaId, meta.md5));
-      // L'inventaire peut désigner un fichier qui n'est plus là — éviction
-      // concurrente, ménage manuel sur le volume : `stat` tranche avant que les
-      // en-têtes soient posés, là où `createReadStream` échouerait après.
+      // The inventory may reference a file that is no longer present — concurrent
+      // eviction or manual volume cleanup. `stat` settles this before headers are set,
+      // whereas `createReadStream` would fail afterwards.
       const size = path
         ? await stat(path).then(
             (info) => info.size,
@@ -224,7 +219,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (path === null || size === null) {
         return reply
           .code(404)
-          .send({ error: 'not_ready', message: 'Version lisible pas encore préparée' });
+          .send({ error: 'not_ready', message: 'Playable version not prepared yet' });
       }
 
       const etag = `"${mediaId}-${meta.md5 ?? 'v0'}-playable"`;
@@ -238,9 +233,9 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       reply
-        // Toujours du MP4 H.264, quel que soit le conteneur d'origine : c'est ce
-        // que ffmpeg vient de produire, et annoncer `video/quicktime` ferait
-        // douter un lecteur qui reçoit pourtant exactement ce qu'il sait lire.
+        // Always H.264 MP4 regardless of the original container: this is what ffmpeg
+        // just produced, and advertising `video/quicktime` would confuse a player
+        // receiving exactly what it knows how to play.
         .header('Content-Type', 'video/mp4')
         .header('Accept-Ranges', 'bytes')
         .header('Cache-Control', IMMUTABLE)
@@ -265,16 +260,15 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Fichier d'origine, non transformé. Sert au téléchargement (`?download=1`)
-     * et à la lecture vidéo — dans les deux cas le contenu transite depuis
-     * Drive sans passer par le cache disque, qui n'a pas vocation à héberger
-     * des originaux de plusieurs dizaines de Mo.
+     * Original, unmodified file. Used for downloads (`?download=1`) and video playback —
+     * in both cases content streams from Drive without passing through the disk cache,
+     * which is not intended to host originals tens of megabytes in size.
      */
     app.get('/:mediaId/original', async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
       const meta = context.media.getFileMeta(mediaId);
       if (!meta) {
-        return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
       }
 
       const wantsDownload = (request.query as { download?: string }).download === '1';
@@ -285,11 +279,10 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       );
 
       /**
-       * Plage insatisfaisable : le lecteur a demandé un offset au-delà de la
-       * fin du fichier, ce qui arrive couramment en changeant de vidéo pendant
-       * qu'une requête est en vol. La réponse est relayée telle quelle — son
-       * `Content-Range` porte la taille réelle du fichier, ce qui dit au
-       * lecteur où recommencer là où un 500 ne lui apprendrait rien.
+       * Unsatisfiable range: the player requested an offset beyond the file's end,
+       * which commonly happens when changing videos while a request is in flight.
+       * The response is relayed as-is — its `Content-Range` carries the actual file
+       * size, telling the player where to restart where a 500 would teach it nothing.
        */
       if (upstream.status === 416) {
         const contentRange = upstream.headers.get('content-range');
@@ -299,19 +292,19 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       if (!upstream.body) {
-        return reply.code(502).send({ error: 'bad_gateway', message: 'Réponse Drive vide' });
+        return reply.code(502).send({ error: 'bad_gateway', message: 'Empty response from Drive' });
       }
 
       reply
         .code(upstream.status === 206 ? 206 : 200)
         .header('Content-Type', meta.mimeType)
-        // Indispensable pour que le navigateur autorise le seek dans la vidéo.
+        // Required for the browser to allow seeking within the video.
         .header('Accept-Ranges', 'bytes')
         .header('Cache-Control', IMMUTABLE)
         .header('Vary', VARY_COOKIE);
 
-      // Content-Length / Content-Range viennent de Drive : les recopier tels
-      // quels garantit qu'ils décrivent exactement le corps relayé.
+      // Content-Length / Content-Range come from Drive: copying them verbatim ensures
+      // they describe the relayed body exactly.
       for (const header of ['content-length', 'content-range'] as const) {
         const value = upstream.headers.get(header);
         if (value) reply.header(header, value);

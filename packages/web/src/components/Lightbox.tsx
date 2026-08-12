@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaItem } from '@gdv/shared';
+import type { AlbumDay, MediaItem } from '@nonni/shared';
 import {
   type ReactElement,
   type ReactNode,
@@ -24,75 +24,72 @@ import { SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
 
 /**
- * Photos préchargées dans le sens de navigation, et dans l'autre. Le total
- * reste modeste : chaque rendu absent du cache serveur coûte le téléchargement
- * de l'original depuis Drive, et saturer la file ralentirait la photo courante.
+ * Photos preloaded in the navigation direction and the other way. Keep the
+ * total modest: each render missing from the server cache requires downloading
+ * the original from Drive, and saturating the queue would slow the current photo.
  */
 const PRELOAD_AHEAD = 4;
 const PRELOAD_BEHIND = 1;
 
 /**
- * Délai entre deux essais, tant que la version préparée d'une vidéo n'est pas
- * là.
+ * Delay between attempts while a video's prepared version is unavailable.
  *
- * Vingt secondes, parce qu'un transcodage dure des minutes et que la file est
- * servie une vidéo à la fois : sonder plus souvent ne la ferait pas arriver
- * plus tôt, et sonder plus rarement laisserait quelqu'un devant un message
- * alors que le fichier est prêt depuis une minute.
+ * Twenty seconds because transcoding takes minutes and the queue handles one
+ * video at a time: polling more often would not make it arrive sooner, while
+ * polling less often would leave someone facing a message after the file had
+ * been ready for a minute.
  */
 const PLAYABLE_RETRY_MS = 20_000;
 
 interface LightboxProps {
   albumId: string;
   /**
-   * Titre de l'album, en tête du fil de contexte. La visionneuse est une vue à
-   * part entière — on y arrive par un lien partagé, sans avoir vu la grille —
-   * et sans lui la photo ne dit plus de quel album elle vient.
+   * Album title at the start of the context trail. The viewer is a view in its
+   * own right — a shared link can lead there without showing the grid — and
+   * without the title the photo no longer says which album it comes from.
    */
   albumTitle: string;
   items: MediaItem[];
   index: number;
   /**
-   * Total de l'album, et non `items.length` : la liste grandit page après page,
-   * si bien qu'une progression calculée dessus reculait à chaque chargement —
-   * « 40 / 50 » redevenait « 40 / 100 » sous les yeux de qui feuillette.
+   * Album total, not `items.length`: the list grows page by page, so progress
+   * calculated from it moved backwards on each load — "40 / 50" became
+   * "40 / 100" while someone was browsing.
    */
   total: number;
-  /** Journées annotées, pour porter le contexte du jour jusque dans l'image. */
+  /** Annotated days, carrying day context into the image. */
   days: Map<string, AlbumDay>;
-  /** Couverture actuelle de l'album, pour signaler la photo qui l'est déjà. */
+  /** Current album cover, to identify the photo already used as such. */
   coverId: string | null;
   /**
-   * Administrateur : lui seul peut désigner la couverture et décrire une photo.
-   * Un booléen pour les deux — ce sont les deux affordances que la visionneuse
-   * réserve à l'administrateur, et deux drapeaux toujours égaux finiraient par
-   * ne plus l'être.
+   * Administrator: only they can set the cover and describe a photo. One boolean
+   * for both — these are the two affordances the viewer reserves for the
+   * administrator, and two always-equal flags would eventually diverge.
    */
   isAdmin: boolean;
   /**
-   * Onglet ouvert du panneau latéral, `null` s'il est fermé. Piloté par la page
-   * parce qu'il vit dans l'URL : c'est ce qui permet d'arriver directement sur
-   * une conversation depuis le tiroir d'activité ou depuis un email.
+   * Open side-panel tab, `null` when closed. Controlled by the page because it
+   * lives in the URL, allowing direct arrival at a conversation from the
+   * activity drawer or an email.
    */
   panel: PanelTab | null;
   onPanelChange: (panel: PanelTab | null) => void;
   onIndexChange: (index: number) => void;
   onClose: () => void;
-  /** Appelé près de la fin de la liste, pour charger la page suivante. */
+  /** Called near the end of the list to load the next page. */
   onNeedMore: () => void;
 }
 
 /**
- * Visionneuse plein écran.
+ * Full-screen viewer.
  *
- * Se pilote entièrement au clavier ; la souris n'est qu'un raccourci. Les
- * médias voisins sont préchargés pour que ←/→ enchaîne sans écran noir, et le
- * défilement de la page est gelé le temps de l'ouverture.
+ * Fully keyboard-controlled; the mouse is only a shortcut. Adjacent media are
+ * preloaded so ←/→ continues without a black screen, and page scrolling is
+ * frozen while open.
  *
- * L'en-tête **situe** la photo — l'album, la journée, le lieu ; le bandeau bas
- * (`MediaCaption`) **la raconte** — ce que quelqu'un a écrit sur elle et sur son
- * jour, à toutes les largeurs. L'horodatage exact, lui, reste dans le panneau
- * `i` où il vivait déjà, avec le nom du fichier.
+ * The header **locates** the photo — album, day and place; the bottom bar
+ * (`MediaCaption`) **tells its story** — what someone wrote about it and its day,
+ * at every width. The exact timestamp remains in the `i` panel with the filename.
  */
 export function Lightbox({
   albumId,
@@ -112,43 +109,40 @@ export function Lightbox({
   const item = items[index];
   const isVideo = item?.kind === 'video';
   /**
-   * D'où vient la vidéo. Le codec réel tranche : ce navigateur-ci prend la
-   * version préparée par le serveur, un autre qui décode l'HEVC — Safari, un
-   * iPhone — garde l'original en pleine qualité (D260809b).
+   * Video source. The actual codec decides: this browser uses the server-prepared
+   * version, while another that decodes HEVC — Safari or an iPhone — keeps the
+   * full-quality original (D260809b).
    *
-   * La détection de D98 reste le filet derrière ce choix, et pas seulement pour
-   * les vidéos sans codec connu : un navigateur qui annonce savoir lire un
-   * format sans y parvenir tombe encore dessus.
+   * Detection from D98 remains the safeguard behind this choice, not only for
+   * videos without a known codec: a browser claiming to support a format but
+   * failing to play it still reaches that path.
    */
   const transcoded =
     isVideo && chooseVideoSource(item?.videoCodec ?? null, canPlayVideoType) === 'transcoded';
   const [zoomed, setZoomed] = useState(false);
   /**
-   * Lecture impossible. Propre à la vidéo : la photo tient son propre échec
-   * dans `ZoomableImage`. Sans cet état, une vidéo qui n'arrive pas — Drive
-   * indisponible, jeton révoqué, ou codec que le navigateur ne décode pas —
-   * laisserait le `poster` affiché, ce qui se lit comme une image figée (D79,
-   * D98).
+   * Playback failure. Video-specific: photos hold their own failure in
+   * `ZoomableImage`. Without this state, a video that never arrives — Drive
+   * unavailable, token revoked or an unsupported codec — would leave the
+   * `poster` displayed, which looks like a frozen image (D79, D98).
    */
   const [failed, setFailed] = useState(false);
-  /** Sens du dernier déplacement : oriente le préchargement. */
+  /** Direction of the latest move, used to orient preloading. */
   const [direction, setDirection] = useState(1);
   /**
-   * Bandeau de légende. Le masquage est un réglage d'affichage, retenu d'une
-   * visite à l'autre ; l'ouverture de l'éditeur est pilotée ici parce que c'est
-   * la visionneuse qui écoute `Échap`.
+   * Caption bar. Hiding is a display setting retained between visits; editor
+   * opening is controlled here because the viewer listens for `Escape`.
    */
   const { hidden: captionHidden, setHidden: setCaptionHidden } = useCaptionHidden();
   const [editingCaption, setEditingCaption] = useState(false);
   /**
-   * Habillage escamoté : plus d'en-tête ni de flèches, rien que la photo.
+   * Hidden chrome: no header or arrows, only the photo.
    *
-   * Distinct du masquage de la légende, et les deux portées ne se recouvrent
-   * pas : `l` range le texte du bas, `h` range tout ce que la visionneuse pose
-   * sur l'image. L'état ne suit pas la photo, on le règle une fois pour
-   * regarder — mais il n'est pas retenu d'une visite à l'autre, contrairement à
-   * la légende : une visionneuse qui rouvrirait sans un seul repère laisserait
-   * qui a oublié le raccourci devant une image muette.
+   * Separate from hiding the caption, with non-overlapping scopes: `l` puts away
+   * bottom text, while `h` hides everything the viewer places over the image.
+   * The state follows the viewing session rather than the photo, but unlike the
+   * caption it is not retained between visits: reopening without a single cue
+   * would leave anyone who forgot the shortcut facing a silent image.
    */
   const [bare, setBare] = useState(false);
 
@@ -156,31 +150,28 @@ export function Lightbox({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   /**
-   * Chargé dès qu'une photo est affichée, et non plus au seul moment où le
-   * panneau s'ouvre.
+   * Loaded as soon as a photo is displayed, not only when the panel opens.
    *
-   * Deux raisons. Le panneau « Infos » s'ouvre alors sur ses lignes déjà là,
-   * au lieu d'un indicateur d'attente sur un aller-retour que rien n'avait
-   * anticipé. Et c'est cette requête qui compte la photo comme ouverte
-   * (D260809h) : conditionnée au panneau, la télémétrie aurait mesuré les
-   * panneaux ouverts en croyant compter les photos regardées.
+   * Two reasons. The "Info" panel then opens with its rows already present
+   * instead of a spinner for an unanticipated round trip. This request also
+   * counts the photo as opened (D260809h): tied to the panel, telemetry would
+   * measure opened panels while claiming to count viewed photos.
    *
-   * Le coût est d'une requête par photo réellement affichée — le préchargement
-   * asymétrique de D21 porte sur les images, pas sur le détail, donc les
-   * voisines ne sont pas demandées. À côté du rendu de l'image elle-même, deux
-   * lectures indexées ne pèsent rien.
+   * The cost is one request per photo actually displayed — D21's asymmetric
+   * preloading covers images, not detail, so neighbours are not requested.
+   * Beside rendering the image itself, two indexed reads are negligible.
    */
   const { data: detail } = useMediaDetail(albumId, item ? item.id : null);
 
   const setCover = useUpdateAlbum();
-  // L'échec ne doit pas suivre jusqu'à la photo suivante : le message y
-  // désignerait une image qui n'a rien à voir avec l'action qui a échoué.
+  // Do not carry failure to the next photo: the message would refer to an image
+  // unrelated to the action that failed.
   const resetCoverError = setCover.reset;
   useEffect(() => resetCoverError(), [index, resetCoverError]);
 
   /**
-   * Pastille du bouton « Commentaires ». Le total vient d'un appel unique pour
-   * l'album, le repère de lecture du navigateur : voir `lib/seenComments.ts`.
+   * "Comments" button badge. The total comes from one album-wide call and the
+   * browser reading marker: see `lib/seenComments.ts`.
    */
   const { data: commentCounts } = useCommentCounts(albumId);
   const { seen, markSeen } = useSeenComments(albumId);
@@ -190,19 +181,17 @@ export function Lightbox({
   const unread = unreadCount(commentTotal, mediaId ? seen[mediaId] : 0);
 
   /**
-   * Guette la version préparée, et rend la main au lecteur dès qu'elle arrive.
+   * Watches for the prepared version and restores the player when it arrives.
    *
-   * Sans ça, le message d'attente resterait jusqu'à ce qu'on rouvre la photo.
-   * La préparation est anticipée et finit toujours par arriver (D260809b), mais
-   * rien ne le dirait à qui est resté devant — et c'est précisément la personne
-   * qui voulait regarder cette vidéo-là.
+   * Without this, the waiting message would remain until the photo was reopened.
+   * Preparation is anticipated and eventually completes (D260809b), but nobody
+   * waiting there would know — precisely the person who wanted this video.
    *
-   * **Un octet demandé en `Range`**, plutôt qu'un rechargement de la balise :
-   * celle-ci clignoterait à chaque essai — poster, puis message — pour la même
-   * réponse. Le 404 apparaît dans la console dans les deux cas, le navigateur
-   * journalisant toute requête refusée ; c'est le seul bruit, et il dit
-   * exactement ce qui se passe. Repasser `failed` à faux remonte la balise,
-   * dont l'`autoPlay` enchaîne tout seul.
+   * Request **one byte with `Range`** instead of reloading the element: it would
+   * flash on every attempt — poster, then message — for the same response. The
+   * 404 appears in the console either way because browsers log every rejected
+   * request; that is the only noise and says exactly what is happening. Setting
+   * `failed` back to false remounts the element, whose `autoPlay` continues alone.
    */
   useEffect(() => {
     if (!mediaId || !transcoded || !failed) return;
@@ -218,9 +207,9 @@ export function Lightbox({
         });
         if (response.ok) setFailed(false);
       } catch {
-        // Essai interrompu, ou réseau coupé : le suivant retentera. Un échec de
-        // sondage ne doit surtout pas remplacer le message par une erreur —
-        // il n'y a rien de cassé, la vidéo n'est simplement pas encore prête.
+        // Interrupted attempt or disconnected network: the next one retries. A
+        // polling failure must not replace the message with an error — nothing
+        // is broken; the video is simply not ready yet.
       }
     };
 
@@ -232,21 +221,19 @@ export function Lightbox({
   }, [mediaId, mediaVersion, transcoded, failed]);
 
   useEffect(() => {
-    // Tant que les compteurs ne sont pas là, tout vaut zéro : marquer ici
-    // effacerait le repère de lecture pour le reconstituer faux à l'arrivée
-    // des vrais totaux.
+    // Until counts arrive everything is zero: marking here would clear the
+    // reading marker before reconstructing it incorrectly when real totals arrive.
     if (!mediaId || commentCounts === undefined) return;
 
-    // Le panneau ouvert vaut lecture. Et un total retombé **sous** le repère
-    // — suppression, masquage par la modération — doit le faire redescendre :
-    // sinon le message suivant resterait invisible tant qu'il n'aurait pas
-    // comblé l'écart.
+    // An open panel counts as read. A total falling **below** the marker — through
+    // deletion or moderation — must lower it too, or the next message would
+    // remain invisible until it filled the gap.
     if (panel === 'comments' || commentTotal < (seen[mediaId] ?? 0)) {
       markSeen(mediaId, commentTotal);
     }
   }, [panel, mediaId, commentTotal, commentCounts, seen, markSeen]);
 
-  /** Ouvre le panneau sur cet onglet, ou le referme s'il y est déjà. */
+  /** Opens the panel on this tab, or closes it when already there. */
   const togglePanel = useCallback(
     (tab: PanelTab) => {
       onPanelChange(panel === tab ? null : tab);
@@ -255,19 +242,17 @@ export function Lightbox({
   );
 
   /**
-   * Un clic hors du panneau le referme, comme n'importe quel tiroir.
+   * A click outside closes the panel like any drawer.
    *
-   * Posé en **capture** et non en bulle : le basculement du zoom se décide au
-   * relâchement du pointeur dans `ZoomableImage`, plus bas dans l'arbre. En
-   * bulle, les deux gestes se déclencheraient ensemble — le panneau se fermerait
-   * *et* la photo zoomerait. Interrompre dès la descente laisse le premier clic
-   * à la fermeture ; le suivant zoome normalement.
+   * Handle it during **capture**, not bubbling: `ZoomableImage` lower in the tree
+   * decides zoom toggling on pointer release. During bubbling, both actions would
+   * run together — the panel would close *and* the photo would zoom. Stopping on
+   * pointer down reserves the first click for closing; the next zooms normally.
    *
-   * Les boutons de cette zone sont exclus. Les flèches de navigation y vivent,
-   * et les traiter comme un « dehors » refermerait le panneau à chaque photo :
-   * précisément ce qu'on venait de corriger en lui donnant sa propre colonne.
-   * Le repère de position du zoom porte `role="img"` et s'exclut de même — il ne
-   * peut pas se défendre lui-même, une capture s'exécutant avant sa cible.
+   * Exclude buttons in this area. Navigation arrows live there, and treating
+   * them as "outside" would close the panel on every photo, precisely what its
+   * own column fixed. The zoom position indicator has `role="img"` and is also
+   * excluded — it cannot defend itself because capture runs before its target.
    */
   const dismissPanelOnOutsideClick = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -281,17 +266,16 @@ export function Lightbox({
 
   const goTo = useCallback(
     (next: number) => {
-      // `Début` sur le premier média, `Fin` sur le dernier, une flèche à une
-      // extrémité : l'index demandé est déjà celui affiché. Sans ce garde-fou,
-      // `setFailed(false)` effacerait le message d'une vidéo illisible sans que
-      // rien ne le remplace — aucun élément n'est remonté, donc aucun événement
-      // de lecture ne viendra le rétablir.
+      // `Home` on the first media, `End` on the last or an arrow at an edge: the
+      // requested index is already displayed. Without this guard, `setFailed(false)`
+      // would clear an unplayable video's message with no replacement — nothing
+      // remounts, so no playback event will restore it.
       if (next < 0 || next >= items.length || next === index) return;
       setDirection(next >= index ? 1 : -1);
       setZoomed(false);
       setFailed(false);
-      // Un éditeur resté ouvert écrirait sur la photo qu'on vient de quitter :
-      // le champ est remonté avec la nouvelle photo, pas le geste en cours.
+      // An editor left open would write to the photo just left: the field remounts
+      // with the new photo, but the current action does not.
       setEditingCaption(false);
       onIndexChange(next);
     },
@@ -299,18 +283,18 @@ export function Lightbox({
   );
 
   /**
-   * Une vidéo dont ce navigateur ne décode pas la piste image. Le son sort, le
-   * lecteur se croit en marche, et rien ne signale l'échec : c'est le cas d'un
-   * HEVC dans Chromium, où le conteneur et la piste audio sont valides. La
-   * constater demande de regarder ce qui est arrivé plutôt que d'écouter une
-   * erreur qui ne viendra pas (D98).
+   * A video whose image track this browser cannot decode. Sound plays, the
+   * player believes it is running and nothing reports failure: this happens with
+   * HEVC in Chromium, where the container and audio track are valid. Detecting
+   * it requires inspecting what arrived rather than awaiting an error that will
+   * never come (D98).
    */
   const checkVideoTrack = useCallback((event: SyntheticEvent<HTMLVideoElement>) => {
     if (event.currentTarget.videoWidth === 0) setFailed(true);
   }, []);
 
-  // Désactivé pendant le zoom, où le doigt sert à se déplacer dans l'image, et
-  // sur une vidéo, où il traverserait les contrôles natifs de lecture.
+  // Disable while zoomed, when a finger pans the image, and on videos, where it
+  // would cross native playback controls.
   const swipe = useSwipeTrack({
     index,
     count: items.length,
@@ -318,8 +302,8 @@ export function Lightbox({
     enabled: !zoomed && !isVideo,
   });
 
-  // Gèle le défilement de la page derrière la visionneuse — sans ça, la molette
-  // ferait défiler la grille sous l'image.
+  // Freeze page scrolling behind the viewer — otherwise the wheel would scroll
+  // the grid beneath the image.
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -328,8 +312,8 @@ export function Lightbox({
     };
   }, []);
 
-  // Le conteneur prend le focus à l'ouverture pour recevoir les touches, et le
-  // rend à la grille à la fermeture.
+  // The container takes focus on opening to receive keys and returns it to the
+  // grid on closing.
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     containerRef.current?.focus();
@@ -337,17 +321,16 @@ export function Lightbox({
   }, []);
 
   /**
-   * Précharge les photos voisines pour que ←/→ enchaîne sans attente.
+   * Preloads adjacent photos so ←/→ continues without waiting.
    *
-   * Le préchargement est asymétrique et suit le sens de navigation : quelqu'un
-   * qui avance continue presque toujours d'avancer. À nombre de requêtes égal,
-   * pousser plus loin devant que derrière rend le parcours nettement plus
-   * fluide, ce qui compte d'autant plus que chaque première génération demande
-   * au serveur de télécharger l'original depuis Drive.
+   * Preloading is asymmetric and follows navigation direction: someone moving
+   * forwards almost always continues forwards. With the same number of requests,
+   * looking further ahead than behind makes browsing much smoother, especially
+   * because every initial render requires the server to download the original
+   * from Drive.
    *
-   * L'ordre des requêtes est délibéré : les plus proches d'abord, pour que la
-   * photo immédiatement suivante ne soit pas mise en file derrière des voisines
-   * plus lointaines.
+   * Request order is deliberate: nearest first, so the immediately adjacent
+   * photo is not queued behind more distant neighbours.
    */
   useEffect(() => {
     const ahead = direction >= 0 ? PRELOAD_AHEAD : PRELOAD_BEHIND;
@@ -369,8 +352,8 @@ export function Lightbox({
       });
 
     return () => {
-      // Navigation rapide : abandonner les téléchargements devenus inutiles
-      // libère les connexions pour la photo réellement affichée.
+      // During fast navigation, abort obsolete downloads to free connections for
+      // the photo actually displayed.
       for (const image of pending) image.src = '';
     };
   }, [index, items, direction]);
@@ -384,15 +367,15 @@ export function Lightbox({
       void document.exitFullscreen();
     } else {
       void containerRef.current?.requestFullscreen?.().catch(() => {
-        /* refusé par le navigateur : la visionneuse reste en plein écran CSS */
+        /* Rejected by the browser: the viewer remains in CSS full-screen mode. */
       });
     }
   }, []);
 
   const download = useCallback(() => {
     if (!item) return;
-    // Ancre synthétique plutôt que window.open : évite le blocage de popup et
-    // laisse le navigateur gérer la barre de téléchargement.
+    // Use a synthetic anchor rather than window.open to avoid popup blocking and
+    // let the browser manage download progress.
     const anchor = document.createElement('a');
     anchor.href = mediaUrl.download(item.id, item.version);
     anchor.download = item.name;
@@ -403,23 +386,21 @@ export function Lightbox({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      // Laisse passer les raccourcis navigateur (Ctrl+R, Cmd+W…).
+      // Allow browser shortcuts (Ctrl+R, Cmd+W…).
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
-      // Le panneau des commentaires contient un champ de saisie. Sans ce garde,
-      // écrire « info » ferait défiler les photos et ouvrirait le panneau sous
-      // les doigts. Échap reste écouté : c'est la sortie de secours, et elle
-      // doit marcher aussi depuis le champ.
+      // The comments panel contains an input. Without this guard, typing "info"
+      // would move through photos and open the panel beneath the fingers. Escape
+      // remains active: it is the exit and must also work from the field.
       if (event.key !== 'Escape' && isTyping(event.target)) return;
 
       switch (event.key) {
         case 'Escape':
           event.preventDefault();
-          // Échap défait la dernière couche ouverte plutôt que de tout fermer :
-          // sortir de l'éditeur, puis du zoom, puis du panneau, puis de la
-          // visionneuse. L'éditeur passe en premier parce que c'est la seule
-          // couche qui contienne une saisie en cours : sans lui, Échap depuis le
-          // champ fermerait la visionneuse par-dessus un texte non enregistré.
+          // Escape unwinds the latest open layer instead of closing everything:
+          // leave the editor, then zoom, then the panel, then the viewer. The editor
+          // comes first because it alone may contain active input: otherwise Escape
+          // from the field would close the viewer over unsaved text.
           if (editingCaption) setEditingCaption(false);
           else if (zoomed) setZoomed(false);
           else if (panel) onPanelChange(null);
@@ -477,7 +458,7 @@ export function Lightbox({
           setBare((value) => !value);
           break;
         case ' ': {
-          // L'espace fait défiler la page par défaut : ici il pilote la vidéo.
+          // Space scrolls the page by default; here it controls the video.
           event.preventDefault();
           const video = videoRef.current;
           if (video) void (video.paused ? video.play() : video.pause());
@@ -508,31 +489,30 @@ export function Lightbox({
 
   if (!item) return null;
 
-  // Les mêmes fonctions que la grille, délibérément : une visionneuse qui
-  // calculerait son libellé de jour de son côté finirait par annoncer une autre
-  // date que l'en-tête de section d'où l'on vient de cliquer.
+  // Deliberately use the same functions as the grid: a viewer computing its own
+  // day label would eventually announce a different date from the section
+  // header that was clicked.
   const day = days.get(dayKey(item.takenAt));
   const dayPlace = placeLabelOf(day);
-  // `total` peut être en retard sur la liste — un album synchronisé pendant
-  // qu'on le feuillette : le compteur ne doit jamais afficher « 60 / 50 ».
+  // `total` may lag behind the list when an album syncs while being browsed: the
+  // counter must never show "60 / 50".
   const count = Math.max(total, items.length);
 
-  // Les actions sont décrites une fois et rendues de deux façons : en icônes
-  // alignées à partir de `sm`, en lignes libellées dans le menu en dessous. Les
-  // dupliquer laisserait un raccourci, une icône ou un état actif se désaccorder
-  // entre les deux.
+  // Describe actions once and render them in two ways: aligned icons from `sm`
+  // upwards, labelled rows in the menu below. Duplicating them would eventually
+  // leave a shortcut, icon or active state inconsistent between the two.
   const isCover = item.id === coverId;
 
   const actions: {
     label: string;
-    /** Absent pour une action sans raccourci : voir « Définir comme couverture ». */
+    /** Absent for an action without a shortcut: see "Set as cover". */
     shortcut?: string;
     icon: ReactNode;
     active?: boolean;
     onSelect: () => void;
   }[] = [
     {
-      label: 'Informations',
+      label: 'Information',
       shortcut: 'i',
       active: panel === 'info',
       onSelect: () => togglePanel('info'),
@@ -547,7 +527,7 @@ export function Lightbox({
       ? []
       : [
           {
-            label: zoomed ? 'Revenir à la taille écran' : 'Zoomer',
+            label: zoomed ? 'Back to screen size' : 'Zoom in',
             shortcut: 'z',
             active: zoomed,
             onSelect: () => setZoomed((value) => !value),
@@ -560,22 +540,22 @@ export function Lightbox({
           },
         ]),
     {
-      label: "Télécharger l'original",
+      label: 'Download the original',
       shortcut: 'd',
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
     {
-      label: 'Plein écran',
+      label: 'Fullscreen',
       shortcut: 'f',
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
     {
-      label: "Masquer l'habillage",
+      label: 'Hide the chrome',
       shortcut: 'h',
       onSelect: () => setBare(true),
-      // Un œil barré : c'est ce qui disparaît, pas ce qui reste.
+      // Use a crossed-out eye: it represents what disappears, not what remains.
       icon: (
         <>
           <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
@@ -584,23 +564,21 @@ export function Lightbox({
         </>
       ),
     },
-    // Réservée à l'administrateur, et jamais sur une vidéo : son aperçu
-    // appartient à Drive (D92), qui peut ne pas en avoir — et la couverture
-    // est la seule image dont l'absence se voit depuis la page d'accueil,
-    // sans repli.
+    // Reserved for administrators and never available on video: its preview
+    // belongs to Drive (D92), which may not provide one — and the cover is the
+    // only image whose absence is visible from the home page without a fallback.
     //
-    // Pas de raccourci clavier, contrairement aux quatre autres : c'est un
-    // geste qu'on fait une fois par album, pas une commande de lecture, et
-    // l'aide-mémoire `?` s'adresse à tout le monde.
+    // Unlike the other four, no keyboard shortcut: this is done once per album,
+    // not a playback command, and the `?` reference is for everyone.
     //
-    // Aucun raccourci non plus pour revenir à l'automatique — c'est le bouton
-    // de /admin. Reconfirmer la photo déjà en couverture n'est donc pas un
-    // clic perdu : elle l'était peut-être par défaut, et cela la fixe, si bien
-    // que la prochaine photo synchronisée ne la remplacera plus.
+    // No shortcut for returning to automatic selection either — that is the
+    // /admin button. Reconfirming the current cover is therefore not a wasted
+    // click: it may have been selected by default, and this pins it so the next
+    // synchronised photo no longer replaces it.
     ...(isAdmin && !isVideo
       ? [
           {
-            label: isCover ? "Couverture de l'album" : 'Définir comme couverture',
+            label: isCover ? 'Album cover' : 'Set as cover',
             active: isCover,
             onSelect: () => setCover.mutate({ albumId, body: { coverId: item.id } }),
             icon: (
@@ -623,31 +601,29 @@ export function Lightbox({
       aria-label={item.name}
       className="fixed inset-0 z-50 flex bg-ink-950 outline-none"
     >
-      {/* Colonne de la photo. Elle **rétrécit** quand le panneau entre dans le
-          flux (à partir de `md`) : posé en surimpression, celui-ci recouvrait la
-          flèche « Suivant », si bien qu'il fallait le refermer à chaque photo.
-          `min-w-0` est indispensable — sans lui, le contenu impose sa largeur
-          et c'est le panneau qui déborde de l'écran. */}
+      {/* Photo column. It **shrinks** when the panel enters the flow (from
+          `md`): as an overlay, the panel covered the "Next" arrow and had to be
+          closed for every photo. `min-w-0` is essential — without it, content
+          imposes its width and the panel overflows the screen. */}
       <div className="relative flex min-w-0 flex-1 flex-col">
-        {/* Le voile est ce qui rend l'en-tête lisible : sans lui, du texte clair
-            sur un ciel surexposé ne se lit pas du tout. Il couvre deux lignes —
-            album et jour, puis le lieu —, symétrique de celui du bandeau bas, et
-            sa base transparente garde la transition douce plutôt que de poser
-            une barre noire au bord de la photo. */}
+        {/* The veil makes the header readable: without it, light text over an
+            overexposed sky cannot be read. It covers two lines — album and day,
+            then place — mirroring the bottom bar, and its transparent base keeps
+            the transition soft instead of placing a black band over the photo. */}
         <header
           hidden={bare}
           className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8"
         >
-          {/* Collée au bord haut, comme une barre de chargement : elle reste
-              lisible sans mordre sur la photo. Plus bas, elle traversait
-              l'image — un trait de couleur au milieu d'un cadrage. */}
+          {/* Attach it to the top edge like a loading bar: it remains readable
+              without cutting into the photo. Lower down, it crossed the image —
+              a coloured line through the middle of a composition. */}
           <div
             className="h-0.5 w-full bg-white/15"
             role="progressbar"
             aria-valuenow={index + 1}
             aria-valuemin={1}
             aria-valuemax={count}
-            aria-label="Progression dans l'album"
+            aria-label="Progress through the album"
           >
             <div
               className="h-full bg-accent transition-[width] duration-200"
@@ -655,26 +631,25 @@ export function Lightbox({
             />
           </div>
 
-          {/* Le rapport chiffré **sous la barre**, centré, et non plus dans la
-              rangée du titre. Deux façons de dire la même chose logeaient à
-              deux bouts de l'écran : le trait disait la position sans dire de
-              combien, le chiffre disait le compte sans dire où. Réunis, chacun
-              lit l'autre, et la rangée du haut rend au titre la largeur qu'un
-              « 900 / 900 » lui prenait en permanence.
+          {/* Put the numeric ratio **beneath the bar**, centred, rather than in
+              the title row. Two ways of saying the same thing used to sit at
+              opposite ends of the screen: the line showed position without the
+              total, while the number gave the count without the position.
+              Together they explain one another, and the top row returns to the
+              title the width permanently occupied by "900 / 900".
 
-              **Hors du flux**, et c'est le point : dans le flux il ajoutait
-              quinze pixels à un en-tête posé sur la photo, soit exactement ce
-              qu'on venait de lui faire rendre. Il tient dans la bande que le
-              dégradé occupait déjà sans rien y mettre, entre le trait et la
-              première ligne de titre — un bandeau qui coûte de la hauteur pour
-              dire « 25 sur 900 » n'en vaut pas le prix.
+              **Outside the flow**, crucially: in the flow it added fifteen pixels
+              to a header over the photo, exactly what had just been reclaimed.
+              It fits in the band already occupied by the gradient between the
+              line and first title row — a bar that costs height to say "25 of
+              900" is not worth it.
 
-              `pointer-events-none` : posé au-dessus de la rangée, il capterait
-              sinon un clic destiné au titre.
+              `pointer-events-none`: placed above the row, it would otherwise
+              capture a click meant for the title.
 
-              `aria-hidden` : la barre porte déjà `aria-valuenow` et
-              `aria-valuemax`, un lecteur d'écran annoncerait deux fois la même
-              chose à deux mots d'intervalle. */}
+              `aria-hidden`: the bar already carries `aria-valuenow` and
+              `aria-valuemax`; a screen reader would announce the same thing
+              twice a few words apart. */}
           <p
             aria-hidden="true"
             className="pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] leading-none text-ink-400 tabular-nums"
@@ -682,22 +657,21 @@ export function Lightbox({
             {index + 1} / {count}
           </p>
 
-          {/* `items-start` : tout se cale sur la **première ligne** de texte.
-              Les retraits hauts ci-dessous sont calculés pour que le titre et le
-              centre des icônes tombent sur la même horizontale — 6 px sous `sm`
-              (bouton de 32), 8 px au-delà (36).
+          {/* `items-start`: everything aligns with the **first line** of text.
+              Top offsets below place the title and icon centres on the same
+              horizontal — 6 px below `sm` (32 px button), 8 px above it (36 px).
 
-              Les marges latérales tiennent compte de l'encoche : en paysage, sur
-              un iPhone posé sur l'écran d'accueil, elle recouvre exactement le
-              bouton Fermer. Elles sont posées ici et non sur l'en-tête, pour que
-              le dégradé et la barre de progression aillent bien jusqu'au bord. */}
+              Side margins account for the notch: in landscape on an iPhone
+              launched from the home screen, it covers the Close button exactly.
+              Apply them here rather than to the header so the gradient and
+              progress bar still reach the edge. */}
           <div className="flex items-start gap-1 py-2 pl-[calc(0.5rem_+_env(safe-area-inset-left))] pr-[calc(0.5rem_+_env(safe-area-inset-right))] sm:gap-2 sm:py-3 sm:pl-[calc(1rem_+_env(safe-area-inset-left))] sm:pr-[calc(1rem_+_env(safe-area-inset-right))]">
             <button
               type="button"
               onClick={onClose}
               className="shrink-0 rounded-full p-1.5 text-ink-200 transition-colors sm:p-2 hover:bg-white/10 hover:text-white"
-              aria-label="Fermer (Échap)"
-              title="Fermer (Échap)"
+              aria-label="Close (Esc)"
+              title="Close (Esc)"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -711,19 +685,18 @@ export function Lightbox({
             </button>
 
             <div className="min-w-0 flex-1 pt-1.5 sm:pt-2">
-              {/* L'en-tête **situe** la photo, le bandeau bas **la raconte** :
-                  ici l'album et la journée, là ce que quelqu'un a écrit. Le nom
-                  de fichier occupait cette place en gras sans rien apprendre à
-                  personne — `IMG_0004.jpg` ne dit ni où ni quand — et masquait
-                  l'album, seule information qui manque vraiment quand on arrive
-                  par un lien partagé. Il reste en tête du panneau `i`, auprès
-                  des données techniques qu'il accompagne.
+              {/* The header **locates** the photo, while the bottom bar **tells
+                  its story**: album and day here, what somebody wrote there. The
+                  filename occupied this space in bold without telling anyone
+                  anything — `IMG_0004.jpg` says neither where nor when — and hid
+                  the album, the only information truly missing on arrival from a
+                  shared link. It remains atop the `i` panel with its technical data.
 
-                  C'est le **titre d'album** qui se tronque, jamais la date : sur
-                  un téléphone, la ligne ne tient pas les deux, et un
-                  « Allemagne – Forêt Noire · Aujo… » sacrifie précisément ce
-                  qu'on cherchait à donner. D'où le `truncate` sur le seul album
-                  et un `shrink-0` sur la date, qui est courte et bornée. */}
+                  Truncate the **album title**, never the date: on a phone, the
+                  line cannot fit both, and "Germany – Black Forest · Toda…"
+                  sacrifices precisely the information being provided. Hence
+                  `truncate` only on the album and `shrink-0` on the short,
+                  bounded date. */}
               <p className="flex min-w-0 items-baseline text-sm leading-5 font-semibold text-ink-100">
                 {albumTitle && (
                   <>
@@ -733,10 +706,9 @@ export function Lightbox({
                 )}
                 <span className="shrink-0">{dayLabel(dayKey(item.takenAt))}</span>
               </p>
-              {/* Le lieu prend sa propre ligne, la première étant désormais
-                  pleine. La note du jour, elle, est descendue dans le bandeau
-                  bas (D84) : elle est écrite à la main, comme la description de
-                  la photo, et les deux se lisent ensemble ou pas du tout. */}
+              {/* Place gets its own line now that the first is full. The day note
+                  moved to the bottom bar (D84): it is written by hand like the
+                  photo description, and both are read together or not at all. */}
               {dayPlace && (
                 <p className="truncate text-xs leading-4 text-ink-300" title={dayPlace}>
                   {dayPlace}
@@ -744,10 +716,9 @@ export function Lightbox({
               )}
             </div>
 
-            {/* Les commentaires restent **toujours** en ligne, contrairement aux
-                autres actions : leur icône porte la pastille des non-lus, et
-                c'est le seul signe qu'une photo a été commentée. Rangée dans le
-                menu, elle ne signalerait plus rien. */}
+            {/* Comments **always** remain inline, unlike other actions: their icon
+                carries the unread badge, the only sign that a photo has comments.
+                Inside the menu, it would no longer signal anything. */}
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
               <IconButton
                 label={commentsLabel(commentTotal, unread)}
@@ -758,7 +729,7 @@ export function Lightbox({
                 <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
               </IconButton>
 
-              {/* À partir de `sm`, la place est là : tout s'aligne. */}
+              {/* From `sm` upwards there is room, so everything aligns. */}
               <div className="hidden items-center gap-0.5 sm:flex sm:gap-2">
                 {actions.map((action) => (
                   <IconButton
@@ -774,12 +745,12 @@ export function Lightbox({
 
               <div className="sm:hidden">
                 <ActionMenu
-                  label="Actions de la photo"
+                  label="Photo actions"
                   triggerClassName="rounded-full p-1.5 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
                   groupes={[
                     actions.map((action) => ({
-                      // Sans le raccourci clavier : ce menu ne s'ouvre qu'au
-                      // toucher, où « (i) » n'est qu'une syllabe de plus à lire.
+                      // Omit the keyboard shortcut: this menu opens only by touch,
+                      // where "(i)" is only another syllable to read.
                       label: action.label,
                       icon: (
                         <svg
@@ -802,24 +773,22 @@ export function Lightbox({
           </div>
         </header>
 
-        {/* `touch-action` décide si les deux gestes au doigt de cette colonne
-            aboutissent : le balayage d'une photo à l'autre, et le déplacement
-            dans une photo agrandie. Avec la valeur par défaut `auto`, le
-            navigateur garde le droit de lire le glissement comme un
-            défilement ; il tranche en ce sens au bout d'un ou deux
-            `pointermove`, émet `pointercancel`, et les deux gestes meurent en
-            route — ce qui se ressent comme une lenteur plutôt que comme une
-            interruption. `setPointerCapture` n'y change rien : il garantit de
-            recevoir la suite des événements, pas que le geste survive.
+        {/* `touch-action` decides whether both finger gestures in this column
+            complete: swiping between photos and panning an enlarged photo. With
+            the default `auto`, the browser may interpret a drag as scrolling; it
+            decides after one or two `pointermove` events, emits `pointercancel`
+            and kills both gestures midway — which feels like lag rather than an
+            interruption. `setPointerCapture` changes nothing: it guarantees the
+            remaining events, not the survival of the gesture.
 
-            `pinch-zoom` plutôt que `none` : il ne retire que le défilement à un
-            doigt, et laisse le pincement à deux doigts, qui reste le geste de
-            zoom spontané sur téléphone. Posé ici plutôt que dans
-            `ZoomableImage` parce que la règle est la même pour toute la colonne
-            et qu'un descendant en hérite par intersection (D77).
+            Use `pinch-zoom` rather than `none`: it removes only one-finger
+            scrolling and preserves the two-finger pinch, still the natural zoom
+            gesture on a phone. Set it here rather than in `ZoomableImage` because
+            the rule is shared by the whole column and descendants inherit it by
+            intersection (D77).
 
-            Sauf sur une vidéo, dont les contrôles natifs de lecture ont leur
-            propre traitement du toucher — le balayage y est déjà désactivé. */}
+            Except on video, whose native playback controls handle touch
+            themselves — swiping is already disabled there. */}
         <div
           className={`relative flex flex-1 items-center justify-center overflow-hidden ${
             isVideo ? '' : 'touch-pinch-zoom'
@@ -827,15 +796,13 @@ export function Lightbox({
           {...swipe.handlers}
           onPointerDownCapture={dismissPanelOnOutsideClick}
         >
-          {/* Le rail : les trois photos se déplacent ensemble sous le doigt, et
-              c'est ce mouvement qui apprend le geste. Il ne porte rien d'autre
-              — ni flèches, ni légende, ni message d'erreur : ce qui appartient
-              à la visionneuse reste immobile pendant qu'on feuillette, comme
-              dans n'importe quelle visionneuse native (D260809e).
+          {/* The rail: three photos move together beneath the finger, and that
+              movement teaches the gesture. It carries nothing else — no arrows,
+              caption or error message: viewer chrome remains still while
+              browsing, as in any native viewer (D260809e).
 
-              Au repos, `offset` vaut zéro et la transition est coupée : la
-              transformation est alors sans effet, et l'arbre est exactement
-              celui qu'on avait avant le rail. */}
+              At rest, `offset` is zero and the transition is disabled: the
+              transform then has no effect and the tree is exactly as before the rail. */}
           <div
             className="absolute inset-0 flex items-center justify-center"
             style={{
@@ -845,37 +812,36 @@ export function Lightbox({
                 : 'none',
             }}
           >
-            {/* Montées le temps du geste seulement. Leur rendu vient du
-                préchargement des voisines, donc du cache navigateur : elles
-                apparaissent sans une requête de plus. Les garder en place hors
-                balayage ferait décoder deux images plein écran de plus pour
-                chaque photo regardée. */}
+            {/* Mount only for the duration of the gesture. Their render comes
+                from neighbour preloading and therefore the browser cache: they
+                appear without another request. Keeping them outside a swipe
+                would decode two more full-screen images per photo viewed. */}
             {swipe.active && <SwipeNeighbour item={items[index - 1]} side="left" />}
             {swipe.active && <SwipeNeighbour item={items[index + 1]} side="right" />}
 
             {isVideo && failed ? (
               <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
-                <p className="text-sm text-ink-300">Cette vidéo n'a pas pu être lue.</p>
-                {/* Le format en cause plutôt qu'un « une erreur est survenue » :
-                  c'est presque toujours un codec que ce navigateur ne décode
-                  pas (D79), et le fichier reste parfaitement lisible ailleurs.
-                  Sans le téléchargement, la vidéo serait simplement perdue.
+                <p className="text-sm text-ink-300">This video could not be played.</p>
+                {/* Name the format rather than saying "an error occurred": it is
+                  almost always a codec this browser cannot decode (D79), while
+                  the file remains perfectly playable elsewhere. Without the
+                  download, the video would simply be lost.
 
-                  Quand le codec est connu pour être illisible ici, on sait en
-                  plus qu'une version lisible est en route, et la visionneuse la
-                  guette : le message annonce donc ce qui va se passer, sans
-                  demander de revenir ni de recharger (D260809b). */}
+                  When the codec is known to be unsupported here, a playable
+                  version is also known to be on its way and the viewer watches
+                  for it: the message says what will happen without asking for a
+                  return or reload (D260809b). */}
                 <p className="text-xs text-ink-400">
                   {transcoded
-                    ? "Ce navigateur ne décode pas son format. Une version lisible est en cours de préparation sur le serveur : elle démarrera ici dès qu'elle sera prête. Le fichier d'origine reste téléchargeable."
-                    : "Son format n'est peut-être pas lisible par ce navigateur. Le fichier d'origine reste téléchargeable."}
+                    ? 'This browser does not decode its format. A playable version is being prepared on the server: it will start here as soon as it is ready. The original file stays downloadable.'
+                    : 'Its format may not be playable by this browser. The original file stays downloadable.'}
                 </p>
                 <button
                   type="button"
                   onClick={download}
                   className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
                 >
-                  Télécharger
+                  Download
                 </button>
               </div>
             ) : isVideo ? (
@@ -887,27 +853,27 @@ export function Lightbox({
                     ? mediaUrl.playable(item.id, item.version)
                     : mediaUrl.original(item.id, item.version)
                 }
-                // La même vignette que la grille, donc déjà en cache disque et
-                // souvent en cache navigateur : le rectangle noir de l'attente
-                // disparaît sans une requête de plus (D92).
+                // Use the same thumbnail as the grid, already in the disk cache
+                // and often the browser cache: the black waiting rectangle
+                // disappears without another request (D92).
                 poster={item.hasPreview ? mediaUrl.thumb(item.id, 1280, item.version) : undefined}
                 controls
                 autoPlay
                 playsInline
                 className="max-h-full max-w-full"
-                // À ce stade, une piste vidéo décodable a forcément livré une
-                // image : un `videoWidth` nul dit que le navigateur n'a gardé que
-                // le son. Il ne lève alors aucune erreur — conteneur et piste
-                // audio sont valides — si bien que `error` seul laisserait le
-                // `poster` en place, qu'on prendrait pour une image figée (D98).
+                // At this point a decodable video track must have produced a
+                // frame: zero `videoWidth` means the browser retained only sound.
+                // It raises no error — the container and audio track are valid —
+                // so `error` alone would leave the `poster` in place, looking like
+                // a frozen image (D98).
                 onLoadedData={checkVideoTrack}
                 onPlaying={checkVideoTrack}
                 onError={() => setFailed(true)}
               />
             ) : (
               <ZoomableImage
-                // Remonter le composant à chaque photo réinitialise zoom et cadrage
-                // sans avoir à les remettre à zéro à la main.
+                // Remounting the component for each photo resets zoom and framing
+                // without resetting them manually.
                 key={item.id}
                 src={mediaUrl.full(item.id, item.version)}
                 hdSrc={mediaUrl.hd(item.id, item.version)}
@@ -921,16 +887,16 @@ export function Lightbox({
             )}
           </div>
 
-          {/* Le seul retour possible une fois tout escamoté, et il doit se
-              trouver sans le chercher : au coin, à la place qu'occupaient les
-              actions. Sans lui, la sortie ne tiendrait qu'à `h` ou à `Échap`,
-              c'est-à-dire à rien pour qui touche l'écran. */}
+          {/* The only way back once everything is hidden, so it must be found
+              without searching: in the corner where the actions were. Without
+              it, exit would rely on `h` or `Escape`, offering nothing to anyone
+              touching the screen. */}
           {bare && (
             <button
               type="button"
               onClick={() => setBare(false)}
-              title="Afficher l'habillage (h)"
-              aria-label="Afficher l'habillage (h)"
+              title="Show the chrome (h)"
+              aria-label="Show the chrome (h)"
               className="absolute top-[calc(0.5rem_+_env(safe-area-inset-top))] right-[calc(0.5rem_+_env(safe-area-inset-right))] z-10 rounded-full bg-black/40 p-2 text-ink-200 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
             >
               <svg
@@ -947,44 +913,41 @@ export function Lightbox({
             </button>
           )}
 
-          {/* Une couverture refusée — session expirée, rôle retiré entre-temps —
-              doit se voir : le bouton reprend son état d'origine, et sans ce
-              message rien ne distinguerait l'échec de l'absence de clic. Il
-              part à la photo suivante, ou à la tentative suivante.
+          {/* A rejected cover change — expired session or role removed meanwhile
+              — must be visible: the button returns to its original state, and
+              without this message failure would look like no click. It disappears
+              on the next photo or attempt.
 
-              `bottom-28` et non `bottom-6` : le bandeau de légende occupe
-              désormais le bas de la colonne, et un message d'erreur posé
-              dessous serait recouvert par le texte qu'il doit interrompre. */}
+              Use `bottom-28`, not `bottom-6`: the caption bar now occupies the
+              bottom of the column, and an error message below it would be covered
+              by the text it is meant to interrupt. */}
           {setCover.isError && (
             <p
               role="alert"
               className="absolute inset-x-4 bottom-28 mx-auto max-w-md rounded-lg bg-red-950/90 px-3 py-2 text-center text-xs text-red-200 shadow-lg"
             >
-              {errorText(setCover.error, "La couverture n'a pas pu être enregistrée.")}
+              {errorText(setCover.error, 'The cover could not be saved.')}
             </p>
           )}
         </div>
 
-        {/* Sœurs de la colonne, et non de la zone du média : leur `top-1/2` se
-            calcule alors sur toute la hauteur de l'écran, qui ne bouge jamais.
-            Placées dans la zone du média, elles suivaient sa hauteur — celle-ci
-            rétrécit du bandeau de légende quand il entre dans le flux, sur une
-            vidéo, et de ce qu'il grandit quand il porte une description ou une
-            note de journée. Les flèches remontaient alors de quelques dizaines
-            de pixels, d'un média à l'autre et jusqu'au pli de la légende, ce qui
-            obligeait à repointer la souris à chaque fois.
+        {/* Siblings of the column rather than the media area, so their `top-1/2`
+            uses the full, unchanging screen height. Inside the media area they
+            followed its height — reduced by the caption bar when it enters the
+            flow on video, and increased when the bar carries a description or
+            day note. Arrows then moved by tens of pixels between media and as the
+            caption expanded, forcing the mouse to be repositioned each time.
 
-            Masquées pendant le zoom : le glisser sert alors à se déplacer dans
-            l'image, et les flèches tomberaient sous le curseur. Masquées aussi
-            quand l'habillage est escamoté — « rien que la photo » ne s'arrête
-            pas au texte. Les touches ←/→ et le balayage, eux, continuent : on
-            escamote ce qui se voit, pas ce qui se pilote. */}
+            Hide while zoomed: dragging then pans the image and arrows would fall
+            beneath the pointer. Also hide with the chrome — "only the photo"
+            does not stop at text. The ←/→ keys and swipe continue: hide what is
+            visible, not what is controlled. */}
         {!zoomed && !bare && (
           <NavButton
             side="left"
             disabled={index === 0}
             onClick={() => goTo(index - 1)}
-            label="Précédent (←)"
+            label="Previous (←)"
           />
         )}
         {!zoomed && !bare && (
@@ -992,25 +955,23 @@ export function Lightbox({
             side="right"
             disabled={index === items.length - 1}
             onClick={() => goTo(index + 1)}
-            label="Suivant (→)"
+            label="Next (→)"
           />
         )}
 
-        {/* Masqué pendant le zoom, comme les flèches de navigation : le doigt y
-            sert à se déplacer dans l'image, et le bandeau tomberait dessous.
+        {/* Hide while zoomed like navigation arrows: the finger pans the image
+            and the bar would fall beneath it.
 
-            `key` sur le média : le dépliement se remet à plat d'une photo à
-            l'autre, il répond à un texte précis et pas au suivant.
+            `key` on the media: expansion resets between photos because it relates
+            to specific text, not the next one.
 
-            Sur une vidéo, `overlay={false}` : le bandeau entre dans le flux et
-            la colonne prend d'autant — c'est le seul endroit où il pousse au
-            lieu de recouvrir, les contrôles natifs de lecture vivant au bas de
-            la balise.
+            On video, `overlay={false}`: the bar enters the flow and the column
+            loses that much space — the only place where it pushes instead of
+            overlaying, because native playback controls live at the element's bottom.
 
-            Escamoté aussi par `h`, et pas seulement replié comme le fait `l` :
-            « rien que la photo » ne s'arrête pas au haut de l'écran, et le
-            bouton « Afficher la légende » que `l` laisse en place est encore
-            quelque chose de posé dessus. */}
+            Also hidden by `h`, not merely collapsed like `l`: "only the photo"
+            does not stop at the top of the screen, and the "Show caption" button
+            left by `l` is still something overlaid on it. */}
         {!zoomed && !bare && (
           <MediaCaption
             key={item.id}
@@ -1045,17 +1006,16 @@ export function Lightbox({
 }
 
 /**
- * Photo voisine sur le rail, pendant un balayage.
+ * Adjacent photo on the rail during a swipe.
  *
- * Elle n'existe que pour être vue arriver : purement décorative, donc
- * `aria-hidden`, et sans le moindre gestionnaire — la vraie photo la remplacera
- * dans un instant, avec son zoom, sa légende et son panneau.
+ * It exists only to be seen arriving: purely decorative, therefore `aria-hidden`
+ * and without handlers — the real photo will replace it immediately with its
+ * zoom, caption and panel.
  *
- * Le même rendu `full` que la visionneuse, et non la vignette : c'est celui que
- * le préchargement des voisines vient de mettre en cache, si bien que le rail
- * ne déclenche aucune requête. Une vidéo n'a que son aperçu Drive à montrer
- * (D92), et quand elle n'en a pas, le rail glisse sur un vide — ce qui reste
- * juste : il n'y a rien à afficher de cette vidéo tant qu'elle n'est pas ouverte.
+ * Use the same `full` render as the viewer, not the thumbnail: neighbour
+ * preloading just cached it, so the rail triggers no request. A video has only
+ * its Drive preview to show (D92), and without one the rail slides over empty
+ * space — correctly, because there is nothing to display until the video opens.
  */
 function SwipeNeighbour({
   item,
@@ -1100,8 +1060,8 @@ function IconButton({
   label: string;
   onClick: () => void;
   active?: boolean;
-  /** Pastille superposée à l'icône. Elle doit rester `aria-hidden` : ce qu'elle
-      dit appartient à `label`, sinon un lecteur d'écran annonce un chiffre nu. */
+  /** Badge over the icon. It must remain `aria-hidden`: its information belongs
+      in `label`, or a screen reader announces a bare number. */
   badge?: React.ReactNode;
   children: React.ReactNode;
 }): ReactElement {
@@ -1112,8 +1072,8 @@ function IconButton({
       aria-label={label}
       title={label}
       aria-pressed={active}
-      // Padding resserré sur petit écran : cinq icônes plus la croix laissaient
-      // une quarantaine de pixels à la date, qui était donc toujours tronquée.
+      // Tighter padding on small screens: five icons plus the cross left roughly
+      // forty pixels for the date, so it was always truncated.
       className={`relative rounded-full p-1.5 transition-colors sm:p-2 hover:bg-white/10 hover:text-white ${
         active ? 'bg-white/15 text-white' : 'text-ink-200'
       }`}
@@ -1135,12 +1095,12 @@ function IconButton({
 }
 
 /**
- * Pastille du bouton « Commentaires ».
+ * "Comments" button badge.
  *
- * Deux états distincts, parce qu'ils répondent à deux questions différentes :
- * un point sobre dit « il y a une conversation ici », un chiffre en couleur dit
- * « elle a bougé depuis ton dernier passage ». Les confondre reviendrait à
- * réclamer l'attention pour une photo dont on a déjà tout lu.
+ * Two distinct states answer two different questions: a quiet dot says "there
+ * is a conversation here", while a coloured number says "it has changed since
+ * your last visit". Combining them would demand attention for a photo whose
+ * messages have all been read.
  */
 function CommentBadge({ total, unread }: { total: number; unread: number }): ReactElement | null {
   if (total === 0) return null;
@@ -1157,8 +1117,8 @@ function CommentBadge({ total, unread }: { total: number; unread: number }): Rea
   return (
     <span
       aria-hidden="true"
-      // Plafonné à « 9+ » : au-delà, le chiffre déborde de l'icône, et savoir
-      // s'il y a douze ou dix-sept messages non lus ne change aucun geste.
+      // Cap at "9+": beyond that the number overflows the icon, and knowing
+      // whether twelve or seventeen messages are unread changes no action.
       className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
     >
       {unread > 9 ? '9+' : unread}
@@ -1167,13 +1127,13 @@ function CommentBadge({ total, unread }: { total: number; unread: number }): Rea
 }
 
 /**
- * Libellé accessible du bouton : c'est lui qui porte l'information de la
- * pastille, celle-ci étant purement visuelle.
+ * Accessible button label: it carries the badge information because the badge
+ * is purely visual.
  */
 function commentsLabel(total: number, unread: number): string {
-  if (total === 0) return 'Commentaires (c)';
-  if (unread === 0) return `Commentaires : ${total} (c)`;
-  return `Commentaires : ${total}, dont ${unread} non ${unread > 1 ? 'lus' : 'lu'} (c)`;
+  if (total === 0) return 'Comments (c)';
+  if (unread === 0) return `Comments: ${total} (c)`;
+  return `Comments: ${total}, ${unread} ${unread > 1 ? 'unread' : 'unread'} (c)`;
 }
 
 function NavButton({
@@ -1194,9 +1154,9 @@ function NavButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      // Même traitement que les boutons de la barre : rien au repos, un voile
-      // clair au survol. Un fond permanent alourdissait l'image alors que ces
-      // deux boutons sont posés dessus, pas sur un chrome.
+      // Match bar buttons: nothing at rest, a light veil on hover. A permanent
+      // background weighed down the image even though these buttons sit on it,
+      // not on chrome.
       className={`absolute top-1/2 -translate-y-1/2 rounded-full p-3 text-ink-200 transition hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-0 ${
         side === 'left' ? 'left-4' : 'right-4'
       }`}

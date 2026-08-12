@@ -1,4 +1,4 @@
-import type { AdminAlbum, AdminComment, ModerationFilter } from '@gdv/shared';
+import type { AdminAlbum, AdminComment, ModerationFilter } from '@nonni/shared';
 import { type ReactElement, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { errorText } from '../../api/client';
@@ -15,27 +15,26 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Button, FormError, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 /**
- * Une page tient dans un écran une fois les journées et les photos regroupées.
- * Cinquante lignes — le défaut du serveur — en faisaient de nouveau une liste
- * qu'on fait défiler sans en voir la fin.
+ * One page fits on a screen once days and photos are grouped. Fifty rows — the
+ * server default — turned it back into a list scrolled without seeing the end.
  */
 const PAGE_SIZE = 25;
 
-/** Une frappe ne vaut pas une requête : on attend que la saisie se pose. */
+/** One keystroke does not warrant one request: wait for input to settle. */
 const SEARCH_DELAY_MS = 300;
 
 const FILTER_LABELS: Record<ModerationFilter, string> = {
-  all: 'Tous',
-  visible: 'Visibles',
-  hidden: 'Masqués',
+  all: 'All',
+  visible: 'Visible',
+  hidden: 'Hidden',
 };
 
 /**
- * File de modération : une liste de travail, pas un flux (D67).
+ * Moderation queue: a work list, not a feed (D67).
  *
- * Masquer plutôt que supprimer : un commentaire retiré par erreur se rétablit,
- * et l'administrateur n'a pas à trancher définitivement dans l'instant. La
- * suppression reste possible depuis la galerie, où l'on voit la photo.
+ * Hide rather than delete: a comment removed by mistake can be restored, and the
+ * administrator need not decide permanently in the moment. Deletion remains
+ * available from the gallery, where the photo is visible.
  */
 export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
   const [filter, setFilter] = useState<ModerationFilter>('all');
@@ -43,20 +42,18 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
   const [search, setSearch] = useState('');
   const q = useDeferredSearch(search);
 
-  // Une pile plutôt qu'un numéro de page : la pagination est par curseur, et
-  // seul le chemin parcouru permet de revenir en arrière. `null` est la
-  // première page.
+  // Use a stack rather than a page number: pagination uses cursors, and only the
+  // path travelled allows going back. `null` is the first page.
   const [cursors, setCursors] = useState<(string | null)[]>([null]);
-  // Indice explicite plutôt que `.at(-1)` : cette méthode n'existe qu'à partir
-  // de Chromium 92, et le navigateur du téléviseur visé est en 79 (D260809f).
-  // Elle ne casse pas la mise en page, elle jette — la page d'administration
-  // resterait blanche.
+  // Use an explicit index rather than `.at(-1)`: that method exists only from
+  // Chromium 92, while the target television browser is 79 (D260809f). It does
+  // not merely break layout; it throws and leaves the administration page blank.
   const cursor = cursors[cursors.length - 1]!;
 
   const [bulkTarget, setBulkTarget] = useState<AdminComment | null>(null);
 
-  // Changer de filtre invalide le chemin : la page 4 d'une recherche n'a rien à
-  // voir avec la page 4 de la suivante.
+  // Changing filters invalidates the path: page 4 of one search has nothing to
+  // do with page 4 of the next.
   useEffect(() => setCursors([null]), [filter, albumId, q]);
 
   const albums = useAdminAlbums();
@@ -74,12 +71,11 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 
   return (
     <Section
-      title="Commentaires"
-      description="Les commentaires masqués disparaissent de la galerie pour tout le monde, leur auteur compris."
+      title="Comments"
+      description="Hidden comments disappear from the gallery for everyone, their author included."
     >
-      {/* La barre de filtres est dans le corps et non dans l'en-tête de section :
-          trois onglets, un sélecteur d'album et un champ de recherche ne tiennent
-          pas à côté d'un titre. */}
+      {/* Put the filter bar in the body rather than the section header: three
+          tabs, an album selector and a search field do not fit beside a title. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-ink-850 px-4 py-3">
         <div className="flex gap-1 rounded-lg border border-ink-700 p-0.5">
           {(Object.keys(FILTER_LABELS) as ModerationFilter[]).map((value) => (
@@ -91,17 +87,16 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 
         <AlbumFilter albums={albums.data} value={albumId} onChange={setAlbumId} />
 
-        {/* `basis-64` décide de son passage à la ligne : `flex-1` seul le laissait
-            prendre ce qui restait après les onglets et le sélecteur, soit une
-            trentaine de pixels sur une tablette — un champ où l'on ne voit pas
-            ce qu'on tape. En annonçant 16 rem, il descend d'une ligne quand
-            elles ne tiennent pas, puis s'étire. */}
+        {/* `basis-64` decides when it wraps: `flex-1` alone gave it what remained
+            after the tabs and selector, roughly thirty pixels on a tablet — a
+            field where input was invisible. Declaring 16 rem moves it to a new
+            line when needed, then lets it grow. */}
         <input
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Rechercher un mot, un nom, une adresse"
-          aria-label="Rechercher dans les commentaires"
+          placeholder="Search a word, a name, an address"
+          aria-label="Search the comments"
           maxLength={200}
           className="min-w-0 flex-1 basis-64 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
         />
@@ -109,18 +104,18 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 
       {isPending ? (
         <div className="flex justify-center py-8">
-          <Spinner label="Chargement des commentaires" />
+          <Spinner label="Loading comments" />
         </div>
       ) : error ? (
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Les commentaires n’ont pas pu être chargés.')} />
+          <FormError message={errorText(error, 'Comments could not be loaded.')} />
         </div>
       ) : days.length === 0 ? (
         <p className="px-4 py-6 text-sm text-ink-400">{emptyMessage(filter, q, albumId)}</p>
       ) : (
         <>
-          {/* `isFetching` sans `isPending` : une page déjà affichée reste à
-              l'écran pendant que la suivante arrive, simplement estompée. */}
+          {/* `isFetching` without `isPending`: keep an already displayed page on
+              screen, merely dimmed, while the next arrives. */}
           <div className={isFetching ? 'opacity-60 transition-opacity' : undefined}>
             {days.map((day) => (
               <section key={day.key}>
@@ -144,18 +139,18 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
               onClick={() => setCursors(cursors.slice(0, -1))}
               disabled={cursors.length === 1}
             >
-              ‹ Précédent
+              ‹ Previous
             </Button>
 
             <p className="text-xs text-ink-400">
-              {first}–{last} sur {data.total}
+              {first}–{last} of {data.total}
             </p>
 
             <Button
               onClick={() => setCursors([...cursors, data.nextCursor])}
               disabled={data.nextCursor === null}
             >
-              Suivant ›
+              Next ›
             </Button>
           </div>
         </>
@@ -174,18 +169,18 @@ export function CommentsSection({ notify }: { notify: Notify }): ReactElement {
 }
 
 /**
- * Le texte d'une file vide dit quoi faire ensuite, et ce n'est pas le même geste
- * selon qu'on n'a rien reçu ou qu'on cherche mal.
+ * An empty queue says what to do next, which differs between receiving nothing
+ * and searching incorrectly.
  */
 function emptyMessage(filter: ModerationFilter, q: string | null, albumId: string | null): string {
-  if (q) return `Aucun commentaire ne correspond à « ${q} ».`;
-  if (albumId) return 'Aucun commentaire dans cet album.';
-  if (filter === 'hidden') return 'Aucun commentaire masqué.';
-  if (filter === 'visible') return 'Aucun commentaire visible.';
-  return 'Aucun commentaire pour l’instant.';
+  if (q) return `No comment matches "${q}".`;
+  if (albumId) return 'No comments in this album.';
+  if (filter === 'hidden') return 'No hidden comment.';
+  if (filter === 'visible') return 'No visible comments.';
+  return 'No comment yet.';
 }
 
-/** Reporte la recherche : sans ce délai, chaque frappe partirait au serveur. */
+/** Delays search: without this pause, every keystroke would reach the server. */
 function useDeferredSearch(search: string): string | null {
   const [deferred, setDeferred] = useState(search);
 
@@ -198,12 +193,12 @@ function useDeferredSearch(search: string): string | null {
 }
 
 /**
- * Sélecteur d'album de la file.
+ * Queue album selector.
  *
- * Un `<select>` en clair plutôt qu'une primitive de `ui.tsx` : c'est le seul de
- * l'application, et en extraire une pour un usage unique serait spéculatif. La
- * file ne l'attend pas — elle s'affiche pendant que la liste des albums charge,
- * et le sélecteur se remplit quand elle arrive.
+ * Use a plain `<select>` rather than a `ui.tsx` primitive: it is the only one in
+ * the application, so extracting one for a single use would be speculative. The
+ * queue does not wait for it — it appears while albums load and the selector
+ * fills when they arrive.
  */
 function AlbumFilter({
   albums,
@@ -215,17 +210,16 @@ function AlbumFilter({
   onChange: (albumId: string | null) => void;
 }): ReactElement {
   return (
-    // `min-w-0` : un `select` réclame la largeur de sa plus longue option, et
-    // un titre d'album de soixante caractères le faisait dépasser du cadre de la
-    // section sur un téléphone. Il occupe donc sa propre ligne en dessous de
-    // `sm`, et reste borné au-delà.
+    // `min-w-0`: a `select` requests the width of its longest option, and a
+    // sixty-character album title made it overflow the section on a phone. It
+    // therefore gets its own line below `sm` and remains bounded above it.
     <select
       value={value ?? ''}
       onChange={(event) => onChange(event.target.value || null)}
-      aria-label="Filtrer par album"
+      aria-label="Filter by album"
       className="w-full min-w-0 truncate rounded-lg border border-ink-700 bg-ink-850 px-2.5 py-1.5 text-sm text-ink-200 outline-none focus:border-accent-dim sm:w-auto sm:max-w-64"
     >
-      <option value="">Tous les albums</option>
+      <option value="">Every album</option>
       {albums?.map((album) => (
         <option key={album.id} value={album.id}>
           {album.title}
@@ -236,11 +230,10 @@ function AlbumFilter({
 }
 
 /**
- * Les commentaires d'une même photo, sous un seul en-tête.
+ * Comments on one photo under a single heading.
  *
- * Répéter « IMG_0043 — Vacances 2025 » sous chacun des six messages d'un fil
- * noie la seule information qui change d'une ligne à l'autre : ce qui est écrit,
- * et par qui.
+ * Repeating "IMG_0043 — Holidays 2025" beneath all six messages in a thread
+ * buries the only information changing between rows: what was written and by whom.
  */
 function PhotoBlock({
   photo,
@@ -254,9 +247,9 @@ function PhotoBlock({
   return (
     <div className="border-b border-ink-850 px-4 py-3 last:border-b-0">
       <p className="min-w-0 text-xs text-ink-400">
-        {/* Lien vers la photo commentée : modérer sans voir l'image qui a
-            suscité le message revient à juger un propos hors contexte. Le
-            média peut avoir disparu de l'index — le lien n'est alors pas rendu. */}
+        {/* Link to the commented photo: moderating without seeing the image
+            that prompted the message means judging words without context. The
+            media may have disappeared from the index, in which case omit the link. */}
         {photo.mediaName ? (
           <Link
             to={`/album/${encodeURIComponent(photo.albumId)}?photo=${encodeURIComponent(photo.mediaId)}`}
@@ -265,7 +258,7 @@ function PhotoBlock({
             {photo.mediaName}
           </Link>
         ) : (
-          <span className="italic">photo retirée de l’index</span>
+          <span className="italic">photo removed from the index</span>
         )}
         <span> — {photo.albumTitle}</span>
       </p>
@@ -298,10 +291,9 @@ function CommentRow({
         onSuccess: () =>
           notify({
             tone: 'ok',
-            text: hidden ? 'Commentaire rendu visible.' : 'Commentaire masqué.',
+            text: hidden ? 'Comment made visible again.' : 'Comment hidden.',
           }),
-        onError: (error) =>
-          notify({ tone: 'error', text: errorText(error, 'La modération a échoué.') }),
+        onError: (error) => notify({ tone: 'error', text: errorText(error, 'Moderation failed.') }),
       },
     );
   };
@@ -310,35 +302,34 @@ function CommentRow({
     <li className={`py-2 ${hidden ? 'opacity-60' : ''}`}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-ink-400">
         <span className="text-sm font-medium text-ink-100">{comment.author.displayName}</span>
-        {/* L'adresse vérifiée n'apparaît que dans la modération : elle dit qui
-            parle derrière un nom déclaré, ce que le fil n'a pas à révéler. Elle
-            porte l'action groupée, parce que c'est elle qu'on regarde en se
-            demandant « d'où vient tout ça ». */}
+        {/* Show the verified address only in moderation: it identifies who is
+            behind a declared name, which the thread need not reveal. It carries
+            the bulk action because it is what someone checks when asking "where
+            did all this come from?" */}
         <button
           type="button"
           onClick={() => onBulk(comment)}
           className="rounded text-ink-400 underline decoration-dotted underline-offset-2 transition-colors hover:text-ink-100"
-          title={`Modérer tous les messages de ${comment.authorEmail}`}
+          title={`Moderate every message from ${comment.authorEmail}`}
         >
           {comment.authorEmail}
         </button>
         <time dateTime={comment.createdAt} title={formatLocalDateTime(comment.createdAt)}>
           {formatRelative(comment.createdAt)}
         </time>
-        {comment.parentId !== null && <span>· en réponse</span>}
-        {/* La clé d'accès employée pour écrire : c'est elle qu'on change quand
-            un mot de passe partagé a trop circulé. */}
+        {comment.parentId !== null && <span>· in reply</span>}
+        {/* Access key used to write: this is what gets changed when a shared
+            password has circulated too widely. */}
         {comment.account && <span>· via {comment.account}</span>}
         {hidden && (
           <span className="rounded bg-ink-700 px-1.5 py-0.5 text-ink-200">
-            masqué{comment.hiddenBy ? ` par ${comment.hiddenBy}` : ''}
+            hidden{comment.hiddenBy ? ` by ${comment.hiddenBy}` : ''}
           </span>
         )}
       </div>
 
-      {/* `sm:items-start` et non `sm:items-center` : un message de plusieurs
-          lignes centrerait son bouton à mi-hauteur, loin de la ligne qu'on
-          vient de lire. */}
+      {/* Use `sm:items-start`, not `sm:items-center`: a multiline message would
+          centre its button halfway down, far from the line just read. */}
       <div className={`${ROW_CLASS} mt-1 xl:items-start`}>
         <p className="min-w-0 flex-1 text-sm break-words whitespace-pre-wrap text-ink-200">
           {comment.body}
@@ -350,7 +341,7 @@ function CommentRow({
             disabled={moderate.isPending}
             variant={hidden ? 'default' : 'danger'}
           >
-            {hidden ? 'Rendre visible' : 'Masquer'}
+            {hidden ? 'Make visible' : 'Hide'}
           </Button>
         </div>
       </div>
@@ -359,16 +350,14 @@ function CommentRow({
 }
 
 /**
- * Confirmation d'une modération groupée.
+ * Confirmation for bulk moderation.
  *
- * Monté par la section et non par la ligne : un commentaire masqué porte
- * `opacity-60`, qui teinte tout son sous-arbre et lui ouvre un contexte
- * d'empilement — une modale rendue là s'afficherait à 60 % et passerait sous le
- * reste de la page.
+ * Mounted by the section rather than the row: a hidden comment has `opacity-60`,
+ * tinting its whole subtree and creating a stacking context — a modal rendered
+ * there would appear at 60% and beneath the rest of the page.
  *
- * **Le sens vient de l'onglet, pas de la ligne cliquée.** Adossé à l'état du
- * commentaire, la même adresse proposerait de masquer sur une ligne et de
- * démasquer sur la suivante.
+ * **The action comes from the tab, not the clicked row.** Based on comment state,
+ * the same address would offer hiding on one row and restoring on the next.
  */
 function BulkDialog({
   comment,
@@ -388,15 +377,15 @@ function BulkDialog({
       { commenterId: comment.commenterId, hide: !restore },
       {
         onSuccess: ({ affected }) => {
-          const accord = affected > 1 ? 's' : '';
+          const plural = affected > 1 ? 's' : '';
           notify({
             tone: 'ok',
-            text: `${affected} message${accord} ${restore ? 'rendu' : 'masqué'}${accord}.`,
+            text: `${affected} message${plural} ${restore ? 'restored' : 'hidden'}.`,
           });
           onClose();
         },
         onError: (error) => {
-          notify({ tone: 'error', text: errorText(error, 'La modération groupée a échoué.') });
+          notify({ tone: 'error', text: errorText(error, 'Bulk moderation failed.') });
           onClose();
         },
       },
@@ -407,22 +396,22 @@ function BulkDialog({
     <ConfirmDialog
       title={
         restore
-          ? `Rendre visibles tous les messages de ${comment.authorEmail} ?`
-          : `Masquer tous les messages de ${comment.authorEmail} ?`
+          ? `Make every message from ${comment.authorEmail} visible again?`
+          : `Hide every message from ${comment.authorEmail}?`
       }
-      confirmLabel={restore ? 'Tout rendre visible' : 'Tout masquer'}
+      confirmLabel={restore ? 'Restore all' : 'Hide all'}
       busy={moderate.isPending}
       onConfirm={confirm}
       onCancel={onClose}
     >
       <p>
-        L’action porte sur <strong>tous les albums</strong>, pas seulement sur celui-ci ni sur la
-        page affichée.
+        This acts on <strong>every album</strong>, not only on this one and not only on the page
+        shown.
       </p>
       <p>
         {restore
-          ? 'Ses messages redeviennent lisibles pour tout le monde.'
-          : 'Réversible : l’onglet « Masqués » permet de tout rétablir d’un coup.'}
+          ? 'Their messages become readable by everyone again.'
+          : 'Reversible: the "Hidden" tab restores everything in one go.'}
       </p>
     </ConfirmDialog>
   );

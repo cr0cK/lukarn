@@ -1,26 +1,26 @@
-import { ALBUM_DESCRIPTION_MAX_LENGTH } from '@gdv/shared';
+import { ALBUM_DESCRIPTION_MAX_LENGTH } from '@nonni/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateAlbum } from '../api/hooks';
 
 /**
- * La description de l'album, en tête de la grille : lue par tout le monde,
- * modifiable sur place par un administrateur.
+ * Album description above the grid: readable by everyone and editable in place
+ * by an administrator.
  *
- * Elle ne se saisissait que depuis `/admin`, alors que la note d'une journée
- * s'écrit d'un clic depuis la grille juste en dessous. Deux textes voisins,
- * deux gestes : c'est cette asymétrie que ce composant supprime.
+ * It used to be editable only from `/admin`, while a day note is written with
+ * one click in the grid just below. Two adjacent texts required two different
+ * actions; this component removes that asymmetry.
  *
- * **Le crayon est visible en permanence**, contrairement à celui de
- * `SectionHeader` qui ne se montre qu'au survol de sa section. La règle y est
- * justifiée par le nombre — un crayon par journée, tous affichés, feraient de
- * la grille un formulaire. Ici il n'y en a qu'un pour tout l'album : le cacher
- * ne gagnerait rien et le rendrait introuvable.
+ * **The pencil is always visible**, unlike the one in `SectionHeader`, which
+ * appears only when its section is hovered. There, quantity justifies the rule
+ * — showing one pencil per day would turn the grid into a form. Here there is
+ * only one for the whole album: hiding it would gain nothing and make it hard
+ * to find.
  */
 interface AlbumDescriptionProps {
   albumId: string;
   description: string | null;
-  /** Administrateur : lui seul voit le crayon et l'invitation à écrire. */
+  /** Administrator: only they see the pencil and invitation to write. */
   editable: boolean;
 }
 
@@ -34,24 +34,19 @@ export function AlbumDescription({
   if (!description && !editable) return null;
 
   return (
-    // `relative` : l'éditeur s'ouvre en surimpression, comme celui d'une
-    // journée. Le pousser dans le flux décalerait toute la grille vers le bas —
-    // et `useGridLayout` ne mesure `offsetTop` que sur redimensionnement, si
-    // bien qu'un simple glissement vertical lui échapperait.
+    // `relative`: the editor opens as an overlay, like a day's editor. Putting it
+    // in the flow would shift the entire grid down — and `useGridLayout` measures
+    // `offsetTop` only on resize, so a simple vertical shift would escape it.
     <div className="relative mb-5">
       {description ? (
-        // Aucune borne de largeur : la description prend celle de la grille
-        // qu'elle coiffe. Bornée à la mesure typographique habituelle, elle
-        // laissait sur un grand écran deux tiers de la ligne vides au-dessus
-        // d'une grille qui, elle, va jusqu'au bord — un alinéa étroit posé sur
-        // une planche large, sans que rien ne justifie la rupture.
+        // No width limit: the description takes the width of the grid below it.
+        // Limited to the usual typographic measure, it left two-thirds of the
+        // line empty on a large screen above a grid reaching the edge — a narrow
+        // paragraph on a wide board without reason for the break.
         <p className="text-sm leading-relaxed whitespace-pre-line text-ink-300">
           {description}
           {editable && (
-            <EditButton
-              label="Modifier la description de l'album"
-              onClick={() => setEditing(true)}
-            />
+            <EditButton label="Edit the album description" onClick={() => setEditing(true)} />
           )}
         </p>
       ) : (
@@ -60,7 +55,7 @@ export function AlbumDescription({
           onClick={() => setEditing(true)}
           className="rounded-lg text-sm text-ink-500 transition-colors hover:text-ink-200"
         >
-          + Décrire cet album
+          + Describe this album
         </button>
       )}
 
@@ -82,9 +77,8 @@ function EditButton({ label, onClick }: { label: string; onClick: () => void }):
       onClick={onClick}
       title={label}
       aria-label={label}
-      // `align-text-bottom` : posé à la suite du dernier mot, un bouton en
-      // ligne s'assoit sinon sur la ligne de base et dépasse sous le
-      // paragraphe.
+      // `align-text-bottom`: placed after the last word, an inline button
+      // otherwise sits on the baseline and extends below the paragraph.
       className="ml-1.5 inline-flex rounded p-1 align-text-bottom text-ink-500 transition-colors hover:bg-white/5 hover:text-ink-200"
     >
       <svg
@@ -119,8 +113,8 @@ function DescriptionEditor({
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     update.mutate(
-      // La chaîne vide part en `null` : c'est le seul moyen d'effacer, et le
-      // serveur ramène de toute façon les deux au même.
+      // Send an empty string as `null`: it is the only way to clear the value,
+      // and the server normalises both to the same result anyway.
       { albumId, body: { description: value.trim() || null } },
       { onSuccess: onClose },
     );
@@ -129,8 +123,8 @@ function DescriptionEditor({
   return (
     <form
       onSubmit={submit}
-      // L'éditeur, lui, reste borné : c'est un formulaire, et un champ de
-      // saisie large de deux mille pixels ne se relit pas.
+      // The editor remains limited: it is a form, and a two-thousand-pixel-wide
+      // input field is not readable.
       className="absolute top-0 left-0 z-20 w-full max-w-prose space-y-2 rounded-xl border border-ink-700 bg-ink-900 p-3 shadow-xl"
     >
       <textarea
@@ -138,15 +132,15 @@ function DescriptionEditor({
         onChange={(event) => setValue(event.target.value)}
         maxLength={ALBUM_DESCRIPTION_MAX_LENGTH}
         rows={4}
-        placeholder="Ce que contient cet album"
-        aria-label="Description de l'album"
+        placeholder="What this album contains"
+        aria-label="Album description"
         autoFocus
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, "L'enregistrement a échoué.")}
+          {errorText(update.error, 'Saving failed.')}
         </p>
       )}
 
@@ -161,14 +155,14 @@ function DescriptionEditor({
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Annuler
+            Cancel
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            {update.isPending ? 'Saving…' : 'Save'}
           </button>
         </div>
       </div>

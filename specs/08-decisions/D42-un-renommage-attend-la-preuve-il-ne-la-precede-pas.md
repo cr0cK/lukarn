@@ -1,31 +1,30 @@
-# D42 — Un renommage attend la preuve, il ne la précède pas
+# D42 — Renaming waits for proof; it does not precede it
 
-**Contexte.** Relevé en revue croisée. `requestCode` écrivait `display_name` dès
-la demande, avec ce commentaire pour justification : « il est de toute façon
-revalidé par le code qui suit ». C'était faux dans l'ordre des opérations —
-l'écriture précédait la validation, et rien ne la défaisait si le code n'était
-jamais saisi.
+**Context.** Found during cross-review. `requestCode` wrote `display_name` as soon
+as it was requested, with this comment as justification: "it is revalidated by
+the following code anyway". That was false in terms of operation order — the
+write preceded validation, and nothing undid it if the code was never entered.
 
-La conséquence dépassait le nom lui-même. La signature d'un commentaire n'est
-pas figée à l'écriture : le fil la lit par jointure sur `commenters`. Il
-suffisait donc de connaître l'adresse de quelqu'un — et derrière une clé d'accès
-partagée par un foyer, on la connaît — pour renommer d'un coup **tous ses
-messages passés**, sans posséder sa boîte.
+The consequence went beyond the name itself. A comment's signature is not frozen
+when it is written: the thread reads it by joining `commenters`. It was therefore
+enough to know someone's address — and behind an access key shared by a household,
+it is known — to rename **all their past messages** at once, without access to
+their mailbox.
 
-**Choix.** Le nom demandé pour une identité **déjà vérifiée** attend dans
-`pending_display_name` ; `verify` l'applique, et lui seul. Une identité pas
-encore vérifiée continue de s'écrire directement : rien n'est signé d'elle, il
-n'y a rien à détourner.
+**Choice.** The requested name for an **already verified** identity waits in
+`pending_display_name`; `verify` applies it, and only it. An identity that
+has not yet been verified continues to be written directly: nothing is signed by
+it, so there is nothing to hijack.
 
-**Écarté.** Figer le nom sur la ligne du commentaire à l'écriture, qui
-résoudrait aussi le détournement. Écarté parce que se renommer cesserait alors
-de valoir pour l'historique : « Mamie » devenue « Grand-mère » traînerait deux
-signatures pour une même personne, et la spec promet l'inverse. Écarté aussi :
-refuser la demande quand l'adresse appartient à une identité vérifiée — c'est
-précisément le chemin qu'emprunte celui qui se ré-identifie depuis un nouvel
-appareil, de loin le cas le plus fréquent.
+**Rejected.** Freezing the name on the comment row when it is written, which
+would also solve the hijacking. Rejected because renaming would then cease to
+apply to history: "Granny" becoming "Grandmother" would leave two signatures for
+the same person, while the spec promises the opposite. Also rejected: refusing
+the request when the address belongs to a verified identity — this is precisely
+the path taken by someone re-identifying themselves from a new device, by far the
+most common case.
 
-**Conséquences.** Une demande abandonnée laisse un nom en attente, sans effet
-visible ; la demande suivante l'écrase. Le renommage, lui, reste global et
-rétroactif — c'est le comportement voulu, l'identité étant l'adresse et le nom
-son étiquette courante.
+**Consequences.** An abandoned request leaves a pending name with no visible
+effect; the next request overwrites it. Renaming remains global and retroactive —
+this is the desired behaviour, since the identity is the address and the name is
+its current label.

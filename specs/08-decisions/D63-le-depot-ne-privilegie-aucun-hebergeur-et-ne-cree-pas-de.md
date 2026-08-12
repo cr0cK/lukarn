@@ -1,37 +1,35 @@
-# D63 — Le dépôt ne privilégie aucun hébergeur, et ne crée pas de compte nominatif
+# D63 — The repository favours no hosting provider and creates no personal account
 
-**Contexte.** D52 a doté le dépôt d'un cloud-init et de deux scripts, mais les a
-écrits pour la machine qu'on avait sous la main : le `README.md` déroulait une
-procédure Scaleway comme s'il n'y avait qu'elle, le cloud-init citait `scw` en
-en-tête, la console de secours était nommée « console série Scaleway », le
-remote de sauvegarde par défaut s'appelait `scaleway:`, et le compte système
-portait le prénom de l'auteur. Rien de tout cela n'est faux ; tout cela devient
-gênant dès que le dépôt est public, où un lecteur lit un choix par défaut là où
-il n'y avait qu'une habitude.
+**Context.** D52 gave the repository cloud-init and two scripts, but wrote them
+for the machine at hand: `README.md` presented a Scaleway procedure as if it were
+the only one, cloud-init mentioned `scw` in its header, the rescue console was
+called the "Scaleway serial console", the default backup remote was named
+`scaleway:`, and the system account used the author's first name. None of this is
+wrong; all of it becomes awkward once the repository is public, where a reader
+sees a default choice where there was only a habit.
 
-**Choix.** Le corps de la procédure ne nomme aucun fournisseur. Il énonce ce
-qu'il faut obtenir — une image Debian 12+ ou Ubuntu LTS, un cloud-init passé en
-« user data », les ports 80/443 ouverts et le 22 le temps de l'amorçage, un
-enregistrement DNS — et les CLI de trois hébergeurs figurent dans un bloc
-`<details>`, à égalité, présentés comme des illustrations de la même opération.
-Le compte système devient `deploy` : un rôle, pas une personne. Le remote de
-sauvegarde par défaut devient `sauvegardes:gdv`, sans marque.
+**Choice.** The body of the procedure names no provider. It states what must be
+obtained — a Debian 12+ or Ubuntu LTS image, cloud-init supplied as "user data",
+ports 80/443 open and port 22 during bootstrapping, and a DNS record — while the
+CLIs of three providers appear equally in a `<details>` block as illustrations of
+the same operation. The system account becomes `deploy`: a role, not a person.
+The default backup remote becomes `backups:nonni`, with no brand.
 
-**Écarté.** Ne garder aucune commande d'hébergeur : le plus neutre, mais on perd
-le chemin prêt-à-coller, y compris pour qui déploie pour la première fois — et
-une documentation qu'il faut compléter ailleurs est une documentation qu'on ne
-suit pas. Écarté aussi un exemple à fournisseur générique (`<provider-cli>`) :
-neutre en apparence, mais inexécutable, donc jamais vérifié.
+**Rejected.** Keeping no provider command: the most neutral option, but it loses
+the ready-to-paste path, including for a first deployment — and documentation
+that must be completed elsewhere is documentation that is not followed. Also
+rejected: a generic provider example (`<provider-cli>`), apparently neutral but
+not executable and therefore never verified.
 
-**Ce que ça n'entraîne pas.** Tailscale reste nommé, et c'est assumé : ce n'est
-pas un hébergeur mais un choix d'architecture d'accès, celui qui permet de
-fermer le port 22 sans rien ouvrir en échange. Le `README.md` dit explicitement
-qu'un WireGuard nu, un bastion ou un filtrage par IP source rendent le même
-service, et que seule l'étape 2 change alors.
+**What this does not entail.** Tailscale remains named, deliberately: it is not
+a hosting provider but an access architecture choice, the one that allows port
+22 to be closed without opening anything in return. `README.md` explicitly says
+that plain WireGuard, a bastion, or source-IP filtering provides the same service,
+and that only step 2 changes in that case.
 
-**Conséquences.** Une instance déjà amorcée par la version précédente du
-cloud-init tourne sous le compte `alexis` : le renommage ne vaut que pour les
-machines créées ensuite, et il n'y a rien à migrer — les chemins de
-`deploy/backup.sh` et de `deploy/deploy.sh` sont relatifs au dépôt, pas au
-répertoire personnel. Seule la ligne de `crontab` du `README.md`, qui cite un
-chemin absolu, est à lire avec le nom de compte réel de la machine.
+**Consequences.** An instance already bootstrapped by the previous cloud-init
+runs under the `alexis` account: the rename only applies to subsequently created
+machines, and there is nothing to migrate — paths in `deploy/backup.sh` and
+`deploy/deploy.sh` are relative to the repository, not the home directory. Only
+the `crontab` line in `README.md`, which names an absolute path, must be read using
+the machine's actual account name.

@@ -1,18 +1,18 @@
-# D26 — Changer le `folderId` d'un album purge son index
+# D26 — Changing an album's `folderId` clears its index
 
-**Contexte.** Modifier le dossier Drive d'un album existant laisse en base des
-médias qui appartiennent à l'ancien dossier.
+**Context.** Changing the Drive folder of an existing album leaves media that
+belong to the old folder in the database.
 
-**Choix.** Purge immédiate (`clearAlbum`), état de synchro remis à `never`, et
-resynchronisation lancée en fond si Drive est connecté.
+**Decision.** Immediate clearing (`clearAlbum`), sync state reset to `never`, and
+resynchronisation started in the background if Drive is connected.
 
-**Écarté.** Attendre que la synchronisation suivante fasse le ménage par
-`deleteStale`. La fenêtre entre les deux est exactement celle où l'album montre
-ce que le propriétaire vient de vouloir retirer — et si Drive est déconnecté ou
-révoqué, cette fenêtre est sans fin. Écarté aussi : purger sans resynchroniser,
-qui laisserait un album vide et un clic de plus à faire.
+**Rejected.** Waiting for the next synchronisation to clean up through
+`deleteStale`. The window between the two is exactly when the album shows what
+the owner has just tried to remove — and if Drive is disconnected or its access
+is revoked, that window never ends. Also rejected: clearing without
+resynchronising, which would leave an empty album and require one more click.
 
-**Conséquences.** Une faute de frappe dans le `folderId` coûte une réindexation
-complète de l'album. C'est le prix de ne jamais servir le contenu d'un dossier
-qu'on vient de retirer. Les dérivés en cache disque, eux, ne sont pas touchés :
-ils sont indexés par id de fichier, donc partagés entre albums, et régénérables.
+**Consequences.** A typo in the `folderId` costs a full reindex of the album. That
+is the price of never serving content from a folder that has just been removed.
+Derived files in the disk cache are unaffected: they are indexed by file id, so
+they are shared between albums and can be regenerated.

@@ -12,18 +12,17 @@ import { loadEnv } from '../src/env.js';
 import { encodeCursor, type MediaUpsert } from '../src/repo.js';
 
 /**
- * Télémétrie de visite (D260809h).
+ * Visit telemetry (D260809h).
  *
- * Trois idées gouvernent ce qui suit. Les compteurs sont **agrégés à
- * l'écriture** : rouvrir le même album le même jour depuis la même session
- * n'ajoute pas de ligne, elle incrémente la sienne. Un visiteur est une
- * **session**, pas une clé d'accès — une clé se partage, et deux navigateurs
- * derrière la même font bien deux visiteurs. Et rien de tout cela n'a de clé
- * étrangère : se déconnecter, ou supprimer un album, n'efface pas ce qui a été
- * regardé.
+ * Three ideas govern what follows. Counters are **aggregated on write**:
+ * reopening the same album on the same day from the same session does not add
+ * a row, but increments its existing one. A visitor is a **session**, not an
+ * access key — a key is shared, and two browsers behind it are two visitors.
+ * None of this has foreign keys: logging out or deleting an album does not
+ * erase what was viewed.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-visites-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-visites-'));
 
 const env = loadEnv({
   NODE_ENV: 'test',
@@ -40,7 +39,7 @@ const env = loadEnv({
 const MOT_DE_PASSE = 'mot-de-passe-de-test';
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
-/** Un webOS 4 : il annonce « Mobile » et « Safari » comme un téléphone. */
+/** A webOS 4 device: it reports "Mobile" and "Safari" like a phone. */
 const UA_TELEVISEUR =
   'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) ' +
   'Chrome/68.0.3440.106 Safari/537.36 WebAppManager';
@@ -80,7 +79,7 @@ function photo(albumId: string, id: string): MediaUpsert {
   };
 }
 
-/** Ouvre une session en annonçant l'appareil demandé, et rend son cookie. */
+/** Opens a session reporting the requested device and returns its cookie. */
 async function connexion(username: string, userAgent: string): Promise<string> {
   const response = await server.inject({
     method: 'POST',
@@ -89,9 +88,9 @@ async function connexion(username: string, userAgent: string): Promise<string> {
     payload: { username, password: MOT_DE_PASSE },
   });
   assert.equal(response.statusCode, 200, response.body);
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
   assert.ok(cookie);
-  return `gdv_session=${cookie.value}`;
+  return `nonni_session=${cookie.value}`;
 }
 
 before(async () => {
@@ -119,12 +118,12 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('compteurs de visite', () => {
+describe('visit counters', () => {
   beforeEach(() => {
     context.db.prepare('DELETE FROM album_visits').run();
   });
 
-  it('n’écrit qu’une ligne quand la même session rouvre le même album le même jour', () => {
+  it('writes one row when the same session reopens the same album on the same day', () => {
     context.visits.recordAlbumOpen('corse', 'famille', 'session-a');
     context.visits.recordAlbumOpen('corse', 'famille', 'session-a');
 
@@ -133,43 +132,42 @@ describe('compteurs de visite', () => {
       photos: number;
     }[];
 
-    // C'est tout l'intérêt de l'agrégation à l'écriture : une ligne par
-    // (album, clé, session, jour), jamais une par requête. Sans elle, la table
-    // grossirait de dizaines de milliers de lignes par jour.
+    // This is the point of aggregation on write: one row per (album, key,
+    // session, day), never one per request. Without it, the table would grow by
+    // tens of thousands of rows per day.
     assert.equal(lignes.length, 1);
     assert.equal(lignes[0]!.visits, 2);
     assert.equal(lignes[0]!.photos, 0);
   });
 
-  it('compte deux visiteurs quand la même clé ouvre depuis deux navigateurs', () => {
+  it('counts two visitors when the same key opens from two browsers', () => {
     context.visits.recordAlbumOpen('corse', 'famille', 'session-a');
     context.visits.recordAlbumOpen('corse', 'famille', 'session-b');
 
     const apercu = context.visits.overview(7);
-    // Une clé d'accès se partage (D38) : la compter pour un visiteur ferait
-    // d'un foyer entier une seule personne. La session est la meilleure
-    // approximation disponible.
+    // An access key is shared (D38): counting it as one visitor would turn an
+    // entire household into one person. The session is the best available proxy.
     assert.equal(apercu.albums[0]!.visitors, 2);
     assert.equal(apercu.albums[0]!.keys, 1);
     assert.equal(apercu.visitors.length, 1);
     assert.equal(apercu.visitors[0]!.sessions, 2);
   });
 
-  it('garde les visites d’une session détruite', () => {
+  it('retains visits from a destroyed session', () => {
     const session = context.sessions.create('famille');
     context.visits.recordAlbumOpen('corse', 'famille', session.id);
 
     context.sessions.destroy(session.id);
 
-    // Une déconnexion efface la session, jamais l'historique de ce qui a été
-    // regardé : `session_id` n'est ici qu'un seau pour compter des visiteurs
-    // distincts, pas un lien. Une clé étrangère l'aurait emporté.
+    // Logging out deletes the session, never the viewing history: `session_id`
+    // is only a bucket for counting distinct visitors here, not a relationship.
+    // A foreign key would have removed it.
     const apercu = context.visits.overview(7);
     assert.equal(apercu.albums[0]!.visits, 1);
     assert.equal(apercu.albums[0]!.visitors, 1);
   });
 
-  it('garde les visites d’un album supprimé, et le dit', () => {
+  it('retains visits to a deleted album and reports it', () => {
     context.config.createAlbum({
       id: 'ephemere',
       title: 'Éphémère',
@@ -181,14 +179,14 @@ describe('compteurs de visite', () => {
     context.config.deleteAlbum('ephemere');
 
     const ligne = context.visits.overview(7).albums.find((a) => a.albumId === 'ephemere');
-    assert.ok(ligne, 'la fréquentation passée reste vraie');
+    assert.ok(ligne, 'past traffic remains valid');
     assert.equal(ligne.visits, 1);
-    // Le titre vient d'une jointure externe : il tombe à `null` plutôt que de
-    // faire disparaître la ligne, et l'écran affiche l'identifiant.
+    // The title comes from an outer join: it becomes `null` instead of removing
+    // the row, and the screen displays the identifier.
     assert.equal(ligne.title, null);
   });
 
-  it('ignore ce qui déborde de la fenêtre demandée', () => {
+  it('ignores data outside the requested window', () => {
     const maintenant = new Date('2026-08-09T12:00:00.000Z');
     const vieux = new Date(maintenant.getTime() - 30 * JOUR_MS);
 
@@ -202,13 +200,12 @@ describe('compteurs de visite', () => {
     );
     assert.equal(semaine.since, '2026-08-03');
 
-    // La fenêtre large, elle, voit les deux : c'est la même table, seule la
-    // borne change.
+    // The wider window sees both: it is the same table and only the boundary changes.
     const trimestre = context.visits.overview(90, maintenant);
     assert.equal(trimestre.albums.length, 2);
   });
 
-  it('oublie les journées au-delà de la rétention', () => {
+  it('forgets days beyond retention', () => {
     const maintenant = new Date('2026-08-09T12:00:00.000Z');
     context.visits.recordAlbumOpen(
       'corse',
@@ -224,8 +221,8 @@ describe('compteurs de visite', () => {
     );
 
     assert.equal(context.visits.purgeOld(400, maintenant), 1);
-    // Quatre cents jours, et non trois cent soixante-cinq : c'est ce qui laisse
-    // comparer un mois d'août à celui de l'année d'avant.
+    // Four hundred days rather than 365 allows one August to be compared with
+    // the previous year's.
     assert.deepEqual(
       (context.db.prepare('SELECT album_id FROM album_visits').all() as { album_id: string }[]).map(
         (row) => row.album_id,
@@ -235,17 +232,17 @@ describe('compteurs de visite', () => {
   });
 });
 
-describe('classe d’appareil', () => {
-  it('reconnaît un téléviseur avant d’y voir un téléphone', () => {
-    // L'ordre des tests est tout le sujet : webOS annonce « Mobile » et
-    // « Safari », et un test naïf classerait le salon comme un téléphone.
+describe('device class', () => {
+  it('recognises a television before mistaking it for a phone', () => {
+    // Test order is the point: webOS reports "Mobile" and "Safari", and a
+    // naive test would classify the living room as a phone.
     assert.equal(classifyDevice(UA_TELEVISEUR), 'tv');
     assert.equal(classifyDevice(UA_TELEPHONE), 'mobile');
   });
 
-  it('ne prend pas une tablette Android pour un téléphone', () => {
-    // Chrome n'écrit « Mobile » que sur un téléphone : c'est son absence qui
-    // distingue les deux, rien d'autre dans l'en-tête ne le dit.
+  it('does not mistake an Android tablet for a phone', () => {
+    // Chrome writes "Mobile" only on a phone: its absence distinguishes the
+    // two, and nothing else in the header does.
     const tablette =
       'Mozilla/5.0 (Linux; Android 13; SM-X700) AppleWebKit/537.36 (KHTML, like Gecko) ' +
       'Chrome/120.0.0.0 Safari/537.36';
@@ -253,14 +250,14 @@ describe('classe d’appareil', () => {
     assert.equal(classifyDevice(`${tablette.replace('Safari', 'Mobile Safari')}`), 'mobile');
   });
 
-  it('n’invente aucune classe sans en-tête', () => {
-    // Une valeur par défaut serait indiscernable d'une mesure.
+  it('does not invent a class without a header', () => {
+    // A default value would be indistinguishable from a measurement.
     assert.equal(classifyDevice(undefined), null);
     assert.equal(classifyDevice(''), null);
   });
 });
 
-describe('par l’API', () => {
+describe('through the API', () => {
   beforeEach(() => {
     context.db.prepare('DELETE FROM album_visits').run();
     context.db.prepare('DELETE FROM sessions').run();
@@ -271,7 +268,7 @@ describe('par l’API', () => {
     assert.equal(response.statusCode, 200, response.body);
   }
 
-  it('compte une visite et trois photos pour une visite ordinaire', async () => {
+  it('counts one visit and three photos for an ordinary visit', async () => {
     const cookie = await connexion('famille', UA_TELEPHONE);
 
     await ouvrir('/api/albums/corse/items', cookie);
@@ -286,19 +283,19 @@ describe('par l’API', () => {
     assert.deepEqual(apercu.visitors[0]!.devices, ['mobile']);
   });
 
-  it('ne compte pas une visite de plus en tournant les pages', async () => {
+  it('does not count another visit while paging', async () => {
     const cookie = await connexion('famille', UA_TELEPHONE);
     await ouvrir('/api/albums/corse/items', cookie);
 
     const curseur = encodeCursor('2026-07-01T10:00:00.000Z', 'img-1');
     await ouvrir(`/api/albums/corse/items?cursor=${encodeURIComponent(curseur)}`, cookie);
 
-    // Les pages suivantes sont le même geste que la première : les compter
-    // ferait dire à la colonne le nombre de pages tournées.
+    // Later pages are part of the same action as the first: counting them would
+    // make the column report the number of pages viewed.
     assert.equal(context.visits.overview(7).albums[0]!.visits, 1);
   });
 
-  it('ne compte pas un média qui n’existe pas', async () => {
+  it('does not count media that does not exist', async () => {
     const cookie = await connexion('famille', UA_TELEPHONE);
     const response = await server.inject({
       method: 'GET',
@@ -310,7 +307,7 @@ describe('par l’API', () => {
     assert.deepEqual(context.visits.overview(7).albums, []);
   });
 
-  it('retient la classe d’appareil et la dernière requête, jamais le user-agent', async () => {
+  it('stores the device class and latest request, never the user agent', async () => {
     await connexion('famille', UA_TELEVISEUR);
 
     const session = context.db
@@ -318,10 +315,10 @@ describe('par l’API', () => {
       .get('famille') as { device: string; last_seen_at: string };
 
     assert.equal(session.device, 'tv');
-    assert.ok(session.last_seen_at, 'la connexion date elle-même la session');
+    assert.ok(session.last_seen_at, 'login itself timestamps the session');
 
-    // Aucune colonne ne porte l'en-tête : une classe parmi quatre ne
-    // ré-identifie personne, le user-agent complet est une empreinte.
+    // No column stores the header: one class among four cannot re-identify
+    // anyone, while the full user agent is a fingerprint.
     const colonnes = (context.db.pragma('table_info(sessions)') as { name: string }[]).map(
       (row) => row.name,
     );
@@ -336,7 +333,7 @@ describe('par l’API', () => {
     ]);
   });
 
-  it('n’écrit pas last_seen_at à chaque requête', async () => {
+  it('does not write last_seen_at on every request', async () => {
     const cookie = await connexion('famille', UA_TELEPHONE);
     const lire = (): string =>
       (
@@ -351,12 +348,12 @@ describe('par l’API', () => {
     await ouvrir('/api/albums', cookie);
     await ouvrir('/api/albums/corse/items', cookie);
 
-    // Plafonnée à une écriture par heure et par session : sans ce seuil, chaque
-    // vignette d'une grille déclencherait un UPDATE SQLite.
+    // Capped at one write per hour per session: without this threshold, every
+    // grid thumbnail would trigger a SQLite UPDATE.
     assert.equal(lire(), initial);
 
-    // Une session dont la trace a plus d'une heure est redatée à la lecture
-    // suivante — c'est ce qui fait dire « venu cette semaine ».
+    // A session whose trace is over an hour old is timestamped again on the next
+    // read — this is what supports "visited this week".
     context.db
       .prepare('UPDATE sessions SET last_seen_at = ? WHERE username = ?')
       .run('2020-01-01T00:00:00.000Z', 'famille');

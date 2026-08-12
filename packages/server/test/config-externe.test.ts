@@ -7,20 +7,19 @@ import { ConfigRepo } from '../src/config-repo.js';
 import { openDb, type Db } from '../src/db.js';
 
 /**
- * Écritures venues d'un autre processus.
+ * Writes from another process.
  *
- * `ConfigRepo` tient un instantané mémoire pour que `canSee()` reste une lecture
- * de `Map` — il est appelé sur chaque vignette d'une grille. Cet instantané est
- * invalidé par les écritures du dépôt lui-même, mais les commandes en ligne
- * (`reset-password`, `create-admin`) écrivent depuis un **autre** processus,
- * pendant que le serveur tourne.
+ * `ConfigRepo` keeps an in-memory snapshot so `canSee()` remains a `Map` read —
+ * it is called for every thumbnail in a grid. Writes from the repository itself
+ * invalidate this snapshot, but command-line tools (`reset-password`,
+ * `create-admin`) write from **another** process while the server is running.
  *
- * Sans détection, le serveur continuerait d'authentifier avec l'ancienne
- * empreinte jusqu'au redémarrage — ce qui viderait de son sens une commande
- * faite précisément pour reprendre la main quand on a perdu son mot de passe.
+ * Without detection, the server would keep authenticating against the old hash
+ * until restart — defeating a command intended precisely to regain control
+ * after losing a password.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-externe-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-externe-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 let serveur: Db;
@@ -32,8 +31,8 @@ beforeEach(() => {
   commande?.close();
   rmSync(join(root, 'data'), { recursive: true, force: true });
 
-  // Deux connexions distinctes sur le même fichier : le serveur qui tourne, et
-  // la commande lancée à côté.
+  // Two separate connections to the same file: the running server and the
+  // command launched alongside it.
   serveur = openDb(join(root, 'data'));
   commande = openDb(join(root, 'data'));
   config = new ConfigRepo(serveur);
@@ -51,13 +50,13 @@ after(() => {
   commande?.close();
 });
 
-describe('écriture depuis un autre processus', () => {
-  it('voit un compte créé à côté', () => {
+describe('writes from another process', () => {
+  it('sees an account created alongside it', () => {
     assert.equal(config.user('alexis')?.passwordHash, 'empreinte-initiale');
   });
 
-  it('voit un mot de passe changé à côté, sans redémarrage', () => {
-    // L'instantané est chargé avant la modification : c'est le cas qui piège.
+  it('sees a password changed alongside it without restarting', () => {
+    // The snapshot is loaded before the change: this is the case that catches mistakes.
     assert.ok(config.user('alexis'));
 
     new ConfigRepo(commande).updateUser('alexis', { passwordHash: 'empreinte-remplacée' });
@@ -65,7 +64,7 @@ describe('écriture depuis un autre processus', () => {
     assert.equal(config.user('alexis')?.passwordHash, 'empreinte-remplacée');
   });
 
-  it('voit un album créé à côté', () => {
+  it('sees an album created alongside it', () => {
     assert.deepEqual(config.albums(), []);
 
     new ConfigRepo(commande).createAlbum({
@@ -81,7 +80,7 @@ describe('écriture depuis un autre processus', () => {
     );
   });
 
-  it('voit un droit retiré à côté', () => {
+  it('sees access removed alongside it', () => {
     const externe = new ConfigRepo(commande);
     externe.createAlbum({ id: 'prive', title: 'Privé', folderId: 'd', recursive: true });
     assert.equal(config.canSee('alexis', 'prive'), true);
@@ -91,11 +90,11 @@ describe('écriture depuis un autre processus', () => {
     assert.equal(config.canSee('alexis', 'prive'), false);
   });
 
-  it('ne reconstruit pas son instantané sans raison', () => {
-    // La détection ne doit pas dégrader le chemin chaud : sans écriture
-    // extérieure, les lectures successives réutilisent le même instantané.
+  it('does not rebuild its snapshot without cause', () => {
+    // Detection must not degrade the hot path: without external writes,
+    // successive reads reuse the same snapshot.
     const premier = config.albums();
     const second = config.albums();
-    assert.equal(premier, second, "l'instantané doit être réutilisé tel quel");
+    assert.equal(premier, second, 'the snapshot must be reused as-is');
   });
 });

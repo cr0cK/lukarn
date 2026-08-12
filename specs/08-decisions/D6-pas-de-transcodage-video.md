@@ -1,17 +1,17 @@
-# D6 — Pas de transcodage vidéo
+# D6 — No video transcoding
 
-**Contexte.** Les vidéos du Drive sont en MP4 et MOV, parfois volumineuses.
+**Context.** The videos in Drive are MP4 and MOV files, some of them large.
 
-**Choix.** `GET /api/media/:id/original` relaie le header `Range` tel quel vers
-Drive et recopie `Content-Length` / `Content-Range` de la réponse. Le navigateur
-lit le format d'origine, avec seek natif.
+**Decision.** `GET /api/media/:id/original` forwards the `Range` header unchanged to Drive
+and copies `Content-Length` / `Content-Range` from the response. The browser reads the
+original format, with native seeking.
 
-**Écarté.** ffmpeg à la demande ou en tâche de fond : le CPU d'un VPS modeste ne
-suit pas, il faudrait stocker les versions transcodées, et gérer une file de
-travaux. Écarté aussi : réécrire le `Range` côté serveur, ce qui obligerait à
-recomposer les réponses `multipart/byteranges`.
+**Rejected.** On-demand or background ffmpeg: a modest VPS does not have enough CPU, the
+transcoded versions would need to be stored, and a job queue would need to be managed.
+Also rejected: rewriting the `Range` on the server, which would require reconstructing
+`multipart/byteranges` responses.
 
-**Conséquences.** Un format que le navigateur ne sait pas lire n'est pas lisible
-du tout — pas de repli. `media/range.ts` refuse donc les plages multiples et les
-unités autres que `bytes` : un `Range` non conforme est **ignoré** et le fichier
-entier est servi, comme le recommande la RFC 9110.
+**Consequences.** A format the browser cannot read cannot be played at all — there is no
+fallback. `media/range.ts` therefore rejects multiple ranges and units other than
+`bytes`: an invalid `Range` is **ignored** and the entire file is served, as recommended
+by RFC 9110.

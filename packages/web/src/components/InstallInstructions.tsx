@@ -2,21 +2,20 @@ import { type ReactElement, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
 const ETAPES = [
-  ['Partager', "Le carré avec une flèche, en bas de l'écran sur iPhone."],
-  ["Sur l'écran d'accueil", 'Un peu plus bas dans la liste.'],
-  ['Ajouter', 'En haut à droite. Une connexion sera redemandée, une seule fois.'],
+  ['Share', 'The square with an arrow, at the bottom of the screen on iPhone.'],
+  ['Add to Home Screen', 'A little further down the list.'],
+  ['Add', 'Top right. You will be asked to sign in once more, only once.'],
 ] as const;
 
 /**
- * Le mode d'emploi iOS, calqué sur `ShortcutsOverlay` — même surcouche, même
- * carte : inventer un second style de dialogue pour trois lignes n'aurait
- * apporté qu'une divergence à maintenir.
+ * iOS instructions modelled on `ShortcutsOverlay` — same overlay, same card:
+ * inventing another dialog style for three lines would only add divergence to
+ * maintain.
  *
- * Rendu dans `document.body`, et c'est indispensable : il s'ouvre depuis la
- * `TopBar`, dont l'en-tête porte un `backdrop-blur`. Un filtre fait de
- * l'élément le bloc conteneur de ses descendants `fixed` — l'`inset-0` de la
- * surcouche se rapporterait alors à la barre, haute d'une cinquantaine de
- * pixels, et le dialogue s'y trouverait centré puis rogné par le haut.
+ * Rendered in `document.body`, necessarily: it opens from `TopBar`, whose header
+ * has a `backdrop-blur`. A filter makes the element the containing block of its
+ * `fixed` descendants — the overlay's `inset-0` would then relate to the roughly
+ * fifty-pixel-high bar, centring the dialog there and clipping its top.
  */
 export function InstallInstructions({ onClose }: { onClose: () => void }): ReactElement {
   useEffect(() => {
@@ -31,7 +30,7 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Ajouter à l'écran d'accueil"
+      aria-label="Add to home screen"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
@@ -40,12 +39,12 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-medium">Ajouter à l'écran d'accueil</h2>
+          <h2 className="text-base font-medium">Add to home screen</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-            aria-label="Fermer"
+            aria-label="Close"
           >
             <svg
               viewBox="0 0 24 24"

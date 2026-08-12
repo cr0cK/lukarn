@@ -1,50 +1,48 @@
 #cloud-config
-# Amorçage d'un VPS Debian 12+ / Ubuntu LTS pour la visionneuse.
+# Bootstraps a Debian 12+ / Ubuntu LTS VPS for the gallery.
 #
-# Ce fichier est du cloud-init : il se passe en « user data » à la création de la
-# machine, chez n'importe quel hébergeur qui l'accepte — la quasi-totalité le
-# fait, sous ce nom ou sous celui de « cloud-config ». C'est un standard *de
-# facto*, pas une norme publiée : Fedora CoreOS et Flatcar utilisent Ignition,
-# Windows cloudbase-init, et une image minimale peut ne pas embarquer le paquet.
-# Dans ces cas-là, deploy/README.md décrit la même mise en place à la main.
+# This file is cloud-init: it is passed as "user data" when creating the machine,
+# at any host that accepts it — virtually all of them do, under that name or as
+# "cloud-config". It is a de facto standard rather than a published norm: Fedora
+# CoreOS and Flatcar use Ignition, Windows uses cloudbase-init, and a minimal
+# image may not ship the package. For those cases, deploy/README.md describes the
+# same setup by hand.
 #
-# À la fin de ce fichier, la machine a : un compte `deploy` sudo par clé, les
-# mises à jour de sécurité automatiques, Docker, Tailscale installé mais **non
-# authentifié**, et un pare-feu qui laisse passer 22, 80 et 443.
+# By the end of this file the machine has: a `deploy` account with key-only sudo,
+# automatic security updates, Docker, Tailscale installed but **not
+# authenticated**, and a firewall allowing 22, 80 and 443 through.
 #
 # ---------------------------------------------------------------------------
-# L'ORDRE COMPTE, ET C'EST TOUT L'ENJEU DE CE FICHIER.
+# THE ORDER MATTERS, AND IT IS THE WHOLE POINT OF THIS FILE.
 #
-# La cible est une machine dont le port 22 est fermé sur l'interface publique,
-# joignable uniquement par Tailscale. Fermer SSH **ici** la rendrait
-# inatteignable : Tailscale est installé, pas authentifié — il n'y a pas encore
-# de second chemin. Le port 22 reste donc ouvert à l'amorçage, et se ferme à la
-# main une fois l'autre porte vérifiée :
+# The target is a machine whose port 22 is closed on the public interface,
+# reachable only over Tailscale. Closing SSH **here** would make it
+# unreachable: Tailscale is installed, not authenticated — there is no second way
+# in yet. Port 22 therefore stays open through the bootstrap, and is closed by
+# hand once the other door has been verified:
 #
-#   1. ssh deploy@<ip-publique>
-#   2. sudo tailscale up            (ouvre une URL à valider dans un navigateur)
-#   3. dans un SECOND terminal : ssh deploy@<nom-tailnet>   ← doit marcher
-#   4. seulement alors, dans le premier :
+#   1. ssh deploy@<public-ip>
+#   2. sudo tailscale up            (opens a URL to approve in a browser)
+#   3. in a SECOND terminal: ssh deploy@<tailnet-name>   ← must work
+#   4. only then, in the first one:
 #        sudo ufw delete allow OpenSSH
 #        sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
-#          /etc/ssh/sshd_config.d/99-durcissement.conf
+#          /etc/ssh/sshd_config.d/99-hardening.conf
 #        sudo systemctl reload ssh
 #
-# Même précaution qu'au § 0 de deploy/README.md : on ne ferme jamais la porte
-# par laquelle on est entré avant d'avoir franchi l'autre, depuis un terminal
-# distinct. Si malgré tout la machine devient injoignable, le filet est la
-# **console de secours de l'hébergeur** — console série, KVM ou VNC selon les
-# cas —, qui ne passe pas par le réseau de l'instance. Vérifier qu'elle existe
-# avant de fermer quoi que ce soit.
+# Same precaution as § 0 of deploy/README.md: never close the door you came in
+# through before having gone through the other one, from a separate terminal. If
+# the machine becomes unreachable regardless, the safety net is the **host's
+# rescue console** — serial, KVM or VNC depending on the provider — which does not
+# go through the instance's network. Check that it exists before closing anything.
 #
-# Tailscale ne demande aucune ouverture entrante : il sort en UDP 41641 et se
-# rabat sur un relais DERP si le NAT l'empêche. La règle `allow outgoing`
-# ci-dessous suffit.
+# Tailscale needs no inbound opening: it goes out over UDP 41641 and falls back to
+# a DERP relay when NAT prevents that. The `allow outgoing` rule below is enough.
 # ---------------------------------------------------------------------------
 
-# `default` conserve le compte que l'image prévoit et les clés que l'hébergeur
-# y injecte à la création. Sans lui, déclarer `users:` les remplace purement et
-# simplement — et si la clé ci-dessous est mal recopiée, plus personne n'entre.
+# `default` keeps the account the image provides and the keys the host injects
+# into it at creation time. Without it, declaring `users:` replaces them outright
+# — and if the key below was copied wrong, nobody gets in at all.
 users:
   - default
   - name: deploy
@@ -53,13 +51,13 @@ users:
     sudo: 'ALL=(ALL) NOPASSWD:ALL'
     lock_passwd: true
     ssh_authorized_keys:
-      # REMPLACER CETTE LIGNE par le contenu de son `~/.ssh/id_ed25519.pub`.
-      # Laissée telle quelle, elle est inutilisable : le compte `deploy`
-      # n'accepterait aucune connexion.
-      - 'ssh-ed25519 AAAA_REMPLACER_PAR_LA_CLE_PUBLIQUE cloud-init@example'
+      # REPLACE THIS LINE with the contents of your `~/.ssh/id_ed25519.pub`.
+      # Left as it stands it is unusable: the `deploy` account would accept no
+      # connection whatsoever.
+      - 'ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY cloud-init@example'
 
-# Root par clé reste possible pendant l'amorçage : c'est le second chemin tant
-# que Tailscale n'est pas authentifié. L'étape 4 ci-dessus le referme.
+# Root by key stays possible through the bootstrap: it is the second way in for as
+# long as Tailscale is unauthenticated. Step 4 above closes it.
 disable_root: false
 
 package_update: true
@@ -71,42 +69,41 @@ packages:
   - git
   - ufw
   - unattended-upgrades
-  # `backup.sh` s'en sert pour l'envoi hors machine ; le remote se configure
-  # ensuite par `rclone config`, jamais dans le dépôt.
+  # `backup.sh` uses it for the off-machine copy; the remote is configured
+  # afterwards with `rclone config`, never in the repository.
   - rclone
 
 write_files:
-  # Équivaut au `dpkg-reconfigure -plow unattended-upgrades` de deploy/README.md,
-  # interactif et n'a donc pas sa place ici.
+  # Equivalent to the `dpkg-reconfigure -plow unattended-upgrades` of
+  # deploy/README.md, which is interactive and has no place here.
   - path: /etc/apt/apt.conf.d/20auto-upgrades
     content: |
       APT::Periodic::Update-Package-Lists "1";
       APT::Periodic::Unattended-Upgrade "1";
 
-  # Un fichier séparé plutôt qu'une édition de `sshd_config` : une mise à jour
-  # du paquet openssh-server ne proposera pas de fusionner un fichier qu'elle ne
-  # connaît pas.
-  - path: /etc/ssh/sshd_config.d/99-durcissement.conf
+  # A separate file rather than an edit to `sshd_config`: an update to the
+  # openssh-server package will not offer to merge a file it knows nothing about.
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
     content: |
       PasswordAuthentication no
       KbdInteractiveAuthentication no
-      # `prohibit-password` et non `no` : voir l'encadré en tête de fichier.
+      # `prohibit-password` and not `no`: see the box at the top of this file.
       PermitRootLogin prohibit-password
 
 runcmd:
   - ['systemctl', 'restart', 'ssh']
 
   - 'curl -fsSL https://get.docker.com | sh'
-  # Équivaut à donner root sur la machine — `deploy` l'a déjà par sudo.
+  # Equivalent to granting root on the machine — `deploy` already has it through
+  # sudo.
   - ['usermod', '-aG', 'docker', 'deploy']
 
-  # Installé, pas authentifié : `sudo tailscale up` est une action humaine, elle
-  # demande de valider une URL dans un navigateur.
+  # Installed, not authenticated: `sudo tailscale up` is a human action, it
+  # requires approving a URL in a browser.
   - 'curl -fsSL https://tailscale.com/install.sh | sh'
 
-  # L'application ne publie aucun port sur l'hôte : seul Caddy est joignable.
-  # 443/udp sert à HTTP/3 — l'omettre ne casse rien, les navigateurs retombent
-  # sur TCP.
+  # The application publishes no port on the host: only Caddy is reachable.
+  # 443/udp serves HTTP/3 — omitting it breaks nothing, browsers fall back to TCP.
   - ['ufw', 'default', 'deny', 'incoming']
   - ['ufw', 'default', 'allow', 'outgoing']
   - ['ufw', 'allow', 'OpenSSH']
@@ -116,7 +113,7 @@ runcmd:
   - ['ufw', '--force', 'enable']
 
 final_message: |
-  Machine prête après $UPTIME s.
-  Suite : ssh deploy@<ip>, puis `sudo tailscale up`, puis vérifier
-  `ssh deploy@<nom-tailnet>` dans un second terminal AVANT de fermer le port 22
-  (`sudo ufw delete allow OpenSSH`). Voir l'en-tête de deploy/cloud-init.yaml.
+  Machine ready after $UPTIME s.
+  Next: ssh deploy@<ip>, then `sudo tailscale up`, then check
+  `ssh deploy@<tailnet-name>` in a second terminal BEFORE closing port 22
+  (`sudo ufw delete allow OpenSSH`). See the header of deploy/cloud-init.yaml.

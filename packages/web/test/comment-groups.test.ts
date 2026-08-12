@@ -1,19 +1,19 @@
-import type { AdminComment } from '@gdv/shared';
+import type { AdminComment } from '@nonni/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { groupByDayAndPhoto, type DayGroup } from '../src/lib/commentGroups';
 
 /**
- * Rangement d'une liste de commentaires par journée puis par photo — celui de
- * la file de modération comme celui du tiroir d'activité.
+ * Grouping a comment list by day and then by photo, for both the moderation
+ * queue and the activity drawer.
  *
- * Deux invariants portent tout : rien ne se perd ni ne se duplique en passant
- * d'une liste plate à deux niveaux de groupes, et l'ordre antéchronologique
- * rendu par le serveur survit au rangement.
+ * Two invariants underpin everything: nothing is lost or duplicated when a
+ * flat list becomes two levels of groups, and the reverse chronological order
+ * returned by the server survives grouping.
  *
- * Les cas sont écrits sur `AdminComment`, le plus riche des deux : ce qui les
- * distingue — l'adresse de l'auteur, l'état de masquage — n'entre pas dans le
- * rangement, qui ne lit que l'album, la photo et la date.
+ * Cases use `AdminComment`, the richer of the two: the fields that distinguish
+ * them — author address and hidden state — do not affect grouping, which reads
+ * only the album, photo and date.
  */
 
 let prochain = 1;
@@ -41,13 +41,13 @@ function commentaire(createdAt: string, overrides: Partial<AdminComment> = {}): 
   };
 }
 
-/** Tous les commentaires du résultat, à plat, dans l'ordre où ils s'affichent. */
+/** All result comments flattened in display order. */
 function aplati(groupes: DayGroup<AdminComment>[]): AdminComment[] {
   return groupes.flatMap((jour) => jour.photos.flatMap((photo) => photo.comments));
 }
 
-describe('rangement de la file de modération', () => {
-  it('ne perd ni ne duplique aucun commentaire', () => {
+describe('moderation queue grouping', () => {
+  it('neither loses nor duplicates any comment', () => {
     const entree = [
       commentaire('2026-08-07T10:00:00.000Z'),
       commentaire('2026-08-07T09:00:00.000Z', { mediaId: 'phare', mediaName: 'phare.jpg' }),
@@ -64,26 +64,27 @@ describe('rangement de la file de modération', () => {
     );
   });
 
-  it('regroupe les commentaires d’une même photo sous un seul en-tête', () => {
+  it('groups comments on the same photo under one heading', () => {
     const groupes = groupByDayAndPhoto([
       commentaire('2026-08-07T12:00:00.000Z'),
       commentaire('2026-08-07T11:00:00.000Z', { mediaId: 'phare', mediaName: 'phare.jpg' }),
       commentaire('2026-08-07T10:00:00.000Z'),
     ]);
 
-    assert.equal(groupes.length, 1, 'une seule journée attendue');
+    assert.equal(groupes.length, 1, 'expected a single day');
     const [plage, phare] = groupes[0]!.photos;
-    // La photo apparaît là où son premier commentaire l'a placée, et ses autres
-    // messages l'y rejoignent — ils ne rouvrent pas un second bloc.
+    // The photo appears where its first comment placed it, and its other
+    // messages join it there rather than opening a second block.
     assert.equal(groupes[0]!.photos.length, 2);
     assert.equal(plage!.mediaId, 'plage');
     assert.equal(plage!.comments.length, 2);
     assert.equal(phare!.mediaId, 'phare');
   });
 
-  it('ne mélange pas le même fichier indexé sous deux albums', () => {
-    // Même média, deux albums : deux conversations séparées (D12), donc deux
-    // blocs — les réunir montrerait ce qui s'est dit dans un album cloisonné.
+  it('does not mix the same file indexed under two albums', () => {
+    // The same media in two albums means two separate conversations (D12), and
+    // therefore two blocks — combining them would expose what was said in an
+    // isolated album.
     const groupes = groupByDayAndPhoto([
       commentaire('2026-08-07T12:00:00.000Z', { albumId: 'vacances', albumTitle: 'Vacances' }),
       commentaire('2026-08-07T11:00:00.000Z', { albumId: 'corse', albumTitle: 'Corse' }),
@@ -92,7 +93,7 @@ describe('rangement de la file de modération', () => {
     assert.equal(groupes[0]!.photos.length, 2);
   });
 
-  it('préserve l’ordre d’entrée, des journées jusqu’aux commentaires', () => {
+  it('preserves input order from days through to comments', () => {
     const entree = [
       commentaire('2026-08-07T12:00:00.000Z'),
       commentaire('2026-08-07T09:00:00.000Z'),
@@ -107,10 +108,10 @@ describe('rangement de la file de modération', () => {
     );
   });
 
-  it('range un commentaire dans sa journée locale, pas dans la veille UTC', () => {
-    // 23 h 30 à Paris en août, c'est 21 h 30 UTC : la clé UTC et la clé locale
-    // tombent le même jour. Le cas qui compte est l'inverse — un message écrit
-    // après minuit heure locale mais encore la veille en UTC.
+  it('groups a comment under its local day rather than the previous UTC day', () => {
+    // 23:30 in Paris in August is 21:30 UTC, so the UTC and local keys fall on
+    // the same day. The important case is the reverse — a message written after
+    // local midnight while UTC is still on the previous day.
     const local = new Date(2026, 7, 7, 0, 30);
     const veilleUtc = new Date(2026, 7, 6, 23, 30);
 
@@ -119,7 +120,7 @@ describe('rangement de la file de modération', () => {
       commentaire(veilleUtc.toISOString()),
     ]);
 
-    // Deux journées locales distinctes, quelle que soit la position d'UTC.
+    // Two distinct local days, regardless of UTC's position.
     assert.equal(groupes.length, 2);
     assert.equal(groupes[0]!.key, '2026-08-07');
     assert.equal(groupes[1]!.key, '2026-08-06');

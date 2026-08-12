@@ -1,4 +1,4 @@
-import type { AdminStatus } from '@gdv/shared';
+import type { AdminStatus } from '@nonni/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';
@@ -6,7 +6,7 @@ import { queryKeys } from '../../api/hooks';
 import { formatRelative } from '../../lib/format';
 import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
-/** Section « Connexion Google Drive » : état de l'autorisation OAuth. */
+/** "Google Drive connection" section: OAuth authorisation status. */
 export function DriveSection({
   status,
   notify,
@@ -18,42 +18,40 @@ export function DriveSection({
 
   const connect = useMutation({
     mutationFn: api.oauthStart,
-    // Redirection pleine page : le consentement Google refuse d'être affiché
-    // dans une iframe, et le callback doit revenir sur cette origine.
+    // Full-page redirect: Google consent refuses display in an iframe, and the
+    // callback must return to this origin.
     onSuccess: ({ url }) => {
       window.location.href = url;
     },
-    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Connexion impossible.') }),
+    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Connection failed.') }),
   });
 
   const disconnect = useMutation({
     mutationFn: api.driveDisconnect,
     onSuccess: () => {
-      notify({ tone: 'ok', text: 'Google Drive déconnecté.' });
+      notify({ tone: 'ok', text: 'Google Drive disconnected.' });
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
-    onError: (error) =>
-      notify({ tone: 'error', text: errorText(error, 'Déconnexion impossible.') }),
+    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot disconnect.') }),
   });
 
   /**
-   * En compte de service, il n'y a rien à connecter ni à déconnecter :
-   * l'autorisation vit dans le partage du dossier côté Drive, que l'API ne sait
-   * pas interroger. Afficher les boutons du consentement ici laisserait croire
-   * qu'ils agissent — et « Déconnecter » supprimerait une ligne qui n'existe
-   * pas. Ce qu'il faut montrer, c'est l'adresse à qui partager.
+   * With a service account there is nothing to connect or disconnect:
+   * authorisation lives in Drive folder sharing, which the API cannot inspect.
+   * Showing consent buttons here would imply they act — and "Disconnect" would
+   * delete a row that does not exist. Show the address to share with instead.
    */
   if (status.driveMode === 'service_account') {
     return (
-      <Section title="Connexion Google Drive">
+      <Section title="Google Drive connection">
         <div className="px-4 py-4">
           <p className="text-sm text-ink-200">
-            Compte de service{status.driveAccount ? ` — ${status.driveAccount}` : ''}
+            Service account{status.driveAccount ? ` — ${status.driveAccount}` : ''}
           </p>
           <p className="mt-1 text-xs text-ink-400">
-            Aucun consentement à donner, aucun jeton à renouveler. Chaque dossier d'album doit être
-            partagé en lecture avec cette adresse depuis Google Drive — sans quoi il reste
-            invisible, et sa synchronisation ne trouve rien.
+            No consent to give, no token to renew. Every album folder has to be shared read-only
+            with this address from Google Drive — otherwise it stays invisible, and its
+            synchronisation finds nothing.
           </p>
         </div>
       </Section>
@@ -61,36 +59,34 @@ export function DriveSection({
   }
 
   return (
-    <Section title="Connexion Google Drive">
+    <Section title="Google Drive connection">
       <div className={`${ROW_CLASS} px-4 py-4 xl:items-center`}>
         <div className="min-w-0 flex-1">
           {!status.oauthConfigured ? (
             <p className="text-sm text-amber-300">
-              GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET ne sont pas définis dans le fichier{' '}
-              <code>.env</code>.
+              GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set in the <code>.env</code> file.
             </p>
           ) : status.driveRevokedAt ? (
-            // L'autorisation a existé mais Google la refuse désormais.
-            // Le dire explicitement évite de chercher la panne ailleurs.
+            // Authorisation existed but Google now refuses it. State this explicitly
+            // to avoid looking for the failure elsewhere.
             <>
               <p className="text-sm text-red-300">
-                Autorisation révoquée
-                {status.driveAccount ? ` pour ${status.driveAccount}` : ''} —{' '}
+                Authorisation revoked
+                {status.driveAccount ? ` for ${status.driveAccount}` : ''} —{' '}
                 {formatRelative(status.driveRevokedAt)}
               </p>
               <p className="mt-1 text-xs text-ink-400">
-                L'accès a été retiré côté Google, ou le jeton a expiré. Les albums restent
-                consultables tant que les vignettes sont en cache. Reconnecte pour reprendre les
-                synchronisations.
+                Access was withdrawn on the Google side, or the token expired. The albums stay
+                viewable as long as thumbnails remain cached. Reconnect to resume synchronisation.
               </p>
             </>
           ) : status.driveConnected ? (
             <p className="text-sm text-ink-200">
-              Connecté{status.driveAccount ? ` — ${status.driveAccount}` : ''}
+              Connected{status.driveAccount ? ` — ${status.driveAccount}` : ''}
             </p>
           ) : (
             <p className="text-sm text-ink-300">
-              Aucun compte connecté. Autorise l'accès en lecture à ton Drive.
+              No account connected. Authorise read access to your Drive.
             </p>
           )}
         </div>
@@ -102,7 +98,7 @@ export function DriveSection({
               onClick={() => disconnect.mutate()}
               disabled={disconnect.isPending}
             >
-              Déconnecter
+              Disconnect
             </Button>
           ) : (
             <Button
@@ -110,7 +106,7 @@ export function DriveSection({
               onClick={() => connect.mutate()}
               disabled={!status.oauthConfigured || connect.isPending}
             >
-              {status.driveRevokedAt ? 'Reconnecter Google Drive' : 'Connecter Google Drive'}
+              {status.driveRevokedAt ? 'Reconnect Google Drive' : 'Connect Google Drive'}
             </Button>
           )}
         </div>

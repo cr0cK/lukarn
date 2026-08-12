@@ -1,58 +1,56 @@
 /**
- * Limitation des tentatives de connexion, en mémoire.
+ * In-memory sign-in attempt throttling.
  *
- * L'app est mono-process et n'a que quelques comptes : un compteur en mémoire
- * suffit et évite une dépendance de plus. Le blocage est progressif — les
- * premières erreurs de frappe passent sans friction, une attaque par
- * dictionnaire est ralentie jusqu'à l'inutilité.
+ * The application is single-process and has only a few accounts, so an in-memory
+ * counter is sufficient and avoids another dependency. Blocking is progressive —
+ * the first typos pass without friction, while a dictionary attack is slowed to
+ * the point of uselessness.
  */
 
-/** Ce qui identifie une tentative. L'identifiant est replié en minuscules. */
+/** What identifies an attempt. The username is folded to lower case. */
 export interface LoginAttempt {
   ip: string;
   username: string;
 }
 
 /**
- * Les trois axes surveillés. Le plus contraignant s'applique.
+ * The three monitored axes. The most restrictive one applies.
  *
- * Le couple seul se contourne trivialement : une IP qui essaie mille
- * identifiants aléatoires crée mille compteurs à une tentative et n'est jamais
- * freinée, alors qu'elle vient de déclencher mille vérifications argon2 — le
- * calcul le plus cher du serveur. Symétriquement, une attaque distribuée sur un
- * seul compte ne serait vue par aucun compteur de couple.
+ * The pair alone is trivial to bypass: an IP trying a thousand random usernames
+ * creates a thousand one-attempt counters and is never slowed, despite triggering a
+ * thousand argon2 checks — the server's most expensive computation. Conversely, a
+ * distributed attack against one account would evade every pair counter.
  */
 const AXES = ['couple', 'identifiant', 'ip'] as const;
 type Axis = (typeof AXES)[number];
 
 interface Rule {
-  /** Échecs tolérés sans pénalité. */
+  /** Failures allowed without penalty. */
   free: number;
   baseDelayMs: number;
   maxDelayMs: number;
 }
 
 const RULES: Record<Axis, Rule> = {
-  // Une personne qui se trompe de mot de passe : cinq essais libres, puis 2 s,
-  // 4 s, 8 s… Le cas normal, et le seul qui doit rester indolore.
+  // Someone mistyping a password: five free attempts, then 2 s, 4 s, 8 s… The
+  // normal case, and the only one that must remain painless.
   couple: { free: 5, baseDelayMs: 2_000, maxDelayMs: 15 * 60 * 1000 },
-  // Le même compte visé depuis plusieurs adresses. Plus large que le couple :
-  // une famille derrière plusieurs connexions partage parfois un compte.
+  // The same account targeted from several addresses. Broader than the pair because
+  // a family across several connections may share one account.
   identifiant: { free: 10, baseDelayMs: 2_000, maxDelayMs: 15 * 60 * 1000 },
-  // Une même source qui fait tourner les identifiants. Le plafond est plus
-  // haut en nombre d'essais parce qu'un NAT partagé peut porter plusieurs
-  // visiteurs légitimes, mais il existe — c'est lui qui borne le CPU argon2.
+  // One source cycling through usernames. The attempt limit is higher because a
+  // shared NAT may carry several legitimate visitors, but it still exists — this is
+  // what bounds argon2 CPU usage.
   ip: { free: 20, baseDelayMs: 2_000, maxDelayMs: 15 * 60 * 1000 },
 };
 
-/** Au-delà, la série est considérée comme terminée et le compteur repart de zéro. */
+/** Beyond this point, the series is considered over and its counter starts from zero. */
 const RESET_AFTER_MS = 60 * 60 * 1000;
 
 /**
- * Borne de la table. Sans elle, une IP qui essaie des identifiants aléatoires
- * fait croître la mémoire d'une entrée par identifiant jusqu'à l'épuisement —
- * la purge horaire n'efface que les séries d'il y a plus d'une heure, ce qui
- * est trop tard quand elles arrivent par milliers à la minute.
+ * Table limit. Without it, an IP trying random usernames grows memory by one entry
+ * per username until exhaustion — the hourly purge only removes series older than
+ * an hour, which is too late when thousands arrive each minute.
  */
 const MAX_ENTRIES = 20_000;
 
@@ -64,7 +62,7 @@ interface Attempt {
 export class LoginThrottle {
   private readonly attempts = new Map<string, Attempt>();
 
-  /** Millisecondes restantes avant la prochaine tentative autorisée (0 = libre). */
+  /** Milliseconds remaining before the next permitted attempt (0 = allowed). */
   blockedFor(attempt: LoginAttempt, now = Date.now()): number {
     let longest = 0;
     for (const axis of AXES) {
@@ -88,16 +86,16 @@ export class LoginThrottle {
   }
 
   /**
-   * Efface les compteurs du couple et de l'identifiant. Celui de l'IP survit :
-   * disposer d'un compte valide sur l'instance ne doit pas donner de quoi
-   * remettre à zéro le budget de balayage de son adresse entre deux rafales.
+   * Clears the pair and username counters. The IP counter survives: having a valid
+   * account on the instance must not make it possible to reset an address's scanning
+   * budget between bursts.
    */
   succeed(attempt: LoginAttempt): void {
     this.attempts.delete(keyOn('couple', attempt));
     this.attempts.delete(keyOn('identifiant', attempt));
   }
 
-  /** Purge les séries terminées, pour que la map ne grossisse pas indéfiniment. */
+  /** Purges completed series so the map does not grow indefinitely. */
   purge(now = Date.now()): number {
     let removed = 0;
     for (const [key, attempt] of this.attempts) {
@@ -109,7 +107,7 @@ export class LoginThrottle {
     return removed;
   }
 
-  /** Nombre de compteurs vivants. Sert aux tests et au diagnostic. */
+  /** Number of live counters. Used by tests and diagnostics. */
   get size(): number {
     return this.attempts.size;
   }
@@ -127,7 +125,7 @@ export class LoginThrottle {
     const rule = RULES[axis];
     if (counter.failures <= rule.free) return 0;
 
-    // Doublement à chaque échec au-delà du quota : 2s, 4s, 8s… plafonné.
+    // Doubles on every failure beyond the allowance: 2s, 4s, 8s… capped.
     const penalty = Math.min(
       rule.baseDelayMs * 2 ** (counter.failures - rule.free - 1),
       rule.maxDelayMs,
@@ -136,14 +134,13 @@ export class LoginThrottle {
   }
 
   /**
-   * Ramène la table sous sa borne : d'abord les séries expirées, puis les plus
-   * anciennes. Sacrifier les plus anciennes est le bon choix — ce sont celles
-   * dont la pénalité est la plus proche d'expirer, alors que les récentes sont
-   * celles qui freinent l'attaque en cours.
+   * Brings the table below its limit: expired series first, then the oldest. Removing
+   * the oldest is the right choice — their penalties are closest to expiry, while
+   * recent entries are the ones slowing the current attack.
    *
-   * On redescend à 90 % de la borne plutôt que pile dessus : sinon chaque
-   * tentative suivante relancerait un tri complet, et l'attaque qui remplit la
-   * table paierait sa défense en temps CPU du serveur.
+   * Shrink to 90% of the limit rather than exactly the limit: otherwise every next
+   * attempt would trigger another full sort, making the server pay for its defence
+   * against the attack in CPU time.
    */
   private enforceBound(now: number): void {
     if (this.attempts.size <= MAX_ENTRIES) return;
@@ -162,9 +159,8 @@ export class LoginThrottle {
 function keyOn(axis: Axis, attempt: LoginAttempt): string {
   const username = attempt.username.toLowerCase();
   switch (axis) {
-    // Le séparateur `\0` ne peut apparaître ni dans une IP ni dans un
-    // identifiant : sans lui, `a:b` et `a:b` venus de découpages différents
-    // partageraient un compteur.
+    // The `\0` separator can appear in neither an IP nor a username: without it,
+    // `a:b` values formed from different splits would share a counter.
     case 'couple':
       return `c\0${attempt.ip}\0${username}`;
     case 'identifiant':

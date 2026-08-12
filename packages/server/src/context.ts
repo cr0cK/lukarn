@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { AppSettings } from '@gdv/shared';
+import type { AppSettings } from '@nonni/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { bootstrapFromYaml } from './bootstrap.js';
 import { CommentRepo } from './comments.js';
@@ -27,72 +27,71 @@ import { LoginThrottle } from './throttle.js';
 
 const GIB = 1024 ** 3;
 
-/** Prévenu à chaque changement de réglage, pour l'appliquer sans redémarrage. */
+/** Notified on every setting change so it can be applied without restarting. */
 export type SettingsListener = (settings: AppSettings) => void;
 
 /**
- * Objet unique traversant toute l'application : configuration, base, services
- * Drive et pipeline média. Les routes ne construisent rien, elles piochent ici.
+ * Single object spanning the application: configuration, database, Drive services
+ * and media pipeline. Routes construct nothing and draw their dependencies from here.
  */
 export class AppContext {
   readonly db: Db;
   readonly config: ConfigRepo;
   readonly media: MediaRepo;
   readonly comments: CommentRepo;
-  /** Identités de commentateur — les personnes, par opposition aux clés d'accès. */
+  /** Commenter identities — people, as opposed to access keys. */
   readonly commenters: CommenterRepo;
-  /** Abonnements aux nouveautés, pris à l'ouverture d'un album. */
+  /** New-item subscriptions created when an album is opened. */
   readonly subscriptions: SubscriptionRepo;
-  /** Annonce des nouvelles photos, déclenchée par le ménage horaire de `main.ts`. */
+  /** New-photo announcements triggered by hourly housekeeping in `main.ts`. */
   readonly notifier: AlbumNotifier;
-  /** Journées annotées, et lieux déduits de l'EXIF. */
+  /** Annotated days and places inferred from EXIF data. */
   readonly days: AlbumDayRepo;
   /**
-   * Recherche d'entités dans les textes de la bibliothèque. Sans état : les
-   * index sont dans la base, tenus par les déclencheurs de la migration 11.
+   * Entity search across library text. Stateless: indexes live in the database
+   * and are maintained by the triggers from migration 11.
    */
   readonly search: SearchRepo;
-  /** Agrégation des positions en journées puis géocodage, en tâche de fond. */
+  /** Background aggregation of positions into days followed by geocoding. */
   readonly places: PlacesPass;
   readonly prewarmer: CachePrewarmer;
   /**
-   * Préparation des vidéos que le navigateur ne décode pas. Inerte tant que
-   * `ffmpeg` n'a pas été trouvé sur la machine — voir `checkFfmpeg`.
+   * Prepares videos the browser cannot decode. Inert until `ffmpeg` has been found
+   * on the machine — see `checkFfmpeg`.
    */
   readonly transcoder: TranscodePass;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
   /**
-   * Compteurs de visite, agrégés à l'écriture : qui ouvre quel album, et quand.
-   * Sa purge est branchée sur le ménage horaire de `main.ts` (D260809h).
+   * Visit counters aggregated on write: who opens which album, and when.
+   * Their purge runs with hourly housekeeping in `main.ts` (D260809h).
    */
   readonly visits: VisitLog;
-  /** Demandes d'appairage en attente — un écran sans clavier, cinq minutes. */
+  /** Pending pairing requests — a keyboardless screen, five minutes. */
   readonly pairings: PairingStore;
-  /** Inerte tant que SMTP n'est pas configuré — voir `Mailer.fromEnv`. */
+  /** Inert until SMTP is configured — see `Mailer.fromEnv`. */
   readonly mailer: Mailer;
   /**
-   * Porté par le contexte et non par les routes d'authentification : sa purge
-   * est branchée sur le ménage horaire de `main.ts`, qui n'a pas accès aux
-   * fermetures d'une fabrique de routes.
+   * Held by the context rather than authentication routes: its purge runs with
+   * hourly housekeeping in `main.ts`, which cannot access a route factory's closures.
    */
   readonly throttle = new LoginThrottle();
   readonly drive: DriveService;
   readonly cache: MediaCache;
   /**
-   * Magasin des versions lisibles des vidéos, avec son propre budget.
+   * Store of playable video versions, with its own budget.
    *
-   * Une `MediaCache` de plus et non un répertoire du cache d'images : inventaire,
-   * LRU, éviction et ménage des `.tmp` au démarrage sont exactement ce qu'il
-   * faut, et un LRU commun aux deux laisserait une navigation dans la grille
-   * évincer des heures de transcodage (D260809b).
+   * Another `MediaCache` rather than a directory in the image cache: inventory,
+   * LRU, eviction and startup cleanup of `.tmp` files are exactly what is needed,
+   * while sharing one LRU would let browsing the grid evict hours of transcoding
+   * work (D260809b).
    */
   readonly videoStore: MediaCache;
   readonly renderer: MediaRenderer;
   readonly syncer: Syncer;
 
   private readonly settingsListeners: SettingsListener[] = [];
-  /** Faux tant que `checkFfmpeg` n'a pas trouvé le binaire. */
+  /** False until `checkFfmpeg` finds the binary. */
   private ffmpeg = false;
 
   constructor(
@@ -135,8 +134,8 @@ export class AppContext {
     this.renderer = new MediaRenderer(this.drive, this.cache, logger);
     this.syncer = new Syncer(this.drive, this.media, this.syncState, logger);
     this.notifier = new AlbumNotifier({
-      // Une fonction et non la liste : un album créé depuis /admin doit entrer
-      // dans le tour de garde sans redémarrage.
+      // A function rather than the list, so an album created from /admin joins the
+      // watch cycle without a restart.
       albums: () => this.albums,
       media: this.media,
       syncState: this.syncState,
@@ -159,14 +158,14 @@ export class AppContext {
       media: this.media,
       cache: this.cache,
       renderer: this.renderer,
-      // Relu à chaque photo : décocher le réglage dans /admin doit arrêter le
-      // passage en cours, pas seulement le suivant — c'est ce qu'on attend
-      // d'un interrupteur quand on vient de constater que ça sature la ligne.
+      // Re-evaluated for every photo: clearing the setting in /admin must stop the
+      // current pass, not just the next one — that is what is expected of a switch
+      // after noticing that it saturates the connection.
       //
-      // La connexion Drive entre dans le même prédicat plutôt que dans une
-      // dépendance de plus : sans elle, le passage parcourait l'album entier en
-      // échouant photo par photo **avec sa pause d'une seconde**, soit un quart
-      // d'heure de boucle stérile par heure sur un album de mille photos.
+      // The Drive connection belongs in the same predicate rather than another
+      // dependency: without it, the pass would traverse the whole album, failing
+      // photo by photo **with its one-second pause** — fifteen minutes of futile
+      // looping per hour for an album of a thousand photos.
       enabled: () => this.settings.prewarmCache && this.drive.connected,
       log: logger,
     });
@@ -181,40 +180,39 @@ export class AppContext {
         root: join(env.cacheDir, 'video'),
         run: spawnFfmpeg,
       }),
-      // Trois conditions dans le même prédicat, relu à chaque vidéo, pour la
-      // raison du préchauffage : sans Drive, le passage parcourrait l'album en
-      // échouant fichier par fichier ; sans ffmpeg, il le parcourrait en
-      // échouant après avoir téléchargé chaque original — cent cinquante
-      // méga-octets tirés pour rien, par vidéo et par heure.
+      // Three conditions in the same predicate, re-evaluated for every video, for
+      // the same reason as prewarming: without Drive, the pass would traverse the
+      // album failing file by file; without ffmpeg, it would fail after downloading
+      // each original — one hundred and fifty megabytes fetched for nothing, per
+      // video and per hour.
       enabled: () => this.settings.transcodeVideos && this.drive.connected && this.ffmpeg,
       log: logger,
     });
 
-    // Filet de sécurité : une base restaurée d'une sauvegarde peut porter des
-    // médias d'albums disparus depuis. La condition est indispensable — sans
-    // album déclaré, `pruneAlbums` viderait l'index entier, ce qui est le bon
-    // comportement après suppression du dernier album mais serait catastrophique
-    // sur une base dont la configuration n'a pas encore été amorcée.
+    // Safety net: a database restored from backup may contain media from albums that
+    // have since disappeared. The condition is essential — with no declared album,
+    // `pruneAlbums` would empty the whole index, which is correct after deleting the
+    // last album but catastrophic for a database whose configuration has not yet
+    // been bootstrapped.
     const albumIds = this.albums.map((album) => album.id);
     if (albumIds.length > 0) this.media.pruneAlbums(albumIds);
   }
 
   /**
-   * Cherche `ffmpeg` et arme — ou non — la préparation des vidéos.
+   * Finds `ffmpeg` and enables — or does not enable — video preparation.
    *
-   * Appelé une fois au démarrage, depuis `buildApp` : le constructeur ne peut
-   * pas attendre un processus, et sonder le binaire à chaque passage coûterait
-   * un `spawn` par heure pour une réponse qui ne change pas. L'avertissement
-   * est explicite parce que le symptôme, lui, ne l'est pas : sans ffmpeg, les
-   * vidéos HEVC restent affichées comme illisibles, exactement comme avant, et
-   * rien ne dirait qu'il manque un paquet.
+   * Called once at startup from `buildApp`: the constructor cannot await a process,
+   * and probing the binary on every pass would cost one `spawn` per hour for an
+   * answer that does not change. The warning is explicit because the symptom is not:
+   * without ffmpeg, HEVC videos remain displayed as unplayable, exactly as before,
+   * with no indication that a package is missing.
    */
   async checkFfmpeg(): Promise<void> {
     this.ffmpeg = await ffmpegAvailable();
     if (this.ffmpeg || !this.settings.transcodeVideos) return;
     this.log.warn(
-      'ffmpeg est introuvable : les vidéos que le navigateur ne décode pas ne seront pas ' +
-        'préparées, elles resteront seulement téléchargeables.',
+      'ffmpeg is missing: videos the browser cannot decode will not be ' +
+        'prepared, they will only stay downloadable.',
     );
   }
 
@@ -235,42 +233,38 @@ export class AppContext {
   }
 
   /**
-   * Indexe les albums, puis prépare les vignettes de ce qui vient d'arriver.
+   * Indexes albums, then prepares thumbnails for what has just arrived.
    *
-   * Les deux vont ensemble, et c'est le seul moment où on sait qu'il y a du
-   * neuf : une photo indexée mais jamais rendue coûte le prix fort à la
-   * première ouverture de la grille — deux à quatre rendus simultanés pour
-   * plusieurs dizaines de vignettes demandées d'un coup. Toute synchronisation passe par
-   * ici, y compris celles lancées depuis /admin.
+   * The two belong together, and this is the only time new items are known: an
+   * indexed but never rendered photo incurs the full cost when the grid first opens —
+   * two to four simultaneous renders for several dozen thumbnails requested at once.
+   * Every synchronisation passes through here, including those launched from /admin.
    *
-   * Le préchauffage garde ses autres déclencheurs — démarrage et ménage horaire
-   * — parce que la synchronisation automatique peut être désactivée (D45) ; il
-   * refuse de lui-même un second passage concurrent.
+   * Prewarming retains its other triggers — startup and hourly housekeeping —
+   * because automatic synchronisation may be disabled (D45); it rejects a second
+   * concurrent pass itself.
    *
-   * Les lieux suivent la même logique et pour la même raison : une photo
-   * géolocalisée qui vient d'arriver donne son nom à sa journée, et attendre le
-   * ménage horaire ferait afficher pendant une heure une journée sans lieu que
-   * l'instance sait déjà nommer (D91).
+   * Places follow the same logic for the same reason: a newly arrived geolocated
+   * photo gives its day a name, and waiting for hourly housekeeping would display
+   * for an hour a day without a place the instance already knows how to name (D91).
    */
   async syncThenPrewarm(albums: StoredAlbum[]): Promise<void> {
     await this.syncer.syncAll(albums);
 
-    // Détaché, et avant le préchauffage : l'agrégation des grappes est
-    // instantanée, mais le géocodage qui la suit dure jusqu'à quelques minutes.
-    // L'attendre repousserait d'autant les vignettes, c'est-à-dire ce qui rend
-    // la grille rapide. Le passage refuse de lui-même un second appel
-    // concurrent, une resynchronisation répétée n'appelle donc pas Nominatim
-    // deux fois.
+    // Detached and before prewarming: cluster aggregation is immediate, but the
+    // geocoding that follows can take a few minutes. Waiting for it would delay
+    // thumbnails by the same amount — the very thing that makes the grid fast. The
+    // pass rejects a concurrent call itself, so repeated synchronisation does not
+    // call Nominatim twice.
     void this.places.run().catch((error: unknown) => {
-      this.log.error({ err: error }, 'Passage des lieux en échec');
+      this.log.error({ err: error }, 'Places pass failed');
     });
 
     await this.prewarmer.run();
 
-    // Après le préchauffage, jamais avant : les vignettes font attendre quelqu'un
-    // devant sa grille, un transcodage prépare une vidéo que personne ne regarde
-    // encore. Passer devant retarderait de plusieurs minutes ce qui se compte en
-    // secondes.
+    // After prewarming, never before: thumbnails keep someone waiting in front of
+    // the grid, while transcoding prepares a video nobody is watching yet. Going
+    // first would delay by several minutes work measured in seconds.
     await this.transcoder.run();
   }
 
@@ -279,18 +273,17 @@ export class AppContext {
   }
 
   /**
-   * Enregistre un consommateur de réglages. `main.ts` s'en sert pour
-   * reprogrammer le minuteur de synchronisation sans redémarrer.
+   * Registers a settings consumer. `main.ts` uses it to reschedule the
+   * synchronisation timer without restarting.
    */
   onSettingsChanged(listener: SettingsListener): void {
     this.settingsListeners.push(listener);
   }
 
   /**
-   * Écrit les réglages et les applique immédiatement. Le rechargement de
-   * config d'avant ne le faisait pas : `cache.maxSizeGB` et
-   * `sync.intervalMinutes` n'étaient lus qu'au démarrage, si bien que les
-   * modifier depuis l'application n'aurait rien changé jusqu'au redémarrage.
+   * Writes settings and applies them immediately. The previous configuration reload
+   * did not: `cache.maxSizeGB` and `sync.intervalMinutes` were read only at startup,
+   * so changing them from the application would have done nothing until restart.
    */
   updateSettings(patch: Partial<AppSettings>): AppSettings {
     const settings = this.config.updateSettings(patch);

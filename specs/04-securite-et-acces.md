@@ -1,646 +1,562 @@
-# 04 — Sécurité et accès
+# 04 — Security and access
 
-## Trois choses distinctes, à ne pas confondre
+## Three distinct things, not to be confused
 
-|                  | Ce que c'est                                | Ce que ça ouvre                       |
-| ---------------- | ------------------------------------------- | ------------------------------------- |
-| **OAuth Google** | Le consentement du propriétaire             | La lecture de _son_ Drive, au serveur |
-| **`users`**      | Une **clé d'accès**, possiblement partagée  | Les albums attribués                  |
-| **`commenters`** | Une **personne**, adresse vérifiée par code | Le droit de signer un commentaire     |
+|                  | What it is                               | What it grants                           |
+| ---------------- | ---------------------------------------- | ---------------------------------------- |
+| **Google OAuth** | The owner's consent                      | Server-side read access to _their_ Drive |
+| **`users`**      | An **access key**, possibly shared       | The assigned albums                      |
+| **`commenters`** | A **person**, address verified by a code | The right to sign a comment              |
 
-La distinction entre les deux dernières est récente et structurante : un
-identifiant confié à tout un foyer ne dit pas qui écrit. Voir D38.
+The distinction between the last two is recent and structural: credentials entrusted to an entire
+household do not identify who is writing. See D38.
 
-## Les deux authentifications, à ne pas confondre
+## The two authentication methods, not to be confused
 
-C'est la confusion la plus coûteuse du projet. Ce sont deux mécanismes sans
-rapport, qui ne partagent ni stockage, ni durée de vie, ni population.
+This is the project's most costly source of confusion. These are two unrelated mechanisms that do
+not share storage, lifespan, or user base.
 
-L'accès du serveur à Drive emprunte l'un de **deux** chemins, exclusifs :
-`GOOGLE_SERVICE_ACCOUNT_FILE` renseigné, c'est le compte de service ; sinon,
-OAuth. Le tableau ci-dessous décrit OAuth, qui reste le défaut ; le compte de
-service a sa section plus bas.
+The server accesses Drive through one of **two** mutually exclusive paths: when
+`GOOGLE_SERVICE_ACCOUNT_FILE` is set, it uses the service account; otherwise it uses OAuth. The
+table below describes OAuth, which remains the default; the service account has its own section
+below.
 
-|                 | OAuth Google                           | Identifiant / mot de passe       |
-| --------------- | -------------------------------------- | -------------------------------- |
-| Qui             | Le propriétaire du Drive, une personne | Chaque visiteur                  |
-| Quand           | Une fois, à l'installation             | À chaque session (un an)         |
-| Ce que ça ouvre | La lecture du Drive **par le serveur** | Les albums attribués à ce compte |
-| Où c'est stocké | `oauth_token`, refresh token chiffré   | Table `users`, hash argon2id     |
-| Qui déclenche   | `/admin` → « Connecter Google Drive »  | Le formulaire de `/login`        |
+|                    | Google OAuth                           | Username/password                   |
+| ------------------ | -------------------------------------- | ----------------------------------- |
+| Who                | The Drive owner, one person            | Every visitor                       |
+| When               | Once, during installation              | For each session (one year)         |
+| What it grants     | Drive read access **for the server**   | The albums assigned to this account |
+| Where it is stored | `oauth_token`, encrypted refresh token | `users` table, argon2id hash        |
+| Who initiates it   | `/admin` → "Connect Google Drive"      | The `/login` form                   |
 
-Un visiteur ne voit jamais Google, n'a besoin d'aucun compte Google, et ne reçoit
-jamais d'URL `googleapis.com`. L'application détient un seul jeton — celui du
-propriétaire — et sert tout le contenu à travers lui.
+A visitor never sees Google, needs no Google account, and never receives a `googleapis.com` URL.
+The application holds a single token—the owner's—and serves all content through it.
 
-## Mots de passe
+## Passwords
 
-Hachés en **argon2id** avec les paramètres par défaut de `argon2.hash()`. Le mot
-de passe arrive en clair sur `POST`/`PATCH /api/admin/users` et n'est haché que
-côté serveur ; **aucune réponse d'API ne contient jamais d'empreinte**
-(`packages/server/test/admin-config.test.ts` le vérifie sur la création comme sur
-la liste). Longueur minimale : `PASSWORD_MIN_LENGTH` (8), partagée avec le front.
+Hashed with **argon2id** using the default `argon2.hash()` parameters. The password arrives in plain
+text on `POST`/`PATCH /api/admin/users` and is hashed only on the server; **no API response ever
+contains a hash** (`packages/server/test/admin-config.test.ts` verifies this for both creation and
+listing). Minimum length: `PASSWORD_MIN_LENGTH` (8), shared with the frontend.
 
-Deux autres chemins produisent une empreinte : `pnpm create-admin` pour le tout
-premier administrateur d'une installation neuve, et `pnpm hash-password` pour un
-`config/albums.yaml` d'amorçage — `config.ts` y refuse toute valeur qui ne
-commence pas par `$argon2`, ce qui écarte un mot de passe laissé en clair par
-mégarde.
+Two other paths produce a hash: `pnpm create-admin` for the very first administrator of a fresh
+installation, and `pnpm hash-password` for a bootstrap `config/albums.yaml`—`config.ts` rejects any
+value there that does not start with `$argon2`, preventing a password accidentally left in plain
+text.
 
-`routes/auth.ts` compare **toujours** un hash, même quand l'identifiant est
-inconnu : un `DUMMY_HASH` constant est vérifié dans ce cas. Sans cette
-précaution, un login inexistant répondrait en une fraction du temps d'un mot de
-passe faux, ce qui permettrait d'énumérer les comptes au chronomètre.
+`routes/auth.ts` **always** compares a hash, even when the username is unknown: in that case it
+checks a constant `DUMMY_HASH`. Without this precaution, a nonexistent login would respond in a
+fraction of the time taken by a wrong password, allowing accounts to be enumerated by timing them.
 
-La recherche d'utilisateur est **insensible à la casse** (`ConfigRepo.user`), et
-l'unicité l'est aussi — c'est le rôle du `COLLATE NOCASE` de la clé primaire
-(voir [03](./03-modele-de-donnees.md)). Créer « ALEXIS » quand « alexis » existe
-répond **409**, jamais un écrasement silencieux.
+User lookup is **case-insensitive** (`ConfigRepo.user`), as is uniqueness—this is the role of the
+primary key's `COLLATE NOCASE` (see [03](./03-modele-de-donnees.md)). Creating "ALEXIS" when
+"alexis" exists returns **409**, never a silent overwrite.
 
-## Throttle des tentatives
+## Attempt throttling
 
-`packages/server/src/throttle.ts`, en mémoire. Chaque échec incrémente **trois**
-compteurs, et c'est le plus contraignant des trois qui décide du blocage.
+`packages/server/src/throttle.ts`, in memory. Each failure increments **three** counters, and the
+most restrictive of the three determines whether to block.
 
-| Axe           | Clé                           | Essais libres | Ce qu'il attrape                                         |
-| ------------- | ----------------------------- | ------------- | -------------------------------------------------------- |
-| `couple`      | `<ip>` + `<identifiant>`      | 5             | Le cas normal : quelqu'un qui se trompe de mot de passe. |
-| `identifiant` | `<identifiant en minuscules>` | 10            | Une attaque distribuée sur un compte précis.             |
-| `ip`          | `<ip>`                        | 20            | Une même source qui fait tourner les identifiants.       |
+| Axis          | Key                           | Free attempts | What it catches                                    |
+| ------------- | ----------------------------- | ------------- | -------------------------------------------------- |
+| `couple`      | `<ip>` + `<identifiant>`      | 5             | The normal case: someone mistyping their password. |
+| `identifiant` | `<identifiant en minuscules>` | 10            | A distributed attack on a specific account.        |
+| `ip`          | `<ip>`                        | 20            | A single source cycling through usernames.         |
 
-Au-delà des essais libres, chaque axe applique le même barème : 2 s, puis
-doublement (4, 8, 16 s…), plafonné à **15 minutes**. Une heure sans échec efface
-la série (`RESET_AFTER_MS`).
+Beyond the free attempts, each axis applies the same scale: 2 s, then doubling (4, 8, 16 s…),
+capped at **15 minutes**. One hour without a failure clears the sequence (`RESET_AFTER_MS`).
 
-L'axe `ip` n'existe pas pour la forme : sans lui, une adresse qui essaie des
-milliers d'identifiants aléatoires ne crée que des compteurs à une tentative,
-n'est jamais freinée, et obtient autant de vérifications argon2 — le calcul le
-plus cher du serveur.
+The `ip` axis is not cosmetic: without it, an address trying thousands of random usernames would
+only create counters with one attempt, would never be slowed down, and would obtain as many argon2
+checks—the server's most expensive computation.
 
-Une connexion réussie efface les compteurs `couple` et `identifiant`, **pas**
-celui de l'IP : disposer d'un compte valide sur l'instance ne doit pas donner de
-quoi remettre à zéro son budget de balayage entre deux rafales. Le blocage
-répond **429** avec un en-tête `Retry-After` en secondes, et il est vérifié
-**avant** toute vérification argon2.
+A successful login clears the `couple` and `identifiant` counters, **not** the IP counter: having a
+valid account on the instance must not provide a way to reset its scanning allowance between two
+bursts. A block returns **429** with a `Retry-After` header in seconds, and is checked **before** any
+argon2 verification.
 
-La table est bornée à `MAX_ENTRIES = 20 000` entrées : au-delà, les séries
-expirées puis les plus anciennes sont sacrifiées (retour à 90 % de la borne, pour
-ne pas retrier à chaque tentative suivante). `LoginThrottle.purge()` est appelée
-par le ménage horaire de `main.ts`, avec la purge des sessions expirées : sans
-elle, les compteurs d'une rafale survivraient jusqu'au redémarrage.
+The table is limited to `MAX_ENTRIES = 20 000` entries: beyond that, expired and then oldest
+sequences are discarded (returning to 90% of the limit to avoid sorting again on every subsequent
+attempt). `LoginThrottle.purge()` is called by the hourly housekeeping in `main.ts`, alongside the
+expired-session purge: without it, counters from a burst would survive until restart.
 
-`trustProxy` est indispensable ici (`app.ts`) : derrière Caddy, `request.ip`
-vaudrait sinon l'adresse du proxy — tous les visiteurs seraient regroupés sous
-une seule adresse, et l'axe `ip` bloquerait l'instance entière.
+`trustProxy` is essential here (`app.ts`): behind Caddy, `request.ip` would otherwise be the proxy's
+address—all visitors would be grouped under one address, and the `ip` axis would block the entire
+instance.
 
-Sa valeur est une **liste**, `['loopback', 'uniquelocal']`, et pas `true`.
-`true` fait confiance à n'importe quel `X-Forwarded-For`, y compris celui qu'un
-client écrit lui-même : il suffirait alors d'en changer à chaque tentative pour
-que les trois axes ci-dessus comptent chacun une seule occurrence, et le
-throttle ne freinerait plus rien. Ne sont crus que les intermédiaires joignables
-sur la boucle locale ou un réseau privé — c'est-à-dire nos propres proxys, le
-seul chemin par lequel une requête arrive. Un en-tête venu d'une adresse
-publique est ignoré, et `request.ip` retombe sur l'adresse de la connexion.
+Its value is a **list**, `['loopback', 'uniquelocal']`, not `true`. `true` trusts any
+`X-Forwarded-For`, including one written by the client itself: changing it on every attempt would
+then make each of the three axes above count a single occurrence, and the throttle would no longer
+slow anything down. Only intermediaries reachable on the loopback interface or a private network
+are trusted—that is, our own proxies, the only path through which a request arrives. A header from
+a public address is ignored, and `request.ip` falls back to the connection address.
 
-Cette protection ne dépend donc plus de la topologie du déploiement. Elle tenait
-auparavant au seul fait que le port n'était publié que sur `127.0.0.1` : le jour
-où quelqu'un retirait ce préfixe, le throttle devenait contournable sans que
-rien ne le signale.
+This protection therefore no longer depends on the deployment topology. It previously relied only
+on the port being published on `127.0.0.1`: if someone removed that prefix, the throttle became
+bypassable without any warning.
 
-Limites assumées : les compteurs sont en mémoire, donc perdus au redémarrage, et
-une attaque vraiment distribuée (une adresse par tentative, un identifiant par
-tentative) n'est freinée par aucun des trois axes. Pour une instance à quelques
-comptes derrière un reverse-proxy, c'est le compromis retenu.
+Accepted limitations: the counters are in memory and therefore lost on restart, and a truly
+distributed attack (one address per attempt, one username per attempt) is not slowed by any of the
+three axes. For an instance with a few accounts behind a reverse proxy, this is the chosen trade-off.
 
 ## Sessions
 
-`packages/server/src/sessions.ts`. Identifiant de 32 octets aléatoires
-(`randomBytes(32).toString('base64url')`), stocké en base avec sa date
-d'expiration. **TTL d'un an, repoussé dès que la session a passé sa mi-vie** :
-en pratique on ne se déconnecte jamais tant qu'on utilise la galerie, et une
-session vraiment abandonnée finit par s'éteindre. Purge horaire des sessions
-expirées par le minuteur de `main.ts`.
+`packages/server/src/sessions.ts`. A random 32-byte identifier
+(`randomBytes(32).toString('base64url')`), stored in the database with its expiry date. **One-year
+TTL, extended once the session has passed its half-life**: in practice, users are never logged out
+while they keep using the gallery, and a truly abandoned session eventually expires. The timer in
+`main.ts` purges expired sessions hourly.
 
-Pourquoi pas d'expiration du tout, comme le mot « indéfiniment » le suggérait :
-une session éternelle est un jeton de connexion permanent — volé une fois,
-valable à vie — et la table grossirait sans que rien ne la nettoie. Attention au
-vocabulaire au passage : un _cookie de session_ au sens HTTP, sans `maxAge`, est
-celui qui meurt à la fermeture du navigateur, soit exactement l'inverse. Le
-cookie posé ici est persistant. Repousser l'échéance à mi-vie plutôt qu'à chaque
-requête ramène le coût à une écriture par visiteur et par semestre, au lieu
-d'une par vignette.
+Why not have no expiry at all, as the word "indefinitely" suggested: an eternal session is a
+permanent login token—stolen once, valid for life—and the table would grow without anything to
+clean it up. A vocabulary warning: an HTTP _session cookie_, without `maxAge`, is one that dies when
+the browser closes, exactly the opposite. The cookie set here is persistent. Extending the deadline
+at half-life rather than on every request reduces the cost to one write per visitor every six
+months, instead of one per thumbnail.
 
-Le cookie `gdv_session` est `httpOnly`, `sameSite: 'lax'`, **signé** avec
-`SESSION_SECRET` via `@fastify/cookie`, et `secure` uniquement si `PUBLIC_URL`
-commence par `https://` — sinon le navigateur ne le renverrait jamais en
-développement local. Ses options sortent d'une seule fonction
-(`sessionCookieOptions`), utilisée à la connexion **comme à la prolongation** :
-deux jeux d'options qui divergeraient, c'est un cookie qui change de portée au
-premier renouvellement.
+The `nonni_session` cookie is `httpOnly`, `sameSite: 'lax'`, **signed** with `SESSION_SECRET` via
+`@fastify/cookie`, and `secure` only if `PUBLIC_URL` starts with `https://`—otherwise the browser
+would never send it back during local development. Its options come from a single function
+(`sessionCookieOptions`), used both **at login and on extension**: two diverging sets of options
+would make the cookie change scope on its first renewal.
 
-Prolonger la session en base ne suffit pas : le cookie porte sa propre échéance,
-que le navigateur applique sans rien savoir de la base. Le hook `onRequest` le
-réémet donc dès que la lecture a repoussé l'expiration — sans quoi le visiteur
-le plus assidu se retrouvait déconnecté un an après sa connexion, la
-prolongation ne servant qu'à faire grossir `sessions`.
+Extending the session in the database is not enough: the cookie has its own deadline, which the
+browser enforces without knowing anything about the database. The `onRequest` hook therefore
+reissues it whenever reading the session extends the expiry—otherwise even the most regular visitor
+would be logged out one year after logging in, with the extension only making `sessions` grow.
 
-`sameSite: 'lax'` et non `strict` : le retour du callback OAuth est une
-navigation entrante depuis `accounts.google.com`, et `strict` empêcherait le
-cookie de partir, donc le callback échouerait sur un 401.
+`sameSite: 'lax'`, not `strict`: returning from the OAuth callback is an incoming navigation from
+`accounts.google.com`, and `strict` would prevent the cookie from being sent, causing the callback
+to fail with a 401.
 
-**Pourquoi pas un JWT.** Un JWT est valide jusqu'à son expiration, où qu'il se
-trouve : le retirer suppose une liste de révocation, c'est-à-dire une table en
-base — exactement ce qu'on cherchait à éviter. Ici la session _est_ la ligne en
-base, donc :
+**Why not a JWT.** A JWT remains valid until it expires, wherever it is: revoking it requires a
+revocation list, meaning a database table—exactly what we were trying to avoid. Here the session
+_is_ the database row, so:
 
-- `POST /auth/logout` la supprime, l'accès est coupé au tir suivant ;
-- le hook `onRequest` de `plugins/auth.ts` revérifie à **chaque requête** que le
-  compte de la session existe encore en base, et détruit la session sinon. La
-  configuration fait autorité, pas le cookie.
+- `POST /auth/logout` deletes it, cutting off access on the next request;
+- the `onRequest` hook in `plugins/auth.ts` checks on **every request** that the session's account
+  still exists in the database, and destroys the session otherwise. The configuration is
+  authoritative, not the cookie.
 
-Quelles opérations d'administration ferment une session, et lesquelles ne le
-font pas :
+Which administration operations close a session, and which do not:
 
-| Opération                  | Sessions    | Pourquoi                                                                                          |
-| -------------------------- | ----------- | ------------------------------------------------------------------------------------------------- |
-| Supprimer un compte        | **fermées** | Le compte n'existe plus ; le hook les tuerait de toute façon, autant le faire tout de suite.      |
-| Changer le mot de passe    | **fermées** | C'est la raison même du changement : le navigateur déjà connecté doit être coupé.                 |
-| Retirer le rôle admin      | conservées  | Le compte reste légitime. `admin` est relu à chaque requête : `/api/admin/*` répond 403 aussitôt. |
-| Modifier la liste d'albums | conservées  | Idem : `canSee()` est réévalué à chaque requête, l'accès retiré tombe au tir suivant.             |
+| Operation             | Sessions   | Why                                                                                                         |
+| --------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| Delete an account     | **closed** | The account no longer exists; the hook would kill them anyway, so do it immediately.                        |
+| Change the password   | **closed** | This is the very reason for the change: an already logged-in browser must be cut off.                       |
+| Remove the admin role | kept       | The account remains legitimate. `admin` is reread on every request: `/api/admin/*` returns 403 immediately. |
+| Change the album list | kept       | Likewise: `canSee()` is reevaluated on every request, so removed access ends on the next request.           |
 
-Le coût est une lecture SQLite par requête — négligeable en process.
+The cost is one SQLite read per request—negligible in-process.
 
-## Appairage d'un écran sans clavier
+## Pairing a screen without a keyboard
 
-`packages/server/src/pairings.ts` pour l'état, `routes/auth.ts` pour les quatre
-routes. Le raisonnement complet est en
-[D260809c](./08-decisions/D260809c-approbation-ecran.md) ; ce qui suit est ce qui
-touche à l'accès.
+`packages/server/src/pairings.ts` holds the state, and `routes/auth.ts` the four routes. The full
+reasoning is in [D260809c](./08-decisions/D260809c-approbation-ecran.md); what follows concerns
+access.
 
-Un téléviseur n'a pas de caméra : c'est **lui** qui affiche le QR, et un
-téléphone déjà connecté qui le scanne. L'appairage délègue donc un accès
-existant, il n'en crée aucun — le mot de passe reste le seul chemin d'entrée
-d'un premier appareil.
+A television has no camera: **it** displays the QR code, and an already connected phone scans it.
+Pairing therefore delegates existing access; it does not create any—the password remains the only
+way for a first device to gain access.
 
-|                     | Ce que c'est                                      | Qui le voit                       |
-| ------------------- | ------------------------------------------------- | --------------------------------- |
-| `userCode`, 8 car.  | Le nom d'une demande en attente                   | L'écran, le QR, la pièce entière  |
-| `deviceCode`, 32 o. | La preuve d'être l'appareil qui a fait la demande | Le demandeur, et personne d'autre |
+|                     | What it is                                      | Who sees it                        |
+| ------------------- | ----------------------------------------------- | ---------------------------------- |
+| `userCode`, 8 chars | The name of a pending request                   | The screen, the QR, the whole room |
+| `deviceCode`, 32 B  | Proof of being the device that made the request | The requester, and nobody else     |
 
-Ce qui tient l'ensemble :
+What holds it all together:
 
-- **Le code affiché ne relève rien.** Seul le `deviceCode` permet de récupérer
-  la session, et il n'apparaît jamais à l'écran. Sans cette séparation, une
-  photo du téléviseur suffirait à prendre sa place.
-- **Approuver exige une session** (`requireAuth`), et la session créée porte le
-  compte de l'approbateur, avec ses albums — réévalués à chaque requête comme
-  pour n'importe quelle session.
-- **L'identité de commentateur ne suit pas.** L'écran appairé arrive sans
-  identité, comme après une connexion au mot de passe : elle vaut pour la
-  personne, pas pour la clé d'accès. Sans cette règle, le téléviseur du salon
-  signerait du nom de celui qui a approuvé.
-- **Un `deviceCode` ne vaut qu'une session** : la demande est supprimée à la
-  relève, et un rejeu répond comme un code inconnu.
-- **Cinq minutes**, puis la demande meurt. La purge horaire de `main.ts` efface
-  ce que personne n'a relevé.
-- **Un code inconnu, expiré ou déjà pris répond la même chose** — 404
-  `unknown_code`. Distinguer « expiré » de « jamais existé » dirait à qui essaie
-  des codes au hasard lesquels ont existé.
-- **Les échecs comptent dans le throttle**, sur les trois mêmes axes que la
-  connexion (`throttle.ts`), le code tenant lieu d'identifiant. Un sondage de
-  codes est donc freiné exactement comme un sondage de mots de passe, et sans
-  compteur de plus.
-- **Le nombre de demandes en attente est borné** (`MAX_PENDING`). Au-delà, la
-  route d'ouverture purge puis répond 429 : la table est en base, et une rafale
-  de demandes ne doit pas la faire grossir sans fin. Personne n'y gagne un
-  accès — au pire l'appairage devient indisponible le temps de la rafale, ce
-  qu'une rafale obtiendrait de toute façon.
+- **The displayed code retrieves nothing.** Only the `deviceCode` can retrieve the session, and it
+  never appears on screen. Without this separation, a photograph of the television would be enough
+  to take its place.
+- **Approval requires a session** (`requireAuth`), and the created session carries the approver's
+  account and albums—reevaluated on every request like any other session.
+- **The commenter identity does not follow.** The paired screen arrives without an identity, as
+  after a password login: it belongs to the person, not the access key. Without this rule, the
+  living-room television would sign with the approver's name.
+- **A `deviceCode` is worth only one session**: the request is deleted when retrieved, and replaying
+  it returns the same response as an unknown code.
+- **Five minutes**, then the request dies. The hourly purge in `main.ts` removes requests that nobody
+  retrieved.
+- **An unknown, expired, or already claimed code receives the same response**—404 `unknown_code`.
+  Distinguishing "expired" from "never existed" would tell someone trying random codes which ones
+  had existed.
+- **Failures count towards the throttle**, on the same three axes as login (`throttle.ts`), with the
+  code standing in for the username. Probing codes is therefore slowed exactly like probing
+  passwords, without another counter.
+- **The number of pending requests is bounded** (`MAX_PENDING`). Beyond the limit, the opening route
+  purges and then returns 429: the table is in the database, and a burst of requests must not make it
+  grow without end. Nobody gains access from it—at worst pairing becomes unavailable for the
+  duration of the burst, which a burst would achieve anyway.
 
-**Le risque assumé** est social, et aucun secret n'y change rien : faire scanner
-à quelqu'un un QR qui n'est pas le sien lui fait donner son accès. La page
-d'approbation affiche le code, qui doit correspondre à celui de l'écran qu'on
-regarde ; la demande expire en cinq minutes ; et ce qui se donne est une clé
-d'accès partagée, révocable en changeant son mot de passe — ce qui ferme toutes
-ses sessions, y compris celle de l'écran.
+**The accepted risk** is social, and no secret changes it: getting someone to scan a QR code that is
+not theirs makes them grant their access. The approval page displays the code, which must match the
+one on the screen being viewed; the request expires in five minutes; and what is granted is a shared
+access key, revocable by changing its password—which closes all its sessions, including the screen's.
 
-`packages/server/test/device-pairing.test.ts` verrouille ces points.
+`packages/server/test/device-pairing.test.ts` locks down these points.
 
-## Contrôle d'accès aux albums
+## Album access control
 
-Tout part de `ConfigRepo` : `albumsFor(username)` et `canSee(username, albumId)`,
-exposés par `AppContext` sous les mêmes noms. Les droits d'un compte sont soit
-une liste d'ids (table `user_albums`), soit le joker `*` (colonne `all_albums`),
-qui couvre aussi les albums créés ensuite.
+Everything starts with `ConfigRepo`: `albumsFor(username)` and `canSee(username, albumId)`, exposed
+by `AppContext` under the same names. An account's permissions are either a list of IDs
+(`user_albums` table) or the `*` wildcard (`all_albums` column), which also covers albums created
+later.
 
-Les deux lectures passent par l'instantané mémoire de `ConfigRepo`, pas par
-SQLite : `canSee()` est appelé sur chaque vignette d'une grille, une requête par
-tuile serait un net recul.
+Both reads go through `ConfigRepo`'s in-memory snapshot, not SQLite: `canSee()` is called for every
+thumbnail in a grid, and one query per tile would be a clear regression.
 
-Attribuer un album inexistant est refusé (**400 `unknown_album`**) — c'est la
-vérification que faisait le chargement du YAML, presque toujours une faute de
-frappe qui priverait silencieusement quelqu'un de son accès.
+Assigning a nonexistent album is rejected (**400 `unknown_album`**)—this is the check that YAML
+loading performed, almost always catching a typo that would silently deprive someone of access.
 
-`admin: true` donne accès aux routes `/api/admin/*` et au callback OAuth. Ça ne
-donne **pas** automatiquement tous les albums : le joker est un réglage distinct.
+`admin: true` grants access to the `/api/admin/*` routes and the OAuth callback. It does **not**
+automatically grant all albums: the wildcard is a separate setting.
 
-**Le dernier administrateur est protégé.** Le supprimer, ou lui retirer son rôle,
-répond **409 `last_admin`** : sans lui, plus personne ne pourrait connecter
-Drive, créer un compte, ni rendre le rôle à quiconque — l'instance deviendrait
-inadministrable et il faudrait un accès shell pour la réparer.
+**The last administrator is protected.** Deleting them or removing their role returns **409
+`last_admin`**: without them, nobody could connect Drive, create an account, or restore the role to
+anyone—the instance would become impossible to administer and require shell access to repair.
 
-## Contrôle d'accès aux médias : 404 et jamais 403
+## Media access control: 404, never 403
 
-`routes/media.ts` installe deux `preHandler` sur tout le préfixe `/media` :
-`requireAuth`, puis `authorize`. Ce dernier appelle
-`media.albumsContaining(mediaId)` et accorde l'accès dès qu'un de ces albums est
-visible par l'utilisateur.
+`routes/media.ts` installs two `preHandler` hooks across the `/media` prefix: `requireAuth`, then
+`authorize`. The latter calls `media.albumsContaining(mediaId)` and grants access as soon as one of
+those albums is visible to the user.
 
-La règle : **un refus répond 404, jamais 403.** Un 403 confirmerait que la
-ressource existe, ce qui rendrait la structure des albums d'autrui observable par
-sondage. La même réponse couvre donc trois cas indistinguables de l'extérieur :
-média inexistant, média non indexé, média dans un album interdit. La règle vaut
-aussi pour les albums : `GET /api/albums/:albumId` répond 404 sur un album
-interdit comme sur un album inexistant.
+The rule: **a denial returns 404, never 403.** A 403 would confirm that the resource exists, making
+the structure of other people's albums observable by probing. The same response therefore covers
+three cases that are indistinguishable from the outside: nonexistent media, unindexed media, and
+media in a forbidden album. The rule also applies to albums: `GET /api/albums/:albumId` returns 404
+for a forbidden album just as for a nonexistent one.
 
-`packages/server/test/access.test.ts` verrouille ce comportement sur
-`/api/albums/prive`, `/items`, `/items/:mediaId` et les quatre routes média.
+`packages/server/test/access.test.ts` locks down this behaviour for `/api/albums/prive`, `/items`,
+`/items/:mediaId`, and the four media routes.
 
-L'exception assumée : `/api/admin/*` répond **403** à un utilisateur connecté non
-administrateur. L'existence de l'espace d'administration n'est pas un secret —
-il est annoncé par le README et par un lien dans la barre supérieure.
+The accepted exception: `/api/admin/*` returns **403** to a logged-in non-administrator. The
+existence of the administration area is not secret—it is announced in the README and by a link in
+the top bar.
 
-**Le cache navigateur est cloisonné par session.** Les réponses média portent
-`Vary: Cookie` en plus de `Cache-Control: private, …, immutable`. Sans lui, deux
-comptes qui se succèdent dans le même profil de navigateur — l'ordinateur du
-salon — partagent les mêmes entrées de cache : le second rouvre depuis
-l'historique une photo d'un album qu'il n'a jamais eu le droit de voir, sans
-qu'aucune requête n'atteigne `authorize()`. Ce que cet en-tête ne règle pas, et
-qu'aucun autre ne réglerait, est décrit en D43.
+**The browser cache is partitioned by session.** Media responses include `Vary: Cookie` in addition
+to `Cache-Control: private, …, immutable`. Without it, two accounts used in succession in the same
+browser profile—the living-room computer—share the same cache entries: the second reopens from
+history a photo in an album they were never allowed to see, without any request reaching
+`authorize()`. What this header does not solve, and no other header would, is described in D43.
 
-## Identité de commentateur
+## Commenter identity
 
-`routes/identity.ts` et `commenters.ts`. Trois routes : déclarer une adresse et
-un nom, valider le code reçu, oublier l'identité de cette session.
+`routes/identity.ts` and `commenters.ts`. Three routes: declare an address and name, validate the
+received code, and forget the identity for this session.
 
-- **Le code est un HMAC en base** (`hashVerificationCode`), jamais le code en
-  clair : un dump ne doit pas livrer de quoi valider une adresse. Il vit quinze
-  minutes, tolère cinq essais, et ne peut être renvoyé qu'une fois par minute.
-- **La vérification est ce qui empêche l'usurpation.** Sans elle, quiconque
-  connaît le mot de passe partagé pourrait signer « Mamie », ou déclarer
-  l'adresse d'un tiers pour lui faire recevoir les notifications.
-- **Une demande de code ne renomme personne.** Le nom fourni pour une identité
-  déjà vérifiée attend dans `pending_display_name` et n'est appliqué que par
-  `verify`. Sans cela, la demande seule — que n'importe qui derrière la clé
-  partagée peut faire pour l'adresse d'un autre — renommait sa signature sur
-  tout son historique, le fil relisant le nom courant à chaque requête.
-- **`POST /identity/request-code` répond `202` que l'adresse soit déjà connue ou
-  non** : distinguer les deux dirait à qui l'essaie quelles adresses ont déjà
-  commenté sur cette instance. Un `429` reste possible dans la minute qui suit un
-  envoi — il ne révèle pas qu'une adresse est connue de l'instance, seulement
-  qu'un code vient de partir vers elle, et la route n'est ouverte qu'à un compte
-  authentifié.
-- **La session mémorise l'identité, elle ne la définit pas.** L'identité est
-  relue à chaque requête : une adresse supprimée retire le droit de commenter
-  sans attendre une reconnexion — la session dure un an.
-- **Sans SMTP, aucun code ne part**, donc personne ne peut s'identifier ni
-  commenter. `SessionUser.commentsEnabled` le dit au front, qui l'annonce au lieu
-  d'offrir un formulaire condamné à échouer.
+- **The code is stored as an HMAC in the database** (`hashVerificationCode`), never in plain text: a
+  dump must not provide what is needed to verify an address. It lives for fifteen minutes, allows
+  five attempts, and can only be resent once per minute.
+- **Verification prevents impersonation.** Without it, anyone who knows the shared password could
+  sign as "Grandma", or declare a third party's address and make them receive notifications.
+- **Requesting a code renames nobody.** A name supplied for an already verified identity waits in
+  `pending_display_name` and is applied only by `verify`. Without this, the request alone—which
+  anyone behind the shared key can make for someone else's address—would rename their signature
+  throughout their history, because the thread rereads the current name on every request.
+- **`POST /identity/request-code` returns `202` whether or not the address is already known**:
+  distinguishing the two would tell a probing user which addresses have already commented on this
+  instance. A `429` remains possible during the minute after a send—it reveals only that a code has
+  just been sent to the address, not that the instance knows it, and the route is only open to an
+  authenticated account.
+- **The session remembers the identity; it does not define it.** The identity is reread on every
+  request: deleting an address removes the right to comment without waiting for another login—the
+  session lasts one year.
+- **Without SMTP, no code is sent**, so nobody can identify themselves or comment.
+  `SessionUser.commentsEnabled` tells the frontend, which explains this instead of offering a form
+  doomed to fail.
 
-## Commentaires : le fil est cloisonné comme l'album
+## Comments: the thread is partitioned like the album
 
-`routes/comments.ts` refait le contrôle dans chaque handler au lieu de le poser
-en `preHandler` de préfixe : l'album n'occupe pas ici un segment fixe de l'URL.
-La règle reste celle des albums — 404 sur un album inconnu comme sur un album
-interdit.
+`routes/comments.ts` repeats the check in every handler instead of installing it as a prefix
+`preHandler`: the album does not occupy a fixed URL segment here. The rule remains the same as for
+albums—404 for an unknown album and for a forbidden one.
 
-Les points qui tiennent ce cloisonnement :
+The points that maintain this partitioning:
 
-- **Un fil appartient au couple `(albumId, mediaId)`.** Le même fichier Drive
-  indexé sous deux albums porte deux conversations distinctes. Sans cela, un
-  visiteur lirait dans son album les propos tenus dans un album qu'il n'a pas le
-  droit d'ouvrir — le contrôle d'accès média porte sur les octets de la photo,
-  pas sur ce qu'on en a dit.
-- **`parentId` est vérifié contre le média courant.** Répondre à un commentaire
-  suppose de prouver qu'il vit sur cette photo-là ; sinon un identifiant deviné
-  suffirait à greffer un message dans un fil qu'on ne peut pas lire.
-- **Supprimer exige de voir encore l'album.** Un visiteur dont l'accès vient
-  d'être retiré conserverait sinon un droit d'écriture sur un contenu qu'il ne
-  peut plus consulter. La même garde vaut pour la correction.
-- **Corriger est réservé à l'auteur, et à lui seul.** Un administrateur peut
-  masquer ou supprimer, jamais réécrire : mettre d'autres mots dans la bouche de
-  quelqu'un sous son nom est un pouvoir d'une autre nature que celui de retirer
-  un propos. La fenêtre de `COMMENT_EDIT_WINDOW_MS` (30 s) est contrôlée **côté
-  serveur** — une règle que seul le front applique n'est pas une règle. Un délai
-  dépassé répond **409 `edit_window_closed`**, ni 403 ni 404 : le refus porte sur
-  l'état du message, pas sur un droit d'accès, et son auteur le voit déjà.
-- **Commenter exige une identité vérifiée**, faute de quoi la route répond
-  **403 `identity_required`**. C'est la seconde exception assumée au « 404 et
-  jamais 403 » : ce refus ne porte pas sur une ressource d'autrui dont il
-  faudrait cacher l'existence, mais sur l'état de son propre compte — il ne
-  révèle rien.
-- **L'adresse email n'apparaît jamais dans un fil.** Elle identifie et notifie ;
-  seuls le nom déclaré et la modération y ont accès. Il en va de même de
-  l'identifiant d'identité : `AdminComment` le porte pour que la modération
-  puisse viser tous les messages d'une personne, `Comment` non — une clé stable
-  dans un fil public permettrait de recoller ses messages d'un album à l'autre.
+- **A thread belongs to the `(albumId, mediaId)` pair.** The same Drive file indexed under two
+  albums has two separate conversations. Otherwise, a visitor would read in their album remarks
+  made in an album they are not allowed to open—the media access check covers the photo's bytes,
+  not what was said about it.
+- **`parentId` is checked against the current media.** Replying to a comment requires proving that
+  it belongs to this particular photo; otherwise a guessed identifier would be enough to attach a
+  message to a thread that cannot be read.
+- **Deleting requires continued access to the album.** Otherwise, a visitor whose access had just
+  been removed would retain write access to content they could no longer view. The same guard
+  applies to editing.
+- **Editing is reserved for the author, and the author alone.** An administrator may hide or
+  delete, but never rewrite: putting different words in someone's mouth under their name is a
+  different kind of power from removing a statement. The `COMMENT_EDIT_WINDOW_MS` window (30 s) is
+  enforced **server-side**—a rule enforced only by the frontend is not a rule. An expired window
+  returns **409 `edit_window_closed`**, neither 403 nor 404: the denial concerns the message's state,
+  not access rights, and its author can already see it.
+- **Commenting requires a verified identity**; otherwise the route returns **403
+  `identity_required`**. This is the second accepted exception to "404, never 403": the denial does
+  not concern someone else's resource whose existence must be hidden, but the state of the user's
+  own account—it reveals nothing.
+- **The email address never appears in a thread.** It identifies and notifies; only the declared
+  name and moderation have access to it. The same applies to the identity identifier:
+  `AdminComment` carries it so moderation can target all of one person's messages, while `Comment`
+  does not—a stable key in a public thread would allow their messages to be linked across albums.
 
-`packages/server/test/comments.test.ts` verrouille ces points, ainsi que
-l'indistinguabilité des réponses 404 entre album interdit et album inexistant.
+`packages/server/test/comments.test.ts` locks down these points, as well as the indistinguishability
+of 404 responses for forbidden and nonexistent albums.
 
-**Modération.** Un commentaire masqué disparaît de la lecture pour tout le monde,
-**y compris son auteur** : le laisser croire que son message est encore lu serait
-un mensonge par omission, et c'est ce qui sépare une modération assumée d'un
-bannissement furtif. Masquer est réversible ; la suppression, elle, est
-définitive et reste offerte à l'auteur comme à l'administrateur.
+**Moderation.** A hidden comment disappears for everyone, **including its author**: letting the
+author believe their message is still being read would be a lie by omission, and this is what
+separates explicit moderation from shadow banning. Hiding is reversible; deletion is permanent and
+remains available to both the author and the administrator.
 
-**Modération groupée.** `POST /api/admin/commenters/:commenterId/hide` retire
-d'un coup tous les messages d'une identité, tous albums confondus — le geste
-d'après une clé d'accès qui a trop circulé. Il ne crée aucun pouvoir nouveau :
-c'est le même masquage, à la main duquel personne ne le ferait quinze fois. Il
-reste réversible par le `show` symétrique, et **ne bannit pas** — l'identité peut
-toujours écrire, ce qui est cohérent avec le refus du bannissement furtif
-ci-dessus. Fermer la porte se fait en changeant la clé d'accès, que la file
-affiche à côté de chaque message. `packages/server/test/moderation.test.ts`
-vérifie que l'action ne déborde pas sur les autres identités et qu'elle répond
-403 à un visiteur, jamais 404.
+**Bulk moderation.** `POST /api/admin/commenters/:commenterId/hide` removes all messages from an
+identity at once, across every album—the action needed after an access key has circulated too
+widely. It creates no new power: it is the same hiding operation that nobody would perform fifteen
+times by hand. It remains reversible through the matching `show`, and **does not ban**—the identity
+can still write, consistent with rejecting shadow banning above. Closing the door is done by
+changing the access key, which the queue displays next to every message.
+`packages/server/test/moderation.test.ts` verifies that the action does not affect other identities
+and returns 403 to a visitor, never 404.
 
-## Abonnement aux nouveautés d'un album
+## Subscribing to new items in an album
 
-`subscriptions.ts` pour l'état, `notifier.ts` pour l'envoi,
-`routes/subscriptions.ts` pour le désabonnement. Le raisonnement complet est en
-[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md) ; ce qui suit est ce qui touche à l'accès et au
-consentement.
+`subscriptions.ts` holds the state, `notifier.ts` handles sending, and
+`routes/subscriptions.ts` handles unsubscribing. The full reasoning is in
+[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md); what follows concerns
+access and consent.
 
-- **On s'abonne en ouvrant l'album**, sur la première page de
-  `GET /api/albums/:albumId/items` — donc derrière `requireAuth` et derrière le
-  contrôle d'album, exactement comme la lecture. Personne ne peut donc s'abonner
-  à un album qu'il n'a pas le droit de voir.
-- **Seule une identité vérifiée est abonnée.** La condition vit dans le SQL de
-  `SubscriptionRepo.subscribe`, pas chez l'appelant : une adresse seulement
-  déclarée peut être celle d'un tiers (D39), à qui cette galerie n'a rien à
-  écrire.
-- **Pas sur le détail d'un média.** Sinon cliquer « Voir la photo » depuis une
-  notification de commentaire abonnerait aux nouveautés de l'album, ce que
-  personne n'a demandé.
-- **Un désabonnement survit à la réouverture de l'album.** C'est l'invariant le
-  plus important de cette fonctionnalité : l'abonnement étant automatique, une
-  simple ligne effacée serait recréée le lendemain. D'où l'état `opted_out` et
-  l'`INSERT OR IGNORE` (voir [03](./03-modele-de-donnees.md)).
-- **Le désabonnement est par album.** `commenters.notify` reste le commutateur
-  global : il coupe les réponses aux commentaires **et** les annonces de
-  nouveautés. Sans cette distinction, quelqu'un qui trouve « Noël 2019 » trop
-  bavard couperait tout, et perdrait les réponses à ses propres commentaires —
-  ce qu'il y a de plus précieux.
-- **Le jeton de désabonnement couvre l'adresse et l'album**
-  (`signAlbumUnsubscribeToken`). Sans l'album dans le message signé, le lien
-  reçu pour un album vaudrait pour tous les autres. Comme celui des
-  commentaires : sans expiration, sans session, comparé en temps constant.
-- Un album ou une identité disparus depuis l'envoi rendent la page en le disant,
-  plutôt qu'une erreur : le lien vit dans un email qu'on rouvre des mois plus
-  tard.
+- **Opening the album subscribes the user**, on the first page of
+  `GET /api/albums/:albumId/items`—therefore behind `requireAuth` and the album access check, just
+  like reading. Nobody can subscribe to an album they are not allowed to see.
+- **Only a verified identity is subscribed.** The condition lives in the SQL of
+  `SubscriptionRepo.subscribe`, not in the caller: a merely declared address may belong to a third
+  party (D39), whom this gallery has no business contacting.
+- **Not on media details.** Otherwise, clicking "View the photo" from a comment notification would
+  subscribe the user to new items in the album, which nobody requested.
+- **An unsubscribe survives reopening the album.** This is the feature's most important invariant:
+  because subscription is automatic, simply deleting a row would recreate it the next day. Hence
+  the `opted_out` state and `INSERT OR IGNORE` (see [03](./03-modele-de-donnees.md)).
+- **Unsubscribing is per album.** `commenters.notify` remains the global switch: it disables comment
+  replies **and** new-item announcements. Without this distinction, someone who finds "Christmas
+  2019" too noisy would disable everything and lose replies to their own comments—the most valuable
+  notifications.
+- **The unsubscribe token covers both address and album** (`signAlbumUnsubscribeToken`). Without the
+  album in the signed message, a link received for one album would apply to all the others. Like the
+  comments token: no expiry, no session, and compared in constant time.
+- If an album or identity has disappeared since sending, the page says so instead of returning an
+  error: the link lives in an email that may be reopened months later.
 
-`packages/server/test/subscriptions.test.ts` verrouille ces points, y compris
-par l'API : la première page abonne, le détail d'un média non, une page suivante
-non plus, et le jeton d'un album est refusé sur un autre.
+`packages/server/test/subscriptions.test.ts` locks down these points, including through the API: the
+first page subscribes, media details do not, a subsequent page does not either, and one album's
+token is rejected for another.
 
-**Lien de désabonnement.** `signUnsubscribeToken` (`crypto.ts`) produit un HMAC
-de l'adresse avec `SESSION_SECRET`, comparé en temps constant. **Sans
-expiration et sans session** : le lien vit dans un email qu'on rouvre des mois
-plus tard, et un jeton périmé renverrait vers un écran de connexion quelqu'un qui
-cherche précisément à ne plus être dérangé. Ce qu'il ouvre est sans gravité —
-couper ses propres notifications — et se rétablit depuis /admin. Changer
-`SESSION_SECRET` invalide les liens déjà envoyés, au même titre que les sessions.
+**Unsubscribe link.** `signUnsubscribeToken` (`crypto.ts`) produces an HMAC of the address using
+`SESSION_SECRET`, compared in constant time. **No expiry and no session**: the link lives in an
+email that may be reopened months later, and an expired token would send someone who specifically
+wants to stop being disturbed to a login screen. What it grants is harmless—disabling one's own
+notifications—and can be restored from /admin. Changing `SESSION_SECRET` invalidates previously
+sent links, just as it invalidates sessions.
 
-## Chiffrement du refresh token
+## Refresh token encryption
 
-`packages/server/src/crypto.ts`. AES-256-GCM, clé dérivée par `scryptSync` d'un
-sel tiré à chaque chiffrement. Format stocké :
+`packages/server/src/crypto.ts`. AES-256-GCM, with a key derived by `scryptSync` from a salt
+generated for each encryption. Stored format:
 `base64( salt(16) | iv(12) | tag(16) | ciphertext )`.
 
-Le sel étant aléatoire, deux chiffrements du même jeton donnent deux chaînes
-différentes — un observateur de la base ne peut pas déduire que le jeton n'a pas
-changé.
+Because the salt is random, encrypting the same token twice produces two different strings—a
+database observer cannot infer that the token has not changed.
 
-Le modèle de menace est explicite : **un dump de `gdv.db` ne doit pas suffire à
-accéder au Drive.** Il faut aussi `TOKEN_KEY`, qui vit dans l'environnement du
-process et n'est jamais écrite en base. Le VPS n'est pas un HSM ; quelqu'un qui
-obtient un shell dans le conteneur a les deux.
+The threat model is explicit: **a dump of `nonni.db` must not be enough to access Drive.**
+`TOKEN_KEY` is also required; it lives in the process environment and is never written to the
+database. The VPS is not an HSM; someone who obtains a shell in the container has both.
 
-Si `TOKEN_KEY` change, le déchiffrement échoue sur le tag GCM.
-`DriveService.authorizedClient()` traite ce cas en supprimant le jeton
-irrécupérable et en journalisant le conseil : refaire le consentement depuis
+If `TOKEN_KEY` changes, decryption fails on the GCM tag. `DriveService.authorizedClient()` handles
+this by deleting the unrecoverable token and logging the advice to grant consent again from
 `/admin`.
 
-## Détection de `invalid_grant`
+## Detecting `invalid_grant`
 
-Google renvoie `invalid_grant` quand le refresh token n'est plus échangeable :
-accès retiré depuis `myaccount.google.com`, six mois sans utilisation, ou
-application repassée en statut « Test » (voir
-[06](./06-configuration-et-deploiement.md)).
+Google returns `invalid_grant` when the refresh token can no longer be exchanged: access revoked
+from `myaccount.google.com`, six months without use, or the application moved back to "Testing"
+status (see [06](./06-configuration-et-deploiement.md)).
 
-`DriveService.guard(operation)` enveloppe tout appel à Drive. `isRevocation`
-reconnaît l'erreur sur **deux** emplacements — `error.response.data.error` et le
-message — parce que sa forme varie selon qu'elle naît du rafraîchissement du
-jeton ou d'un appel à l'API. Au déclenchement :
+`DriveService.guard(operation)` wraps every Drive call. `isRevocation` recognises the error in
+**two** places—`error.response.data.error` and the message—because its shape varies depending on
+whether it originates while refreshing the token or calling the API. When triggered:
 
-1. `revoked_at` est daté dans `oauth_token` (le jeton et le compte sont
-   conservés) ;
-2. le client OAuth en cache est jeté ;
-3. une `DriveRevokedError` est levée à la place de l'erreur d'origine.
+1. `revoked_at` is dated in `oauth_token` (the token and account are retained);
+2. the cached OAuth client is discarded;
+3. a `DriveRevokedError` is thrown instead of the original error.
 
-Ensuite, `authorizedClient()` échoue immédiatement sur `DriveRevokedError` sans
-rappeler Google : inutile de retenter un jeton déjà refusé.
-`Syncer.syncAll` interrompt la boucle sur cette erreur. `/admin` affiche
-« Autorisation révoquée pour <compte> » plutôt que « non connecté », et propose
-« Reconnecter ». Un nouveau consentement remet `revoked_at` à `NULL`.
+Afterwards, `authorizedClient()` fails immediately with `DriveRevokedError` without calling Google
+again: there is no point retrying an already rejected token. `Syncer.syncAll` stops the loop on this
+error. `/admin` displays "Authorisation revoked for <account>" rather than "No account
+connected", and offers "Reconnect Google Drive". New consent resets `revoked_at` to `NULL`.
 
-Une coupure réseau ou un 500 de Google **ne** déclenche pas la révocation :
-`packages/server/test/revocation.test.ts` le vérifie explicitement. Invalider la
-connexion sur une erreur passagère imposerait un nouveau consentement pour rien.
+A network outage or a Google 500 **does not** trigger revocation:
+`packages/server/test/revocation.test.ts` verifies this explicitly. Invalidating the connection on
+a transient error would require new consent for no reason.
 
-## Limites de débit Drive
+## Drive rate limits
 
-À distinguer de la révocation, qu'elles peuvent imiter : Google refuse une
-requête de trop avec un `429`, ou un `403` dont **le corps** porte le motif.
-`fetchAuthorized` réessaie jusqu'à quatre fois, en doublant l'attente (1 s, 2 s,
-4 s…, plafond 30 s) ou en suivant le `Retry-After` annoncé quand il est là.
+These must be distinguished from revocation, which they can resemble: Google rejects an excess
+request with a `429`, or a `403` whose **body** carries the reason. `fetchAuthorized` retries up to
+four times, doubling the delay (1 s, 2 s, 4 s…, capped at 30 s) or following the provided
+`Retry-After` when present.
 
-Le corps décide, pas le statut : un `403` est aussi ce que répond un fichier
-auquel le compte n'a pas accès, et le réessayer quatre fois ne ferait que
-retarder l'échec. `downloadQuotaExceeded` est exclu pour la même raison — ce
-quota-là se compte en heures, attendre trente secondes n'y change rien.
+The body decides, not the status: a file the account cannot access also returns `403`, and retrying
+it four times would only delay the failure. `downloadQuotaExceeded` is excluded for the same
+reason—that quota is measured in hours, and waiting thirty seconds changes nothing.
 
-Sans ce repli, chaque refus laisserait une vignette cassée qu'aucun mécanisme ne
-rattrape. Il compte d'autant plus depuis le préchauffage (D45, dont D58 a
-redéfini ce qui est téléchargé et quand), qui concentre les téléchargements au
-lieu de les étaler sur les clics.
+Without this fallback, every rejection would leave a broken thumbnail that no mechanism recovers.
+It matters even more since prewarming (D45, for which D58 redefined what is downloaded and when),
+which concentrates downloads instead of spreading them across clicks.
 
-## Compte de service, en alternative au consentement
+## Service account as an alternative to consent
 
-`GOOGLE_SERVICE_ACCOUNT_FILE` désigne la clé JSON d'un compte de service. Quand
-elle est là, `DriveService.mode` vaut `service_account` et **rien d'autre n'est
-lu** : ni `oauth_token`, ni `TOKEN_KEY`, ni `GOOGLE_CLIENT_*`. `auth.JWT`
-échange la clé contre un access token et le renouvelle de lui-même.
+`GOOGLE_SERVICE_ACCOUNT_FILE` points to a service account's JSON key. When present,
+`DriveService.mode` is `service_account` and **nothing else is read**: neither `oauth_token`, nor
+`TOKEN_KEY`, nor `GOOGLE_CLIENT_*`. `auth.JWT` exchanges the key for an access token and renews it
+automatically.
 
-Ce que ça change, et pourquoi c'est le chemin recommandé (D46) :
+What this changes, and why it is the recommended path (D46):
 
-- **Plus d'écran « Google n'a pas validé cette application ».** `drive.readonly`
-  est un scope _restreint_ : le faire lever demanderait la vérification de
-  l'application par Google, avec audit de sécurité tiers.
-- **Plus de refresh token**, donc plus rien à chiffrer, à renouveler, ni à
-  perdre — `invalid_grant` après six mois d'inactivité disparaît avec lui.
-- **Portée réduite.** `drive.readonly` donne la lecture de **tout** le Drive du
-  propriétaire ; un compte de service ne voit que ce qui lui est explicitement
-  partagé. C'est un gain de sécurité, et une contrainte : chaque dossier
-  d'album doit être partagé en lecture avec l'adresse du compte de service,
-  sans quoi sa synchronisation ne trouve rien.
-- **La clé ne s'expire pas.** Elle se protège comme `TOKEN_KEY` : hors du dépôt,
-  montée en lecture seule dans le conteneur.
+- **No more "Google hasn't verified this app" screen.** `drive.readonly` is a _restricted_ scope:
+  removing the warning would require Google application verification and a third-party security
+  audit.
+- **No refresh token**, so there is nothing left to encrypt, renew, or lose—`invalid_grant` after six
+  months of inactivity disappears with it.
+- **Reduced scope.** `drive.readonly` grants read access to the owner's **entire** Drive; a service
+  account sees only what is explicitly shared with it. This is a security gain and a constraint:
+  every album folder must be shared read-only with the service account address, or its
+  synchronisation finds nothing.
+- **The key does not expire.** It is protected like `TOKEN_KEY`: outside the repository and mounted
+  read-only in the container.
 
-Une clé désignée mais illisible **arrête le démarrage** (`env.ts`) au lieu de
-retomber sur OAuth : basculer en silence ferait réapparaître l'écran de
-consentement là où on venait de le supprimer, sans dire pourquoi. Un chemin non
-monté dans le conteneur est l'erreur la plus probable, et elle doit se voir.
+A configured but unreadable key **stops startup** (`env.ts`) instead of falling back to OAuth:
+switching silently would make the consent screen reappear where it had just been removed, without
+explaining why. A path not mounted in the container is the most likely error, and it must be visible.
 
-`/api/admin/oauth/start` et `/api/admin/drive/disconnect` répondent **409** dans
-ce mode : le premier enregistrerait un jeton que rien n'utilise, le second
-laisserait croire que l'instance est coupée alors qu'elle continue de tout lire.
-/admin affiche à la place l'adresse du compte de service — c'est elle qu'on
-recopie dans le partage Drive.
+`/api/admin/oauth/start` and `/api/admin/drive/disconnect` return **409** in this mode: the first
+would save a token that nothing uses, while the second would suggest the instance is disconnected
+when it continues reading everything. /admin displays the service account address instead—the one
+to copy into Drive sharing.
 
-## Consentement OAuth
+## OAuth consent
 
-- `GET /api/admin/oauth/start` exige une session administrateur, tire un `state`
-  aléatoire de 24 octets, le dépose dans un cookie signé `gdv_oauth_state`
-  (path `/api`, TTL 600 s) et renvoie l'URL de consentement.
-- `authUrl()` demande `access_type: 'offline'` et `prompt: 'consent'` : sans ce
-  dernier, une seconde autorisation ne renverrait pas de refresh token et la
-  reconnexion échouerait sans que rien ne le dise.
-- `GET /api/oauth/callback` **exige la même session administrateur** et compare
-  le `state` reçu au cookie. Sans cette double vérification, un tiers pourrait
-  faire aboutir un callback avec un code obtenu ailleurs et connecter _son_ Drive
-  à cette instance. Les échecs redirigent vers `/admin/serveur?oauth=<raison>` plutôt que
-  d'afficher une erreur brute.
+- `GET /api/admin/oauth/start` requires an administrator session, generates a random 24-byte
+  `state`, stores it in a signed `nonni_oauth_state` cookie (path `/api`, TTL 600 s), and returns the
+  consent URL.
+- `authUrl()` requests `access_type: 'offline'` and `prompt: 'consent'`: without the latter, a second
+  authorisation would not return a refresh token and reconnection would fail without explanation.
+- `GET /api/oauth/callback` **requires the same administrator session** and compares the received
+  `state` with the cookie. Without this double check, a third party could complete a callback using
+  a code obtained elsewhere and connect _their_ Drive to this instance. Failures redirect to
+  `/admin/server?oauth=<reason>` instead of displaying a raw error.
 
-Les scopes demandés sont `drive.readonly` (lecture de tout le Drive — nécessaire
-pour pointer n'importe quel dossier sans avoir à le partager) et
-`userinfo.email` (uniquement pour afficher le compte connecté dans `/admin` ;
-son échec est ignoré).
+The requested scopes are `drive.readonly` (read access to the whole Drive—needed to point to any
+folder without sharing it) and `userinfo.email` (only to display the connected account in `/admin`;
+failure is ignored).
 
-## Ce que voit, et ne voit pas, un visiteur
+## What a visitor can and cannot see
 
-| Voit                                                                                                       | Ne voit pas                                                                                               |
-| ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Les albums qui lui sont attribués, leur titre, description, couverture, nombre d'éléments, bornes de dates | L'existence des autres albums, y compris par sondage d'URL                                                |
-| Les métadonnées et l'EXIF des médias de ses albums                                                         | Toute URL Google, tout id de dossier Drive, tout `folderId`                                               |
-| Les originaux de ses albums, en téléchargement                                                             | La liste des comptes, les réglages, l'état des synchros                                                   |
-| Son propre identifiant et son statut admin (`/auth/me`)                                                    | `/admin` (403) et le lien « Admin » de la barre, masqué                                                   |
-| —                                                                                                          | La télémétrie de visite : qui est venu, et ce que les autres ont regardé                                  |
-| Les commentaires des photos de ses albums, et le nom affiché de leurs auteurs                              | Les commentaires portant sur un album qui ne lui est pas attribué, et ceux qu'un administrateur a masqués |
+| Can see                                                                       | Cannot see                                                               |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Their assigned albums, title, description, cover, item count, and date bounds | The existence of other albums, including through URL probing             |
+| The metadata and EXIF of media in their albums                                | Any Google URL, Drive folder ID, or `folderId`                           |
+| Downloadable originals from their albums                                      | The account list, settings, and synchronisation status                   |
+| Their own username and admin status (`/auth/me`)                              | `/admin` (403) and the hidden "Administration" link in the bar           |
+| —                                                                             | Visit telemetry: who came and what others viewed                         |
+| Comments on photos in their albums, and their authors' display names          | Comments on an unassigned album, and comments hidden by an administrator |
 
-## Télémétrie de visite : ce qui est enregistré, et ce qui ne l'est pas
+## Visit telemetry: what is and is not recorded
 
-`packages/server/src/telemetry.ts` pour les compteurs, `device.ts` pour la classe
-d'appareil. La mesure se fait **en base, côté serveur** : aucun script tiers, donc
-aucune donnée qui sorte de l'instance pour ça (D260809h).
+`packages/server/src/telemetry.ts` holds the counters, and `device.ts` the device class. Measurement
+happens **in the database, server-side**: there is no third-party script, so no data leaves the
+instance for this purpose (D260809h).
 
-| Enregistré                                     | Non enregistré                        |
-| ---------------------------------------------- | ------------------------------------- |
-| La clé d'accès (`username`)                    | L'adresse IP                          |
-| L'identifiant de session, déjà en base         | Le user-agent brut                    |
-| L'album, le jour (UTC) et des compteurs        | Le média ouvert, un par un            |
-| La classe d'appareil : mobile/tablette/ordi/TV | Le référent, la résolution, la langue |
+| Recorded                                        | Not recorded                           |
+| ----------------------------------------------- | -------------------------------------- |
+| The access key (`username`)                     | The IP address                         |
+| The session identifier, already in the database | The raw user agent                     |
+| The album, day (UTC), and counters              | Each individual media item opened      |
+| The device class: mobile/tablet/computer/TV     | The referrer, resolution, and language |
 
-Deux points portent tout le reste :
+Two points support everything else:
 
-- **La classe d'appareil est déduite du user-agent à la création de la session,
-  puis le user-agent est jeté.** Il est une empreinte — version de navigateur,
-  d'OS, modèle — quand une valeur parmi quatre ne ré-identifie personne. Le
-  distinguo est ce qui permet de savoir depuis quoi la galerie est regardée sans
-  pouvoir séparer deux personnes derrière une clé partagée.
-- **Jamais le média.** Compter photo par photo produirait l'historique de lecture
-  de quelqu'un, dans une application où un mot de passe est partagé par tout un
-  foyer. Les compteurs s'arrêtent à « combien de photos ouvertes dans cet album
-  ce jour-là ».
+- **The device class is inferred from the user agent when the session is created, then the user
+  agent is discarded.** It is a fingerprint—browser and OS versions, model—whereas one of four
+  values cannot re-identify anyone. This distinction reveals what the gallery is viewed on without
+  separating two people behind a shared key.
+- **Never the media item.** Counting photo by photo would produce someone's viewing history in an
+  application where an entire household shares a password. The counters stop at "how many photos
+  were opened in this album on that day".
 
-La lecture est réservée aux administrateurs : `GET /api/admin/visits` est sous le
-`requireAdmin` de préfixe, comme le reste (voir [05](./05-api.md)). La rétention
-est de quatre cents jours, par la purge horaire de `main.ts`.
+Reading is reserved for administrators: `GET /api/admin/visits` is under the prefix-level
+`requireAdmin`, like everything else (see [05](./05-api.md)). The hourly purge in `main.ts` retains
+data for four hundred days.
 
-## Ce qui sort de l'instance
+## What leaves the instance
 
-Trois destinations, et seulement trois. Les connaître importe pour une
-application dont la promesse est que rien ne fuit.
+Three destinations, and only three. Knowing them matters for an application whose promise is that
+nothing leaks.
 
-| Destination                     | Ce qui part                                                                        |
-| ------------------------------- | ---------------------------------------------------------------------------------- |
-| Google Drive                    | Les requêtes d'indexation et de téléchargement, avec le jeton du propriétaire      |
-| Le relais SMTP                  | Codes de vérification, notifications de commentaires, annonces de nouvelles photos |
-| `GEOCODING_URL` (Nominatim/OSM) | Des **coordonnées arrondies au centième de degré**, et rien d'autre                |
+| Destination                     | What is sent                                                           |
+| ------------------------------- | ---------------------------------------------------------------------- |
+| Google Drive                    | Indexing and download requests, with the owner's token                 |
+| The SMTP relay                  | Verification codes, comment notifications, and new-photo announcements |
+| `GEOCODING_URL` (Nominatim/OSM) | **Coordinates rounded to one hundredth of a degree**, and nothing else |
 
-Le géocodage mérite d'être explicité, parce qu'il envoie une donnée des photos à
-un tiers. Ce qui part est une cellule `lat,lng` arrondie à deux décimales, soit
-un point à environ un kilomètre près : jamais un identifiant de fichier, jamais
-une date, jamais un nom d'album, et jamais une position exacte. Le service ne
-peut donc pas reconstituer un déplacement, et deux séjours au même endroit ne
-produisent qu'une requête grâce au cache `geo_places`. `GEOCODING_URL` accepte
-une instance Nominatim privée, et une valeur vide coupe entièrement cette
-sortie — les journées gardent alors leurs grappes, sans libellé.
+Geocoding deserves an explanation because it sends photo data to a third party. What leaves is a
+`lat,lng` cell rounded to two decimal places, a point accurate to roughly one kilometre: never a file
+identifier, date, album name, or exact position. The service therefore cannot reconstruct a
+journey, and two stays in the same place produce only one request thanks to the `geo_places` cache.
+`GEOCODING_URL` accepts a private Nominatim instance, and an empty value disables this outbound
+traffic entirely—the days retain their clusters, without labels.
 
-## En-têtes de sécurité
+## Security headers
 
-`packages/server/src/plugins/headers.ts`, enregistré **avant** tout le reste
-dans `app.ts`. Le hook est `onRequest` : à ce stade aucune route n'a répondu,
-donc aucune ne peut oublier les en-têtes — pas même celles que
-`@fastify/static` sert sans passer par un gestionnaire à nous, ni les 404 et
-les 500.
+`packages/server/src/plugins/headers.ts`, registered **before** everything else in `app.ts`. The hook
+is `onRequest`: at that point no route has responded, so none can omit the headers—not even those
+served by `@fastify/static` without passing through one of our handlers, nor 404s and 500s.
 
-| En-tête                     | Valeur                             | Ce qu'il empêche                                                                                   |
-| --------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `Content-Security-Policy`   | voir ci-dessous                    | L'exécution d'un script injecté, l'exfiltration vers une origine tierce, l'encadrement de la page. |
-| `X-Content-Type-Options`    | `nosniff`                          | Qu'un navigateur devine un type MIME et exécute comme script ce qui est servi comme autre chose.   |
-| `X-Frame-Options`           | `DENY`                             | Le clickjacking sur les navigateurs qui ne connaissent pas `frame-ancestors`.                      |
-| `Referrer-Policy`           | `no-referrer`                      | Qu'un identifiant Drive, présent dans une URL de média, parte dans les journaux d'un site tiers.   |
-| `Strict-Transport-Security` | `max-age=15552000`, **si `https`** | Le retour en clair, et l'interception au premier accès sur un réseau hostile.                      |
+| Header                      | Value                              | What it prevents                                                                           |
+| --------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------ |
+| `Content-Security-Policy`   | see below                          | Execution of injected scripts, exfiltration to a third-party origin, and page framing.     |
+| `X-Content-Type-Options`    | `nosniff`                          | A browser guessing a MIME type and executing as a script something served as another type. |
+| `X-Frame-Options`           | `DENY`                             | Clickjacking in browsers that do not support `frame-ancestors`.                            |
+| `Referrer-Policy`           | `no-referrer`                      | A Drive identifier in a media URL reaching a third-party site's logs.                      |
+| `Strict-Transport-Security` | `max-age=15552000`, **if `https`** | Returning to clear text and interception on first access over a hostile network.           |
 
-La CSP tient en une ligne dont une seule directive fait le travail :
-`script-src 'self'`. C'est elle qui rend inexploitable un `<script>` glissé dans
-un titre d'album ou un commentaire — React échappe déjà ce qu'il affiche, la CSP
-est la seconde barrière, celle qui tient si la première cède. Le reste ferme les
-portes voisines : `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
-`frame-ancestors 'none'`, `connect-src 'self'`.
+The CSP fits on one line, with a single directive doing the work: `script-src 'self'`. It makes a
+`<script>` inserted into an album title or comment unusable—React already escapes what it displays;
+the CSP is the second barrier, the one that holds if the first fails. The rest closes adjacent
+doors: `object-src 'none'`, `base-uri 'none'`, `form-action 'self'`, `frame-ancestors 'none'`,
+`connect-src 'self'`.
 
-Deux tolérances, et leur raison :
+Two allowances, and why they exist:
 
-- **`style-src 'unsafe-inline'`.** React pose ses styles par la propriété
-  `style` du DOM, que la CSP ne filtre pas ; mais Vite peut inliner une petite
-  feuille au build, et une CSP qui casse la mise en page à la prochaine mise à
-  jour de l'outillage finit désactivée. Le style en ligne ne permet pas
-  d'exécuter du code.
-- **`img-src 'self' data:`.** Vite inline en `data:` les images de moins de
-  4 ko.
+- **`style-src 'unsafe-inline'`.** React sets styles through the DOM's `style` property, which the
+  CSP does not filter; but Vite may inline a small stylesheet during the build, and a CSP that
+  breaks the layout on the next tooling update eventually gets disabled. Inline styles cannot
+  execute code.
+- **`img-src 'self' data:`.** Vite inlines images smaller than 4 kB as `data:`.
 
-**HSTS n'est posé que si `PUBLIC_URL` commence par `https://`.** Le poser
-inconditionnellement condamnerait un navigateur ayant visité une instance de
-développement à réclamer du HTTPS à `localhost` pendant six mois, sans moyen
-simple de revenir en arrière. Le `max-age` est de six mois et non de deux ans,
-et sans `preload` : assez pour que la protection serve, assez court pour qu'une
-instance qui perdrait son certificat redevienne joignable dans un délai humain.
+**HSTS is set only if `PUBLIC_URL` starts with `https://`.** Setting it unconditionally would condemn
+a browser that visited a development instance to demand HTTPS from `localhost` for six months,
+without an easy way back. The `max-age` is six months rather than two years, without `preload`: long
+enough for the protection to matter, short enough for an instance that loses its certificate to
+become reachable again within a human timeframe.
 
-Ces en-têtes viennent de l'**application**, pas du frontal. Ils valent donc en
-développement, dans les tests, et derrière un proxy que personne n'a pensé à
-configurer — un `Caddyfile` remplacé par un `nginx.conf` ne les emporte pas avec
-lui (D47).
+These headers come from the **application**, not the frontend proxy. They therefore apply in
+development, in tests, and behind a proxy nobody thought to configure—a `Caddyfile` replaced by an
+`nginx.conf` does not take them away (D47).
 
-## Divers
+## Miscellaneous
 
-- `noindex, nofollow` sur toutes les pages (`packages/web/index.html`).
-- `bodyLimit: 64 * 1024` : seuls de courts JSON sont postés, les gros transferts
-  sont sortants.
-- Le gestionnaire d'erreurs global (`app.ts`) ne renvoie jamais le détail d'une
-  500 — il peut contenir des chemins ou des identifiants. Le message reste dans
-  les logs, la réponse dit « Erreur interne ».
-- `safeEqual` (`crypto.ts`) fait une comparaison en temps constant tolérante aux
-  longueurs différentes. Il sert aux jetons de désabonnement et aux codes de
-  vérification ; le `state` OAuth, lui, est comparé par `unsignCookie` puis
-  égalité stricte.
+- `noindex, nofollow` on every page (`packages/web/index.html`).
+- `bodyLimit: 64 * 1024`: only short JSON payloads are posted; large transfers are outbound.
+- The global error handler (`app.ts`) never returns the details of a 500—they may contain paths or
+  identifiers. The message remains in the logs; the response says "Internal error".
+- `safeEqual` (`crypto.ts`) performs a constant-time comparison that tolerates different lengths.
+  It is used for unsubscribe tokens and verification codes; the OAuth `state` is compared through
+  `unsignCookie` and then strict equality.

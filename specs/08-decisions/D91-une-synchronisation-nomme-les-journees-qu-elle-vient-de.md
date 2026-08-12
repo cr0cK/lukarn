@@ -1,46 +1,42 @@
-# D91 — Une synchronisation nomme les journées qu'elle vient de remplir
+# D91 — A synchronisation names the days it has just filled
 
-**Contexte.** [D48](./D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)
-a branché le passage des lieux sur le démarrage et sur le ménage horaire, en
-écartant explicitement le chemin d'une synchronisation : le géocodage est
-plafonné à une requête par seconde, et une sync ne devait pas l'attendre.
+**Context.** [D48](./D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)
+connected the places pass to startup and hourly housekeeping while explicitly
+excluding synchronisation: geocoding is capped at one request per second, and a
+sync should not wait for it.
 
-Le raisonnement portait sur le blocage, et le blocage a disparu depuis.
-[D58](./D58-le-prechauffage-prepare-les-vignettes-et-suit-la.md)
-a fait passer toute synchronisation par `AppContext.syncThenPrewarm`, appelé
-détaché : `/admin/resync` répond 202 avant que quoi que ce soit ne commence. Ce
-qui restait n'était plus une contrainte technique mais un délai gratuit — on
-verse dans le Drive les photos d'une journée prises au téléphone, elles portent
-leur position, l'instance sait la nommer, et l'en-tête reste pourtant muet
-jusqu'à une heure. Le cas est celui d'un appareil sans GPS complété par un
-téléphone qui en a un : c'est la sync qui apporte la seule donnée capable de
-nommer la journée, et c'est elle qui ne déclenchait rien.
+That reasoning concerned blocking, which has since disappeared.
+[D58](./D58-le-prechauffage-prepare-les-vignettes-et-suit-la.md) routed every
+synchronisation through `AppContext.syncThenPrewarm`, called detached:
+`/admin/resync` responds with 202 before anything starts. What remained was no
+longer a technical constraint but a gratuitous delay — phone photos from a day
+are added to Drive, they carry positions, the instance can name the day, yet the
+header remains silent for up to an hour. The case is a device without GPS
+supplemented by a phone with it: the sync brings the only data capable of naming
+the day, and it triggered nothing.
 
-**Décision.** Le passage des lieux prend le même troisième déclencheur que le
-préchauffage : la fin de chaque synchronisation, dans `syncThenPrewarm`, donc
-aussi bien la sync périodique que celle de `/admin` et celle du retour OAuth.
+**Decision.** The places pass gains the same third trigger as prewarming: the end
+of every synchronisation in `syncThenPrewarm`, covering periodic sync, `/admin`
+sync, and the sync after OAuth returns.
 
-Il part **détaché et avant le préchauffage**. L'ordre compte : l'agrégation des
-grappes est instantanée, mais le géocodage qui la suit dure quelques minutes, et
-`await` sur lui repousserait d'autant les vignettes — c'est-à-dire ce qui rend
-la grille rapide. Détaché, il coûte le temps de l'agrégation et rien d'autre.
+It starts **detached and before prewarming**. Order matters: cluster aggregation
+is instantaneous, but subsequent geocoding takes minutes, and `await` on it would
+delay thumbnails — what makes the grid fast — by the same amount. Detached, it
+costs only the aggregation time.
 
-**Conséquences.** Le démarrage et la sync de démarrage s'excluent désormais pour
-les lieux comme pour le préchauffage, et pour la raison que D58 avait déjà
-mesurée : lancés ensemble, le passage de démarrage tient le verrou pendant que
-la sync remplit l'index, et celui qui devait la suivre se fait refuser comme
-passage concurrent — les photos qui viennent d'arriver attendraient exactement
-le ménage horaire qu'on cherchait à éviter. `main.ts` déplace donc son appel
-dans la branche « pas de sync au démarrage ».
+**Consequences.** Startup and startup sync now exclude each other for places as
+they do for prewarming, for the reason D58 already measured: started together,
+the startup pass holds the lock while sync fills the index, and the pass meant to
+follow is rejected as concurrent — newly arrived photos would wait for exactly
+the hourly housekeeping being avoided. `main.ts` therefore moves its call into
+the "no sync at startup" branch.
 
-Rien ne change côté débit vers Nominatim. Le verrou de `PlacesPass` fait d'une
-resynchronisation répétée un passage unique, et le cache par cellule veut qu'un
-endroit déjà nommé ne soit jamais redemandé : une sync qui n'apporte aucune
-position nouvelle ne produit aucune requête.
+Nothing changes in throughput to Nominatim. The `PlacesPass` lock turns repeated
+resynchronisation into one pass, and the per-cell cache means a named place is
+never requested again: a sync bringing no new position makes no request.
 
-**Écarté.** _Ne déclencher que l'agrégation à la sync_, en laissant le géocodage
-au ménage horaire. C'était le découpage le plus fidèle à D48, et il ne servait à
-rien : une journée dont les grappes sont calculées mais sans libellé n'affiche
-toujours pas de lieu. La moitié qu'on voulait avancer était précisément la
-lente. Il aurait fallu couper `run()` en deux pour un résultat visible une heure
-plus tard, soit le problème qu'on corrige.
+**Rejected.** _Only triggering aggregation after sync_, leaving geocoding to
+hourly housekeeping. This was the split most faithful to D48 and achieved
+nothing: a day with computed clusters but no label still displays no place. The
+half that needed advancing was precisely the slow one. Splitting `run()` in two
+would have produced a visible result an hour later — the problem being fixed.

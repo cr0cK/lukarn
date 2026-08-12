@@ -1,4 +1,9 @@
-import { COMMENT_MAX_LENGTH, remainingEditMs, type Comment, type CommentThread } from '@gdv/shared';
+import {
+  COMMENT_MAX_LENGTH,
+  remainingEditMs,
+  type Comment,
+  type CommentThread,
+} from '@nonni/shared';
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react';
 import { errorText } from '../api/client';
 import {
@@ -14,13 +19,12 @@ import { IdentityForm } from './IdentityForm';
 import { Spinner } from './Spinner';
 
 /**
- * Contenu de l'onglet « Commentaires » du panneau latéral.
+ * Contents of the side panel's "Comments" tab.
  *
- * Volontairement pauvre en fonctions : un fil, une réponse par fil, la
- * suppression de ses propres messages, et une correction de faute de frappe
- * dans les trente secondes. Pas d'édition libre, pas de réactions, pas de
- * mentions — c'est ce qui sépare une conversation sous une photo d'un forum, et
- * ce qui permet de tout lire d'un coup d'œil.
+ * Deliberately limited: one thread, one reply per thread, deletion of one's own
+ * messages and correction of a typo within thirty seconds. No unrestricted
+ * editing, reactions or mentions — that separates a conversation beneath a
+ * photo from a forum and keeps everything readable at a glance.
  */
 export function CommentsPanel({
   albumId,
@@ -35,7 +39,7 @@ export function CommentsPanel({
   if (isPending) {
     return (
       <div className="flex justify-center py-8">
-        <Spinner label="Chargement des commentaires" />
+        <Spinner label="Loading comments" />
       </div>
     );
   }
@@ -43,7 +47,7 @@ export function CommentsPanel({
   if (error) {
     return (
       <p className="px-5 py-4 text-sm text-ink-400">
-        {errorText(error, 'Les commentaires n’ont pas pu être chargés.')}
+        {errorText(error, 'Comments could not be loaded.')}
       </p>
     );
   }
@@ -54,9 +58,7 @@ export function CommentsPanel({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto">
         {threads.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-ink-400">
-            Aucun commentaire. Sois le premier à en écrire un.
-          </p>
+          <p className="px-5 py-6 text-sm text-ink-400">No comments. Be the first to write one.</p>
         ) : (
           <ul className="divide-y divide-ink-800">
             {threads.map((thread) => (
@@ -73,13 +75,13 @@ export function CommentsPanel({
         )}
       </div>
 
-      {/* Le formulaire d'ouverture de fil reste en bas, hors de la zone qui
-          défile : sur une photo très commentée, il faudrait sinon parcourir
-          toute la conversation pour trouver où écrire.
+      {/* Keep the new-thread form at the bottom, outside the scrolling area:
+          otherwise a heavily commented photo would require scrolling through
+          the entire conversation to find where to write.
 
-          La marge basse s'ajoute à celle de l'appareil : posée sur l'écran
-          d'accueil, l'application occupe toute la hauteur et le champ de
-          saisie passerait sous la barre d'accueil de l'iPhone. */}
+          The bottom margin adds to the device inset: from the home screen, the
+          application occupies the full height and the input would otherwise
+          fall beneath the iPhone home bar. */}
       <div className="border-t border-ink-800 px-5 pt-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))]">
         <Composer albumId={albumId} mediaId={mediaId} />
       </div>
@@ -88,12 +90,12 @@ export function CommentsPanel({
 }
 
 /**
- * Ce qui occupe le bas du panneau : le champ de saisie, l'invitation à
- * s'identifier, ou l'explication d'une galerie sans serveur d'envoi.
+ * What occupies the bottom of the panel: the input, the invitation to identify,
+ * or the explanation for a gallery without an outbound mail server.
  *
- * L'identité est demandée **ici**, au moment où l'on veut écrire — pas à la
- * connexion. C'est le seul instant où renseigner son adresse a un sens visible
- * pour celui à qui on la demande.
+ * Identity is requested **here**, when someone wants to write — not at sign-in.
+ * This is the only time providing an address has an obvious purpose for the
+ * person being asked.
  */
 function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): ReactElement {
   const { data: me } = useMe();
@@ -106,29 +108,28 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
           albumId={albumId}
           mediaId={mediaId}
           parentId={null}
-          placeholder={`Commenter en tant que ${me.identity.displayName}…`}
+          placeholder={`Comment as ${me.identity.displayName}…`}
         />
         <p className="mt-2 text-xs text-ink-400">
-          Tu commentes en tant que <span className="text-ink-200">{me.identity.displayName}</span>.{' '}
+          You're commenting as <span className="text-ink-200">{me.identity.displayName}</span>.{' '}
           <button
             type="button"
             onClick={() => setIdentifying(true)}
             className="underline underline-offset-2 transition-colors hover:text-ink-100"
           >
-            Changer d’adresse
+            Change address
           </button>
         </p>
       </>
     );
   }
 
-  // Sans serveur SMTP, aucun code ne peut partir : mieux vaut le dire que
-  // d'offrir un formulaire qui échouera à la dernière étape.
+  // Without an SMTP server, no code can be sent: explaining that is better than
+  // offering a form that fails at the final step.
   if (me && !me.commentsEnabled) {
     return (
       <p className="text-sm text-ink-400">
-        Les commentaires sont indisponibles : cette galerie n’a pas de serveur d’envoi d’emails
-        configuré.
+        Comments are unavailable: this gallery has no mail server configured.
       </p>
     );
   }
@@ -141,7 +142,7 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
       onClick={() => setIdentifying(true)}
       className="w-full rounded border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
     >
-      S’identifier pour commenter
+      Sign in to comment
     </button>
   );
 }
@@ -160,8 +161,8 @@ function ThreadView({
   onReplyTo: (id: number | null) => void;
 }): ReactElement {
   const { data: me } = useMe();
-  // Sans identité vérifiée, le serveur refuserait la réponse : proposer le
-  // bouton mènerait droit à un message d'erreur.
+  // Without a verified identity, the server would reject the reply: offering
+  // the button would lead straight to an error message.
   const canReply = Boolean(me?.identity);
   const open = replyTo === thread.root.id;
 
@@ -178,9 +179,9 @@ function ThreadView({
         <ul className="mt-3 space-y-3 border-l border-ink-800 pl-4">
           {thread.replies.map((reply) => (
             <li key={reply.id}>
-              {/* Pas de bouton « Répondre » sur une réponse : le serveur
-                  rattacherait le message à la racine, et proposer un geste dont
-                  le résultat n'est pas celui qu'on montre serait trompeur. */}
+              {/* No "Reply" button on a reply: the server would attach the
+                  message to the root, and offering an action whose result does
+                  not match what is shown would be misleading. */}
               <CommentView comment={reply} albumId={albumId} mediaId={mediaId} />
             </li>
           ))}
@@ -193,7 +194,7 @@ function ThreadView({
             albumId={albumId}
             mediaId={mediaId}
             parentId={thread.root.id}
-            placeholder={`Répondre à ${thread.root.author.displayName}…`}
+            placeholder={`Reply to ${thread.root.author.displayName}…`}
             autoFocus
             onDone={() => onReplyTo(null)}
           />
@@ -204,13 +205,13 @@ function ThreadView({
 }
 
 /**
- * Secondes restantes pour corriger ce commentaire, `null` dès qu'il n'y a plus
- * rien à proposer.
+ * Seconds remaining to correct this comment, `null` once there is nothing left
+ * to offer.
  *
- * `canEdit` seul ne suffirait pas : il dit ce que le serveur pensait **au
- * moment de la réponse**, et un fil resté ouvert le porterait encore à `true`
- * une heure plus tard. Le décompte est donc rejoué ici, à partir de
- * `createdAt` et de la même fonction que le serveur.
+ * `canEdit` alone is insufficient: it says what the server thought **when it
+ * responded**, and a thread left open would still carry `true` an hour later.
+ * Recompute the countdown here from `createdAt`, using the same function as the
+ * server.
  */
 function useEditWindow(comment: Comment): number | null {
   const [remaining, setRemaining] = useState(() =>
@@ -219,9 +220,9 @@ function useEditWindow(comment: Comment): number | null {
 
   useEffect(() => {
     if (!comment.canEdit) return;
-    // Un rendu par seconde, sur un commentaire à la fois et pendant trente
-    // secondes : c'est le prix d'un bouton dont la disparition s'annonce au
-    // lieu de surprendre. L'intervalle s'arrête de lui-même à l'échéance.
+    // One render per second, for one comment at a time and for thirty seconds:
+    // the cost of a button that announces its disappearance instead of
+    // surprising. The interval stops itself at the deadline.
     const timer = setInterval(() => {
       const left = remainingEditMs(comment.createdAt, Date.now());
       setRemaining(left);
@@ -265,14 +266,12 @@ function CommentView({
 
       {editing ? (
         <EditForm
-          // Le texte saisi, pas le texte rendu : corriger « :) » ne doit pas
-          // remplacer le raccourci par l'emoji dans ce qui est stocké.
+          // Use entered text, not rendered text: correcting ":)" must not replace
+          // the shortcut with the emoji in stored content.
           initial={comment.body}
           pending={update.isPending}
           error={
-            update.isError
-              ? errorText(update.error, 'La correction n’a pas pu être enregistrée.')
-              : null
+            update.isError ? errorText(update.error, 'The correction could not be saved.') : null
           }
           onCancel={() => {
             update.reset();
@@ -283,9 +282,9 @@ function CommentView({
           }
         />
       ) : (
-        /* `whitespace-pre-wrap` : les retours à la ligne saisis sont conservés,
-           sans qu'aucun HTML ne soit interprété — React échappe le texte.
-           `emojify` rend du texte pur, cette garantie tient donc encore. */
+        /* `whitespace-pre-wrap`: preserve entered line breaks without interpreting
+           HTML — React escapes the text. `emojify` returns plain text, so the
+           guarantee still holds. */
         <p className="mt-1 text-sm break-words whitespace-pre-wrap text-ink-200">
           {emojify(comment.body)}
         </p>
@@ -294,17 +293,17 @@ function CommentView({
       <div className="mt-1.5 flex gap-3 text-xs text-ink-400">
         {onReply && !editing && (
           <button type="button" onClick={onReply} className="transition-colors hover:text-ink-100">
-            Répondre
+            Reply
           </button>
         )}
         {secondsLeft !== null && !editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            title="Corriger une faute de frappe, dans les trente secondes qui suivent la publication"
+            title="Fix a typo, within thirty seconds of posting"
             className="tabular-nums transition-colors hover:text-ink-100"
           >
-            Modifier ({secondsLeft} s)
+            Edit ({secondsLeft} s)
           </button>
         )}
         {comment.canDelete && !editing && (
@@ -312,11 +311,11 @@ function CommentView({
             type="button"
             onClick={() => remove.mutate(comment.id)}
             disabled={remove.isPending}
-            // Visible au survol du commentaire seulement : la suppression n'a
-            // pas à peser autant que « Répondre » dans la lecture d'un fil.
+            // Show only while hovering the comment: deletion should not carry as
+            // much visual weight as "Reply" while reading a thread.
             className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:text-red-400 disabled:opacity-50"
           >
-            Supprimer
+            Delete
           </button>
         )}
       </div>
@@ -325,11 +324,11 @@ function CommentView({
 }
 
 /**
- * Correction en place d'un commentaire publié.
+ * In-place correction of a published comment.
  *
- * Le formulaire **reste ouvert** si la fenêtre se referme pendant la saisie :
- * le serveur tranche, et son refus s'affiche ici. Le fermer d'autorité ferait
- * disparaître le texte en cours de frappe sans prévenir.
+ * The form **stays open** if the window closes while typing: the server decides,
+ * and its refusal appears here. Closing it forcibly would discard text being
+ * entered without warning.
  */
 function EditForm({
   initial,
@@ -378,14 +377,14 @@ function EditForm({
           onClick={onCancel}
           className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
         >
-          Annuler
+          Cancel
         </button>
         <button
           type="submit"
           disabled={!body.trim() || pending}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {pending ? 'Envoi…' : 'Enregistrer'}
+          {pending ? 'Sending…' : 'Save'}
         </button>
       </div>
     </form>
@@ -393,20 +392,20 @@ function EditForm({
 }
 
 /**
- * Palette d'emoji du formulaire.
+ * Form emoji palette.
  *
- * Elle existe pour le clavier physique : sur mobile, le clavier système en
- * propose déjà, et ces caractères traversent l'application sans traitement.
- * Trente-deux entrées et aucune recherche — voir `lib/emoji.ts`.
+ * It exists for physical keyboards: mobile system keyboards already provide
+ * emoji, and those characters pass through the application unchanged.
+ * Thirty-two entries and no search — see `lib/emoji.ts`.
  */
 function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElement {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   /**
-   * Referme sur un clic à l'extérieur. `pointerdown` et non `click` : le second
-   * n'arrive qu'au relâchement, si bien qu'un glisser commencé hors de la
-   * palette la laisserait ouverte sous le doigt.
+   * Closes on an outside click. Use `pointerdown`, not `click`: the latter arrives
+   * only on release, so a drag starting outside the palette would leave it open
+   * beneath the finger.
    */
   useEffect(() => {
     if (!open) return;
@@ -421,11 +420,10 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
     <div
       ref={rootRef}
       className="relative"
-      // Échap referme la palette, et **s'arrête là**. Sans cette interception,
-      // la touche remonterait jusqu'à la visionneuse, qui écoute la fenêtre : le
-      // focus étant sur un bouton et non sur un champ, son garde « zone de
-      // saisie » ne s'applique pas, et elle refermerait tout le panneau — donc
-      // le commentaire en cours de frappe.
+      // Escape closes the palette and **stops there**. Without interception, the
+      // key would reach the viewer listening on the window: focus is on a button,
+      // not a field, so its "typing area" guard does not apply and it would close
+      // the whole panel — including the comment being written.
       onKeyDown={(event) => {
         if (!open || event.key !== 'Escape') return;
         event.preventDefault();
@@ -436,11 +434,11 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        aria-label="Ajouter un emoji"
+        aria-label="Add an emoji"
         aria-expanded={open}
-        // Le formulaire ne porte plus de légende : l'infobulle est le dernier
-        // endroit où la substitution des raccourcis peut encore s'apprendre.
-        title="Ajouter un emoji — « :) » devient 🙂"
+        // The form no longer has a caption: the tooltip is the last place where
+        // shortcut substitution can still be discovered.
+        title='Add an emoji — ":)" becomes 🙂'
         className={`rounded p-1 text-base transition-colors hover:bg-white/10 ${
           open ? 'bg-white/10' : ''
         }`}
@@ -449,9 +447,9 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
       </button>
 
       {open && (
-        // Vers le haut parce que le formulaire est ancré en bas du panneau, et
-        // ancrée à droite parce que le bouton l'est aussi : alignée à gauche,
-        // ses 16 rem déborderaient du panneau.
+        // Open upwards because the form is anchored at the bottom of the panel,
+        // and anchor right because the button is too: left-aligned, its 16 rem
+        // would overflow the panel.
         <div
           role="group"
           aria-label="Emoji"
@@ -497,11 +495,11 @@ function CommentForm({
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
   /**
-   * Insère l'emoji à la place de la sélection, puis rend le focus au champ.
+   * Inserts the emoji in place of the selection, then restores focus to the field.
    *
-   * La remise du curseur est différée d'une image : React réécrit la valeur du
-   * `textarea` au rendu suivant, ce qui replacerait le curseur à la fin du texte
-   * et enverrait le deuxième emoji choisi au mauvais endroit.
+   * Restoring the cursor is deferred by one frame: React rewrites the `textarea`
+   * value on the next render, which would move the cursor to the end and insert
+   * the second selected emoji in the wrong place.
    */
   const addEmoji = (emoji: string): void => {
     const field = fieldRef.current;
@@ -542,9 +540,9 @@ function CommentForm({
         autoFocus={autoFocus}
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={(event) => {
-          // Entrée publie, Maj+Entrée passe à la ligne. C'est la convention des
-          // messageries, et un commentaire de photo tient presque toujours en
-          // une phrase — exiger un clic sur un bouton à chaque fois use.
+          // Enter posts, Shift+Enter inserts a line break. This is the messaging
+          // convention, and a photo comment almost always fits in one sentence —
+          // requiring a button click every time becomes tiresome.
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             submit(event);
@@ -558,15 +556,14 @@ function CommentForm({
 
       {create.isError && (
         <p className="mt-1 text-xs text-red-400">
-          {errorText(create.error, 'Le commentaire n’a pas pu être publié.')}
+          {errorText(create.error, 'The comment could not be posted.')}
         </p>
       )}
 
-      {/* Une seule rangée alignée à droite. Le formulaire ne porte plus de
-          légende : sous une photo, la place se prend sur la conversation, et
-          « Entrée pour publier » se découvre en appuyant sur Entrée. Ce qui
-          restait vraiment à dire — que « :) » devient un emoji — tient dans
-          l'infobulle du bouton qui en parle. */}
+      {/* A single right-aligned row. The form no longer has a caption: beneath a
+          photo, it takes space from the conversation, and "Enter to post" is
+          discovered by pressing Enter. What still needs saying — that ":)"
+          becomes an emoji — fits in the relevant button's tooltip. */}
       <div className="mt-2 flex items-center justify-end gap-2">
         {onDone && (
           <button
@@ -574,7 +571,7 @@ function CommentForm({
             onClick={onDone}
             className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
           >
-            Annuler
+            Cancel
           </button>
         )}
         <EmojiPicker onPick={addEmoji} />
@@ -583,7 +580,7 @@ function CommentForm({
           disabled={!body.trim() || create.isPending}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {create.isPending ? 'Envoi…' : 'Publier'}
+          {create.isPending ? 'Sending…' : 'Post'}
         </button>
       </div>
     </form>

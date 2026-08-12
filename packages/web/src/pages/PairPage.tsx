@@ -1,4 +1,4 @@
-import { USER_CODE_LENGTH, formatUserCode, normalizeUserCode } from '@gdv/shared';
+import { USER_CODE_LENGTH, formatUserCode, normalizeUserCode } from '@nonni/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
@@ -6,13 +6,12 @@ import { useApprovePairing, usePairingState } from '../api/hooks';
 import { Spinner } from '../components/Spinner';
 
 /**
- * L'appairage vu du téléphone (D260809c). `RequireAuth` la garde : sans session, on
- * passe d'abord par `/login`, qui ramène ici avec le code.
+ * Pairing as seen from the phone (D260809c). `RequireAuth` guards it: without a
+ * session, `/login` comes first and returns here with the code.
  *
- * Elle ne fait qu'une chose, et le fait explicitement : montrer le code **tel
- * que l'écran l'affiche**, et demander une confirmation. Cette comparaison est
- * la seule vérification possible contre un QR qui ne serait pas celui qu'on
- * regarde.
+ * It does one thing explicitly: shows the code **as displayed by the screen**
+ * and asks for confirmation. This comparison is the only possible check against
+ * a QR code from a different screen.
  */
 export default function PairPage(): ReactElement {
   const [params, setParams] = useSearchParams();
@@ -37,12 +36,12 @@ export default function PairPage(): ReactElement {
   if (state.isError) {
     return (
       <Card>
-        <Title>Ce code n'est plus valide</Title>
+        <Title>That code is no longer valid</Title>
         <p className="text-sm text-ink-400">
-          Une demande expire au bout de cinq minutes. Relance la connexion depuis l'écran, puis
-          scanne le nouveau code.
+          A request expires after five minutes. Start the sign-in again from the screen, then scan
+          the new code.
         </p>
-        <SecondaryButton onClick={() => setParams({})}>Saisir un autre code</SecondaryButton>
+        <SecondaryButton onClick={() => setParams({})}>Enter another code</SecondaryButton>
       </Card>
     );
   }
@@ -50,28 +49,27 @@ export default function PairPage(): ReactElement {
   if (approve.isSuccess) {
     return (
       <Card>
-        <Title>C'est bon</Title>
+        <Title>All set</Title>
         <p className="text-sm text-ink-400">
-          L'écran s'ouvre dans quelques secondes, avec les albums de{' '}
-          <span className="text-ink-200">ton compte</span>.
+          The screen opens in a few seconds, with the albums of{' '}
+          <span className="text-ink-200">your account</span>.
         </p>
-        <SecondaryButton onClick={() => void navigate('/')}>Revenir aux albums</SecondaryButton>
+        <SecondaryButton onClick={() => void navigate('/')}>Back to the albums</SecondaryButton>
       </Card>
     );
   }
 
-  // Approuvée par quelqu'un d'autre avant qu'on n'arrive : ce n'est pas une
-  // erreur, c'est un état à annoncer — sans quoi le bouton promettrait une
-  // action que le serveur refusera par un 409.
+  // Approved by somebody else before arrival: this is not an error but a state
+  // to announce — otherwise the button promises an action the server rejects with 409.
   if (state.data.approved) {
     return (
       <Card>
-        <Title>Cet écran a déjà été connecté</Title>
+        <Title>This screen has already been paired</Title>
         <p className="text-sm text-ink-400">
-          Un compte a déjà autorisé cette demande. S'il ne s'agit pas de toi, relance la connexion
-          depuis l'écran pour obtenir un nouveau code.
+          An account has already approved this request. If that was not you, start the sign-in again
+          from the screen to get a new code.
         </p>
-        <SecondaryButton onClick={() => void navigate('/')}>Revenir aux albums</SecondaryButton>
+        <SecondaryButton onClick={() => void navigate('/')}>Back to the albums</SecondaryButton>
       </Card>
     );
   }
@@ -80,9 +78,9 @@ export default function PairPage(): ReactElement {
 
   return (
     <Card>
-      <Title>Autoriser cet écran ?</Title>
+      <Title>Approve this screen?</Title>
       <p className="text-sm text-ink-400">
-        Vérifie que ce code est bien celui affiché sur l'écran que tu veux connecter.
+        Check that this code is the one shown on the screen you want to pair.
       </p>
 
       <p className="my-2 font-mono text-3xl tracking-widest text-ink-100">
@@ -90,8 +88,8 @@ export default function PairPage(): ReactElement {
       </p>
 
       <p className="text-xs text-ink-400">
-        L'écran aura accès aux mêmes albums que toi, tant que personne ne change le mot de passe de
-        ce compte. Il ne pourra pas signer de commentaire en ton nom.
+        The screen will reach the same albums as you, for as long as nobody changes the password of
+        this account. It won't be able to sign comments in your name.
       </p>
 
       {message && (
@@ -106,14 +104,14 @@ export default function PairPage(): ReactElement {
         onClick={() => approve.mutate(code)}
         className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {approve.isPending ? 'Autorisation…' : 'Autoriser'}
+        {approve.isPending ? 'Approving…' : 'Approve'}
       </button>
-      <SecondaryButton onClick={() => void navigate('/')}>Annuler</SecondaryButton>
+      <SecondaryButton onClick={() => void navigate('/')}>Cancel</SecondaryButton>
     </Card>
   );
 }
 
-/** La saisie du code, pour qui ouvre `/pair` sans avoir scanné le QR. */
+/** Code input for someone opening `/pair` without scanning the QR code. */
 function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElement {
   const [value, setValue] = useState('');
   const code = normalizeUserCode(value);
@@ -125,13 +123,13 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElem
 
   return (
     <Card>
-      <Title>Connecter un écran</Title>
-      <p className="text-sm text-ink-400">Saisis le code affiché sur l'écran à connecter.</p>
+      <Title>Pair a screen</Title>
+      <p className="text-sm text-ink-400">Enter the code shown on the screen you want to pair.</p>
       <form onSubmit={submit} className="space-y-4">
         <input
           name="code"
-          // `characters` et non `words` : le champ est en majuscules, et la
-          // correction automatique remplacerait un code par un mot connu.
+          // Use `characters`, not `words`: the field is uppercase, and autocorrection
+          // would replace a code with a known word.
           autoCapitalize="characters"
           autoCorrect="off"
           spellCheck={false}
@@ -146,7 +144,7 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElem
           disabled={code.length !== USER_CODE_LENGTH}
           className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Continuer
+          Continue
         </button>
       </form>
     </Card>

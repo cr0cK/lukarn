@@ -19,30 +19,30 @@ import {
 import { previewOverlay } from '../lib/preview';
 import { releaseIfDetached } from '../lib/imageRelease';
 
-/** Au-delà, on n'observe plus que le grain du capteur. */
+/** Beyond this, only sensor grain remains visible. */
 const MAX_SCALE = 8;
-/** En deçà de cet écart, le zoom est considéré comme inactif (tolérance d'arrondi). */
+/** Below this difference, zoom is inactive (rounding tolerance). */
 const FIT_EPSILON = 0.01;
 const WHEEL_SENSITIVITY = 0.0015;
 
 interface ZoomableImageProps {
-  /** Rendu plein écran (2560 px), affiché immédiatement. */
+  /** Full-screen render (2560 px), displayed immediately. */
   src: string;
   /**
-   * Rendu haute résolution (4096 px), chargé au premier agrandissement
-   * seulement — celui de la visionneuse, ou le pincement natif de la page.
+   * High-resolution render (4096 px), loaded only on first enlargement — from
+   * the viewer or the page's native pinch.
    */
   hdSrc: string;
-  /** Vignette déjà en cache navigateur, affichée pendant le chargement de `src`. */
+  /** Thumbnail already in browser cache, displayed while `src` loads. */
   placeholderSrc: string;
   alt: string;
   /**
-   * Dimensions du fichier d'origine d'après l'index. Elles bornent le zoom par
-   * le haut, mais ne le décident pas : le rendu servi peut en avoir moins.
+   * Original file dimensions from the index. They cap zoom but do not determine
+   * it: the served render may contain fewer pixels.
    */
   naturalWidth: number | null;
   naturalHeight: number | null;
-  /** Piloté depuis la visionneuse (touche `z`). */
+  /** Controlled from the viewer (`z` key). */
   zoomed: boolean;
   onZoomedChange: (zoomed: boolean) => void;
 }
@@ -52,7 +52,7 @@ interface Box {
   height: number;
 }
 
-/** Taille de l'image une fois ajustée dans le cadre, sans agrandissement. */
+/** Image size once fitted in the frame, without enlargement. */
 function fitInside(image: Box, container: Box): Box {
   if (image.width <= 0 || image.height <= 0 || container.width <= 0 || container.height <= 0) {
     return { width: 0, height: 0 };
@@ -62,21 +62,19 @@ function fitInside(image: Box, container: Box): Box {
 }
 
 /**
- * Image zoomable de la visionneuse.
+ * Zoomable viewer image.
  *
- * Le zoom sert à examiner une photo, pas à grossir ce qui est déjà affiché :
- * un simple `scale()` sur le rendu plein écran (plafonné à 2560 px) ne ferait
- * qu'étirer des pixels déjà rasterisés. Au premier agrandissement, le composant
- * bascule donc sur la variante `hd` (4096 px), qui contient les détails que le
- * rendu d'écran a perdus — que l'agrandissement vienne de la visionneuse ou du
- * pincement natif de la page, que le navigateur rasterise à partir des mêmes
- * pixels d'écran.
+ * Zoom examines a photo rather than enlarging what is already displayed: a
+ * simple `scale()` on the full-screen render (capped at 2560 px) would merely
+ * stretch rasterised pixels. On first enlargement, switch to the `hd` variant
+ * (4096 px), which contains detail lost by the screen render — whether the
+ * enlargement comes from the viewer or the page's native pinch, where the
+ * browser rasterises from the same screen pixels.
  *
- * L'échelle 1 correspond à l'image ajustée au cadre ; l'échelle « 100 % »
- * (`pixelScale`) est celle où un pixel du rendu disponible occupe un pixel
- * d'écran — pas celle des dimensions du fichier d'origine, que le rendu `hd`
- * n'atteint pas toujours. Le déplacement est borné pour que l'image ne puisse
- * jamais quitter le cadre.
+ * Scale 1 is the image fitted to the frame; "100%" scale (`pixelScale`) is where
+ * one pixel in the available render occupies one screen pixel — not the original
+ * file dimensions, which the `hd` render does not always reach. Pan is bounded
+ * so the image can never leave the frame.
  */
 export function ZoomableImage({
   src,
@@ -96,9 +94,9 @@ export function ZoomableImage({
     height: naturalHeight ?? 0,
   });
   /**
-   * Largeur du rendu réellement chargé, mesurée sur l'élément. Le serveur
-   * plafonne le plus grand côté de `hd` : sans cette mesure, une photo de
-   * 6000 px afficherait « 100 % » alors qu'il n'y a que 4096 pixels à peindre.
+   * Width of the render actually loaded, measured on the element. The server
+   * caps the longest `hd` side: without this measurement, a 6000 px photo would
+   * show "100%" while only 4096 pixels are available to paint.
    */
   const [renderedWidth, setRenderedWidth] = useState(0);
 
@@ -109,19 +107,19 @@ export function ZoomableImage({
   const [failed, setFailed] = useState(false);
 
   /**
-   * Geste pointeur en cours. Il sert à deux choses d'un coup : déplacer l'image
-   * agrandie, et décider au relâchement si le pointeur a désigné un point —
-   * donc un clic — ou déplacé l'image.
+   * Active pointer gesture. It serves two purposes: panning the enlarged image
+   * and deciding on release whether the pointer selected a point — a click — or
+   * moved the image.
    */
   const gestureRef = useRef<{
     pointerId: number;
-    /** Position à l'appui, référence de la décision clic ou glisser. */
+    /** Position on press, the reference for deciding click or drag. */
     origin: Point;
-    /** Position du pointeur moins le décalage courant : base du déplacement. */
+    /** Pointer position minus current offset: the basis for movement. */
     panFrom: Point;
-    /** Vrai dès que l'image a bougé sous le pointeur : coupe la transition. */
+    /** True once the image has moved beneath the pointer; disables transition. */
     panning: boolean;
-    /** Le geste a-t-il commencé sur la photo, et non sur le fond du cadre ? */
+    /** Whether the gesture began on the photo rather than the frame background. */
     onImage: boolean;
   } | null>(null);
 
@@ -143,8 +141,8 @@ export function ZoomableImage({
   const displayed = fitInside(intrinsic, container);
 
   /**
-   * Échelle à laquelle un pixel du rendu occupe un pixel d'écran. C'est la
-   * cible de la touche `z` : le premier cran utile, et souvent le seul voulu.
+   * Scale where one render pixel occupies one screen pixel. This is the `z` key
+   * target: the first useful level, and often the only one wanted.
    */
   const { availableWidth, pixelScale, limited } = computeZoomScale({
     sourceWidth: naturalWidth ?? 0,
@@ -157,7 +155,7 @@ export function ZoomableImage({
 
   const canZoom = pixelScale > 1 + FIT_EPSILON;
 
-  /** Déplacement maximal avant que le cadre ne déborde de l'image. */
+  /** Maximum pan before the frame extends beyond the image. */
   const clampOffset = useCallback(
     (next: { x: number; y: number }, atScale: number) => {
       const maxX = Math.max(0, (displayed.width * atScale - container.width) / 2);
@@ -171,10 +169,9 @@ export function ZoomableImage({
   );
 
   /**
-   * Échelle et cadrage courants lus sans créer de dépendance. Les mises à jour
-   * sont calculées à partir de ces valeurs plutôt que dans un updater d'état :
-   * un `setState` déclenché depuis l'updater d'un autre est un effet de bord
-   * que React n'exécute pas de façon fiable.
+   * Current scale and framing read without creating a dependency. Calculate
+   * updates from these values rather than inside a state updater: a `setState`
+   * triggered from another updater is a side effect React does not run reliably.
    */
   const scaleRef = useRef(scale);
   const offsetRef = useRef(offset);
@@ -182,12 +179,12 @@ export function ZoomableImage({
   offsetRef.current = offset;
 
   /**
-   * Amène un point de la photo au centre de la fenêtre. Le repère de position
-   * s'en sert : y cliquer ou y glisser désigne un endroit de l'image, et
-   * l'affichage doit s'y rendre.
+   * Brings a point in the photo to the centre of the window. The position
+   * indicator uses it: clicking or dragging there selects a location in the
+   * image, and the display must move to it.
    *
-   * Le bornage évite un effet déroutant près des angles — viser le coin ne doit
-   * pas faire apparaître de bande vide à côté de la photo.
+   * Bounds avoid a confusing effect near corners — aiming at one must not reveal
+   * an empty band beside the photo.
    */
   const seekTo = useCallback(
     (center: Point) => {
@@ -208,8 +205,8 @@ export function ZoomableImage({
         return;
       }
 
-      // Zoom ancré sur le point visé : le détail sous le curseur ne doit pas
-      // se dérober pendant l'agrandissement.
+      // Anchor zoom on the target point: detail beneath the pointer must not move
+      // away during enlargement.
       const ratio = clamped / scaleRef.current;
       const anchorX = focus?.x ?? 0;
       const anchorY = focus?.y ?? 0;
@@ -229,30 +226,29 @@ export function ZoomableImage({
     [clampOffset],
   );
 
-  // Réagit à l'intention venue de la visionneuse (touche `z`), sans se relancer
-  // à chaque cran de molette — ce qui ramènerait aussitôt l'image au niveau natif.
+  // React to viewer intent (`z` key) without rerunning on every wheel step, which
+  // would immediately return the image to native scale.
   useEffect(() => {
     if (zoomed && scaleRef.current <= 1 + FIT_EPSILON) applyScale(pixelScale);
     else if (!zoomed && scaleRef.current > 1 + FIT_EPSILON) applyScale(1);
   }, [zoomed, pixelScale, applyScale]);
 
   /**
-   * Un seul téléchargement de la variante `hd`, quelle que soit sa cause. Le
-   * drapeau vit dans une ref et non dans un état : deux déclencheurs qui se
-   * suivent — un agrandissement pendant un pincement — tomberaient tous deux
-   * avant le rendu suivant et demanderaient deux fois le même fichier.
+   * Download the `hd` variant once regardless of cause. Keep the flag in a ref,
+   * not state: two consecutive triggers — an enlargement during a pinch — could
+   * both occur before the next render and request the same file twice.
    */
   const hdRequestedRef = useRef(false);
 
   /**
-   * Bascule sur la variante haute résolution, une fois pour toutes.
+   * Switches to the high-resolution variant once and for all.
    *
-   * Le rendu `full` suffit tant qu'on regarde la photo ajustée au cadre, et
-   * `hd` pèse le double : rien n'est téléchargé avant que ses pixels manquent
-   * vraiment. Une fois en place il y reste — revenir à `full` au retour au
-   * cadrage ferait clignoter l'image à chaque aller-retour.
+   * The `full` render is enough while the photo is fitted to the frame, while
+   * `hd` weighs twice as much: download nothing until its pixels are genuinely
+   * needed. Once in place it stays — returning to `full` when fitted would flash
+   * the image on every round trip.
    */
-  /** Le `hd` en cours de téléchargement, pour l'abandonner en quittant la photo. */
+  /** The downloading `hd` render, so it can be aborted when leaving the photo. */
   const hdImageRef = useRef<HTMLImageElement | null>(null);
 
   const requestHd = useCallback((): void => {
@@ -261,40 +257,40 @@ export function ZoomableImage({
 
     const image = new Image();
     hdImageRef.current = image;
-    // Chargé et décodé hors écran : le passage à la haute résolution se fait
-    // sur une image prête, sans à-coup visible. Sa largeur réelle est relevée
-    // ici : c'est la seule mesure qui remplace l'estimation du plafond serveur.
+    // Load and decode off-screen so switching to high resolution uses a ready
+    // image without a visible jolt. Record its actual width here: this is the
+    // only measurement replacing the estimated server cap.
     image.onload = () => {
       setRenderedWidth(image.naturalWidth);
       setHdReady(true);
     };
-    // Un échec réseau ne condamne pas le zoom pour toute la durée de la photo :
-    // le déclencheur suivant retentera.
+    // A network failure must not disable zoom for the lifetime of the photo: the
+    // next trigger retries.
     image.onerror = () => {
       hdRequestedRef.current = false;
     };
     image.src = hdSrc;
   }, [canZoom, hdSrc]);
 
-  // Premier agrandissement dans la visionneuse.
+  // First enlargement in the viewer.
   useEffect(() => {
     if (scale > 1 + FIT_EPSILON) requestHd();
   }, [scale, requestHd]);
 
   /**
-   * Abandonne les rendus de la photo qu'on vient de quitter.
+   * Aborts renders for the photo just left.
    *
-   * La visionneuse remonte ce composant à chaque photo (`key={item.id}`), et
-   * retirer un `<img>` du DOM **ne coupe pas** sa requête : le navigateur mène
-   * à terme le mégaoctet d'un `full` que plus personne n'attend. Mesuré en
-   * parcourant vingt-cinq photos aux flèches puis en refermant — vingt-quatre
-   * `full` encore en vol, les soixante vignettes de la grille en file derrière
-   * elles sur les six connexions d'une origine HTTP/1.1, donc noires trente
-   * secondes durant. C'est le geste que la grille fait déjà pour ses vignettes.
+   * The viewer remounts this component for every photo (`key={item.id}`), and
+   * removing an `<img>` from the DOM **does not stop** its request: the browser
+   * completes a megabyte `full` nobody awaits. Measured after moving through
+   * twenty-five photos with arrows and closing — twenty-four `full` requests
+   * still running, sixty grid thumbnails queued behind them on the six
+   * connections of an HTTP/1.1 origin and therefore black for thirty seconds.
+   * This matches what the grid already does for thumbnails.
    *
-   * Le `hd` avec, quoique plus rare : il ne part qu'au zoom, mais il pèse le
-   * double, et quitter la photo juste après l'avoir agrandie est exactement ce
-   * qu'on fait quand elle ne valait pas le détour.
+   * Abort `hd` too, though rarer: it starts only on zoom but weighs twice as much,
+   * and leaving just after enlargement is exactly what happens when the photo
+   * was not worth a closer look.
    */
   useEffect(() => {
     const node = imageRef.current;
@@ -305,14 +301,13 @@ export function ZoomableImage({
   }, [src]);
 
   /**
-   * Pincement natif de la page, le geste de zoom spontané sur téléphone.
+   * Native page pinch, the natural zoom gesture on a phone.
    *
-   * Aucun geste maison ne l'intercepte : il entrerait en conflit avec le
-   * balayage de navigation, et le système le fait mieux. Mais le navigateur
-   * re-rasterise alors la page à partir du rendu `full` (2560 px) — au-delà de
-   * ~2× la photo devient molle alors que `hd` détient les pixels manquants.
-   * Les charger dès que l'échelle visuelle décolle rend le pincement net sans
-   * rien demander de plus à l'utilisateur.
+   * No custom gesture intercepts it: that would conflict with navigation swipe,
+   * and the system handles it better. But the browser then rasterises the page
+   * again from the `full` render (2560 px) — beyond ~2× the photo softens while
+   * `hd` holds the missing pixels. Loading them as visual scale rises keeps the
+   * pinch sharp without further action from the user.
    */
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -322,12 +317,11 @@ export function ZoomableImage({
       if (viewport.scale > 1) requestHd();
     };
 
-    // La page peut déjà être pincée à l'ouverture de la photo : aucun événement
-    // ne viendrait le dire, seule l'échelle courante en témoigne.
+    // The page may already be pinched when the photo opens: no event would report
+    // it, only current scale reveals it.
     onViewportChange();
-    // Les moteurs ne signalent pas le pincement de la même façon : le
-    // changement d'échelle passe par `resize`, le déplacement à l'intérieur
-    // d'une page déjà pincée par `scroll`. Les deux, donc.
+    // Engines report pinch differently: scale changes through `resize`, movement
+    // within an already pinched page through `scroll`. Listen to both.
     viewport.addEventListener('resize', onViewportChange);
     viewport.addEventListener('scroll', onViewportChange);
     return () => {
@@ -337,11 +331,11 @@ export function ZoomableImage({
   }, [canZoom, hdReady, requestHd]);
 
   /**
-   * Zoom à la molette.
+   * Wheel zoom.
    *
-   * Le listener est posé à la main en `passive: false` : React enregistre les
-   * gestionnaires `wheel` en passif, ce qui rend `preventDefault()` inopérant
-   * et laisserait le navigateur défiler ou zoomer par-dessus la visionneuse.
+   * Register the listener manually with `passive: false`: React registers `wheel`
+   * handlers as passive, making `preventDefault()` ineffective and allowing the
+   * browser to scroll or zoom over the viewer.
    */
   useEffect(() => {
     const element = containerRef.current;
@@ -356,8 +350,8 @@ export function ZoomableImage({
         y: event.clientY - rect.top - rect.height / 2,
       };
 
-      // Progression exponentielle : chaque cran multiplie l'échelle, ce qui
-      // donne la même sensation près du cadrage initial et au plus fort zoom.
+      // Exponential progression: each step multiplies scale, giving the same feel
+      // near the initial framing and at maximum zoom.
       const next = scaleRef.current * Math.exp(-event.deltaY * WHEEL_SENSITIVITY);
       applyScale(next, focus);
       onZoomedChange(next > 1 + FIT_EPSILON);
@@ -368,10 +362,10 @@ export function ZoomableImage({
   }, [canZoom, applyScale, onZoomedChange]);
 
   /**
-   * Bascule entre cadrage écran et zoom, au point visé.
+   * Toggles between fitted view and zoom at the target point.
    *
-   * Le repère est celui du conteneur, comme pour la molette : à l'échelle 1
-   * l'image y est centrée, les deux centres coïncident.
+   * Coordinates belong to the container as with the wheel: at scale 1 the image
+   * is centred there, so both centres coincide.
    */
   const toggleZoomAt = (point: Point): void => {
     const element = containerRef.current;
@@ -383,8 +377,8 @@ export function ZoomableImage({
       return;
     }
 
-    // Agrandit à l'endroit cliqué plutôt qu'au centre : on zoome sur ce qu'on
-    // regarde, pas sur le milieu de la photo.
+    // Enlarge at the clicked location rather than the centre: zoom into what is
+    // being viewed, not the middle of the photo.
     const rect = element.getBoundingClientRect();
     applyScale(pixelScale, {
       x: point.x - rect.left - rect.width / 2,
@@ -397,8 +391,8 @@ export function ZoomableImage({
     if (event.button !== 0) return;
 
     if (scale > 1 + FIT_EPSILON) {
-      // La capture garantit de recevoir le relâchement même si le pointeur
-      // quitte le cadre en cours de déplacement.
+      // Capture guarantees receiving release even if the pointer leaves the frame
+      // during movement.
       event.preventDefault();
       event.currentTarget.setPointerCapture(event.pointerId);
     }
@@ -408,8 +402,8 @@ export function ZoomableImage({
       origin: { x: event.clientX, y: event.clientY },
       panFrom: { x: event.clientX - offset.x, y: event.clientY - offset.y },
       panning: false,
-      // La capture ne prend effet qu'à l'événement suivant : ici, la cible est
-      // encore l'élément réellement sous le pointeur.
+      // Capture takes effect only on the next event: here the target is still the
+      // element actually beneath the pointer.
       onImage: event.target === imageRef.current,
     };
   };
@@ -429,42 +423,41 @@ export function ZoomableImage({
   };
 
   /**
-   * Fin du geste, et seul endroit où se décide le clic.
+   * End of the gesture and the only place where a click is decided.
    *
-   * Ce n'est pas un `onClick` sur l'image parce que, dès qu'elle est agrandie,
-   * le conteneur capture le pointeur pour suivre le déplacement : le navigateur
-   * adresse alors le `click` au capteur et non à l'image, si bien qu'il
-   * n'atteignait jamais son gestionnaire — il fallait Échap pour revenir au
-   * cadrage. Décider ici rend la même décision, quelle que soit la capture.
+   * This is not an image `onClick` because once enlarged, the container captures
+   * the pointer to follow movement: the browser then sends `click` to the
+   * capturer, not the image, so its handler never ran — Escape was required to
+   * return to fitted view. Deciding here works regardless of capture.
    */
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
 
-    // Effacé avant tout changement d'échelle : le rendu qui suit doit retrouver
-    // la transition, sinon le retour au cadrage serait instantané et sec.
+    // Clear before any scale change: the following render must restore transition,
+    // or returning to fitted view would be instant and abrupt.
     gestureRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
 
-    // Le fond du cadre n'est pas la photo : y relâcher ne bascule rien, pas plus
-    // qu'avant. Seule la photo réagit au clic.
+    // The frame background is not the photo: releasing there toggles nothing,
+    // just as before. Only the photo responds to a click.
     if (!gesture.onImage) return;
     if (!isTap(gesture.origin, { x: event.clientX, y: event.clientY })) return;
     toggleZoomAt({ x: event.clientX, y: event.clientY });
   };
 
-  // Geste interrompu par le navigateur — deuxième doigt, retour arrière par bord
-  // d'écran : ni clic ni déplacement retenus, la capture est relâchée d'office.
+  // Gesture interrupted by the browser — second finger or edge-swipe back:
+  // retain neither click nor movement; capture is released automatically.
   const onPointerCancel = (): void => {
     gestureRef.current = null;
   };
 
   const isZoomed = scale > 1 + FIT_EPSILON;
 
-  // Aperçu, indicateur et message d'échec sont décidés ensemble : c'est leur
-  // combinaison qui doit rester juste, pas chacun pris isolément.
+  // Decide preview, indicator and failure message together: their combination
+  // must remain correct, not each one in isolation.
   const overlay = previewOverlay({ loaded, failed, measured: displayed.width > 0 });
 
   return (
@@ -477,14 +470,13 @@ export function ZoomableImage({
       onPointerCancel={onPointerCancel}
       onDoubleClick={(event) => event.preventDefault()}
     >
-      {/* Aperçu : la vignette est déjà en cache navigateur puisqu'elle vient
-          d'être affichée dans la grille. Elle occupe l'espace exact du rendu
-          final le temps que celui-ci arrive — quelques secondes quand la photo
-          doit encore être téléchargée depuis Drive.
+      {/* Preview: the thumbnail is already in browser cache after being displayed
+          in the grid. It occupies the final render's exact space until it arrives
+          — a few seconds when the photo still needs downloading from Drive.
 
-          Le flou reste mesuré : il masque la pixellisation de l'agrandissement,
-          mais assez léger pour qu'on reconnaisse la photo et qu'on comprenne
-          qu'elle se précise, au lieu d'y voir un rendu raté. */}
+          Keep blur measured: it masks enlargement pixelation but remains light
+          enough to recognise the photo and see it sharpening rather than mistake
+          it for a failed render. */}
       {overlay.placeholder && (
         <img
           src={placeholderSrc}
@@ -495,20 +487,20 @@ export function ZoomableImage({
         />
       )}
 
-      {/* Sans cet indicateur, l'aperçu flou ne se lit pas comme une attente :
-          on croit que la photo elle-même est floue. C'est exactement ce qui
-          avait été rapporté comme « ouverture toute floue, aléatoirement ». */}
+      {/* Without this indicator, a blurred preview does not read as waiting: the
+          photo itself appears blurred. This was exactly reported as "sometimes
+          opening completely blurred". */}
       {overlay.spinner && (
         <span
           role="status"
-          aria-label="Chargement de la photo"
+          aria-label="Loading the photo"
           className="absolute flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-ink-100"
         >
           <span
             className="size-3.5 animate-spin rounded-full border-2 border-ink-600 border-t-accent"
             aria-hidden="true"
           />
-          Chargement…
+          Loading…
         </span>
       )}
 
@@ -521,8 +513,8 @@ export function ZoomableImage({
           const image = event.currentTarget;
           setLoaded(true);
           setRenderedWidth(image.naturalWidth);
-          // Repli quand l'index ne connaît pas les dimensions du fichier : on
-          // prend celles du rendu reçu. Le zoom sera plus limité, mais présent.
+          // Fall back when the index does not know file dimensions: use those of
+          // the received render. Zoom will be more limited but still present.
           if (intrinsic.width <= 0) {
             setIntrinsic({ width: image.naturalWidth, height: image.naturalHeight });
           }
@@ -533,8 +525,8 @@ export function ZoomableImage({
         } ${isZoomed ? 'cursor-grab active:cursor-grabbing' : canZoom ? 'cursor-zoom-in' : ''}`}
         style={{
           transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
-          // Aucune transition pendant le glisser : le déplacement doit coller
-          // au curseur, pas le suivre avec du retard.
+          // No transition while dragging: movement must stick to the pointer, not
+          // follow it with delay.
           transition: gestureRef.current?.panning ? 'none' : 'transform 120ms ease-out',
         }}
       />
@@ -553,25 +545,23 @@ export function ZoomableImage({
       {isZoomed && (
         <span className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1 text-xs tabular-nums text-ink-100">
           {zoomPercent(displayed.width, scale, availableWidth)} %
-          {/* Dit que le rendu servi est plus petit que le fichier plutôt que de
-              le taire : sans ça, « 100 % » sur une photo de 6000 px laisserait
-              croire qu'on regarde ses pixels alors qu'il n'y en a que 4096. */}
-          {limited && ` · rendu ${availableWidth} px sur ${naturalWidth} px`}
-          {!hdReady && ' · chargement HD…'}
+          {/* State that the served render is smaller than the file: otherwise
+              "100%" on a 6000 px photo would imply viewing its pixels when only
+              4096 are available. */}
+          {limited && ` · rendered ${availableWidth} px of ${naturalWidth} px`}
+          {!hdReady && ' · loading HD…'}
         </span>
       )}
 
-      {overlay.error && (
-        <p className="text-sm text-ink-400">Cette image n'a pas pu être affichée.</p>
-      )}
+      {overlay.error && <p className="text-sm text-ink-400">This image could not be displayed.</p>}
     </div>
   );
 }
 
 /**
- * Repère de position pendant le zoom : la photo entière en réduction, avec le
- * cadre de la zone visible. Sans lui, on perd tout sens de l'orientation dès
- * qu'on se déplace dans une image agrandie.
+ * Position indicator while zooming: the whole photo reduced, with a frame around
+ * the visible area. Without it, orientation is lost as soon as the enlarged
+ * image is panned.
  */
 function Minimap({
   displayed,
@@ -586,7 +576,7 @@ function Minimap({
   scale: number;
   offset: Point;
   src: string;
-  /** Reçoit le point visé, en fractions `[0, 1]` de l'image. */
+  /** Receives the target point as image fractions `[0, 1]`. */
   onSeek: (center: Point) => void;
 }): ReactElement {
   const MAX_EDGE = 132;
@@ -600,7 +590,7 @@ function Minimap({
   const viewHeight = visibleFraction(displayed.height, container.height, scale);
   const center = viewCenter(offset, displayed, scale);
 
-  /** Point sous le curseur, ramené en fractions de l'image. */
+  /** Point beneath the pointer, converted to image fractions. */
   const seekFromEvent = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const rect = event.currentTarget.getBoundingClientRect();
     onSeek({
@@ -614,11 +604,10 @@ function Minimap({
       className="absolute right-4 bottom-4 cursor-crosshair overflow-hidden rounded border border-white/25 shadow-lg transition-colors hover:border-white/60"
       style={{ width, height }}
       role="img"
-      aria-label="Repère de position : cliquer ou glisser pour se déplacer dans la photo"
+      aria-label="Position locator: click or drag to move inside the photo"
       onPointerDown={(event) => {
-        // Sans cette interruption, le conteneur démarrerait en plus son propre
-        // déplacement : l'image partirait dans le sens du glissement pendant
-        // que le repère la ramène ailleurs.
+        // Without this stop, the container would also start its own movement: the
+        // image would follow the drag while the indicator sent it elsewhere.
         event.stopPropagation();
         event.preventDefault();
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -639,10 +628,10 @@ function Minimap({
       onPointerCancel={() => {
         dragging.current = false;
       }}
-      // Ce qui protège réellement le repère est le `stopPropagation` de son
-      // `onPointerDown` ci-dessus : sans lui, le conteneur armerait son geste et
-      // basculerait le zoom au relâchement. Ces deux gardes-ci ne coûtent rien
-      // et couvrent le double-clic, que le navigateur émet encore.
+      // The indicator is actually protected by `stopPropagation` in its
+      // `onPointerDown` above: without it, the container would arm its gesture
+      // and toggle zoom on release. These two guards cost nothing and cover the
+      // double-click the browser still emits.
       onDoubleClick={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >

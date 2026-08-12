@@ -2,22 +2,21 @@ import argon2 from 'argon2';
 import { promptPassword } from './prompt.js';
 
 /**
- * Produit une empreinte argon2id isolée.
+ * Produces a standalone argon2id hash.
  *
- *   pnpm hash-password              → demande le mot de passe sans l'afficher
- *   pnpm hash-password monSecret    → utile pour un script, mais laisse une
- *                                     trace dans l'historique du shell
+ *   pnpm hash-password              → prompts for the password without displaying it
+ *   pnpm hash-password monSecret    → useful in a script, but leaves a trace in
+ *                                     shell history
  *
- * Les comptes s'administrent désormais depuis `/admin` (ou `pnpm create-admin`
- * pour le tout premier) : cette commande ne sert plus qu'à préparer le
- * `passwordHash` d'un `config/albums.yaml` d'amorçage.
+ * Accounts are now administered from `/admin` (or `pnpm create-admin` for the first):
+ * this command only prepares `passwordHash` for a bootstrapping `config/albums.yaml`.
  */
 async function main(): Promise<void> {
   const fromArgs = process.argv[2];
   const password = fromArgs ?? (await promptPassword());
 
   if (!password) {
-    console.error('Mot de passe vide, rien à faire.');
+    console.error('Empty password, nothing to do.');
     process.exit(1);
   }
 

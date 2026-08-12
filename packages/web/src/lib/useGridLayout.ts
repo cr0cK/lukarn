@@ -1,4 +1,4 @@
-import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@nonni/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 import { measureLines } from './measureLines';
@@ -7,114 +7,107 @@ export const GRID_GAP = 4;
 export const GRID_SECTION_GAP = 28;
 
 /**
- * Retrait au-dessus du titre d'une section. **Invariant, replié ou non.**
+ * Space above a section title. **Invariant, collapsed or not.**
  *
- * C'est lui qui fixe l'ordonnée du titre : `section.y + GRID_HEADER_PAD_TOP`.
- * Le contenu de l'en-tête est donc aligné **en haut** de sa boîte, et la
- * hauteur variable se consomme en bas. Aligné en bas, comme il l'était,
- * réduire la boîte au repli faisait remonter le titre de la différence — le
- * libellé sautait sous le curseur à chaque clic, ce qui est exactement ce
- * qu'un bouton de repli ne doit pas faire.
+ * It fixes the title coordinate: `section.y + GRID_HEADER_PAD_TOP`. Header
+ * content therefore aligns **at the top** of its box, consuming variable height
+ * below. With the former bottom alignment, shrinking the box on collapse raised
+ * the title by the difference — the label jumped beneath the pointer on every
+ * click, exactly what a collapse button must not do.
  */
 export const GRID_HEADER_PAD_TOP = 20;
-/** Ligne du titre. Le composant la tient par `leading-6`. */
+/** Title line. The component holds it with `leading-6`. */
 export const GRID_HEADER_TITLE_HEIGHT = 24;
-/** Respiration entre l'en-tête et les vignettes de sa propre section. */
+/** Space between a header and its own section's thumbnails. */
 export const GRID_HEADER_PAD_BOTTOM = 12;
 
 export const GRID_HEADER_HEIGHT =
   GRID_HEADER_PAD_TOP + GRID_HEADER_TITLE_HEIGHT + GRID_HEADER_PAD_BOTTOM;
 /**
- * En-tête d'une section repliée : le même retrait en haut, le même titre, mais
- * plus rien en bas — il n'y a plus de vignettes dont le séparer.
+ * Collapsed section header: same top padding and title, but nothing below — no
+ * thumbnails remain to separate from it.
  */
 export const GRID_COLLAPSED_HEADER_HEIGHT = GRID_HEADER_PAD_TOP + GRID_HEADER_TITLE_HEIGHT;
 
 /**
- * Ce que coûte une ligne de plus dans un en-tête de section : le lieu, la note.
+ * Cost of one more line in a section header: place or note.
  *
- * C'est un contrat avec `SectionHeader`, qui doit tenir dedans — le layout est
- * calculé sans DOM, donc rien ne rattrapera un dépassement et les photos de la
- * section passeraient sous le texte. D'où l'interligne fixé explicitement côté
- * composant (`leading-5`) : c'est lui qui tient le contrat, jamais la taille de
- * police.
+ * This is a contract with `SectionHeader`, which must fit — layout is computed
+ * without the DOM, so nothing recovers overflow and section photos would pass
+ * beneath the text. Hence the explicit component line height (`leading-5`): it
+ * fulfils the contract, never the font size.
  *
- * Une constante et non deux — le lieu et la note se comptent en lignes de même
- * hauteur — et une réservation qui vaut exactement ce qui sera rendu : le lieu
- * tient sur une ligne tronquée, la note sur le nombre de lignes que
- * `measureLines` lui a mesuré (D85, D93).
+ * One constant rather than two — place and note use equal-height lines — and a
+ * reservation exactly matching rendering: place fits one truncated line, while
+ * note uses the count measured by `measureLines` (D85, D93).
  */
 export const GRID_HEADER_LINE_HEIGHT = 20;
 
 /**
- * Classes du paragraphe de la note, partagées avec la sonde de mesure.
+ * Note paragraph classes shared with the measurement probe.
  *
- * Elles sont **la** définition de sa géométrie : la largeur maximale, le retrait
- * qui l'aligne sur le texte du titre, la taille de police, l'interligne, la
- * césure et le traitement des retours à la ligne. Mesurer avec d'autres classes
- * que celles du rendu ferait diverger la hauteur réservée de la hauteur rendue,
- * ce que rien ne rattraperait. La couleur reste au composant : elle ne change
- * aucune métrique.
+ * They are **the** definition of its geometry: maximum width, indentation aligning
+ * it with title text, font size, line height, wrapping and line-break handling.
+ * Measuring with classes other than the rendered ones would make reserved and
+ * rendered heights diverge without recovery. Colour remains in the component
+ * because it changes no metric.
  *
- * `whitespace-pre-line` conserve les retours à la ligne saisis, comme le
- * bandeau de la visionneuse et la description d'album le font déjà de la même
- * note : sans lui, un texte écrit en trois lignes s'affichait ici en une seule
- * phrase, et le même contenu se lisait différemment selon l'écran où on
- * l'ouvrait.
+ * `whitespace-pre-line` preserves entered line breaks, as the viewer bar and
+ * album description already do for the same note: without it, text written in
+ * three lines appeared here as one sentence and read differently by screen.
  */
 export const GRID_HEADER_NOTE_CLASS =
   'max-w-3xl pl-[22px] text-sm leading-5 break-words whitespace-pre-line';
 
 /**
- * Hauteur d'un en-tête de section, à réserver comme à rendre.
+ * Section header height to reserve and render.
  *
- * Pure et exportée pour être vérifiable : c'est l'invariant dont dépend
- * l'absence de recouvrement entre un en-tête et ses vignettes.
+ * Pure and exported for verification: this invariant prevents overlap between a
+ * header and its thumbnails.
  */
 export function sectionHeaderHeight(options: {
   collapsed: boolean;
   hasPlace: boolean;
-  /** Lignes occupées par la note. `0` quand la journée n'en porte pas. */
+  /** Lines occupied by the note. `0` when the day has none. */
   descriptionLines: number;
 }): number {
   const base = options.collapsed ? GRID_COLLAPSED_HEADER_HEIGHT : GRID_HEADER_HEIGHT;
   const lines = (options.hasPlace ? 1 : 0) + options.descriptionLines;
   return base + lines * GRID_HEADER_LINE_HEIGHT;
 }
-/** Marge de lignes rendues hors viewport, pour que le défilement rapide reste plein. */
+/** Margin of rows rendered outside the viewport so fast scrolling stays filled. */
 const OVERSCAN_PX = 900;
 
 export interface GridLayout {
   /**
-   * Callback ref, et non `useRef` : le conteneur n'est monté qu'une fois les
-   * médias chargés, donc un effet à dépendances vides s'exécuterait alors que
-   * `ref.current` vaut encore `null` et n'observerait jamais rien.
+   * Callback ref rather than `useRef`: the container mounts only after media
+   * load, so an effect with empty dependencies would run while `ref.current` was
+   * still `null` and never observe anything.
    */
   ref: (node: HTMLDivElement | null) => void;
   layout: Layout;
-  /** Bornes verticales à rendre, dans le repère du layout. */
+  /** Vertical bounds to render in layout coordinates. */
   visibleFrom: number;
   visibleTo: number;
   viewportHeight: number;
-  /** Décalage du conteneur dans la page, pour convertir layout ↔ scroll. */
+  /** Container offset in the page for converting layout ↔ scroll. */
   offsetTop: number;
   /**
-   * Lignes occupées par la note de chaque journée, par clé de section.
+   * Lines occupied by each day note, by section key.
    *
-   * Portées par le layout et non recalculées au rendu : la hauteur réservée et
-   * la boîte rendue doivent tenir du **même** nombre, mesuré une fois. Deux
-   * calculs, fût-ce avec la même fonction, sont deux occasions de diverger.
+   * Carried by layout rather than recomputed during rendering: reserved height
+   * and rendered box must use the **same** number measured once. Two calculations,
+   * even with the same function, are two chances to diverge.
    */
   descriptionLines: ReadonlyMap<string, number>;
 }
 
 /**
- * Le lieu affiché pour une journée : celui qu'on a saisi s'il y en a un, sinon
- * ceux que l'EXIF a livrés, dans l'ordre du déroulé.
+ * Place displayed for a day: the manually entered one when present, otherwise
+ * those supplied by EXIF in sequence order.
  *
- * Exporté parce que la hauteur d'en-tête et le rendu doivent en décider
- * exactement pareil : un lieu compté ici et pas affiché là laisserait un blanc,
- * l'inverse ferait déborder l'en-tête sur les photos.
+ * Exported because header height and rendering must decide identically: a place
+ * counted here but not displayed leaves a gap; the reverse overflows onto photos.
  */
 export function placeLabelOf(day: AlbumDay | undefined): string | null {
   if (!day) return null;
@@ -123,19 +116,17 @@ export function placeLabelOf(day: AlbumDay | undefined): string | null {
 }
 
 /**
- * Mesure le conteneur, suit le défilement et calcule le layout justifié.
+ * Measures the container, follows scrolling and computes the justified layout.
  *
- * Le layout est extrait de la grille parce que la page en a besoin elle aussi :
- * la navigation clavier se déplace de ligne en ligne, et seules les positions
- * calculées ici disent quelles vignettes sont voisines à l'écran.
+ * Layout is extracted from the grid because the page also needs it: keyboard
+ * navigation moves row by row, and only positions computed here identify
+ * on-screen neighbours.
  *
- * `days` n'est consulté qu'en découpage par jour : une note appartient à une
- * journée, et l'accrocher à un en-tête de mois choisirait arbitrairement
- * laquelle des trente afficher.
+ * Consult `days` only when grouping by day: a note belongs to a day, and attaching
+ * it to a month heading would arbitrarily choose one of thirty.
  *
- * `collapsedKeys` porte les sections repliées. Il vaut pour les deux
- * découpages : leurs clés n'ont pas la même forme (`2026-07` contre
- * `2026-07-14`), elles ne peuvent pas se confondre dans le même ensemble.
+ * `collapsedKeys` carries collapsed sections for both groupings: their keys have
+ * different forms (`2026-07` versus `2026-07-14`) and cannot collide in one set.
  */
 export function useGridLayout(
   items: MediaItem[],
@@ -180,15 +171,14 @@ export function useGridLayout(
     };
   }, []);
 
-  // Les notes n'ont de sens que par jour : accrocher une note de journée à un
-  // en-tête de mois choisirait arbitrairement laquelle des trente afficher.
+  // Notes make sense only by day: attaching a day note to a month heading would
+  // arbitrarily choose one of thirty.
   const annotatedDays = groupBy === 'day' && days && days.size > 0 ? days : undefined;
 
   /**
-   * Mesuré ici, une fois par largeur, et non au rendu de chaque en-tête : c'est
-   * ce même nombre qui réserve la hauteur et qui borne la boîte, et la mesure
-   * force un calcul de style que la virtualisation rejouerait à chaque
-   * défilement.
+   * Measure here once per width, not while rendering each header: the same number
+   * reserves height and bounds the box, and measurement forces a style calculation
+   * that virtualisation would repeat on every scroll.
    */
   const descriptionLines = useMemo(() => {
     const lines = new Map<string, number>();
@@ -204,8 +194,7 @@ export function useGridLayout(
   }, [annotatedDays, width]);
 
   const headerHeightFor = useMemo(() => {
-    // Le repli vaut pour les deux découpages. L'un ou l'autre suffit à faire
-    // varier une hauteur.
+    // Collapse applies to both groupings. Either one can change a height.
     const collapses = collapsedKeys && collapsedKeys.size > 0;
     if (!annotatedDays && !collapses) return undefined;
 
@@ -217,9 +206,8 @@ export function useGridLayout(
       });
   }, [annotatedDays, collapsedKeys, descriptionLines]);
 
-  // `undefined` tant que rien n'est replié — le cas de très loin le plus
-  // fréquent — pour que le layout ne se recalcule pas sur une fonction neuve à
-  // chaque rendu.
+  // Keep `undefined` while nothing is collapsed — by far the common case — so
+  // layout does not recompute from a new function on every render.
   const isCollapsed = useMemo(() => {
     if (!collapsedKeys || collapsedKeys.size === 0) return undefined;
     return (key: string): boolean => collapsedKeys.has(key);
@@ -252,23 +240,21 @@ export function useGridLayout(
 }
 
 /**
- * Navigation clavier dans la grille. Les déplacements verticaux suivent les
- * lignes réelles du layout — dont le nombre de vignettes varie — et visent la
- * photo la plus proche horizontalement, là où un décalage d'index fixe ferait
- * dériver le curseur vers la gauche à chaque ligne.
+ * Keyboard navigation in the grid. Vertical movement follows actual layout rows
+ * — whose thumbnail count varies — and targets the horizontally nearest photo,
+ * where a fixed index offset would drift the cursor left on every row.
  *
- * **Tout se joue dans l'espace des cellules placées, jamais dans celui des
- * index de la liste d'origine.** Les deux coïncidaient tant que la grille
- * montrait tout ; une section repliée les sépare. Un `currentIndex ± 1` y
- * enverrait la sélection sur une vignette qui n'est nulle part dans le layout :
- * plus rien à mettre en évidence, et `scrollSelectionIntoView` sans cible.
+ * **Everything operates in placed-cell space, never original-list index space.**
+ * They coincide while the grid shows everything; a collapsed section separates
+ * them. `currentIndex ± 1` would select a thumbnail absent from the layout,
+ * leaving nothing to highlight and `scrollSelectionIntoView` without a target.
  */
 export function moveSelection(
   layout: Layout,
   currentIndex: number,
   direction: 'left' | 'right' | 'up' | 'down' | 'home' | 'end',
 ): number {
-  // `layout.rows` est déjà dans l'ordre d'affichage, sections comprises.
+  // `layout.rows` is already in display order, including sections.
   const cells = layout.rows.flatMap((row) => row.cells);
   if (cells.length === 0) return -1;
 
@@ -282,8 +268,8 @@ export function moveSelection(
   }
 
   const position = cells.findIndex((cell) => cell.index === currentIndex);
-  // Aucune sélection, ou une sélection que le repli de sa journée vient de
-  // faire disparaître : on repart de la première vignette encore visible.
+  // With no selection, or one just hidden by collapsing its day, restart from the
+  // first visible thumbnail.
   if (position === -1) return cells[0]!.index;
 
   if (direction === 'left') return cells[Math.max(0, position - 1)]!.index;
@@ -312,7 +298,7 @@ export function moveSelection(
   return best.index;
 }
 
-/** Fait défiler la page pour amener la vignette sélectionnée dans le viewport. */
+/** Scrolls the page to bring the selected thumbnail into the viewport. */
 export function scrollSelectionIntoView(
   layout: Layout,
   offsetTop: number,

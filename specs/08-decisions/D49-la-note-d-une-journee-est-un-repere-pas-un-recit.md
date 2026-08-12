@@ -1,31 +1,30 @@
-# D49 — La note d'une journée est un repère, pas un récit
+# D49 — A day's note is a marker, not a narrative
 
-**Contexte.** L'en-tête d'une section de la grille doit pouvoir porter un lieu
-et une note. Or `computeLayout` place toutes les photos **avant** que le moindre
-nœud DOM n'existe : c'est ce qui donne une barre de défilement juste au premier
-rendu et rend la virtualisation possible.
+**Context.** A grid section header must be able to carry a place and a note. But
+`computeLayout` positions every photo **before** any DOM node exists: this is what
+provides the correct scroll bar on the first render and makes virtualisation
+possible.
 
-**Choix.** 300 caractères, deux lignes clampées, hauteur d'en-tête déclarée par
-`LayoutOptions.headerHeightFor` — `56 + 20 si lieu + 40 si note`.
+**Choice.** 300 characters, clamped to two lines, with header height declared by
+`LayoutOptions.headerHeightFor` — `56 + 20 if place + 40 if note`.
 
-La hauteur est une **donnée d'entrée du calcul**, jamais une mesure. Un en-tête
-qui déciderait de sa taille une fois monté passerait sous ses propres photos, et
-rien ne le rattraperait : le layout ne se recalcule qu'au changement de largeur,
-de liste ou de regroupement. Les deux constantes sont donc un contrat que
-`SectionHeader` doit respecter, d'où ses hauteurs de ligne fixées
-explicitement (`leading-5`) plutôt que laissées à la police.
+Height is **input data for the calculation**, never a measurement. A header that
+decided its size once mounted would end up underneath its own photos, and nothing
+would correct it: the layout is only recomputed when the width, list, or grouping
+changes. The two constants are therefore a contract that `SectionHeader` must
+honour, hence its explicitly fixed line heights (`leading-5`) instead of leaving
+them to the font.
 
-Même raison pour l'éditeur, qui s'ouvre **en survol absolu** : le faire pousser
-le flux décalerait toute la suite de l'album sous le curseur au moment précis où
-l'on vient de cliquer.
+The same reason applies to the editor, which opens as an **absolute overlay**:
+having it expand the flow would shift the rest of the album under the pointer at
+the exact moment it has just been clicked.
 
-**Écarté.** _Une note de longueur libre_, qui obligerait à mesurer l'en-tête
-rendu puis à recalculer le layout — donc à faire sauter la grille une fois par
-section au chargement. _Un `ResizeObserver` sur les en-têtes_ : même problème,
-avec en prime une boucle de rétroaction entre la mesure et le layout.
+**Rejected.** _A note of unrestricted length_, which would require measuring the
+rendered header and then recomputing the layout — making the grid jump once per
+section during loading. _A `ResizeObserver` on the headers_: the same problem,
+plus a feedback loop between measurement and layout.
 
-**Conséquences.** On décrit une journée en une phrase ou deux, pas en paragraphe.
-C'est le bon format pour ce que la fonctionnalité vise — « Bonifacio, puis la
-plage » —, et le texte entier reste lisible en infobulle. Le jour où une vraie
-narration serait voulue, elle ne vivra pas dans l'en-tête d'une grille
-virtualisée.
+**Consequences.** A day is described in a sentence or two, not a paragraph. This
+is the right format for the feature's purpose — "Bonifacio, then the beach" — and
+the full text remains readable in a tooltip. If true narration is wanted one day,
+it will not live in the header of a virtualised grid.

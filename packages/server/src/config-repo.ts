@@ -6,56 +6,55 @@ import {
   type AppSettings,
   type GroupBy,
   type SortOrder,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import { z } from 'zod';
 import type { Db } from './db.js';
 
 /**
- * Dépôt des comptes, des albums et des réglages — la configuration de
- * l'application, administrée depuis l'application elle-même.
+ * Repository of accounts, albums and settings — the application configuration,
+ * administered from the application itself.
  *
- * Tout passe par ici : c'est le seul écrivain de `users`, `albums`,
- * `user_albums` et `settings`, ce qui rend le cache mémoire ci-dessous sûr.
+ * Everything passes through here: this is the sole writer of `users`, `albums`,
+ * `user_albums` and `settings`, making the in-memory cache below safe.
  *
- * **Pourquoi un cache.** `canSee()` est appelé sur chaque requête média, donc
- * sur chaque vignette d'une grille de plusieurs centaines de tuiles. Une
- * requête SQL par vignette serait un net recul par rapport à la config en
- * mémoire qu'on remplace. L'instantané est reconstruit à la première lecture
- * qui suit une écriture, jamais pendant.
+ * **Why a cache.** `canSee()` is called on every media request, meaning every thumbnail
+ * in a grid of several hundred tiles. One SQL query per thumbnail would be a clear
+ * regression from the in-memory configuration being replaced. The snapshot is rebuilt
+ * on the first read following a write, never during the write.
  */
 
-/** Album tel qu'il est stocké. Superset de ce dont la synchronisation a besoin. */
+/** Album as stored. A superset of what synchronisation needs. */
 export interface StoredAlbum {
   id: string;
   title: string;
   description: string | null;
   folderId: string;
   recursive: boolean;
-  /** Découpage de la grille à l'ouverture. Une préférence, pas une contrainte. */
+  /** Grid grouping on opening. A preference, not a constraint. */
   groupBy: GroupBy;
   /**
-   * Sens de lecture à l'ouverture. Une préférence elle aussi : l'URL et la
-   * mémoire du navigateur passent devant.
+   * Reading order on opening. Also a preference: the URL and browser memory take
+   * precedence.
    */
   sortOrder: SortOrder;
   /**
-   * Média choisi comme couverture, `null` pour la plus récente automatiquement.
-   * Le choix seul : la couverture réellement servie est calculée par
-   * `MediaRepo.stats`, qui replie sur l'automatique si la photo a quitté l'index.
+   * Media chosen as the cover, `null` to use the most recent automatically. This is
+   * only the choice: the cover actually served is calculated by `MediaRepo.stats`,
+   * which falls back to automatic if the photo has left the index.
    */
   coverMediaId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-/** Compte tel qu'il est stocké, empreinte comprise — ne jamais le sérialiser tel quel. */
+/** Account as stored, including its hash — never serialise it as-is. */
 export interface StoredUser {
   username: string;
   passwordHash: string;
   admin: boolean;
-  /** Joker `*` : accès à tous les albums, y compris ceux créés plus tard. */
+  /** `*` wildcard: access to every album, including ones created later. */
   allAlbums: boolean;
-  /** Ids d'albums explicitement attribués, hors joker. */
+  /** Explicitly assigned album IDs, excluding the wildcard. */
   albums: string[];
   createdAt: string;
   updatedAt: string;
@@ -65,7 +64,7 @@ export interface CreateUserInput {
   username: string;
   passwordHash: string;
   admin: boolean;
-  /** Ids d'albums, ou une liste contenant `'*'` pour le joker. */
+  /** Album IDs, or a list containing `'*'` for the wildcard. */
   albums: string[];
 }
 
@@ -81,9 +80,9 @@ export interface CreateAlbumInput {
   description?: string | null;
   folderId: string;
   recursive: boolean;
-  /** Omis, c'est le défaut partagé — le mois. */
+  /** When omitted, uses the shared default — month. */
   groupBy?: GroupBy;
-  /** Omis, c'est le défaut partagé — les plus anciennes d'abord. */
+  /** When omitted, uses the shared default — oldest first. */
   sortOrder?: SortOrder;
 }
 
@@ -94,20 +93,20 @@ export interface UpdateAlbumInput {
   recursive?: boolean;
   groupBy?: GroupBy;
   sortOrder?: SortOrder;
-  /** `null` rend la couverture au choix automatique. */
+  /** `null` returns the cover to automatic selection. */
   coverMediaId?: string | null;
 }
 
-/** Valeurs appliquées tant qu'aucun réglage n'a été enregistré. */
+/** Values applied while no settings have been saved. */
 export const DEFAULT_SETTINGS: AppSettings = {
   syncIntervalMinutes: 30,
   syncOnStartup: true,
   cacheMaxSizeGB: 20,
   prewarmCache: true,
   transcodeVideos: true,
-  // Cinq giga-octets, soit environ trois heures de 1080p transcodé : de quoi
-  // couvrir plusieurs albums de vacances. Un dixième du budget des vignettes,
-  // parce qu'une bibliothèque tient bien plus de photos que de films.
+  // Five gigabytes, around three hours of transcoded 1080p: enough to cover several
+  // holiday albums. One tenth of the thumbnail budget because a library holds far
+  // more photos than films.
   videoCacheMaxSizeGB: 5,
   moderationEmail: null,
 };
@@ -144,13 +143,13 @@ interface UserRow {
   updated_at: string;
 }
 
-/** Vue mémoire de la configuration, reconstruite après chaque écriture. */
+/** In-memory configuration view, rebuilt after each write. */
 interface Snapshot {
   albums: StoredAlbum[];
   albumsById: Map<string, StoredAlbum>;
-  /** Clé en minuscules : le login est insensible à la casse. */
+  /** Lower-case key: sign-in is case-insensitive. */
   users: Map<string, StoredUser>;
-  /** Même clé, ensemble d'ids pour un `canSee` en temps constant. */
+  /** Same key, with a set of IDs for constant-time `canSee`. */
   granted: Map<string, Set<string>>;
   settings: AppSettings;
 }
@@ -170,7 +169,7 @@ function toAlbum(row: AlbumRow): StoredAlbum {
   };
 }
 
-/** Forme exposée par l'API : le joker redevient `['*']`, l'empreinte disparaît. */
+/** API shape: the wildcard becomes `['*']` again and the hash disappears. */
 export function toAdminUser(user: StoredUser): AdminUser {
   return {
     username: user.username,
@@ -183,14 +182,14 @@ export function toAdminUser(user: StoredUser): AdminUser {
 
 export class ConfigRepo {
   private snapshot: Snapshot | null = null;
-  /** Dernière valeur observée de `PRAGMA data_version`. Voir `read()`. */
+  /** Last observed value of `PRAGMA data_version`. See `read()`. */
   private dataVersion = -1;
 
   constructor(private readonly db: Db) {}
 
-  /* ----------------------------------------------------------------- lecture */
+  /* -------------------------------------------------------------------- reading */
 
-  /** Tous les albums, dans leur ordre d'affichage (rang de création). */
+  /** All albums in display order (creation rank). */
   albums(): StoredAlbum[] {
     return this.read().albums;
   }
@@ -199,7 +198,7 @@ export class ConfigRepo {
     return this.read().albumsById.get(albumId);
   }
 
-  /** Recherche insensible à la casse : le login ne doit pas dépendre de la frappe. */
+  /** Case-insensitive lookup: sign-in must not depend on capitalisation. */
   user(username: string): StoredUser | undefined {
     return this.read().users.get(username.toLowerCase());
   }
@@ -208,7 +207,7 @@ export class ConfigRepo {
     return [...this.read().users.values()];
   }
 
-  /** Albums visibles par ce compte, dans l'ordre d'affichage. */
+  /** Albums visible to this account, in display order. */
   albumsFor(username: string): StoredAlbum[] {
     const snapshot = this.read();
     const user = snapshot.users.get(username.toLowerCase());
@@ -226,7 +225,7 @@ export class ConfigRepo {
     return user.allAlbums || (snapshot.granted.get(key)?.has(albumId) ?? false);
   }
 
-  /** Comptes ayant explicitement accès à cet album, hors détenteurs du joker. */
+  /** Accounts with explicit access to this album, excluding wildcard holders. */
   members(albumId: string): string[] {
     const snapshot = this.read();
     return [...snapshot.users.values()]
@@ -246,7 +245,7 @@ export class ConfigRepo {
     return this.read().settings;
   }
 
-  /* ---------------------------------------------------------------- écriture */
+  /* -------------------------------------------------------------------- writing */
 
   createUser(input: CreateUserInput): StoredUser {
     const now = new Date().toISOString();
@@ -268,7 +267,7 @@ export class ConfigRepo {
 
   updateUser(username: string, patch: UpdateUserInput): StoredUser {
     const stored = this.user(username);
-    if (!stored) throw new Error(`Compte inconnu : "${username}"`);
+    if (!stored) throw new Error(`Unknown account: "${username}"`);
     const now = new Date().toISOString();
 
     this.db.transaction(() => {
@@ -287,7 +286,7 @@ export class ConfigRepo {
         this.db
           .prepare('UPDATE users SET all_albums = ? WHERE username = ?')
           .run(allAlbums ? 1 : 0, stored.username);
-        // Remplacement complet : la requête décrit l'état voulu, pas un delta.
+        // Full replacement: the request describes the desired state, not a delta.
         this.db.prepare('DELETE FROM user_albums WHERE username = ?').run(stored.username);
         this.linkAlbums(stored.username, ids);
       }
@@ -300,7 +299,7 @@ export class ConfigRepo {
     return this.user(stored.username)!;
   }
 
-  /** Les liaisons partent avec le compte (ON DELETE CASCADE). */
+  /** Associations leave with the account (ON DELETE CASCADE). */
   deleteUser(username: string): boolean {
     const changes = this.db.prepare('DELETE FROM users WHERE username = ?').run(username).changes;
     this.invalidate();
@@ -339,7 +338,7 @@ export class ConfigRepo {
 
   updateAlbum(albumId: string, patch: UpdateAlbumInput): StoredAlbum {
     const stored = this.album(albumId);
-    if (!stored) throw new Error(`Album inconnu : "${albumId}"`);
+    if (!stored) throw new Error(`Unknown album: "${albumId}"`);
 
     const next: StoredAlbum = {
       ...stored,
@@ -377,9 +376,9 @@ export class ConfigRepo {
   }
 
   /**
-   * Supprime l'album et ses liaisons (ON DELETE CASCADE). L'index média et
-   * l'état de synchronisation, eux, appartiennent à `MediaRepo` : l'appelant
-   * doit les purger — voir `routes/admin.ts`.
+   * Deletes the album and its associations (ON DELETE CASCADE). The media index and
+   * synchronisation state belong to `MediaRepo`, so the caller must purge them —
+   * see `routes/admin.ts`.
    */
   deleteAlbum(albumId: string): boolean {
     const changes = this.db.prepare('DELETE FROM albums WHERE id = ?').run(albumId).changes;
@@ -387,7 +386,7 @@ export class ConfigRepo {
     return changes > 0;
   }
 
-  /** Écrit les réglages fournis ; les autres restent inchangés. */
+  /** Writes supplied settings; the others remain unchanged. */
   updateSettings(patch: Partial<AppSettings>): AppSettings {
     const statement = this.db.prepare(
       `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -397,9 +396,9 @@ export class ConfigRepo {
     this.db.transaction(() => {
       for (const [key, value] of Object.entries(patch)) {
         if (value === undefined) continue;
-        // Une adresse vidée dans le formulaire arrive en chaîne vide : la
-        // stocker telle quelle donnerait deux façons de dire « aucune », et
-        // `moderationEmail: ''` passerait le test de présence des destinataires.
+        // An address cleared in the form arrives as an empty string: storing it as-is
+        // would create two ways to say "none", and `moderationEmail: ''` would pass
+        // the recipient presence check.
         const stored = key === 'moderationEmail' ? normalize(value as string | null) : value;
         statement.run(key, JSON.stringify(stored));
       }
@@ -410,9 +409,9 @@ export class ConfigRepo {
   }
 
   /**
-   * Amorçage d'une installation neuve, en une transaction : soit tout est
-   * repris du fichier, soit rien ne l'est. Un amorçage à moitié fait ne serait
-   * jamais rejoué, puisque la présence d'un compte suffit à le désactiver.
+   * Bootstraps a new installation in one transaction: either everything is imported
+   * from the file or nothing is. A half-completed bootstrap would never be replayed,
+   * since the presence of one account is enough to disable it.
    */
   seed(input: {
     albums: CreateAlbumInput[];
@@ -427,7 +426,7 @@ export class ConfigRepo {
     this.invalidate();
   }
 
-  /* ------------------------------------------------------------------ interne */
+  /* ------------------------------------------------------------------- internal */
 
   private linkAlbums(username: string, albumIds: string[]): void {
     const statement = this.db.prepare(
@@ -441,20 +440,18 @@ export class ConfigRepo {
   }
 
   /**
-   * Rend l'instantané, après s'être assuré qu'aucune autre connexion n'a écrit
-   * dans la base depuis sa construction.
+   * Returns the snapshot after ensuring that no other connection has written to the
+   * database since it was built.
    *
-   * `PRAGMA data_version` ne bouge pas pour les écritures de *cette* connexion,
-   * mais change dès qu'un autre processus valide une transaction. C'est ce qui
-   * permet à `pnpm reset-password`, lancé pendant que le serveur tourne, de
-   * prendre effet immédiatement : sans cette vérification, le serveur
-   * continuerait d'authentifier avec l'ancienne empreinte jusqu'au redémarrage,
-   * ce qui vide de son sens une commande faite pour reprendre la main en
-   * urgence.
+   * `PRAGMA data_version` does not move for writes from *this* connection, but changes
+   * as soon as another process commits a transaction. This allows `pnpm reset-password`,
+   * run while the server is active, to take effect immediately: without this check,
+   * the server would continue authenticating with the old hash until restart, defeating
+   * a command designed for urgently regaining control.
    *
-   * Le coût est une lecture de compteur en mémoire par appel, là où reconstruire
-   * l'instantané à chaque fois coûterait plusieurs requêtes — y compris sur le
-   * chemin de `canSee()`, appelé pour chaque vignette.
+   * The cost is one in-memory counter read per call, whereas rebuilding the snapshot
+   * each time would cost several queries — including on the `canSee()` path called
+   * for every thumbnail.
    */
   private read(): Snapshot {
     const version = this.db.pragma('data_version', { simple: true }) as number;
@@ -501,7 +498,7 @@ export class ConfigRepo {
         passwordHash: row.password_hash,
         admin: row.admin === 1,
         allAlbums: row.all_albums === 1,
-        // Trié comme les albums : la liste rendue par l'API est stable.
+        // Sorted like albums so the list returned by the API is stable.
         albums: albums.filter((album) => granted.get(key)?.has(album.id)).map((album) => album.id),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -528,7 +525,7 @@ export class ConfigRepo {
       try {
         raw[row.key] = JSON.parse(row.value);
       } catch {
-        // Valeur illisible (base éditée à la main) : le défaut reprend la main.
+        // Unreadable value (manually edited database): the default takes over.
       }
     }
 
@@ -537,13 +534,13 @@ export class ConfigRepo {
   }
 }
 
-/** Une chaîne vide venue d'un formulaire vaut « pas de valeur ». */
+/** An empty string from a form means "no value". */
 function normalize(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 }
 
-/** `['*', 'a']` vaut joker : le plus permissif l'emporte, sans erreur silencieuse. */
+/** `['*', 'a']` means wildcard: the most permissive value wins without silent error. */
 function splitAlbums(albums: string[]): { allAlbums: boolean; ids: string[] } {
   const allAlbums = albums.includes(ALL_ALBUMS);
   return { allAlbums, ids: allAlbums ? [] : [...new Set(albums)] };

@@ -3,73 +3,73 @@ import { afterEach, describe, it } from 'node:test';
 import { readStoredOrder, resolveOrder } from '../src/lib/albumOrder';
 
 /**
- * Sens de lecture d'un album : trois sources, un ordre de priorité.
+ * Album reading order: three sources with an order of precedence.
  *
- * C'est la seule partie du mécanisme qui a des cas, et la seule testable sans
- * DOM. Se tromper d'ordre ne casse rien de visible : l'album s'ouvre, à
- * l'envers de ce que son lecteur avait demandé.
+ * This is the only part of the mechanism with branches, and the only part that
+ * can be tested without a DOM. Getting the order wrong breaks nothing obvious:
+ * the album opens in the opposite order from what its reader requested.
  */
 
-describe('résolution du sens de lecture', () => {
-  it('suit l’URL avant tout le reste', () => {
-    // Un lien partagé, ou reçu par email, restitue une vue exacte : ce que le
-    // navigateur a retenu ne doit pas la contredire.
+describe('reading order resolution', () => {
+  it('follows the URL before anything else', () => {
+    // A shared link, or one received by email, restores an exact view: the
+    // browser's stored preference must not contradict it.
     assert.equal(resolveOrder('desc', 'asc', 'asc'), 'desc');
     assert.equal(resolveOrder('asc', 'desc', 'desc'), 'asc');
   });
 
-  it('retombe sur ce que le navigateur a retenu', () => {
+  it('falls back to what the browser stored', () => {
     assert.equal(resolveOrder(null, 'desc', 'asc'), 'desc');
   });
 
-  it('retombe sur le défaut de l’album en dernier', () => {
+  it('falls back to the album default last', () => {
     assert.equal(resolveOrder(null, null, 'desc'), 'desc');
     assert.equal(resolveOrder(null, null, 'asc'), 'asc');
   });
 
-  it('ignore un paramètre d’URL bricolé à la main', () => {
-    // Sans quoi la grille demanderait `?order=zigzag`, que l'API refuse par un
-    // 400 — un album vide et une erreur, pour une URL mal recopiée.
+  it('ignores a manually altered URL parameter', () => {
+    // Otherwise the grid would request `?order=zigzag`, which the API rejects
+    // with a 400 — an empty album and an error for a miscopied URL.
     assert.equal(resolveOrder('zigzag', 'desc', 'asc'), 'desc');
     assert.equal(resolveOrder('DESC', null, 'asc'), 'asc');
   });
 
-  it('ne tranche pas tant qu’aucune source n’a répondu', () => {
-    // `null` fait attendre la grille. Un défaut de repli ici chargerait deux
-    // cents éléments dans un sens rejeté à l'arrivée de l'album.
+  it('does not decide until a source has answered', () => {
+    // `null` makes the grid wait. A fallback default here would load two
+    // hundred items in an order rejected when the album arrives.
     assert.equal(resolveOrder(null, null, undefined), null);
   });
 });
 
-describe('mémoire par album', () => {
+describe('per-album memory', () => {
   afterEach(() => {
     delete (globalThis as { window?: unknown }).window;
   });
 
-  /** Pose un `window.localStorage` de test — il n'y a pas de DOM ici. */
+  /** Installs a test `window.localStorage` — there is no DOM here. */
   function stockage(getItem: (key: string) => string | null): void {
     (globalThis as { window?: unknown }).window = { localStorage: { getItem } };
   }
 
-  it('lit le sens retenu sous une clé par album', () => {
-    stockage((key) => (key === 'gdv:album-order:corse' ? 'desc' : null));
+  it('reads the stored order under a per-album key', () => {
+    stockage((key) => (key === 'nonni:album-order:corse' ? 'desc' : null));
 
     assert.equal(readStoredOrder('corse'), 'desc');
-    // Une clé par album : « Corse » se lit dans l'ordre du séjour et « Les
-    // enfants » par les dernières photos, sans que l'un décide pour l'autre.
+    // One key per album means "Corse" follows the trip order while "Les
+    // enfants" starts with the latest photos, without either deciding for the other.
     assert.equal(readStoredOrder('enfants'), null);
   });
 
-  it('ignore une valeur que ce code n’a pas écrite', () => {
+  it('ignores a value this code did not write', () => {
     stockage(() => 'chronologique');
     assert.equal(readStoredOrder('corse'), null);
   });
 
-  it('tient face à un localStorage refusé', () => {
-    // Navigation privée sur d'anciens Safari : la lecture lève. L'album doit
-    // s'ouvrir quand même, sur le sens que son administrateur a choisi.
+  it('handles denied localStorage access', () => {
+    // Private browsing in older Safari makes reading throw. The album must
+    // still open in the order chosen by its administrator.
     stockage(() => {
-      throw new Error('accès au stockage refusé');
+      throw new Error('storage access denied');
     });
     assert.equal(readStoredOrder('corse'), null);
     assert.equal(resolveOrder(null, readStoredOrder('corse'), 'desc'), 'desc');

@@ -1,56 +1,54 @@
-# D60 — Un téléchargement Drive a une échéance, sauf quand il relaie une vidéo
+# D60 — A Drive download has a deadline, except when relaying a video
 
-**Contexte.** `DriveService.send()` appelait `fetch` sans `AbortSignal`. Node
-hérite alors du défaut d'undici : **cinq minutes**. Or la place du limiteur de
-rendu est prise **avant** le téléchargement — c'est voulu, l'original en mémoire
-est ce qui pèse (D32). Deux téléchargements figés sur un VPS bicœur gèlent donc
-tous les rendus pendant cinq minutes, ce qui, vu du navigateur, ne se distingue
-pas d'un blocage définitif. C'était le diagnostic initialement posé sur la
-lenteur d'un album froid, et il était faux dans ce cas précis — mais le
-mécanisme, lui, existait bel et bien.
+**Context.** `DriveService.send()` called `fetch` without an `AbortSignal`. Node
+then inherits undici's default: **five minutes**. But the render limiter slot is
+taken **before** the download — deliberately, because the original in memory is
+what weighs heavily (D32). Two stalled downloads on a dual-core VPS therefore
+freeze all renders for five minutes, which is indistinguishable from a permanent
+block in the browser. This was the initial diagnosis of a cold album's slowness,
+and it was wrong in that particular case — but the mechanism did exist.
 
-**Choix.** `AbortSignal.timeout(120_000)` sur les téléchargements de contenu,
-**et sur eux seuls**. Le discriminant est déjà là : `send(url, token, range?)`.
+**Choice.** `AbortSignal.timeout(120_000)` on content downloads, **and only those**.
+The discriminator already exists: `send(url, token, range?)`.
 
-- **Sans `range`** — téléchargement d'un original pour produire un dérivé, borné
-  par `MAX_DECODE_BYTES` (80 Mo) : échéance. 120 s couvre 80 Mo sur une ligne
-  lente et laisse une marge considérable au cas courant, une dizaine de
-  mégaoctets.
-- **Avec `range`** — relais d'une vidéo vers le navigateur, qui la consomme à son
-  rythme : **aucune échéance**. `AbortSignal.timeout` est une échéance _totale_,
-  pas d'inactivité ; elle couperait une lecture en cours au bout de deux minutes.
+- **Without `range`** — downloading an original to produce a derivative, bounded
+  by `MAX_DECODE_BYTES` (80 MB): deadline. 120 s covers 80 MB over a slow line and
+  leaves considerable headroom for the common case of around ten megabytes.
+- **With `range`** — relaying a video to the browser, which consumes it at its own
+  pace: **no deadline**. `AbortSignal.timeout` is a _total_ deadline, not an
+  inactivity timeout; it would stop playback after two minutes.
 
-**Le repli tient en trois couches**, et c'est là qu'est la vraie décision — une
-échéance seule ne fait que transformer une attente en tuile vide.
+**Fallback has three layers**, and that is the real decision — a deadline alone
+merely turns a wait into an empty tile.
 
-1. **L'aperçu Drive**, déjà en place : le `catch` de `build()` repart du
-   `thumbnailLink`, qui pèse quelques kilooctets là où l'original en pèse huit
-   millions. Sur une ligne saturée, c'est précisément ce qui a le plus de chances
-   de passer.
-2. **Un 503 avec `Retry-After`, jamais un 500.** `DriveUnavailableError` distingue
-   le transitoire — délai dépassé, débit limité au-delà des réessais — du
-   définitif, un format que la libvips ne décode pas. Un 500 dit « cassé » et
-   fait renoncer ; un 503 dit « reviens ». Aucun en-tête de cache n'accompagne un
-   échec : rien n'est mémorisé, donc la requête suivante retente réellement.
-3. **Deux réessais côté vignette**, délai doublé et **dispersé**. Sans eux, le
-   503 ne servirait à rien : un `<img>` ne réessaie pas tout seul, et la tuile
-   resterait vide jusqu'au rechargement de la page. La dispersion n'est pas
-   cosmétique — trente vignettes échouent ensemble sur une grille froide, et des
-   réessais synchrones repartiraient saturer les six mêmes connexions (D59).
+1. **The Drive preview**, already in place: the `catch` in `build()` falls back
+   to `thumbnailLink`, which weighs a few kilobytes where the original weighs
+   eight million. On a saturated line, this is precisely what is most likely to
+   get through.
+2. **A 503 with `Retry-After`, never a 500.** `DriveUnavailableError`
+   distinguishes the transient — deadline exceeded, rate limited beyond the
+   retries — from the permanent, a format that libvips cannot decode. A 500 says
+   "broken" and causes the client to give up; a 503 says "come back". No cache
+   header accompanies a failure: nothing is stored, so the next request genuinely
+   retries.
+3. **Two retries in the thumbnail, with a doubled and jittered delay.** Without
+   them, the 503 would be useless: an `<img>` does not retry by itself, and the
+   tile would remain empty until the page reloaded. The jitter is not cosmetic —
+   thirty thumbnails fail together on a cold grid, and synchronised retries would
+   again saturate the same six connections (D59).
 
-**Écarté.** _Une échéance unique pour tout le trafic Drive_ : elle couperait la
-vidéo, et c'est le genre de régression qu'on ne voit qu'en production, en
-regardant un film. _Un réessai côté serveur_ : il tiendrait la place du limiteur
-plus longtemps, c'est-à-dire qu'il aggraverait exactement ce qu'on corrige.
-_Prendre la place du limiteur après le téléchargement_ : l'original serait alors
-en mémoire hors de tout comptage, ce que D32 a précisément écarté. _Un bandeau
-d'erreur global_ quand beaucoup de vignettes échouent : de l'appareillage pour un
-état que les réessais résorbent d'eux-mêmes.
+**Rejected.** _One deadline for all Drive traffic_: it would stop video, the kind
+of regression only seen in production while watching a film. _A server-side
+retry_: it would hold the limiter slot longer, worsening exactly what is being
+fixed. _Taking the limiter slot after the download_: the original would then sit
+in memory without being accounted for, precisely what D32 rejected. _A global
+error banner_ when many thumbnails fail: machinery for a state the retries clear
+on their own.
 
-**Conséquences.** Le pire cas devient 240 s — l'original puis l'aperçu Drive se
-figeant tous deux — contre 600 s auparavant. Une seule constante gouverne les
-deux, assumé : un aperçu mériterait une échéance plus courte, mais deux réglages
-pour un gain de quelques secondes dans un cas déjà rare ne valent pas la
-complication. Un `<img>` ne connaît pas le code de retour reçu : les deux
-réessais partent donc aussi sur un 404, ce qui coûte deux requêtes inutiles pour
-un média réellement disparu — c'est rare, et l'inverse coûterait bien plus.
+**Consequences.** The worst case becomes 240 s — the original and then the Drive
+preview both stalling — compared with 600 s previously. One constant governs
+both, deliberately: a preview would deserve a shorter deadline, but two settings
+for a gain of a few seconds in an already rare case are not worth the complication.
+An `<img>` does not know the received status code, so both retries also happen on
+a 404, costing two unnecessary requests for media that has genuinely disappeared
+— this is rare, and the opposite would cost far more.

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS } from '@gdv/shared';
+import { ALL_ALBUMS } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -12,13 +12,13 @@ import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Test de bout en bout du cloisonnement des albums : un utilisateur ne doit
- * atteindre ni les métadonnées, ni les fichiers d'un album qui ne lui est pas
- * attribué — et l'API ne doit pas non plus lui révéler qu'ils existent.
+ * End-to-end test of album isolation: a user must not be able to reach either
+ * the metadata or the files of an album they have not been assigned — and the
+ * API must not reveal that they exist either.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-access-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-access-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -58,11 +58,11 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
 
-  const cookie = response.cookies.find((entry) => entry.name === 'gdv_session');
-  assert.ok(cookie, 'cookie de session absent');
-  return `gdv_session=${cookie.value}`;
+  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
+  assert.ok(cookie, 'session cookie missing');
+  return `nonni_session=${cookie.value}`;
 }
 
 before(async () => {
@@ -72,7 +72,7 @@ before(async () => {
     NODE_ENV: 'test',
     SESSION_SECRET: 's'.repeat(48),
     TOKEN_KEY: 't'.repeat(48),
-    // Aucun fichier ici : les comptes et les albums se créent en base.
+    // No file here: accounts and albums are created in the database.
     CONFIG_PATH: join(root, 'albums-absent.yaml'),
     DATA_DIR: join(root, 'data'),
     CACHE_DIR: join(root, 'cache'),
@@ -121,13 +121,13 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('accès anonyme', () => {
-  it('refuse les albums', async () => {
+describe('anonymous access', () => {
+  it('rejects album access', async () => {
     const response = await server.inject({ method: 'GET', url: '/api/albums' });
     assert.equal(response.statusCode, 401);
   });
 
-  it('refuse les fichiers', async () => {
+  it('rejects file access', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/media/photo-publique/thumb?s=320',
@@ -135,10 +135,10 @@ describe('accès anonyme', () => {
     assert.equal(response.statusCode, 401);
   });
 
-  it("accepte un identifiant entouré d'espaces", async () => {
-    // Aucun compte ne peut en porter — le clavier mobile, lui, en colle une
-    // après l'autocomplétion. Un refus ici serait indistinguable d'un mot de
-    // passe faux.
+  it('accepts a username surrounded by spaces', async () => {
+    // No account can contain them, but a mobile keyboard adds one after
+    // autocomplete. Rejecting it here would be indistinguishable from a wrong
+    // password.
     const response = await server.inject({
       method: 'POST',
       url: '/api/auth/login',
@@ -148,7 +148,7 @@ describe('accès anonyme', () => {
     assert.equal((response.json() as { username: string }).username, 'famille');
   });
 
-  it("refuse un identifiant fait d'espaces", async () => {
+  it('rejects a username made entirely of spaces', async () => {
     const response = await server.inject({
       method: 'POST',
       url: '/api/auth/login',
@@ -157,9 +157,9 @@ describe('accès anonyme', () => {
     assert.equal(response.statusCode, 400);
   });
 
-  it("n'ampute pas le mot de passe de ses espaces", async () => {
-    // Un mot de passe a le droit d'en contenir aux deux bouts : le replier
-    // ouvrirait la connexion à une saisie qui n'est pas la bonne.
+  it('does not strip spaces from the password', async () => {
+    // A password may contain them at either end: trimming it would allow a
+    // login with the wrong input.
     const response = await server.inject({
       method: 'POST',
       url: '/api/auth/login',
@@ -168,7 +168,7 @@ describe('accès anonyme', () => {
     assert.equal(response.statusCode, 401);
   });
 
-  it('refuse un mot de passe incorrect', async () => {
+  it('rejects an incorrect password', async () => {
     const response = await server.inject({
       method: 'POST',
       url: '/api/auth/login',
@@ -179,8 +179,8 @@ describe('accès anonyme', () => {
   });
 });
 
-describe('cloisonnement des albums', () => {
-  it("n'expose que les albums attribués", async () => {
+describe('album isolation', () => {
+  it('exposes only assigned albums', async () => {
     const cookie = await login('famille');
     const response = await server.inject({
       method: 'GET',
@@ -196,7 +196,7 @@ describe('cloisonnement des albums', () => {
     );
   });
 
-  it('renvoie 404 — et non 403 — sur un album interdit', async () => {
+  it('returns 404 — not 403 — for a forbidden album', async () => {
     const cookie = await login('famille');
     for (const url of [
       '/api/albums/prive',
@@ -204,12 +204,12 @@ describe('cloisonnement des albums', () => {
       '/api/albums/prive/items/photo-privee',
     ]) {
       const response = await server.inject({ method: 'GET', url, headers: { cookie } });
-      // Un 403 confirmerait l'existence de l'album : le 404 ne dit rien.
+      // A 403 would confirm the album exists: a 404 reveals nothing.
       assert.equal(response.statusCode, 404, url);
     }
   });
 
-  it("refuse le fichier d'un album interdit", async () => {
+  it('rejects a file from a forbidden album', async () => {
     const cookie = await login('famille');
     for (const url of [
       '/api/media/photo-privee/thumb?s=320',
@@ -222,7 +222,7 @@ describe('cloisonnement des albums', () => {
     }
   });
 
-  it('laisse passer un administrateur sur tous les albums', async () => {
+  it('allows an administrator to access every album', async () => {
     const cookie = await login('alexis');
     const response = await server.inject({
       method: 'GET',
@@ -232,7 +232,7 @@ describe('cloisonnement des albums', () => {
     assert.equal(response.statusCode, 200);
   });
 
-  it("réserve l'administration aux comptes admin", async () => {
+  it('reserves administration for admin accounts', async () => {
     const cookie = await login('famille');
     const response = await server.inject({
       method: 'GET',
@@ -243,8 +243,8 @@ describe('cloisonnement des albums', () => {
   });
 });
 
-describe('cycle de session', () => {
-  it('invalide le cookie après déconnexion', async () => {
+describe('session lifecycle', () => {
+  it('invalidates the cookie after logout', async () => {
     const cookie = await login('famille');
 
     const before = await server.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
@@ -256,26 +256,26 @@ describe('cycle de session', () => {
     assert.equal(after.statusCode, 401);
   });
 
-  it('rejette un cookie forgé', async () => {
+  it('rejects a forged cookie', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/auth/me',
-      headers: { cookie: 'gdv_session=identifiant-invente' },
+      headers: { cookie: 'nonni_session=identifiant-invente' },
     });
     assert.equal(response.statusCode, 401);
   });
 
-  it('repose le cookie quand la session est prolongée', async () => {
+  it('sets the cookie again when the session is extended', async () => {
     const cookie = await login('famille');
-    const sessionId = cookie.slice('gdv_session='.length);
+    const sessionId = cookie.slice('nonni_session='.length);
 
-    // Session arrivée à mi-vie : la lecture suivante repousse son échéance en
-    // base. Le cookie, lui, porte encore la date de la connexion — sans
-    // réémission, il expirerait alors que la session, elle, est prolongée.
+    // Once the session reaches half its lifetime, the next read pushes its
+    // database expiry back. The cookie still carries the login date — without
+    // being reissued, it would expire while the session remains valid.
     const miVie = new Date(Date.now() + context.sessions.ttlMs / 4).toISOString();
     context.db.prepare('UPDATE sessions SET expires_at = ? WHERE id LIKE ?').run(
       miVie,
-      // Le cookie est signé : sa valeur porte un suffixe que la base ignore.
+      // The cookie is signed: its value carries a suffix the database ignores.
       `${sessionId.split('.')[0]}%`,
     );
 
@@ -286,11 +286,11 @@ describe('cycle de session', () => {
     });
     assert.equal(response.statusCode, 200);
 
-    const repose = response.cookies.find((entry) => entry.name === 'gdv_session');
-    assert.ok(repose, 'la prolongation doit réémettre le cookie');
+    const repose = response.cookies.find((entry) => entry.name === 'nonni_session');
+    assert.ok(repose, 'extending the session must reissue the cookie');
     assert.ok(
       (repose.maxAge ?? 0) > context.sessions.ttlMs / 1000 / 2,
-      "le cookie réémis doit porter la nouvelle échéance, pas l'ancienne",
+      'the reissued cookie must carry the new expiry, not the old one',
     );
   });
 });

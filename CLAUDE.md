@@ -1,247 +1,271 @@
 # CLAUDE.md
 
-Visionneuse photos Google Drive auto-hébergée : monorepo pnpm (`shared`,
-`server`, `web`), un conteneur, Fastify sert l'API et le front buildé.
+Self-hosted Google Drive photo viewer: pnpm monorepo (`shared`, `server`, `web`),
+one container, with Fastify serving the API and the built front end.
 
-La conception est documentée dans [`specs/`](./specs/). Lis
-[`specs/README.md`](./specs/README.md) en premier, il donne l'ordre selon ce que
-tu cherches à faire. Par défaut : `01-vision-et-perimetre` → `02-architecture` →
+The design is documented in [`specs/`](./specs/). Read
+[`specs/README.md`](./specs/README.md) first; it gives the reading order for each
+kind of task. By default: `01-vision-et-perimetre` → `02-architecture` →
 `08-decisions`.
 
-## Règle de mise à jour de la documentation
+## Documentation update rule
 
-**Toute évolution du comportement, de l'API, du modèle de données, de la
-configuration ou d'un choix technique met à jour la spec correspondante DANS LE
-MÊME travail que le code.** Une spec mise à jour « plus tard » ne l'est jamais.
-Un changement de code sans changement de spec n'est pas terminé.
+**Every change to behaviour, the API, the data model, configuration or a
+technical choice updates the corresponding spec IN THE SAME piece of work as the
+code.** A spec deferred until "later" is never updated. A code change without a
+spec change is not complete.
 
-Cette règle **est contrôlée**, elle ne repose pas sur la mémoire :
-`pnpm check:specs` compare ce que le code expose — routes déclarées, variables
-d'environnement, migrations, modules — à ce que les specs mentionnent, et échoue
-sur l'écart. Il tourne dans `pnpm verify`, dans la CI, et sur `pre-push`.
+This rule **is enforced** rather than left to memory: `pnpm check:specs` compares
+what the code exposes—declared routes, environment variables, migrations and
+modules—with what the specs mention, and fails on any discrepancy. It runs in
+`pnpm verify`, in CI and on `pre-push`.
 
-Il vérifie en plus que chaque variable lue par `env.ts` **atteint réellement le
-conteneur** — transmise par le bloc `environment:` de `docker-compose.yml`, ou
-fixée par le `Dockerfile`. Être documentée ne suffit pas : Compose ne propage
-pas l'environnement de l'hôte, et `.env` ne sert qu'à l'interpolation. Une
-variable oubliée là est inchangeable en production tout en paraissant réglable
-partout ailleurs (D78). Si tu ajoutes une variable, câble-la dans le même geste.
+It also verifies that every variable read by `env.ts` **actually reaches the
+container**—either passed through the `environment:` block in `docker-compose.yml`
+or set by the `Dockerfile`. Documentation alone is not enough: Compose does not
+forward the host environment, and `.env` is used only for interpolation. A
+variable omitted there cannot be changed in production even though it appears
+configurable everywhere else (D78). Wire in every new variable as part of the
+same change.
 
-**Une décision est un fichier**, `specs/08-decisions/D<AAMMJJ>-<slug>.md`, et son
-identifiant est la **date du jour**, pas le rang suivant : `D260809`, puis une
-lettre — `b`, `c` — si le jour en porte déjà une. Le rang obligeait à connaître
-le dernier numéro de `main`, qu'une branche ne voit pas des autres, et l'ajout en
-fin d'un fichier unique faisait conflit à chaque fusion parallèle même quand les
-numéros différaient (D260809). D1 à D99 gardent leur rang : les renommer
-traverserait les trois cents renvois que le code leur adresse.
+**One decision, one file**: `specs/08-decisions/D<YYMMDD>-<slug>.md`, whose
+identifier is **today's date**, not the next ordinal: `D260809`, followed by a
+letter—`b`, `c`—if that date already has a decision. An ordinal required knowing
+the latest number on `main`, which one branch cannot see on another, and
+appending to a single file caused a conflict on every parallel merge even when
+the numbers differed (D260809). D1 to D99 keep their ordinals: renaming them
+would cross the three hundred references to them in the code.
 
-`check:specs` contrôle le format de l'identifiant, l'accord entre le titre et le
-nom du fichier, l'absence de doublon toutes sources confondues, et l'absence de
-renvoi `(Dxx)` — dans les specs comme dans le code — vers une décision qui
-n'existe pas. Ces défauts sont arrivés (D75).
+`check:specs` checks the identifier format, agreement between the title and the
+file name, the absence of duplicates across all sources, and the absence of a
+reference `(Dxx)`—in the specs or the code—to a decision that does not exist.
+These defects have occurred before (D75).
 
-Il vérifie enfin qu'un **document de specs cité en texte** entre backticks —
-`specs/05-api.md`, `08-decisions/` — désigne un fichier qui existe. Ni les liens
-markdown ni les renvois `(Dxx)` ne couvrent ce cas, et un répertoire renommé y
-laissait un chemin faux que rien ne signalait (D260809d). Le répertoire des
-décisions en est exclu : un journal nomme ce qui a été remplacé.
+It also verifies that a **spec document cited as text** between backticks—
+`specs/05-api.md`, `08-decisions/`—points to an existing file. Neither Markdown
+links nor `(Dxx)` references cover this case, and a renamed directory once left
+a stale path that nothing reported (D260809d). The decisions directory is
+excluded: a log names what it replaced.
 
-`pnpm check:links` complète les précédents sur l'autre défaut silencieux : un
-renvoi entre les trois documents qui ne mène plus nulle part. Il résout chaque
-lien relatif et chaque ancre, et n'appelle pas le réseau — un contrôle qui
-échoue parce qu'un site tiers est lent finit désactivé.
+`pnpm check:links` complements these checks by catching the other silent defect:
+a reference between the three documents that no longer leads anywhere. It
+resolves every relative link and anchor without calling the network—a check that
+fails because a third-party site is slow eventually gets disabled.
 
-Le contrôle vérifie l'**existence** d'une mention, pas sa qualité : il attrape
-la route ajoutée sans un mot dans `05-api.md`, jamais un paragraphe devenu faux.
-Ce dernier cas reste à ta charge — c'est d'ailleurs le plus fréquent quand on
-modifie un comportement existant plutôt que d'en ajouter un.
+The check verifies that a mention **exists**, not that it is accurate: it catches
+a route added without a word in `05-api.md`, but never a paragraph that has
+become false. The latter remains your responsibility—and is more common when
+changing existing behaviour than when adding it.
 
-Si un manque signalé est un faux positif — un composant trivial dont le rôle est
-décrit sans que son nom apparaisse — ajoute-le à `MODULES_TOLERES` dans
-`tools/check-specs.mjs`, avec la raison. Un contrôle bruyant finit désactivé.
+If a reported omission is a false positive—a trivial component whose role is
+described without its name appearing—add it to `MODULES_TOLERES` in
+`tools/check-specs.mjs`, with the reason. A noisy check eventually gets disabled.
 
-| Si tu touches…                                                               | Mets à jour…                                                                    |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `packages/server/src/routes/*.ts` (route, code de retour, payload)           | `specs/05-api.md`                                                               |
-| `packages/shared/src/index.ts`                                               | `specs/05-api.md`, et `03` si le modèle bouge                                   |
-| `packages/server/src/db.ts` (`MIGRATIONS`, index, pragmas)                   | `specs/03-modele-de-donnees.md`                                                 |
-| `packages/server/src/repo.ts` (curseurs, requêtes)                           | `specs/03-modele-de-donnees.md`                                                 |
-| `packages/server/src/comments.ts` (fils, modération)                         | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`                |
-| `packages/server/src/commenters.ts` (identités, vérification par code)       | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`                |
-| `packages/server/src/mail.ts` (transport, file, composition)                 | `specs/06-configuration-et-deploiement.md`, et `08` si un compromis change      |
-| `packages/server/src/env.ts`, `config.ts` ou `bootstrap.ts`                  | `specs/06-configuration-et-deploiement.md`                                      |
-| `packages/server/src/config-repo.ts` (comptes, albums, réglages)             | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`                |
-| `Dockerfile`, `docker-compose.yml`, volumes                                  | `specs/06-configuration-et-deploiement.md`                                      |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                             | `specs/06-configuration-et-deploiement.md`, et `deploy/README.md`               |
-| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, règles d'accès | `specs/04-securite-et-acces.md`                                                 |
-| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                     | `specs/02-architecture.md` (cheminement de sync)                                |
-| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                      | `specs/02-architecture.md`, et `08` si un compromis change                      |
-| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, composants            | `specs/07-frontend.md`                                                          |
-| `packages/server/src/shell.ts` (nom d'instance, coquille, manifeste)         | `specs/05-api.md`, `specs/07-frontend.md`                                       |
-| `packages/web/src/styles.css` (tokens `@theme`)                              | `specs/07-frontend.md`                                                          |
-| Un compromis assumé, une alternative écartée, un « pourquoi pas X »          | `specs/08-decisions/` — **un nouveau fichier**, on ne réécrit pas les anciennes |
-| Le périmètre : une fonctionnalité entre ou sort                              | `specs/01-vision-et-perimetre.md`                                               |
+| If you change…                                                             | Update…                                                                     |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                           |
+| `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                            |
+| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-modele-de-donnees.md`                                             |
+| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-modele-de-donnees.md`                                             |
+| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`            |
+| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`            |
+| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-et-deploiement.md`, and `08` if a trade-off changes |
+| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-et-deploiement.md`                                  |
+| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`            |
+| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-et-deploiement.md`                                  |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-et-deploiement.md`, and `deploy/README.md`          |
+| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-securite-et-acces.md`                                             |
+| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                   | `specs/02-architecture.md` (sync flow)                                      |
+| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                 |
+| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                      |
+| `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                   |
+| `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                      |
+| An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                |
+| The scope: a feature enters or leaves                                      | `specs/01-vision-et-perimetre.md`                                           |
 
-Trois documentations, trois lecteurs, aucune duplication entre elles :
+Five documents, five readers, no duplication between them:
 
-| Fichier            | Lecteur                 | Répond à                                           |
-| ------------------ | ----------------------- | -------------------------------------------------- |
-| `README.md`        | Qui découvre le projet  | Qu'est-ce que c'est, et comment le lancer en local |
-| `deploy/README.md` | Qui exploite un serveur | Installer, mettre à jour, sauvegarder, restaurer   |
-| `specs/`           | Qui reprend le code     | Pourquoi c'est fait ainsi                          |
+| File               | Reader                          | Answers                                               |
+| ------------------ | ------------------------------- | ----------------------------------------------------- |
+| `README.md`        | Someone discovering the project | What it is and how to run it locally                  |
+| `deploy/README.md` | Someone operating a server      | How to install, update, back up and restore           |
+| `specs/`           | Someone taking over the code    | Why it is built this way                              |
+| `CONTRIBUTING.md`  | Someone proposing a patch       | How to work here and what will be rejected            |
+| `SECURITY.md`      | Someone finding a vulnerability | Where to report it and what counts as a vulnerability |
 
-Le `README.md` de la racine reste **court** : ce qu'est l'application, ce qu'elle
-fait, comment la lancer en local, et trois liens. Toute procédure serveur va dans
-`deploy/README.md`, à côté des scripts qu'elle décrit (D64).
+The root `README.md` stays **short**: what the application is, what it does, how
+to run it locally and the link table. Every server procedure belongs in
+`deploy/README.md`, next to the scripts it describes (D64).
 
-## Commandes
+## Commands
 
 ```bash
 pnpm install
 
-pnpm --filter @gdv/server dev      # API sur :8080 (tsx watch)
-pnpm --filter @gdv/web dev         # front sur :5173, proxy /api vers :8080
-pnpm dev                           # les deux en parallèle
+pnpm --filter @nonni/server dev      # API on port 8080 (tsx watch)
+pnpm --filter @nonni/web dev         # front end on port 5173, proxy /api to port 8080
+pnpm dev                             # both in parallel
 
-pnpm build                         # shared, puis web, puis server — l'ordre compte
+pnpm build                           # shared, then web, then server—order matters
 pnpm typecheck
-pnpm lint                          # eslint .
-pnpm format                        # prettier --write .
-pnpm test                          # runner natif de Node, tous les packages
-pnpm check:format                  # prettier --check . — le formatage est-il celui du dépôt ?
-pnpm check:specs                   # les specs ont-elles décroché du code ?
-pnpm check:links                   # les renvois entre documents mènent-ils quelque part ?
-pnpm verify                        # les six d'un coup — la porte avant de publier
+pnpm lint                            # eslint .
+pnpm format                          # prettier --write .
+pnpm test                            # native Node runner, all packages
+pnpm check:format                    # prettier --check .—does formatting match the repository?
+pnpm check:specs                     # have the specs drifted from the code?
+pnpm check:links                     # do references between documents lead anywhere?
+pnpm verify                          # all six at once—the gate before publishing
 
-pnpm create-admin <identifiant>    # premier administrateur d'une base vide
-pnpm reset-password <identifiant>  # mot de passe perdu : dernier recours hors /admin
-pnpm hash-password                 # hash argon2id, pour un config/albums.yaml d'amorçage
-pnpm --filter @gdv/server seed-demo 300   # jeu de données de démo, sans compte Drive
+pnpm create-admin <identifier>       # first administrator of an empty database
+pnpm reset-password <identifier>     # lost password: last resort outside /admin
+pnpm hash-password                   # argon2id hash for a bootstrap config/albums.yaml
+pnpm --filter @nonni/server seed-demo 300   # demo dataset, no Drive account
 ```
 
-Avant de déclarer un travail terminé : **`pnpm verify`** — typecheck, lint,
-formatage, tests, contrôle des specs et contrôle des liens. C'est ce que lance
-la CI, et les deux contrôles de documentation tournent aussi sur `pre-push` :
-une divergence bloque la publication avant d'atteindre le dépôt distant.
+Before declaring work complete, run **`pnpm verify`**—typecheck, lint,
+formatting, tests, spec checks and link checks. CI runs the same command, and the
+two documentation checks also run on `pre-push`: divergence blocks publication
+before it reaches the remote repository.
 
-`pnpm format` réécrit, `pnpm check:format` constate. Le second est dans
-`verify` parce que le premier ne s'exécute que si on y pense : tant que rien ne
-le vérifiait, du code non formaté atteignait `main`, et la personne suivante qui
-lançait `pnpm format` reformatait au passage le travail de quelqu'un d'autre —
-un diff brouillé pour un correctif qui n'était pas le sien (D75).
+`pnpm format` rewrites; `pnpm check:format` only checks. The latter belongs in
+`verify` because the former runs only when someone remembers: before the check
+existed, unformatted code reached `main`, and the next person to run
+`pnpm format` also reformatted someone else's work—a noisy diff for an unrelated
+fix (D75).
 
-## Conventions de code
+## Code conventions
 
-- **Français partout** : commentaires, messages d'erreur, libellés d'interface,
-  noms de tests, journaux. Les identifiants de code restent en anglais.
-- **Les commentaires expliquent le pourquoi, jamais le quoi.** Un commentaire qui
-  paraphrase la ligne suivante est à supprimer. Le bon commentaire dit ce qui
-  casserait si on faisait autrement — c'est le style en vigueur dans tout le
-  dépôt, reprends-le.
-- **TypeScript strict**, avec `noUncheckedIndexedAccess`. Les `!` sont autorisés
-  après une vérification que le compilateur ne peut pas suivre (accès indexé,
-  paramètres de route Fastify) ; `@typescript-eslint/no-non-null-assertion` est
-  désactivé pour ça.
-- **JSDoc sur les exports** : chaque fonction, classe et type exporté porte une
-  phrase qui dit son rôle et, si utile, sa raison d'être.
-- **Tests en français**, avec le runner natif de Node et `node:assert/strict`.
-  Ils portent sur les invariants (cloisonnement, réversibilité des migrations,
-  absence de doublon en pagination), pas sur les détails d'implémentation.
-- **Formatage** : Prettier, 100 colonnes, guillemets simples, virgules finales.
-- Le contrat d'API vit dans `packages/shared` ; le front ne redéclare jamais une
-  forme de réponse de son côté.
+- **English everywhere**: comments, error messages, interface labels, test names
+  and logs. See "Language" below for the completed translation record.
+- **Comments explain why, never what.** Delete a comment that paraphrases the
+  following line. A useful comment says what would break if the code worked
+  differently—this is the style throughout the repository; preserve it.
+- **Strict TypeScript**, with `noUncheckedIndexedAccess`. The `!` operator is
+  allowed after a check the compiler cannot follow (indexed access, Fastify
+  route parameters); `@typescript-eslint/no-non-null-assertion` is disabled for
+  that reason.
+- **JSDoc on exports**: every exported function, class and type has one sentence
+  describing its role and, where useful, why it exists.
+- **Tests** use the native Node runner and `node:assert/strict`. They cover
+  invariants (isolation, migration reversibility, no pagination duplicates),
+  not implementation details.
+- **Formatting**: Prettier, 100 columns, single quotes, trailing commas.
+- The API contract lives in `packages/shared`; the front end never redeclares a
+  response shape locally.
 
-## Ton de la documentation et des PR
+## Language
 
-Ce dépôt part en open source. Ce qu'on y écrit s'adresse à un inconnu, pas à
-l'équipe qui l'a écrit.
+**Everything is in English.** The repository is public under the AGPL (D260811):
+splitting language by audience—English for what is read on GitHub and French for
+the rest—does not work when an unknown contributor must read the code, its
+comments and the specs that explain it, then edit a `.env.example`. The
+repository therefore uses the single language accessible to the greatest number
+of potential readers.
 
-**Ce qui se lit depuis GitHub est en anglais** — `README.md`, commits et pull
-requests, titre compris. C'est la seule exception à la règle « français
-partout » ci-dessus, et la ligne de partage est l'audience :
+The migration was completed in the following batches, from the most-read surface
+to the least-read:
 
-| En anglais                      | En français                                     |
-| ------------------------------- | ----------------------------------------------- |
-| `README.md`, `deploy/README.md` | `specs/` — conception, pour qui reprend le code |
-| Commits, PR (titre et corps)    | `CLAUDE.md` — instructions internes             |
-|                                 | Code, commentaires, tests, interface, journaux  |
+| Batch | Scope                                                      | Status |
+| ----- | ---------------------------------------------------------- | ------ |
+| 4     | Installation surface—see below                             | done   |
+| 5a    | Server: HTTP messages, logs, exceptions, commands and demo | done   |
+| 5b    | Emails, unsubscribe pages and interface (`packages/web`)   | done   |
+| 6     | Code comments, test names, `specs/` and this file          | done   |
 
-Les deux README s'adressent à qui découvre ou installe, souvent sans parler
-français ; les `specs/` s'adressent au développeur qui reprend le projet, et
-restent cohérentes avec le code et les tests. Un exemple qui apparaît des deux
-côtés peut donc diverger — les README disent `photos.example.com`, les specs
-`photos.exemple.fr` : c'est sans conséquence, chacun est idiomatique dans sa
-langue.
+**Batch 5b was not verifiable through `pnpm verify`.** About fifteen labels were
+found only by walking through the application in a browser: they were short and
+unaccented, alone on a JSX line or buried in an interpolated template. No
+literal-text search found them, and no test failed. The browser also revealed
+that a global replacement had put "Username" on the **album identifier** field,
+where it made no sense.
 
-> **Les PR #1 à #11 ont été retitrées en anglais le 2026-08-07, mais les commits
-> correspondants restent en français dans `main`.** La liste des PR et
-> `git log` divergent donc sur ces onze entrées, et c'est **voulu** : les
-> réaligner supposerait de réécrire l'historique de la branche principale, ce
-> qui casse tous les clones existants pour un gain cosmétique. Ne pas « corriger »
-> cette divergence. Elle s'éteint d'elle-même : tout ce qui est écrit à partir
-> de maintenant est en anglais des deux côtés.
+Some code identifiers remain in French (`titre` in `SearchBox`,
+`Mesure`/`valeur`/`unite`/`visiteur` in `VisitsSection`, `elaguer`, `accord`).
+They predate the repository-wide language rule. Do not introduce new French
+identifiers; renaming the existing ones is separate work and must not be folded
+into prose-only changes.
 
-**Une PR dit ce qu'elle apporte ou corrige, pas ce que son auteur a vécu.**
-Concrètement :
+The English surface includes both `README.md` files, `CONTRIBUTING.md`,
+`SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, the `.github/` templates and
+workflows, commits and pull requests, the installation surface—`.env.example`,
+`Dockerfile`, both `docker-compose*.yml` files, `Caddyfile`,
+`config/albums.example.yaml`, all of `deploy/`, `.gitignore`, `eslint.config.js`
+and `pnpm-workspace.yaml`—as well as the code's human-facing text, `specs/` and
+this file.
 
-- Pas de `I`, pas de `we`, pas de récit de la session. Le sujet grammatical est
-  le code, le comportement, l'utilisateur — jamais celui qui a tapé.
-- **Court.** L'intention en tête, en une phrase ; le problème puis le correctif ;
-  deux à quatre puces à l'échelle du sous-système. La profondeur — alternatives
-  écartées, vérifications, chiffres — va dans un unique `<details>` replié.
-- Pas de restitution fichier par fichier du diff : l'onglet Files le fait mieux.
+> **PRs #1 to #11 were retitled in English on 2026-08-07, but their corresponding
+> commits remain in French on `main`.** The PR list and `git log` therefore differ
+> for those eleven entries, and this is **intentional**: aligning them would
+> require rewriting the main branch history, breaking every existing clone for a
+> cosmetic gain. Do not "fix" this discrepancy.
 
-**Aucun hébergeur, aucun service tiers n'est présenté comme le bon choix** (D63).
-La documentation énonce ce qu'il faut obtenir ; les commandes propres à un
-fournisseur vivent dans un bloc replié, à égalité avec les autres. Un composant
-nommé dans le corps du texte — Tailscale, Caddy, Let's Encrypt — doit être un
-choix d'architecture assumé et documenté comme remplaçable, pas une habitude.
+## Documentation and pull request tone
 
-**Rien de nominatif dans ce qui s'exécute.** Un compte système porte un rôle
-(`deploy`), pas un prénom. Les identifiants d'exemple des specs et des tests
-sont une autre affaire : ils restent tels quels.
+This repository is open source. Its writing addresses a stranger, not the team
+that wrote it. `CONTRIBUTING.md` tells that reader what this page tells an agent;
+keep them aligned.
 
-## Pièges à connaître
+**A pull request says what it adds or fixes, not what its author went through.**
+In practice:
 
-- **Le serveur inventorie le cache disque au démarrage** (`MediaCache.load()`).
-  Un fichier déposé dans `CACHE_DIR` pendant que le serveur tourne est invisible
-  jusqu'au redémarrage — c'est pour ça que `seed-demo` demande de redémarrer.
-- **`index.html` et le manifeste sont lus une fois au démarrage** (`shell.ts`,
-  qui y substitue `APP_NAME`). Rebuilder le front sous un serveur qui tourne
-  laisse donc servir l'ancien HTML, qui référence des bundles supprimés : page
-  blanche. Redémarre. Sans objet en production comme sous `pnpm dev`.
-- **`PUBLIC_URL` doit correspondre exactement à l'URI de redirection déclarée
-  dans Google Cloud** (`PUBLIC_URL + /api/oauth/callback`). Un `/` final, `http`
-  au lieu de `https`, un `www.` en trop : `redirect_uri_mismatch`. `PUBLIC_URL`
-  décide aussi si les cookies sont `secure`.
-- **Ne jamais modifier une migration déjà publiée.** Les instances en service
-  l'ont déjà exécutée ; la retoucher fait diverger le schéma réel du schéma
-  supposé. Ajoute une entrée à la fin de `MIGRATIONS`.
-- **Les dates sont stockées et affichées en UTC**, parce que `taken_at`
-  représente l'heure de l'appareil au déclenchement, lue d'un EXIF sans fuseau.
-  Toute date affichée passe par `packages/web/src/lib/format.ts`, dont tous les
-  formateurs sont en `timeZone: 'UTC'`. Réafficher dans le fuseau local
-  décalerait la photo et ferait basculer de mois les prises de vue de fin de mois.
-- **La base fait autorité pour les comptes, les albums et les réglages.**
-  `config/albums.yaml` n'est lu que tant qu'aucun compte n'existe (amorçage d'une
-  installation neuve ou mise à jour d'une instance en service) ; ensuite il est
-  ignoré. Toute écriture passe par `ConfigRepo`, qui tient un instantané mémoire
-  — un `UPDATE` direct sur ces tables, **dans le même processus**, servirait un
-  état périmé. Depuis un autre processus (les commandes en ligne), c'est sans
-  danger : `read()` surveille `PRAGMA data_version`, qui ne bouge que pour les
-  écritures venues d'ailleurs, et reconstruit l'instantané le cas échéant.
-- **Le contrôle d'accès média est un `preHandler` de préfixe** dans
-  `routes/media.ts`. Une nouvelle route média en hérite automatiquement — ne la
-  monte pas ailleurs.
-- **Un refus d'accès répond 404, jamais 403** (albums et médias). Seul
-  `/api/admin/*` répond 403.
-- **`better-sqlite3` est synchrone** : garde les requêtes indexées et bornées.
-- **`threadpool.ts` doit rester le premier import de `main.ts`.** Node fixe la
-  taille du pool de libuv au premier usage de celui-ci, et en ESM tous les
-  imports sont évalués avant le corps du module : un seul import qui ouvrirait un
-  fichier avant lui figerait la valeur par défaut. Mesuré : avec quatre fils, une
-  vignette déjà en cache met 2 s à être servie pendant des rendus (D32).
-- **Le décodage d'images est bridé** (`media/semaphore.ts`). N'appelle pas sharp
-  hors de `MediaRenderer` sans passer par ce limiteur : c'est lui qui empêche une
-  grille à froid de faire tripler la mémoire du processus.
-- **Ordre de build imposé** : `shared` avant `web` avant `server`.
+- No `I`, no `we`, no account of the session. The grammatical subject is the
+  code, the behaviour or the user—never the person who typed it.
+- **Keep it short.** Lead with the intent in one sentence; state the problem and
+  then the fix; use two to four bullets at subsystem scale. Depth—rejected
+  alternatives, checks, figures—belongs in a single collapsed `<details>` block.
+- Do not restate the diff file by file; the Files tab does that better.
+
+**No hosting provider or third-party service is presented as the right choice**
+(D63). Documentation states the required outcome; provider-specific commands
+belong in a collapsed block alongside equal alternatives. A component named in
+the body—Tailscale, Caddy, Let's Encrypt—must be a deliberate, documented and
+replaceable architectural choice, not a habit.
+
+**Nothing personal belongs in executable material.** A system account carries a
+role (`deploy`), not a person's name. Example identifiers in specs and tests are
+different: keep them unchanged.
+
+## Pitfalls
+
+- **The server inventories the disk cache at startup** (`MediaCache.load()`). A
+  file placed in `CACHE_DIR` while the server is running remains invisible until
+  restart—which is why `seed-demo` requires one.
+- **`index.html` and the manifest are read once at startup** (`shell.ts`
+  substitutes `APP_NAME` into them). Rebuilding the front end while the server
+  is running leaves it serving old HTML that refers to deleted bundles: a blank
+  page. Restart it. This does not apply in production or under `pnpm dev`.
+- **`PUBLIC_URL` must exactly match the redirect URI declared in Google Cloud**
+  (`PUBLIC_URL + /api/oauth/callback`). A trailing `/`, `http` instead of
+  `https`, or an extra `www.` causes `redirect_uri_mismatch`. `PUBLIC_URL` also
+  determines whether cookies are `secure`.
+- **Never modify a published migration.** Running instances have already applied
+  it; changing it makes the real schema diverge from the assumed one. Append an
+  entry to `MIGRATIONS`.
+- **Dates are stored and displayed in UTC** because `taken_at` represents the
+  device's clock time when the picture was taken, read from EXIF data without a
+  time zone. Every displayed date goes through
+  `packages/web/src/lib/format.ts`, whose formatters all set
+  `timeZone: 'UTC'`. Displaying it in the local time zone would shift the photo
+  and move end-of-month shots into another month.
+- **The database is authoritative for accounts, albums and settings.**
+  `config/albums.yaml` is read only while no account exists (bootstrapping a new
+  installation or upgrading a running instance); it is ignored thereafter. All
+  writes go through `ConfigRepo`, which maintains an in-memory snapshot—a direct
+  `UPDATE` on those tables **in the same process** would serve stale state. A
+  write from another process (the command-line tools) is safe: `read()` monitors
+  `PRAGMA data_version`, which changes only for external writes, and rebuilds the
+  snapshot when needed.
+- **Media access control is a prefix `preHandler`** in `routes/media.ts`. Every
+  new media route inherits it automatically—do not mount it elsewhere.
+- **An access denial returns 404, never 403** (albums and media). Only
+  `/api/admin/*` returns 403.
+- **`better-sqlite3` is synchronous**: keep queries indexed and bounded.
+- **`threadpool.ts` must remain the first import in `main.ts`.** Node fixes the
+  size of the libuv pool on first use, and in ESM every import is evaluated before
+  the module body: one earlier import that opened a file would freeze the default
+  value. Measured result: with four threads, a cached thumbnail takes 2 seconds
+  to serve while rendering is under way (D32).
+- **Image decoding is throttled** (`media/semaphore.ts`). Do not call sharp
+  outside `MediaRenderer` without going through this limiter: it prevents a cold
+  grid from tripling the process's memory usage.
+- **Build order is enforced**: `shared` before `web` before `server`.

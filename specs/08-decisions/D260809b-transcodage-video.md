@@ -1,102 +1,100 @@
-# D260809b — Le transcodage vidéo, écarté par D6, devient possible avec des chiffres
+# D260809b — Video transcoding, rejected by D6, becomes viable with figures
 
-**Contexte.** [D6](./D6-pas-de-transcodage-video.md) écartait le transcodage sur
-trois objections, formulées sans mesure : « le CPU d'un VPS modeste ne suit pas,
-il faudrait stocker les versions transcodées, et gérer une file de travaux ».
-Elle n'avait pas tort ; elle n'avait simplement aucun ordre de grandeur.
+**Context.** [D6](./D6-pas-de-transcodage-video.md) rejected transcoding on
+three objections, expressed without measurements: "the CPU of a modest VPS
+cannot keep up, transcoded versions would have to be stored, and a job queue
+would have to be managed". It was not wrong; it simply had no order of magnitude.
 
-L'album qui a motivé cette décision les donne : **25 fichiers sur 38 sont en
-HEVC**, tous sortis d'un même téléphone. Sur un ordinateur, deux vidéos sur trois
-ne s'ouvrent pas — [D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)
-et [D98](./D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md) les
-ont rendues honnêtes, pas lisibles. Les trois objections ont maintenant chacune
-une réponse chiffrée :
+The album that prompted this decision provides one: **25 of 38 files use HEVC**,
+all from the same phone. On a computer, two videos in three do not open —
+[D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md) and
+[D98](./D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md) made
+them honest, not playable. Each of the three objections now has a quantified
+answer:
 
-| Objection de D6           | Ce que le terrain dit                                                                                                                                                                                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Le processeur ne suit pas | Tout est en 1080p, jamais en 4K. En `libx264 -preset veryfast -threads 1`, un 1080p tourne **autour du temps réel** sur un cœur, mesuré : les dix minutes de film à convertir font une dizaine de minutes de processeur, **une fois**, en fond, à priorité basse. |
-| Il faut stocker           | Mesuré sur vingt de ces vidéos : 1177 Mo d'original pour 780 Mo de sortie, soit **1,5 fois plus léger** et environ 95 Mo par minute de 1080p. Le magasin est borné et purgeable comme le cache d'images — 5 Go par défaut, c'est-à-dire une heure de film.        |
-| Il faut une file          | Une boucle de plus à côté du préchauffage, dont elle reprend les gardes à l'identique.                                                                                                                                                                            |
+| D6 objection                 | What actual use shows                                                                                                                                                                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The processor cannot keep up | Everything is 1080p, never 4K. With `libx264 -preset veryfast -threads 1`, 1080p runs **at around real time** on one core, as measured: the ten minutes of footage take roughly ten minutes of processor time to convert, **once**, in the background, at low priority. |
+| Storage is required          | Measured across twenty of these videos: 1,177 MB of originals for 780 MB of output, making it **1.5 times smaller**, or roughly 95 MB per minute of 1080p. The store is bounded and purgeable like the image cache — 5 GB by default, or one hour of footage.           |
+| A queue is required          | One more loop alongside prewarming, reusing exactly the same guards.                                                                                                                                                                                                    |
 
-**Choix.** Une version H.264 est préparée **à l'avance, une à la fois, en fond**,
-et **seulement pour les codecs qu'aucun navigateur courant ne décode** — `hvc1`
-et `hev1`. La règle porte sur le codec, jamais sur un poids ou un nombre de
-fichiers : transcoder un `avc1` dépenserait des minutes de processeur à dégrader
-une image que tout le monde lit déjà.
+**Decision.** An H.264 version is prepared **in advance, one at a time, in the
+background**, and **only for codecs that no current browser can decode** —
+`hvc1` and `hev1`. The rule is based on the codec, never on a file size or a
+number of files: transcoding an `avc1` would spend minutes of processor time
+degrading an image that everyone can already play.
 
-Quatre points portent cette décision.
+Four points underpin this decision.
 
-**Le codec est lu dans le fichier, au même passage que la date.**
-`readVideoCodec` descend `moov → trak → mdia → minf → stbl → stsd` et retient la
-première piste dont le `hdlr` vaut `vide` — une vidéo de téléphone porte au moins
-une piste son, souvent placée avant l'image, et prendre le premier `stsd` venu
-rendrait `mp4a` un fichier sur deux. La lecture partage la fenêtre `Range` de
-[D97](./D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md) :
-les séparer doublerait le nombre de requêtes pour relire les mêmes octets. La
-colonne `video_codec` a trois états — jamais examiné, examiné sans résultat, et
-le codec lui-même — et c'est le premier qui la peuple sans reprise de données,
-les lignes écrites par D97 étant relues exactement une fois.
+**The codec is read from the file in the same pass as the date.**
+`readVideoCodec` traverses `moov → trak → mdia → minf → stbl → stsd` and keeps
+the first track whose `hdlr` is `vide` — a phone video has at least one audio
+track, often placed before the video, and taking the first available `stsd`
+would yield `mp4a` for every other file. The read shares the `Range` window from
+[D97](./D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md):
+separating them would double the number of requests to reread the same bytes.
+The `video_codec` column has three states — never examined, examined without a
+result, and the codec itself — and the first pass populates it without backfill,
+with rows written by D97 being read exactly once.
 
-**Un magasin distinct, avec son propre budget.** `CACHE_DIR/video`, une seconde
-instance de `MediaCache` : inventaire, LRU, éviction et ménage des `.tmp` au
-démarrage étaient déjà écrits. Ce qui ne pouvait pas être partagé, c'est le
-budget — une vignette se refait en quelques secondes, une vidéo en plusieurs
-minutes de processeur, et un LRU commun laisserait une navigation dans la grille
-évincer une heure de travail. Chaque `MediaCache` n'inventorie et ne vide que ses
-propres rayons, sans quoi celui de `CACHE_DIR` compterait le magasin vidéo comme
-sien, et « vider le cache » depuis /admin emporterait les deux.
+**A separate store, with its own budget.** `CACHE_DIR/video`, a second
+`MediaCache` instance: inventory, LRU, eviction, and `.tmp` clean-up at startup
+were already implemented. What could not be shared was the budget — a thumbnail
+can be recreated in a few seconds, a video in several minutes of processor time,
+and a shared LRU would let browsing the grid evict an hour's work. Each
+`MediaCache` inventories and clears only its own shelves; otherwise the one for
+`CACHE_DIR` would count the video store as its own, and "clear cache" from
+/admin would remove both.
 
-**C'est le client qui choisit sa source.** Le serveur ne décide pas : il expose
-`videoCodec` avec l'item, et le navigateur interroge `canPlayType` sur le codec
-réel. D98 avait écarté `canPlayType` — à juste titre, sur `video/mp4` seul, qui
-répond `maybe` partout et n'apprend rien. Avec le codec, la réponse est franche.
-Conséquence directe et voulue : **Safari et un iPhone gardent l'original en
-pleine qualité**, ils n'ont rien à gagner à une version réencodée. Le transcodage
-n'est un repli que là où il n'y avait rien.
+**The client chooses its source.** The server does not decide: it exposes
+`videoCodec` with the item, and the browser calls `canPlayType` with the actual
+codec. D98 rejected `canPlayType` — rightly, when used with `video/mp4` alone,
+which returns `maybe` everywhere and reveals nothing. With the codec, the answer
+is definite. A direct and deliberate consequence: **Safari and an iPhone keep
+the full-quality original** because they have nothing to gain from a re-encoded
+version. Transcoding is a fallback only where there was nothing.
 
-**La lenteur est le mécanisme, pas un défaut.** Une seule tâche à la fois,
-`ffmpeg` reniçé à 15 et sur un seul fil, arrêt sur le budget du magasin, sur le
-réglage décoché et à l'extinction — le processus est alors tué, sinon un encodage
-de dix minutes survivrait au conteneur qui l'a lancé. Le serveur doit rester
-servi pendant ce temps : c'est la condition sans laquelle D6 aurait encore
-raison.
+**Slowness is the mechanism, not a flaw.** One task at a time, `ffmpeg` reniced
+to 15 and using a single thread, stopping on the store's budget, when the setting
+is disabled, and on shutdown — the process is then killed, or a ten-minute
+encoding would outlive the container that launched it. The server must remain
+responsive throughout: without that condition, D6 would still be right.
 
-**Écarté.** Le transcodage **à la demande**, sur la première requête : une
-réponse HTTP tenue ouverte dix minutes, et autant de `ffmpeg` simultanés que de
-curieux. Le 404 `not_ready` dit « pas encore » à la place, et la visionneuse en
-fait un message d'attente à côté du bouton Télécharger de D79.
+**Rejected.** Transcoding **on demand**, on the first request: an HTTP response
+held open for ten minutes, and as many simultaneous `ffmpeg` processes as there
+are curious users. The `not_ready` 404 says "not yet" instead, and the viewer
+turns it into a waiting message beside D79's Download button.
 
-Écarté aussi : **remplacer l'original**. Il reste servi, transcodage ou non — la
-version préparée est un dérivé de plus, jamais une substitution.
+Also rejected: **replacing the original**. It remains available, with or without
+transcoding — the prepared version is one more derivative, never a substitute.
 
-Écarté enfin : la **qualité adaptative**, ou HLS. Un seul rendu, 1080p, CRF 23.
-Découper en segments et publier plusieurs débits demanderait un manifeste, un
-lecteur JavaScript et autant de fois le stockage, pour une galerie familiale dont
-les vidéos durent une minute.
+Finally rejected: **adaptive quality**, or HLS. One rendition, 1080p, CRF 23.
+Splitting it into segments and publishing several bit rates would require a
+manifest, a JavaScript player, and as many times the storage, for a family
+gallery whose videos last a minute.
 
-**Conséquences.** L'image du conteneur grossit d'environ **250 Mo** : c'est
-`ffmpeg`, c'est le prix d'entrée, et il est annoncé tel quel dans
-[06](../06-configuration-et-deploiement.md). Sans lui, le serveur démarre en le
-signalant, et les vidéos concernées gardent le message de D79.
+**Consequences.** The container image grows by approximately **250 MB**: this is
+`ffmpeg`, it is the cost of entry, and it is stated as such in
+[06](../06-configuration-et-deploiement.md). Without it, the server starts with
+a warning, and the affected videos keep D79's message.
 
-Une vidéo qui vient d'arriver n'est pas lisible tout de suite — elle le dit, et
-**elle se met à jouer d'elle-même** quand sa version arrive : la visionneuse
-redemande le premier octet toutes les vingt secondes tant qu'elle attend. Sans
-ce guet, le 404 aurait été un cul-de-sac pour qui est resté devant, et le seul
-moyen d'en sortir aurait été de rouvrir la photo — que rien n'invitait à faire.
+A newly arrived video is not immediately playable — it says so, and **starts
+playing by itself** when its version arrives: the viewer requests the first byte
+again every twenty seconds while it waits. Without this watch, the 404 would
+have been a dead end for someone who remained on the screen, and the only way
+out would have been to reopen the photo — which nothing prompted them to do.
 
-**Ce qu'on achète est la lisibilité, pas le poids.** Le premier passage réel le
-mesure sans ambiguïté : 1,5× seulement, là où l'estimation de départ tablait sur
-cinq. Du 1080p à 30 images par seconde, tenu à la main, sur du feuillage, est à
-peu près le pire cas pour un encodeur, et `veryfast` ne l'aide pas — c'est le
-préréglage qui tient le temps réel sur un cœur, et c'est lui qui rend le
-transcodage acceptable sur un petit serveur. Descendre à `medium` ou monter le
-CRF gagnerait de la place au prix du budget processeur ou de l'image ; ce n'est
-pas ce qu'on cherchait ici.
+**What this buys is playability, not a smaller file.** The first real batch
+measures it unambiguously: only 1.5×, where the initial estimate expected five.
+Handheld 1080p at 30 frames per second, with foliage, is roughly the worst case
+for an encoder, and `veryfast` does not help — it is the preset that maintains
+real time on one core, and it is what makes transcoding acceptable on a small
+server. Dropping to `medium` or raising the CRF would save space at the expense
+of processor budget or image quality; that was not the goal here.
 
-Et ce que cette décision ne fait pas : elle n'améliore aucune vidéo déjà lisible,
-et n'allège aucun flux. Un `avc1` de 200 Mo reste un `avc1` de 200 Mo.
+And what this decision does not do: it improves no video that is already
+playable, and reduces no stream. A 200 MB `avc1` remains a 200 MB `avc1`.
 
-**D6 n'est pas réécrite.** Son constat de départ tient toujours — le format
-d'origine est servi tel quel, avec `Range` relayé et seek natif ; c'est encore ce
-qui se passe pour tout ce que le navigateur sait lire.
+**D6 is not rewritten.** Its original observation still holds — the original
+format is served unchanged, with `Range` relayed and native seeking; that is
+still what happens for everything the browser can play.

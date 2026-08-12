@@ -1,28 +1,27 @@
-# D43 — Le cache navigateur est cloisonné par session, pas révoqué
+# D43 — The browser cache is partitioned by session, not revoked
 
-**Contexte.** Relevé en revue croisée. Les réponses média sont servies en
-`private, max-age=31536000, immutable` : le navigateur ne revalide jamais. Une
-photo déjà chargée reste donc affichable depuis le cache alors que le compte
-n'a plus le droit d'y accéder — `authorize()` n'est même pas appelé, aucune
-requête n'atteint le serveur.
+**Context.** Found during cross-review. Media responses are served with
+`private, max-age=31536000, immutable`: the browser never revalidates them. A
+photo that has already loaded therefore remains displayable from the cache after
+the account loses the right to access it — `authorize()` is not even called and
+no request reaches the server.
 
-**Choix.** `Vary: Cookie` sur toutes les réponses média. Le cache privé est
-alors indexé par la session, ce qui ferme le seul cas où quelqu'un voit une
-photo qu'il n'a **jamais** eu le droit de voir : deux comptes qui se succèdent
-dans le même profil de navigateur, l'ordinateur du salon.
+**Choice.** `Vary: Cookie` on all media responses. The private cache is then
+indexed by session, which closes the only case where someone sees a photo they
+have **never** had the right to see: two accounts used in succession in the same
+browser profile, on the living-room computer.
 
-**Écarté.** `private, no-cache` avec revalidation systématique, que la revue
-proposait. C'est la réponse correcte sur le papier et elle coûte trop cher ici :
-une grille de cinq cents vignettes ferait cinq cents requêtes conditionnelles à
-chaque visite, chacune passant par `albumsContaining` — un aller-retour par
-image sur un téléphone en 4G, pour la fonction la plus utilisée de
-l'application. Écarté aussi : signer les URL média avec une échéance courte, qui
-règle le même cas au prix d'un mécanisme de signature, d'une horloge et d'une
-fenêtre de validité à choisir.
+**Rejected.** `private, no-cache` with systematic revalidation, as proposed by
+the review. It is the correct answer on paper and costs too much here: a grid of
+five hundred thumbnails would make five hundred conditional requests on every
+visit, each going through `albumsContaining` — one round trip per image on a 4G
+phone, for the application's most-used feature. Also rejected: signing media URLs
+with a short expiry, which handles the same case at the cost of a signing
+mechanism, a clock, and a validity window to choose.
 
-**Conséquence assumée.** Celui à qui on retire un album garde dans son cache les
-photos qu'il avait déjà chargées, jusqu'à un an. Aucun en-tête n'y change quoi
-que ce soit : il les a eues, elles sont sur son disque, et il aurait pu les
-enregistrer. Le retrait d'accès empêche d'en voir de **nouvelles**, il n'efface
-pas ce qui a déjà été montré. Passer en `no-cache` ne rendrait pas cette
-propriété — il ajouterait seulement une requête à chaque affichage.
+**Accepted consequence.** Someone whose album access is removed keeps the photos
+they had already loaded in their cache for up to a year. No header changes that:
+they received them, they are on their disk, and they could have saved them.
+Removing access prevents them from seeing **new** ones; it does not erase what
+has already been shown. Switching to `no-cache` would not provide that property —
+it would only add a request to every display.

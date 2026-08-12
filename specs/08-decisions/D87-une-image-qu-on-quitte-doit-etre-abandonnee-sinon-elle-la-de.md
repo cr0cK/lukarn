@@ -1,41 +1,37 @@
-# D87 — Une image qu'on quitte doit être abandonnée, sinon elle bouche la file de celles qu'on regarde
+# D87 — A departed image must be abandoned, or it blocks the queue for those being viewed
 
-**Contexte.** Des vignettes restaient noires dans la grille — parfois une
-minute, parfois assez longtemps pour qu'on les croie perdues. Ouvrir la photo
-correspondante la montrait sans attendre, ce qui écartait la piste d'un rendu
-serveur en échec : le fichier était là, c'est la vignette qui n'arrivait pas.
+**Context.** Some thumbnails remained black in the grid — sometimes for a
+minute, sometimes long enough to appear lost. Opening the corresponding photo
+showed it immediately, ruling out a failed server render: the file existed, but
+the thumbnail did not arrive.
 
-La mesure a désigné le coupable ailleurs que dans la grille. Protocole :
-descendre dans un album, ouvrir une photo, parcourir vingt-cinq photos aux
-flèches, refermer, puis relever les requêtes en vol. Trois secondes après la
-fermeture, **89 requêtes**, en tête vingt-quatre `…/full` d'un mégaoctet
-vieilles de dix secondes. Les soixante vignettes du retour à la grille étaient
-derrière elles dans la file — les six connexions qu'un navigateur accorde à une
-origine HTTP/1.1 —, et mettaient une minute à se remplir.
+Measurement found the culprit outside the grid. Protocol: scroll down an album,
+open a photo, move through twenty-five photos with the arrows, close it, then
+inspect in-flight requests. Three seconds after closing: **89 requests**, led by
+twenty-four ten-second-old one-megabyte `…/full` requests. The sixty thumbnails
+needed after returning to the grid sat behind them in the queue — the six
+connections a browser gives one HTTP/1.1 origin — and took a minute to fill.
 
-Ces `full` sont les photos **déjà quittées**. `ZoomableImage` est remonté à
-chaque photo (`key={item.id}`, qui remet zoom et cadrage à zéro sans les gérer
-à la main), et retirer un `<img>` du DOM **n'annule pas** son téléchargement.
-C'est le piège que la grille connaissait déjà et traitait par
-`releaseIfDetached` ; la visionneuse ne le traitait pas, alors qu'elle
-téléchargeait des fichiers cent fois plus gros.
+Those `full` requests belong to photos **already left behind**. `ZoomableImage`
+is remounted for every photo (`key={item.id}`, resetting zoom and framing without
+manual management), and removing an `<img>` from the DOM **does not cancel** its
+download. The grid already knew this trap and handled it with `releaseIfDetached`;
+the viewer did not, despite downloading files a hundred times larger.
 
-**Décision.** `releaseIfDetached` quitte `Thumb` pour `lib/imageRelease.ts` —
-deux appelants, une seule raison — et `ZoomableImage` l'appelle au démontage,
-en abandonnant du même geste le `hd` s'il était en route. Après : **dix
-requêtes en vol, zéro `full` orphelin**, et la grille se remplit en cinq
-secondes au lieu de soixante.
+**Decision.** `releaseIfDetached` moves from `Thumb` to `lib/imageRelease.ts` —
+two callers, one reason — and `ZoomableImage` calls it on unmount, abandoning an
+in-flight `hd` at the same time. After: **ten in-flight requests, zero orphaned
+`full` requests**, and the grid fills in five seconds instead of sixty.
 
-**Écarté.** Faire du préchargement le suspect : il annulait déjà correctement,
-et `image.src = ''` comme `removeAttribute('src')` produisent tous deux un
-`net::ERR_ABORTED` — vérifié dans le navigateur avant de toucher au code.
-Écarté aussi : compter sur HTTP/2 derrière le proxy pour dissoudre la file. Le
-multiplexage lève la limite de six connexions, pas celle des quatre rendus
-simultanés du serveur (`media/semaphore.ts`), qui joue exactement le même rôle
-sur un album dont les vignettes ne sont pas encore en cache. Le vrai correctif
-est de ne pas demander ce qu'on ne regarde plus.
+**Rejected.** Suspecting preloading: it already cancelled correctly, and
+`image.src = ''` and `removeAttribute('src')` both produce `net::ERR_ABORTED` —
+verified in the browser before changing code. Also rejected: relying on HTTP/2
+behind the proxy to dissolve the queue. Multiplexing removes the six-connection
+limit, not the server's four simultaneous renders (`media/semaphore.ts`), which
+plays exactly the same role in an album whose thumbnails are not cached. The true
+fix is not requesting what is no longer viewed.
 
-**Conséquences.** La règle vaut désormais pour tout `<img>` que ce front monte
-puis démonte : la requête se coupe explicitement. Le contrôle sur `isConnected`
-la rend sûre sous `StrictMode`, qui rejoue montage et démontage sans toucher au
-DOM.
+**Consequences.** The rule now applies to every `<img>` this frontend mounts and
+then unmounts: the request is explicitly stopped. The `isConnected` check makes
+it safe under `StrictMode`, which replays mounting and unmounting without touching
+the DOM.

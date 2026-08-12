@@ -6,7 +6,7 @@ import {
   type Comment,
   type CommentsFeedPage,
   type CommentsPage,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { EditWindowClosedError, UnknownParentError } from '../comments.js';
@@ -16,21 +16,20 @@ import { buildCommentMail, type Recipient } from '../mail.js';
 import { requireAuth } from '../plugins/auth.js';
 
 const createSchema = z.object({
-  // `trim` avant la borne basse : un commentaire de trois espaces est vide.
+  // `trim` before the lower bound: a comment containing three spaces is empty.
   body: z.string().trim().min(1).max(COMMENT_MAX_LENGTH),
   parentId: z.number().int().positive().nullable().optional(),
 });
 
-// Une correction ne déplace pas le message dans le fil : `parentId` n'est pas
-// acceptée ici, sans quoi corriger une faute de frappe permettrait de changer
-// de conversation.
+// Editing does not move a message within the thread: `parentId` is not accepted here,
+// otherwise correcting a typo would allow changing conversations.
 const updateSchema = createSchema.pick({ body: true });
 
 /**
- * `coerce` parce que tout arrive en texte dans une chaîne de requête. La borne
- * haute du `limit` n'est pas une politesse : sans elle, `?limit=100000` ferait
- * composer une page de cent mille commentaires par un `better-sqlite3`
- * synchrone, qui bloque la boucle d'événements le temps de la rendre.
+ * `coerce` because everything arrives as text in a query string. The upper `limit`
+ * bound is not a courtesy: without it, `?limit=100000` would make synchronous
+ * `better-sqlite3` assemble a page of one hundred thousand comments, blocking the
+ * event loop while it renders.
  */
 const feedSchema = z.object({
   album: z.string().min(1).optional(),
@@ -39,44 +38,41 @@ const feedSchema = z.object({
 });
 
 const unsubscribeSchema = z.object({
-  // L'adresse elle-même : c'est elle qui identifie une personne, le compte
-  // d'accès pouvant être partagé par plusieurs.
+  // The address itself identifies a person, while the access account may be shared.
   u: z.string().min(1).max(EMAIL_MAX_LENGTH),
   t: z.string().min(1).max(256),
 });
 
 /**
- * Commentaires : compteurs d'un album, lecture et écriture d'un fil, correction,
- * suppression, désabonnement.
+ * Comments: album counts, reading and writing a thread, editing, deletion and
+ * unsubscribing.
  *
- * L'accès suit exactement celui des albums : un album qu'on n'a pas le droit de
- * voir répond 404, jamais 403 — sans quoi sonder des identifiants apprendrait
- * l'existence des albums d'autrui (D12). Le contrôle est refait à chaque route
- * plutôt que délégué à un `preHandler` de préfixe : ici l'album n'est pas dans
- * un segment fixe de l'URL comme il l'est pour les médias.
+ * Access exactly follows album access: an album the requester may not view returns
+ * 404, never 403 — otherwise probing identifiers would reveal other people's albums
+ * (D12). Each route repeats the check rather than delegating it to a prefix
+ * `preHandler`: here the album is not in a fixed URL segment as it is for media.
  */
 export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
     /**
-     * Le désabonnement est volontairement hors du scope authentifié ci-dessous :
-     * on clique ce lien depuis sa boîte aux lettres, souvent sur un autre
-     * appareil, et exiger une connexion pour cesser d'être dérangé serait une
-     * façon de ne pas répondre à la demande.
+     * Unsubscribing deliberately sits outside the authenticated scope below: the link
+     * is clicked from an inbox, often on another device, and requiring sign-in to stop
+     * being disturbed would fail to honour the request.
      */
     app.get('/unsubscribe', async (request, reply) => {
       const parsed = unsubscribeSchema.safeParse(request.query);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Lien incomplet' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Incomplete link' });
       }
 
       const { u: email, t: token } = parsed.data;
       if (!verifyUnsubscribeToken(email, token, context.env.sessionSecret)) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Lien invalide ou expiré' });
+        return reply.code(400).send({ error: 'bad_request', message: 'Invalid or expired link' });
       }
 
       const commenter = context.commenters.byEmail(email);
-      // Identité disparue depuis l'envoi : le désabonnement est sans objet, et
-      // le dire évite de laisser croire à un échec.
+      // The identity has disappeared since delivery: unsubscribing is moot, and saying
+      // so avoids suggesting a failure.
       if (commenter) context.commenters.setNotify(commenter.id, false);
 
       return reply
@@ -88,24 +84,21 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       scoped.addHook('preHandler', requireAuth);
 
       /**
-       * Fil d'activité : les derniers commentaires, tous albums et toutes
-       * photos confondus.
+       * Activity feed: latest comments across all albums and photos.
        *
-       * Déclarée avant `/:albumId`, mais l'ordre n'y fait rien : la table de
-       * routage de Fastify fait toujours passer un segment littéral avant un
-       * paramètre. C'est ce qui protège aussi `/unsubscribe`, et un test le
-       * vérifie — un album dont l'identifiant Drive serait `feed` resterait
-       * inatteignable par cette route, sans que rien ne le signale.
+       * Declared before `/:albumId`, though order does not matter: Fastify's routing
+       * table always prioritises a literal segment over a parameter. This also protects
+       * `/unsubscribe`, and a test verifies it — an album whose Drive identifier was
+       * `feed` would remain unreachable through this route with no indication why.
        *
-       * Le cloisonnement tient à `albumsFor()` : la liste des albums visibles
-       * vient du serveur, jamais de la requête. `?album=` ne fait que la
-       * restreindre — il ne l'élargit pas, et un album qu'on ne voit pas répond
-       * 404 comme partout ailleurs (D12).
+       * Isolation depends on `albumsFor()`: the list of visible albums comes from the
+       * server, never the request. `?album=` only narrows it — it does not widen it,
+       * and an invisible album returns 404 as everywhere else (D12).
        */
       scoped.get('/feed', async (request, reply) => {
         const parsed = feedSchema.safeParse(request.query);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Requête invalide' });
+          return reply.code(400).send({ error: 'bad_request', message: 'Invalid request' });
         }
 
         const account = request.user!;
@@ -115,7 +108,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
           album !== undefined &&
           (!context.findAlbum(album) || !context.canSee(account.username, album))
         ) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         const albumIds =
@@ -133,24 +126,22 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       });
 
       /**
-       * Compteurs de l'album entier, pour la pastille de la visionneuse.
+       * Counts for the whole album, used by the viewer badge.
        *
-       * Un appel par album, et non un par photo : la pastille doit être là dès
-       * qu'on atteint une photo, or parcourir un album à la flèche traverse des
-       * centaines de vues. Le fil lui-même reste chargé à l'ouverture du
-       * panneau.
+       * One call per album rather than per photo: the badge must be present as soon as
+       * a photo is reached, while navigating an album with arrow keys crosses hundreds
+       * of views. The thread itself remains loaded when the panel opens.
        *
-       * Cette route paramétrique ne masque pas `/unsubscribe`, déclaré hors du
-       * scope authentifié : la table de routage de Fastify fait toujours passer
-       * un segment littéral avant un paramètre. C'est vérifié par un test —
-       * l'inverse rendrait le lien de désabonnement des emails déjà envoyés
-       * impossible à honorer.
+       * This parameterised route does not mask `/unsubscribe`, declared outside the
+       * authenticated scope: Fastify's routing table always prioritises a literal
+       * segment over a parameter. A test verifies this — the opposite would make it
+       * impossible to honour unsubscribe links in already sent emails.
        */
       scoped.get('/:albumId', async (request, reply) => {
         const { albumId } = request.params as { albumId: string };
         const account = request.user!;
         if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         const counts: AlbumCommentCounts = { counts: context.comments.countsByAlbum(albumId) };
@@ -161,7 +152,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
         const account = request.user!;
         if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
         const page: CommentsPage = context.comments.thread(albumId, mediaId, {
@@ -176,33 +167,33 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const account = request.user!;
         const album = context.findAlbum(albumId);
         if (!album || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
         }
 
-        // Commenter suppose une identité vérifiée. Ce 403 est la seconde
-        // exception assumée au « 404 et jamais 403 » de D12 : il ne porte pas
-        // sur une ressource d'autrui dont il faudrait cacher l'existence, mais
-        // sur l'état de son propre compte — il ne révèle donc rien.
+        // Commenting requires a verified identity. This 403 is the second deliberate
+        // exception to D12's "404, never 403": it concerns the state of the requester's
+        // own account rather than another person's resource whose existence must be
+        // hidden, so it reveals nothing.
         const commenterId = request.commenterId;
         if (commenterId === null) {
           return reply.code(403).send({
             error: 'identity_required',
-            message: 'Renseigne et vérifie ton adresse email pour pouvoir commenter.',
+            message: 'Add and verify your email address in order to comment.',
           });
         }
 
-        // Commenter une photo absente de l'index n'aurait pas de sens, et
-        // laisserait des fils que la modération afficherait sans nom de fichier.
+        // Commenting on a photo absent from the index would make no sense and would
+        // leave threads that moderation displays without a file name.
         const detail = context.media.getDetail(albumId, mediaId);
         if (!detail) {
-          return reply.code(404).send({ error: 'not_found', message: 'Média introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
         }
 
         const parsed = createSchema.safeParse(request.body);
         if (!parsed.success) {
           return reply.code(400).send({
             error: 'bad_request',
-            message: `Le commentaire doit contenir entre 1 et ${COMMENT_MAX_LENGTH} caractères.`,
+            message: `A comment must be between 1 and ${COMMENT_MAX_LENGTH} characters.`,
           });
         }
 
@@ -236,35 +227,34 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       });
 
       /**
-       * Correction par son auteur, dans la fenêtre qui suit la publication.
+       * Editing by the author within the window following publication.
        *
-       * La fenêtre est contrôlée **ici** et pas seulement dans l'interface :
-       * une règle que seul le front applique n'est pas une règle. Un délai
-       * dépassé rend 409 et non 403 — le refus porte sur l'état du message, pas
-       * sur un droit d'accès, et le doctrine du 404 (D12) ne s'y applique donc
-       * pas : l'auteur voit déjà son propre commentaire.
+       * The window is enforced **here**, not only in the interface: a rule applied
+       * only by the front end is not a rule. An elapsed deadline returns 409 rather
+       * than 403 — refusal concerns message state, not access rights, so the 404
+       * doctrine (D12) does not apply: the author already sees their own comment.
        */
       scoped.patch('/:commentId', async (request, reply) => {
         const { commentId } = request.params as { commentId: string };
         const id = Number(commentId);
         if (!Number.isInteger(id) || id <= 0) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+          return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
         }
 
         const parsed = updateSchema.safeParse(request.body);
         if (!parsed.success) {
           return reply.code(400).send({
             error: 'bad_request',
-            message: `Le commentaire doit contenir entre 1 et ${COMMENT_MAX_LENGTH} caractères.`,
+            message: `A comment must be between 1 and ${COMMENT_MAX_LENGTH} characters.`,
           });
         }
 
-        // Même garde que la suppression : un accès retiré ne doit pas laisser
-        // subsister un droit d'écriture sur un album qu'on ne voit plus.
+        // Same guard as deletion: revoked access must not leave write permission on
+        // an album that is no longer visible.
         const account = request.user!;
         const location = context.comments.locate(id);
         if (!location || !context.canSee(account.username, location.albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
 
         let comment: Comment | null;
@@ -282,35 +272,35 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         }
 
         if (!comment) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
         return reply.send(comment);
       });
 
       /**
-       * Suppression par l'auteur, ou par un administrateur depuis la file de
-       * modération. Le dépôt tranche ; un refus est indistinguable d'un
-       * identifiant inexistant, pour la raison qui vaut partout ailleurs.
+       * Deletion by the author or by an administrator from the moderation queue. The
+       * repository decides; a refusal is indistinguishable from a missing identifier
+       * for the same reason as everywhere else.
        */
       scoped.delete('/:commentId', async (request, reply) => {
         const { commentId } = request.params as { commentId: string };
         const id = Number(commentId);
         if (!Number.isInteger(id) || id <= 0) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Identifiant invalide' });
+          return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
         }
 
         const account = request.user!;
-        // On ne peut supprimer que dans un album qu'on voit encore : sans ce
-        // contrôle, un accès retiré laisserait subsister un droit d'écriture.
+        // Deletion is only allowed in an album still visible to the requester:
+        // otherwise revoked access would leave a surviving write permission.
         const location = context.comments.locate(id);
         if (!location || (!account.admin && !context.canSee(account.username, location.albumId))) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
 
         if (
           !context.comments.remove(id, { commenterId: request.commenterId, admin: account.admin })
         ) {
-          return reply.code(404).send({ error: 'not_found', message: 'Commentaire introuvable' });
+          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
         }
         return reply.code(204).send();
       });
@@ -319,8 +309,8 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 }
 
 /**
- * Met en file les notifications d'un nouveau commentaire. Hors du chemin de la
- * réponse : l'auteur voit son message publié sans attendre le serveur SMTP.
+ * Queues notifications for a new comment outside the response path, so the author
+ * sees the published message without waiting for the SMTP server.
  */
 function notify(
   context: AppContext,
@@ -337,12 +327,12 @@ function notify(
 
   const recipients: Recipient[] = [];
 
-  // L'adresse de modération est un réglage d'instance : un compte administrateur
-  // est une clé d'accès, pas quelqu'un de joignable.
+  // The moderation address is an instance setting: an administrator account is an
+  // access key, not a reachable person.
   const moderation = context.settings.moderationEmail;
   if (moderation) recipients.push({ email: moderation, reason: 'moderation' });
 
-  // Réponse : l'auteur de la racine du fil, jamais celui qui vient d'écrire.
+  // Reply: the thread root's author, never the person who just wrote.
   if (input.comment.parentId !== null) {
     const author = context.commenters.recipientForReply(input.comment.parentId, input.commenterId);
     if (author) recipients.push({ email: author.email, reason: 'reply' });
@@ -367,29 +357,29 @@ function notify(
 }
 
 /**
- * Page de confirmation du désabonnement, rendue par le serveur plutôt que par
- * le front : on arrive ici sans session, et charger l'application React pour
- * afficher une phrase renverrait vers l'écran de connexion.
+ * Unsubscribe confirmation page rendered by the server rather than the front end:
+ * users arrive without a session, and loading the React application to display one
+ * sentence would redirect to the sign-in screen.
  */
 function unsubscribePage(publicUrl: string, found: boolean): string {
   const message = found
-    ? 'Tu ne recevras plus d’email lors d’un nouveau commentaire.'
-    : 'Ce compte n’existe plus : il n’y a rien à désabonner.';
+    ? 'You will no longer get an email when a new comment arrives.'
+    : 'That account no longer exists: there is nothing to unsubscribe from.';
 
   return `<!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Désabonnement</title>
+    <title>Unsubscribed</title>
   </head>
   <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6; color: #1a1a1a;">
-    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">C’est fait</h1>
+    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">Done</h1>
     <p style="margin: 0 0 1.5rem;">${message}</p>
     <p style="margin: 0; font-size: 0.9rem; color: #666;">
-      Pour les réactiver, demande-le à l’administrateur de l’instance.
+      To turn them back on, ask the administrator of this instance.
       <br>
-      <a href="${publicUrl}" style="color: #2563eb;">Retour à la galerie</a>
+      <a href="${publicUrl}" style="color: #2563eb;">Back to the gallery</a>
     </p>
   </body>
 </html>`;

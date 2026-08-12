@@ -1,46 +1,40 @@
-# D86 — Le compte tient dans une pastille, et son initiale est rendue sur place
+# D86 — The account fits in a badge, and its initial is rendered locally
 
-**Contexte.** La barre supérieure alignait Admin, Déconnexion et Installer, trois
-boutons dont aucun ne sert au quotidien d'une visionneuse de photos ; à `lg` ils
-portaient leurs libellés, soit près de 250 px pris au titre de l'album. Ailleurs,
-sous « Albums », un sous-titre disait « Connecté en tant que alexis » — à
-l'opposé de la barre des boutons qu'il concernait, et à l'emplacement qu'une page
-d'album donne au nombre d'éléments et à la période.
+**Context.** The top bar aligned Admin, Log out, and Install, three buttons none
+of which is used daily in a photo viewer; at `lg` they carried labels, consuming
+nearly 250 px of the album title. Elsewhere, under "Albums", a subtitle said
+"Logged in as alexis" — opposite the button bar it concerned, and where an album
+page puts its item count and period.
 
-**Choix.** Une pastille portant l'initiale du compte, tout à droite, à toutes les
-largeurs. Elle ouvre l'`ActionMenu` déjà écrit pour les petits écrans, coiffé de
-l'identifiant et — si la session porte une identité de commentateur — de son
-adresse. Les contrôles de vue de la page restent seuls dans la barre, et gardent
-leur propre menu sous `sm`.
+**Choice.** A badge carrying the account initial at the far right, at every
+width. It opens the `ActionMenu` already written for small screens, headed by the
+identifier and — if the session carries a commenter identity — its address. Page
+view controls remain alone in the bar and keep their own menu below `sm`.
 
-Deux familles, deux emplacements : **ce que fait cette page** à gauche, **qui la
-regarde** à droite. C'est ce partage qui rend la règle mémorisable ; la position
-d'un contrôle cesse de dépendre de la largeur de l'écran.
+Two families, two locations: **what this page does** on the left, **who is viewing
+it** on the right. This split makes the rule memorable; a control's position no
+longer depends on screen width.
 
-L'initiale est celle de l'**identifiant**, pas du nom d'affichage, alors que la
-personne est mieux décrite par le second : c'est la première ligne du menu que la
-pastille abrège, et deux lettres différentes de part et d'autre du clic se
-liraient comme un défaut.
+The initial comes from the **identifier**, not the display name, although the
+latter describes the person better: the badge abbreviates the menu's first line,
+and different letters on either side of a click would look like a defect.
 
-**Écarté.** Gravatar, ou tout service d'avatar distant. L'adresse — ou son
-empreinte, ce qui revient au même pour un annuaire d'emails — partirait chez un
-tiers à chaque chargement de page, et le tiers apprendrait au passage qui
-consulte quelle instance et quand. C'est cher payé pour une image décorative, sur
-une application qu'on héberge précisément pour que ces données ne sortent pas.
-Une lettre rendue sur place ne coûte aucune requête et ne dit rien à personne.
+**Rejected.** Gravatar or any remote avatar service. The address — or its hash,
+which amounts to the same thing for an email directory — would go to a third
+party on every page load, also revealing who views which instance and when. A
+high price for a decorative image in an application self-hosted precisely to keep
+this data inside. A locally rendered letter costs no request and tells nobody
+anything.
 
-Écarté aussi : garder Déconnexion visible dans la barre à côté de la pastille.
-Deux gestes pour la même chose, dont l'un des deux se serait fait cliquer par
-erreur — c'est précisément l'action qu'on ne veut pas déclencher sans l'avoir
-voulue.
+Also rejected: keeping Log out visible in the bar beside the badge. Two actions
+for the same thing, one of which would be clicked accidentally — exactly the
+action that should not happen unintentionally.
 
-**Conséquences.** Sous `sm`, une page qui déclare des contrôles de vue montre
-deux cibles au lieu d'une : le menu Affichage et la pastille. Mesuré à 393 px, le
-titre y perd une trentaine de pixels — c'est le prix d'un emplacement du compte
-qui ne bouge plus d'une largeur à l'autre. Une page sans contrôle de vue — `/`,
-`/admin` — n'affiche que la pastille : un menu vide n'offrirait qu'une cible qui
-n'ouvre rien.
+**Consequences.** Below `sm`, a page declaring view controls shows two targets
+instead of one: the View menu and the badge. Measured at 393 px, the title loses
+around thirty pixels — the price of an account location that no longer moves
+between widths. A page with no view controls — `/`, `/admin` — only displays the
+badge: an empty menu would offer a target that opens nothing.
 
-La pastille n'est rendue qu'une fois la session connue. Une pastille sans
-initiale le temps d'un aller-retour réseau, puis une lettre, ferait sursauter la
-barre à chaque changement de page.
+The badge only renders once the session is known. An empty badge during a network
+round trip, then a letter, would make the bar jump on every page change.

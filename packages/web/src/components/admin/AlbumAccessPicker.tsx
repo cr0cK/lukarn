@@ -1,21 +1,21 @@
-import { ALL_ALBUMS, type AdminAlbum } from '@gdv/shared';
+import { ALL_ALBUMS, type AdminAlbum } from '@nonni/shared';
 import { type ReactElement, useId, useState } from 'react';
 
 interface AlbumAccessPickerProps {
   albums: AdminAlbum[];
-  /** Liste d'ids, ou `['*']`. */
+  /** List of IDs, or `['*']`. */
   value: string[];
   onChange: (albums: string[]) => void;
   disabled?: boolean;
 }
 
 /**
- * Attribution des albums à un compte.
+ * Assigns albums to an account.
  *
- * Le joker et une sélection exhaustive donnent aujourd'hui le même accès, et
- * demain non : le joker suivra les albums créés plus tard. Les deux sont donc
- * deux choix distincts et pas une case « tout cocher » — cocher les douze
- * albums existants n'est jamais une manière d'exprimer « tous les albums ».
+ * The wildcard and an exhaustive selection grant the same access today, but not
+ * tomorrow: the wildcard follows albums created later. They are therefore two
+ * separate choices, not a "select all" checkbox — selecting twelve existing
+ * albums never means "all albums".
  */
 export function AlbumAccessPicker({
   albums,
@@ -26,8 +26,8 @@ export function AlbumAccessPicker({
   const groupId = useId();
   const wildcard = value.includes(ALL_ALBUMS);
 
-  // La sélection explicite survit à un aller-retour vers le joker : revenir sur
-  // « une sélection » après l'avoir quittée ne doit pas tout faire recocher.
+  // Preserve the explicit selection through a round trip to the wildcard:
+  // returning to "a selection" must not select everything again.
   const [remembered, setRemembered] = useState<string[]>(wildcard ? [] : value);
   const selected = wildcard ? remembered : value;
 
@@ -40,14 +40,14 @@ export function AlbumAccessPicker({
     select(checked ? [...selected, albumId] : selected.filter((id) => id !== albumId));
   };
 
-  // Un album supprimé peut subsister dans la liste d'un compte : il reste
-  // affiché, sans quoi il serait impossible de l'en retirer.
+  // A deleted album may remain in an account's list: keep it visible or it
+  // would be impossible to remove.
   const orphans = selected.filter((id) => !albums.some((album) => album.id === id));
   const allChecked = albums.length > 0 && albums.every((album) => selected.includes(album.id));
 
   return (
     <fieldset disabled={disabled} className="min-w-0">
-      <legend className="mb-1.5 text-sm text-ink-300">Albums accessibles</legend>
+      <legend className="mb-1.5 text-sm text-ink-300">Accessible albums</legend>
 
       <div className="space-y-2">
         <Choice
@@ -55,10 +55,10 @@ export function AlbumAccessPicker({
           id={`${groupId}-all`}
           checked={wildcard}
           onSelect={() => onChange([ALL_ALBUMS])}
-          label="Tous les albums"
+          label="Every album"
           hint={
             <>
-              Y compris ceux créés plus tard. Enregistré sous la forme du joker{' '}
+              Including those created later. Stored as the wildcard{' '}
               <code className="text-ink-300">{ALL_ALBUMS}</code>.
             </>
           }
@@ -69,8 +69,8 @@ export function AlbumAccessPicker({
           id={`${groupId}-pick`}
           checked={!wildcard}
           onSelect={() => select(remembered)}
-          label="Une sélection d'albums"
-          hint="Seulement les albums cochés. Un album créé plus tard devra être attribué à la main."
+          label="A selection of albums"
+          hint="Only the albums ticked. An album created later has to be assigned by hand."
         />
       </div>
 
@@ -78,7 +78,7 @@ export function AlbumAccessPicker({
         <div className="mt-3">
           {albums.length === 0 && orphans.length === 0 ? (
             <p className="rounded-lg border border-dashed border-ink-700 px-3 py-4 text-xs text-ink-400">
-              Aucun album n'existe encore. Crée-en un dans la section Albums, ou donne le joker.
+              No album exists yet. Create one in the Albums section, or grant the wildcard.
             </p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-ink-700 p-2">
@@ -89,7 +89,7 @@ export function AlbumAccessPicker({
                   checked={selected.includes(album.id)}
                   onChange={(checked) => toggle(album.id, checked)}
                   title={album.title}
-                  detail={`${album.id} · ${album.itemCount.toLocaleString('fr-FR')} éléments`}
+                  detail={`${album.id} · ${album.itemCount.toLocaleString('en-GB')} items`}
                 />
               ))}
 
@@ -100,7 +100,7 @@ export function AlbumAccessPicker({
                   checked
                   onChange={() => toggle(albumId, false)}
                   title={albumId}
-                  detail="album inconnu — décoche pour le retirer"
+                  detail="unknown album — untick to remove it"
                 />
               ))}
             </div>
@@ -108,8 +108,8 @@ export function AlbumAccessPicker({
 
           {allChecked && (
             <p className="mt-2 text-xs text-amber-300">
-              Tous les albums actuels sont cochés, ce qui n'est pas la même chose que « Tous les
-              albums » : les prochains ne seront pas attribués automatiquement.
+              Every current album is ticked, which is not the same as "Every album": the next ones
+              will not be assigned automatically.
             </p>
           )}
         </div>

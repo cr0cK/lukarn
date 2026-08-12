@@ -1,12 +1,11 @@
 /**
- * Un champ de saisie a le focus : aucun raccourci global ne doit partir.
+ * An input has focus: no global shortcut may run.
  *
- * Le test vit ici parce que les trois gestionnaires de clavier — `useShortcut`,
- * la grille et la visionneuse — en avaient chacun leur copie, et qu'une seule
- * suffisait à diverger. C'est arrivé : celle de la grille ne connaissait que
- * `INPUT`, si bien que les flèches, `Début` et `Fin` déplaçaient la sélection
- * au lieu du curseur dès qu'on écrivait dans un `textarea` — la description
- * d'un album, la note d'une journée. Le texte devenait inéditable au clavier.
+ * The test lives here because three keyboard handlers — `useShortcut`, the grid
+ * and viewer — each had a copy, and one divergence was enough. This happened:
+ * the grid knew only `INPUT`, so arrows, `Home` and `End` moved selection rather
+ * than the cursor inside a `textarea` — an album description or day note. Text
+ * became impossible to edit with the keyboard.
  */
 export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

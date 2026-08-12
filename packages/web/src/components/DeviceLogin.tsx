@@ -1,38 +1,38 @@
-import { type DevicePairingStart, formatUserCode } from '@gdv/shared';
+import { type DevicePairingStart, formatUserCode } from '@nonni/shared';
 import { type ReactElement, useMemo } from 'react';
 import { ApiError } from '../api/client';
 import { usePairingPoll } from '../api/hooks';
 import { qrCode } from '../lib/qr';
 import { Spinner } from './Spinner';
 
-/** Marge blanche autour du QR, en modules. En deçà de quatre, il ne se lit plus. */
+/** White margin around the QR code, in modules. Below four, it becomes unreadable. */
 const QUIET_ZONE = 4;
 
 interface DeviceLoginProps {
-  /** La demande ouverte, `null` tant qu'elle n'est pas arrivée. */
+  /** The open request, `null` until it arrives. */
   pairing: DevicePairingStart | null;
-  /** Échec de l'ouverture, s'il y en a un — l'instance en refuse de nouvelles. */
+  /** Opening failure, if any — the instance refuses new requests. */
   error: unknown;
-  /** Rouvre une demande : le code a expiré, ou l'ouverture avait échoué. */
+  /** Opens another request: the code expired or opening failed. */
   onRetry: () => void;
-  /** Retour au formulaire. */
+  /** Returns to the form. */
   onCancel: () => void;
 }
 
 /**
- * L'appairage vu de l'écran sans clavier (D260809c).
+ * Pairing as seen from the screen without a keyboard (D260809c).
  *
- * Il affiche le QR et le code, puis sonde le serveur jusqu'à ce qu'un téléphone
- * déjà connecté approuve. La session arrivée est écrite dans le cache par
- * `usePairingPoll` : `LoginPage` la voit par `useMe()` et navigue, ce composant
- * n'a personne à prévenir.
+ * It displays the QR code and code, then polls the server until an already
+ * signed-in phone approves. `usePairingPoll` writes the arriving session to the
+ * cache: `LoginPage` sees it through `useMe()` and navigates, so this component
+ * has nobody to notify.
  *
- * **L'ouverture de la demande appartient au parent, et ne peut pas venir d'ici.**
- * Une mutation lancée depuis un effet de montage se perd sous `StrictMode` : le
- * démontage simulé détache l'observateur de la mutation en cours, et
- * `MutationObserver` ne le rattache pas au remontage — la requête aboutit, son
- * résultat n'atteint plus personne, et l'écran tourne indéfiniment. Elle part
- * donc du clic, qui est de toute façon l'événement qui la justifie.
+ * **Opening the request belongs to the parent and cannot happen here.** A
+ * mutation started from a mount effect is lost under `StrictMode`: the simulated
+ * unmount detaches the observer from the running mutation, and `MutationObserver`
+ * does not reattach it on remount — the request succeeds, its result reaches
+ * nobody, and the screen spins indefinitely. It therefore starts on the click,
+ * which is the event that justifies it anyway.
  */
 export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginProps): ReactElement {
   const url = useMemo(
@@ -43,18 +43,17 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
 
   const poll = usePairingPoll(pairing?.deviceCode ?? null, pairing?.intervalMs ?? 2000);
 
-  // Le serveur ne garde une demande que cinq minutes : c'est son 404 qui dit
-  // qu'elle est morte, plutôt qu'un compte à rebours tenu de ce côté-ci qui
-  // pourrait diverger du sien.
+  // The server keeps a request for only five minutes: its 404 says when the
+  // request is dead, avoiding a client-side countdown that could drift from it.
   const expired = poll.error instanceof ApiError && poll.error.status === 404;
   const message = error instanceof ApiError ? error.message : null;
 
   return (
     <div className="space-y-5 text-center">
       <div>
-        <h2 className="text-sm font-medium text-ink-100">Connecter avec un téléphone</h2>
+        <h2 className="text-sm font-medium text-ink-100">Sign in with a phone</h2>
         <p className="mt-1 text-sm text-ink-400">
-          Scanne ce code avec un téléphone déjà connecté, puis autorise cet écran.
+          Scan this code with a phone that is already signed in, then approve this screen.
         </p>
       </div>
 
@@ -74,7 +73,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
             onClick={onRetry}
             className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
           >
-            Réessayer
+            Try again
           </button>
         </div>
       )}
@@ -86,10 +85,10 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
               viewBox={`${-QUIET_ZONE} ${-QUIET_ZONE} ${qr.size + QUIET_ZONE * 2} ${qr.size + QUIET_ZONE * 2}`}
               className="size-56 rounded-lg"
               role="img"
-              aria-label={`QR code vers ${url}`}
+              aria-label={`QR code to ${url}`}
             >
-              {/* Contrastes fixes, indépendants du thème : un lecteur de QR ne
-                  déchiffre qu'un dessin sombre sur fond clair. */}
+              {/* Fixed contrast, independent of the theme: a QR reader decodes
+                  only a dark pattern on a light background. */}
               <rect
                 x={-QUIET_ZONE}
                 y={-QUIET_ZONE}
@@ -97,19 +96,19 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
                 height={qr.size + QUIET_ZONE * 2}
                 fill="#ffffff"
               />
-              {/* shapeRendering : sans lui, l'antialiasing brouille la
-                  frontière des modules une fois le tracé agrandi. */}
+              {/* shapeRendering: without it, antialiasing blurs module edges
+                  once the path is enlarged. */}
               <path d={qr.path} fill="#000000" shapeRendering="crispEdges" />
             </svg>
           </div>
 
           <div>
             <p className="text-xs text-ink-400">
-              Ou va sur <span className="text-ink-300">{window.location.host}/pair</span> et saisis
+              Or go to <span className="text-ink-300">{window.location.host}/pair</span> and enter
             </p>
-            {/* Le code est affiché en clair, et c'est nécessaire : il sert
-                autant à entrer l'appairage sans caméra qu'à vérifier, sur le
-                téléphone, qu'on autorise bien l'écran qu'on regarde. */}
+            {/* The code is shown in clear text because it is used both to pair
+                without a camera and to verify on the phone that the visible
+                screen is the one being authorised. */}
             <p className="mt-1 font-mono text-3xl tracking-widest text-ink-100">
               {formatUserCode(pairing.userCode)}
             </p>
@@ -118,19 +117,19 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
           {expired ? (
             <div className="space-y-3">
               <p role="alert" className="text-sm text-amber-300">
-                Ce code a expiré.
+                This code has expired.
               </p>
               <button
                 type="button"
                 onClick={onRetry}
                 className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
               >
-                Afficher un nouveau code
+                Show a new code
               </button>
             </div>
           ) : (
             <p className="text-sm text-ink-400" aria-live="polite">
-              En attente de l'autorisation…
+              Waiting for authorisation…
             </p>
           )}
         </>
@@ -141,7 +140,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
         onClick={onCancel}
         className="text-sm text-ink-400 underline-offset-4 transition-colors hover:text-ink-200 hover:underline"
       >
-        Utiliser un identifiant et un mot de passe
+        Use a username and password
       </button>
     </div>
   );

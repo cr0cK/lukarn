@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest something the application should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is a photo viewer for a Google Drive account, kept deliberately
+        small. [`specs/01-vision-et-perimetre.md`](../blob/main/specs/01-vision-et-perimetre.md)
+        lists what is out of scope on purpose — worth a glance first, it may
+        already answer you. Being out of scope today is not a permanent verdict,
+        but the reasoning is written down.
+
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. What you were doing when you wished for this.
+      placeholder: |
+        My parents look at the albums on a tablet and keep opening the same one by
+        mistake, because nothing shows which ones they have already seen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: If you have a shape in mind, describe it. If not, leave this empty — the need is the useful part.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried or considered
+      description: Including anything that made the situation bearable. A workaround that almost works often says where the real gap is.
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I have read specs/01-vision-et-perimetre.md and this does not appear in what is deliberately excluded
+          required: true

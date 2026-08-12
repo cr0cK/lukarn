@@ -1,17 +1,19 @@
-# D15 — Le jeton révoqué est conservé, pas supprimé
+# D15 — The revoked token is retained, not deleted
 
-**Contexte.** Google peut refuser le refresh token (`invalid_grant`) sans
-prévenir : accès retiré, six mois d'inactivité, application repassée en « Test ».
+**Context.** Google may reject the refresh token (`invalid_grant`) without
+warning: access withdrawn, six months of inactivity, or the application returned
+to "Test".
 
-**Choix.** `DriveService.guard()` détecte l'erreur, date `revoked_at` et lève une
-`DriveRevokedError` typée. La ligne `oauth_token` reste, avec son compte.
+**Decision.** `DriveService.guard()` detects the error, timestamps `revoked_at` and
+throws a typed `DriveRevokedError`. The `oauth_token` row remains, together with
+its account.
 
-**Écarté.** Supprimer la ligne. Une table vide se lit comme une installation
-neuve, alors qu'il faut dire à l'administrateur _quel_ compte a perdu son
-autorisation et qu'il s'agit de reconnecter, pas de connecter.
+**Rejected.** Deleting the row. An empty table looks like a new installation,
+whereas the administrator needs to be told _which_ account has lost its
+authorisation and that it needs to be reconnected, not connected.
 
-**Conséquences.** `authorizedClient()` échoue immédiatement une fois révoqué,
-sans rappeler Google. `syncAll` interrompt sa boucle sur cette erreur : les
-albums suivants échoueraient de la même façon. Les routes média traduisent en
-`503 drive_revoked`. Une erreur réseau ou un 500 de Google ne déclenche **pas**
-la révocation — `packages/server/test/revocation.test.ts` le vérifie.
+**Consequences.** Once revoked, `authorizedClient()` fails immediately without
+calling Google again. `syncAll` stops its loop on this error: subsequent albums
+would fail in the same way. Media routes translate it to `503 drive_revoked`. A
+network error or a Google 500 does **not** trigger revocation —
+`packages/server/test/revocation.test.ts` verifies this.

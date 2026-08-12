@@ -10,12 +10,12 @@ import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Service du front buildé. Le routage vit côté client : toute URL qui n'est ni
- * une API ni un fichier existant doit rendre `index.html`, sans quoi un simple
- * rechargement de page tomberait en erreur.
+ * Serving the built front end. Routing lives on the client: any URL that is
+ * neither an API nor an existing file must return `index.html`, otherwise a
+ * simple page reload would fail.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-static-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-static-'));
 const webDir = join(root, 'web');
 
 let server: FastifyInstance;
@@ -68,9 +68,9 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('service du front', () => {
+describe('front-end serving', () => {
   for (const url of ['/', '/login', '/album/vacances-2025', '/admin', '/nimporte/quoi']) {
-    it(`rend l'application sur ${url}`, async () => {
+    it(`returns the application at ${url}`, async () => {
       const response = await server.inject({ method: 'GET', url });
       assert.equal(response.statusCode, 200, url);
       assert.match(response.headers['content-type'] as string, /text\/html/);
@@ -78,35 +78,34 @@ describe('service du front', () => {
     });
   }
 
-  it('sert un asset avec son vrai type MIME', async () => {
+  it('serves an asset with its real MIME type', async () => {
     const response = await server.inject({ method: 'GET', url: '/assets/index-abc123.js' });
     assert.equal(response.statusCode, 200);
     assert.match(response.headers['content-type'] as string, /javascript/);
-    // Nom haché : le contenu ne changera jamais à cette URL.
+    // Hashed name: content will never change at this URL.
     assert.match(response.headers['cache-control'] as string, /immutable/);
   });
 
-  it("n'autorise pas la mise en cache longue de index.html", async () => {
+  it('does not allow long-term caching of index.html', async () => {
     const response = await server.inject({ method: 'GET', url: '/' });
-    // Sans ça, un déploiement ne serait jamais vu par les navigateurs qui ont
-    // déjà chargé la page une fois.
+    // Otherwise browsers that loaded the page once would never see a deployment.
     assert.match(response.headers['cache-control'] as string, /no-cache/);
   });
 
-  it('renvoie 404 pour un asset absent, pas index.html', async () => {
-    // Répondre du HTML donnerait une erreur de type MIME côté navigateur, qui
-    // masquerait le vrai problème : un déploiement incomplet.
+  it('returns 404 for a missing asset rather than index.html', async () => {
+    // Returning HTML would cause a browser MIME error that hides the real
+    // problem: an incomplete deployment.
     const response = await server.inject({ method: 'GET', url: '/assets/absent.js' });
     assert.equal(response.statusCode, 404);
   });
 
-  it('renvoie 404 JSON sur une route API inconnue', async () => {
+  it('returns a JSON 404 for an unknown API route', async () => {
     const response = await server.inject({ method: 'GET', url: '/api/inconnue' });
     assert.equal(response.statusCode, 404);
     assert.equal((response.json() as { error: string }).error, 'not_found');
   });
 
-  it('répond au health check', async () => {
+  it('responds to the health check', async () => {
     const response = await server.inject({ method: 'GET', url: '/api/health' });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), { status: 'ok' });

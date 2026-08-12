@@ -1,35 +1,35 @@
-# D52 — Un VPS et `docker compose`, pas un PaaS auto-hébergé
+# D52 — A VPS and `docker compose`, not a self-hosted PaaS
 
-**Contexte.** Le dépôt savait construire une image et servir du HTTPS (D47),
-mais rien n'y décrivait comment on arrive à une machine qui tourne. Le
-`README.md` visait un VPS générique : gabarit sous-dimensionné, SSH ouvert au
-monde, mise à jour par `git pull && docker compose up` sans rien vérifier
-ensuite. La question ouverte était donc : qu'est-ce qui comble ce trou ?
+**Context.** The repository could build an image and serve HTTPS (D47), but
+nothing described how to arrive at a running machine. `README.md` targeted a
+generic VPS: undersized specification, SSH open to the world, and updates through
+`git pull && docker compose up` with no subsequent checks. The open question was
+therefore: what fills this gap?
 
-**Choix.** Un VPS Scaleway provisionné par le CLI `scw`, amorcé par un
-cloud-init versionné (`deploy/cloud-init.yaml`), et deux scripts bash —
-`deploy/backup.sh`, `deploy/deploy.sh`. Rien de plus.
+**Choice.** A Scaleway VPS provisioned with the `scw` CLI, bootstrapped by a
+version-controlled cloud-init file (`deploy/cloud-init.yaml`), and two bash
+scripts — `deploy/backup.sh` and `deploy/deploy.sh`. Nothing more.
 
-**Écarté.** Coolify, Dokku, CapRover et les autres PaaS auto-hébergés :
-l'essentiel de ce qu'ils apportent — TLS automatique, reverse-proxy, redéploiement
-au push — est déjà dans ce dépôt, et fonctionne. Les adopter, c'est remplacer un
-`Caddyfile` de trente lignes qu'on lit en entier par un composant à héberger, à
-mettre à jour et à dépanner, dont la panne emporte la galerie avec elle. Écarté
-aussi Kamal, plus proche du besoin, mais qui suppose un registre d'images là où
-l'on construit sur la machine, et dont la valeur — déploiement multi-hôtes sans
-interruption — n'a pas d'objet pour une instance unique dont le redémarrage dure
-quelques secondes. Écarté enfin un déploiement par GitHub Actions poussant sur
-la machine : il faudrait y déposer une clé de déploiement et ouvrir un chemin
-entrant, alors que l'accès d'administration se referme sur Tailscale.
+**Rejected.** Coolify, Dokku, CapRover, and other self-hosted PaaS products: most
+of what they provide — automatic TLS, reverse proxy, redeployment on push — is
+already in this repository and works. Adopting them means replacing a thirty-line
+`Caddyfile` that can be read in full with a component that must be hosted, updated,
+and troubleshot, whose failure takes the gallery down with it. Also rejected:
+Kamal, which is closer to the need but assumes an image registry where this
+project builds on the machine, and whose value — interruption-free multi-host
+deployment — is irrelevant for a single instance whose restart takes a few
+seconds. Finally rejected: deployment through GitHub Actions pushing to the
+machine, which would require storing a deployment key there and opening an
+inbound path while administrative access is being closed behind Tailscale.
 
-**Conséquences.** Le déploiement reste une commande lancée à la main sur la
-machine, et c'est assumé pour une galerie familiale : la fréquence de mise à
-jour ne justifie pas d'automatiser le déclenchement. En contrepartie, `deploy.sh`
-doit être fiable seul — d'où la sauvegarde systématique avant migration et
-l'attente active du retour à `healthy` plutôt qu'un `up -d` qui rend la main sur
-un conteneur qui redémarre en boucle.
+**Consequences.** Deployment remains a command run manually on the machine, and
+that is accepted for a family gallery: the update frequency does not justify
+automating the trigger. In return, `deploy.sh` must be reliable on its own — hence
+the systematic backup before migration and active waiting for the return to
+`healthy`, instead of an `up -d` that returns control while a container restarts
+in a loop.
 
-Le gabarit annoncé passe de « 1 Go suffit » à 2 vCPU / 4 Go / 60 Go. Ce n'était
-pas une marge de confort : le build tourne sur la machine (`build: .`, donc
-vite, `tsc` et d'éventuels modules natifs à compiler) et le cache disque vise
-20 Go par défaut. À 1 Go de RAM, le build est tué avant la fin.
+The advertised specification increases from "1 GB is enough" to 2 vCPU / 4 GB /
+60 GB. This was not comfort headroom: the build runs on the machine (`build: .`,
+therefore Vite, `tsc`, and any native modules to compile) and the disk cache
+targets 20 GB by default. With 1 GB of RAM, the build is killed before completion.

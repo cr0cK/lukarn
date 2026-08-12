@@ -9,55 +9,50 @@ import {
 import { GUTTER_PX, decideSwipe, resistAtEdge, settleDuration } from './swipeTrack';
 
 /**
- * Balayage horizontal de la visionneuse : la photo suit le doigt, les voisines
- * entrent par les bords, et le rail rejoint sa place au relâchement.
+ * Horizontal viewer swipe: the photo follows the finger, neighbours enter from
+ * the edges and the rail settles into place on release.
  *
- * Une galerie familiale se regarde surtout sur téléphone, où changer de photo
- * supposait de viser une flèche de 44 px posée sur l'image. Le balayage
- * existait déjà, mais **rien ne le montrait** : l'image sautait à la suivante
- * une fois le doigt levé, si bien que personne ne découvrait le geste et que
- * personne ne pouvait le reprendre en cours de route. Ce que fait toute
- * visionneuse native, c'est déplacer la photo sous le doigt — c'est le
- * mouvement qui enseigne le geste, pas un tutoriel.
+ * A family gallery is viewed mainly on phones, where changing photos required
+ * aiming at a 44 px arrow over the image. Swipe already existed, but **nothing
+ * showed it**: the image jumped after the finger lifted, so nobody discovered
+ * the gesture or could reverse it midway. Every native viewer moves the photo
+ * beneath the finger — movement teaches the gesture, not a tutorial.
  *
- * **Tactile et stylet uniquement.** À la souris, un glissement horizontal sur
- * la photo est un geste rare, alors que le clic sert déjà à zoomer : y ajouter
- * un changement de photo rendrait le clic imprévisible selon qu'on a bougé de
- * trois pixels ou non.
+ * **Touch and stylus only.** With a mouse, a horizontal drag on a photo is rare
+ * while click already zooms: adding photo changes would make clicks unpredictable
+ * depending on three pixels of movement.
  */
 
 /**
- * Déplacement à partir duquel le geste est reconnu comme horizontal ou vertical.
+ * Movement after which the gesture is recognised as horizontal or vertical.
  *
- * Rien ne bouge avant : un rail qui frémit sous les deux premiers pixels de
- * tout appui rendrait le simple fait de poser le doigt inquiétant.
+ * Nothing moves beforehand: a rail twitching over the first two pixels of every
+ * press would make merely placing a finger unsettling.
  */
 const DIRECTION_LOCK_PX = 10;
 
 /**
- * Le geste doit être franchement horizontal. Sans ce rapport, un défilement
- * vertical un peu oblique — le geste le plus courant sur un téléphone — ferait
- * sauter une photo.
+ * The gesture must be clearly horizontal. Without this ratio, a slightly angled
+ * vertical scroll — the most common phone gesture — would skip a photo.
  */
 const HORIZONTAL_RATIO = 1.5;
 
 /**
- * Au-delà de ce silence, le doigt est considéré comme arrêté. Sans cette
- * remise à zéro, un lancer suivi d'une pause avant de lever validerait sur une
- * vitesse mesurée une seconde plus tôt — le geste de quelqu'un qui a
- * précisément changé d'avis.
+ * After this silence, treat the finger as stopped. Without the reset, a flick
+ * followed by a pause before release would confirm from speed measured a second
+ * earlier — the gesture of someone who specifically changed their mind.
  */
 const VELOCITY_IDLE_MS = 80;
 
-/** Courbe de sortie : départ franc, arrivée posée, comme une inertie qui retombe. */
+/** Easing curve: firm start, gentle arrival, like fading inertia. */
 export const SETTLE_EASING = 'cubic-bezier(0.32, 0.72, 0, 1)';
 
 interface SwipeTrackOptions {
-  /** Index affiché : c'est son changement qui remet le rail à zéro. */
+  /** Displayed index; its change resets the rail. */
   index: number;
-  /** Nombre de médias chargés, pour savoir s'il y a un voisin de ce côté. */
+  /** Number of loaded media, used to know whether a neighbour exists on a side. */
   count: number;
-  /** Reçoit `1` pour la photo suivante, `-1` pour la précédente. */
+  /** Receives `1` for the next photo and `-1` for the previous. */
   onNavigate: (towards: 1 | -1) => void;
   enabled: boolean;
 }
@@ -69,20 +64,20 @@ export interface SwipeTrack {
     onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
     onPointerCancel: (event: ReactPointerEvent<HTMLElement>) => void;
   };
-  /** Décalage du rail, en pixels. */
+  /** Rail offset in pixels. */
   offset: number;
-  /** Durée de la transition en cours ; `0` tant que le doigt tient le rail. */
+  /** Current transition duration; `0` while the finger holds the rail. */
   settleMs: number;
   /**
-   * Un geste occupe le rail. C'est à ce signal que la visionneuse monte les
-   * photos voisines : hors balayage, elles n'ont rien à faire dans le document.
+   * A gesture occupies the rail. This signal makes the viewer mount adjacent
+   * photos: outside a swipe, they do not belong in the document.
    */
   active: boolean;
 }
 
 /**
- * Rail de balayage. Rend les gestionnaires à poser sur le cadre, et l'état de
- * déplacement à appliquer au conteneur des trois photos.
+ * Swipe rail. Returns handlers for the frame and movement state for the
+ * three-photo container.
  */
 export function useSwipeTrack({
   index,
@@ -97,11 +92,11 @@ export function useSwipeTrack({
   const gesture = useRef<{
     id: number;
     origin: { x: number; y: number };
-    /** Largeur du cadre à l'appui : l'échelle de tous les seuils du geste. */
+    /** Frame width on press, the scale for every gesture threshold. */
     width: number;
-    /** Le geste a-t-il été reconnu comme horizontal ? */
+    /** Whether the gesture has been recognised as horizontal. */
     locked: boolean;
-    /** Dernier point daté, pour la vitesse instantanée. */
+    /** Latest timestamped point for instantaneous speed. */
     lastX: number;
     lastAt: number;
     velocity: number;
@@ -113,13 +108,12 @@ export function useSwipeTrack({
   const canNext = index < count - 1;
 
   /**
-   * Le rail revient chez lui quand la photo a changé, et pas avant.
+   * The rail returns home when the photo changes, not before.
    *
-   * La visionneuse ne décide pas de son index : elle le demande, et il lui
-   * revient par l'URL. Entre les deux, le rail doit rester là où l'animation
-   * l'a laissé — c'est-à-dire sur la photo voisine, déjà à l'écran. Le remettre
-   * à zéro en même temps qu'on demande le changement ferait réapparaître la
-   * photo qu'on vient de quitter, le temps d'une image.
+   * The viewer does not decide its index: it requests it and receives it through
+   * the URL. Meanwhile the rail must remain where animation left it — on the
+   * adjacent photo already on screen. Resetting when requesting the change would
+   * reveal the photo just left for one frame.
    */
   useLayoutEffect(() => {
     setOffset(0);
@@ -143,8 +137,8 @@ export function useSwipeTrack({
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
-      // Geste jamais reconnu comme horizontal : rien n'a bougé, il appartient
-      // encore au zoom, qui décide de son côté s'il s'agissait d'un appui.
+      // A gesture never recognised as horizontal moved nothing and still belongs
+      // to zoom, which separately decides whether it was a press.
       if (!from.locked) return;
 
       const dx = resistAtEdge(event.clientX - from.origin.x, canPrev, canNext);
@@ -158,9 +152,8 @@ export function useSwipeTrack({
       setSettleMs(duration);
       setOffset(target);
 
-      // La photo ne change qu'une fois le rail arrivé : la demander plus tôt
-      // remonterait la visionneuse au milieu de l'animation, sur une photo qui
-      // n'est pas encore celle que l'écran montre.
+      // Change the photo only after the rail arrives: requesting earlier would
+      // remount the viewer mid-animation on a photo not yet shown by the screen.
       commit.current = setTimeout(() => {
         if (towards === 0) {
           setActive(false);
@@ -180,9 +173,8 @@ export function useSwipeTrack({
 
     handlers: {
       onPointerDown: (event) => {
-        // Un rail encore en mouvement tient déjà une décision : la reprendre
-        // en cours de route validerait un geste sur une photo qui n'est plus
-        // celle qu'on visait.
+        // A moving rail already carries a decision: grabbing it midway would confirm
+        // a gesture on a photo no longer being targeted.
         if (!enabled || event.pointerType === 'mouse' || settleMs > 0) return;
         const now = performance.now();
         gesture.current = {
@@ -205,15 +197,15 @@ export function useSwipeTrack({
 
         if (!from.locked) {
           if (Math.abs(dx) < DIRECTION_LOCK_PX && Math.abs(dy) < DIRECTION_LOCK_PX) return;
-          // Le premier franchissement tranche, une fois pour toutes : un geste
-          // qui s'incurve en route ne doit pas changer de nature sous le doigt.
+          // The first threshold crossing decides once and for all: a curving gesture
+          // must not change type beneath the finger.
           if (Math.abs(dx) < Math.abs(dy) * HORIZONTAL_RATIO) {
             gesture.current = null;
             return;
           }
           from.locked = true;
-          // Garantit de recevoir le relâchement même si le doigt sort du cadre,
-          // et coupe au passage les gestionnaires du zoom, qui vivent plus bas.
+          // Guarantees release even if the finger leaves the frame and blocks zoom
+          // handlers lower in the tree.
           event.currentTarget.setPointerCapture(event.pointerId);
           setActive(true);
           setSettleMs(0);
@@ -221,8 +213,8 @@ export function useSwipeTrack({
 
         const now = performance.now();
         const elapsed = now - from.lastAt;
-        // Deux points trop rapprochés donnent une vitesse aberrante : on garde
-        // la précédente plutôt que de diviser par un intervalle nul.
+        // Two points too close together produce absurd speed: retain the previous
+        // value rather than divide by a zero interval.
         if (elapsed >= 4) {
           from.velocity = (event.clientX - from.lastX) / elapsed;
           from.lastX = event.clientX;
@@ -234,8 +226,8 @@ export function useSwipeTrack({
 
       onPointerUp: (event) => end(event, false),
 
-      // Geste interrompu par le navigateur — deuxième doigt, retour arrière par
-      // bord d'écran : le rail rentre, sans changer de photo.
+      // Gesture interrupted by the browser — second finger or edge-swipe back:
+      // settle the rail without changing photo.
       onPointerCancel: (event) => end(event, true),
     },
   };

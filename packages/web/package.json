@@ -1,7 +1,8 @@
 {
-  "name": "@gdv/web",
+  "name": "@nonni/web",
   "version": "1.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +12,7 @@
     "test": "node --import tsx --test \"test/*.test.ts\""
   },
   "dependencies": {
-    "@gdv/shared": "workspace:*",
+    "@nonni/shared": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "qrcode-generator": "^2.0.4",
     "react": "^19.0.0",

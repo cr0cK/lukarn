@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------------------------------
-# Étape 1 — build : dépendances complètes, compilation du front et du serveur.
+# Stage 1 — build: full dependencies, compiling the front end and the server.
 # ---------------------------------------------------------------------------
 FROM node:24-slim AS builder
 
-# Nécessaires si un module natif (better-sqlite3, argon2, sharp) n'a pas de
-# binaire prébuilt pour cette plateforme et doit être compilé.
+# Needed whenever a native module (better-sqlite3, argon2, sharp) has no prebuilt
+# binary for this platform and has to be compiled.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -17,8 +17,8 @@ RUN corepack enable
 
 WORKDIR /build
 
-# Les manifestes d'abord : tant qu'ils ne changent pas, Docker réutilise le
-# cache de l'installation, qui est de loin l'étape la plus lente.
+# The manifests first: as long as they do not change, Docker reuses the cache of
+# the install step, which is by far the slowest one.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
@@ -32,7 +32,7 @@ COPY packages/ packages/
 RUN pnpm build
 
 # ---------------------------------------------------------------------------
-# Étape 2 — dépendances de production seules.
+# Stage 2 — production dependencies only.
 # ---------------------------------------------------------------------------
 FROM node:24-slim AS deps
 
@@ -54,14 +54,30 @@ COPY packages/web/package.json packages/web/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --prod
 
 # ---------------------------------------------------------------------------
-# Étape 3 — image finale.
+# Stage 3 — final image.
 # ---------------------------------------------------------------------------
 FROM node:24-slim AS runtime
 
-# ffmpeg prépare les vidéos dont aucun navigateur ne décode le codec (D99). Il
-# pèse environ 250 Mo dans l'image — le prix d'entrée, et le seul. Sans lui le
-# serveur démarre quand même : il le signale au démarrage, et ces vidéos restent
-# téléchargeables comme avant.
+# OCI metadata. `org.opencontainers.image.source` is what ties the published image
+# to its repository on GHCR — without it the package page shows neither README nor
+# license, and nothing connects a running container to the code it executes.
+# `version` and `revision` are passed by the release workflow; a local build leaves
+# them at `dev` and `unknown`, which tells a hand-built image apart from a
+# published one.
+ARG VERSION=dev
+ARG REVISION=unknown
+LABEL org.opencontainers.image.title="nonni" \
+  org.opencontainers.image.description="Self-hosted photo and video gallery for a Google Drive account" \
+  org.opencontainers.image.source="https://github.com/cr0cK/nonni" \
+  org.opencontainers.image.documentation="https://github.com/cr0cK/nonni/blob/main/deploy/README.md" \
+  org.opencontainers.image.licenses="AGPL-3.0-only" \
+  org.opencontainers.image.version="${VERSION}" \
+  org.opencontainers.image.revision="${REVISION}"
+
+# ffmpeg prepares the videos whose codec no browser decodes (D99). It weighs about
+# 250 MB in the image — the entry price, and the only one. Without it the server
+# still starts: it says so at startup, and those videos stay downloadable as
+# before.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates tini ffmpeg \
   && rm -rf /var/lib/apt/lists/*
@@ -73,18 +89,18 @@ ENV CACHE_DIR=/app/cache
 ENV WEB_DIR=/app/packages/web/dist
 ENV PORT=8080
 ENV HOST=0.0.0.0
-# Le décodage d'images, les lectures de fichiers et argon2 partagent le pool de
-# fils de libuv. À sa taille par défaut de quatre, quelques rendus le remplissent
-# et une vignette déjà en cache attend derrière — mesuré à 2 s au 95e centile.
-# Le serveur pose lui-même cette valeur si elle manque ; la fixer ici la rend
-# visible à l'exploitation.
+# Image decoding, file reads and argon2 all share libuv's thread pool. At its
+# default size of four, a handful of renders fills it and a thumbnail already in
+# cache waits behind them — measured at 2 s on the 95th percentile. The server
+# sets this value itself when it is missing; fixing it here makes it visible to
+# whoever operates the instance.
 ENV UV_THREADPOOL_SIZE=16
 
 WORKDIR /app
 
-# Dépendances de production : le store racine, plus les liens symboliques par
-# package. Copié en bloc — un package sans dépendance de production n'a pas de
-# `node_modules`, et une copie ciblée échouerait sur son absence.
+# Production dependencies: the root store, plus the per-package symlinks. Copied
+# wholesale — a package with no production dependency has no `node_modules`, and a
+# targeted copy would fail on its absence.
 COPY --from=deps /build/node_modules ./node_modules
 COPY --from=deps /build/packages ./packages
 
@@ -93,15 +109,15 @@ COPY --from=builder /build/packages/server/dist ./packages/server/dist
 COPY --from=builder /build/packages/web/dist ./packages/web/dist
 COPY package.json pnpm-workspace.yaml ./
 
-# Les volumes sont montés par docker-compose ; créer les points de montage en
-# amont évite qu'ils appartiennent à root une fois montés.
+# The volumes are mounted by docker-compose; creating the mount points beforehand
+# keeps them from belonging to root once mounted.
 RUN mkdir -p /app/data /app/cache /app/config && chown -R node:node /app
 
 USER node
 EXPOSE 8080
 
-# tini récolte les processus zombies et relaie SIGTERM, pour que l'arrêt
-# gracieux du serveur soit réellement déclenché.
+# tini reaps zombie processes and relays SIGTERM, so that the server's graceful
+# shutdown is actually triggered.
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

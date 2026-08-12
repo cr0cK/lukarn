@@ -10,99 +10,92 @@ import type { MediaRepo } from '../repo.js';
 import type { MediaCache } from './cache.js';
 
 /**
- * Prépare une version lisible des vidéos dont aucun navigateur courant ne décode
- * le codec — les `hvc1` d'un téléphone récent, qui représentaient 25 fichiers sur
- * 38 de l'album qui a motivé ce module.
+ * Prepares a playable version of videos whose codec no current browser decodes — the
+ * `hvc1` files from a recent phone, which made up 25 of 38 files in the album that
+ * prompted this module.
  *
- * D6 avait écarté le transcodage sur trois objections, qui tiennent toujours et
- * ont chacune leur réponse ici : le processeur d'un petit serveur, d'où **une
- * seule tâche à la fois, reniçée, sur un seul fil** ; le stockage, d'où un
- * magasin distinct et borné ; la file de travaux, qui n'est qu'une boucle de
- * plus à côté du préchauffage, dont ce module reprend la forme et les gardes.
- * Les chiffres qui ont fait pencher la balance sont dans D260809b.
+ * D6 rejected transcoding over three still-valid concerns, each addressed here: a
+ * small server's CPU, hence **one reniced, single-threaded task at a time**; storage,
+ * hence a separate bounded store; and the job queue, which is one more loop beside
+ * prewarming whose shape and guards this module reuses. The measurements that changed
+ * the decision are in D260809b.
  *
- * L'original n'est jamais remplacé : un navigateur qui sait lire l'HEVC continue
- * de le recevoir en pleine qualité, et c'est le client qui choisit sa source.
+ * The original is never replaced: a browser that plays HEVC still receives it at full
+ * quality, and the client chooses its source.
  */
 
 /**
- * Codecs qu'on transcode, et rien d'autre.
+ * Codecs to transcode, and nothing else.
  *
- * La règle porte sur le codec, jamais sur un nombre de fichiers ou sur un poids :
- * transcoder un `avc1` que tout le monde lit déjà dépenserait des minutes de
- * processeur pour dégrader l'image. `hvc1` et `hev1` désignent le même HEVC, à la
- * façon de ranger les paramètres près.
+ * The rule concerns the codec, never file count or size: transcoding an `avc1` that
+ * everyone already plays would spend CPU minutes degrading the image. `hvc1` and
+ * `hev1` identify the same HEVC with differently stored parameters.
  */
 const CODECS_ILLISIBLES = new Set(['hvc1', 'hev1']);
 
 /**
- * Part du magasin au-delà de laquelle le passage s'arrête.
+ * Store usage at which a pass stops.
  *
- * Pas 100 % : à la limite, chaque nouvelle vidéo évincerait la plus ancienne, et
- * le passage suivant referait en dix minutes de processeur ce que celui-ci vient
- * de jeter. Mieux vaut s'arrêter et laisser l'administrateur relever le budget.
+ * Not 100%: at the limit, each new video would evict the oldest, and the next pass
+ * would spend ten CPU minutes recreating what this one discarded. Stop and let the
+ * administrator raise the budget instead.
  */
 const BUDGET_RATIO = 0.9;
 
 /**
- * Vidéos par passage. Le ménage est horaire, et un 1080p tourne autour du temps
- * réel : trois films de cinq minutes remplissent déjà un passage. Au-delà, il
- * empiéterait sur le suivant sans rien apporter.
+ * Videos per pass. Housekeeping is hourly and 1080p runs near real time: three
+ * five-minute films already fill a pass. More would overlap the next without benefit.
  */
 const MAX_PER_RUN = 20;
 
-/** Vidéos lues d'un coup dans l'index. Bornée : `listItems` est synchrone. */
+/** Videos read from the index at once. Bounded because `listItems` is synchronous. */
 const PAGE_SIZE = 200;
 
-/** Niveau de gentillesse du processus ffmpeg — le maximum de `setPriority`. */
+/** ffmpeg process niceness — the maximum supported by `setPriority`. */
 const NICE = 15;
 
 const FFMPEG = 'ffmpeg';
 
-/** Débit du son produit, en kbit/s. Doit rester d'accord avec `-b:a` ci-dessous. */
+/** Output audio bitrate in kbit/s. Must match `-b:a` below. */
 const AUDIO_KBPS = 128;
 
 /**
- * Part du débit de la source laissée aux octets qui ne sont pas de l'image.
+ * Share of source bitrate reserved for non-video bytes.
  *
- * Les 5 % retenus paient l'en-tête MP4 et l'index que `+faststart` remonte en
- * tête : viser le débit de la source à l'octet près produirait un fichier
- * légèrement plus gros qu'elle, ce que ce plafond existe précisément pour
- * empêcher.
+ * The retained 5% covers the MP4 header and index moved to the front by `+faststart`:
+ * targeting source bitrate exactly would produce a slightly larger file, precisely
+ * what this cap prevents.
  */
 const MARGE_CONTENEUR = 0.95;
 
 /**
- * Ce que `-maxrate` dépasse réellement, dans le pire cas.
+ * How far `-maxrate` actually overshoots in the worst case.
  *
- * `-maxrate` n'est pas un plafond sur la moyenne : c'est une contrainte VBV sur
- * la fenêtre de `-bufsize`, et x264 la déborde quand la source est trop dure
- * pour le débit accordé. Mesuré sur ffmpeg 7.1 en `veryfast` : **+9 à +10 %** sur
- * une source réaliste, **+14 %** sur du bruit pur, qui est le pire cas
- * théorique. Les 15 % retenus bornent les deux.
+ * `-maxrate` is not a cap on the average: it is a VBV constraint over the `-bufsize`
+ * window, and x264 exceeds it when the source is too demanding. With ffmpeg 7.1 on
+ * `veryfast`: **+9 to +10%** for realistic footage and **+14%** for pure noise, the
+ * theoretical worst case. The retained 15% bounds both.
  *
- * Sans cette division, la marge de conteneur seule ne suffit pas et le dérivé
- * repasse au-dessus de sa source — c'est-à-dire que le plafond échoue
- * exactement dans le cas pour lequel il existe (D260809g).
+ * Without this division, container margin alone is insufficient and the derivative
+ * exceeds its source — the cap fails exactly where it exists to help (D260809g).
  */
 const DEBORDEMENT_VBV = 1.15;
 
 /**
- * Plafond en deçà duquel on préfère ne pas en poser.
+ * Cap below which no cap is preferable.
  *
- * Une source très courte ou à la durée mal déclarée donne un débit calculé
- * absurde, et un 1080p bridé à 200 kbit/s serait illisible autrement — or c'est
- * la lisibilité qu'on cherche, le poids n'est qu'un effet secondaire (D260809g).
- * Mieux vaut alors un dérivé un peu lourd qu'un dérivé inregardable.
+ * A very short source or incorrect duration produces an absurd calculated bitrate,
+ * and 1080p capped at 200 kbit/s would be unwatchable — playability is the goal and
+ * size only a side effect (D260809g). A slightly heavy derivative is preferable.
  */
 const PLAFOND_MINIMAL_KBPS = 500;
 
 /**
- * Débit maximal à laisser à l'image pour qu'un dérivé reste plus léger que sa
- * source, en kbit/s — ou `null` s'il n'y a pas de plafond raisonnable à poser.
+ * Maximum video bitrate that keeps a derivative lighter than its source, in kbit/s —
+ * or `null` when no reasonable cap exists.
  *
- * `octets * 8 / durationMs` donne directement des kbit/s : les deux facteurs
- * 1000 — millisecondes vers secondes, bits vers kilobits — s'annulent.
+ * `bytes * 8 / durationMs` directly produces kbit/s: the two factors of 1000 —
+ * milliseconds to seconds and bits to kilobits — cancel out.
  */
 export function plafondDebit(octets: number, durationMs: number | null): number | null {
   if (durationMs === null || durationMs <= 0 || octets <= 0) return null;
@@ -118,73 +111,65 @@ interface Logger {
 }
 
 /**
- * Clé du dérivé dans le magasin.
+ * Derivative key in the store.
  *
- * L'empreinte du contenu en fait partie, pour la même raison que dans le cache
- * d'images : Drive garde l'identifiant d'un fichier dont on remplace le contenu,
- * et sans elle la nouvelle version se lirait éternellement à travers l'ancienne
- * vidéo transcodée.
+ * The content fingerprint is included for the same reason as in the image cache:
+ * Drive retains a file ID when content is replaced, and without it the new version
+ * would forever play through the old transcoded video.
  */
 export function playableKey(fileId: string, md5: string | null): string {
   return md5 ? `${fileId}:${md5}` : fileId;
 }
 
-/** Ce codec doit-il être transcodé pour être lisible ? */
+/** Must this codec be transcoded to become playable? */
 export function needsTranscoding(codec: string | null): boolean {
   return codec !== null && CODECS_ILLISIBLES.has(codec);
 }
 
 /**
- * Ligne de commande du transcodage. Pure, et testée : c'est la seule partie de
- * ce module qu'on peut vérifier sans lancer ffmpeg, et chacun de ces arguments
- * répond à un défaut constaté.
+ * Transcoding command line. Pure and tested: this is the only part verifiable without
+ * running ffmpeg, and every argument addresses an observed failure.
  *
- * - `-map 0:v:0 -map 0:a?` — la première piste image et le son **s'il existe** ;
- *   sans le `?`, une vidéo muette fait échouer ffmpeg.
- * - `libx264` en `veryfast`, CRF 23 — le compromis qui tient le temps réel sur
- *   un cœur en 1080p. Le fichier produit est mesuré à 1,5 fois plus léger que
- *   l'HEVC d'origine ; le gain de place est un effet secondaire, pas le but
+ * - `-map 0:v:0 -map 0:a?` — the first video track and audio **if present**;
+ *   without `?`, a silent video makes ffmpeg fail.
+ * - `libx264` on `veryfast`, CRF 23 — the tradeoff that sustains real time on one
+ *   core at 1080p. Output measured 1.5 times lighter than the HEVC original; space
+ *   saving is a side effect, not the goal
  *   (D260809b).
- * - `-maxrate`/`-bufsize` quand `plafondKbps` est connu — CRF seul est un débit
- *   *variable* sans borne haute, et sur une source déjà bien encodée il produit
- *   parfois plus lourd qu'elle : mesuré en production, 3 dérivés sur 20 étaient
- *   plus gros que leur original, jusqu'à 50,1 Mo devenus 66,8 Mo. Le plafond ne
- *   mord que là où le CRF partait trop haut ; les vidéos qui sortaient déjà bien
- *   en dessous de leur source sont encodées comme avant (D260809g).
- * - `-pix_fmt yuv420p` — un HEVC de téléphone est souvent en 10 bits, que le
- *   profil H.264 des navigateurs ne couvre pas : sans cette conversion, on
- *   produirait un fichier tout aussi illisible.
- * - `-threads 1` — le serveur doit rester servi pendant ce temps. C'est la
- *   contrepartie de la lenteur assumée.
- * - `-movflags +faststart` — sans `moov` en tête, le navigateur ne peut ni
- *   démarrer avant la fin du téléchargement, ni chercher dans le film.
- * - `-f mp4` — le conteneur est **dit**, jamais deviné. ffmpeg le déduit
- *   normalement de l'extension du fichier de sortie, or celle-ci est `.tmp` le
- *   temps de l'encodage : sans cet argument il s'arrête sur
- *   « Error opening output files: Invalid argument », et le magasin reste vide
- *   sans que rien d'autre ne le signale.
+ * - `-maxrate`/`-bufsize` when `plafondKbps` is known — CRF alone is *variable*
+ *   bitrate without an upper bound and may exceed a well-encoded source: in production,
+ *   3 of 20 derivatives were larger, up to 50.1 MB becoming 66.8 MB. The cap affects
+ *   only excessive CRF output; videos already well below source size remain unchanged
+ *   (D260809g).
+ * - `-pix_fmt yuv420p` — phone HEVC is often 10-bit, outside browser H.264 profiles;
+ *   without conversion the output would remain unplayable.
+ * - `-threads 1` — the server must remain responsive, at the accepted cost of speed.
+ * - `-movflags +faststart` — without `moov` first, the browser can neither start before
+ *   download completes nor seek.
+ * - `-f mp4` — the container is **stated**, never guessed. ffmpeg normally infers it
+ *   from the output extension, which is `.tmp` during encoding; without this argument
+ *   it stops with "Error opening output files: Invalid argument", leaving the store
+ *   empty with no other indication.
  */
 export function ffmpegArgs(fichiers: {
   source: string;
   cible: string;
-  /** Débit image maximal en kbit/s. Absent : CRF seul, sans borne haute. */
+  /** Maximum video bitrate in kbit/s. Absent: CRF alone, without an upper bound. */
   plafondKbps?: number | null;
 }): string[] {
   const plafond = fichiers.plafondKbps
     ? [
         '-maxrate',
         `${fichiers.plafondKbps}k`,
-        // Deux secondes de débit : la fenêtre sur laquelle x264 doit tenir le
-        // plafond. Plus courte, elle écrête les scènes chargées sans nécessité ;
-        // plus longue, elle laisse le fichier dépasser sur sa durée totale, ce
-        // qui est exactement ce qu'on veut empêcher.
+        // Two seconds of bitrate: the window over which x264 must meet the cap. Shorter
+        // needlessly clips complex scenes; longer lets total file size exceed the goal.
         '-bufsize',
         `${fichiers.plafondKbps * 2}k`,
       ]
     : [];
 
   return [
-    // Sans `-nostdin`, ffmpeg lit l'entrée standard du serveur et la consomme.
+    // Without `-nostdin`, ffmpeg reads and consumes the server's standard input.
     '-nostdin',
     '-loglevel',
     'error',
@@ -219,13 +204,12 @@ export function ffmpegArgs(fichiers: {
 }
 
 /**
- * Lance ffmpeg. C'est la couture du module : la suite de tests fournit la
- * sienne, et n'appelle donc jamais le binaire — la CI n'a pas à en dépendre, et
- * un test qui encode une vidéo dure plus longtemps que tous les autres réunis.
+ * Runs ffmpeg. This is the module seam: tests provide their own and never call the
+ * binary — CI need not depend on it, and encoding one video outlasts all other tests.
  */
 export type FfmpegRunner = (args: string[], signal: AbortSignal) => Promise<void>;
 
-/** `ffmpeg` est-il sur cette machine ? Interrogé une fois, au démarrage. */
+/** Is `ffmpeg` installed? Checked once at startup. */
 export function ffmpegAvailable(): Promise<boolean> {
   return new Promise((resolve) => {
     const child = spawn(FFMPEG, ['-version'], { stdio: 'ignore' });
@@ -235,25 +219,24 @@ export function ffmpegAvailable(): Promise<boolean> {
 }
 
 /**
- * Lanceur réel. Le processus est reniçé dès qu'il existe : c'est ce qui permet
- * à une vignette demandée pendant un transcodage d'être servie sans attendre.
+ * Real runner. The process is reniced as soon as it exists, allowing a thumbnail
+ * requested during transcoding to be served without waiting.
  */
 export const spawnFfmpeg: FfmpegRunner = (args, signal) =>
   new Promise((resolve, reject) => {
-    // `signal` tue le processus à l'extinction du serveur — sinon un encodage de
-    // dix minutes survivrait au conteneur qui l'a lancé.
+    // `signal` kills the process at server shutdown; otherwise a ten-minute encode
+    // would outlive its container.
     const child = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'], signal });
 
     try {
       if (child.pid) setPriority(child.pid, NICE);
     } catch {
-      // Renicer peut être refusé (politique du noyau, conteneur restreint) :
-      // le transcodage reste utile, il pèsera simplement un peu plus.
+      // Renicing may be refused by kernel policy or a restricted container; transcoding
+      // remains useful and merely consumes a little more.
     }
 
-    // Seule la dernière ligne est gardée : ffmpeg en `-loglevel error` est
-    // laconique, mais un fichier corrompu peut en produire des milliers, et le
-    // message finit dans un journal.
+    // Keep only the last line: ffmpeg with `-loglevel error` is terse, but a corrupt
+    // file can produce thousands and the message ends up in a log.
     let derniere = '';
     child.stderr?.on('data', (chunk: Buffer) => {
       const lignes = chunk.toString('utf8').trim().split('\n');
@@ -263,17 +246,16 @@ export const spawnFfmpeg: FfmpegRunner = (args, signal) =>
     child.on('error', (error) => reject(error));
     child.on('close', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`ffmpeg a rendu ${code}${derniere ? ` : ${derniere}` : ''}`));
+      else reject(new Error(`ffmpeg exited with ${code}${derniere ? `: ${derniere}` : ''}`));
     });
   });
 
-/** Ce que le passage attend de son producteur, et rien de plus. */
+/** Exactly what the pass expects from its producer. */
 export interface Transcoder {
   /**
-   * `durationMs` vient de l'index : c'est la seule chose que le producteur ne
-   * peut pas lire lui-même sans un `ffprobe` de plus, alors que le poids de la
-   * source, lui, se mesure sur le fichier une fois téléchargé. Les deux servent
-   * à borner le débit (D260809g) ; `null` renonce au plafond.
+   * `durationMs` comes from the index: it is the only value the producer cannot read
+   * without another `ffprobe`, while source size is measured after download. Both
+   * bound bitrate (D260809g); `null` abandons the cap.
    */
   transcode(
     fileId: string,
@@ -285,27 +267,24 @@ export interface Transcoder {
 
 export interface VideoTranscoderDeps {
   drive: DriveService;
-  /** Magasin des versions lisibles — une `MediaCache` montée sur `root`. */
+  /** Store of playable versions — a `MediaCache` mounted on `root`. */
   store: MediaCache;
   /**
-   * Racine du magasin. Les temporaires y sont écrits pour deux raisons : le
-   * `rename` final reste sur le même système de fichiers, et l'inventaire du
-   * démarrage efface les `.tmp` laissés par un arrêt brutal.
+   * Store root. Temporary files are written here so final `rename` stays on the same
+   * file system and startup inventory removes `.tmp` files left by abrupt shutdown.
    */
   root: string;
   run: FfmpegRunner;
 }
 
 /**
- * Produit la version lisible d'une vidéo : original téléchargé sur disque,
- * ffmpeg, puis rangement dans le magasin.
+ * Produces a playable video version: original downloaded to disk, ffmpeg, then storage.
  *
- * L'original transite par un fichier et non par la mémoire : c'est ce qui
- * distingue ce chemin de `MediaRenderer`, qui refuse au-delà de 80 Mo. Une vidéo
- * de 150 Mo doit passer, et rien n'oblige à la tenir en mémoire pour l'écrire.
+ * The original passes through a file rather than memory, unlike `MediaRenderer`, which
+ * refuses above 80 MB. A 150 MB video must work and need not be held in memory to write.
  */
 export class VideoTranscoder implements Transcoder {
-  /** Distingue deux temporaires du même processus. Jamais remis à zéro. */
+  /** Distinguishes temporary files in one process. Never reset. */
   private serial = 0;
 
   constructor(private readonly deps: VideoTranscoderDeps) {}
@@ -324,18 +303,16 @@ export class VideoTranscoder implements Transcoder {
 
     try {
       await this.download(fileId, source, signal);
-      // Le poids est mesuré sur le fichier reçu, pas lu dans l'index : c'est ce
-      // que ffmpeg va réellement encoder, et Drive déclare parfois une taille
-      // absente ou périmée — un plafond calculé dessus borderait le mauvais
-      // débit.
+      // Size is measured from the received file rather than the index: this is what
+      // ffmpeg encodes, and Drive may report a missing or stale size that would cap
+      // the wrong bitrate.
       const { size } = await stat(source);
       const plafondKbps = plafondDebit(size, durationMs);
       await this.deps.run(ffmpegArgs({ source, cible, plafondKbps }), signal);
       await this.deps.store.putFile(playableKey(fileId, md5), cible);
     } finally {
-      // Même en cas d'échec, et surtout en cas d'échec : un original de 150 Mo
-      // laissé derrière chaque tentative ratée remplirait le disque sans que
-      // l'inventaire du magasin en sache rien.
+      // Even on failure, especially on failure: a 150 MB original left after every
+      // attempt would fill the disk without appearing in store inventory.
       await rm(source, { force: true });
       await rm(cible, { force: true });
     }
@@ -346,7 +323,7 @@ export class VideoTranscoder implements Transcoder {
       this.deps.drive.fetchFile(fileId, undefined, signal),
     );
     if (!response.ok || !response.body) {
-      throw new Error(`Drive a répondu ${response.status} pour ${fileId}`);
+      throw new Error(`Drive answered ${response.status} for ${fileId}`);
     }
     await pipeline(
       Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
@@ -356,50 +333,47 @@ export class VideoTranscoder implements Transcoder {
 }
 
 export interface TranscodePassDeps {
-  /** Relu à chaque passage : un album créé depuis le démarrage compte aussi. */
+  /** Read again on every pass so albums created since startup are included. */
   albums: () => { id: string }[];
   media: MediaRepo;
   store: MediaCache;
   transcoder: Transcoder;
-  /** Lu à chaque vidéo : décocher le réglage doit arrêter le passage en cours. */
+  /** Read for every video so disabling the setting stops the current pass. */
   enabled: () => boolean;
   log: Logger;
 }
 
 export interface TranscodeResult {
   transcoded: number;
-  /** Vidéos illisibles dont la version était déjà au magasin. */
+  /** Unplayable videos whose version was already in the store. */
   skipped: number;
   failed: number;
-  stopped: 'termine' | 'budget' | 'plafond' | 'arret';
+  stopped: 'finished' | 'budget' | 'ceiling' | 'stopped';
 }
 
 /**
- * Un passage sur tous les albums, du plus récent au plus ancien, une vidéo à la
- * fois.
+ * One pass over every album, newest to oldest, one video at a time.
  *
- * Copie assumée de la forme de `CachePrewarmer`, dont il reprend les gardes —
- * refus d'un second passage concurrent, plafond par passage, réglage relu à
- * chaque élément, arrêt à l'extinction. Ce qui change tient en deux points : le
- * budget est celui d'un magasin qui n'est qu'à lui, et il n'y a pas de pause
- * entre deux vidéos — le transcodage dure des minutes, la temporisation est déjà
- * dans le travail lui-même.
+ * Deliberately follows `CachePrewarmer`, reusing its guards: reject concurrent passes,
+ * cap each pass, reread settings per item and stop at shutdown. Two things differ:
+ * the store has its own budget, and there is no pause between videos — transcoding
+ * takes minutes, so the work itself provides pacing.
  */
 export class TranscodePass {
   private running = false;
   private stopping = false;
-  /** Renouvelé à chaque passage : abandonner tue le ffmpeg en cours. */
+  /** Renewed on every pass: aborting kills the current ffmpeg. */
   private controller = new AbortController();
 
   constructor(private readonly deps: TranscodePassDeps) {}
 
-  /** Demande l'arrêt du passage en cours. Appelé à l'extinction du serveur. */
+  /** Requests that the current pass stop. Called during server shutdown. */
   stop(): void {
     this.stopping = true;
     this.controller.abort();
   }
 
-  /** Note la raison de l'arrêt **dans** le résultat, et le rend. */
+  /** Records the stop reason **in** the result and returns it. */
   private stoppedWith(
     result: TranscodeResult,
     raison: TranscodeResult['stopped'],
@@ -409,10 +383,10 @@ export class TranscodePass {
   }
 
   async run(): Promise<TranscodeResult> {
-    const result: TranscodeResult = { transcoded: 0, skipped: 0, failed: 0, stopped: 'termine' };
+    const result: TranscodeResult = { transcoded: 0, skipped: 0, failed: 0, stopped: 'finished' };
 
-    // Deux passages concurrents, c'est deux ffmpeg : exactement ce que « une
-    // seule tâche à la fois » cherche à éviter.
+    // Two concurrent passes mean two ffmpeg processes, exactly what "one task at a
+    // time" prevents.
     if (this.running || !this.deps.enabled()) return result;
     this.running = true;
     this.stopping = false;
@@ -427,12 +401,11 @@ export class TranscodePass {
           cursor = page.nextCursor;
 
           for (const item of page.items) {
-            // La raison est écrite dans `result`, pas dans une copie rendue à
-            // l'appelant : c'est ce même objet que le `finally` journalise, et
-            // une copie ferait dire « terminé » à un passage arrêté sur son
-            // plafond — la seule trace qu'il reste des vidéos à faire.
-            if (this.stopping || !this.deps.enabled()) return this.stoppedWith(result, 'arret');
-            if (result.transcoded >= MAX_PER_RUN) return this.stoppedWith(result, 'plafond');
+            // The reason is written into `result`, not a copy returned to the caller:
+            // `finally` logs this same object, and a copy would report "completed" for
+            // a capped pass — the only trace that videos remain.
+            if (this.stopping || !this.deps.enabled()) return this.stoppedWith(result, 'stopped');
+            if (result.transcoded >= MAX_PER_RUN) return this.stoppedWith(result, 'ceiling');
 
             const { bytes, maxBytes } = this.deps.store.stats();
             if (bytes >= maxBytes * BUDGET_RATIO) return this.stoppedWith(result, 'budget');
@@ -440,9 +413,8 @@ export class TranscodePass {
             if (item.kind !== 'video' || !needsTranscoding(item.videoCodec)) continue;
 
             const md5 = this.deps.media.getFileMeta(item.id)?.md5 ?? null;
-            // `has` et non `hit` : consulter le magasin ne doit pas retarder
-            // l'entrée dans l'ordre d'éviction, sans quoi le passage protégerait
-            // ce que personne n'a jamais regardé.
+            // `has`, not `hit`: checking the store must not delay eviction order,
+            // otherwise the pass would protect content nobody viewed.
             if (this.deps.store.has(playableKey(item.id, md5))) {
               result.skipped++;
               continue;
@@ -457,20 +429,14 @@ export class TranscodePass {
               );
               result.transcoded++;
             } catch (error) {
-              // Un fichier que ffmpeg refuse ne doit pas arrêter le passage :
-              // les vidéos suivantes n'y sont pour rien, et le prochain tour
-              // réessaiera celle-ci. Un abandon en fait partie — le passage
-              // s'arrêtera de lui-même au tour de boucle suivant.
+              // A file ffmpeg refuses must not stop the pass: later videos are unrelated,
+              // and the next pass retries it. Abort is included; the loop stops next turn.
               //
-              // `warn` et non `debug` : une instance tourne en `info`, et le
-              // résumé de fin ne donne qu'un compteur. Sans cette ligne, une
-              // vidéo que ffmpeg refuse échoue à chaque passage horaire sans
-              // qu'on puisse jamais savoir pourquoi — et le retour du binaire
-              // est précisément la seule chose qui le dise.
+              // `warn`, not `debug`: instances run at `info`, and the summary gives only
+              // a count. Without this line, a video ffmpeg refuses fails hourly with no
+              // explanation, while binary output is the only source of the reason.
               result.failed++;
-              this.deps.log.warn(
-                `Transcodage de ${item.id} en échec : ${(error as Error).message}`,
-              );
+              this.deps.log.warn(`Transcoding ${item.id} failed: ${(error as Error).message}`);
             }
           }
         } while (cursor !== null);
@@ -481,8 +447,8 @@ export class TranscodePass {
       this.running = false;
       if (result.transcoded > 0 || result.failed > 0) {
         this.deps.log.info(
-          `Transcodage : ${result.transcoded} vidéos préparées, ${result.skipped} déjà prêtes, ` +
-            `${result.failed} en échec (${result.stopped})`,
+          `Transcode: ${result.transcoded} videos prepared, ${result.skipped} already ready, ` +
+            `${result.failed} failed (${result.stopped})`,
         );
       }
     }

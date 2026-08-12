@@ -1,34 +1,32 @@
-import type { AlbumVisitRow, DeviceKind, VisitorRow, VisitsOverview } from '@gdv/shared';
+import type { AlbumVisitRow, DeviceKind, VisitorRow, VisitsOverview } from '@nonni/shared';
 import type { Db } from './db.js';
 
 /**
- * Télémétrie de visite : qui ouvre quel album, et depuis quand.
+ * Visit telemetry: who opens which album, and since when.
  *
- * Trois choix gouvernent ce fichier (D260809h).
+ * Three choices govern this file (D260809h).
  *
- * **La mesure est côté serveur.** L'accès à cette galerie est authentifié par
- * clé : seule l'instance sait *qui* regarde. Un traceur JS tiers verrait un
- * navigateur anonyme et raterait exactement la moitié de la question.
+ * **Measurement is server-side.** Access to this gallery is authenticated by key,
+ * so only the instance knows *who* is viewing. A third-party JavaScript tracker
+ * would see an anonymous browser and miss exactly half the question.
  *
- * **Elle est agrégée à l'écriture.** Une ligne par (album, clé, session, jour)
- * avec des compteurs, jamais une ligne par requête : la table reste de l'ordre
- * de la dizaine de lignes par jour au lieu de la dizaine de milliers, et il n'y
- * a aucune purge sérieuse à écrire.
+ * **It is aggregated on write.** One row per (album, key, session, day) with counters,
+ * never one row per request: the table remains around ten rows per day rather than
+ * tens of thousands, and requires no substantial purge.
  *
- * **Elle enregistre peu.** La clé, la session, l'album, le jour et des
- * compteurs. Jamais d'adresse IP, jamais de user-agent brut, jamais le média
- * ouvert : ce serait l'historique de lecture de quelqu'un, et personne ne l'a
- * demandé.
+ * **It records little.** The key, session, album, day and counters. Never an IP
+ * address, raw user-agent or opened media item: that would be someone's viewing
+ * history, and nobody asked for it.
  */
 
 const JOUR_MS = 24 * 60 * 60 * 1000;
 
-/** `YYYY-MM-DD` en UTC — la même clé de journée que partout ailleurs. */
+/** `YYYY-MM-DD` in UTC — the same day key as everywhere else. */
 function jour(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Ce que rend l'agrégation par clé avant d'être complétée par le rôle du compte. */
+/** Key-level aggregation before the account role is added. */
 interface LigneVisiteur {
   username: string;
   lastAt: string | null;
@@ -43,24 +41,23 @@ export class VisitLog {
   constructor(private readonly db: Db) {}
 
   /**
-   * Ouverture d'un album. Appelée sur la **première page** de la grille
-   * seulement : les suivantes sont le même geste, et compter chaque défilement
-   * ferait dire à la colonne « visites » le nombre de pages tournées.
+   * Album opening. Called only on the grid's **first page**: subsequent pages are
+   * part of the same action, and counting every scroll would make the "visits"
+   * column report the number of pages turned.
    */
   recordAlbumOpen(albumId: string, username: string, sessionId: string, now = new Date()): void {
     this.record('visits', albumId, username, sessionId, now);
   }
 
-  /** Ouverture d'une photo en visionneuse. */
+  /** Opening a photo in the viewer. */
   recordPhotoOpen(albumId: string, username: string, sessionId: string, now = new Date()): void {
     this.record('photos', albumId, username, sessionId, now);
   }
 
   /**
-   * Le compteur nommé est incrémenté, la ligne créée si le quadruplet est
-   * nouveau. Le nom de colonne est interpolé, ce qui est acceptable ici pour la
-   * raison du sens de tri de `repo.ts` : il vient d'une union fermée du
-   * compilateur, jamais d'une chaîne reçue.
+   * Increments the named counter and creates the row when the tuple is new. The column
+   * name is interpolated, which is safe here for the same reason as the sort order in
+   * `repo.ts`: it comes from a closed compiler union, never from a received string.
    */
   private record(
     colonne: 'visits' | 'photos',
@@ -80,14 +77,13 @@ export class VisitLog {
   }
 
   /**
-   * Ce qu'il faut à l'onglet « Visites » : qui est venu, et ce qui a été
-   * regardé, sur les `days` derniers jours (celui-ci compris).
+   * What the "Visits" tab needs: who visited and what they viewed over the last
+   * `days` days, including today.
    *
-   * Trois requêtes bornées plutôt qu'une jointure : les visites, les sessions —
-   * qui portent la classe d'appareil et la dernière requête reçue —, puis les
-   * rôles. Une clé qui s'est connectée sans rien ouvrir figure quand même dans
-   * la liste, à zéro : « connecté, n'a rien regardé » est une réponse, et la
-   * faire disparaître ferait croire à une absence de visiteur.
+   * Three bounded queries rather than a join: visits, sessions — which carry the
+   * device class and last received request — then roles. A key that signed in without
+   * opening anything still appears with zero counts: "signed in, viewed nothing" is
+   * an answer, and omitting it would suggest no visitor was present.
    */
   overview(days: number, now = new Date()): VisitsOverview {
     const since = jour(new Date(now.getTime() - (days - 1) * JOUR_MS));
@@ -107,11 +103,10 @@ export class VisitLog {
       )
       .all(since) as LigneVisiteur[];
 
-    // Les deux colonnes que seule la session porte. La borne est la même chaîne
-    // que ci-dessus, et c'est volontaire : `last_seen_at` est un instant ISO, et
-    // « 2026-08-09T12:00:00.000Z » > « 2026-08-09 » dans l'ordre lexicographique
-    // qui est celui de SQLite — le jour de la borne est donc inclus, comme pour
-    // les visites.
+    // The two columns carried only by the session. The boundary is deliberately the
+    // same string as above: `last_seen_at` is an ISO instant, and
+    // "2026-08-09T12:00:00.000Z" > "2026-08-09" in SQLite's lexicographic order —
+    // the boundary day is therefore included, as it is for visits.
     const vues = this.db
       .prepare(
         `SELECT username,
@@ -131,10 +126,10 @@ export class VisitLog {
       ).map((row) => row.username.toLowerCase()),
     );
 
-    // Indexé en minuscules : `album_visits.username` est `COLLATE NOCASE` et
-    // `sessions.username` ne l'est pas. Les deux portent la casse stockée du
-    // compte, donc la même chaîne en pratique — mais faire dépendre la fusion
-    // de cette coïncidence dédoublerait un visiteur le jour où elle cesse.
+    // Indexed in lower case: `album_visits.username` uses `COLLATE NOCASE` while
+    // `sessions.username` does not. Both carry the account's stored casing and are
+    // therefore the same string in practice, but relying on that coincidence would
+    // duplicate a visitor the day it stops holding.
     const visiteurs = new Map<string, VisitorRow>();
     const entree = (username: string): VisitorRow => {
       const cle = username.toLowerCase();
@@ -175,9 +170,9 @@ export class VisitLog {
                 SUM(v.photos)                AS photos,
                 MAX(v.last_at)               AS lastAt
            FROM album_visits v
-           -- Jointure externe, et le titre peut donc être NULL : l'album a pu
-           -- être supprimé depuis, sans que sa fréquentation passée cesse
-           -- d'être vraie. C'est tout l'intérêt de l'absence de clé étrangère.
+           -- Outer join, so the title may be NULL: the album may have been deleted
+           -- without making its past visits untrue. This is the purpose of having no
+           -- foreign key.
            LEFT JOIN albums a ON a.id = v.album_id
           WHERE v.day >= ?
           GROUP BY v.album_id
@@ -188,8 +183,7 @@ export class VisitLog {
     return {
       days,
       since,
-      // Le plus récent d'abord : c'est « qui est venu récemment » qu'on ouvre
-      // cet onglet pour savoir.
+      // Most recent first: this tab is opened to learn "who visited recently".
       visitors: [...visiteurs.values()].sort((a, b) =>
         (b.lastSeenAt ?? b.lastAt ?? '').localeCompare(a.lastSeenAt ?? a.lastAt ?? ''),
       ),
@@ -198,9 +192,9 @@ export class VisitLog {
   }
 
   /**
-   * Oublie les journées trop anciennes. Quatre cents jours par défaut, pour que
-   * la comparaison d'une année sur l'autre reste possible — un mois d'août se
-   * lit contre celui d'avant, pas contre juillet.
+   * Forgets days that are too old. Four hundred days by default so year-on-year
+   * comparison remains possible — one August is compared with the previous one,
+   * not with July.
    */
   purgeOld(days: number, now = new Date()): number {
     const borne = jour(new Date(now.getTime() - days * JOUR_MS));

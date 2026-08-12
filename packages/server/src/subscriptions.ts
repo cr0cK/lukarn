@@ -1,24 +1,24 @@
 import type { Db } from './db.js';
 
 /**
- * Abonnements aux nouveautés d'un album.
+ * Subscriptions to new items in an album.
  *
- * Le problème que cette table résout tient en une phrase : **une identité n'est
- * rattachée à aucun album.** L'accès vient de la clé d'accès (`users`),
- * l'identité de l'adresse vérifiée (`commenters`), et rien ne relie les deux —
- * on ne sait donc pas nativement à qui écrire quand des photos arrivent.
+ * The problem this table solves fits in one sentence: **an identity is not attached
+ * to any album.** Access comes from the access key (`users`), identity from the
+ * verified address (`commenters`), and nothing links the two — so there is no
+ * inherent way to know whom to email when photos arrive.
  *
- * La réponse retenue est l'abonnement **à l'ouverture de l'album** : ouvrir un
- * album est un signal d'intérêt bien meilleur qu'une case à cocher, que
- * personne ne coche. Seules les identités déjà vérifiées sont concernées — ces
- * gens ont fourni leur adresse en connaissance de cause (D41).
+ * The chosen answer is subscription **when the album is opened**: opening an album
+ * is a much better signal of interest than a checkbox nobody selects. Only already
+ * verified identities are included — these people knowingly provided their address
+ * (D41).
  *
- * D'où l'état plutôt que la simple présence d'une ligne : l'abonnement étant
- * automatique, une ligne effacée au désabonnement serait recréée à la
- * réouverture de l'album le lendemain.
+ * Hence storing state rather than the mere presence of a row: because subscription
+ * is automatic, a row deleted on unsubscribe would be recreated when the album is
+ * opened again the next day.
  */
 
-/** Ce que le notifieur a besoin de savoir d'un abonné. */
+/** The subscriber data required by the notifier. */
 export interface Subscriber {
   id: number;
   email: string;
@@ -31,14 +31,14 @@ export class SubscriptionRepo {
   constructor(private readonly db: Db) {}
 
   /**
-   * Abonne à l'ouverture de l'album. Ne fait rien si l'identité n'est pas
-   * vérifiée, ni si une ligne existe déjà — c'est tout l'intérêt du
-   * `INSERT OR IGNORE` : un `opted_out` reste `opted_out`, sinon rouvrir
-   * l'album réabonnerait celui qui vient de se désabonner.
+   * Subscribes when the album is opened. Does nothing if the identity is not verified
+   * or a row already exists — the purpose of `INSERT OR IGNORE`: an `opted_out`
+   * remains `opted_out`, otherwise reopening the album would resubscribe someone who
+   * just unsubscribed.
    *
-   * La condition de vérification est portée par le SQL et non par l'appelant :
-   * une adresse seulement déclarée peut être celle d'un tiers, à qui cette
-   * galerie n'a rien à écrire (D39).
+   * The verification condition is enforced by SQL rather than the caller: a merely
+   * declared address may belong to a third party whom this gallery must not email
+   * (D39).
    */
   subscribe(commenterId: number, albumId: string): void {
     this.db
@@ -50,13 +50,13 @@ export class SubscriptionRepo {
   }
 
   /**
-   * Désabonne de **cet** album, sans toucher aux autres ni à `commenters.notify`
-   * qui gouverne les réponses aux commentaires. Trouver « Noël 2019 » trop
-   * bavard ne doit pas faire perdre les réponses à ses propres messages.
+   * Unsubscribes from **this** album without touching others or `commenters.notify`,
+   * which governs replies to comments. Finding "Christmas 2019" too busy must not
+   * lose replies to one's own messages.
    *
-   * Écrit la ligne si elle n'existe pas : le lien vit dans un email qu'on
-   * rouvre des mois plus tard, et l'abonnement a pu être effacé entre-temps —
-   * mieux vaut enregistrer le refus que de le perdre.
+   * Writes the row if it does not exist: the link lives in an email that may be
+   * reopened months later, and the subscription may have been deleted in the
+   * meantime — it is better to record the refusal than lose it.
    */
   unsubscribe(commenterId: number, albumId: string): void {
     this.db
@@ -68,7 +68,7 @@ export class SubscriptionRepo {
       .run(commenterId, albumId, new Date().toISOString());
   }
 
-  /** État de l'abonnement, `null` si l'album n'a jamais été ouvert. */
+  /** Subscription state, `null` if the album has never been opened. */
   state(commenterId: number, albumId: string): SubscriptionState | null {
     const row = this.db
       .prepare('SELECT state FROM album_subscriptions WHERE commenter_id = ? AND album_id = ?')
@@ -77,12 +77,12 @@ export class SubscriptionRepo {
   }
 
   /**
-   * À qui annoncer les nouveautés de cet album.
+   * Who should receive announcements of this album's new items.
    *
-   * `notify = 0` exclut aussi : c'est le seul interrupteur qui dise « plus
-   * aucun email de cette galerie », et le lien des notifications de
-   * commentaires est le seul endroit où on peut l'actionner. Continuer à écrire
-   * à quelqu'un qui l'a coupé serait la meilleure façon de finir en indésirable.
+   * `notify = 0` also excludes: it is the only switch that means "no more email
+   * from this gallery", and the comment-notification link is the only place it can
+   * be activated. Continuing to email someone who disabled it would be the surest
+   * route to the spam folder.
    */
   subscribers(albumId: string): Subscriber[] {
     const rows = this.db

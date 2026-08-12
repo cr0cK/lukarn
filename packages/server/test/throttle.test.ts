@@ -3,9 +3,8 @@ import { describe, it } from 'node:test';
 import { LoginThrottle } from '../src/throttle.js';
 
 /**
- * Limitation des tentatives de connexion. Chaque tentative refusée coûte une
- * vérification argon2, volontairement lente : ce qui n'est pas freiné ici se
- * paie en CPU sur le VPS.
+ * Login attempt throttling. Each rejected attempt costs a deliberately slow
+ * argon2 verification: anything not throttled here consumes CPU on the VPS.
  */
 
 const now = 1_700_000_000_000;
@@ -15,8 +14,8 @@ const depuis = (ip: string, username: string): { ip: string; username: string } 
   username,
 });
 
-describe('throttle de connexion', () => {
-  it('laisse passer les premières erreurs de frappe', () => {
+describe('login throttling', () => {
+  it('allows the first typing mistakes', () => {
     const throttle = new LoginThrottle();
     const moi = depuis('10.0.0.1', 'alexis');
 
@@ -30,7 +29,7 @@ describe('throttle de connexion', () => {
     assert.ok(throttle.blockedFor(moi, now) > 0);
   });
 
-  it('double le délai à chaque échec supplémentaire', () => {
+  it('doubles the delay for each additional failure', () => {
     const throttle = new LoginThrottle();
     const moi = depuis('10.0.0.1', 'alexis');
 
@@ -41,7 +40,7 @@ describe('throttle de connexion', () => {
     assert.equal(throttle.blockedFor(moi, now), premier * 2);
   });
 
-  it('oublie une série ancienne', () => {
+  it('forgets an old series', () => {
     const throttle = new LoginThrottle();
     const moi = depuis('10.0.0.1', 'alexis');
     for (let essai = 0; essai < 8; essai++) throttle.fail(moi, now);
@@ -49,36 +48,36 @@ describe('throttle de connexion', () => {
     assert.equal(throttle.blockedFor(moi, now + 2 * 60 * 60 * 1000), 0);
   });
 
-  it('laisse tranquille un autre visiteur sur un autre compte', () => {
+  it('leaves another visitor on another account unaffected', () => {
     const throttle = new LoginThrottle();
     for (let essai = 0; essai < 8; essai++) throttle.fail(depuis('10.0.0.1', 'alexis'), now);
 
     assert.equal(throttle.blockedFor(depuis('10.0.0.2', 'famille'), now), 0);
   });
 
-  it('freine une adresse qui essaie des identifiants au hasard', () => {
+  it('throttles an address trying random usernames', () => {
     const throttle = new LoginThrottle();
 
-    // Chaque tentative porte un identifiant inédit : aucun compteur de couple
-    // ne dépasse une tentative. Sans plafond par adresse, l'attaquant obtient
-    // autant de vérifications argon2 qu'il en demande.
+    // Each attempt uses a new username, so no pair counter exceeds one attempt.
+    // Without a per-address limit, the attacker gets as many argon2
+    // verifications as they request.
     for (let essai = 0; essai < 40; essai++) {
       throttle.fail(depuis('10.0.0.66', `inconnu-${essai}`), now);
     }
 
     assert.ok(
       throttle.blockedFor(depuis('10.0.0.66', 'encore-un-autre'), now) > 0,
-      "l'adresse doit être freinée quel que soit l'identifiant présenté",
+      'the address must be throttled regardless of the supplied username',
     );
-    // Un visiteur venu d'ailleurs ne paie pas pour elle.
+    // A visitor from elsewhere must not pay for it.
     assert.equal(throttle.blockedFor(depuis('10.0.0.7', 'alexis'), now), 0);
   });
 
-  it('freine une attaque distribuée sur un seul compte', () => {
+  it('throttles a distributed attack against one account', () => {
     const throttle = new LoginThrottle();
 
-    // Une adresse différente à chaque essai : ni le couple ni l'adresse ne
-    // voient quoi que ce soit, seul le compte visé accumule.
+    // Each attempt uses a different address, so neither the pair nor the
+    // address sees a pattern; only the targeted account accumulates failures.
     for (let essai = 0; essai < 20; essai++) {
       throttle.fail(depuis(`203.0.113.${essai}`, 'alexis'), now);
     }
@@ -87,18 +86,18 @@ describe('throttle de connexion', () => {
     assert.equal(throttle.blockedFor(depuis('198.51.100.9', 'famille'), now), 0);
   });
 
-  it('applique le plus contraignant des trois axes', () => {
+  it('applies the strictest of the three dimensions', () => {
     const throttle = new LoginThrottle();
     const moi = depuis('10.0.0.1', 'alexis');
 
-    // Six échecs sur le couple : pénalité déjà active alors que les compteurs
-    // par identifiant (10 essais libres) et par adresse (20) dorment encore.
+    // Six failures for the pair activate a penalty while the username counter
+    // (10 free attempts) and address counter (20) are still inactive.
     for (let essai = 0; essai < 6; essai++) throttle.fail(moi, now);
 
     assert.ok(throttle.blockedFor(moi, now) > 0);
   });
 
-  it('libère le visiteur légitime après une connexion réussie', () => {
+  it('releases the legitimate visitor after a successful login', () => {
     const throttle = new LoginThrottle();
     const moi = depuis('10.0.0.1', 'alexis');
     for (let essai = 0; essai < 8; essai++) throttle.fail(moi, now);
@@ -108,20 +107,20 @@ describe('throttle de connexion', () => {
     assert.equal(throttle.blockedFor(moi, now), 0);
   });
 
-  it("ne laisse pas un compte valide effacer l'ardoise de son adresse", () => {
+  it('does not let a valid account clear the record for its address', () => {
     const throttle = new LoginThrottle();
 
     for (let essai = 0; essai < 40; essai++) {
       throttle.fail(depuis('10.0.0.66', `inconnu-${essai}`), now);
     }
-    // L'attaquant possède un compte sur l'instance et s'y connecte pour
-    // remettre les compteurs à zéro entre deux rafales.
+    // The attacker owns an account on the instance and logs into it to reset
+    // counters between bursts.
     throttle.succeed(depuis('10.0.0.66', 'complice'));
 
     assert.ok(throttle.blockedFor(depuis('10.0.0.66', 'inconnu-suivant'), now) > 0);
   });
 
-  it('oublie ses compteurs expirés quand on lui demande le ménage', () => {
+  it('forgets expired counters when asked to clean up', () => {
     const throttle = new LoginThrottle();
     for (let essai = 0; essai < 500; essai++) {
       throttle.fail(depuis('10.0.0.66', `inconnu-${essai}`), now);
@@ -131,18 +130,18 @@ describe('throttle de connexion', () => {
     const oublies = throttle.purge(now + 2 * 60 * 60 * 1000);
 
     assert.ok(oublies > 0);
-    assert.equal(throttle.size, 0, 'aucune série ne doit survivre à son expiration');
+    assert.equal(throttle.size, 0, 'no series should survive its expiry');
   });
 
-  it('borne sa table même sans ménage', () => {
+  it('bounds its table even without clean-up', () => {
     const throttle = new LoginThrottle();
 
-    // Une rafale bien plus grosse que la borne, sur une heure glissante : la
-    // purge horaire n'aurait rien à effacer, c'est la borne qui doit tenir.
+    // A burst far larger than the limit within a rolling hour gives the hourly
+    // purge nothing to remove, so the limit itself must hold.
     for (let essai = 0; essai < 40_000; essai++) {
       throttle.fail(depuis(`198.51.${essai % 256}.${essai % 251}`, `inconnu-${essai}`), now);
     }
 
-    assert.ok(throttle.size <= 20_000, `table non bornée : ${throttle.size} entrées`);
+    assert.ok(throttle.size <= 20_000, `unbounded table: ${throttle.size} entries`);
   });
 });

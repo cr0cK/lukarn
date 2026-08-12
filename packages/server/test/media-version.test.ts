@@ -7,16 +7,15 @@ import { openDb } from '../src/db.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
 /**
- * Versionnement des dérivés.
+ * Derived media versioning.
  *
- * Drive conserve l'identifiant d'un fichier dont on remplace le contenu par une
- * nouvelle version (« Gérer les versions »). Comme les rendus sont servis en
- * `Cache-Control: immutable`, le navigateur ne revalide jamais : c'est l'URL
- * elle-même qui doit changer, sans quoi une photo corrigée resterait affichée
- * dans son ancienne version indéfiniment.
+ * Drive retains the identifier of a file whose content is replaced with a new
+ * version ("Manage versions"). Since rendered media is served with
+ * `Cache-Control: immutable`, the browser never revalidates: the URL itself
+ * must change, or an edited photo would display its old version indefinitely.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'gdv-version-'));
+const dir = mkdtempSync(join(tmpdir(), 'nonni-version-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);
@@ -52,20 +51,20 @@ function media(id: string, md5: string | null): MediaUpsert {
   };
 }
 
-describe('version exposée aux clients', () => {
-  it("dérive la version de l'empreinte du contenu", () => {
+describe('version exposed to clients', () => {
+  it('derives the version from the content hash', () => {
     repo.upsertMany([media('photo-a', '0123456789abcdef0123456789abcdef')], 'v1');
 
     const item = repo.listItems('album', 10, null).items.find((i) => i.id === 'photo-a');
     assert.equal(item?.version, '01234567');
   });
 
-  it('change de version quand le contenu du même fichier est remplacé', () => {
+  it('changes version when the same file content is replaced', () => {
     repo.upsertMany([media('photo-b', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')], 'v1');
     const avant = repo.listItems('album', 10, null).items.find((i) => i.id === 'photo-b')?.version;
 
-    // Même identifiant Drive, contenu différent : c'est exactement le cas que
-    // l'identifiant seul ne permet pas de distinguer.
+    // Same Drive identifier, different content: exactly the case the identifier
+    // alone cannot distinguish.
     repo.upsertMany([media('photo-b', 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')], 'v2');
     const apres = repo.listItems('album', 10, null).items.find((i) => i.id === 'photo-b')?.version;
 
@@ -73,27 +72,26 @@ describe('version exposée aux clients', () => {
     assert.equal(apres, 'bbbbbbbb');
   });
 
-  it('tolère un fichier sans empreinte', () => {
+  it('tolerates a file without a hash', () => {
     repo.upsertMany([media('photo-c', null)], 'v1');
 
     const item = repo.listItems('album', 10, null).items.find((i) => i.id === 'photo-c');
-    // Pas de version dans l'URL : on retrouve le comportement d'avant, sans erreur.
+    // No version in the URL: previous behaviour is preserved without an error.
     assert.equal(item?.version, null);
 
     const meta = repo.getFileMeta('photo-c');
     assert.equal(meta?.md5, null);
   });
 
-  it("expose la version de la couverture pour la vignette d'album", () => {
+  it('exposes the cover version for the album thumbnail', () => {
     const stats = repo.stats('album');
     assert.ok(stats.coverId);
-    // La couverture est une URL comme une autre : elle doit pouvoir être
-    // invalidée de la même façon.
+    // A cover is a URL like any other: it must be invalidated in the same way.
     const cover = repo.getFileMeta(stats.coverId!);
     assert.equal(stats.coverVersion, cover?.md5 ? cover.md5.slice(0, 8) : null);
   });
 
-  it('rend md5 disponible pour la clé de cache serveur', () => {
+  it('makes md5 available for the server cache key', () => {
     const meta = repo.getFileMeta('photo-a');
     assert.equal(meta?.md5, '0123456789abcdef0123456789abcdef');
   });

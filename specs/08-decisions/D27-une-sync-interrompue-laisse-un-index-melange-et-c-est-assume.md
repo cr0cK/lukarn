@@ -1,28 +1,28 @@
-# D27 — Une sync interrompue laisse un index mélangé, et c'est assumé
+# D27 — An interrupted sync leaves a mixed index, and that is accepted
 
-**Contexte.** `Syncer.run()` écrit par lots de 500, chaque lot dans sa propre
-transaction, pour que l'album devienne consultable pendant la synchronisation
-(voir [02](../02-architecture.md)). Si la sync échoue à mi-parcours, les lots déjà
-écrits sont **validés** : l'index mélange l'ancien contenu et le nouveau. Le
-commentaire du bloc `catch` affirmait le contraire — que l'index précédent
-continuait d'être servi.
+**Context.** `Syncer.run()` writes in batches of 500, each batch in its own
+transaction, so that the album becomes browsable during synchronisation (see
+[02](../02-architecture.md)). If the sync fails partway through, the batches
+already written are **committed**: the index mixes old and new content. The
+comment in the `catch` block claimed the opposite — that the previous index
+continued to be served.
 
-**Choix.** Corriger le commentaire, pas l'architecture. L'état obtenu est
-cohérent : `deleteStale` n'a pas eu lieu, donc rien n'a été retiré, et tout ce
-qui vient d'être écrit existe bien dans Drive. L'album est simplement incomplet,
-et `sync_state` le dit — statut `error`, message, et `lastSyncAt` qui reste celui
-du dernier passage **réussi**.
+**Decision.** Correct the comment, not the architecture. The resulting state is
+consistent: `deleteStale` has not run, so nothing has been removed, and
+everything just written does exist in Drive. The album is simply incomplete,
+and `sync_state` says so — `error` status, message, and `lastSyncAt` remaining
+that of the last **successful** run.
 
-**Écarté.** Un index de staging : écrire la sync dans une table parallèle, puis
-basculer en une transaction. Cela doublerait l'espace occupé par l'index, ferait
-perdre la propriété qui justifie les lots — l'album consultable pendant la sync,
-qui compte pour un premier remplissage de plusieurs minutes — et n'apporterait
-qu'une atomicité dont personne n'a besoin ici : un album incomplet pendant une
-heure n'est pas un problème de correction, c'est un retard que la sync suivante
-rattrape. Écarté aussi : une transaction unique pour toute la sync, qui tiendrait
-un verrou d'écriture SQLite pendant tout le parcours Drive.
+**Rejected.** A staging index: writing the sync to a parallel table, then
+switching over in a single transaction. This would double the space occupied by
+the index, lose the property that justifies the batches — the album being
+browsable during the sync, which matters for an initial load lasting several
+minutes — and only provide atomicity that nobody needs here: an incomplete album
+for an hour is not a correctness problem, it is a delay that the next sync
+catches up on. Also rejected: a single transaction for the entire sync, which
+would hold a SQLite write lock throughout the Drive traversal.
 
-**Conséquences.** `lastSyncAt` doit se lire comme « date du dernier passage
-complet », jamais comme « date de l'état actuel de l'index ». Un échec répété
-laisse un album qui grossit un peu à chaque tentative sans jamais se nettoyer :
-c'est le `deleteStale` de la première sync réussie qui remet tout d'aplomb.
+**Consequences.** `lastSyncAt` must be read as "date of the last complete run",
+never as "date of the current index state". Repeated failure leaves an album
+that grows slightly with each attempt without ever being cleaned up: it is the
+`deleteStale` of the first successful sync that puts everything right.

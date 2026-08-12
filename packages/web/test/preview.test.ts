@@ -3,17 +3,17 @@ import { describe, it } from 'node:test';
 import { previewOverlay } from '../src/lib/preview';
 
 /**
- * Ce qui s'affiche pendant qu'une photo se prépare.
+ * What is displayed while a photo is being prepared.
  *
- * Régression déjà survenue : l'aperçu flou était montré **sans** indicateur.
- * Rien ne signalait une attente, si bien que l'ouverture donnait l'impression
- * d'une photo floue plutôt que d'une photo qui charge — et le défaut passait
- * inaperçu dès que le rendu était déjà en cache, donc « aléatoirement ».
+ * A previous regression showed the blurred preview **without** an indicator.
+ * Nothing signalled a wait, so opening looked like a blurry photo rather than
+ * one that was loading — and the defect disappeared whenever the render was
+ * already cached, making it seem "random".
  */
 
-describe('affichage pendant le chargement', () => {
-  it("montre l'aperçu et l'indicateur ensemble", () => {
-    // L'invariant qui avait cédé : jamais de flou muet.
+describe('display while loading', () => {
+  it('shows the preview and indicator together', () => {
+    // This is the invariant that regressed: never show silent blur.
     const overlay = previewOverlay({ loaded: false, failed: false, measured: true });
 
     assert.equal(overlay.placeholder, true);
@@ -21,16 +21,16 @@ describe('affichage pendant le chargement', () => {
     assert.equal(overlay.error, false);
   });
 
-  it("signale l'attente même sans aperçu à montrer", () => {
-    // Dimensions inconnues : rien à positionner, mais un écran noir muet serait
-    // encore plus déroutant qu'un aperçu flou.
+  it('signals waiting even without a preview to show', () => {
+    // Unknown dimensions leave nothing to position, but a silent black screen
+    // would be even more confusing than a blurred preview.
     const overlay = previewOverlay({ loaded: false, failed: false, measured: false });
 
     assert.equal(overlay.placeholder, false);
     assert.equal(overlay.spinner, true);
   });
 
-  it('retire les deux dès que la photo est là', () => {
+  it('removes both as soon as the photo is ready', () => {
     const overlay = previewOverlay({ loaded: true, failed: false, measured: true });
 
     assert.equal(overlay.placeholder, false);
@@ -38,9 +38,9 @@ describe('affichage pendant le chargement', () => {
     assert.equal(overlay.error, false);
   });
 
-  it("n'annonce pas une attente qui n'aura pas lieu", () => {
-    // Échec : l'indicateur tournerait indéfiniment, et l'aperçu flou laisserait
-    // croire que la photo finira par arriver.
+  it('does not announce a wait that will not happen', () => {
+    // On failure, the indicator would spin indefinitely and the blurred preview
+    // would imply that the photo will eventually arrive.
     const overlay = previewOverlay({ loaded: false, failed: true, measured: true });
 
     assert.equal(overlay.error, true);
@@ -48,33 +48,33 @@ describe('affichage pendant le chargement', () => {
     assert.equal(overlay.placeholder, false);
   });
 
-  it("laisse l'échec primer sur un chargement abouti", () => {
-    // Le rendu `hd` peut échouer après l'affichage du rendu d'écran : mieux
-    // vaut le dire que de laisser croire à une image complète.
+  it('lets failure take precedence over completed loading', () => {
+    // The `hd` render may fail after the screen render appears: reporting that
+    // is better than implying the image is complete.
     const overlay = previewOverlay({ loaded: true, failed: true, measured: true });
     assert.equal(overlay.error, true);
   });
 
-  it("arrête l'indicateur d'un rendu qui a échoué avant d'être mesuré", () => {
-    // Rien à positionner, donc rien à flouter : il ne reste que le message. La
-    // combinaison est celle d'un rendu refusé avant que ses dimensions soient
-    // connues — l'indicateur tournerait alors sur un écran définitivement vide.
+  it('stops the indicator for a render that failed before measurement', () => {
+    // Nothing can be positioned or blurred, leaving only the message. This
+    // combination represents a render rejected before its dimensions were
+    // known — otherwise the indicator would spin on a permanently empty screen.
     const overlay = previewOverlay({ loaded: false, failed: true, measured: false });
 
     assert.equal(overlay.error, true);
     assert.equal(overlay.spinner, false);
   });
 
-  it('ne montre jamais deux états à la fois', () => {
+  it('never shows two states at once', () => {
     for (const loaded of [false, true]) {
       for (const failed of [false, true]) {
         for (const measured of [false, true]) {
           const { placeholder, spinner, error } = previewOverlay({ loaded, failed, measured });
           if (error) {
-            assert.ok(!placeholder && !spinner, 'un échec exclut aperçu et indicateur');
+            assert.ok(!placeholder && !spinner, 'failure excludes both preview and indicator');
           }
           if (placeholder) {
-            assert.ok(spinner, 'un aperçu flou sans indicateur se lit comme un défaut');
+            assert.ok(spinner, 'a blurred preview without an indicator looks like a defect');
           }
         }
       }

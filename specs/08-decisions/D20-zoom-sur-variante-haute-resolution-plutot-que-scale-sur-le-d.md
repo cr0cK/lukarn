@@ -1,20 +1,19 @@
-# D20 — Zoom sur variante haute résolution plutôt que `scale()` sur le rendu d'écran
+# D20 — Zooming with a high-resolution variant rather than `scale()` on the screen rendering
 
-**Contexte.** L'utilisateur veut examiner le détail d'une photo dans la
-visionneuse.
+**Context.** The user wants to examine the details of a photo in the viewer.
 
-**Choix.** `ZoomableImage` (`packages/web/src/components/ZoomableImage.tsx`)
-calcule une « échelle native » — un pixel de photo par pixel d'écran — depuis les
-dimensions de l'index, et charge la variante `hd` **hors écran** au premier
-agrandissement avant de substituer la source.
+**Decision.** `ZoomableImage` (`packages/web/src/components/ZoomableImage.tsx`)
+calculates a "native scale" — one photo pixel per screen pixel — from the index
+dimensions, and loads the `hd` variant **off-screen** on the first zoom before
+substituting the source.
 
-**Écarté.** Un `transform: scale()` sur le rendu `full` : il n'agrandit que des
-pixels déjà rasterisés à 2560 px, donc il ne révèle aucun détail. Écarté aussi :
-charger `hd` d'emblée, qui alourdirait chaque ouverture de photo pour un geste
-que la plupart des visiteurs ne feront pas ; et rebasculer sur `full` en revenant
-au cadre, qui ferait clignoter l'image à chaque aller-retour.
+**Rejected.** A `transform: scale()` on the `full` rendering: it only enlarges
+pixels already rasterised at 2560 px, so it reveals no detail. Also rejected:
+loading `hd` immediately, which would make every photo opening heavier for an
+action most visitors will not take; and switching back to `full` when returning
+to fit, which would make the image flash on every round trip.
 
-**Conséquences.** Le zoom d'une photo dont l'index ignore les dimensions retombe
-sur celles du rendu reçu — plus limité, mais présent. Un indicateur
-`chargement HD…` est affiché tant que la variante n'est pas prête, plutôt que de
-bloquer le geste.
+**Consequences.** Zooming a photo whose dimensions are unknown to the index falls
+back to those of the received rendering — more limited, but available. A
+`loading HD…` indicator is displayed until the variant is ready, rather than
+blocking the action.

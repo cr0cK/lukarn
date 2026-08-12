@@ -1,47 +1,41 @@
-# D73 — La barre supérieure tient sur une rangée, et déclare ses contrôles au lieu de les rendre
+# D73 — The top bar fits on one row and declares its controls instead of rendering them
 
-**Contexte.** Sur un téléphone, la barre montait à **101 px** — deux rangées. La
-première alignait le retour, le titre, « Admin » et « Déconnexion », soit 169 px
-de boutons texte qui ramenaient le titre d'album à `D.` et le sous-titre à
-`120 éléments · févri…`. La seconde ne portait que les deux bascules de vue,
-réduites à des icônes muettes occupant 80 px sur 393. Sur une application dont
-le principe est que le chrome ne doit pas concurrencer les photos, 12 % de la
-hauteur d'écran.
+**Context.** On a phone, the bar grew to **101 px** — two rows. The first aligned
+Back, the title, "Admin", and "Log out", amounting to 169 px of text buttons that
+reduced the album title to `D.` and the subtitle to `120 items · Febr…`. The
+second carried only the two view toggles, reduced to silent icons occupying 80 px
+out of 393. In an application built on chrome not competing with photos, this
+used 12% of the screen height.
 
-**Choix.** Une rangée à toutes les largeurs (65 px). Sous `sm`, tout ce qui n'est
-ni le retour ni le titre passe dans un menu où chaque entrée porte enfin un
-libellé — « Regrouper par jour » plutôt qu'une icône de calendrier. De `sm` à
-`lg`, les contrôles reviennent dans la barre en icônes seules. À partir de `lg`,
-les libellés reparaissent.
+**Choice.** One row at every width (65 px). Below `sm`, everything except Back
+and the title moves into a menu where every entry finally has a label — "Group by
+day" rather than a calendar icon. From `sm` to `lg`, controls return to the bar as
+icons only. From `lg` upwards, labels reappear.
 
-Pour que le même contrôle sache se rendre des deux façons, `TopBar` cesse de
-prendre des `children` et prend un tableau d'`actions` — `label`, `action`,
-`icon`, `onSelect`.
+For the same control to render both ways, `TopBar` stops accepting `children` and
+accepts an `actions` array — `label`, `action`, `icon`, `onSelect`.
 
-**Écarté.** Ne mettre que les actions de compte dans le menu et laisser les
-bascules de vue en icônes dans la barre : cela gardait un tap pour inverser le
-tri, mais laissait les deux icônes sans nom au toucher, où aucune infobulle ne
-s'affiche — c'était l'autre moitié du problème.
+**Rejected.** Putting only account actions in the menu and leaving view toggles
+as icons in the bar: this preserved one tap to reverse sorting, but left both
+icons unnamed on touch, where no tooltip appears — the other half of the problem.
 
-Écarté aussi : le kebab à toutes les largeurs. Il aurait donné un seul
-comportement à écrire et à documenter, mais un écran large n'a aucune raison de
-cacher cinq contrôles derrière un tap.
+Also rejected: the kebab at every width. It would provide one behaviour to write
+and document, but a wide screen has no reason to hide five controls behind a tap.
 
-Écarté enfin : faire apparaître les libellés dès `md`. Mesuré à 768 px, les cinq
-libellés ramenaient le titre de 456 à 144 px et tronquaient le sous-titre — le
-défaut même qu'on corrigeait. `lg` est le premier seuil où les deux tiennent.
+Finally rejected: showing labels from `md`. Measured at 768 px, the five labels
+reduced the title from 456 to 144 px and truncated the subtitle — the very defect
+being fixed. `lg` is the first breakpoint where both fit.
 
-**Conséquences.** Le libellé d'une entrée de menu est l'`action`, pas le `label` :
-une ligne de menu dit ce qu'elle fait, un bouton de barre dit où l'on en est.
-Les deux textes existaient déjà, ils ne servaient simplement pas au même endroit.
+**Consequences.** A menu entry's label is `action`, not `label`: a menu row says
+what it does, while a bar button says what state is active. Both texts already
+existed; they simply did not serve the same place.
 
-`InstallButton` disparaît. Son état passe dans `useInstallPrompt`, parce que la
-proposition s'affiche désormais à deux endroits selon la largeur et qu'un état
-dupliqué aurait divergé — le bouton disparaissant après `appinstalled`, la ligne
-de menu non. Le mode d'emploi iOS devient `InstallInstructions`.
+`InstallButton` disappears. Its state moves into `useInstallPrompt` because the
+prompt now appears in two places depending on width, and duplicated state would
+diverge — the button disappearing after `appinstalled`, but not the menu row. The
+iOS instructions become `InstallInstructions`.
 
-**Installer se place en dernier, après « Déconnexion »**, contre l'habitude qui
-met la déconnexion en fin de menu. La raison : c'est la seule entrée qui
-apparaît et disparaît toute seule, selon le navigateur et selon qu'on a déjà
-installé. Ailleurs, elle décalerait les contrôles permanents d'une visite à
-l'autre.
+**Install comes last, after "Log out"**, contrary to the convention of placing
+log out at the end of a menu. The reason: it is the only entry that appears and
+disappears by itself depending on the browser and whether installation has
+already happened. Anywhere else, it would shift permanent controls between visits.

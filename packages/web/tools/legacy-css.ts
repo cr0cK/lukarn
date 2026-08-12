@@ -3,23 +3,22 @@ import { Features, transform } from 'lightningcss';
 import type { Plugin } from 'vite';
 
 /**
- * Moteur le plus ancien que la feuille de styles doit servir, au format de
- * Lightning CSS (`majeur << 16 | mineur << 8 | correctif`).
+ * Oldest engine the stylesheet must support, in Lightning CSS format
+ * (`major << 16 | minor << 8 | patch`).
  *
- * Chromium 79, parce que c'est ce que relève `/diagnostic` sur le navigateur
- * d'un téléviseur LG de 2021 — pas une estimation, une mesure. Tailwind v4
- * n'annonce lui-même que Chromium 111 et au-delà : tout ce qui suit sert à
- * combler ces trente-deux versions d'écart (D260809f).
+ * Chromium 79 because `/diagnostic` reports it on a 2021 LG television browser
+ * — a measurement, not an estimate. Tailwind v4 supports only Chromium 111 and
+ * above: everything below bridges that thirty-two-version gap (D260809f).
  */
 const OLDEST_ENGINE = { chrome: 79 << 16 };
 
 /**
- * Raccourcis logiques symétriques, et le couple de propriétés physiques qui
- * dit exactement la même chose tant que le sens d'écriture est gauche-droite.
+ * Symmetrical logical shorthands and the pair of physical properties saying the
+ * same thing while writing direction is left-to-right.
  *
- * Seuls les **raccourcis** sont ici. Les formes `-start` / `-end` dépendent
- * réellement du sens et n'ont pas d'équivalent physique inconditionnel ;
- * Tailwind ne les émet que pour `ps-*` / `pe-*`, que ce dépôt n'utilise pas.
+ * Only **shorthands** belong here. The `-start` / `-end` forms genuinely depend
+ * on direction and have no unconditional physical equivalent; Tailwind emits
+ * them only for `ps-*` / `pe-*`, which this repository does not use.
  */
 const PHYSICAL_EQUIVALENTS: Record<string, readonly [string, string]> = {
   'padding-inline': ['padding-left', 'padding-right'],
@@ -37,26 +36,25 @@ const PHYSICAL_EQUIVALENTS: Record<string, readonly [string, string]> = {
 const SHORTHAND_NAMES = Object.keys(PHYSICAL_EQUIVALENTS).join('|');
 const DECLARATION = new RegExp(`(^|[{;])\\s*(${SHORTHAND_NAMES})\\s*:\\s*([^;}]+)`, 'g');
 
-/** Une valeur à deux composantes — `5px 9px` — dépend du sens d'écriture. */
+/** A two-component value — `5px 9px` — depends on writing direction. */
 function hasTwoComponents(value: string): boolean {
-  // Un espace qui n'est pas à l'intérieur de parenthèses sépare deux
-  // composantes ; ceux de `calc(var(--spacing) * 5)` n'en séparent aucune.
+  // Whitespace outside parentheses separates two components; whitespace in
+  // `calc(var(--spacing) * 5)` separates none.
   return /\s(?![^(]*\))/.test(value.trim());
 }
 
 /**
- * Fait précéder chaque raccourci logique symétrique de son équivalent physique.
+ * Precedes every symmetrical logical shorthand with its physical equivalent.
  *
- * **L'ordre est tout le mécanisme** : le raccourci logique reste en place et
- * vient en dernier, donc un moteur qui le connaît l'applique et le sens
- * d'écriture continue d'être respecté. Un moteur qui l'ignore laisse tomber
- * cette déclaration-là et garde les deux physiques.
+ * **Order is the whole mechanism**: the logical shorthand remains last, so an
+ * engine that knows it applies it and still respects writing direction. An
+ * engine that ignores it drops that declaration and keeps both physical ones.
  *
- * Lightning CSS sait faire cet abaissement lui-même, mais **refuse dès que la
- * valeur contient `var()`** : il ne peut pas savoir en combien de composantes
- * elle se développera. Or c'est exactement la forme que Tailwind v4 émet pour
- * tout son barème d'espacement, `calc(var(--spacing) * 5)` — c'est-à-dire tous
- * les `px-*` et `py-*` de l'application. D'où ce complément.
+ * Lightning CSS can lower this itself but **refuses when the value contains
+ * `var()`**: it cannot know how many components it will expand into. That is
+ * exactly the form Tailwind v4 emits for its spacing scale,
+ * `calc(var(--spacing) * 5)` — every application `px-*` and `py-*`. Hence this
+ * supplement.
  */
 export function addPhysicalFallbacks(css: string): string {
   return css.replace(DECLARATION, (whole, before: string, property: string, value: string) => {
@@ -67,8 +65,8 @@ export function addPhysicalFallbacks(css: string): string {
 }
 
 /**
- * Les trois propriétés de transformation indépendantes, dans l'ordre où elles
- * se composent, et le morceau de `transform` qui les remplace.
+ * The three independent transform properties in composition order, and the
+ * `transform` fragment replacing them.
  */
 const TRANSFORM_SLOTS = ['translate', 'rotate', 'scale'] as const;
 const TRANSFORM_DECLARATION = new RegExp(
@@ -77,25 +75,25 @@ const TRANSFORM_DECLARATION = new RegExp(
 );
 
 /**
- * Règle qui remet les trois emplacements à vide sur chaque élément.
+ * Rule resetting all three slots to empty on every element.
  *
- * Sans elle, un parent transformé léguerait sa rotation à ses enfants : les
- * propriétés personnalisées héritent, `transform` non. C'est la même précaution
- * que prend Tailwind pour ses propres variables.
+ * Without it, a transformed parent would pass rotation to its children: custom
+ * properties inherit, while `transform` does not. Tailwind takes the same
+ * precaution for its own variables.
  *
- * **Elle vit dans une couche tant qu'il en reste une** : une règle hors couche
- * l'emporte sur tout ce qui est en couche, donc le reset écrasait l'utilitaire
- * qu'il devait seulement précéder, et plus rien ne se transformait. `properties`
- * est la première couche déclarée par Tailwind, donc la moins prioritaire.
- * `flattenLayers` retire ensuite ce vêtement à toutes les règles à la fois, et
- * c'est alors la spécificité qui rend le même verdict : `*` ne bat pas `.rotate-90`.
+ * **It remains in a layer while any layer exists**: an unlayered rule outranks
+ * every layered one, so the reset overrode the utility it should only precede
+ * and no transform worked. `properties` is Tailwind's first declared and least
+ * important layer. `flattenLayers` later removes layers from all rules together,
+ * after which specificity gives the same result: `*` does not beat `.rotate-90`.
  */
 const TRANSFORM_RESET =
-  '@layer properties{*,::before,::after,::backdrop{--gdv-translate: ;--gdv-rotate: ;--gdv-scale: }}';
+  '@layer properties{*,::before,::after,::backdrop{--nonni-translate: ;--nonni-rotate: ;--nonni-scale: }}';
 
-const COMPOSED_TRANSFORM = 'transform:var(--gdv-translate) var(--gdv-rotate) var(--gdv-scale)';
+const COMPOSED_TRANSFORM =
+  'transform:var(--nonni-translate) var(--nonni-rotate) var(--nonni-scale)';
 
-/** Découpe une valeur sur ses espaces de premier niveau — `var(--a) var(--b)`. */
+/** Splits a value on top-level whitespace — `var(--a) var(--b)`. */
 function topLevelParts(value: string): string[] {
   const parts: string[] = [];
   let depth = 0;
@@ -113,19 +111,19 @@ function topLevelParts(value: string): string[] {
 }
 
 /**
- * Donne à un `var()` nu la valeur neutre de sa position en repli.
+ * Gives a bare `var()` the neutral fallback for its position.
  *
- * Tailwind initialise ses `--tw-translate-*` par `@property`, et n'en assure le
- * repli que sous un `@supports` qui vise Safari et Firefox. Compter dessus, ce
- * serait faire dépendre le recentrage d'une détection écrite pour d'autres
- * moteurs : une variable non initialisée rendrait tout le `transform` invalide,
- * et l'élément ne bougerait plus du tout.
+ * Tailwind initialises `--tw-translate-*` through `@property` and supplies a
+ * fallback only under an `@supports` targeting Safari and Firefox. Relying on it
+ * would make centring depend on detection written for other engines: an
+ * uninitialised variable would invalidate the whole `transform`, leaving the
+ * element completely still.
  */
 function withNeutralFallback(part: string, neutral: string): string {
   return /^var\(\s*--[\w-]+\s*\)$/.test(part) ? `${part.slice(0, -1)},${neutral})` : part;
 }
 
-/** La fonction `transform` équivalente à une propriété indépendante. */
+/** `transform` function equivalent to an independent property. */
 function transformFunction(property: string, value: string): string {
   const parts = topLevelParts(value);
   if (property === 'translate') {
@@ -141,23 +139,21 @@ function transformFunction(property: string, value: string): string {
 }
 
 /**
- * Remplace `translate`, `rotate` et `scale` par un `transform` composé.
+ * Replaces `translate`, `rotate` and `scale` with a composed `transform`.
  *
- * Ces trois propriétés indépendantes n'existent qu'à partir de Chromium 104, et
- * Tailwind v4 les émet pour tous ses utilitaires de transformation. Sur un
- * moteur plus ancien, `-translate-y-1/2` ne recentre plus rien — c'est ce qui
- * décalait la loupe du champ de recherche sous son texte.
+ * These independent properties exist only from Chromium 104, while Tailwind v4
+ * emits them for all transform utilities. On an older engine,
+ * `-translate-y-1/2` centres nothing — this shifted the search-field magnifier
+ * beneath its text.
  *
- * **Le remplacement est en place, et pas un repli sous `@supports`.** Un moteur
- * récent appliquerait sinon les deux, `translate` puis `transform`, et
- * déplacerait deux fois. Passer par `transform` partout donne le même rendu
- * partout, au prix d'une propriété moins moderne.
+ * **Replace in place, not as an `@supports` fallback.** A recent engine would
+ * otherwise apply both `translate` and `transform`, moving twice. Using
+ * `transform` everywhere yields the same result at the cost of an older property.
  *
- * **Les trois emplacements passent par des variables** plutôt que d'écrire
- * directement la fonction, sans quoi deux utilitaires posés sur le même élément
- * — `rotate-90 -translate-y-1/2` — se disputeraient `transform`, et le dernier
- * effacerait le premier. Avec les emplacements, ils se composent, et dans le
- * bon ordre. Un emplacement vide ne produit rien à la substitution.
+ * **All three slots use variables** instead of writing the function directly, or
+ * two utilities on one element — `rotate-90 -translate-y-1/2` — would compete
+ * for `transform` and the last would erase the first. Slots compose in the right
+ * order, while an empty slot produces nothing during substitution.
  */
 export function replaceIndependentTransforms(css: string): string {
   let touched = false;
@@ -165,14 +161,14 @@ export function replaceIndependentTransforms(css: string): string {
     TRANSFORM_DECLARATION,
     (_whole, before: string, property: string, value: string) => {
       touched = true;
-      const slot = `--gdv-${property}`;
+      const slot = `--nonni-${property}`;
       return `${before}${slot}:${transformFunction(property, value)};${COMPOSED_TRANSFORM}`;
     },
   );
   return touched ? `${TRANSFORM_RESET}${out}` : out;
 }
 
-/** Index du guillemet fermant d'une chaîne CSS ouverte en `debut`. */
+/** Index of the closing quote for a CSS string opened at `debut`. */
 function finDeChaine(css: string, debut: number): number {
   const quote = css[debut];
   for (let i = debut + 1; i < css.length; i++) {
@@ -183,11 +179,10 @@ function finDeChaine(css: string, debut: number): number {
 }
 
 /**
- * Index de l'accolade fermante qui répond à celle ouverte en `ouverture`.
+ * Index of the closing brace matching the one opened at `ouverture`.
  *
- * Les chaînes sont sautées : `content: "}"` existe dans la sortie de Tailwind,
- * et compter cette accolade-là refermerait le bloc trop tôt — c'est-à-dire
- * découperait la feuille en plein milieu sans que rien ne le signale.
+ * Skip strings: `content: "}"` exists in Tailwind output, and counting that brace
+ * would close the block too early — cutting the stylesheet in half without a signal.
  */
 function accoladeFermante(css: string, ouverture: number): number {
   let profondeur = 0;
@@ -201,21 +196,19 @@ function accoladeFermante(css: string, ouverture: number): number {
 }
 
 /**
- * Retire les couches en cascade en laissant leur contenu à sa place.
+ * Removes cascade layers while leaving their contents in place.
  *
- * `@layer` n'existe pas avant Chromium 99, et une at-rule inconnue se jette
- * **avec son bloc** : sur un moteur conforme, les 91 % de la feuille que
- * Tailwind v4 enferme dans ses couches disparaissent, et l'application s'affiche
- * entièrement sans style. Le téléviseur qui a motivé D260809f y échappait par un
- * laxisme de son parseur, qui gardait le contenu ; celui d'à côté, pourtant plus
- * récent, applique la règle et n'affichait plus rien (D260809h).
+ * `@layer` does not exist before Chromium 99, and an unknown at-rule is discarded
+ * **with its block**: on a conforming engine, the 91% of the stylesheet Tailwind
+ * v4 encloses in layers disappears and the application renders entirely unstyled.
+ * The television behind D260809f escaped through a lenient parser retaining the
+ * content; a nearby but newer one follows the rule and displayed nothing (D260809i).
  *
- * **Le dépliage ne change rien à la cascade** parce que Tailwind déclare ses
- * couches dans l'ordre où il les émet — `properties`, `theme`, `base`,
- * `components`, `utilities` — et que rien hors couche n'est une règle de style :
- * uniquement des `@property` et des `@keyframes`, que la cascade n'arbitre pas.
- * L'ordre du texte et la spécificité rendent donc le même verdict que les
- * couches, pour tous les moteurs.
+ * **Flattening does not change the cascade** because Tailwind declares layers in
+ * emission order — `properties`, `theme`, `base`, `components`, `utilities` —
+ * and nothing outside a layer is a style rule: only `@property` and `@keyframes`,
+ * which the cascade does not arbitrate. Text order and specificity therefore
+ * produce the same result as layers on every engine.
  */
 export function flattenLayers(css: string): string {
   if (!css.includes('@layer')) return css;
@@ -232,7 +225,7 @@ export function flattenLayers(css: string): string {
 
     const accolade = css.indexOf('{', debut);
     const pointVirgule = css.indexOf(';', debut);
-    // `@layer a, b;` ne fait qu'ordonner des couches : sans elles, plus rien à dire.
+    // `@layer a, b;` only orders layers: without them, nothing remains to say.
     if (pointVirgule >= 0 && (accolade < 0 || pointVirgule < accolade)) {
       i = pointVirgule + 1;
       continue;
@@ -243,7 +236,7 @@ export function flattenLayers(css: string): string {
     }
 
     const fin = accoladeFermante(css, accolade);
-    // Récursif : une couche peut en contenir une autre, et Tailwind le fait.
+    // Recurse because a layer may contain another, as Tailwind does.
     sortie += flattenLayers(css.slice(accolade + 1, fin));
     i = fin + 1;
   }
@@ -251,38 +244,37 @@ export function flattenLayers(css: string): string {
 }
 
 /**
- * Vérifie que l'abaissement n'a rien laissé passer, et dit quoi le cas échéant.
+ * Checks that lowering missed nothing and reports what it finds.
  *
- * Sans ce contrôle, une évolution de Tailwind qui changerait la forme de sa
- * sortie ne se verrait nulle part : la construction réussirait, les tests
- * passeraient, et le défaut n'apparaîtrait que sur un téléviseur, chez
- * quelqu'un d'autre, sans que personne fasse le lien avec la montée de version.
+ * Without this check, a Tailwind change altering its output shape would be
+ * invisible: the build and tests would pass, while the defect appeared only on
+ * somebody else's television with no link to the version upgrade.
  */
 export function findUnloweredDeclarations(css: string): string[] {
   const problems: string[] = [];
 
   const oklch = css.match(/oklch\([^)]*\)/g);
-  if (oklch) problems.push(`${oklch.length} appel(s) à oklch() : ${oklch[0]}`);
+  if (oklch) problems.push(`${oklch.length} oklch() call(s): ${oklch[0]}`);
 
   const couches = css.match(/@layer[^{;]*[{;]/g);
-  if (couches) problems.push(`${couches.length} couche(s) @layer non dépliée(s) : ${couches[0]}`);
+  if (couches) problems.push(`${couches.length} unflattened @layer block(s): ${couches[0]}`);
 
   const independent = css.match(TRANSFORM_DECLARATION);
   if (independent) {
     problems.push(
-      `${independent.length} propriété(s) de transformation indépendante(s) : ${independent[0]!.trim()}`,
+      `${independent.length} independent transform propert(y/ies): ${independent[0]!.trim()}`,
     );
   }
 
-  // Un raccourci logique est admis tant qu'un équivalent physique le précède
-  // dans la même déclaration groupée — c'est ce que pose `addPhysicalFallbacks`.
+  // Allow a logical shorthand when a physical equivalent precedes it in the same
+  // declaration group — exactly what `addPhysicalFallbacks` adds.
   for (const found of css.matchAll(new RegExp(`(^|[{;])\\s*(${SHORTHAND_NAMES})\\s*:`, 'g'))) {
     const property = found[2]!;
     const [first] = PHYSICAL_EQUIVALENTS[property]!;
     const before = css.slice(Math.max(0, found.index - 200), found.index);
     if (!before.includes(`${first}:`)) {
       problems.push(
-        `${property} sans repli physique : …${css.slice(found.index, found.index + 60)}`,
+        `${property} without a physical fallback: …${css.slice(found.index, found.index + 60)}`,
       );
     }
   }
@@ -291,13 +283,12 @@ export function findUnloweredDeclarations(css: string): string[] {
 }
 
 /**
- * Abaisse une feuille de styles au niveau du moteur le plus ancien à servir :
- * `oklch()` en `rgb()`, propriétés logiques en physiques, préfixes manquants,
- * couches en cascade dépliées.
+ * Lowers a stylesheet to the oldest supported engine: `oklch()` to `rgb()`,
+ * logical properties to physical, missing prefixes and flattened cascade layers.
  *
- * **Le dépliage vient en dernier**, parce que `replaceIndependentTransforms`
- * pose lui-même une couche : l'inverser laisserait la seule at-rule que ces
- * moteurs jettent avec son contenu.
+ * **Flattening comes last** because `replaceIndependentTransforms` adds a layer
+ * itself: reversing them would leave the one at-rule these engines discard with
+ * its contents.
  */
 export function lowerForLegacyEngines(css: string, filename = 'style.css'): string {
   const lowered = transform({
@@ -305,47 +296,45 @@ export function lowerForLegacyEngines(css: string, filename = 'style.css'): stri
     code: Buffer.from(css),
     minify: true,
     targets: OLDEST_ENGINE,
-    // Sans ce drapeau, Lightning CSS ne convertit les propriétés logiques que
-    // lorsqu'il l'estime indispensable, et laisse passer `margin-inline: auto`.
+    // Without this flag, Lightning CSS converts logical properties only when it
+    // considers it essential and lets `margin-inline: auto` through.
     include: Features.LogicalProperties,
   }).code.toString();
 
   return flattenLayers(replaceIndependentTransforms(addPhysicalFallbacks(lowered)));
 }
 
-/** Empreinte courte du contenu, dans la même forme que celle de Vite. */
+/** Short content fingerprint in the same form as Vite's. */
 function contentHash(content: string): string {
   return createHash('sha256').update(content).digest('base64url').slice(0, 8);
 }
 
 /**
- * Greffon Vite qui applique `lowerForLegacyEngines` à la CSS produite.
+ * Vite plugin applying `lowerForLegacyEngines` to generated CSS.
  *
- * Il agit sur la **sortie**, jamais sur les sources : rien à retenir pour qui
- * écrit un composant, et aucune classe Tailwind interdite. En contrepartie il
- * ne tourne qu'à la construction — sous `pnpm dev`, un vieux navigateur voit
- * encore la feuille non abaissée. C'est sans conséquence en production, où le
- * serveur ne sert que `dist`, mais c'est à savoir avant de conclure qu'un
- * correctif n'a pas pris.
+ * It acts on **output**, never sources: component authors need remember nothing
+ * and no Tailwind class is forbidden. In return it runs only during builds —
+ * under `pnpm dev`, an old browser still sees the unlowered stylesheet. This has
+ * no production impact where the server serves only `dist`, but matters before
+ * concluding that a fix did not work.
  *
- * `generateBundle` est le seul crochet qui voie la feuille de Tailwind : celle
- * de `@tailwindcss/vite` n'existe pas encore au moment du `transform`, où l'on
- * n'attraperait que la source à trois lignes.
+ * `generateBundle` is the only hook seeing the Tailwind stylesheet: the one from
+ * `@tailwindcss/vite` does not yet exist during `transform`, which would catch
+ * only the three-line source.
  *
- * **D'où le renommage.** Rollup a déjà haché le nom de l'asset quand ce crochet
- * s'exécute, si bien que deux contenus différents se retrouveraient sous le même
- * nom. Les assets étant servis en `immutable, max-age=31536000`, un visiteur
- * déjà venu garderait un an la feuille non abaissée — c'est-à-dire que le
- * correctif n'atteindrait jamais l'appareil qu'il vise. On rehache donc d'après
- * le contenu final et on réécrit les renvois. Le service worker s'y retrouve
- * seul : il relit les noms vivants dans la coquille servie.
+ * **Hence renaming.** Rollup has already hashed the asset name when this hook
+ * runs, so two different contents would share one name. Assets are served as
+ * `immutable, max-age=31536000`, so a returning visitor would keep the unlowered
+ * stylesheet for a year — the fix would never reach its target device. Rehash
+ * from final content and rewrite references. The service worker adapts by reading
+ * live names from the served shell.
  */
 export function legacyCss(): Plugin {
   return {
-    name: 'gdv-legacy-css',
+    name: 'nonni-legacy-css',
     apply: 'build',
-    // En dernier : `index.html` doit déjà être dans le lot pour que le renvoi
-    // vers la feuille y soit réécrit avec le nouveau nom.
+    // Run last: `index.html` must already be in the bundle so its stylesheet
+    // reference can be rewritten with the new name.
     enforce: 'post',
     generateBundle(_options, bundle) {
       for (const [name, asset] of Object.entries(bundle)) {
@@ -357,7 +346,7 @@ export function legacyCss(): Plugin {
         const problems = findUnloweredDeclarations(lowered);
         if (problems.length > 0) {
           this.error(
-            `${name} : ${problems.length} déclaration(s) hors de portée du moteur visé.\n` +
+            `${name}: ${problems.length} declaration(s) outside the targeted engine's reach.\n` +
               problems.map((p) => `  - ${p}`).join('\n'),
           );
         }

@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { pickThumbSize } from '../src/components/Thumb';
 import { releaseIfDetached } from '../src/lib/imageRelease';
 
-/** Le strict minimum d'un `<img>` pour ce que la libération en observe. */
+/** The minimum `<img>` shape observed by release. */
 function vignette(isConnected: boolean) {
   const supprimes: string[] = [];
   return {
@@ -13,24 +13,23 @@ function vignette(isConnected: boolean) {
 }
 
 describe('releaseIfDetached', () => {
-  it('coupe la requête de la vignette qui a quitté la grille', () => {
-    // L'invariant protégé : une vignette démontée ne doit plus rien demander au
-    // réseau. Retirer un `<img>` du DOM n'y suffit pas — le navigateur termine
-    // le transfert — et la connexion ainsi retenue est l'une des six d'une
-    // origine HTTP/1.1. Inverser le tri d'un album froid en abandonnait
-    // plusieurs dizaines d'un coup, derrière lesquelles le `/items` du nouveau
-    // tri attendait, écran bloqué sur « Chargement des photos ».
+  it('cancels the request for a thumbnail that left the grid', () => {
+    // The protected invariant is that an unmounted thumbnail must stop making
+    // network requests. Removing an `<img>` from the DOM is not enough because
+    // the browser finishes the transfer, tying up one of six HTTP/1.1 origin
+    // connections. Reversing a cold album abandoned dozens at once, leaving
+    // the new order's `/items` waiting behind them on "Loading photos".
     const { node, supprimes } = vignette(false);
 
     releaseIfDetached(node as unknown as HTMLImageElement);
 
-    assert.deepEqual(supprimes, ['src'], "seul `src` est effacé : c'est lui qui porte la requête");
+    assert.deepEqual(supprimes, ['src'], 'only `src` is cleared because it carries the request');
   });
 
-  it('laisse intacte une vignette toujours à l’écran', () => {
-    // `StrictMode` rejoue montage puis démontage sans toucher au DOM : sans
-    // cette garde, les vignettes du premier écran perdaient leur `src` à
-    // l'instant où elles s'affichaient, et React ne le réécrit jamais.
+  it('leaves a thumbnail still on screen intact', () => {
+    // `StrictMode` replays mounting and unmounting without touching the DOM:
+    // without this guard, first-screen thumbnails lost their `src` as they
+    // appeared, and React never writes it again.
     const { node, supprimes } = vignette(true);
 
     releaseIfDetached(node as unknown as HTMLImageElement);
@@ -38,21 +37,21 @@ describe('releaseIfDetached', () => {
     assert.deepEqual(supprimes, []);
   });
 
-  it('tolère l’absence de nœud', () => {
-    // Tuile vidéo ou vignette en échec : il n'y a pas d'`<img>` du tout.
+  it('tolerates an absent node', () => {
+    // A video tile or failed thumbnail has no `<img>` at all.
     assert.doesNotThrow(() => releaseIfDetached(null));
   });
 });
 
 describe('pickThumbSize', () => {
-  it('couvre la taille d’affichage, densité comprise', () => {
+  it('covers the display size including density', () => {
     assert.equal(pickThumbSize(300, 1), 320);
     assert.equal(pickThumbSize(300, 2), 640);
   });
 
-  it('plafonne la densité prise en compte à 2', () => {
-    // Au-delà, on paierait quatre fois le poids pour un gain que l'œil ne voit
-    // pas sur une vignette de grille.
+  it('caps the density taken into account at 2', () => {
+    // Beyond this, four times the bytes would buy a difference the eye cannot
+    // see on a grid thumbnail.
     assert.equal(pickThumbSize(300, 3), pickThumbSize(300, 2));
   });
 });

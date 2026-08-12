@@ -1,35 +1,34 @@
 import { type InputHTMLAttributes, type ReactElement, useState } from 'react';
 
-/** Tout ce qu'accepte un `input`, sauf son `type` — c'est le composant qui le décide. */
+/** Everything an `input` accepts except `type`, which this component decides. */
 type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>;
 
 /**
- * Champ de mot de passe assorti d'un œil qui en montre les caractères.
+ * Password field with an eye button that reveals its characters.
  *
- * Une faute de frappe à l'aveugle ne se distingue pas d'un mot de passe oublié :
- * sans ce bouton, le seul recours est d'effacer et de recommencer, au clavier
- * mobile où la faute est la plus probable. L'état repart masqué à chaque
- * montage — on ne laisse pas un secret en clair derrière soi.
+ * A hidden typo is indistinguishable from a forgotten password: without this
+ * button, the only recourse is to clear and start again, on the mobile keyboard
+ * where the typo is most likely. Each mount starts hidden — never leave a secret
+ * visible behind.
  */
 export function PasswordInput({ className = '', ...props }: PasswordInputProps): ReactElement {
   const [revealed, setRevealed] = useState(false);
 
   return (
     <div className="relative">
-      {/* `pr-11` réserve la place du bouton : sans lui, un mot de passe long
-          passe dessous et la fin de la saisie devient illisible au moment même
-          où on demande à la voir. */}
+      {/* `pr-11` reserves room for the button: without it, a long password runs
+          underneath and its ending becomes unreadable just when it is revealed. */}
       <input {...props} type={revealed ? 'text' : 'password'} className={`${className} pr-11`} />
       <button
         type="button"
         onClick={() => setRevealed((shown) => !shown)}
         disabled={props.disabled}
-        // Le libellé annonce ce que le clic **fera**, comme les contrôles de la
-        // barre : « Afficher » sur un champ masqué.
-        aria-label={revealed ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-        title={revealed ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-        // Décollé du bord plutôt que collé à `inset-y-0` : l'anneau de focus au
-        // clavier déborde de 2 px, il serait rogné par le bord du champ.
+        // The label announces what the click **will do**, like bar controls:
+        // "Show" on a hidden field.
+        aria-label={revealed ? 'Hide the password' : 'Show the password'}
+        title={revealed ? 'Hide the password' : 'Show the password'}
+        // Keep it away from the edge rather than using `inset-y-0`: the keyboard
+        // focus ring extends 2 px and would be clipped by the field edge.
         className="absolute top-1/2 right-1.5 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-ink-400 transition-colors hover:text-ink-100 disabled:opacity-60"
       >
         <svg

@@ -6,14 +6,14 @@ import { after, describe, it } from 'node:test';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Contrôles de l'environnement au démarrage.
+ * Environment checks at startup.
  *
- * Ce qui est vérifié ici tient en une idée : une configuration fautive doit
- * empêcher le démarrage, pas produire une instance qui tourne et qui échouera
- * des semaines plus tard, au premier usage de ce qu'elle a mal lu.
+ * This verifies one idea: faulty configuration must prevent startup, not
+ * produce a running instance that fails weeks later when the misread setting
+ * is first used.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-env-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-env-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 function env(surcharges: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
@@ -34,7 +34,7 @@ function avecSmtp(url: string): NodeJS.ProcessEnv {
 }
 
 describe('SMTP_URL', () => {
-  it('accepte une URL Gmail avec l’adresse encodée', () => {
+  it('accepts a Gmail URL with the address encoded', () => {
     const config = loadEnv(avecSmtp('smtps://moi%40gmail.com:abcdefghijklmnop@smtp.gmail.com:465'));
     assert.equal(
       config.mail?.smtpUrl,
@@ -42,58 +42,58 @@ describe('SMTP_URL', () => {
     );
   });
 
-  it('accepte un relais local sans identifiants', () => {
+  it('accepts a local relay without credentials', () => {
     assert.ok(loadEnv(avecSmtp('smtp://localhost:1025')).mail);
-    // Nom de service dans un réseau Docker : pas de point, et c'est légitime.
+    // A service name on a Docker network has no dot, and that is legitimate.
     assert.ok(loadEnv(avecSmtp('smtp://mailpit:1025')).mail);
   });
 
-  it('refuse un mot de passe dont un caractère coupe l’adresse', () => {
-    // Le cas coûteux : nodemailer construit alors un transport vers l'hôte
-    // « user », sans authentification, et l'instance démarre normalement. La
-    // panne ne se voit qu'au premier envoi, des semaines plus tard.
+  it('rejects a password containing a character that breaks the address', () => {
+    // The costly case: nodemailer then builds a transport to host "user",
+    // without authentication, and the instance starts normally. The failure
+    // appears only on the first send, weeks later.
     for (const motDePasse of ['a/b', 'a?b', 'a#b']) {
       assert.throws(
         () => loadEnv(avecSmtp(`smtp://user:${motDePasse}@smtp.exemple.fr:587`)),
-        /SMTP_URL n'est pas une URL valide/,
-        `« ${motDePasse} » doit être refusé`,
+        /SMTP_URL is not a valid URL/,
+        `"${motDePasse}" must be rejected`,
       );
     }
   });
 
-  it('laisse passer ce qui ne casse rien', () => {
-    // Un contrôle qui crie à tort finit contourné : `+`, `:` et l'espace sont
-    // parfaitement lisibles dans un mot de passe.
+  it('allows values that break nothing', () => {
+    // A check that raises false alarms is eventually bypassed: `+`, `:` and a
+    // space are perfectly readable in a password.
     for (const motDePasse of ['a+b', 'a:b', 'a b']) {
       assert.ok(
         loadEnv(avecSmtp(`smtp://user:${motDePasse}@smtp.exemple.fr:587`)).mail,
-        `« ${motDePasse} » doit être accepté`,
+        `"${motDePasse}" must be accepted`,
       );
     }
   });
 
-  it('refuse un schéma qui n’est pas SMTP', () => {
+  it('rejects a scheme that is not SMTP', () => {
     assert.throws(
       () => loadEnv(avecSmtp('https://smtp.exemple.fr:587')),
-      /smtp:\/\/ » ou « smtps:\/\//,
+      /"smtp:\/\/" or "smtps:\/\/"/,
     );
   });
 
-  it('exige MAIL_FROM avec SMTP_URL, et réciproquement', () => {
-    assert.throws(() => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025' })), /ensemble/);
-    assert.throws(() => loadEnv(env({ MAIL_FROM: 'Galerie <galerie@exemple.fr>' })), /ensemble/);
+  it('requires MAIL_FROM with SMTP_URL and vice versa', () => {
+    assert.throws(() => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025' })), /together/);
+    assert.throws(() => loadEnv(env({ MAIL_FROM: 'Galerie <galerie@exemple.fr>' })), /together/);
   });
 
-  it('n’exige rien quand l’instance n’envoie pas d’email', () => {
+  it('requires nothing when the instance sends no email', () => {
     assert.equal(loadEnv(env()).mail, null);
   });
 });
 
 describe('MAIL_REPLY_TO', () => {
-  it('reste facultative, et vide vaut absente', () => {
-    // La distinction porte : `null` ne pose aucun en-tête, tandis qu'un en-tête
-    // vide ferait retomber le client de messagerie sur l'adresse d'expédition —
-    // celle qui, précisément, ne reçoit rien.
+  it('remains optional and treats empty as absent', () => {
+    // The distinction matters: `null` sets no header, while an empty header
+    // would make the email client fall back to the sender address — precisely
+    // the one that receives nothing.
     assert.equal(loadEnv(avecSmtp('smtp://localhost:1025')).mailReplyTo, null);
     assert.equal(
       loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: '   ' })).mailReplyTo,
@@ -101,9 +101,9 @@ describe('MAIL_REPLY_TO', () => {
     );
   });
 
-  it('n’a pas besoin d’être déclarée avec MAIL_FROM', () => {
-    // Contrairement à SMTP_URL et MAIL_FROM : forcer le couple obligerait
-    // toutes les instances en service à déclarer une adresse qu'elles n'ont pas.
+  it('does not need to be declared with MAIL_FROM', () => {
+    // Unlike SMTP_URL and MAIL_FROM: forcing the pair would require every live
+    // instance to declare an address it does not have.
     const config = loadEnv(
       env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: 'moi@exemple.fr' }),
     );
@@ -111,44 +111,43 @@ describe('MAIL_REPLY_TO', () => {
     assert.equal(config.mailReplyTo, 'moi@exemple.fr');
   });
 
-  it('survit à un relais éteint, sans quoi on ne pourrait pas le signaler', () => {
-    // Elle vit hors de `mail` exprès : c'est ce qui permet au Mailer d'avertir
-    // qu'une adresse de réponse est configurée alors que rien ne peut partir.
+  it('survives a disabled relay so the problem can be reported', () => {
+    // It deliberately lives outside `mail`: this lets the Mailer warn that a
+    // reply address is configured while nothing can be sent.
     const config = loadEnv(env({ MAIL_REPLY_TO: 'moi@exemple.fr' }));
     assert.equal(config.mail, null);
     assert.equal(config.mailReplyTo, 'moi@exemple.fr');
   });
 });
 
-describe('forme des adresses', () => {
-  it('refuse ce qui trahit une faute de frappe', () => {
-    // Toutes ces valeurs partent telles quelles dans l'en-tête : le relais les
-    // rejette ou les réécrit, semaines après la mise en service, et rien ne
-    // rattache l'échec à une ligne du .env.
+describe('address shape', () => {
+  it('rejects values that reveal a typo', () => {
+    // All these values enter the header as-is: the relay rejects or rewrites
+    // them weeks after deployment, with nothing tying the failure to a .env line.
     for (const valeur of [
-      'Galerie <galerie@exemple.fr', // chevron non refermé
-      'galerie(at)exemple.fr', // pas d'arobase
-      'galerie@', // pas de domaine
-      '@exemple.fr', // pas de partie locale
-      'a@b c@d', // deux adresses
+      'Galerie <galerie@exemple.fr', // unclosed angle bracket
+      'galerie(at)exemple.fr', // no at sign
+      'galerie@', // no domain
+      '@exemple.fr', // no local part
+      'a@b c@d', // two addresses
       'Galerie',
     ]) {
       assert.throws(
         () => loadEnv(env({ SMTP_URL: 'smtp://localhost:1025', MAIL_FROM: valeur })),
-        /MAIL_FROM ne porte pas d'adresse email exploitable/,
-        `« ${valeur} » doit être refusé`,
+        /MAIL_FROM carries no usable email address/,
+        `"${valeur}" must be rejected`,
       );
       assert.throws(
         () => loadEnv(env({ ...avecSmtp('smtp://localhost:1025'), MAIL_REPLY_TO: valeur })),
-        /MAIL_REPLY_TO ne porte pas d'adresse email exploitable/,
-        `« ${valeur} » doit être refusé`,
+        /MAIL_REPLY_TO carries no usable email address/,
+        `"${valeur}" must be rejected`,
       );
     }
   });
 
-  it('laisse passer les formes légitimes', () => {
-    // Un contrôle qui crie à tort finit contourné : le nom d'affichage, le
-    // « + » du sous-adressage et le relais local sont tous corrects.
+  it('allows legitimate forms', () => {
+    // A check that raises false alarms is eventually bypassed: the display name,
+    // sub-addressing "+" and the local relay are all valid.
     for (const valeur of [
       'galerie@exemple.fr',
       'Galerie <galerie@exemple.fr>',
@@ -158,7 +157,7 @@ describe('forme des adresses', () => {
     ]) {
       assert.ok(
         loadEnv(env({ SMTP_URL: 'smtp://localhost:1025', MAIL_FROM: valeur })).mail,
-        `« ${valeur} » doit être accepté`,
+        `"${valeur}" must be accepted`,
       );
     }
   });

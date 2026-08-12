@@ -35,9 +35,9 @@ import {
   type UpdateUserRequest,
   type VerifyIdentityRequest,
   type VisitsOverview,
-} from '@gdv/shared';
+} from '@nonni/shared';
 
-/** Erreur d'API portant le code HTTP, pour distinguer un 401 d'une vraie panne. */
+/** API error carrying the HTTP status, to distinguish a 401 from a real failure. */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -56,7 +56,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
-    // Le cookie de session est httpOnly et sur la même origine.
+    // The session cookie is httpOnly and on the same origin.
     credentials: 'same-origin',
   });
 
@@ -68,7 +68,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       response.status,
       body?.error ?? 'unknown',
-      body?.message ?? `Erreur ${response.status}`,
+      body?.message ?? `Error ${response.status}`,
     );
   }
 
@@ -77,10 +77,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /**
- * Ce que la file de modération demande au serveur.
+ * What the moderation queue requests from the server.
  *
- * Reprend `ModerationQuery` de `@gdv/shared`, au curseur près : il voyage en
- * texte dans l'URL, et n'est reconverti en entier qu'à l'arrivée.
+ * Mirrors `ModerationQuery` from `@nonni/shared`, except for the cursor: it
+ * travels as text in the URL and is converted back to an integer only on arrival.
  */
 export interface AdminCommentsQuery {
   filter: ModerationFilter;
@@ -93,7 +93,7 @@ export interface AdminCommentsQuery {
 export const api = {
   me: () => request<SessionUser>('/auth/me'),
 
-  /** Publique : dit si l'instance n'a encore aucun compte. */
+  /** Public: reports whether the instance still has no account. */
   setupState: () => request<{ needsSetup: boolean }>('/auth/setup-state'),
 
   login: (username: string, password: string) =>
@@ -104,14 +104,13 @@ export const api = {
 
   logout: () => request<{ ok: true }>('/auth/logout', { method: 'POST' }),
 
-  /* Appairage d'un écran sans clavier — voir D260809c. */
+  /* Pairing a screen without a keyboard — see D260809c. */
 
   startPairing: () => request<DevicePairingStart>('/auth/device/start', { method: 'POST' }),
 
   /**
-   * Le sondage de l'écran. Le `deviceCode` part dans le corps et non dans
-   * l'URL : c'est le seul secret de l'échange, et une URL se retrouve dans les
-   * journaux comme dans l'historique.
+   * Screen polling. The `deviceCode` goes in the body rather than the URL: it is
+   * the exchange's only secret, and URLs appear in logs as well as history.
    */
   pollPairing: (deviceCode: string) =>
     request<DevicePollResult>('/auth/device/poll', {
@@ -146,15 +145,14 @@ export const api = {
     request<AlbumDay[]>(`/albums/${encodeURIComponent(albumId)}/days`),
 
   /**
-   * Entités trouvées dans les textes de la bibliothèque. Le périmètre est
-   * décidé par le serveur — les albums attribués à la session —, il n'y a rien
-   * à lui passer.
+   * Entities found in library text. The server decides the scope — albums
+   * assigned to the session — so there is nothing to pass to it.
    */
   search: (q: string) => request<SearchHit[]>(`/search?${new URLSearchParams({ q })}`),
 
   /**
-   * La saisie se fait dans l'album, mais l'écriture passe par `/api/admin` :
-   * c'est le seul préfixe qui répond 403 (D50).
+   * Editing happens in the album, but the write goes through `/api/admin`: it
+   * is the only prefix that responds with 403 (D50).
    */
   updateAlbumDay: (albumId: string, day: string, body: UpdateAlbumDayRequest) =>
     request<AlbumDay>(
@@ -167,7 +165,7 @@ export const api = {
       `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
     ),
 
-  /** Même partage que `updateAlbumDay` : saisie dans la galerie, écriture sous `/api/admin`. */
+  /** Same split as `updateAlbumDay`: edit in the gallery, write under `/api/admin`. */
   updateMedia: (albumId: string, mediaId: string, body: UpdateMediaRequest) =>
     request<MediaItem>(
       `/admin/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
@@ -194,9 +192,9 @@ export const api = {
     request<AlbumCommentCounts>(`/comments/${encodeURIComponent(albumId)}`),
 
   /**
-   * Fil d'activité. `albumId` le restreint à un album ; `null` prend tout ce que
-   * la session a le droit de voir — la portée est décidée par le serveur, ce
-   * paramètre ne fait que la réduire.
+   * Activity feed. `albumId` restricts it to one album; `null` takes everything
+   * the session may see — the server decides the scope, this parameter only
+   * narrows it.
    */
   commentsFeed: (albumId: string | null, cursor: string | null) => {
     const params = new URLSearchParams();
@@ -239,7 +237,7 @@ export const api = {
 
   adminStatus: () => request<AdminStatus>('/admin/status'),
 
-  /** Qui est venu et ce qui a été regardé, sur les `days` derniers jours. */
+  /** Who visited and what they viewed over the last `days` days. */
   visits: (days: number) =>
     request<VisitsOverview>(`/admin/visits?${new URLSearchParams({ days: String(days) })}`),
 
@@ -290,45 +288,44 @@ export const api = {
 };
 
 /**
- * Texte à afficher pour une erreur de mutation. Les messages du serveur sont
- * rédigés pour l'utilisateur : on les préfère toujours au repli générique, qui
- * ne sert qu'aux pannes réseau, où il n'y a aucun message.
+ * Text shown for a mutation error. Server messages are written for the user, so
+ * they always take precedence over the generic fallback, which is only for
+ * network failures where no message exists.
  */
 export function errorText(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
 /**
- * Discriminant de version dans l'URL. Les dérivés sont servis en `immutable` :
- * le navigateur ne revalide jamais, donc c'est l'URL elle-même qui doit changer
- * lorsqu'un fichier Drive est remplacé par une nouvelle version — l'identifiant
- * du fichier, lui, reste le même.
+ * Version discriminator in the URL. Derivatives are served as `immutable`: the
+ * browser never revalidates them, so the URL itself must change when a Drive
+ * file is replaced by a new version — the file identifier stays the same.
  */
 const query = (version?: string | null): string => (version ? `?v=${version}` : '');
 const suffix = (version?: string | null): string => (version ? `&v=${version}` : '');
 
-/** URLs des médias — construites côté client, servies par le proxy Fastify. */
+/** Media URLs — built client-side and served by the Fastify proxy. */
 export const mediaUrl = {
   thumb: (id: string, size: ThumbSize, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/thumb?s=${size}${suffix(version)}`,
   full: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/full${query(version)}`,
-  /** Rendu 4096 px, demandé uniquement au zoom. */
+  /** 4096 px render, requested only while zooming. */
   hd: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/hd${query(version)}`,
   original: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/original${query(version)}`,
   /**
-   * Version préparée par le serveur, pour les codecs que ce navigateur ne décode
-   * pas (D260809b). Répond 404 tant qu'elle n'existe pas — la préparation est
-   * anticipée et lente, pas déclenchée par la demande.
+   * Server-prepared version for codecs this browser cannot decode (D260809b).
+   * Responds with 404 until it exists — preparation is anticipated and slow,
+   * not triggered by the request.
    */
   playable: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/playable${query(version)}`,
   /**
-   * Le téléchargement porte la version comme les autres : servi en `immutable`,
-   * il resservirait sinon depuis le cache l'ancien contenu d'un fichier Drive
-   * remplacé, pendant un an, alors que la photo affichée à côté est la neuve.
+   * The download carries the version like the others: served as `immutable`, it
+   * would otherwise return the old content of a replaced Drive file from cache
+   * for a year while the photo displayed beside it is the new one.
    */
   download: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/original?download=1${suffix(version)}`,

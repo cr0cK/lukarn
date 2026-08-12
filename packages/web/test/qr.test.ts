@@ -1,48 +1,49 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { formatUserCode, normalizeUserCode } from '@gdv/shared';
+import { formatUserCode, normalizeUserCode } from '@nonni/shared';
 import { qrCode } from '../src/lib/qr';
 
 /**
- * Le QR affiché par un écran sans clavier (D260809c).
+ * The QR code displayed on a screen without a keyboard (D260809c).
  *
- * Ce qui se vérifie ici est ce qu'un rendu ne montrerait pas : le tracé décrit
- * bien la grille produite, et le code se recopie à la main sans que sa forme
- * lisible ne change ce qu'on envoie au serveur.
+ * This verifies what rendering would not reveal: the path describes the
+ * generated grid correctly, and the code can be copied by hand without its
+ * readable form changing what is sent to the server.
  */
 
-describe('tracé du QR', () => {
-  it('rend une grille carrée et un tracé non vide', () => {
+describe('QR path', () => {
+  it('returns a square grid and a non-empty path', () => {
     const qr = qrCode('https://photos.exemple.fr/pair?code=ABCD2345');
 
-    // Les versions QR font 21, 25, 29… modules de côté : toujours 4n + 17.
+    // QR versions are 21, 25, 29… modules wide: always 4n + 17.
     assert.equal((qr.size - 17) % 4, 0);
     assert.ok(qr.path.length > 0);
   });
 
-  it('place le motif de repérage en haut à gauche', () => {
+  it('places the finder pattern at the top left', () => {
     const qr = qrCode('https://photos.exemple.fr/pair?code=ABCD2345');
 
-    // Les trois motifs de repérage sont invariants : le coin haut-gauche
-    // commence par sept modules noirs d'affilée, qui doivent apparaître comme
-    // un seul rectangle — c'est ce que la fusion des séries produit.
+    // The three finder patterns are invariant: the top-left corner starts with
+    // seven consecutive black modules, which must appear as one rectangle —
+    // exactly what run merging produces.
     assert.match(qr.path, /^M0 0h7v1h-7z/);
   });
 
-  it('grandit avec le texte encodé', () => {
+  it('grows with the encoded text', () => {
     const court = qrCode('https://a.fr/pair?code=ABCD2345');
     const long = qrCode(`https://${'sous-domaine.'.repeat(8)}exemple.fr/pair?code=ABCD2345`);
 
-    // Version choisie automatiquement : une taille figée casserait au premier
-    // nom de domaine un peu long.
+    // The version is selected automatically because a fixed size would break
+    // on the first slightly long domain name.
     assert.ok(long.size > court.size);
   });
 });
 
-describe('code affiché', () => {
-  it('se recopie avec son tiret et en minuscules', () => {
-    // Le code s'affiche groupé par quatre pour se lire de loin ; ce qui part au
-    // serveur est la forme repliée, sinon un code recopié ne désignerait rien.
+describe('displayed code', () => {
+  it('can be copied with its hyphen and in lowercase', () => {
+    // The code is displayed in groups of four so it can be read from a distance;
+    // the folded form is sent to the server, otherwise a copied code would
+    // identify nothing.
     assert.equal(normalizeUserCode('abcd-2345'), 'ABCD2345');
     assert.equal(normalizeUserCode('ABCD 2345'), 'ABCD2345');
     assert.equal(formatUserCode('ABCD2345'), 'ABCD-2345');

@@ -1,65 +1,60 @@
-# D97 — La date d'une vidéo vient du fichier, pas de sa date de téléversement
+# D97 — A video's date comes from the file, not its upload date
 
-**Contexte.** Un import de quarante vidéos s'est rangé en entier sous
-« Aujourd'hui ». Drive n'expose aucune date de prise de vue pour une vidéo —
-`videoMediaMetadata` se limite à `{width, height, durationMillis}`, là où
-`imageMediaMetadata` porte l'EXIF complet d'une photo. `toUpsert` retombait
-donc sur `modifiedTime`, c'est-à-dire l'heure du téléversement : quarante
-lignes à `taken_at_from_exif = 0` et à la même seconde, pour des fichiers
-tournés sur huit jours. La grille par journée, qui est la vue par défaut,
-devenait fausse pour tout un voyage.
+**Context.** An import of forty videos was grouped entirely under "Today".
+Drive exposes no capture date for video — `videoMediaMetadata` is limited to
+`{width, height, durationMillis}`, while `imageMediaMetadata` carries a photo's
+full EXIF. `toUpsert` therefore fell back to `modifiedTime`, the upload time:
+forty rows with `taken_at_from_exif = 0` and the same second, for files recorded
+over eight days. The by-day grid, the default view, became false for an entire
+trip.
 
-**Ce qui n'était pas réutilisable.** Le transcodage de Drive : l'API v3 n'expose
-aucun flux transcodé, et `https://drive.google.com/file/d/<id>/preview` répond
-401 sans session Google — l'embarquer supposerait de partager les fichiers
-publiquement. Le `thumbnailLink`, lui, ne porte pas de métadonnée.
+**What could not be reused.** Drive transcoding: the v3 API exposes no transcoded
+stream, and `https://drive.google.com/file/d/<id>/preview` responds with 401
+without a Google session — embedding it would require publicly sharing files.
+`thumbnailLink` carries no metadata.
 
-**Choix.** Le fichier est la source, et on le lit sans le télécharger. Le début
-du conteneur est parcouru par requêtes `Range` : `drive/mp4.ts` suit la chaîne
-des boîtes de premier niveau depuis l'offset 0 jusqu'au `moov`, dont le `mvhd`
-porte la date d'enregistrement. Quatre fenêtres de 64 Ko au plus, 2,3 en moyenne
-sur les quarante fichiers réels, 40/40 résolus.
+**Choice.** The file is the source, read without downloading it. The start of the
+container is traversed with `Range` requests: `drive/mp4.ts` follows the chain of
+top-level boxes from offset 0 to `moov`, whose `mvhd` carries the recording date.
+At most four 64 KB windows, 2.3 on average across the forty real files, with
+40/40 resolved.
 
-`resolveVideoTakenAt` (`drive/metadata.ts`) tranche ensuite entre les sources,
-par ordre de confiance :
+`resolveVideoTakenAt` (`drive/metadata.ts`) then chooses between sources in order
+of confidence:
 
-1. **Le nom horodaté, corroboré par le conteneur** — un `YYYYMMDD_HHMMSS` à
-   moins de 26 h du `creation_time` lu dans le fichier. Il porte l'heure locale
-   de l'appareil au début de l'enregistrement, exactement la convention de
-   l'EXIF d'une photo.
-2. **Le conteneur seul**, moins la durée : son en-tête est écrit à l'arrêt de
-   l'enregistrement, pas à son déclenchement.
-3. **Le nom seul**, pour un conteneur qu'on ne sait pas ouvrir.
-4. **`modifiedTime`**, seul cas qui laisse `taken_at_from_exif` à 0 — le panneau
-   écrit alors « Modifié le », qui est exactement ce qu'on sait.
+1. **A timestamped name corroborated by the container** — `YYYYMMDD_HHMMSS`
+   within 26 h of the file's `creation_time`. It carries the device's local time
+   at recording start, exactly the convention of photo EXIF.
+2. **The container alone**, minus duration: its header is written when recording
+   stops, not when it starts.
+3. **The name alone**, for a container that cannot be opened.
+4. **`modifiedTime`**, the only case leaving `taken_at_from_exif` at 0 — the
+   panel then says "Modified on", exactly what is known.
 
-**Rien n'y est propre à un fuseau ni à un format.** Aucun décalage n'est supposé,
-calculé ni stocké : la règle choisit entre deux sources, elle n'en corrige
-aucune. C'est nécessaire parce que `creation_time` n'est pas écrit dans la même
-horloge selon l'appareil — heure locale sur les uns, UTC sur les autres — et que
-le conteneur ne dit pas laquelle. La tolérance de 26 h n'est pas une constante
-horaire : elle dépasse le plus grand décalage réel sur Terre (±14 h) augmenté
-d'un tournage, et ne sert qu'à écarter un nom sans rapport avec le fichier. Un
-`.webm` ou un `.avi` renommé à la main tombe en 3 ou en 4 sans traitement à part.
+**Nothing here is specific to a timezone or format.** No offset is assumed,
+calculated, or stored: the rule chooses between two sources and corrects neither.
+This is necessary because devices write `creation_time` in different clocks —
+local time on some, UTC on others — and the container does not say which. The
+26 h tolerance is not an hourly constant: it exceeds the largest real offset on
+Earth (±14 h) plus a recording, and only rejects a name unrelated to the file. A
+manually renamed `.webm` or `.avi` falls to 3 or 4 without special handling.
 
-**Écarté.** Balayer les octets à la recherche de la signature `moov`, qui aurait
-évité de suivre les tailles. Il échoue sur les fichiers réels : treize des
-quarante portent un ancien `moov` neutralisé en `free`, qui contient encore un
-`mvhd` complet et daté de plusieurs mois plus tôt, le vrai `moov` étant ailleurs.
-Le parcours de la chaîne depuis l'offset 0 est la seule frontière sûre.
+**Rejected.** Scanning bytes for the `moov` signature instead of following
+sizes. It fails on real files: thirteen of forty contain an old `moov` neutralised
+as `free`, still holding a complete `mvhd` dated months earlier, while the real
+`moov` is elsewhere. Following the chain from offset 0 is the only safe boundary.
 
-Écarté aussi : réécrire les dates par une migration. La synchronisation
-ré-upserte chaque fichier, donc une resync suffit — et une migration aurait dû
-deviner ce qu'aucune colonne ne contient.
+Also rejected: rewriting dates in a migration. Synchronisation upserts every file
+again, so a resync is enough — and a migration would have to guess what no column
+contains.
 
-**Conséquences.** Une vidéo déjà datée depuis son fichier et dont le `md5` n'a
-pas bougé garde sa date sans qu'un octet soit relu (`MediaRepo.fileTakenAt`) :
-une resync d'album ne coûte rien de plus qu'avant. Une vidéo restée sur
-`modifiedTime` — en-tête illisible, Drive momentanément indisponible — est
-réessayée au passage suivant, puisque c'est `taken_at_from_exif` qui commande le
-court-circuit. Un échec de lecture ne fait jamais échouer la sync ; seule une
-autorisation révoquée remonte, parce qu'elle ferait dater tout un album sur la
-mauvaise source avant qu'on s'en aperçoive.
+**Consequences.** A video already dated from its file whose `md5` is unchanged
+keeps its date without rereading a byte (`MediaRepo.fileTakenAt`): an album resync
+costs no more than before. A video still using `modifiedTime` — unreadable header
+or temporarily unavailable Drive — is retried on the next pass because
+`taken_at_from_exif` controls the shortcut. A read failure never fails sync; only
+revoked authorisation propagates, because otherwise an entire album would be
+dated from the wrong source before anyone noticed.
 
-Le `moov` porte aussi le GPS (`udta/©xyz`) et le modèle de l'appareil : rien n'en
-est fait pour l'instant, la porte est ouverte.
+`moov` also carries GPS (`udta/©xyz`) and device model; neither is currently used,
+but the door is open.

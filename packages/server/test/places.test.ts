@@ -7,17 +7,15 @@ import { AlbumDayRepo, PlacesPass, cellKey, clusterDay } from '../src/places.js'
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
 /**
- * Lieux d'une journée : l'agrégation des positions EXIF en grappes, et ce que
- * le géocodage en fait.
+ * Places for a day: grouping EXIF positions into clusters and geocoding them.
  *
- * Ce qui est vérifié, ce sont les invariants du module : deux lieux distants
- * ressortent dans l'ordre du déroulé, une journée sans GPS ne produit rien, et
- * **un recalcul n'écrase jamais une saisie** — c'est celui-là qui, s'il cassait,
- * effacerait toutes les notes de l'instance au ménage horaire suivant.
+ * The module invariants are verified: distant places follow itinerary order, a
+ * day without GPS produces nothing, and **recalculation never overwrites user
+ * input** — breaking this would erase every note at the next hourly cleanup.
  */
 
 const BONIFACIO = { lat: 41.3878, lng: 9.1597 };
-/** Une vingtaine de kilomètres plus au nord : au-delà du rayon d'agglomération. */
+/** About twenty kilometres further north: beyond the urban area radius. */
 const PORTO_VECCHIO = { lat: 41.5911, lng: 9.2795 };
 
 function openDb(): Db {
@@ -60,7 +58,7 @@ function photo(id: string, takenAt: string, point?: { lat: number; lng: number }
   };
 }
 
-/** Un passage sans géocodeur : l'agrégation seule, celle qui doit rester pure. */
+/** A pass without a geocoder: aggregation alone, which must remain pure. */
 function pass(db: Db): { run: () => Promise<unknown>; days: AlbumDayRepo } {
   const days = new AlbumDayRepo(db);
   const places = new PlacesPass({
@@ -73,7 +71,7 @@ function pass(db: Db): { run: () => Promise<unknown>; days: AlbumDayRepo } {
   return { run: () => places.run(), days };
 }
 
-/** Nomme des cellules à la main, comme le ferait un géocodage abouti. */
+/** Names cells manually as completed geocoding would. */
 function label(db: Db, cell: string, value: string | null): void {
   db.prepare('INSERT INTO geo_places (cell, label, fetched_at) VALUES (?, ?, ?)').run(
     cell,
@@ -83,29 +81,29 @@ function label(db: Db, cell: string, value: string | null): void {
 }
 
 describe('cellKey', () => {
-  it('arrondit à deux décimales, soit environ un kilomètre', () => {
+  it('rounds to two decimal places, about one kilometre', () => {
     assert.equal(cellKey(41.38784, 9.15971), '41.39,9.16');
-    // Deux photos à quelques centaines de mètres tombent dans la même cellule :
-    // c'est ce qui fait qu'elles ne comptent qu'un appel au géocodeur.
+    // Two photos a few hundred metres apart fall in the same cell, resulting in
+    // only one geocoder call.
     assert.equal(cellKey(41.3901, 9.1633), cellKey(41.3878, 9.1597));
   });
 
-  it('ne produit jamais de zéro négatif', () => {
-    // '-0.00' et '0.00' sont deux clés distinctes en SQL : le même endroit
-    // s'écrirait de deux façons, et serait géocodé deux fois.
+  it('never produces negative zero', () => {
+    // '-0.00' and '0.00' are distinct SQL keys: the same place would have two
+    // spellings and be geocoded twice.
     assert.equal(cellKey(-0.001, -0.002), '0.00,0.00');
   });
 });
 
 describe('clusterDay', () => {
-  it('rend un seul lieu pour une journée passée au même endroit', () => {
+  it('returns one place for a day spent in the same location', () => {
     const cells = clusterDay([BONIFACIO, { lat: 41.39, lng: 9.163 }, { lat: 41.385, lng: 9.158 }]);
     assert.equal(cells.length, 1);
   });
 
-  it('sépare deux lieux distants et les rend dans l’ordre du déroulé', () => {
-    // « Bonifacio, puis Porto-Vecchio » : l'ordre raconte la journée, il ne
-    // doit pas dépendre du nombre de photos prises à chaque étape.
+  it('separates distant places and returns them in itinerary order', () => {
+    // "Bonifacio, then Porto-Vecchio": order tells the day's story and must not
+    // depend on how many photos were taken at each stop.
     const cells = clusterDay([BONIFACIO, BONIFACIO, PORTO_VECCHIO]);
     assert.equal(cells.length, 2);
     assert.equal(cells[0], cellKey(BONIFACIO.lat, BONIFACIO.lng));
@@ -114,9 +112,9 @@ describe('clusterDay', () => {
     assert.deepEqual(inverse, [...cells].reverse());
   });
 
-  it('ne garde que trois grappes, les plus fournies, sans les réordonner', () => {
-    // Une journée de route produirait dix noms de lieu dans un en-tête, qui ne
-    // se lisent pas. On garde là où on s'est arrêté.
+  it('keeps only the three largest clusters without reordering them', () => {
+    // A day on the road would produce ten unreadable place names in a header.
+    // Keep the places where people stopped.
     const points = [
       { lat: 41.0, lng: 9.0 }, // 1 photo
       { lat: 42.0, lng: 9.0 }, // 3 photos
@@ -130,18 +128,18 @@ describe('clusterDay', () => {
     const cells = clusterDay(points);
 
     assert.equal(cells.length, 3);
-    // La grappe d'une seule photo saute ; les trois autres restent dans leur
-    // ordre d'apparition, pas dans l'ordre de leur effectif.
+    // The single-photo cluster is dropped; the other three retain appearance
+    // order rather than size order.
     assert.deepEqual(cells, [cellKey(42, 9), cellKey(43, 9), cellKey(44, 9)]);
   });
 
-  it('ne rend rien sans position', () => {
+  it('returns nothing without positions', () => {
     assert.deepEqual(clusterDay([]), []);
   });
 });
 
 describe('formatPlaceLabel', () => {
-  it('compose ville et région à partir d’une adresse Nominatim', () => {
+  it('combines city and region from a Nominatim address', () => {
     assert.equal(
       formatPlaceLabel({
         city: 'Bonifacio',
@@ -153,31 +151,31 @@ describe('formatPlaceLabel', () => {
     );
   });
 
-  it('retombe sur le village quand il n’y a pas de ville', () => {
+  it('falls back to the village when there is no city', () => {
     assert.equal(
       formatPlaceLabel({ village: 'Sant’Antonino', state: 'Corse', country: 'France' }),
       'Sant’Antonino, Corse',
     );
   });
 
-  it('ne répète pas une ville-État', () => {
-    // Nominatim rend la même chaîne en `city` et en `state` à Bruxelles ou à
-    // Berlin : « Bruxelles, Bruxelles » n'apprend rien.
+  it('does not repeat a city-state', () => {
+    // Nominatim returns the same string for `city` and `state` in Brussels or
+    // Berlin: "Brussels, Brussels" adds nothing.
     assert.equal(
       formatPlaceLabel({ city: 'Bruxelles', state: 'Bruxelles', country: 'Belgique' }),
       'Bruxelles, Belgique',
     );
   });
 
-  it('rend null sur une adresse vide ou absente', () => {
+  it('returns null for an empty or missing address', () => {
     assert.equal(formatPlaceLabel(undefined), null);
     assert.equal(formatPlaceLabel({}), null);
     assert.equal(formatPlaceLabel({ city: '   ' }), null);
   });
 });
 
-describe('passage des lieux', () => {
-  it('agrège une journée en deux lieux, et n’en invente pas pour une journée sans GPS', async () => {
+describe('places pass', () => {
+  it('aggregates a day into two places without inventing one for a day without GPS', async () => {
     const db = openDb();
     const { run, days } = pass(db);
 
@@ -186,7 +184,7 @@ describe('passage des lieux', () => {
         photo('matin', '2026-07-14T09:00:00.000Z', BONIFACIO),
         photo('midi', '2026-07-14T12:00:00.000Z', BONIFACIO),
         photo('soir', '2026-07-14T18:00:00.000Z', PORTO_VECCHIO),
-        // Le lendemain, aucune photo n'est géolocalisée.
+        // The next day, no photo is geolocated.
         photo('lendemain', '2026-07-15T10:00:00.000Z'),
       ],
       '2026-07-20T00:00:00.000Z',
@@ -200,14 +198,14 @@ describe('passage des lieux', () => {
     assert.deepEqual(
       listed.map((day) => day.day),
       ['2026-07-14'],
-      'le 15 ne porte aucune position : il n’a rien à montrer',
+      'the 15th has no position: it has nothing to show',
     );
     assert.deepEqual(listed[0]!.autoPlaces, ['Bonifacio, Corse', 'Porto-Vecchio, Corse']);
 
     db.close();
   });
 
-  it('n’expose pas une cellule que le géocodage n’a pas encore nommée', async () => {
+  it('does not expose a cell geocoding has not named yet', async () => {
     const db = openDb();
     const { run, days } = pass(db);
     new MediaRepo(db).upsertMany(
@@ -216,20 +214,19 @@ describe('passage des lieux', () => {
     );
 
     await run();
-    // La ligne existe en base, mais la journée n'a rien à afficher : la
-    // transporter ajouterait une entrée vide par jour d'album.
+    // The row exists, but the day has nothing to display: carrying it would add
+    // an empty entry for every album day.
     assert.equal(days.cells('corse').length, 1);
     assert.deepEqual(days.list('corse'), []);
 
-    // Un géocodage abouti sans résultat — pleine mer — ne la fait pas
-    // apparaître davantage.
+    // Completed geocoding with no result — open sea — does not expose it either.
     label(db, cellKey(BONIFACIO.lat, BONIFACIO.lng), null);
     assert.deepEqual(days.list('corse'), []);
 
     db.close();
   });
 
-  it('préserve la note et le lieu saisis à travers un recalcul', async () => {
+  it('preserves an entered note and place through recalculation', async () => {
     const db = openDb();
     const { run, days } = pass(db);
     new MediaRepo(db).upsertMany(
@@ -243,9 +240,9 @@ describe('passage des lieux', () => {
       place: 'Les falaises',
     });
 
-    // Le ménage horaire repasse : c'est l'invariant du module. Un
-    // `excluded.description` glissé dans le ON CONFLICT effacerait ici toutes
-    // les notes de l'instance, sans un mot.
+    // Hourly cleanup runs again: this is the module invariant. An
+    // `excluded.description` slipped into ON CONFLICT would silently erase all
+    // instance notes here.
     await run();
 
     const day = days.get('corse', '2026-07-14')!;
@@ -255,7 +252,7 @@ describe('passage des lieux', () => {
     db.close();
   });
 
-  it('retire une journée dont les photos ont disparu, sauf si elle porte une saisie', async () => {
+  it('removes a day whose photos disappeared unless it contains user input', async () => {
     const db = openDb();
     const media = new MediaRepo(db);
     const { run, days } = pass(db);
@@ -270,7 +267,7 @@ describe('passage des lieux', () => {
     await run();
     days.upsertNote('corse', '2026-07-15', { description: 'Le jour du départ' });
 
-    // Dossier Drive réorganisé : `deleteStale` a vidé l'album.
+    // Reorganised Drive folder: `deleteStale` emptied the album.
     media.clearAlbum('corse');
     await run();
 
@@ -280,34 +277,33 @@ describe('passage des lieux', () => {
     assert.deepEqual(
       rows.map((row) => row.day),
       ['2026-07-15'],
-      'la journée sans photo ni saisie part, celle qui porte une note reste',
+      'the day without photos or input leaves; the day with a note remains',
     );
-    assert.equal(rows[0]!.cells, '[]', 'ses lieux déduits, eux, sont bien retirés');
+    assert.equal(rows[0]!.cells, '[]', 'its inferred places are removed');
 
     db.close();
   });
 
-  it('efface une note avec null, et rend la journée invisible si rien ne reste', async () => {
+  it('clears a note with null and hides the day if nothing remains', async () => {
     const db = openDb();
     const { days } = pass(db);
 
     days.upsertNote('corse', '2026-07-14', { description: 'Une note', place: 'Un lieu' });
-    // Un champ absent reste inchangé — c'est la règle des PATCH de ce dépôt.
+    // An absent field remains unchanged — the repository's PATCH rule.
     assert.equal(days.upsertNote('corse', '2026-07-14', { place: null }).description, 'Une note');
 
     const vide = days.upsertNote('corse', '2026-07-14', { description: null });
     assert.equal(vide.description, null);
     assert.equal(vide.place, null);
-    assert.deepEqual(days.list('corse'), [], 'une journée vidée n’a plus rien à montrer');
+    assert.deepEqual(days.list('corse'), [], 'an emptied day has nothing left to show');
 
-    // Une chaîne vide venue d'un formulaire vaut la même chose que `null` :
-    // sans quoi il y aurait deux façons de dire « rien ».
+    // An empty form string means the same as `null`, avoiding two ways to say "nothing".
     assert.equal(days.upsertNote('corse', '2026-07-14', { description: '  ' }).description, null);
 
     db.close();
   });
 
-  it('suit la suppression de l’album', async () => {
+  it('follows album deletion', async () => {
     const db = openDb();
     const { days } = pass(db);
     days.upsertNote('corse', '2026-07-14', { description: 'Une note' });
@@ -316,7 +312,7 @@ describe('passage des lieux', () => {
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM album_days').get() as { n: number }).n,
       0,
-      'ON DELETE CASCADE : une note orpheline réapparaîtrait sur un album recréé sous le même id',
+      'ON DELETE CASCADE: an orphaned note would reappear on an album recreated with the same id',
     );
 
     db.close();

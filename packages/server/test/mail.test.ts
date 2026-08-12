@@ -7,14 +7,14 @@ import { loadEnv } from '../src/env.js';
 import { Mailer } from '../src/mail.js';
 
 /**
- * Avertissements du transport au démarrage.
+ * Transport warnings at startup.
  *
- * Ce qui est vérifié ici n'empêche pas l'instance de tourner : ce sont des
- * configurations valides mais inopérantes, qui autrement ne se remarqueraient
- * qu'en constatant l'absence d'une réponse qu'on n'attendait plus.
+ * These checks do not prevent the instance from running: they cover valid but
+ * ineffective configurations that would otherwise be noticed only when a
+ * long-forgotten expected reply never arrives.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-mail-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-mail-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 function journal() {
@@ -44,31 +44,31 @@ function config(surcharges: Record<string, string | undefined> = {}) {
 
 const RELAIS = { SMTP_URL: 'smtp://localhost:1025', MAIL_FROM: 'Galerie <galerie@exemple.fr>' };
 
-describe('avertissements de configuration du transport', () => {
-  it('signale une adresse de réponse sans relais pour l’utiliser', () => {
+describe('transport configuration warnings', () => {
+  it('reports a reply address without a relay to use it', () => {
     const { avertissements, log } = journal();
     Mailer.fromEnv(config({ MAIL_REPLY_TO: 'moi@exemple.fr' }), log);
-    assert.match(avertissements.join('\n'), /MAIL_REPLY_TO est renseignée mais aucun relais/);
+    assert.match(avertissements.join('\n'), /MAIL_REPLY_TO is set but no relay/);
   });
 
-  it('signale une adresse de réponse identique à l’expéditeur', () => {
+  it('reports a reply address identical to the sender', () => {
     const { avertissements, log } = journal();
-    // Le geste réflexe : recopier MAIL_FROM. La forme diffère — nom d'affichage
-    // d'un côté, casse de l'autre — mais l'adresse est la même, et le Reply-To
-    // ne détourne alors rien.
+    // The reflex is to copy MAIL_FROM. The forms differ — display name on one
+    // side, case on the other — but the address is identical, so Reply-To
+    // redirects nothing.
     Mailer.fromEnv(config({ ...RELAIS, MAIL_REPLY_TO: 'Galerie@Exemple.fr' }), log);
-    assert.match(avertissements.join('\n'), /la même adresse que MAIL_FROM/);
+    assert.match(avertissements.join('\n'), /the same address as MAIL_FROM/);
   });
 
-  it('se tait quand la configuration est cohérente', () => {
+  it('stays silent when configuration is coherent', () => {
     const { avertissements, log } = journal();
     Mailer.fromEnv(config({ ...RELAIS, MAIL_REPLY_TO: 'moi@exemple.fr' }), log);
     assert.deepEqual(avertissements, []);
   });
 
-  it('se tait quand l’instance n’envoie simplement pas d’email', () => {
-    // Ne rien configurer est un choix, pas une erreur : l'absence de relais est
-    // dite en `info`, et n'a pas à ressortir comme un défaut.
+  it('stays silent when the instance simply sends no email', () => {
+    // Configuring nothing is a choice, not an error: the missing relay is
+    // reported at `info` and must not surface as a fault.
     const { avertissements, log } = journal();
     const mailer = Mailer.fromEnv(config(), log);
     assert.equal(mailer.enabled, false);

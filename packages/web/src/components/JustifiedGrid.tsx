@@ -1,20 +1,20 @@
-import type { AlbumDay } from '@gdv/shared';
+import type { AlbumDay } from '@nonni/shared';
 import { type ReactElement, useEffect } from 'react';
 import type { GridLayout } from '../lib/useGridLayout';
 import { SectionHeader } from './SectionHeader';
 import { Thumb } from './Thumb';
 
-/** Distance au bas du contenu déclenchant le chargement de la page suivante. */
+/** Distance from the bottom of the content that triggers loading the next page. */
 const LOAD_MORE_MARGIN_PX = 1500;
 
 interface JustifiedGridProps {
   grid: GridLayout;
   albumId: string;
-  /** Journées annotées, indexées par clé de section. Vide en découpage par mois. */
+  /** Annotated days indexed by section key. Empty when grouping by month. */
   days: Map<string, AlbumDay>;
-  /** Ouvre le crayon des en-têtes : administrateur, en découpage par jour. */
+  /** Enables header editing for administrators when grouping by day. */
   canAnnotate: boolean;
-  /** Replie ou déplie la section, par sa clé. */
+  /** Collapses or expands the section by key. */
   onToggleSection: (key: string) => void;
   selectedIndex: number;
   onSelect: (index: number) => void;
@@ -24,12 +24,11 @@ interface JustifiedGridProps {
 }
 
 /**
- * Rendu virtualisé de la grille justifiée.
+ * Virtualised rendering of the justified grid.
  *
- * Le layout complet est calculé en amont par `useGridLayout` ; ce composant ne
- * monte que les lignes proches du viewport. Un album de plusieurs milliers de
- * photos tient ainsi dans quelques dizaines de nœuds DOM, avec une barre de
- * défilement à la bonne longueur dès le premier rendu.
+ * `useGridLayout` computes the full layout up front; this component mounts only
+ * rows near the viewport. An album of several thousand photos therefore uses a
+ * few dozen DOM nodes, with the correctly sized scrollbar from the first render.
  */
 export function JustifiedGrid({
   grid,
@@ -77,8 +76,8 @@ export function JustifiedGrid({
                     width={cell.width}
                     height={cell.height}
                     selected={cell.index === selectedIndex}
-                    // Les vignettes du premier écran sont chargées sans attendre
-                    // l'IntersectionObserver du lazy-loading natif.
+                    // Load first-screen thumbnails without waiting for the native
+                    // lazy-loading IntersectionObserver.
                     eager={cell.y < viewportHeight}
                     onOpen={() => {
                       onSelect(cell.index);

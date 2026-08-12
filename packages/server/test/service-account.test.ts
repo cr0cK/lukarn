@@ -10,26 +10,24 @@ import { DriveService } from '../src/drive/service.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Authentification par compte de service.
+ * Service account authentication.
  *
- * Elle existe pour une raison précise : le scope `drive.readonly` est
- * « restreint » chez Google, si bien qu'une instance non vérifiée affiche
- * « Google n'a pas validé cette application » à chaque consentement. Un compte
- * de service n'a pas de consentement du tout — l'accès vient du partage du
- * dossier côté Drive (D46).
+ * It exists for a specific reason: Google classifies the `drive.readonly`
+ * scope as "restricted", so an unverified instance displays "Google hasn't
+ * verified this app" for every consent. A service account has no consent flow
+ * at all — access comes from sharing the folder in Drive (D46).
  *
- * Ce qui est vérifié ici : la clé prend bien le pas sur OAuth, une clé
- * défectueuse échoue franchement au lieu de retomber en silence sur l'écran
- * qu'on cherchait à supprimer, et /admin cesse de proposer ce qui n'a plus de
- * sens.
+ * This verifies that the key takes precedence over OAuth, that a defective key
+ * fails clearly instead of silently falling back to the screen it was meant to
+ * remove, and that /admin stops offering actions that no longer apply.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-sa-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-sa-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const silencieux = { info: () => {}, warn: () => {} };
 
-/** Clé de complaisance : rien ici n'appelle Google, seule la forme compte. */
+/** Fixture key: nothing here calls Google, only its shape matters. */
 function ecrireCle(nom: string, contenu: unknown): string {
   const chemin = join(root, nom);
   writeFileSync(chemin, typeof contenu === 'string' ? contenu : JSON.stringify(contenu));
@@ -55,8 +53,8 @@ const CLE_VALIDE = {
   private_key: '-----BEGIN PRIVATE KEY-----\nfactice\n-----END PRIVATE KEY-----\n',
 };
 
-describe('clé de compte de service', () => {
-  it('est lue et rend son adresse', () => {
+describe('service account key', () => {
+  it('is read and returns its address', () => {
     const chemin = ecrireCle('valide.json', CLE_VALIDE);
     const config = loadEnv(env({ GOOGLE_SERVICE_ACCOUNT_FILE: chemin }));
 
@@ -64,23 +62,23 @@ describe('clé de compte de service', () => {
     assert.match(config.serviceAccount?.privateKey ?? '', /BEGIN PRIVATE KEY/);
   });
 
-  it('échoue franchement sur un fichier absent', () => {
-    // Silence puis repli sur OAuth ferait réapparaître l'écran de consentement
-    // là où on venait de le supprimer, sans dire pourquoi — un chemin non monté
-    // dans le conteneur est l'erreur la plus probable.
+  it('fails clearly for a missing file', () => {
+    // Silence followed by an OAuth fallback would restore the consent screen
+    // that was just removed without explaining why — an unmounted container
+    // path is the most likely error.
     assert.throws(
       () => loadEnv(env({ GOOGLE_SERVICE_ACCOUNT_FILE: join(root, 'nulle-part.json') })),
-      /illisible ou n'est pas du JSON/,
+      /unreadable or is not JSON/,
     );
   });
 
-  it('échoue sur un JSON qui n’est pas une clé', () => {
+  it('fails when the JSON is not a key', () => {
     const chemin = ecrireCle('incomplet.json', { type: 'service_account' });
     assert.throws(() => loadEnv(env({ GOOGLE_SERVICE_ACCOUNT_FILE: chemin })), /client_email/);
   });
 });
 
-describe('service Drive en compte de service', () => {
+describe('Drive service with a service account', () => {
   let db: Db;
   after(() => db?.close());
 
@@ -91,7 +89,7 @@ describe('service Drive en compte de service', () => {
     return new DriveService(loadEnv(env(surcharges)), db, silencieux);
   }
 
-  it('prend le pas sur OAuth quand les deux sont configurés', () => {
+  it('takes precedence over OAuth when both are configured', () => {
     const chemin = ecrireCle('prioritaire.json', CLE_VALIDE);
     const drive = service({
       GOOGLE_SERVICE_ACCOUNT_FILE: chemin,
@@ -99,42 +97,42 @@ describe('service Drive en compte de service', () => {
       GOOGLE_CLIENT_SECRET: 'client-secret',
     });
 
-    // Configurer les deux est un état transitoire normal : on ajoute la clé
-    // sans effacer l'ancien couple. C'est la clé qui doit gagner, sinon rien
-    // ne changerait pour celui qui vient de la poser.
+    // Configuring both is a normal transitional state: the key is added without
+    // removing the old pair. The key must win, otherwise nothing changes for
+    // the operator who just added it.
     assert.equal(drive.mode, 'service_account');
     assert.equal(drive.connected, true);
     assert.equal(drive.connection?.account, 'galerie@projet.iam.gserviceaccount.com');
-    // Pas de consentement, donc pas de date d'octroi ni de révocation possible.
+    // No consent means no grant date and no possible revocation.
     assert.equal(drive.connection?.grantedAt, null);
     assert.equal(drive.connection?.revokedAt, null);
   });
 
-  it('est connecté sans le moindre jeton en base', () => {
+  it('is connected without any token in the database', () => {
     const chemin = ecrireCle('sans-jeton.json', CLE_VALIDE);
     const drive = service({ GOOGLE_SERVICE_ACCOUNT_FILE: chemin });
 
-    // C'est tout l'intérêt : rien à stocker, rien à déchiffrer, rien qui expire
-    // au bout de six mois d'inactivité.
+    // This is the point: nothing to store, nothing to decrypt and nothing that
+    // expires after six months of inactivity.
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM oauth_token').get() as { n: number }).n, 0);
     assert.equal(drive.connected, true);
     assert.equal(drive.configured, true);
   });
 
-  it('reste en OAuth sans clé', () => {
+  it('stays in OAuth mode without a key', () => {
     const drive = service({
       GOOGLE_CLIENT_ID: 'client-id',
       GOOGLE_CLIENT_SECRET: 'client-secret',
     });
 
     assert.equal(drive.mode, 'oauth');
-    // Aucun jeton enregistré : c'est bien « à connecter », comme avant.
+    // With no stored token it remains "to be connected", as before.
     assert.equal(drive.connected, false);
   });
 });
 
-describe('administration en compte de service', () => {
-  it('refuse le consentement et la déconnexion, qui n’ont plus d’objet', async () => {
+describe('administration with a service account', () => {
+  it('rejects consent and disconnection because they no longer apply', async () => {
     const chemin = ecrireCle('routes.json', CLE_VALIDE);
     const racine = join(root, 'app');
     const { server, context } = await buildApp(
@@ -160,9 +158,9 @@ describe('administration en compte de service', () => {
         url: '/api/auth/login',
         payload: { username: 'patron', password: 'mot-de-passe-de-test' },
       });
-      const session = login.cookies.find((entry) => entry.name === 'gdv_session');
+      const session = login.cookies.find((entry) => entry.name === 'nonni_session');
       assert.ok(session);
-      const cookie = `gdv_session=${session.value}`;
+      const cookie = `nonni_session=${session.value}`;
 
       const statut = await server.inject({
         method: 'GET',
@@ -171,9 +169,9 @@ describe('administration en compte de service', () => {
       });
       assert.equal(statut.json<{ driveMode: string }>().driveMode, 'service_account');
 
-      // Laisser ces deux-là aboutir enregistrerait un jeton que rien n'utilise,
-      // et « Déconnecter » laisserait croire que l'instance est coupée alors
-      // qu'elle continue de tout lire.
+      // Allowing either action would store a token that nothing uses, while
+      // "Disconnect" would suggest the instance is disconnected even though
+      // it can still read everything.
       const consentement = await server.inject({
         method: 'GET',
         url: '/api/admin/oauth/start',

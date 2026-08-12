@@ -1,8 +1,7 @@
-# D16 — Pagination par curseur plutôt que par OFFSET
+# D16 — Cursor pagination rather than OFFSET
 
-Voir [03](../03-modele-de-donnees.md) pour le mécanisme.
+See [03](../03-modele-de-donnees.md) for the mechanism.
 
-**Écarté.** `LIMIT … OFFSET …` : une synchronisation qui insère des médias
-pendant que l'utilisateur défile décalerait la fenêtre, et le lecteur reverrait
-ou sauterait des photos. Le curseur désigne une position dans l'ordre de tri, pas
-un rang.
+**Rejected.** `LIMIT … OFFSET …`: a synchronisation that inserts media while the
+user scrolls would shift the window, and the viewer would see photos again or
+skip them. The cursor identifies a position in the sort order, not a rank.

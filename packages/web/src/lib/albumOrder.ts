@@ -1,36 +1,33 @@
 /**
- * Sens de lecture d'un album : ce que l'URL demande, ce que ce navigateur en a
- * retenu, et ce que l'album propose à défaut.
+ * Album reading order: what the URL requests, what this browser remembers and
+ * what the album offers by default.
  *
- * Trois sources parce qu'elles répondent à trois questions distinctes. L'URL est
- * une vue exacte, partagée ou reçue par email : elle prime, sinon un lien
- * n'ouvrirait pas ce que son expéditeur avait sous les yeux. Le navigateur porte
- * l'habitude de la personne qui l'utilise — rebasculer le sens à chaque visite
- * du même album est exactement le geste qu'une mémoire évite. L'album, enfin,
- * porte le sens de ce qu'il raconte, réglable dans /admin (D99).
+ * Three sources answer three separate questions. The URL is an exact view,
+ * shared or received by email: it takes precedence or a link would not open what
+ * its sender saw. The browser carries its user's habit — changing direction on
+ * every visit to the same album is exactly what memory avoids. Finally, the
+ * album carries the direction of its story, configurable in /admin (D99).
  *
- * L'abonnement n'entre pas dans le calcul, alors qu'il semblerait distinguer un
- * album découvert d'un album suivi : il est automatique dès la première
- * ouverture (D41), donc vrai pour les deux. Le signal réellement discriminant
- * est « ce navigateur a déjà ouvert cet album », c'est-à-dire la mémoire locale
- * elle-même.
+ * Subscription is excluded even though it seems to distinguish a newly found
+ * album from a followed one: it is automatic on first opening (D41), so true for
+ * both. The actual signal is "this browser has opened this album before", namely
+ * local memory itself.
  */
 
-import { isSortOrder, type SortOrder } from '@gdv/shared';
+import { isSortOrder, type SortOrder } from '@nonni/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 function storageKey(albumId: string): string {
-  return `gdv:album-order:${albumId}`;
+  return `nonni:album-order:${albumId}`;
 }
 
 /**
- * Ce que ce navigateur a retenu du sens de cet album, `null` s'il n'en a rien
- * retenu.
+ * What this browser remembers of the album order, `null` when it remembers nothing.
  *
- * Lecture tolérante, sur le modèle de `lib/seenComments.ts` : un `localStorage`
- * refusé (navigation privée sur d'anciens Safari) ou une valeur écrite par une
- * version précédente ne doit pas empêcher l'album de s'ouvrir. Le repli est
- * « rien de mémorisé », qui laisse simplement l'album décider.
+ * Tolerant reading modelled on `lib/seenComments.ts`: denied `localStorage`
+ * (private browsing in older Safari) or a value written by a previous version
+ * must not prevent the album from opening. The fallback is "nothing remembered",
+ * which simply lets the album decide.
  */
 export function readStoredOrder(albumId: string): SortOrder | null {
   try {
@@ -42,11 +39,11 @@ export function readStoredOrder(albumId: string): SortOrder | null {
 }
 
 /**
- * Le sens à appliquer, ou `null` tant qu'aucune source n'a répondu — l'album
- * n'est pas chargé et rien n'est mémorisé.
+ * Order to apply, or `null` until a source answers — the album is not loaded and
+ * nothing is remembered.
  *
- * `null` n'est pas un défaut de repli : la grille attend plutôt que de charger
- * deux cents éléments dans un sens qu'elle rejetterait à l'arrivée de l'album.
+ * `null` is not a fallback default: the grid waits instead of loading two hundred
+ * items in an order it would reject when the album arrives.
  */
 export function resolveOrder(
   urlParam: string | null,
@@ -59,17 +56,17 @@ export function resolveOrder(
 }
 
 export interface StoredOrder {
-  /** Sens retenu pour cet album, `null` si ce navigateur n'en a pas encore vu. */
+  /** Remembered order for this album, `null` if this browser has not seen it. */
   stored: SortOrder | null;
   remember: (order: SortOrder) => void;
 }
 
 /**
- * Le sens mémorisé pour cet album, et de quoi le mettre à jour.
+ * Remembered order for this album and a way to update it.
  *
- * Une clé par album, comme les repères de lecture des commentaires : « Corse »
- * se lit dans l'ordre du séjour et « Les enfants » par les dernières photos, et
- * une clé unique ferait que basculer l'un retourne l'autre.
+ * One key per album, like comment reading markers: "Corse" follows the trip's
+ * order while "Les enfants" starts with the latest photos, and one shared key
+ * would make switching one reverse the other.
  */
 export function useStoredOrder(albumId: string): StoredOrder {
   const [stored, setStored] = useState<SortOrder | null>(() => readStoredOrder(albumId));
@@ -77,8 +74,8 @@ export function useStoredOrder(albumId: string): StoredOrder {
   useEffect(() => {
     setStored(readStoredOrder(albumId));
 
-    // Un autre onglet a pu basculer le même album entre-temps ; sans cela, les
-    // deux vues du même album divergeraient jusqu'au prochain rechargement.
+    // Another tab may have switched the same album meanwhile; without this, two
+    // views of the same album would diverge until the next reload.
     const onStorage = (event: StorageEvent): void => {
       if (event.key === storageKey(albumId)) setStored(readStoredOrder(albumId));
     };
@@ -92,8 +89,8 @@ export function useStoredOrder(albumId: string): StoredOrder {
       try {
         window.localStorage.setItem(storageKey(albumId), order);
       } catch {
-        // Quota dépassé ou écriture refusée : l'album repartira de son défaut à
-        // la prochaine visite, ce qui ne vaut pas de faire échouer un rendu.
+        // Quota exceeded or write denied: the album returns to its default next
+        // visit, which is not worth failing a render.
       }
     },
     [albumId],

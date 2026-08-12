@@ -4,7 +4,7 @@ import {
   type AdminAlbum,
   type AdminUser,
   type UpdateUserRequest,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateUser, useUpdateUser } from '../../api/hooks';
@@ -14,15 +14,15 @@ import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
 
 interface UserFormProps {
   albums: AdminAlbum[];
-  /** Absent = création d'un compte. */
+  /** Absent means creating an account. */
   user?: AdminUser;
-  /** `true` si le compte modifié est celui de la session en cours. */
+  /** `true` when editing the current session's account. */
   isSelf?: boolean;
   onClose: () => void;
   notify: Notify;
 }
 
-/** Formulaire de création et de modification d'un compte. */
+/** Form for creating and editing an account. */
 export function UserForm({
   albums,
   user,
@@ -56,7 +56,7 @@ export function UserForm({
         { username: username.trim(), password, admin, albums: userAlbums },
         {
           onSuccess: (created) => {
-            notify({ tone: 'ok', text: `Compte « ${created.username} » créé.` });
+            notify({ tone: 'ok', text: `Account "${created.username}" created.` });
             onClose();
           },
         },
@@ -64,8 +64,8 @@ export function UserForm({
       return;
     }
 
-    // Un champ absent laisse la valeur en place : n'envoyer que ce qui a changé
-    // évite d'écraser une modification faite ailleurs entre-temps.
+    // An absent field preserves its value: sending only changes avoids overwriting
+    // an edit made elsewhere in the meantime.
     const body: UpdateUserRequest = {};
     if (password) body.password = password;
     if (admin !== user.admin) body.admin = admin;
@@ -80,7 +80,7 @@ export function UserForm({
       { username: user.username, body },
       {
         onSuccess: (saved) => {
-          notify({ tone: 'ok', text: `Compte « ${saved.username} » modifié.` });
+          notify({ tone: 'ok', text: `Account "${saved.username}" saved.` });
           onClose();
         },
       },
@@ -92,7 +92,7 @@ export function UserForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id={`${fieldId}-username`}
-          label="Identifiant"
+          label="Username"
           value={username}
           onChange={setUsername}
           autoComplete="off"
@@ -102,14 +102,14 @@ export function UserForm({
           error={touched ? usernameError : null}
           hint={
             editing
-              ? "L'identifiant ne se change pas ; supprime et recrée le compte au besoin."
+              ? 'The username does not change; delete and recreate the account if needed.'
               : 'Lettres, chiffres, point, tiret ou tiret bas.'
           }
         />
 
         <TextField
           id={`${fieldId}-password`}
-          label={editing ? 'Nouveau mot de passe' : 'Mot de passe'}
+          label={editing ? 'New password' : 'Password'}
           type="password"
           value={password}
           onChange={setPassword}
@@ -118,22 +118,22 @@ export function UserForm({
           error={touched ? passwordError : null}
           hint={
             editing
-              ? 'Laisse vide pour conserver le mot de passe actuel.'
-              : `${PASSWORD_MIN_LENGTH} caractères au minimum.`
+              ? 'Leave empty to keep the current password.'
+              : `${PASSWORD_MIN_LENGTH} characters minimum.`
           }
         />
       </div>
 
       <Checkbox
         id={`${fieldId}-admin`}
-        label="Rôle administrateur"
+        label="Administrator role"
         checked={admin}
         onChange={setAdmin}
         disabled={pending || isSelf}
         hint={
           isSelf
-            ? 'Tu ne peux pas retirer ton propre rôle : il faut un administrateur pour cette page.'
-            : "Donne accès à cette page. L'accès aux albums reste celui choisi ci-dessous."
+            ? 'You cannot remove your own role: this page needs an administrator.'
+            : 'Grants access to this page. Album access stays the one chosen below.'
         }
       />
 
@@ -144,23 +144,21 @@ export function UserForm({
         disabled={pending}
       />
 
-      <FormError
-        message={serverError ? errorText(serverError, "L'enregistrement a échoué.") : null}
-      />
+      <FormError message={serverError ? errorText(serverError, 'Saving failed.') : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={onClose} disabled={pending}>
-          Annuler
+          Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Enregistrement…' : editing ? 'Enregistrer' : 'Créer le compte'}
+          {pending ? 'Saving…' : editing ? 'Save' : 'Create the account'}
         </Button>
       </div>
     </form>
   );
 }
 
-/** Compare deux attributions sans tenir compte de l'ordre de saisie. */
+/** Compares two assignments regardless of input order. */
 function sameAlbums(a: string[], b: string[]): boolean {
   if (a.includes(ALL_ALBUMS) || b.includes(ALL_ALBUMS)) {
     return a.includes(ALL_ALBUMS) && b.includes(ALL_ALBUMS);

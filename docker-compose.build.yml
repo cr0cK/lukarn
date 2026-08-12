@@ -1,0 +1,26 @@
+# Local build overlay, to stack on top of `docker-compose.yml`:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#   ./deploy/deploy.sh --build          # the same, backup included
+#
+# Three reasons to come this way rather than take the published image: a machine
+# that is not amd64 (the image is published for that one only), a local change to
+# try, or a refusal to depend on someone else's registry — the repository is the
+# source, the image only a convenience.
+#
+# The build wants around 4 GB of memory: the three native modules compile whenever
+# no prebuilt binary matches, and the OOM killer stops a 1 GB machine before the
+# end.
+services:
+  app:
+    build:
+      context: .
+      args:
+        # What the release workflow passes otherwise. `dev` marks a hand-built
+        # image in the OCI metadata, rather than a version number that would
+        # suggest a published one.
+        VERSION: dev
+    # Overrides the registry reference: without this line, compose would rebuild
+    # the image and then tag it with the registry name, and a later
+    # `docker compose pull` would silently replace the local build.
+    image: nonni:local

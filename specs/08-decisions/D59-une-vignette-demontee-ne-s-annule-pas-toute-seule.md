@@ -1,45 +1,44 @@
-# D59 — Une vignette démontée ne s'annule pas toute seule
+# D59 — An unmounted thumbnail does not cancel itself
 
-**Contexte.** Le symptôme rapporté était trompeur : un compte non-administrateur
-restait sur « Chargement des photos » là où le compte administrateur affichait
-l'album. Tout accusait le contrôle d'accès. Ce n'en était pas : les requêtes
-n'échouaient pas, elles **attendaient** — et finissaient par aboutir.
+**Context.** The reported symptom was misleading: a non-administrator account
+remained on "Loading photos" where the administrator account displayed the
+album. Everything pointed to access control. It was not: the requests were not
+failing, they were **waiting** — and eventually completed.
 
-Retirer un `<img>` du DOM n'annule pas son téléchargement. La virtualisation de
-la grille démonte les vignettes sorties de la fenêtre, mais le navigateur mène
-leurs requêtes à terme, et chacune continue d'occuper l'une des **six**
-connexions que HTTP/1.1 accorde à une origine. Quelques dizaines de vignettes
-froides suffisent à saturer ce plafond ; tout ce qui part ensuite attend son
-tour, y compris le `GET /items` dont dépend l'affichage. D'où l'écart entre les
-deux comptes, qui n'avait rien à voir avec les droits : l'un avait toutes ses
-vignettes en cache navigateur, l'autre ouvrait une session neuve.
+Removing an `<img>` from the DOM does not cancel its download. Grid virtualisation
+unmounts thumbnails that leave the viewport, but the browser completes their
+requests, and each continues to occupy one of the **six** connections HTTP/1.1
+allows per origin. A few dozen cold thumbnails are enough to saturate that limit;
+everything sent afterwards waits its turn, including the `GET /items` on which
+display depends. Hence the difference between the two accounts, which had nothing
+to do with permissions: one had all its thumbnails in the browser cache, while
+the other opened a fresh session.
 
-Le cas le plus net est le **changement de sens de tri** : il relance `/items`
-derrière la volée de vignettes de l'ordre précédent, devenues inutiles mais
-toujours en cours. L'écran reste alors sur « Chargement des photos » le temps
-qu'elles se vident — plusieurs dizaines de secondes sur un album froid. Le
-mécanisme est certain ; la durée exacte dépend du débit vers Drive et n'a pas été
-rejouée en conditions contrôlées.
+The clearest case is a **change in sort direction**: it starts `/items` again
+behind the wave of now-useless thumbnails from the previous order that are still
+in progress. The screen then remains on "Loading photos" until they drain —
+several dozen seconds on a cold album. The mechanism is certain; the exact
+duration depends on Drive throughput and was not replayed under controlled
+conditions.
 
-**Choix.** `Thumb` efface son `src` au démontage. C'est le seul geste qui coupe
-réellement une requête d'image en cours.
+**Choice.** `Thumb` clears its `src` on unmount. This is the only action that
+actually stops an in-progress image request.
 
-Le contrôle sur `isConnected` est indispensable et n'a rien d'une précaution de
-style : `StrictMode` rejoue montage et démontage **sans toucher au DOM**, si bien
-que sans lui les vignettes du premier écran perdaient leur `src` à l'instant où
-elles s'affichaient — React ne le réécrit pas, sa vue du DOM le croyant inchangé.
-Le nœud est capté à l'exécution de l'effet, React ayant déjà remis la ref à
-`null` au moment du nettoyage.
+The `isConnected` check is essential and is not a stylistic precaution:
+`StrictMode` replays mounting and unmounting **without touching the DOM**, so
+without it the thumbnails on the first screen lost their `src` as they appeared —
+React does not write it again because its view of the DOM considers it unchanged.
+The node is captured when the effect runs, since React has already reset the ref
+to `null` by cleanup time.
 
-**Écarté.** _Un `AbortController` et un `fetch` par vignette_ : il faudrait gérer
-soi-même les `blob:` URLs, leur révocation, et le cache HTTP qu'on perdrait au
-passage — beaucoup d'appareillage pour ce qu'un attribut retiré obtient.
-_Réduire l'`OVERSCAN_PX`_ : cela diminue le nombre de requêtes orphelines sans
-supprimer la fuite, et dégrade le défilement rapide.
+**Rejected.** _An `AbortController` and a `fetch` per thumbnail_: this would
+require managing `blob:` URLs, revoking them, and replacing the HTTP cache lost in
+the process — considerable machinery for what removing an attribute achieves.
+_Reducing `OVERSCAN_PX`_: this decreases the number of orphaned requests without
+eliminating the leak, and degrades fast scrolling.
 
-**Conséquences.** Le diagnostic initial — « bug multi-utilisateur » — était une
-fausse piste complète, et c'est la leçon la plus utile de cette entrée : deux
-comptes qui se comportent différemment sur la même donnée peuvent ne rien devoir
-aux droits, et tout à l'état de leur cache navigateur. La mesure qui a tranché
-est l'opposition entre le chronométrage serveur, qui répondait vite, et le
-chronométrage navigateur, qui attendait.
+**Consequences.** The initial diagnosis — "multi-user bug" — was a complete
+false lead, and that is this entry's most useful lesson: two accounts behaving
+differently on the same data may owe nothing to permissions and everything to
+the state of their browser cache. The decisive measurement was the contrast
+between server timing, which responded quickly, and browser timing, which waited.

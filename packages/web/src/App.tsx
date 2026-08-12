@@ -18,8 +18,8 @@ function FullPageSpinner(): ReactElement {
 }
 
 /**
- * Garde d'authentification. Le serveur refuse déjà toute route protégée : ce
- * garde ne fait qu'éviter d'afficher une page vide en attendant le 401.
+ * Authentication guard. The server already rejects every protected route: this
+ * guard only avoids showing a blank page while waiting for the 401.
  */
 function RequireAuth({
   children,
@@ -34,7 +34,7 @@ function RequireAuth({
   if (isPending) return <FullPageSpinner />;
 
   if (!user) {
-    // La destination est mémorisée pour y revenir après la connexion.
+    // Remember the destination so it can be restored after sign-in.
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
@@ -47,13 +47,13 @@ export default function App(): ReactElement {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      {/* Non gardée, comme l'écran de connexion : elle sert à rendre compte
-          d'un navigateur qui affiche mal, et celui qui n'arrive pas à se
-          connecter est précisément celui dont on a besoin du relevé. Elle
-          n'expose que les capacités du visiteur, rien de l'instance. */}
+      {/* Unguarded, like the sign-in screen: it reports a browser that renders
+          badly, and the one that cannot sign in is precisely the one whose
+          report is needed. It exposes only the visitor's capabilities, nothing
+          about the instance. */}
       <Route path="/diagnostic" element={<DiagnosticPage />} />
-      {/* L'approbation d'un écran, ouverte depuis le téléphone. Gardée comme le
-          reste : sans session, on passe par /login, qui ramène ici avec le code. */}
+      {/* Screen approval, opened from the phone. Guarded like the rest: without
+          a session, /login brings the visitor back here with the code. */}
       <Route
         path="/pair"
         element={
@@ -78,8 +78,8 @@ export default function App(): ReactElement {
           </RequireAuth>
         }
       />
-      {/* `/admin` sans rubrique reste un lien valide : les signets et la barre
-          supérieure y mènent encore. */}
+      {/* `/admin` without a section remains a valid link: bookmarks and the top
+          bar still lead there. */}
       <Route path="/admin" element={<Navigate to="/admin/albums" replace />} />
       <Route
         path="/admin/:tab"

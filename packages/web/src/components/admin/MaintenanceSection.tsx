@@ -1,4 +1,4 @@
-import type { AdminStatus } from '@gdv/shared';
+import type { AdminStatus } from '@nonni/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';
@@ -6,7 +6,7 @@ import { queryKeys } from '../../api/hooks';
 import { formatBytes } from '../../lib/format';
 import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
-/** Section « Maintenance » : occupation du cache et purge. */
+/** "Maintenance" section: cache usage and purge. */
 export function MaintenanceSection({
   status,
   notify,
@@ -19,10 +19,10 @@ export function MaintenanceSection({
   const clearCache = useMutation({
     mutationFn: api.clearCache,
     onSuccess: () => {
-      notify({ tone: 'ok', text: 'Cache vidé. Les vignettes seront régénérées à la demande.' });
+      notify({ tone: 'ok', text: 'Cache cleared. Thumbnails will be regenerated on demand.' });
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
-    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Purge impossible.') }),
+    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot clear cache.') }),
   });
 
   return (
@@ -30,10 +30,10 @@ export function MaintenanceSection({
       <div className={`${ROW_CLASS} px-4 py-4 xl:items-center`}>
         <div className="min-w-0 flex-1">
           <p className="text-sm text-ink-200">
-            Cache : {formatBytes(status.cache.bytes)} sur {formatBytes(status.cache.maxBytes)}
+            Cache: {formatBytes(status.cache.bytes)} of {formatBytes(status.cache.maxBytes)}
           </p>
           <p className="text-xs text-ink-400">
-            {status.cache.entryCount.toLocaleString('fr-FR')} vignettes générées
+            {status.cache.entryCount.toLocaleString('en-GB')} thumbnails generated
           </p>
         </div>
 
@@ -43,7 +43,7 @@ export function MaintenanceSection({
             onClick={() => clearCache.mutate()}
             disabled={clearCache.isPending}
           >
-            Vider le cache
+            Clear cache
           </Button>
         </div>
       </div>

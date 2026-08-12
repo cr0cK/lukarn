@@ -3,19 +3,18 @@ import { signAlbumUnsubscribeToken, signUnsubscribeToken } from './crypto.js';
 import { parseMailAddress, type Env } from './env.js';
 
 /**
- * Notifications par email : transport SMTP, mise en file et composition des
- * messages.
+ * Email notifications: SMTP transport, queuing and message composition.
  *
- * Deux principes gouvernent ce module.
+ * Two principles govern this module.
  *
- * **L'envoi ne bloque jamais une requête.** Poster un commentaire répond dès
- * que la ligne est écrite ; les emails partent après, sur une file sérialisée.
- * Un serveur SMTP lent ou injoignable ne doit pas se voir depuis l'interface.
+ * **Delivery never blocks a request.** Posting a comment responds as soon as the
+ * row is written; emails are sent afterwards through a serialised queue. A slow
+ * or unreachable SMTP server must not be visible from the interface.
  *
- * **Un échec d'envoi n'échoue pas.** Il est journalisé et abandonné. Un rejet
- * non géré en tâche de fond termine le process Node : toute la galerie
- * tomberait parce qu'un relais SMTP a refusé une connexion — c'est la même
- * précaution que l'éviction du cache disque.
+ * **A delivery failure does not propagate.** It is logged and abandoned. An
+ * unhandled rejection in a background task terminates the Node process: the whole
+ * gallery would go down because an SMTP relay refused a connection — the same
+ * precaution applies to disk-cache eviction.
  */
 
 export interface MailMessage {
@@ -25,7 +24,7 @@ export interface MailMessage {
   html: string;
 }
 
-/** Remplaçable dans les tests, qui n'ouvrent évidemment pas de connexion SMTP. */
+/** Replaceable in tests, which naturally open no SMTP connection. */
 export type Deliver = (message: MailMessage) => Promise<void>;
 
 interface Logger {
@@ -36,9 +35,9 @@ interface Logger {
 
 export class Mailer {
   /**
-   * File d'attente réduite à une promesse chaînée. Les envois se suivent au
-   * lieu de partir ensemble : un relais SMTP courant limite les connexions
-   * simultanées, et un commentaire ne produit jamais plus de quelques messages.
+   * Queue reduced to a chained promise. Deliveries run sequentially rather than
+   * together: a typical SMTP relay limits concurrent connections, and a comment
+   * never produces more than a few messages.
    */
   private tail: Promise<void> = Promise.resolve();
 
@@ -48,43 +47,43 @@ export class Mailer {
   ) {}
 
   /**
-   * Construit le transport depuis l'environnement. Rend un `Mailer` inerte —
-   * et non `null` — quand SMTP n'est pas configuré : les appelants n'ont pas à
-   * savoir si l'instance envoie des emails.
+   * Builds the transport from the environment. Returns an inert `Mailer` — rather
+   * than `null` — when SMTP is not configured, so callers need not know whether
+   * the instance sends email.
    */
   static fromEnv(env: Env, log: Logger): Mailer {
     if (!env.mail) {
       log.info(
-        "SMTP non configuré : ni les notifications de commentaires ni l'annonce des " +
-          "nouvelles photos n'enverront rien.",
+        'SMTP not configured: neither comment notifications nor new-photo ' +
+          'announcements will send anything.',
       );
-      // Avertir plutôt que refuser de démarrer : couper SMTP le temps d'une
-      // intervention est légitime, et on ne laisse pas au passage une variable
-      // qui n'a rien d'invalide bloquer l'instance.
+      // Warn rather than prevent startup: disabling SMTP during maintenance is
+      // legitimate, and a variable that is not itself invalid must not block the
+      // instance in the process.
       if (env.mailReplyTo) {
         log.warn(
-          "MAIL_REPLY_TO est renseignée mais aucun relais n'est configuré : sans " +
-            "SMTP_URL ni MAIL_FROM, aucun message ne part, et l'adresse de réponse " +
-            'ne sert à rien.',
+          'MAIL_REPLY_TO is set but no relay is configured: without SMTP_URL and ' +
+            'MAIL_FROM nothing is sent at all, so the reply address serves no ' +
+            'purpose.',
         );
       }
       return new Mailer(null, log);
     }
 
-    // Le garde-fou vise le geste réflexe : recopier MAIL_FROM dans
-    // MAIL_REPLY_TO. La configuration paraît faite, et les réponses continuent
-    // d'aller exactement là où elles n'arrivaient pas.
+    // This guard targets the reflex of copying MAIL_FROM into MAIL_REPLY_TO. The
+    // configuration appears complete, while replies still go exactly where they
+    // could not be received.
     if (env.mailReplyTo && parseMailAddress(env.mailReplyTo) === parseMailAddress(env.mail.from)) {
       log.warn(
-        `MAIL_REPLY_TO désigne la même adresse que MAIL_FROM (${env.mailReplyTo}) : ` +
-          "l'en-tête Reply-To ne détourne alors rien. Mets-y une adresse qui reçoit " +
-          'vraiment du courrier, ou laisse la variable vide.',
+        `MAIL_REPLY_TO points at the same address as MAIL_FROM (${env.mailReplyTo}): ` +
+          'the Reply-To header then redirects nothing. Put an address that really ' +
+          'receives mail, or leave the variable empty.',
       );
     }
 
-    // `replyTo` n'est posé que s'il est configuré : un en-tête vide vaut moins
-    // que pas d'en-tête, le client de messagerie retombant alors sur l'adresse
-    // d'expédition — qui est justement celle qui ne reçoit rien.
+    // `replyTo` is only set when configured: an empty header is worse than no header,
+    // as the email client otherwise falls back to the sender address — precisely the
+    // one that receives nothing.
     const transport = createTransport(env.mail.smtpUrl, {
       from: env.mail.from,
       ...(env.mailReplyTo ? { replyTo: env.mailReplyTo } : {}),
@@ -98,7 +97,7 @@ export class Mailer {
     return this.deliver !== null;
   }
 
-  /** Met en file sans attendre. L'appelant n'a rien à gérer, pas même l'échec. */
+  /** Queues without waiting. The caller handles nothing, not even failure. */
   queue(message: MailMessage): void {
     if (!this.deliver) return;
     const deliver = this.deliver;
@@ -106,23 +105,23 @@ export class Mailer {
     this.tail = this.tail.then(async () => {
       try {
         await deliver(message);
-        this.log.debug(`Notification envoyée à ${message.to}`);
+        this.log.debug(`Notification sent to ${message.to}`);
       } catch (error) {
-        // Journalisé et abandonné : pas de réessai. Une notification manquée
-        // est un désagrément, une file de réessais est un mécanisme à
-        // surveiller — et le commentaire, lui, est bien enregistré.
-        this.log.warn(`Échec de l'envoi à ${message.to} : ${(error as Error).message}`);
+        // Logged and abandoned: no retry. A missed notification is an inconvenience;
+        // a retry queue is a mechanism that requires monitoring — and the comment
+        // itself has been safely recorded.
+        this.log.warn(`Delivery to ${message.to} failed: ${(error as Error).message}`);
       }
     });
   }
 
-  /** Attend que la file soit vide. Sert à l'arrêt gracieux et aux tests. */
+  /** Waits for the queue to empty. Used for graceful shutdown and tests. */
   async drain(): Promise<void> {
     await this.tail;
   }
 }
 
-/** Ce qu'il faut savoir du commentaire pour rédiger la notification. */
+/** The comment data required to compose the notification. */
 export interface CommentNotification {
   albumId: string;
   albumTitle: string;
@@ -133,9 +132,9 @@ export interface CommentNotification {
 }
 
 /**
- * À qui, et pourquoi. `moderation` désigne l'adresse de l'instance, réglée dans
- * /admin : elle n'a pas d'identité de commentateur, donc pas de lien de
- * désabonnement — on la retire en la vidant du formulaire.
+ * Who receives it, and why. `moderation` identifies the instance address set in
+ * /admin: it has no commenter identity and therefore no unsubscribe link — remove
+ * it by clearing the form field.
  */
 export interface Recipient {
   email: string;
@@ -143,16 +142,16 @@ export interface Recipient {
 }
 
 /**
- * Compose le message destiné à un destinataire.
+ * Composes the message for one recipient.
  *
- * Le lien pointe la photo commentée, pas la page d'accueil : on ouvre un email
- * de notification pour voir de quoi il retourne, et forcer trois clics de plus
- * suffit à faire renoncer. La visionneuse s'ouvre sur `?photo=<id>` (voir
- * `AlbumPage`), qui est exactement l'URL qu'un visiteur partagerait.
+ * The link points to the commented photo, not the home page: a notification email
+ * is opened to see what it is about, and requiring three more clicks is enough to
+ * make someone give up. The viewer opens on `?photo=<id>` (see `AlbumPage`), which
+ * is exactly the URL a visitor would share.
  *
- * Et sur `&panel=comments` : cet email annonce un **message**, pas une photo.
- * Arriver sur l'image le panneau fermé laisserait chercher ce dont il était
- * question.
+ * It also includes `&panel=comments`: this email announces a **message**, not a
+ * photo. Landing on the image with the panel closed would leave the reader looking
+ * for what the email referred to.
  */
 export function buildCommentMail(
   notification: CommentNotification,
@@ -161,58 +160,55 @@ export function buildCommentMail(
 ): MailMessage {
   const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
   /**
-   * Ce lien coupe `commenters.notify`, donc **tout** ce que la galerie envoie :
-   * les réponses aux commentaires comme les annonces de nouvelles photos. Le
-   * libellé le dit en toutes lettres — « se désabonner de ces emails » laisserait
-   * croire qu'on ne coupe que les notifications de commentaires, et la surprise
-   * se paierait au signalement en indésirable.
+   * This link disables `commenters.notify`, and therefore **everything** the gallery
+   * sends: replies to comments as well as new-photo announcements. The wording says
+   * so explicitly — "unsubscribe from these emails" would suggest that only comment
+   * notifications are disabled, and the surprise would result in a spam report.
    *
-   * Pour ne faire taire qu'un album, c'est le lien de l'email de nouveautés
-   * (`buildAlbumUpdateMail`) qu'il faut suivre.
+   * To silence only one album, use the link in the new-photo email
+   * (`buildAlbumUpdateMail`).
    */
   const unsubscribe =
     recipient.reason === 'reply'
       ? `${env.publicUrl}/api/comments/unsubscribe?u=${encodeURIComponent(recipient.email)}&t=${signUnsubscribeToken(recipient.email, env.sessionSecret)}`
       : null;
 
-  // Le sujet sert aussi d'accroche dans le corps : le lecteur qui ouvre depuis
-  // une notification a déjà lu cette phrase, la répéter à l'identique lui dit
-  // qu'il est au bon endroit.
+  // The subject also serves as the opening line in the body: readers opening from
+  // a notification have already read this sentence, and repeating it verbatim tells
+  // them they are in the right place.
   const subject =
     recipient.reason === 'reply'
-      ? `${notification.authorDisplayName} a répondu à ton commentaire`
-      : `${notification.authorDisplayName} a commenté une photo`;
+      ? `${notification.authorDisplayName} replied to your comment`
+      : `${notification.authorDisplayName} commented on a photo`;
 
   const where = notification.mediaName
     ? `${notification.mediaName} — ${notification.albumTitle}`
     : notification.albumTitle;
 
   const text = [
-    `${subject} :`,
+    `${subject}:`,
     '',
     quote(notification.body),
     '',
     where,
     link,
-    ...(unsubscribe
-      ? ['', '—', `Ne plus recevoir aucun email de cette galerie : ${unsubscribe}`]
-      : []),
+    ...(unsubscribe ? ['', '—', `Stop receiving any email from this gallery: ${unsubscribe}`] : []),
   ].join('\n');
 
-  // HTML volontairement pauvre : styles en ligne, pas d'image, pas de police
-  // distante. Les clients de messagerie retirent tout le reste, et un email
-  // qui ne charge rien depuis le serveur ne signale pas non plus sa lecture.
+  // Deliberately plain HTML: inline styles, no image, no remote font. Email clients
+  // remove everything else, and an email that loads nothing from the server cannot
+  // report that it has been read either.
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
-      <p style="margin: 0 0 16px;">${escapeHtml(subject)} :</p>
+      <p style="margin: 0 0 16px;">${escapeHtml(subject)}:</p>
       <blockquote style="margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid #d4d4d4; background: #fafafa; white-space: pre-wrap;">${escapeHtml(notification.body)}</blockquote>
       <p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>
-      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">Voir la photo</a></p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">View the photo</a></p>
       ${
         unsubscribe
           ? `<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Ne plus recevoir aucun email de cette galerie</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Stop receiving any email from this gallery</a>
       </p>`
           : ''
       }
@@ -222,30 +218,30 @@ export function buildCommentMail(
   return { to: recipient.email, subject, text, html };
 }
 
-/** Ce qu'il faut savoir de l'album pour annoncer ses nouveautés. */
+/** The album data required to announce its new items. */
 export interface AlbumUpdateNotification {
   albumId: string;
   albumTitle: string;
-  /** Médias entrés dans l'index depuis la dernière annonce. */
+  /** Media added to the index since the last announcement. */
   count: number;
 }
 
 /**
- * Annonce des nouvelles photos d'un album à quelqu'un qui l'a ouvert.
+ * Announces an album's new photos to someone who has opened it.
  *
- * Le compte figure dans le sujet : c'est ce qui distingue « il y a du nouveau »
- * de « il y a beaucoup de nouveau », et ce qu'on lit sans ouvrir le message.
- * Le lien de désabonnement porte l'album, pas seulement l'adresse — se
- * désabonner d'une galerie bavarde ne doit pas couper les autres.
+ * The count appears in the subject: it distinguishes "there is something new"
+ * from "there is a lot that is new", and can be read without opening the message.
+ * The unsubscribe link includes the album, not just the address — unsubscribing
+ * from a busy gallery must not silence the others.
  */
 export function buildAlbumUpdateMail(
   notification: AlbumUpdateNotification,
   email: string,
   env: Env,
 ): MailMessage {
-  // `?order=desc` : le message annonce ce qui vient d'arriver, le lien doit y
-  // mener. Le paramètre ne vaut que pour cette visite — il prime sur le sens
-  // par défaut de l'album, sans écraser la mémoire du navigateur (D99).
+  // `?order=desc`: the message announces what has just arrived, so the link must
+  // lead there. The parameter only applies to this visit — it takes precedence over
+  // the album's default order without overwriting the browser's memory (D99).
   const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?order=desc`;
   const unsubscribe =
     `${env.publicUrl}/api/subscriptions/unsubscribe` +
@@ -253,7 +249,7 @@ export function buildAlbumUpdateMail(
     `&t=${signAlbumUnsubscribeToken(email, notification.albumId, env.sessionSecret)}`;
 
   const plural = notification.count > 1;
-  const subject = `${notification.count} nouvelle${plural ? 's' : ''} photo${plural ? 's' : ''} dans ${notification.albumTitle}`;
+  const subject = `${notification.count} new photo${plural ? 's' : ''} in ${notification.albumTitle}`;
 
   const text = [
     `${subject}.`,
@@ -261,21 +257,21 @@ export function buildAlbumUpdateMail(
     link,
     '',
     '—',
-    `Tu reçois ce message parce que tu as ouvert cet album.`,
-    `Ne plus être prévenu des nouveautés de « ${notification.albumTitle} » : ${unsubscribe}`,
+    `You are getting this because you have opened this album.`,
+    `Stop hearing about new photos in "${notification.albumTitle}": ${unsubscribe}`,
   ].join('\n');
 
-  // Même sobriété que les notifications de commentaires : styles en ligne, rien
-  // à charger depuis le serveur — donc rien qui signale la lecture non plus.
+  // As restrained as comment notifications: inline styles and nothing to load from
+  // the server — so nothing reports that the message has been read either.
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}.</p>
-      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">Voir l’album</a></p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">View the album</a></p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        Tu reçois ce message parce que tu as ouvert cet album.
+        You are getting this because you have opened this album.
         <br>
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Ne plus être prévenu des nouveautés de «&nbsp;${escapeHtml(notification.albumTitle)}&nbsp;»</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Stop hearing about new photos in &quot;${escapeHtml(notification.albumTitle)}&quot;</a>
       </p>
     </div>
   `.trim();
@@ -283,7 +279,7 @@ export function buildAlbumUpdateMail(
   return { to: email, subject, text, html };
 }
 
-/** Citation en texte brut, préfixée « > » comme le veut l'usage du courrier. */
+/** Plain-text quotation, prefixed with ">" according to email convention. */
 function quote(body: string): string {
   return body
     .split('\n')
@@ -292,17 +288,17 @@ function quote(body: string): string {
 }
 
 /**
- * Le corps d'un commentaire est saisi par un visiteur : il traverse cette
- * fonction avant d'entrer dans le HTML de l'email, sinon un message contenant
- * une balise s'exécuterait dans le client de messagerie du destinataire.
+ * A comment body is entered by a visitor: it passes through this function before
+ * entering the email HTML, otherwise a message containing a tag would execute in
+ * the recipient's email client.
  */
 /**
- * Échappement HTML des textes composés par l'application — noms d'albums, noms
- * d'auteurs, corps de commentaires.
+ * HTML escaping for text composed by the application — album names, author names
+ * and comment bodies.
  *
- * Exporté parce que les pages de confirmation de désabonnement en ont besoin
- * elles aussi : deux copies d'une fonction de sécurité finissent par diverger,
- * et c'est celle qu'on oublie de corriger qui laisse passer une injection.
+ * Exported because unsubscribe confirmation pages need it too: two copies of a
+ * security function eventually diverge, and the one that is forgotten allows an
+ * injection through.
  */
 export function escapeHtml(value: string): string {
   return value
@@ -314,20 +310,20 @@ export function escapeHtml(value: string): string {
 }
 
 /**
- * Code de vérification d'une adresse.
+ * Address verification code.
  *
- * Le sujet nomme l'instance, pas le code (D65) : c'est l'hôte qui dit pourquoi
- * ce message est arrivé, alors qu'un code dans le sujet se lit par-dessus une
- * épaule et reste en clair dans l'historique des notifications.
+ * The subject names the instance, not the code (D65): the host explains why the
+ * message arrived, whereas a code in the subject can be read over someone's
+ * shoulder and remains visible in notification history.
  *
- * Aucun lien cliquable, pas même vers la galerie : un code se recopie dans
- * l'onglet resté ouvert, là où un lien ouvrirait une seconde session dans un
- * autre navigateur. L'hôte n'est donc mentionné qu'en texte.
+ * No clickable link, not even to the gallery: a code is copied into the tab left
+ * open, whereas a link would open a second session in another browser. The host is
+ * therefore only mentioned as text.
  *
- * Le code est affiché d'un seul tenant, jamais groupé en « 123 456 » : `verify`
- * exige six caractères après `trim()`, et un collage avec l'espace du milieu
- * serait rejeté. L'aération passe par `letter-spacing`, qui ne touche pas à la
- * chaîne copiée.
+ * The code is displayed as one unit, never grouped as "123 456": `verify` requires
+ * six characters after `trim()`, and pasting it with the middle space would be
+ * rejected. Visual spacing uses `letter-spacing`, which does not affect the copied
+ * string.
  */
 export function buildVerificationMail(
   email: string,
@@ -336,40 +332,40 @@ export function buildVerificationMail(
   env: Env,
 ): MailMessage {
   const host = new URL(env.publicUrl).host;
-  const subject = `Code de vérification — ${host}`;
+  const subject = `Verification code — ${host}`;
 
   const text = [
-    `Bonjour ${displayName},`,
+    `Hello ${displayName},`,
     '',
-    `Tu viens de renseigner cette adresse sur ${host} pour signer tes commentaires.`,
-    'Voici ton code :',
+    `You have just given this address on ${host} to sign your comments.`,
+    'Here is your code:',
     '',
     code,
     '',
-    'Recopie-le dans la page restée ouverte. Il est valable quinze minutes et ne',
-    'sert qu’une fois.',
+    'Type it into the page you left open. It lasts fifteen minutes and works',
+    'once.',
     '',
     '—',
-    "Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,",
-    "rien n'est associé à cette adresse. Ne le communique à personne.",
+    'If you did not ask for this, ignore the message: until the code is entered,',
+    'nothing is tied to this address. Do not pass it on to anyone.',
   ].join('\n');
 
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
-      <p style="margin: 0 0 16px;">Bonjour ${escapeHtml(displayName)},</p>
+      <p style="margin: 0 0 16px;">Hello ${escapeHtml(displayName)},</p>
       <p style="margin: 0 0 8px;">
-        Tu viens de renseigner cette adresse sur ${escapeHtml(host)} pour signer tes
-        commentaires. Voici ton code :
+        You have just given this address on ${escapeHtml(host)} to sign your comments.
+        Here is your code:
       </p>
       <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
       <p style="margin: 0 0 24px; color: #666;">
-        Recopie-le dans la page restée ouverte. Il est valable quinze minutes et ne sert
-        qu’une fois.
+        Type it into the page you left open. It lasts fifteen minutes and works
+        once.
       </p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        Si tu n'as rien demandé, ignore ce message : tant que le code n'est pas saisi,
-        rien n'est associé à cette adresse. Ne le communique à personne.
+        If you did not ask for this, ignore the message: until the code is entered,
+        nothing is tied to this address. Do not pass it on to anyone.
       </p>
     </div>
   `.trim();

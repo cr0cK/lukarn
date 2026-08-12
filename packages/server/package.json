@@ -1,7 +1,8 @@
 {
-  "name": "@gdv/server",
+  "name": "@nonni/server",
   "version": "1.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "main": "./dist/main.js",
   "scripts": {
@@ -18,7 +19,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.1",
     "@fastify/static": "^8.0.3",
-    "@gdv/shared": "workspace:*",
+    "@nonni/shared": "workspace:*",
     "@googleapis/drive": "^20.2.0",
     "@googleapis/oauth2": "^5.0.1",
     "argon2": "^0.41.1",

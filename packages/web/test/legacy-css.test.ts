@@ -9,14 +9,14 @@ import {
   replaceIndependentTransforms,
 } from '../tools/legacy-css';
 
-/** Le strict nécessaire d'un lot Rollup pour éprouver le greffon. */
+/** The minimum Rollup bundle needed to exercise the plugin. */
 type Entree =
   | { type: 'asset'; fileName: string; source: string }
   | { type: 'chunk'; fileName: string; code: string };
 
 function passerLeGreffon(bundle: Record<string, Entree>): void {
   const hook = legacyCss().generateBundle;
-  assert.equal(typeof hook, 'function', 'le greffon doit exposer generateBundle');
+  assert.equal(typeof hook, 'function', 'the plugin must expose generateBundle');
   const appeler = hook as unknown as (
     this: { error(message: string): never },
     options: unknown,
@@ -33,42 +33,41 @@ function passerLeGreffon(bundle: Record<string, Entree>): void {
   );
 }
 
-describe('abaissement de la feuille de styles', () => {
-  it('double un raccourci logique par ses deux propriétés physiques', () => {
+describe('stylesheet lowering', () => {
+  it('duplicates a logical shorthand with its two physical properties', () => {
     const out = addPhysicalFallbacks('.a{padding-inline:20px}');
     assert.equal(out, '.a{padding-left:20px;padding-right:20px;padding-inline:20px}');
   });
 
-  it('laisse le raccourci logique en dernier, pour que le sens d’écriture prime', () => {
-    // C'est tout le mécanisme : un moteur qui connaît `padding-inline` applique
-    // la dernière déclaration, donc le RTL continue de fonctionner. Inverser
-    // l'ordre ferait gagner la version physique partout.
+  it('leaves the logical shorthand last so writing direction takes precedence', () => {
+    // This is the whole mechanism: an engine that knows `padding-inline`
+    // applies the last declaration, so RTL continues to work. Reversing the
+    // order would make the physical version win everywhere.
     const out = addPhysicalFallbacks('.a{padding-inline:20px}');
     assert.ok(out.indexOf('padding-left') < out.indexOf('padding-inline'));
   });
 
-  it('double aussi une valeur qui passe par une variable', () => {
-    // La forme que Tailwind v4 émet pour tout son barème d'espacement, et la
-    // seule que Lightning CSS refuse d'abaisser lui-même.
+  it('also duplicates a value provided through a variable', () => {
+    // This is the form Tailwind v4 emits for its entire spacing scale, and the
+    // only one Lightning CSS refuses to lower itself.
     const out = addPhysicalFallbacks('.px-5{padding-inline:calc(var(--spacing) * 5)}');
     assert.ok(out.includes('padding-left:calc(var(--spacing) * 5)'));
     assert.ok(out.includes('padding-right:calc(var(--spacing) * 5)'));
   });
 
-  it('laisse intacte une valeur à deux composantes, qui dépend du sens', () => {
-    // `padding-inline: 5px 9px` ne se traduit pas en physique sans savoir si on
-    // écrit de gauche à droite. Le doubler poserait un rembourrage inversé en
-    // arabe ou en hébreu.
+  it('leaves a direction-dependent two-value declaration intact', () => {
+    // `padding-inline: 5px 9px` cannot become physical without knowing the
+    // writing direction. Duplicating it would reverse padding in Arabic or Hebrew.
     const source = '.a{padding-inline:5px 9px}';
     assert.equal(addPhysicalFallbacks(source), source);
   });
 
-  it('traite les autres raccourcis de la même famille', () => {
+  it('handles the other shorthands in the same family', () => {
     assert.ok(addPhysicalFallbacks('.a{inset-inline:0}').includes('left:0;right:0'));
     assert.ok(addPhysicalFallbacks('.a{margin-block:4px}').includes('margin-top:4px'));
   });
 
-  it('convertit oklch() et les propriétés logiques d’une vraie feuille', () => {
+  it('converts oklch() and logical properties from a real stylesheet', () => {
     const out = lowerForLegacyEngines(
       ':root{--c:oklch(63.7% .237 25.331)}.a{color:oklch(63.7% .237 25.331)}.b{inset-inline:0}',
     );
@@ -76,116 +75,118 @@ describe('abaissement de la feuille de styles', () => {
     assert.ok(out.includes('left:0'));
   });
 
-  it('signale un raccourci logique laissé sans repli', () => {
+  it('reports a logical shorthand left without a fallback', () => {
     const problems = findUnloweredDeclarations('.a{padding-inline:20px}');
     assert.equal(problems.length, 1);
-    assert.match(problems[0]!, /padding-inline sans repli/);
+    assert.match(problems[0]!, /padding-inline without a physical fallback/);
   });
 
-  it('ne signale rien sur une feuille correctement abaissée', () => {
+  it('reports nothing for a correctly lowered stylesheet', () => {
     const abaissee = addPhysicalFallbacks('.a{padding-inline:20px}.b{margin-inline:auto}');
     assert.deepEqual(findUnloweredDeclarations(abaissee), []);
   });
 
-  it('signale un oklch() restant', () => {
+  it('reports a remaining oklch()', () => {
     const problems = findUnloweredDeclarations('.a{color:oklch(63.7% .237 25.331)}');
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /oklch/);
   });
 });
 
-describe('propriétés de transformation indépendantes', () => {
-  it('remplace translate par un transform composé', () => {
+describe('independent transform properties', () => {
+  it('replaces translate with a composed transform', () => {
     const out = replaceIndependentTransforms('.a{translate:0 -50%}');
-    assert.ok(out.includes('--gdv-translate:translate(0,-50%)'));
-    assert.ok(out.includes('transform:var(--gdv-translate) var(--gdv-rotate) var(--gdv-scale)'));
-    assert.ok(!/[{;]\s*translate\s*:/.test(out), 'la propriété indépendante ne doit plus rester');
+    assert.ok(out.includes('--nonni-translate:translate(0,-50%)'));
+    assert.ok(
+      out.includes('transform:var(--nonni-translate) var(--nonni-rotate) var(--nonni-scale)'),
+    );
+    assert.ok(!/[{;]\s*translate\s*:/.test(out), 'the independent property must no longer remain');
   });
 
-  it('passe par des emplacements, pour que deux utilitaires se composent', () => {
-    // `rotate-90 -translate-y-1/2` sur le même élément : en écrivant `transform`
-    // en dur, la seconde classe effacerait la première.
+  it('uses slots so two utilities can compose', () => {
+    // With `rotate-90 -translate-y-1/2` on the same element, writing `transform`
+    // directly would make the second class erase the first.
     const out = replaceIndependentTransforms('.a{translate:0 -50%}.b{rotate:90deg}');
-    assert.ok(out.includes('--gdv-rotate:rotate(90deg)'));
-    assert.equal(out.match(/transform:var\(--gdv-translate\)/g)?.length, 2);
+    assert.ok(out.includes('--nonni-rotate:rotate(90deg)'));
+    assert.equal(out.match(/transform:var\(--nonni-translate\)/g)?.length, 2);
   });
 
-  it('remet les emplacements à vide dans une couche, jamais hors couche', () => {
-    // Hors couche, le reset l'emporterait sur l'utilitaire qu'il doit seulement
-    // précéder, et plus rien ne se transformerait.
+  it('resets slots inside a layer and never outside one', () => {
+    // Outside a layer, the reset would override the utility it should only
+    // precede, and no transform would work.
     const out = replaceIndependentTransforms('.a{translate:0 -50%}');
     assert.ok(out.startsWith('@layer properties{*,::before,::after,::backdrop{'));
   });
 
-  it('donne une valeur neutre de repli à chaque variable', () => {
-    // Sans repli, une variable non initialisée invalide tout le `transform`, et
-    // l'élément ne bouge plus du tout.
+  it('gives every variable a neutral fallback', () => {
+    // Without a fallback, one uninitialised variable invalidates the entire
+    // `transform`, and the element no longer moves at all.
     const out = replaceIndependentTransforms('.a{translate:var(--tw-x) var(--tw-y)}');
     assert.ok(out.includes('translate(var(--tw-x,0),var(--tw-y,0))'));
   });
 
-  it('ne touche pas une feuille sans transformation', () => {
+  it('does not alter a stylesheet without transforms', () => {
     const source = '.a{color:red}';
     assert.equal(replaceIndependentTransforms(source), source);
   });
 
-  it('signale une propriété indépendante laissée en place', () => {
+  it('reports an independent property left in place', () => {
     const problems = findUnloweredDeclarations('.a{scale:1.1}');
     assert.equal(problems.length, 1);
-    assert.match(problems[0]!, /transformation/);
+    assert.match(problems[0]!, /transform/);
   });
 });
 
-describe('dépliage des couches en cascade', () => {
-  it('retire la couche et garde son contenu', () => {
+describe('cascade layer flattening', () => {
+  it('removes the layer and keeps its contents', () => {
     assert.equal(flattenLayers('@layer utilities{.a{color:red}}'), '.a{color:red}');
   });
 
-  it('efface une déclaration d’ordre, qui n’a plus rien à ordonner', () => {
+  it('removes an order declaration that no longer has anything to order', () => {
     assert.equal(flattenLayers('@layer theme,base,utilities;.a{color:red}'), '.a{color:red}');
   });
 
-  it('conserve l’ordre du texte, qui devient seul juge de la cascade', () => {
-    // C'est ce qui rend le dépliage sans effet sur un moteur récent : Tailwind
-    // déclare ses couches dans l'ordre où il les émet.
+  it('preserves source order, which becomes the sole judge of the cascade', () => {
+    // This makes flattening harmless in a modern engine: Tailwind declares its
+    // layers in the order in which it emits them.
     const out = flattenLayers('@layer base{.a{color:red}}@layer utilities{.a{color:blue}}');
     assert.equal(out, '.a{color:red}.a{color:blue}');
   });
 
-  it('déplie une couche imbriquée dans une autre', () => {
+  it('flattens a layer nested inside another', () => {
     assert.equal(flattenLayers('@layer a{@layer b{.x{color:red}}}'), '.x{color:red}');
   });
 
-  it('laisse intacte une at-rule que le moteur connaît', () => {
+  it('leaves an at-rule known to the engine intact', () => {
     const out = flattenLayers('@media (min-width:40px){@layer utilities{.a{color:red}}}');
     assert.equal(out, '@media (min-width:40px){.a{color:red}}');
   });
 
-  it('ne referme pas un bloc sur une accolade tenue par une chaîne', () => {
-    // `content: "}"` existe dans la sortie de Tailwind ; compter cette
-    // accolade-là découperait la feuille en plein milieu, sans rien signaler.
+  it('does not close a block on a brace held inside a string', () => {
+    // `content: "}"` occurs in Tailwind output; counting that brace would split
+    // the stylesheet in the middle without reporting anything.
     const out = flattenLayers('@layer utilities{.a:before{content:"}"}}.b{color:red}');
     assert.equal(out, '.a:before{content:"}"}.b{color:red}');
   });
 
-  it('ne laisse aucune couche dans une feuille abaissée', () => {
-    // La sortie de Tailwind v4 est à 91 % dans des couches, et une at-rule
-    // inconnue se jette avec son bloc : sans dépliage, un moteur d'avant
-    // Chromium 99 conforme à la spécification n'affiche plus rien du tout.
+  it('leaves no layers in a lowered stylesheet', () => {
+    // Tailwind v4 output is 91% inside layers, and an unknown at-rule is dropped
+    // with its block: without flattening, a specification-compliant engine from
+    // before Chromium 99 displays nothing at all.
     const out = lowerForLegacyEngines('@layer utilities{.a{translate:0 -50%;padding-inline:4px}}');
     assert.ok(!out.includes('@layer'));
     assert.ok(out.includes('padding-left:4px'));
-    assert.ok(out.includes('--gdv-translate:translate(0,-50%)'));
+    assert.ok(out.includes('--nonni-translate:translate(0,-50%)'));
   });
 
-  it('signale une couche laissée en place', () => {
+  it('reports a layer left in place', () => {
     const problems = findUnloweredDeclarations('@layer utilities{.a{color:red}}');
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /@layer/);
   });
 });
 
-describe('renommage de la feuille abaissée', () => {
+describe('lowered stylesheet renaming', () => {
   const lot = (): Record<string, Entree> => ({
     'assets/index-AAAAAAAA.css': {
       type: 'asset',
@@ -199,11 +200,11 @@ describe('renommage de la feuille abaissée', () => {
     },
   });
 
-  it('rehache le nom d’après le contenu abaissé', () => {
-    // Rollup a haché le nom avant que le greffon ne réécrive la feuille. Sans
-    // ce rehachage, deux contenus vivent sous le même nom — et les assets étant
-    // servis en `immutable` pour un an, l'abaissement n'atteint jamais un
-    // navigateur déjà venu. C'est le cas de celui qu'il vise.
+  it('rehashes the name from the lowered contents', () => {
+    // Rollup hashed the name before the plugin rewrote the stylesheet. Without
+    // rehashing, two contents live under the same name — and because assets are
+    // served as `immutable` for a year, lowering never reaches a returning
+    // browser, precisely the browser it targets.
     const bundle = lot();
     passerLeGreffon(bundle);
 
@@ -212,7 +213,7 @@ describe('renommage de la feuille abaissée', () => {
     assert.notEqual(nouveau, 'assets/index-AAAAAAAA.css');
   });
 
-  it('réécrit le renvoi de la coquille vers le nouveau nom', () => {
+  it('rewrites the shell reference to the new name', () => {
     const bundle = lot();
     passerLeGreffon(bundle);
 
@@ -221,11 +222,11 @@ describe('renommage de la feuille abaissée', () => {
     assert.equal(html.type, 'asset');
     assert.ok(
       html.type === 'asset' && html.source.includes(nouveau),
-      'la coquille doit pointer le fichier réellement écrit',
+      'the shell must point to the file actually written',
     );
   });
 
-  it('abaisse bien le contenu au passage', () => {
+  it('also lowers the contents in the process', () => {
     const bundle = lot();
     passerLeGreffon(bundle);
 

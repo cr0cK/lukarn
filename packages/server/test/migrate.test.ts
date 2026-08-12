@@ -4,12 +4,12 @@ import Database from 'better-sqlite3';
 import { MIGRATIONS, migrate } from '../src/db.js';
 
 /**
- * Mise à jour d'une base existante. Une instance déjà en service porte un index
- * et un refresh token qu'aucune montée de version ne doit faire perdre : les
- * migrations sont donc rejouées depuis la version trouvée, jamais depuis zéro.
+ * Updating an existing database. A live instance contains an index and refresh
+ * token that no upgrade may lose, so migrations resume from the detected
+ * version, never from zero.
  */
 
-/** Base figée à la version `version`, comme après un déploiement plus ancien. */
+/** Database frozen at `version`, as after an older deployment. */
 function databaseAtVersion(version: number): Database.Database {
   const db = new Database(':memory:');
   for (let index = 0; index < version; index++) db.exec(MIGRATIONS[index]!);
@@ -22,17 +22,17 @@ function columns(db: Database.Database, table: string): string[] {
 }
 
 describe('migrations', () => {
-  it('amène une base neuve à la dernière version', () => {
+  it('brings a fresh database to the latest version', () => {
     const db = databaseAtVersion(0);
     migrate(db);
     assert.equal(db.pragma('user_version', { simple: true }), MIGRATIONS.length);
     db.close();
   });
 
-  it('ajoute revoked_at à une base en version 1 sans perdre le jeton', () => {
+  it('adds revoked_at to a version 1 database without losing the token', () => {
     const db = databaseAtVersion(1);
 
-    // État d'une instance en service : un refresh token déjà autorisé.
+    // State of a live instance: an already authorised refresh token.
     db.prepare(
       `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at)
        VALUES (1, 'chiffré', 'photos@exemple.fr', 'drive.readonly', '2026-01-01T00:00:00.000Z')`,
@@ -52,8 +52,8 @@ describe('migrations', () => {
       ciphertext: string;
       revoked_at: string | null;
     };
-    // Le jeton survit et n'est pas considéré comme révoqué : l'instance continue
-    // de fonctionner après la mise à jour, sans nouveau consentement.
+    // The token survives and is not considered revoked: the instance continues
+    // working after the update without new consent.
     assert.equal(token.account, 'photos@exemple.fr');
     assert.equal(token.ciphertext, 'chiffré');
     assert.equal(token.revoked_at, null);
@@ -61,13 +61,13 @@ describe('migrations', () => {
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM media').get() as { n: number }).n,
       1,
-      "l'index doit être conservé",
+      'the index must be preserved',
     );
 
     db.close();
   });
 
-  it('ajoute les tables de configuration à une base en version 2 sans toucher à l’index', () => {
+  it('adds configuration tables to a version 2 database without touching the index', () => {
     const db = databaseAtVersion(2);
     db.prepare(
       `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
@@ -78,9 +78,9 @@ describe('migrations', () => {
     migrate(db);
 
     for (const table of ['users', 'albums', 'user_albums', 'settings']) {
-      assert.ok(columns(db, table).length > 0, `table ${table} manquante`);
-      // Les tables arrivent vides : c'est `bootstrap.ts` qui les remplit, à
-      // partir d'`albums.yaml` quand l'instance en avait un.
+      assert.ok(columns(db, table).length > 0, `missing table ${table}`);
+      // Tables start empty: `bootstrap.ts` fills them from `albums.yaml` when
+      // the instance had one.
       assert.equal((db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n, 0);
     }
 
@@ -88,7 +88,7 @@ describe('migrations', () => {
     db.close();
   });
 
-  it('ajoute les commentaires à une base en version 3 sans toucher aux comptes', () => {
+  it('adds comments to a version 3 database without touching accounts', () => {
     const db = databaseAtVersion(3);
     db.prepare(
       `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
@@ -97,8 +97,8 @@ describe('migrations', () => {
 
     migrate(db);
 
-    // La clé d'accès est inchangée : l'identité des commentateurs vit ailleurs,
-    // et confondre les deux ferait signer « famille » tous les messages du foyer.
+    // The access key is unchanged: commenter identity lives elsewhere, and
+    // mixing them would sign every household message as "famille".
     assert.deepEqual(columns(db, 'users'), [
       'username',
       'password_hash',
@@ -114,13 +114,12 @@ describe('migrations', () => {
 
     assert.ok(columns(db, 'comments').includes('commenter_id'));
     assert.ok(columns(db, 'commenters').includes('verified_at'));
-    // La session mémorise l'identité, sans que les sessions ouvertes soient
-    // invalidées par la mise à jour.
+    // The session records identity without the update invalidating open sessions.
     assert.ok(columns(db, 'sessions').includes('commenter_id'));
     db.close();
   });
 
-  it('ajoute les abonnements à une base en version 4 sans rien perdre', () => {
+  it('adds subscriptions to a version 4 database without losing anything', () => {
     const db = databaseAtVersion(4);
     db.prepare(
       `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
@@ -151,9 +150,8 @@ describe('migrations', () => {
       seen_at: string;
       added_at: string | null;
     };
-    // L'index, l'identité et l'état de sync traversent la mise à jour intacts,
-    // et les deux colonnes ajoutées arrivent à NULL : c'est ce qui fait que la
-    // première annonce ne parlera pas des photos déjà là.
+    // The index, identity and sync state survive intact, and both new columns
+    // start as NULL so the first announcement excludes existing photos.
     assert.equal(photo.name, 'IMG.jpg');
     assert.equal(photo.seen_at, '2026-01-01T00:00:00.000Z');
     assert.equal(photo.added_at, null);
@@ -170,13 +168,13 @@ describe('migrations', () => {
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM commenters').get() as { n: number }).n,
       1,
-      'les identités vérifiées doivent survivre',
+      'verified identities must survive',
     );
 
     db.close();
   });
 
-  it('garde son nom à une identité vérifiée en version 5', () => {
+  it('keeps the name of a verified identity in version 5', () => {
     const db = databaseAtVersion(5);
     db.prepare(
       `INSERT INTO commenters (email, display_name, verified_at, created_at)
@@ -192,15 +190,15 @@ describe('migrations', () => {
       display_name: string;
       pending_display_name: string | null;
     };
-    // La colonne arrive vide : un `COALESCE(pending, display_name)` au premier
-    // code validé ne doit pas renommer qui que ce soit.
+    // The column starts empty: `COALESCE(pending, display_name)` on the first
+    // verified code must not rename anybody.
     assert.equal(identite.display_name, 'Mamie');
     assert.equal(identite.pending_display_name, null);
 
     db.close();
   });
 
-  it('ajoute les journées et le découpage à une base en version 6', () => {
+  it('adds days and grouping to a version 6 database', () => {
     const db = databaseAtVersion(6);
     db.prepare(
       `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
@@ -216,15 +214,15 @@ describe('migrations', () => {
       title: string;
       group_by: string;
     };
-    // Les albums existants arrivent sur le découpage qu'ils avaient de fait :
-    // `month` est le défaut que l'URL appliquait déjà faute de préférence.
+    // Existing albums receive their effective grouping: `month` is the default
+    // the URL already applied without a preference.
     assert.equal(album.title, 'Vacances');
     assert.equal(album.group_by, 'month');
 
     db.close();
   });
 
-  it('ajoute les descriptions de photo à une base en version 8', () => {
+  it('adds photo descriptions to a version 8 database', () => {
     const db = databaseAtVersion(8);
     db.prepare(
       `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
@@ -239,17 +237,16 @@ describe('migrations', () => {
     migrate(db);
 
     assert.ok(columns(db, 'media_notes').includes('description'));
-    // La table arrive vide et l'index est intact : une instance en service
-    // traverse la mise à jour sans rien voir changer, jusqu'à ce que quelqu'un
-    // décrive une photo.
+    // The table starts empty and the index stays intact: a live instance sees
+    // nothing change until somebody describes a photo.
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM media_notes').get() as { n: number }).n, 0);
     assert.equal(
       (db.prepare('SELECT name FROM media WHERE id = ?').get('abc') as { name: string }).name,
       'IMG.jpg',
     );
 
-    // Aucune clé étrangère vers `media` : c'est tout l'intérêt de la table, et
-    // c'est ce qu'une migration ultérieure ne doit pas « corriger » (D83).
+    // No foreign key to `media`: this is the table's purpose, and a later
+    // migration must not "fix" it (D83).
     const references = (db.pragma('foreign_key_list(media_notes)') as { table: string }[]).map(
       (row) => row.table,
     );
@@ -258,7 +255,7 @@ describe('migrations', () => {
     db.close();
   });
 
-  it('ajoute l’aperçu Drive à une base en version 9 sans en promettre un', () => {
+  it('adds the Drive preview to a version 9 database without promising one', () => {
     const db = databaseAtVersion(9);
     db.prepare(
       `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
@@ -272,17 +269,16 @@ describe('migrations', () => {
       name: string;
       has_thumbnail: number;
     };
-    // La vidéo garde sa ligne, et la colonne arrive à 0 : seule la
-    // synchronisation suivante sait si Drive a un aperçu de ce fichier.
-    // Prétendre que oui ferait demander à toute la vidéothèque, dès le premier
-    // chargement de grille, une image qui n'existe peut-être pas (D92).
+    // The video keeps its row and the column starts at 0: only the next sync
+    // knows whether Drive has a preview. Claiming otherwise would make the
+    // entire library request a possibly missing image on first grid load (D92).
     assert.equal(clip.name, 'VID.mp4');
     assert.equal(clip.has_thumbnail, 0);
 
     db.close();
   });
 
-  it('rend interrogeable une base en version 10 déjà remplie', () => {
+  it('makes an already populated version 10 database searchable', () => {
     const db = databaseAtVersion(10);
     const date = '2026-01-01T00:00:00.000Z';
     db.prepare(
@@ -305,10 +301,9 @@ describe('migrations', () => {
 
     migrate(db);
 
-    // C'est le `rebuild` qu'on vérifie : sans lui, les déclencheurs
-    // n'indexeraient que les écritures **suivantes**, et une instance en
-    // service resterait muette sur tout ce qu'elle contient déjà — c'est-à-dire
-    // sur tout, pour un album qu'on ne retouche plus (D96).
+    // This verifies `rebuild`: without it, triggers would index only
+    // **subsequent** writes, leaving a live instance silent about everything it
+    // already contains in an album never touched again (D96).
     const count = (table: string, match: string): number =>
       (
         db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${table} MATCH ?`).get(match) as {
@@ -324,7 +319,7 @@ describe('migrations', () => {
     db.close();
   });
 
-  it('bascule les albums en version 11 dans le sens où ils ont été vécus', () => {
+  it('switches version 11 albums to the order in which they were lived', () => {
     const db = databaseAtVersion(11);
     db.prepare(
       `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
@@ -339,16 +334,15 @@ describe('migrations', () => {
       title: string;
       sort_order: string;
     };
-    // Les albums déjà en service **changent** de sens, à la différence du
-    // découpage : `desc` était la seule valeur possible, personne ne l'a
-    // choisie, et on découvrait un séjour par sa dernière journée (D99).
+    // Existing albums **change** order, unlike grouping: `desc` was the only
+    // possible value, nobody chose it, and a trip opened on its last day (D99).
     assert.equal(album.title, 'Vacances');
     assert.equal(album.sort_order, 'asc');
 
     db.close();
   });
 
-  it('ajoute l’appairage à une base en version 12 sans toucher aux sessions', () => {
+  it('adds pairing to a version 12 database without touching sessions', () => {
     const db = databaseAtVersion(12);
     const date = '2026-01-01T00:00:00.000Z';
     db.prepare(
@@ -362,13 +356,13 @@ describe('migrations', () => {
 
     migrate(db);
 
-    // La table arrive vide, et n'ouvre aucun accès : l'appairage délègue une
-    // clé existante, il n'en crée pas (D260809c).
+    // The table starts empty and grants no access: pairing delegates an existing
+    // key rather than creating one (D260809c).
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM device_pairings').get() as { n: number }).n,
       0,
     );
-    // Une instance en service la traverse sans que ses sessions en pâtissent.
+    // A live instance crosses it without harming its sessions.
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM sessions').get() as { n: number }).n, 1);
     assert.deepEqual(columns(db, 'users'), [
       'username',
@@ -382,7 +376,7 @@ describe('migrations', () => {
     db.close();
   });
 
-  it('ajoute la télémétrie à une base en version 14 sans rien perdre', () => {
+  it('adds telemetry to a version 14 database without losing anything', () => {
     const db = databaseAtVersion(14);
     const date = '2026-01-01T00:00:00.000Z';
     db.prepare(
@@ -406,9 +400,9 @@ describe('migrations', () => {
       last_seen_at: string | null;
       device: string | null;
     };
-    // La session ouverte traverse la mise à jour : ni déconnexion, ni échéance
-    // rapprochée. Les deux colonnes arrivent vides — l'appareil ne se devine
-    // pas après coup, et la première requête relue datera la session.
+    // The open session survives the update: no logout and no shortened expiry.
+    // Both columns start empty — the device cannot be inferred afterwards, and
+    // the first subsequent request dates the session.
     assert.equal(session.username, 'famille');
     assert.equal(session.expires_at, '2027-01-01T00:00:00.000Z');
     assert.equal(session.last_seen_at, null);
@@ -417,39 +411,38 @@ describe('migrations', () => {
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM album_visits').get() as { n: number }).n,
       0,
-      'la table arrive vide : rien ne reconstitue une fréquentation passée',
+      'the table starts empty: nothing reconstructs past visits',
     );
     assert.equal((db.prepare('SELECT COUNT(*) AS n FROM media').get() as { n: number }).n, 1);
 
-    // Aucune clé étrangère, ni vers `sessions` ni vers `albums` : c'est tout
-    // l'intérêt de la table, et ce qu'une migration ultérieure ne doit pas
-    // « corriger » — une déconnexion effacerait sinon l'historique de ce qui a
-    // été regardé (D260809h).
+    // No foreign key to `sessions` or `albums`: this is the table's purpose and
+    // what a later migration must not "fix" — logging out would otherwise erase
+    // viewing history (D260809h).
     assert.deepEqual(db.pragma('foreign_key_list(album_visits)'), []);
 
     db.close();
   });
 
-  it('est idempotente', () => {
+  it('is idempotent', () => {
     const db = databaseAtVersion(0);
     migrate(db);
     const version = db.pragma('user_version', { simple: true });
 
-    // Un redémarrage ne doit rien rejouer.
+    // A restart must replay nothing.
     migrate(db);
     assert.equal(db.pragma('user_version', { simple: true }), version);
     db.close();
   });
 
-  it('laisse la base intacte si une migration échoue', () => {
+  it('leaves the database intact if a migration fails', () => {
     const db = databaseAtVersion(MIGRATIONS.length);
     const before = db.pragma('user_version', { simple: true }) as number;
 
-    // Migration volontairement invalide, ajoutée le temps du test.
+    // Deliberately invalid migration added for the duration of the test.
     MIGRATIONS.push('CECI N EST PAS DU SQL;');
     try {
-      assert.throws(() => migrate(db), /Échec de la migration/);
-      // La version n'a pas bougé : la reprise repartira de la même étape.
+      assert.throws(() => migrate(db), /Migration \d+ failed/);
+      // The version did not move: resuming starts from the same step.
       assert.equal(db.pragma('user_version', { simple: true }), before);
     } finally {
       MIGRATIONS.pop();

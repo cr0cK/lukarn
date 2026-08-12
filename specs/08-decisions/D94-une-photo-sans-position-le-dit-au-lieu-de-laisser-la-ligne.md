@@ -1,46 +1,40 @@
-# D94 — Une photo sans position le dit, au lieu de laisser la ligne disparaître
+# D94 — A photo without a position says so instead of letting the row disappear
 
-**Contexte.** Le panneau d'informations n'affiche que ce qu'il a : chaque ligne
-sans valeur s'efface, ce qui évite un tableau de tirets sur une capture d'écran
-qui ne porte aucun EXIF. La position suivait cette règle, et elle est la seule
-pour qui elle ne marche pas. Deux causes très différentes produisent le même
-écran vide : la photo n'a jamais été géolocalisée, ou l'application ne l'a pas
-encore traitée. La première est définitive, la seconde invite à revenir plus
-tard — et rien ne les distinguait. La confusion est d'autant plus facile que le
-panneau montre juste au-dessus un « Lieu » qui, lui, **dépend** du géocodage
-inverse (D48) et met un passage de fond à s'allumer.
+**Context.** The information panel only displays what it has: each row without a
+value disappears, avoiding a table of dashes for a screenshot with no EXIF. The
+position followed this rule, and it is the only case where it fails. Two very
+different causes produce the same empty screen: the photo was never geolocated,
+or the application has not processed it yet. The former is permanent; the latter
+invites returning later — and nothing distinguished them. Confusion is easier
+because the panel shows a "Place" immediately above that **does** depend on
+reverse geocoding (D48) and appears after a background pass.
 
-**Choix.** La ligne « Position » est toujours rendue pour une photo. Avec
-coordonnées, elle donne le couple lat/lng et ouvre OpenStreetMap. Sans, elle dit
-« Aucune donnée GPS », en `ink-400` — la couleur de ce qui constate au lieu
-d'informer, déjà celle des libellés. Une seule des deux causes reste possible
-après lecture.
+**Choice.** The "Position" row always renders for a photo. With coordinates, it
+shows the lat/lng pair and opens OpenStreetMap. Without them, it says "No GPS
+data" in `ink-400` — the colour of observations rather than information, already
+used by labels. Only one of the two causes remains possible after reading it.
 
-Elle n'attend pas le géocodage : les coordonnées sortent de l'EXIF du fichier,
-recopiées à la synchronisation, alors que le nom du lieu vient d'un appel réseau
-plafonné à une requête par seconde, groupé par journée et parfois sans résultat
-exploitable. Les deux lignes disent donc des choses différentes, et c'est
-voulu — « Position » est ce que la photo porte, « Lieu » est ce qu'on a su en
-faire.
+It does not wait for geocoding: coordinates come from the file's EXIF and are
+copied during synchronisation, while the place name comes from a network call
+capped at one request per second, grouped by day, and sometimes with no usable
+result. The rows deliberately say different things — "Position" is what the
+photo carries; "Place" is what could be made of it.
 
-**Réservé aux photos.** Drive ne rend de position que dans
-`imageMediaMetadata` ; `videoMediaMetadata` n'en porte pas, quel que soit le
-fichier. Une vidéo afficherait donc « Aucune donnée GPS » sans exception, ce qui
-n'apprendrait rien de celle qu'on regarde et affirmerait quelque chose de faux :
-que le fichier n'est pas géolocalisé, alors qu'on ne sait simplement pas le lire.
-Sur une vidéo, la ligne reste absente.
+**Photos only.** Drive only returns a position in `imageMediaMetadata`;
+`videoMediaMetadata` has none, whatever the file. A video would therefore always
+show "No GPS data", teaching nothing about the one being viewed and asserting
+something false: not that the file is not geolocated, but that it cannot be read.
+The row remains absent for video.
 
-**Écarté.** Distinguer une troisième situation — la photo a des coordonnées mais
-la journée n'a pas encore de nom — par une ligne « Lieu : nom pas encore
-déterminé ». C'est le cas transitoire d'une instance qui vient de synchroniser,
-et il se referme tout seul en quelques minutes. Mais rien ne permet de promettre
-qu'il se refermera : le géocodage peut aboutir sans résultat exploitable, et
-`geo_places` retient alors une ligne à `label` nul pour ne plus redemander. Le
-panneau annoncerait un nom qui n'arrivera jamais.
+**Rejected.** Distinguishing a third situation — coordinates exist but the day
+has no name yet — with "Place: name not yet determined". This transient case
+occurs after a fresh synchronisation and usually closes in minutes. But nothing
+guarantees it will close: geocoding can finish without a usable result, when
+`geo_places` stores a row with a null `label` to avoid requesting it again. The
+panel would promise a name that never arrives.
 
-**Conséquences.** `buildRows` quitte `ExifPanel` pour `lib/exifRows.ts`, à côté
-de `caption.ts` et pour la même raison : c'est la seule partie du panneau qui
-ait des cas, et hors du composant elle se vérifie sans DOM. Les lignes portent
-un champ `absent`, qui ne sert pour l'instant qu'à la position — toute autre
-ligne dont l'absence mériterait d'être dite passerait par là plutôt que par une
-seconde couleur écrite en dur.
+**Consequences.** `buildRows` leaves `ExifPanel` for `lib/exifRows.ts`, beside
+`caption.ts` and for the same reason: it is the panel's only conditional part,
+and outside the component it can be verified without the DOM. Rows carry an
+`absent` field currently used only for position — any other absence worth stating
+would use it rather than a second hard-coded colour.

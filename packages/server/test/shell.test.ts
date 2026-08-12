@@ -5,68 +5,67 @@ import { describe, it } from 'node:test';
 import { renderManifest, renderShell } from '../src/shell.js';
 
 /**
- * La substitution du nom d'instance.
+ * Instance name substitution.
  *
- * Ce qui est protégé ici : l'accord entre le gabarit du dépôt et les motifs de
- * `shell.ts`. Ajouter un attribut à la balise `<title>`, ou intervertir `name`
- * et `content` dans une `<meta>`, ne casse rien de visible — le serveur
- * démarre, la page s'affiche, elle porte simplement le mauvais nom. Le test lit
- * le **vrai** `index.html` pour que ce désaccord se voie ici plutôt que sur un
- * écran d'accueil.
+ * This protects the contract between the repository template and the patterns
+ * in `shell.ts`. Adding an attribute to the `<title>` tag, or swapping `name`
+ * and `content` in a `<meta>`, breaks nothing obvious — the server starts and
+ * the page renders, but carries the wrong name. The test reads the **real**
+ * `index.html` so this mismatch appears here rather than on a home screen.
  */
 
 const INDEX = fileURLToPath(new URL('../../web/index.html', import.meta.url));
 const MANIFESTE = fileURLToPath(new URL('../../web/public/manifest.webmanifest', import.meta.url));
 
-describe('coquille HTML', () => {
-  it('remplace les trois emplacements du gabarit réel', () => {
+describe('HTML shell', () => {
+  it('replaces all three locations in the real template', () => {
     const rendu = renderShell(readFileSync(INDEX, 'utf8'), 'Chez les Martin');
 
     assert.match(rendu, /<title>Chez les Martin<\/title>/);
     assert.match(rendu, /name="apple-mobile-web-app-title" content="Chez les Martin"/);
     assert.match(rendu, /name="application-name" content="Chez les Martin"/);
-    assert.doesNotMatch(rendu, /Photos/, 'aucun nom par défaut ne doit subsister');
+    assert.doesNotMatch(rendu, /Photos/, 'no default name should remain');
   });
 
-  it('échappe ce qui casserait le HTML autour', () => {
-    // Le nom vient du `.env` de l'exploitant, pas d'un visiteur — mais un
-    // guillemet suffit à sortir de l'attribut et à disloquer l'en-tête.
+  it('escapes content that would break the surrounding HTML', () => {
+    // The name comes from the operator's `.env`, not from a visitor — but one
+    // quote is enough to escape the attribute and break the header.
     const rendu = renderShell(readFileSync(INDEX, 'utf8'), 'Photos "de" <famille> & co');
 
     assert.match(rendu, /<title>Photos &quot;de&quot; &lt;famille&gt; &amp; co<\/title>/);
     assert.doesNotMatch(rendu, /content="Photos "de"/);
   });
 
-  it('laisse intact le reste de la page', () => {
+  it('leaves the rest of the page intact', () => {
     const source = readFileSync(INDEX, 'utf8');
     const rendu = renderShell(source, 'Autre');
 
-    // Le lien vers le manifeste et le script d'entrée sont ce qui fait de cette
-    // page une application : une substitution trop gourmande les emporterait.
+    // The manifest link and entry script make this page an application: an
+    // over-greedy substitution would remove them.
     assert.match(rendu, /rel="manifest"/);
     assert.match(rendu, /<div id="root">/);
     assert.equal(rendu.split('\n').length, source.split('\n').length);
   });
 });
 
-describe('manifeste', () => {
-  it('ne surcharge que les deux champs de nom', () => {
+describe('manifest', () => {
+  it('overrides only the two name fields', () => {
     const source = readFileSync(MANIFESTE, 'utf8');
     const rendu = JSON.parse(renderManifest(source, 'Chez les Martin'));
     const origine = JSON.parse(source);
 
     assert.equal(rendu.name, 'Chez les Martin');
     assert.equal(rendu.short_name, 'Chez les Martin');
-    // Les icônes restent déclarées au seul endroit qui les liste : les
-    // redéclarer côté serveur les ferait diverger au premier ajout de taille.
+    // Icons remain declared in the single place that lists them: redeclaring
+    // them on the server would make the two lists diverge as soon as a size is added.
     assert.deepEqual(rendu.icons, origine.icons);
     assert.equal(rendu.display, origine.display);
     assert.equal(rendu.theme_color, origine.theme_color);
   });
 
-  it('refuse franchement un manifeste illisible', () => {
-    // C'est un fichier du dépôt : s'il ne parse pas, le build est cassé. Servir
-    // un manifeste vide rendrait l'application silencieusement non installable.
+  it('clearly rejects an unreadable manifest', () => {
+    // This is a repository file: if it does not parse, the build is broken.
+    // Serving an empty manifest would silently make the application impossible to install.
     assert.throws(() => renderManifest('{ pas du json', 'Photos'));
   });
 });

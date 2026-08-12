@@ -1,72 +1,67 @@
-# D99 — On découvre un album dans le sens où on l'a vécu
+# D99 — An album is discovered in the order it was experienced
 
-**Contexte.** Le sens de lecture était une constante globale — `desc`, le plus
-récent d'abord — et il vivait **uniquement** dans l'URL. Deux défauts distincts,
-dont le découpage (`albums.group_by`, migration 7) avait déjà réglé le premier
-de son côté :
+**Context.** Reading order was a global constant — `desc`, newest first — and
+lived **only** in the URL. Two separate defects, the first already solved for
+grouping (`albums.group_by`, migration 7):
 
-- ouvrir un séjour donnait sa dernière journée avant sa première, c'est-à-dire
-  le retour avant le départ ;
-- le sens rebasculé était perdu en quittant la page. Le même geste était à
-  refaire à chaque visite du même album.
+- opening a trip showed its last day before its first, the return before departure;
+- a changed direction was lost on leaving the page. The same action had to be
+  repeated on every visit to the same album.
 
-Ce sont deux problèmes différents et ils appellent deux réponses différentes.
-Le premier est une question d'album : « Corse, juillet 2026 » se raconte du
-premier jour au dernier, « Les enfants » se lit par les dernières photos. Le
-second est une question de lecteur : quel que soit le réglage de l'album,
-quelqu'un qui préfère l'autre sens ne doit le dire qu'une fois.
+These are different problems requiring different answers. The first belongs to
+the album: "Corse, July 2026" is told from first day to last, while "The
+children" is read from the latest photos. The second belongs to the reader:
+whatever the album setting, someone preferring the other order should only say
+so once.
 
-**Choix.** Un défaut **par album**, en base et réglable dans /admin
-(`albums.sort_order`, migration 12, défaut `asc`), et une mémoire **par album
-dans le navigateur** (`gdv:album-order:<albumId>`). Priorité **URL >
-navigateur > album** :
+**Choice.** A default **per album**, in the database and configurable in /admin
+(`albums.sort_order`, migration 12, default `asc`), and memory **per album in the
+browser** (`nonni:album-order:<albumId>`). Priority: **URL > browser > album**:
 
-- l'URL d'abord, parce qu'elle est une vue exacte — partagée, ou reçue par
-  email — et que l'habitude du destinataire n'a pas à la contredire ;
-- le navigateur ensuite, parce que c'est là que vit la préférence d'une
-  personne. La clé d'accès ne conviendrait pas : elle est partagée par tout un
-  foyer (D38), et le sens choisi par l'un s'imposerait aux autres — le même
-  raisonnement que les repères de lecture des commentaires (D55) ;
-- l'album en dernier, comme point de départ de qui ne l'a jamais ouvert.
+- URL first because it is an exact view — shared or received by email — and the
+  recipient's habit must not contradict it;
+- browser next because that is where one person's preference lives. The access
+  key is unsuitable: an entire household shares it (D38), and one person's order
+  would be imposed on others — the same reasoning as comment read markers (D55);
+- album last, as the starting point for someone who has never opened it.
 
-Basculer le sens écrit **toujours** dans le navigateur, et dans l'URL seulement
-si le sens contredit l'album — la règle déjà en place pour `?group=`, qui rend à
-l'album son adresse d'origine quand on revient à sa préférence.
+Toggling order **always** writes to the browser and only writes the URL when the
+order contradicts the album — the existing rule for `?group=`, which restores
+the album's original address when returning to its preference.
 
-L'email de nouveautés pointe vers `?order=desc` : le message annonce ce qui vient
-d'arriver, le lien doit y mener. Le paramètre ne vaut que pour cette visite et
-n'écrase pas la mémoire du navigateur.
+The update email points to `?order=desc`: the message announces what just
+arrived, so its link must lead there. The parameter only applies to that visit
+and does not overwrite browser memory.
 
-**Écarté.** _L'abonnement comme critère_ — « abonné ⇒ plus récentes d'abord »
-semblait distinguer l'album qu'on découvre de celui qu'on suit. Il ne le fait
-pas : l'abonnement est automatique dès la première ouverture (D41), donc vrai
-dans les deux cas. Le signal réellement discriminant est « ce navigateur a déjà
-ouvert cet album », c'est-à-dire la mémoire locale elle-même.
+**Rejected.** _Subscription as a criterion_ — "subscribed ⇒ newest first" seemed
+to distinguish an album being discovered from one being followed. It does not:
+subscription is automatic on first opening (D41), so it is true in both cases.
+The actual discriminating signal is "this browser has opened this album", meaning
+local memory itself.
 
-_La constante globale seule_, basculée de `desc` à `asc` — cela aurait corrigé
-la découverte d'un séjour en cassant l'album courant qu'on alimente au fil de
-l'eau, et laissé intact le second défaut, la préférence à redonner à chaque
-visite.
+_The global constant alone_, changed from `desc` to `asc`: this would fix discovery
+of a trip while breaking a current album fed over time, and leave the second
+defect untouched — restating the preference on every visit.
 
-_Le `localStorage` prioritaire sur l'URL_ — un lien partagé cesserait alors
-d'ouvrir la vue de son expéditeur, et le lien d'annonce en `desc` n'aurait aucun
-effet chez quelqu'un qui a déjà lu l'album à l'endroit.
+_`localStorage` taking priority over the URL_: a shared link would stop opening
+the sender's view, and an announcement link using `desc` would have no effect for
+someone who had already read the album forwards.
 
-_Rendre `order` facultatif côté API_ pour éviter la cascade — la route aurait dû
-lire la préférence de l'album, donc la config, pour un tri qu'elle sait déjà
-faire. Le front résout le sens, puisque c'est lui qui connaît les trois sources ;
-la route ne connaît que ce qu'on lui passe.
+_Making `order` optional in the API_ to avoid the cascade: the route would have
+to read album preference, hence config, for a sort it already performs. The
+frontend resolves order because it knows all three sources; the route only knows
+what it receives.
 
-**Conséquences.** Les albums en service **changent de sens** à la mise à jour :
-la migration les pose tous en `asc`. C'est assumé — `desc` n'a jamais été choisi
-par personne, c'était la seule valeur possible. Le propriétaire rebascule album
-par album depuis /admin, chaque visiteur pour lui-même depuis la grille.
+**Consequences.** Existing albums **change direction** on upgrade: the migration
+sets all to `asc`. This is accepted — nobody chose `desc`; it was the only
+possible value. The owner toggles albums individually in /admin, and each visitor
+does so for themselves in the grid.
 
-Un lien partagé sans `?order=` peut se lire à l'envers chez son destinataire, si
-son navigateur a retenu l'autre sens pour cet album. C'est le prix de la
-mémoire ; partager la vue exacte demande de basculer le sens avant de copier
-l'adresse, ce que le bouton fait déjà.
+A shared link without `?order=` may read backwards for its recipient if their
+browser remembers the opposite order for that album. This is the price of memory;
+sharing the exact view requires toggling direction before copying the address,
+which the button already does.
 
-Enfin, la grille **attend** que le sens soit connu avant de charger la première
-page : sans cette garde, la découverte d'un album chargerait deux cents éléments
-dans un sens rejeté à l'arrivée de la réponse suivante.
+Finally, the grid **waits** until order is known before loading the first page:
+without this guard, discovering an album would load two hundred items in one
+direction and discard them when the next response arrived.

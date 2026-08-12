@@ -3,9 +3,9 @@ import { describe, it } from 'node:test';
 import { parseConfig } from '../src/config.js';
 
 /**
- * `config/albums.yaml` ne sert plus qu'à amorcer une installation neuve, mais
- * il doit toujours être lu et validé exactement comme avant : les instances en
- * service repassent par ce parseur au premier démarrage après la mise à jour.
+ * `config/albums.yaml` now only bootstraps a fresh installation, but it must
+ * still be read and validated exactly as before: live instances pass through
+ * this parser on the first start after the update.
  */
 
 const HASH = '$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA';
@@ -33,23 +33,22 @@ albums:
 `);
 
 describe('parseConfig', () => {
-  it('applique les valeurs par défaut', () => {
+  it('applies default values', () => {
     const config = parseConfig(VALID);
     assert.equal(config.sync.intervalMinutes, 30);
     assert.equal(config.sync.onStartup, true);
     assert.equal(config.cache.maxSizeGB, 20);
-    // `recursive` est vrai par défaut : un dossier de photos contient presque
-    // toujours des sous-dossiers.
+    // `recursive` defaults to true: a photo folder almost always contains subfolders.
     assert.equal(config.albums[0]!.recursive, true);
-    // Découpage et sens de lecture retombent sur les constantes partagées : le
-    // YAML d'amorçage n'a pas son propre défaut, sinon un album créé depuis
-    // /admin et le même album amorcé par fichier s'ouvriraient différemment.
+    // Grouping and sort order fall back to shared constants: bootstrap YAML has
+    // no separate default, otherwise an album created from /admin and the same
+    // album bootstrapped from a file would open differently.
     assert.equal(config.albums[0]!.groupBy, 'month');
     assert.equal(config.albums[0]!.sortOrder, 'asc');
     assert.equal(config.users[1]!.admin, false);
   });
 
-  it('lit le sens de lecture déclaré sur un album', () => {
+  it('reads the sort order declared on an album', () => {
     const config = parseConfig(
       yaml(`
 users:
@@ -66,7 +65,7 @@ albums:
     assert.equal(config.albums[0]!.sortOrder, 'desc');
   });
 
-  it('rejette un sens de lecture inconnu', () => {
+  it('rejects an unknown sort order', () => {
     assert.throws(
       () =>
         parseConfig(
@@ -82,19 +81,19 @@ albums:
     sortOrder: aleatoire
 `),
         ),
-      /Configuration invalide/,
+      /Invalid configuration/,
     );
   });
 
-  it('rejette un YAML mal formé', () => {
-    assert.throws(() => parseConfig('users: [unclosed'), /YAML invalide/);
+  it('rejects malformed YAML', () => {
+    assert.throws(() => parseConfig('users: [unclosed'), /Invalid YAML/);
   });
 
-  it('rejette une config sans utilisateur ni album', () => {
-    assert.throws(() => parseConfig('users: []\nalbums: []'), /Configuration invalide/);
+  it('rejects a configuration without users or albums', () => {
+    assert.throws(() => parseConfig('users: []\nalbums: []'), /Invalid configuration/);
   });
 
-  it("rejette un hash qui n'est pas de l'argon2", () => {
+  it('rejects a hash that is not argon2', () => {
     assert.throws(
       () =>
         parseConfig(`
@@ -111,7 +110,7 @@ albums:
     );
   });
 
-  it('signale une référence à un album inexistant', () => {
+  it('reports a reference to a missing album', () => {
     assert.throws(
       () =>
         parseConfig(`
@@ -124,11 +123,11 @@ albums:
     title: Réel
     folderId: f
 `),
-      /album inconnu : "fantome"/,
+      /unknown album: "fantome"/,
     );
   });
 
-  it('signale les identifiants en double', () => {
+  it('reports duplicate identifiers', () => {
     assert.throws(
       () =>
         parseConfig(`
@@ -144,13 +143,13 @@ albums:
     title: A
     folderId: f
 `),
-      /utilisateur en double/,
+      /duplicate user/,
     );
   });
 });
 
-describe('lecture du fichier', () => {
-  it('rend les droits tels quels, joker compris', () => {
+describe('file reading', () => {
+  it('returns access as-is, including the wildcard', () => {
     const config = parseConfig(VALID);
     assert.deepEqual(config.users[0]!.albums, ['*']);
     assert.deepEqual(config.users[1]!.albums, ['vacances']);

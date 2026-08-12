@@ -1,34 +1,33 @@
-import type { AlbumDay, MediaDetail } from '@gdv/shared';
+import type { AlbumDay, MediaDetail } from '@nonni/shared';
 import type { ReactElement } from 'react';
 import { CommentsPanel } from './CommentsPanel';
 import { ExifPanel } from './ExifPanel';
 
-/** Onglet affiché par le panneau latéral de la visionneuse. */
+/** Tab displayed by the viewer side panel. */
 export type PanelTab = 'info' | 'comments';
 
 /**
- * L'onglet vit dans l'URL, comme la photo ouverte : c'est ce qui permet à un
- * lien — celui du tiroir d'activité, celui d'un email de notification — d'ouvrir
- * la conversation et pas seulement l'image. Une valeur inconnue, URL bricolée à
- * la main, vaut « panneau fermé » plutôt qu'un onglet vide.
+ * The tab lives in the URL like the open photo: this lets a link — from the
+ * activity drawer or a notification email — open the conversation, not only the
+ * image. An unknown value from a hand-edited URL means "panel closed" rather
+ * than an empty tab.
  */
 export function isPanelTab(value: string | null): value is PanelTab {
   return value === 'info' || value === 'comments';
 }
 
 /**
- * Panneau latéral de la visionneuse : métadonnées et commentaires, sous un seul
- * cadre à deux onglets.
+ * Viewer side panel: metadata and comments in a single two-tab frame.
  *
- * Deux `aside` distincts se seraient disputé la même place, chacun avec son
- * en-tête et son bouton de fermeture, et basculer de l'un à l'autre aurait
- * décalé l'image deux fois. Un cadre unique règle les deux : la photo se
- * rétrécit une fois, et l'onglet inactif reste à un clic.
+ * Two separate `aside` elements would compete for the same space, each with a
+ * header and close button, and switching between them would shift the image
+ * twice. One frame solves both: the photo shrinks once and the inactive tab
+ * remains one click away.
  *
- * Sur écran large, ce rétrécissement est littéral — le panneau occupe une
- * colonne du flux. C'est ce qui permet de le laisser ouvert : en surimpression,
- * il recouvrait la flèche « Suivant ». Le zoom n'a rien à en savoir,
- * `ZoomableImage` mesurant son conteneur par `ResizeObserver`.
+ * On a large screen the shrink is literal — the panel occupies a column in the
+ * flow. This lets it remain open: as an overlay, it covered the "Next" arrow.
+ * Zoom need not know, because `ZoomableImage` measures its container with
+ * `ResizeObserver`.
  */
 export function SidePanel({
   albumId,
@@ -44,7 +43,7 @@ export function SidePanel({
   mediaId: string;
   mediaName: string;
   detail: MediaDetail | undefined;
-  /** Journée de la photo, si elle porte une note ou un lieu. */
+  /** Photo day, when it carries a note or place. */
   day: AlbumDay | undefined;
   tab: PanelTab;
   onTabChange: (tab: PanelTab) => void;
@@ -52,30 +51,28 @@ export function SidePanel({
 }): ReactElement {
   return (
     <aside
-      // Deux régimes selon la largeur. À partir de `md`, le panneau est un
-      // élément du flux : la zone photo rétrécit d'autant, les flèches de
-      // navigation restent atteignables, et le panneau peut donc rester ouvert
-      // d'une photo à l'autre. En dessous, il reprend la surimpression — 320 px
-      // prélevés sur un écran de téléphone ne laisseraient rien à voir.
-      // `ink-850` et non `ink-900` : la visionneuse est en `ink-950`, et deux
-      // noirs séparés de trois points de luminance se confondaient — le panneau
-      // ouvert ne se distinguait pas du reste, seule sa bordure le trahissait.
+      // Two modes depending on width. From `md`, the panel sits in the flow: the
+      // photo area shrinks accordingly, navigation arrows remain reachable, and
+      // the panel can stay open between photos. Below that, it becomes an overlay
+      // — taking 320 px from a phone screen would leave nothing to see.
+      // Use `ink-850`, not `ink-900`: the viewer is `ink-950`, and two blacks only
+      // three luminance points apart blended together — only the border revealed
+      // the open panel.
       className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-850/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-850 md:backdrop-blur-none lg:w-96"
-      aria-label="Informations et commentaires"
+      aria-label="Information and comments"
     >
       <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
         <h3 className="min-w-0 text-sm font-medium break-words text-ink-100">{mediaName}</h3>
         <button
           type="button"
           onClick={onClose}
-          // `-my-1 -mr-1` retire du flux le rembourrage qui agrandit la cible de
-          // clic, sans le retirer de la cible elle-même : la croix retombe alors
-          // sur la ligne de base du nom de fichier et sur la marge droite du
-          // panneau. Sans ça, ses 4 px la posaient plus bas que le titre et plus
-          // à droite que la colonne de contenu — deux décalages qu'on ne sait
-          // pas nommer en regardant, mais qu'on voit.
+          // `-my-1 -mr-1` removes the padding that enlarges the click target from
+          // the flow without removing it from the target itself: the cross then
+          // aligns with the filename baseline and the panel's right margin.
+          // Without this, its 4 px placed it below the title and to the right of
+          // the content column — two offsets that are hard to name but visible.
           className="-my-1 -mr-1 shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-          aria-label="Fermer le panneau (Échap)"
+          aria-label="Close the panel (Esc)"
         >
           <svg
             viewBox="0 0 24 24"
@@ -89,18 +86,18 @@ export function SidePanel({
         </button>
       </header>
 
-      <div role="tablist" aria-label="Sections du panneau" className="flex border-b border-ink-800">
+      <div role="tablist" aria-label="Panel sections" className="flex border-b border-ink-800">
         <Tab selected={tab === 'info'} onSelect={() => onTabChange('info')} controls="panel-info">
-          Infos
+          Info
         </Tab>
         <Tab
           selected={tab === 'comments'}
           onSelect={() => onTabChange('comments')}
           controls="panel-comments"
         >
-          Commentaires
-          {/* Le compteur vient du détail du média, déjà chargé : afficher « 3 »
-              avant même d'ouvrir l'onglet est ce qui donne envie de le lire. */}
+          Comments
+          {/* The count comes from already loaded media detail: showing "3"
+              before the tab opens is what makes it worth reading. */}
           {detail && detail.commentCount > 0 && (
             <span className="ml-1.5 rounded-full bg-ink-700 px-1.5 py-0.5 text-[0.7rem] text-ink-200">
               {detail.commentCount}
@@ -114,8 +111,8 @@ export function SidePanel({
           <ExifPanel detail={detail} day={day} />
         </div>
       ) : (
-        // Pas de `overflow-y-auto` ici : le panneau de commentaires gère
-        // lui-même son défilement, pour garder son formulaire ancré en bas.
+        // No `overflow-y-auto` here: the comments panel manages its own scrolling
+        // to keep the form anchored at the bottom.
         <div id="panel-comments" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
           <CommentsPanel albumId={albumId} mediaId={mediaId} />
         </div>

@@ -1,65 +1,60 @@
-# D81 — L'adresse d'expédition ne reçoit rien : un `Reply-To` récupère les réponses
+# D81 — The sending address receives nothing: `Reply-To` collects replies
 
-**Contexte.** `MAIL_FROM` porte une adresse du domaine de l'instance, par
-exemple `Galerie <galerie@exemple.fr>`. Le relais qui l'émet est
-transactionnel : il envoie, il ne reçoit pas. Et le domaine d'envoi n'a pas
-forcément de boîte derrière cette adresse — chez plusieurs registraires, une
-simple redirection suppose désormais un abonnement de messagerie.
+**Context.** `MAIL_FROM` contains an address from the instance's domain, for
+example `Gallery <gallery@example.com>`. The transactional relay that emits it
+sends but does not receive. And the sending domain does not necessarily have a
+mailbox behind that address — with several registrars, even simple forwarding now
+requires an email subscription.
 
-Une réponse à une notification de commentaire partait donc dans le vide, ou
-rebondissait chez son auteur. L'instance n'en savait rien : le rejet a lieu
-chez le destinataire, aucun journal du serveur ne le montre.
+A reply to a comment notification therefore disappeared or bounced back to its
+author. The instance knew nothing: the rejection happens at the recipient, and no
+server log shows it.
 
-**Choix.** Une variable facultative, `MAIL_REPLY_TO`, pose l'en-tête `Reply-To`
-sur tous les messages. L'expéditeur affiché reste celui du domaine — c'est lui
-qui est aligné avec SPF et DKIM, en changer ferait tomber les messages en
-indésirable — mais « Répondre » vise une adresse qui, elle, a une boîte.
+**Choice.** An optional `MAIL_REPLY_TO` variable sets the `Reply-To` header on
+every message. The displayed sender remains on the domain — it is aligned with
+SPF and DKIM, and changing it would send messages to spam — but "Reply" targets
+an address that has a mailbox.
 
-Elle est **indépendante** de la paire `SMTP_URL`/`MAIL_FROM`, qui reste
-indissociable. Absente, aucun en-tête n'est posé et le comportement est celui
-d'avant : c'est le bon réglage pour un domaine qui reçoit son courrier, et il
-n'y avait aucune raison de forcer les instances existantes à déclarer quelque
-chose.
+It is **independent** of the inseparable `SMTP_URL`/`MAIL_FROM` pair. When absent,
+no header is set and behaviour remains as before: this is the right setting for a
+domain that receives its mail, and there was no reason to force existing
+instances to declare anything.
 
-**Écarté.** Un `noreply@` explicite, qui aurait supprimé le problème en
-supprimant la conversation. Ces messages annoncent des commentaires de proches
-sur des photos de famille ; répondre est un usage prévisible, et un
-`noreply@` demande à l'expéditeur de comprendre qu'on ne lui parle pas.
+**Rejected.** An explicit `noreply@`, which would solve the problem by removing
+the conversation. These messages announce comments from relatives on family
+photos; replying is predictable behaviour, and `noreply@` asks the sender to
+understand that nobody is speaking to them.
 
-Écarté aussi : composer le `Reply-To` à partir de l'adresse du commentateur qui
-a déclenché la notification. Séduisant — la réponse arriverait à la bonne
-personne — mais l'annonce des nouvelles photos n'a pas de commentateur
-d'origine, et surtout cela divulguerait l'adresse d'un visiteur aux autres
-destinataires.
+Also rejected: deriving `Reply-To` from the address of the commenter who
+triggered the notification. Appealing — the reply would reach the right person —
+but new-photo announcements have no originating commenter, and above all this
+would disclose one visitor's address to other recipients.
 
-**Trois garde-fous, deux sévérités.** La ligne de partage est la même que
-partout ailleurs dans `env.ts` : ce qui est **faux** arrête le démarrage, ce qui
-est seulement **inopérant** est journalisé.
+**Three safeguards, two severities.** The dividing line is the same as elsewhere
+in `env.ts`: what is **invalid** stops startup; what is merely **ineffective** is
+logged.
 
-- **La forme de `MAIL_FROM` et de `MAIL_REPLY_TO` est contrôlée** — `Nom
-<adresse>` ou adresse nue — et une valeur illisible arrête le démarrage. Le
-  cas visé est celui du contrôle de `SMTP_URL` (D37 pour le transport) : un
-  chevron non refermé part tel quel dans l'en-tête, le relais rejette ou
-  réécrit, et l'échec survient des semaines après la mise en service sans que
-  rien ne le rattache à une ligne du `.env`. Le contrôle reste permissif là où
-  il n'apprendrait rien : pas de point exigé dans le domaine, `@localhost` sert
-  aux essais avec un relais local.
-- **`MAIL_REPLY_TO` sans relais** est signalée en `warn`, pas refusée : couper
-  SMTP le temps d'une intervention est légitime, et faire tomber le démarrage
-  pour une variable qui n'a rien d'invalide serait disproportionné.
-- **`MAIL_REPLY_TO` égale à `MAIL_FROM`** est signalée aussi. C'est le geste
-  réflexe — recopier l'expéditeur — et il est pire que ne rien mettre : la
-  configuration paraît faite, tandis que les réponses continuent d'aller
-  précisément là où elles n'arrivaient pas. La comparaison porte sur l'adresse
-  extraite, un nom d'affichage ou une différence de casse ne masquant pas le
-  doublon.
+- **The form of `MAIL_FROM` and `MAIL_REPLY_TO` is checked** — `Name <address>`
+  or a bare address — and an unreadable value stops startup. This follows the
+  `SMTP_URL` check (D37 for transport): an unclosed angle bracket is sent as-is in
+  the header, the relay rejects or rewrites it, and failure occurs weeks after
+  deployment with nothing linking it to a line in `.env`. The check remains
+  permissive where stricter rules teach nothing: no dot is required in the
+  domain, as `@localhost` supports testing with a local relay.
+- **`MAIL_REPLY_TO` without a relay** is logged as `warn`, not rejected: disabling
+  SMTP during maintenance is legitimate, and stopping startup for a variable
+  that is not invalid would be disproportionate.
+- **`MAIL_REPLY_TO` equal to `MAIL_FROM`** is also reported. Copying the sender is
+  the instinctive action, and worse than setting nothing: the configuration looks
+  complete while replies continue going exactly where they did not arrive. The
+  comparison uses the extracted address, so a display name or case difference
+  does not hide the duplicate.
 
-C'est aussi pourquoi `mailReplyTo` vit à la racine de `Env` et non dans `mail` :
-regroupée avec `smtpUrl` et `from`, elle disparaîtrait avec eux quand aucun
-relais n'est configuré — c'est-à-dire dans le cas précis qu'il s'agit de
-signaler.
+This is also why `mailReplyTo` lives at the root of `Env`, not inside `mail`:
+grouped with `smtpUrl` and `from`, it would disappear with them when no relay is
+configured — exactly the case that must be reported.
 
-**Conséquences.** L'adresse configurée est visible de tous les destinataires,
-comme n'importe quel en-tête. Sur une instance familiale, c'est une adresse que
-les destinataires connaissent déjà ; sur une instance ouverte, mieux vaut une
-vraie boîte sur le domaine, et la variable reste alors vide.
+**Consequences.** The configured address is visible to all recipients, like any
+header. On a family instance, it is an address recipients already know; on an
+open instance, a real mailbox on the domain is preferable, and the variable then
+remains empty.

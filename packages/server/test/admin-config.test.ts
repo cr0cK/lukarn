@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AdminAlbum, AdminUser, AppSettings } from '@gdv/shared';
+import type { AdminAlbum, AdminUser, AppSettings } from '@nonni/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -12,15 +12,15 @@ import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Administration des comptes, des albums et des réglages depuis l'application.
+ * Administration of accounts, albums and settings from the application.
  *
- * Les tests portent sur les garde-fous plutôt que sur la forme des payloads :
- * ce sont eux qui empêchent l'instance de devenir inadministrable, une session
- * de survivre à un retrait d'accès, ou un identifiant d'en écraser un autre.
+ * The tests cover safeguards rather than payload shapes: they prevent the
+ * instance from becoming impossible to administer, a session from surviving
+ * revoked access, or one username from overwriting another.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'gdv-admin-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-admin-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -62,13 +62,13 @@ async function login(username: string, password = PASSWORD): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
-  const entry = response.cookies.find((c) => c.name === 'gdv_session');
-  assert.ok(entry, 'cookie de session absent');
-  return `gdv_session=${entry.value}`;
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
+  const entry = response.cookies.find((c) => c.name === 'nonni_session');
+  assert.ok(entry, 'session cookie missing');
+  return `nonni_session=${entry.value}`;
 }
 
-/** Remet la configuration à un état connu avant chaque test. */
+/** Restores the configuration to a known state before each test. */
 function reset(): void {
   for (const user of context.config.users()) context.config.deleteUser(user.username);
   for (const album of context.albums) context.config.deleteAlbum(album.id);
@@ -122,8 +122,8 @@ async function patch(url: string, payload: unknown): ReturnType<typeof server.in
   return server.inject({ method: 'PATCH', url, headers: { cookie }, payload: payload as object });
 }
 
-describe('comptes', () => {
-  it('crée un compte et ne renvoie jamais son empreinte', async () => {
+describe('accounts', () => {
+  it('creates an account and never returns its hash', async () => {
     const response = await post('/api/admin/users', {
       username: 'Famille',
       password: 'un-mot-de-passe',
@@ -136,7 +136,7 @@ describe('comptes', () => {
     assert.equal(user.admin, false);
     assert.deepEqual(user.albums, []);
     assert.ok(user.createdAt);
-    // Aucune empreinte ne doit fuiter, sous aucune clé.
+    // No hash may leak under any key.
     assert.doesNotMatch(response.body, /\$argon2/);
 
     const listing = await server.inject({
@@ -151,17 +151,17 @@ describe('comptes', () => {
     ]);
   });
 
-  it('refuse un identifiant déjà pris, casse comprise', async () => {
+  it('rejects an existing username regardless of case', async () => {
     await post('/api/admin/users', { username: 'famille', password: 'un-mot-de-passe' });
     const again = await post('/api/admin/users', { username: 'FAMILLE', password: 'autre-secret' });
 
     assert.equal(again.statusCode, 409);
     assert.equal((again.json() as { error: string }).error, 'conflict');
-    // Le mot de passe d'origine n'a pas été écrasé au passage.
+    // The original password was not overwritten along the way.
     await login('famille', 'un-mot-de-passe');
   });
 
-  it('refuse un mot de passe trop court et un identifiant mal formé', async () => {
+  it('rejects a short password and a malformed username', async () => {
     assert.equal(
       (await post('/api/admin/users', { username: 'court', password: 'abc' })).statusCode,
       400,
@@ -173,7 +173,7 @@ describe('comptes', () => {
     );
   });
 
-  it('refuse un album inexistant plutôt que de créer un accès muet', async () => {
+  it('rejects a missing album rather than creating silent access', async () => {
     const response = await post('/api/admin/users', {
       username: 'famille',
       password: 'un-mot-de-passe',
@@ -183,7 +183,7 @@ describe('comptes', () => {
     assert.equal((response.json() as { error: string }).error, 'unknown_album');
   });
 
-  it('renvoie 404 sur un compte inconnu', async () => {
+  it('returns 404 for an unknown account', async () => {
     assert.equal((await patch('/api/admin/users/fantome', { admin: true })).statusCode, 404);
     const removed = await server.inject({
       method: 'DELETE',
@@ -194,8 +194,8 @@ describe('comptes', () => {
   });
 });
 
-describe('dernier administrateur', () => {
-  it('refuse de le supprimer', async () => {
+describe('last administrator', () => {
+  it('refuses to delete it', async () => {
     const response = await server.inject({
       method: 'DELETE',
       url: '/api/admin/users/patron',
@@ -207,13 +207,13 @@ describe('dernier administrateur', () => {
     assert.ok(context.config.user('patron'));
   });
 
-  it('refuse de lui retirer son rôle', async () => {
+  it('refuses to remove its role', async () => {
     const response = await patch('/api/admin/users/patron', { admin: false });
     assert.equal(response.statusCode, 409);
     assert.equal(context.config.user('patron')!.admin, true);
   });
 
-  it('laisse faire dès qu’un second administrateur existe', async () => {
+  it('allows it once a second administrator exists', async () => {
     assert.equal(
       (
         await post('/api/admin/users', {
@@ -232,7 +232,7 @@ describe('dernier administrateur', () => {
 });
 
 describe('sessions', () => {
-  it('ferme les sessions du compte supprimé', async () => {
+  it('closes the deleted account sessions', async () => {
     await post('/api/admin/users', { username: 'famille', password: 'un-mot-de-passe' });
     const victim = await login('famille', 'un-mot-de-passe');
 
@@ -256,7 +256,7 @@ describe('sessions', () => {
     );
   });
 
-  it('ferme les sessions au changement de mot de passe', async () => {
+  it('closes sessions when the password changes', async () => {
     await post('/api/admin/users', { username: 'famille', password: 'un-mot-de-passe' });
     const victim = await login('famille', 'un-mot-de-passe');
 
@@ -269,12 +269,12 @@ describe('sessions', () => {
       (await server.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie: victim } }))
         .statusCode,
       401,
-      'la session ouverte avec l’ancien mot de passe doit tomber',
+      'the session opened with the old password must be closed',
     );
     await login('famille', 'nouveau-secret');
   });
 
-  it('ne déconnecte pas un compte à qui l’on retire le rôle d’administrateur', async () => {
+  it('does not log out an account whose administrator role is removed', async () => {
     await post('/api/admin/users', {
       username: 'second',
       password: 'un-mot-de-passe',
@@ -284,7 +284,7 @@ describe('sessions', () => {
 
     assert.equal((await patch('/api/admin/users/second', { admin: false })).statusCode, 200);
 
-    // La session survit — le compte reste légitime…
+    // The session survives — the account remains legitimate…
     const me = await server.inject({
       method: 'GET',
       url: '/api/auth/me',
@@ -293,7 +293,7 @@ describe('sessions', () => {
     assert.equal(me.statusCode, 200);
     assert.equal((me.json() as { admin: boolean }).admin, false);
 
-    // … mais l'administration lui est refusée dès la requête suivante.
+    // …but administration is denied from the very next request.
     const forbidden = await server.inject({
       method: 'GET',
       url: '/api/admin/users',
@@ -304,7 +304,7 @@ describe('sessions', () => {
 });
 
 describe('albums', () => {
-  it('crée un album et refuse un id déjà pris', async () => {
+  it('creates an album and rejects an existing id', async () => {
     const created = await post('/api/admin/albums', {
       id: 'vacances',
       title: 'Vacances',
@@ -322,19 +322,19 @@ describe('albums', () => {
       folderId: 'autre-dossier',
     });
     assert.equal(again.statusCode, 409);
-    // L'album d'origine n'a pas été écrasé.
+    // The original album was not overwritten.
     assert.equal(context.findAlbum('vacances')!.title, 'Vacances');
   });
 
-  it('fait l’aller-retour du découpage par défaut, à la création comme à la mise à jour', async () => {
-    // Le découpage vivait dans l'URL, donc nulle part : sans cette colonne,
-    // rouvrir un album de vacances le redonnait par mois à chaque fois.
+  it('round-trips the default grouping on creation and update', async () => {
+    // Grouping used to live in the URL, hence nowhere: without this column,
+    // reopening a holiday album would group it by month every time.
     const parMois = await post('/api/admin/albums', {
       id: 'quotidien',
       title: 'Quotidien',
       folderId: 'folder-quotidien',
     });
-    assert.equal((parMois.json() as AdminAlbum).groupBy, 'month', 'le mois reste le défaut');
+    assert.equal((parMois.json() as AdminAlbum).groupBy, 'month', 'month remains the default');
 
     const parJour = await post('/api/admin/albums', {
       id: 'sejour',
@@ -343,7 +343,7 @@ describe('albums', () => {
       groupBy: 'day',
     });
     assert.equal((parJour.json() as AdminAlbum).groupBy, 'day');
-    // La galerie le lit aussi : c'est elle qui ouvre l'album au bon découpage.
+    // The gallery reads it too: it opens the album with the right grouping.
     const vue = await server.inject({
       method: 'GET',
       url: '/api/albums/sejour',
@@ -353,14 +353,14 @@ describe('albums', () => {
 
     const bascule = await patch('/api/admin/albums/sejour', { groupBy: 'month' });
     assert.equal((bascule.json() as AdminAlbum).groupBy, 'month');
-    // Changer le découpage ne touche pas au périmètre Drive : rien à réindexer.
+    // Changing the grouping does not affect the Drive scope: nothing needs reindexing.
     assert.equal(context.syncState.get('sejour').status, 'never');
 
     assert.equal((await patch('/api/admin/albums/sejour', { groupBy: 'annee' })).statusCode, 400);
     assert.equal(context.findAlbum('sejour')!.groupBy, 'month');
   });
 
-  it('fait l’aller-retour du sens de lecture, à la création comme à la mise à jour', async () => {
+  it('round-trips the sort order on creation and update', async () => {
     const chronologique = await post('/api/admin/albums', {
       id: 'sejour',
       title: 'Séjour',
@@ -369,7 +369,7 @@ describe('albums', () => {
     assert.equal(
       (chronologique.json() as AdminAlbum).sortOrder,
       'asc',
-      'un album se lit par son début tant que rien ne dit le contraire',
+      'an album starts at its beginning unless told otherwise',
     );
 
     const recentes = await post('/api/admin/albums', {
@@ -379,8 +379,8 @@ describe('albums', () => {
       sortOrder: 'desc',
     });
     assert.equal((recentes.json() as AdminAlbum).sortOrder, 'desc');
-    // La galerie le lit aussi : c'est ce défaut-là qu'elle applique quand ni
-    // l'URL ni la mémoire du navigateur n'imposent un sens.
+    // The gallery reads it too: this is the default it applies when neither the
+    // URL nor browser storage imposes an order.
     const vue = await server.inject({
       method: 'GET',
       url: '/api/albums/quotidien',
@@ -390,7 +390,7 @@ describe('albums', () => {
 
     const bascule = await patch('/api/admin/albums/quotidien', { sortOrder: 'asc' });
     assert.equal((bascule.json() as AdminAlbum).sortOrder, 'asc');
-    // Le sens ne touche pas au périmètre Drive : rien à réindexer.
+    // The order does not affect the Drive scope: nothing needs reindexing.
     assert.equal(context.syncState.get('quotidien').status, 'never');
 
     assert.equal(
@@ -400,7 +400,7 @@ describe('albums', () => {
     assert.equal(context.findAlbum('quotidien')!.sortOrder, 'asc');
   });
 
-  it('choisit une couverture, la refuse hors de l’album, et y replie sans elle', async () => {
+  it('chooses a cover, rejects one outside the album, and falls back without it', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',
       title: 'Vacances',
@@ -429,7 +429,7 @@ describe('albums', () => {
       return (response.json() as { coverId: string | null }).coverId;
     };
 
-    // Sans choix, la plus récente — le comportement d'avant la colonne.
+    // Without a choice, use the most recent — the behaviour before the column.
     assert.equal(await vue(), 'recente');
 
     const choisie = await patch('/api/admin/albums/vacances', { coverId: 'ancienne' });
@@ -437,26 +437,26 @@ describe('albums', () => {
     assert.equal((choisie.json() as AdminAlbum).coverId, 'ancienne');
     assert.equal(await vue(), 'ancienne');
 
-    // Une photo d'un autre album ne s'afficherait jamais : la refuser dit tout
-    // de suite ce qu'un repli silencieux ferait découvrir depuis l'accueil.
+    // A photo from another album could never be displayed: rejecting it
+    // immediately exposes what a silent fallback would reveal from the home page.
     const etrangere = await patch('/api/admin/albums/vacances', { coverId: 'etrangere' });
     assert.equal(etrangere.statusCode, 400);
     assert.equal((etrangere.json() as { error: string }).error, 'unknown_cover');
-    assert.equal(context.findAlbum('vacances')!.coverMediaId, 'ancienne', 'choix préservé');
+    assert.equal(context.findAlbum('vacances')!.coverMediaId, 'ancienne', 'choice preserved');
 
-    // La photo quitte l'index — corbeille Drive, dossier renommé : l'album
-    // reprend la plus récente sans perdre le choix, qui revaudra au retour.
+    // The photo leaves the index — Drive bin, renamed folder: the album returns
+    // to the most recent without losing the choice, which applies again on return.
     context.db.prepare("DELETE FROM media WHERE album_id = 'vacances' AND id = 'ancienne'").run();
     assert.equal(await vue(), 'recente');
     assert.equal(context.findAlbum('vacances')!.coverMediaId, 'ancienne');
 
-    // `null` rend la couverture à l'automatique : c'est le bouton de /admin.
+    // `null` restores automatic cover selection: this is the /admin button.
     const rendue = await patch('/api/admin/albums/vacances', { coverId: null });
     assert.equal((rendue.json() as AdminAlbum).coverId, null);
     assert.equal(context.findAlbum('vacances')!.coverMediaId, null);
   });
 
-  it('liste les comptes ayant explicitement accès', async () => {
+  it('lists accounts with explicit access', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',
       title: 'Vacances',
@@ -471,11 +471,11 @@ describe('albums', () => {
     const albums = (
       await server.inject({ method: 'GET', url: '/api/admin/albums', headers: { cookie } })
     ).json() as AdminAlbum[];
-    // `patron` a le joker : il n'apparaît pas dans les membres explicites.
+    // `patron` has the wildcard: it does not appear among explicit members.
     assert.deepEqual(albums[0]!.members, ['famille']);
   });
 
-  it('vide l’index quand le dossier Drive change', async () => {
+  it('clears the index when the Drive folder changes', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',
       title: 'Vacances',
@@ -490,7 +490,7 @@ describe('albums', () => {
 
     const renamed = await patch('/api/admin/albums/vacances', { title: 'Vacances 2026' });
     assert.equal(renamed.statusCode, 200);
-    // Un simple renommage ne touche pas à l'index.
+    // A simple rename does not affect the index.
     assert.equal(context.media.stats('vacances').itemCount, 1);
 
     const moved = await patch('/api/admin/albums/vacances', { folderId: 'autre-dossier' });
@@ -498,12 +498,12 @@ describe('albums', () => {
     assert.equal(
       context.media.stats('vacances').itemCount,
       0,
-      'les médias de l’ancien dossier ne doivent plus être servis',
+      'media from the old folder must no longer be served',
     );
     assert.equal(context.syncState.get('vacances').status, 'never');
   });
 
-  it('vide l’index quand la profondeur change', async () => {
+  it('clears the index when recursion changes', async () => {
     await post('/api/admin/albums', {
       id: 'profondeur',
       title: 'Profondeur',
@@ -515,20 +515,20 @@ describe('albums', () => {
       '2026-07-01T00:00:00.000Z',
     );
 
-    // Repasser à plat retire des sous-dossiers du périmètre : leurs photos ne
-    // doivent pas rester consultables en attendant la prochaine sync, qui peut
-    // ne jamais venir sur une instance où la sync automatique est coupée.
+    // Returning to a flat folder removes subfolders from the scope: their photos
+    // must not remain accessible until the next sync, which may never run on an
+    // instance where automatic sync is disabled.
     const aplati = await patch('/api/admin/albums/profondeur', { recursive: false });
     assert.equal(aplati.statusCode, 200);
     assert.equal(context.media.stats('profondeur').itemCount, 0);
     assert.equal(context.syncState.get('profondeur').status, 'never');
   });
 
-  it('retire les médias de l’album supprimé, et eux seuls', async () => {
+  it('removes media from the deleted album, and only that album', async () => {
     for (const id of ['vacances', 'prive']) {
       await post('/api/admin/albums', { id, title: id, folderId: `folder-${id}` });
     }
-    // Même fichier Drive dans deux albums (dossiers imbriqués) : deux lignes.
+    // Same Drive file in two albums (nested folders): two rows.
     context.media.upsertMany(
       [media('vacances', 'partagee'), media('prive', 'partagee'), media('prive', 'privee')],
       '2026-07-01T00:00:00.000Z',
@@ -547,7 +547,7 @@ describe('albums', () => {
     assert.equal(context.media.stats('prive').itemCount, 2);
   });
 
-  it('renvoie 404 sur un album inconnu', async () => {
+  it('returns 404 for an unknown album', async () => {
     assert.equal((await patch('/api/admin/albums/fantome', { title: 'X' })).statusCode, 404);
     const removed = await server.inject({
       method: 'DELETE',
@@ -558,8 +558,8 @@ describe('albums', () => {
   });
 });
 
-describe('cloisonnement après modification des droits', () => {
-  it('suit immédiatement l’attribution puis le retrait d’un album', async () => {
+describe('isolation after access changes', () => {
+  it('immediately follows album assignment and removal', async () => {
     await post('/api/admin/albums', {
       id: 'vacances',
       title: 'Vacances',
@@ -599,28 +599,28 @@ describe('cloisonnement après modification des droits', () => {
     assert.equal(await seen('prive'), 404);
     assert.equal(await mediaSeen('photo-privee'), 404);
 
-    // Droits élargis : l'album privé devient visible sans reconnexion.
+    // Expanded access: the private album becomes visible without logging in again.
     assert.equal(
       (await patch('/api/admin/users/famille', { albums: ['vacances', 'prive'] })).statusCode,
       200,
     );
     assert.equal(await seen('prive'), 200);
 
-    // Droits repris : l'accès retombe au tir suivant, avec la même session.
+    // Revoked access: the next request is denied with the same session.
     assert.equal((await patch('/api/admin/users/famille', { albums: [] })).statusCode, 200);
     assert.equal(await seen('vacances'), 404);
     assert.equal(await seen('prive'), 404);
     assert.equal(await mediaSeen('photo-privee'), 404);
 
-    // Le joker donne tout, y compris un album créé après coup.
+    // The wildcard grants everything, including an album created later.
     assert.equal((await patch('/api/admin/users/famille', { albums: ['*'] })).statusCode, 200);
     await post('/api/admin/albums', { id: 'apres', title: 'Après', folderId: 'folder-apres' });
     assert.equal(await seen('apres'), 200);
   });
 });
 
-describe('réglages', () => {
-  it('s’appliquent sans redémarrage', async () => {
+describe('settings', () => {
+  it('apply without restarting', async () => {
     let notified: AppSettings | null = null;
     context.onSettingsChanged((settings) => {
       notified = settings;
@@ -636,17 +636,17 @@ describe('réglages', () => {
       syncIntervalMinutes: 5,
       syncOnStartup: true,
       cacheMaxSizeGB: 2,
-      // Non touchés par ce PATCH : seuls les champs envoyés changent.
+      // Untouched by this PATCH: only the submitted fields change.
       prewarmCache: true,
       transcodeVideos: true,
       videoCacheMaxSizeGB: 5,
       moderationEmail: null,
     });
 
-    // La limite du cache disque bouge tout de suite — le rechargement de
-    // configuration d'avant ne la relisait qu'au démarrage.
+    // The disk cache limit changes immediately — the previous configuration
+    // reload read it only at startup.
     assert.equal(context.cache.stats().maxBytes, 2 * 1024 ** 3);
-    // Et le minuteur de synchronisation de `main.ts` est prévenu.
+    // The synchronisation timer in `main.ts` is notified too.
     assert.equal((notified as AppSettings | null)?.syncIntervalMinutes, 5);
 
     const read = await server.inject({
@@ -657,15 +657,15 @@ describe('réglages', () => {
     assert.deepEqual((read.json() as AppSettings).cacheMaxSizeGB, 2);
   });
 
-  it('refuse une valeur hors bornes sans rien changer', async () => {
+  it('rejects an out-of-range value without changing anything', async () => {
     assert.equal((await patch('/api/admin/settings', { cacheMaxSizeGB: 0 })).statusCode, 400);
     assert.equal((await patch('/api/admin/settings', { syncIntervalMinutes: -1 })).statusCode, 400);
     assert.equal(context.settings.cacheMaxSizeGB, 20);
   });
 });
 
-describe('accès aux routes d’administration', () => {
-  it('exige une session administrateur', async () => {
+describe('access to administration routes', () => {
+  it('requires an administrator session', async () => {
     await post('/api/admin/users', { username: 'famille', password: 'un-mot-de-passe' });
     const visitor = await login('famille', 'un-mot-de-passe');
 

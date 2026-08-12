@@ -3,88 +3,88 @@ import { describe, it } from 'node:test';
 import { emojify, insertEmoji } from '../src/lib/emoji';
 
 /**
- * Traduction des raccourcis en emoji.
+ * Conversion of shortcuts to emoji.
  *
- * Le risque n'est pas de manquer une substitution — on le verrait — mais d'en
- * faire une de trop, au milieu d'un mot ou d'une adresse. Un lien coupé dans un
- * commentaire déjà publié ne se rattrape pas : le corps stocké est intact, mais
- * personne ne va rouvrir le fil pour vérifier ce que l'affichage en a fait.
+ * The risk is not missing a substitution, which would be visible, but making
+ * one too many in the middle of a word or address. A link broken in an already
+ * published comment will not be caught: the stored body is intact, but nobody
+ * will reopen the thread to check what rendering did to it.
  */
 
-describe('raccourcis emoji', () => {
-  it('traduit les raccourcis isolés', () => {
+describe('emoji shortcuts', () => {
+  it('converts isolated shortcuts', () => {
     assert.equal(emojify('Superbe photo :)'), 'Superbe photo 🙂');
     assert.equal(emojify(':) au début'), '🙂 au début');
     assert.equal(emojify('avant :) après'), 'avant 🙂 après');
   });
 
-  it('préfère le raccourci le plus long', () => {
-    // Sans tri de l'alternance, `:)` couperait `:-)` en laissant un tiret.
+  it('prefers the longest shortcut', () => {
+    // Without sorting the alternation, `:)` would split `:-)` and leave a hyphen.
     assert.equal(emojify('coucou :-)'), 'coucou 🙂');
     assert.equal(emojify('cassé </3'), 'cassé 💔');
   });
 
-  it('ne touche pas à une URL', () => {
-    // La régression qui coûterait le plus cher : `:/` vit dans tout lien.
+  it('does not alter a URL', () => {
+    // This would be the costliest regression because `:/` occurs in every link.
     const lien = 'Regarde https://exemple.fr/photos';
     assert.equal(emojify(lien), lien);
     assert.equal(emojify('http://exemple.fr'), 'http://exemple.fr');
   });
 
-  it('ne coupe pas un mot qui commence par un raccourci', () => {
+  it('does not split a word that starts with a shortcut', () => {
     assert.equal(emojify('mange une :pizza'), 'mange une :pizza');
     assert.equal(emojify('AC:DC'), 'AC:DC');
     assert.equal(emojify('rendez-vous à 20:30'), 'rendez-vous à 20:30');
   });
 
-  it('accepte une ponctuation derrière le raccourci', () => {
+  it('accepts punctuation after the shortcut', () => {
     assert.equal(emojify('génial :)!'), 'génial 🙂!');
     assert.equal(emojify('bravo :), vraiment'), 'bravo 🙂, vraiment');
   });
 
-  it('traduit plusieurs raccourcis dans le même texte', () => {
+  it('converts several shortcuts in the same text', () => {
     assert.equal(emojify(':) et ;) et <3'), '🙂 et 😉 et ❤️');
   });
 
-  it('est idempotente', () => {
-    // Un emoji n'est pas un raccourci : réappliquer la fonction, ce que fait
-    // chaque rendu React, ne doit rien changer de plus.
+  it('is idempotent', () => {
+    // An emoji is not a shortcut: applying the function again, as every React
+    // render does, must not change anything further.
     const une = emojify('trop bien :) <3');
     assert.equal(emojify(une), une);
   });
 
-  it('laisse passer les vrais emoji du clavier', () => {
-    // Le chemin mobile : rien à traduire, rien à abîmer.
+  it('passes through real emoji from the keyboard', () => {
+    // This is the mobile path: nothing to convert and nothing to damage.
     assert.equal(emojify('Quelle vue 😍🏔️'), 'Quelle vue 😍🏔️');
   });
 
-  it('respecte les retours à la ligne comme séparateurs', () => {
+  it('treats line breaks as separators', () => {
     assert.equal(emojify('une ligne\n:)'), 'une ligne\n🙂');
   });
 });
 
-describe('insertion depuis la palette', () => {
-  it('insère à la position du curseur', () => {
+describe('insertion from the palette', () => {
+  it('inserts at the cursor position', () => {
     const { value, caret } = insertEmoji('bonjour tout le monde', 7, 7, '👋');
     assert.equal(value, 'bonjour👋 tout le monde');
-    // Le curseur passe derrière l'emoji, sinon le suivant se placerait devant.
+    // The cursor moves after the emoji, otherwise the next one would appear before it.
     assert.equal(caret, 7 + '👋'.length);
   });
 
-  it('remplace la sélection', () => {
+  it('replaces the selection', () => {
     const { value } = insertEmoji('bonjour tout le monde', 0, 7, '👋');
     assert.equal(value, '👋 tout le monde');
   });
 
-  it('supporte un champ vide', () => {
+  it('supports an empty field', () => {
     const { value, caret } = insertEmoji('', 0, 0, '🎉');
     assert.equal(value, '🎉');
     assert.equal(caret, '🎉'.length);
   });
 
-  it('borne des positions incohérentes', () => {
-    // `selectionStart` peut valoir `null` côté DOM, et l'appelant y substitue la
-    // longueur du texte : la fonction ne doit pas produire de `undefined`.
+  it('bounds inconsistent positions', () => {
+    // `selectionStart` may be `null` in the DOM, and the caller substitutes the
+    // text length: the function must not produce `undefined`.
     const { value } = insertEmoji('abc', 99, 99, '✨');
     assert.equal(value, 'abc✨');
 

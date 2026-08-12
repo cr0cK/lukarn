@@ -1,38 +1,37 @@
-# Frontal HTTPS de la visionneuse. Caddy obtient et renouvelle seul le
-# certificat Let's Encrypt ; il n'y a rien à programmer pour le renouvellement.
+# HTTPS front end for the gallery. Caddy obtains and renews the Let's Encrypt
+# certificate on its own; there is no renewal to schedule.
 #
-# L'adresse du site est `PUBLIC_URL` telle quelle, et c'est délibéré : la même
-# variable construit l'URI de redirection OAuth et décide si les cookies sont
-# `secure`. Une seule valeur à renseigner, donc aucun moyen que le domaine servi
-# et le domaine déclaré divergent — c'est la panne classique de cette
-# application (`redirect_uri_mismatch`, ou cookie de session jamais renvoyé).
+# The site address is `PUBLIC_URL` as it stands, and that is deliberate: the same
+# variable builds the OAuth redirect URI and decides whether cookies are `secure`.
+# One value to fill in, so there is no way for the domain served and the domain
+# declared to diverge — which is this application's classic failure
+# (`redirect_uri_mismatch`, or a session cookie that never comes back).
 #
-# Elle doit donc valoir exactement `https://photos.exemple.fr`, sans `/` final
-# ni port : c'est ce nom que Caddy présentera à Let's Encrypt.
+# It must therefore be exactly `https://photos.example.com`, with no trailing `/`
+# and no port: that is the name Caddy will present to Let's Encrypt.
 
 {$PUBLIC_URL} {
-	# Les dérivés WebP et les vidéos sont déjà compressés ; le filtre par défaut
-	# de Caddy les laisse tranquilles et ne comprime que HTML, JSON et bundles.
+	# WebP derivatives and videos are already compressed; Caddy's default filter
+	# leaves them alone and only compresses HTML, JSON and bundles.
 	encode zstd gzip
 
-	# Le serveur n'accepte que de courts JSON (`bodyLimit` à 64 ko dans
-	# `app.ts`). Refuser plus gros ici évite d'occuper Node à lire un corps
-	# qu'il rejettera de toute façon.
+	# The server accepts nothing but short JSON bodies (`bodyLimit` at 64 kB in
+	# `app.ts`). Refusing anything larger here avoids tying up Node reading a body
+	# it would reject anyway.
 	request_body {
 		max_size 1MB
 	}
 
 	reverse_proxy app:8080 {
-		# Les vidéos partent en `Range`, relayées depuis Drive au fil de l'eau :
-		# accumuler la réponse avant de l'envoyer ferait attendre le lecteur et
-		# tiendrait le fichier entier en mémoire.
+		# Videos are served over `Range`, relayed from Drive as they come:
+		# buffering the response before sending it would make the player wait and
+		# hold the whole file in memory.
 		flush_interval -1
 	}
 
-	# Les en-têtes de sécurité (CSP, HSTS, nosniff…) sont posés par
-	# l'application, dans `plugins/headers.ts` : ils valent aussi en
-	# développement et derrière un autre frontal, et il n'y a qu'un endroit où
-	# les lire.
+	# Security headers (CSP, HSTS, nosniff…) are set by the application, in
+	# `plugins/headers.ts`: they hold in development and behind a different front
+	# end as well, and there is only one place to read them.
 
 	log {
 		output stdout

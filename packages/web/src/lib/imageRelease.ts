@@ -1,18 +1,17 @@
 /**
- * Annule le chargement d'une image que plus personne ne regarde.
+ * Cancels loading an image nobody is viewing any more.
  *
- * Retirer un `<img>` du DOM **n'annule pas** sa requête : le navigateur la mène
- * à terme, et une image que plus personne ne regarde continue d'occuper une des
- * six connexions que HTTP/1.1 accorde à une origine. Effacer `src` est ce qui
- * coupe réellement la requête.
+ * Removing an `<img>` from the DOM **does not cancel** its request: the browser
+ * completes it, and an unseen image continues occupying one of the six
+ * connections HTTP/1.1 grants an origin. Clearing `src` actually stops the request.
  *
- * Le contrôle sur `isConnected` n'est pas une précaution de style : `StrictMode`
- * rejoue montage/démontage sans jamais toucher au DOM, et sans lui les vignettes
- * du premier écran perdaient leur `src` à l'instant où elles s'affichaient —
- * React ne le réécrit pas, sa vue du DOM le croit inchangé.
+ * The `isConnected` check is not stylistic caution: `StrictMode` replays
+ * mount/unmount without touching the DOM, and without it first-screen thumbnails
+ * lost their `src` as they appeared — React does not rewrite it because its DOM
+ * view considers it unchanged.
  *
- * Dans `lib/` et non dans le composant qui l'a vu naître : la grille et la
- * visionneuse en dépendent toutes deux, pour la même raison et au même prix.
+ * This belongs in `lib/`, not the component where it arose: both the grid and
+ * viewer depend on it for the same reason and at the same cost.
  */
 export function releaseIfDetached(image: HTMLImageElement | null): void {
   if (image && !image.isConnected) image.removeAttribute('src');

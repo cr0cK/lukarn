@@ -1,46 +1,43 @@
 /**
- * Ce qu'on a déjà lu : par photo pour la pastille de la visionneuse, et d'un
- * bloc pour celle du fil d'activité.
+ * What has already been read: per photo for the viewer badge, and as one block
+ * for the activity-feed badge.
  *
- * On mémorise **un nombre de commentaires vus**, pas une date. Comparer deux
- * entiers suffit à répondre à la seule question posée — « y a-t-il du nouveau
- * depuis mon dernier passage ? » — là où une date obligerait le serveur à
- * transporter l'horodatage de chaque fil pour qu'on puisse le comparer.
+ * Remember **a number of seen comments**, not a date. Comparing two integers
+ * answers the only question — "is anything new since my last visit?" — whereas
+ * a date would require the server to carry every thread timestamp for comparison.
  *
- * Le repère vit dans le navigateur et non en base, alors que le compte, lui,
- * vient du serveur. Une table côté serveur devrait être indexée par la clé
- * d'accès, or une clé est partagée par tout un foyer (D38) : le premier à
- * ouvrir une photo effacerait la pastille des autres. Le navigateur, lui, est
- * bien celui d'une personne. Le prix assumé est qu'un changement d'appareil
- * repart de zéro : on voit alors ses propres commentaires comme non lus une
- * fois, jamais l'inverse.
+ * The marker lives in the browser rather than the database, while the account
+ * comes from the server. A server table would need indexing by access key, but a
+ * key is shared by a household (D38): the first person opening a photo would
+ * clear everyone else's badge. The browser does belong to one person. The
+ * accepted cost is starting over on a new device: one's own comments appear
+ * unread once, never the reverse.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-/** Nombre de commentaires vus, par identifiant de média. */
+/** Number of seen comments by media identifier. */
 export type SeenCounts = Record<string, number>;
 
 /**
- * Commentaires arrivés depuis le dernier passage.
+ * Comments received since the last visit.
  *
- * Le plancher à zéro n'est pas de la coquetterie : une suppression ou un
- * masquage fait baisser le total sous ce qu'on avait lu, et un nombre négatif
- * s'afficherait tel quel sur la pastille.
+ * Flooring at zero is necessary: deletion or hiding can lower the total below
+ * what was read, and a negative number would appear unchanged on the badge.
  */
 export function unreadCount(total: number, seen: number | undefined): number {
   return Math.max(0, total - (seen ?? 0));
 }
 
 function storageKey(albumId: string): string {
-  return `gdv:comments-seen:${albumId}`;
+  return `nonni:comments-seen:${albumId}`;
 }
 
 /**
- * Lecture tolérante : un `localStorage` refusé (navigation privée sur d'anciens
- * Safari) ou une valeur corrompue par une version précédente ne doit pas empêcher
- * d'afficher les commentaires. Tout est alors considéré comme non lu, ce qui est
- * la lecture la moins trompeuse d'une mémoire absente.
+ * Tolerant reading: denied `localStorage` (private browsing in older Safari) or
+ * a value corrupted by a previous version must not prevent comments from
+ * appearing. Treat everything as unread, the least misleading interpretation of
+ * absent memory.
  */
 function load(albumId: string): SeenCounts {
   try {
@@ -65,50 +62,47 @@ function save(albumId: string, counts: SeenCounts): void {
   try {
     window.localStorage.setItem(storageKey(albumId), JSON.stringify(counts));
   } catch {
-    // Quota dépassé ou écriture refusée : la pastille redeviendra bavarde à la
-    // prochaine visite, ce qui ne vaut pas de faire échouer un rendu.
+    // Quota exceeded or write denied: the badge becomes noisy again next visit,
+    // which is not worth failing a render.
   }
 }
 
 export interface SeenComments {
   seen: SeenCounts;
-  /** Marque cette photo comme lue jusqu'à `count` commentaires. */
+  /** Marks this photo read up to `count` comments. */
   markSeen: (mediaId: string, count: number) => void;
 }
 
 /* --------------------------------------------------------------------------
- * Fil d'activité
+ * Activity feed
  * ------------------------------------------------------------------------ */
 
-const FEED_KEY = 'gdv:comments-feed-seen';
+const FEED_KEY = 'nonni:comments-feed-seen';
 
 /**
- * Repère de lecture du fil d'activité : le plus grand identifiant déjà vu.
+ * Activity-feed reading marker: the greatest identifier already seen.
  *
- * Un identifiant et non un compte, à l'inverse de la pastille d'une photo. Le
- * fil est paginé et sans total : compter ce qu'on a lu supposerait de le
- * parcourir en entier, alors qu'`AUTOINCREMENT` fait de l'id un jalon exact —
- * tout ce qui le dépasse est arrivé depuis, quels que soient les messages
- * supprimés entre-temps.
+ * An identifier, not a count, unlike a photo badge. The feed is paginated with no
+ * total: counting what was read would require traversing all of it, while
+ * `AUTOINCREMENT` makes the ID an exact marker — everything above it arrived
+ * later, regardless of messages deleted meanwhile.
  *
- * Une seule portée, la globale, même quand le tiroir est filtré sur un album :
- * la pastille répond à « y a-t-il du nouveau quelque part », et un repère par
- * album ferait qu'ouvrir « Vacances » éteindrait la pastille sans qu'on ait rien
- * lu de « Corse ».
+ * One global scope even when the drawer is filtered to an album: the badge asks
+ * "is anything new anywhere?", and a marker per album would let opening
+ * "Vacances" clear it without reading anything from "Corse".
  */
 export function useSeenFeed(): {
   seenId: number;
-  /** Marque le fil comme lu jusqu'à cet identifiant. */
+  /** Marks the feed read up to this identifier. */
   markFeedSeen: (id: number) => void;
 } {
   const [seenId, setSeenId] = useState(() => loadFeedMarker());
   const seenRef = useRef(seenId);
 
   const markFeedSeen = useCallback((id: number) => {
-    // L'égalité stricte et non `>=` : le repère doit pouvoir **redescendre**
-    // quand les derniers messages ont été supprimés ou masqués, sinon le
-    // suivant resterait invisible jusqu'à ce qu'il dépasse un jalon devenu
-    // inatteignable. Même règle que `markSeen` pour une photo.
+    // Use strict equality, not `>=`: the marker must be able to **decrease** when
+    // latest messages are deleted or hidden, or the next one remains invisible
+    // until exceeding an unreachable marker. Same rule as `markSeen` for a photo.
     const cible = Math.max(0, id);
     if (seenRef.current === cible) return;
 
@@ -116,8 +110,8 @@ export function useSeenFeed(): {
     try {
       window.localStorage.setItem(FEED_KEY, String(cible));
     } catch {
-      // Écriture refusée : la pastille redeviendra bavarde à la prochaine
-      // visite, ce qui ne vaut pas de faire échouer un rendu.
+      // Write denied: the badge becomes noisy again next visit, which is not worth
+      // failing a render.
     }
     setSeenId(cible);
   }, []);
@@ -126,12 +120,11 @@ export function useSeenFeed(): {
 }
 
 /**
- * Nombre de messages arrivés depuis le dernier passage, dans ce qui a été
- * chargé.
+ * Number of messages received since the last visit among what has been loaded.
  *
- * **Aucun repère mémorisé rend tout non lu.** C'est la même lecture d'une
- * mémoire absente que pour les photos : un nouvel appareil réclame l'attention
- * une fois, jamais l'inverse, et un clic suffit à l'éteindre.
+ * **No remembered marker makes everything unread.** This is the same handling of
+ * absent memory as for photos: a new device demands attention once, never the
+ * reverse, and one click clears it.
  */
 export function unreadFeedCount(ids: readonly number[], seenId: number): number {
   return ids.filter((id) => id > seenId).length;
@@ -149,19 +142,19 @@ function loadFeedMarker(): number {
 }
 
 /**
- * Repères de lecture de l'album, mémorisés d'une visite à l'autre.
+ * Album reading markers remembered between visits.
  *
- * Un objet par album plutôt qu'une clé par photo : effacer les repères d'un
- * album supprimé ou inspecter ce qui est stocké reste faisable à la main, et le
- * nombre d'entrées de `localStorage` ne suit pas le nombre de photos regardées.
+ * One object per album rather than one key per photo: markers for a deleted album
+ * can still be cleared or inspected by hand, and `localStorage` entry count does
+ * not follow the number of viewed photos.
  */
 export function useSeenComments(albumId: string): SeenComments {
   const [seen, setSeen] = useState<SeenCounts>(() => load(albumId));
 
   /**
-   * Miroir de l'état, lu sans créer de dépendance. Il évite surtout d'écrire
-   * depuis l'updater de `setSeen` : React y rejoue la fonction en mode strict,
-   * et un effet de bord n'y a rien à faire.
+   * State mirror read without creating a dependency. Above all it avoids writing
+   * from the `setSeen` updater: React replays that function in strict mode, where
+   * a side effect does not belong.
    */
   const seenRef = useRef(seen);
 
@@ -177,8 +170,8 @@ export function useSeenComments(albumId: string): SeenComments {
       if ((current[mediaId] ?? 0) === Math.max(0, count)) return;
 
       const next = { ...current };
-      // Une photo revenue à zéro commentaire quitte la table : garder un repère
-      // qui ne peut plus rien masquer ferait grossir le stockage sans fin.
+      // Remove a photo returning to zero comments from the table: retaining a
+      // marker that can hide nothing would grow storage indefinitely.
       if (count > 0) next[mediaId] = count;
       else delete next[mediaId];
 

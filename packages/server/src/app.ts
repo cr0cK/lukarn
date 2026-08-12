@@ -34,29 +34,28 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
             }
           : undefined,
     },
-    // Seuls des JSON courts sont postés ; les gros transferts sont sortants.
+    // Only short JSON payloads are posted; large transfers are outbound.
     bodyLimit: 64 * 1024,
-    // Caddy en frontal : sans ça, request.ip serait toujours celui du proxy et
-    // le throttle de connexion regrouperait tout le monde sous une seule clé.
+    // With Caddy in front, request.ip would otherwise always be the proxy's and
+    // the sign-in throttle would group everyone under a single key.
     //
-    // La liste, plutôt que `true` : `true` fait confiance à n'importe quel
-    // `X-Forwarded-For`, y compris celui qu'un client forge lui-même. Le
-    // backoff de `throttle.ts` étant indexé sur l'IP, un attaquant changerait
-    // d'en-tête à chaque tentative et ne serait jamais ralenti. Ne sont crus
-    // que les intermédiaires joignables sur un réseau privé — la boucle locale
-    // et le réseau interne de Docker, c'est-à-dire nos propres proxys.
+    // A list rather than `true`: `true` trusts any `X-Forwarded-For`, including
+    // one forged by the client. Since the backoff in `throttle.ts` is keyed by IP,
+    // an attacker could change the header on every attempt and never be slowed down.
+    // Only intermediaries reachable on a private network are trusted — loopback and
+    // Docker's internal network, meaning our own proxies.
     trustProxy: ['loopback', 'uniquelocal'],
   });
 
   const context = new AppContext(env, server.log);
   await context.cache.load();
-  // Le magasin vidéo a son propre inventaire, et c'est lui qui efface les
-  // temporaires d'un transcodage interrompu par un arrêt brutal.
+  // The video store has its own inventory, which removes temporary files left by
+  // transcoding interrupted by an abrupt shutdown.
   await context.videoStore.load();
   await context.checkFfmpeg();
 
-  // Avant tout le reste : un en-tête posé sur `onRequest` couvre aussi les
-  // réponses que les plugins suivants produisent sans nous consulter.
+  // Before everything else: a header set on `onRequest` also covers responses
+  // produced independently by subsequent plugins.
   await server.register(securityHeaders, { publicUrl: env.publicUrl });
   await server.register(fastifyCookie, { secret: env.sessionSecret });
   await server.register(authPlugin, { context });
@@ -81,12 +80,12 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
 
   server.setErrorHandler(async (error: FastifyError, request, reply) => {
     const status = error.statusCode ?? 500;
-    if (status >= 500) request.log.error({ err: error }, 'Erreur non gérée');
+    if (status >= 500) request.log.error({ err: error }, 'Unhandled error');
     return reply.code(status).send({
       error: status >= 500 ? 'internal_error' : 'request_error',
-      // Le détail d'une 500 peut contenir des chemins ou des identifiants :
-      // il reste dans les logs, pas dans la réponse.
-      message: status >= 500 ? 'Erreur interne' : error.message,
+      // Details of a 500 may contain paths or identifiers, so they remain in the
+      // logs rather than the response.
+      message: status >= 500 ? 'Internal error' : error.message,
     });
   });
 
@@ -101,14 +100,14 @@ async function registerFrontend(
   const hasBuild = existsSync(join(webDir, 'index.html'));
 
   if (!hasBuild) {
-    // Développement : Vite sert le front sur son propre port et proxie /api.
-    server.log.warn(`Front non trouvé dans ${webDir} — seule l'API est servie.`);
+    // In development, Vite serves the front end on its own port and proxies /api.
+    server.log.warn(`Front end not found in ${webDir} — only the API is served.`);
     server.setNotFoundHandler(async (request, reply) =>
       reply.code(404).send({
         error: 'not_found',
         message: request.url.startsWith('/api/')
-          ? 'Route inconnue'
-          : 'Front non buildé — lance `pnpm dev` ou `pnpm build`.',
+          ? 'Unknown route'
+          : 'Front end not built — run `pnpm dev` or `pnpm build`.',
       }),
     );
     return;
@@ -117,19 +116,19 @@ async function registerFrontend(
   await server.register(fastifyStatic, {
     root: webDir,
     index: false,
-    // Route générique plutôt qu'une route par fichier : les noms de bundles
-    // changent à chaque build, et une liste figée au démarrage renverrait
-    // index.html à la place du JavaScript demandé. Les chemins sans fichier
-    // correspondant retombent sur le gestionnaire 404 ci-dessous.
+    // A generic route rather than one route per file: bundle names change with every
+    // build, and a list fixed at startup would return index.html instead of the
+    // requested JavaScript. Paths without a matching file fall through to the 404
+    // handler below.
     wildcard: true,
     cacheControl: false,
     setHeaders(response, path) {
-      // Les bundles Vite portent un hash dans leur nom : leur contenu ne change
-      // jamais à URL constante, ils peuvent être gardés indéfiniment.
+      // Vite bundles carry a hash in their name: their content never changes at a
+      // constant URL, so they can be retained indefinitely.
       //
-      // index.html, lui, garde la même URL et référence les bundles du jour :
-      // le mettre en cache long figerait l'application sur une version passée
-      // après chaque déploiement.
+      // index.html keeps the same URL and references the current bundles, so caching
+      // it for a long time would freeze the application on an old version after each
+      // deployment.
       const immutable = path.includes(`${sep}assets${sep}`);
       response.setHeader(
         'Cache-Control',
@@ -138,20 +137,18 @@ async function registerFrontend(
     },
   });
 
-  // La coquille et le manifeste portent le nom de l'instance, substitué une
-  // fois au démarrage : ces deux fichiers ne changent pas sous les pieds du
-  // serveur, et les rendre depuis la mémoire évite une lecture disque par
-  // navigation. Un redémarrage suffit à changer APP_NAME, comme pour le reste
-  // du `.env`.
+  // The shell and manifest carry the instance name, substituted once at startup:
+  // these two files do not change while the server is running, and rendering them
+  // from memory avoids one disk read per navigation. A restart applies a changed
+  // APP_NAME, as with the rest of `.env`.
   const shell = renderShell(readFileSync(join(webDir, 'index.html'), 'utf8'), appName);
 
   const sendShell = (reply: FastifyReply): FastifyReply =>
     reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(shell);
 
-  // Cette route exacte passe avant la route générique de @fastify/static, qui
-  // servirait sinon le fichier brut — avec son nom par défaut. Elle est de
-  // toute façon indispensable : la générique fait correspondre `/` au
-  // répertoire racine et refuse de le servir (403).
+  // This exact route precedes the generic @fastify/static route, which would
+  // otherwise serve the raw file with its default name. It is required anyway:
+  // the generic route maps `/` to the root directory and refuses to serve it (403).
   server.get('/', async (_request, reply) => sendShell(reply));
 
   const manifestPath = join(webDir, 'manifest.webmanifest');
@@ -164,27 +161,27 @@ async function registerFrontend(
         .send(manifest),
     );
   } else {
-    // Sans manifeste l'application reste entièrement utilisable, elle ne
-    // s'installe simplement plus : un avertissement, pas un refus de démarrer.
-    // C'est le même arbitrage que pour un front absent, quelques lignes plus haut.
+    // Without a manifest the application remains fully usable but is no longer
+    // installable: warn rather than prevent startup. This is the same tradeoff as
+    // for a missing front end a few lines above.
     server.log.warn(
-      `manifest.webmanifest absent de ${webDir} — l'application ne pourra pas être installée.`,
+      `manifest.webmanifest missing from ${webDir} — the application will not be installable.`,
     );
   }
 
   server.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) {
-      return reply.code(404).send({ error: 'not_found', message: 'Route inconnue' });
+      return reply.code(404).send({ error: 'not_found', message: 'Unknown route' });
     }
 
-    // Un fichier manquant sous /assets/ est un déploiement incomplet. Lui
-    // répondre index.html donnerait une erreur de type MIME au lieu du 404 qui
-    // désigne le vrai problème.
+    // A missing file under /assets/ means the deployment is incomplete. Responding
+    // with index.html would cause a MIME-type error instead of the 404 that identifies
+    // the real problem.
     if (request.url.startsWith('/assets/')) {
-      return reply.code(404).send({ error: 'not_found', message: 'Fichier introuvable' });
+      return reply.code(404).send({ error: 'not_found', message: 'File not found' });
     }
-    // Le routage vit dans le front : toute autre URL lui rend index.html, sans
-    // quoi un rechargement sur /album/vacances tomberait en 404.
+    // Routing lives in the front end, so every other URL receives index.html;
+    // otherwise reloading /album/vacances would return a 404.
     return sendShell(reply);
   });
 }

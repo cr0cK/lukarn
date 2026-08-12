@@ -1,4 +1,4 @@
-import type { Album } from '@gdv/shared';
+import type { Album } from '@nonni/shared';
 import { type ReactElement, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { mediaUrl } from '../api/client';
@@ -30,23 +30,23 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
           />
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-ink-400">
-            {album.syncStatus === 'never' ? 'Pas encore synchronisé' : 'Album vide'}
+            {album.syncStatus === 'never' ? 'Not synced yet' : 'Empty album'}
           </div>
         )}
       </div>
 
       <div className="px-3.5 py-3">
         <h2 className="truncate text-sm font-medium text-ink-100">{album.title}</h2>
-        {/* Deux lignes clampées : la vignette est ce qui doit rester visible,
-            et la carte ne peut pas changer de hauteur selon l'album sans
-            trouer la grille. Le titre entier reste dans `title`. */}
+        {/* Clamp to two lines: the thumbnail must remain visible, and card
+            height cannot vary by album without leaving holes in the grid. The
+            full title remains in `title`. */}
         {album.description && (
           <p className="mt-1 line-clamp-2 text-xs leading-4 text-ink-300" title={album.description}>
             {album.description}
           </p>
         )}
         <p className="mt-0.5 truncate text-xs text-ink-400">
-          {album.itemCount.toLocaleString('fr-FR')} {album.itemCount > 1 ? 'éléments' : 'élément'}
+          {album.itemCount.toLocaleString('en-US')} {album.itemCount > 1 ? 'items' : 'item'}
           {period ? ` · ${period}` : ''}
         </p>
       </div>
@@ -64,9 +64,9 @@ export default function AlbumsPage(): ReactElement {
 
   return (
     <div className="min-h-full">
-      {/* La recherche est ici et pas dans un album : elle porte sur toute la
-          bibliothèque, et c'est précisément passé une vingtaine d'albums que
-          « où sont les photos de Marseille » cesse d'avoir une réponse. */}
+      {/* Search belongs here, not inside an album: it covers the whole library,
+          and after roughly twenty albums "where are the Marseille photos?" stops
+          having an obvious answer. */}
       <TopBar
         title="Albums"
         search={<SearchBox shortcutEnabled={!activity.isOpen && !showShortcuts} />}
@@ -74,24 +74,24 @@ export default function AlbumsPage(): ReactElement {
       />
 
       <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
-        {isPending && <Spinner label="Chargement des albums" />}
+        {isPending && <Spinner label="Loading albums" />}
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            Impossible de charger les albums.
+            Cannot load the albums.
           </p>
         )}
 
         {albums && albums.length === 0 && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
-            <p className="text-sm text-ink-300">Aucun album ne t'est attribué.</p>
-            {/* Plus de renvoi vers `config/albums.yaml` : la base fait autorité
-                dès qu'un compte existe, et le fichier n'est plus relu. Suivre
-                cette consigne revenait à éditer un fichier sans effet. */}
+            <p className="text-sm text-ink-300">No album is assigned to you.</p>
+            {/* Do not refer to `config/albums.yaml`: once an account exists the
+                database is authoritative and the file is never reread. Following
+                that instruction meant editing a file with no effect. */}
             <p className="mt-1 text-xs text-ink-400">
               {user?.admin
-                ? 'Crée un album depuis /admin, puis attribue-le à un compte.'
-                : "Demande à l'administrateur de l'instance de t'en attribuer un."}
+                ? 'Create an album from /admin, then assign it to an account.'
+                : 'Ask the administrator of this instance to assign you one.'}
             </p>
           </div>
         )}

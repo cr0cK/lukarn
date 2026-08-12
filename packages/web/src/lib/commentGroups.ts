@@ -1,63 +1,61 @@
-import type { Comment } from '@gdv/shared';
+import type { Comment } from '@nonni/shared';
 import { dayLabel, localDayKey } from './justify';
 
 /**
- * Ce qu'un commentaire doit porter pour être rangé ici : lui-même, et de quoi
- * le situer. `AdminComment` et `FeedComment` le satisfont tous deux — la file
- * de modération et le tiroir d'activité posent la même question, « qu'est-ce
- * qui a été écrit, et où », et n'ont pas à y répondre deux fois.
+ * What a comment needs to be grouped here: itself and enough context to locate
+ * it. Both `AdminComment` and `FeedComment` satisfy this — the moderation queue
+ * and activity drawer ask the same question, "what was written, and where?",
+ * and need not answer it twice.
  */
 export interface SituatedComment extends Comment {
   albumId: string;
   albumTitle: string;
   mediaId: string;
-  /** `null` si la photo a disparu de l'index : le message, lui, reste. */
+  /** `null` if the photo disappeared from the index; the message remains. */
   mediaName: string | null;
 }
 
-/** Les commentaires d'une même photo, dans l'ordre où la liste les a rendus. */
+/** Comments on one photo in the order returned by the list. */
 export interface PhotoGroup<T extends SituatedComment = SituatedComment> {
-  /** Identifie le groupe parmi ses frères — `key` de React comme clé de `Map`. */
+  /** Identifies the group among siblings — React `key` and `Map` key. */
   key: string;
   albumId: string;
   albumTitle: string;
   mediaId: string;
-  /** `null` si la photo a disparu de l'index : le fil reste lisible et modérable. */
+  /** `null` if the photo disappeared from the index; the thread remains readable and moderatable. */
   mediaName: string | null;
   comments: T[];
 }
 
-/** Une journée de la liste, et les photos commentées ce jour-là. */
+/** One day in the list and the photos commented on that day. */
 export interface DayGroup<T extends SituatedComment = SituatedComment> {
-  /** `YYYY-MM-DD` sur l'horloge du lecteur. */
+  /** `YYYY-MM-DD` on the reader's clock. */
   key: string;
-  /** « Aujourd'hui », « Hier », ou la date complète. */
+  /** "Today", "Yesterday" or the full date. */
   label: string;
   photos: PhotoGroup<T>[];
 }
 
 /**
- * Range une page de commentaires par journée, puis par photo.
+ * Groups a page of comments by day, then by photo.
  *
- * Deux répétitions disparaissent d'un coup : la date, qui n'a pas à figurer sur
- * chaque ligne quand vingt messages se suivent le même jour, et le couple
- * photo / album, réécrit à l'identique sous chaque commentaire d'un même fil.
+ * Two repetitions disappear at once: the date, which need not appear on every
+ * row when twenty messages share a day, and the photo/album pair repeated
+ * identically beneath every comment in a thread.
  *
- * **La journée est celle du lecteur, pas UTC** — à l'inverse de la grille. La
- * raison est écrite dans `format.ts` : `taken_at` est une heure murale sans
- * fuseau, alors que la date d'un commentaire est l'instant où quelqu'un a appuyé
- * sur « Publier ». Grouper en UTC rangerait sous la veille un message écrit à
- * 23 h 30 à Paris.
+ * **The day follows the reader, not UTC** — unlike the grid. `format.ts` explains
+ * why: `taken_at` is wall time without a zone, while a comment date is the moment
+ * someone pressed "Post". UTC grouping would place a message written at 23:30
+ * in Paris under the previous day.
  *
- * **Le rangement ne porte que sur la page reçue**, pas sur le corpus : une photo
- * dont les commentaires enjambent une frontière de page apparaît en bas de l'une
- * et en haut de l'autre. C'est le prix d'un regroupement fait après coup, et il
- * est moindre que celui d'un serveur qui devrait paginer des groupes entiers —
- * une page ne contiendrait plus un nombre connu de lignes.
+ * **Grouping applies only to the received page**, not the corpus: a photo whose
+ * comments cross a page boundary appears at the bottom of one and top of the
+ * next. This is the cost of grouping afterwards, less than forcing the server to
+ * paginate whole groups, where pages would no longer contain a known row count.
  *
- * L'ordre d'entrée est préservé partout : les journées comme les photos
- * apparaissent dans l'ordre de leur premier commentaire, et les commentaires
- * d'une photo gardent le leur. La liste arrive antéchronologique, elle le reste.
+ * Preserve input order throughout: days and photos appear in the order of their
+ * first comment, and comments on a photo retain theirs. The incoming list is in
+ * reverse chronological order and stays that way.
  */
 export function groupByDayAndPhoto<T extends SituatedComment>(comments: T[]): DayGroup<T>[] {
   const days = new Map<string, Map<string, PhotoGroup<T>>>();
@@ -70,17 +68,14 @@ export function groupByDayAndPhoto<T extends SituatedComment>(comments: T[]): Da
       days.set(dayKey, photos);
     }
 
-    // La photo, pas le seul média : le même fichier Drive indexé sous deux
-    // albums porte deux conversations séparées (D12), qu'on ne mélange pas ici
-    // non plus.
+    // Include the photo, not media alone: the same Drive file indexed under two
+    // albums has two separate conversations (D12), which remain separate here.
     //
-    // La clé passe par `JSON.stringify` plutôt que par une concaténation à
-    // séparateur : le tableau encodé échappe lui-même ce qu'il contient, donc
-    // aucun couple ne peut en imiter un autre, quelle que soit la forme des
-    // identifiants Drive. Le dépôt sépare ailleurs par l'octet nul (curseur
-    // des médias), mais celui-ci ne s'écrit qu'échappé — littéral, il fait
-    // classer le fichier comme binaire par git, qui cesse d'en afficher les
-    // diffs.
+    // Build the key with `JSON.stringify` rather than delimiter concatenation:
+    // the encoded array escapes its contents, so no pair can imitate another
+    // regardless of Drive identifier shape. Elsewhere the repository separates
+    // with a null byte (media cursor), but it must be escaped here — a literal
+    // byte makes git classify the file as binary and stop showing diffs.
     const photoKey = JSON.stringify([comment.albumId, comment.mediaId]);
     const existing = photos.get(photoKey);
     if (existing) {

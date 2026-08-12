@@ -1,18 +1,16 @@
-# D1 — SQLite plutôt que PostgreSQL
+# D1 — SQLite rather than PostgreSQL
 
-**Contexte.** Il faut un index consultable des médias, avec tri chronologique et
-pagination, sur un VPS modeste.
+**Context.** A searchable media index, with chronological sorting and pagination,
+is needed on a modest VPS.
 
-**Choix.** better-sqlite3, fichier unique dans `DATA_DIR`, en process, WAL activé.
+**Decision.** better-sqlite3, a single file in `DATA_DIR`, in-process, with WAL enabled.
 
-**Écarté.** PostgreSQL — un service de plus dans le compose, de la RAM, une
-sauvegarde à orchestrer, un pool de connexions, pour un volume qui reste dans la
-dizaine de milliers de lignes et un seul écrivain. Aucune fonctionnalité de
-Postgres n'est nécessaire ici. Écarté aussi : un simple fichier JSON, qui ne
-tient pas la pagination par curseur ni les mises à jour partielles pendant une
+**Rejected.** PostgreSQL — one more service in the compose stack, more RAM, a backup to
+orchestrate and a connection pool, for a volume that remains in the tens of thousands
+of rows with a single writer. No Postgres feature is needed here. Also rejected: a
+simple JSON file, which cannot handle cursor pagination or partial updates during a
 synchronisation.
 
-**Conséquences.** L'API de better-sqlite3 est synchrone, ce qui bloque la boucle
-d'événements — acceptable puisque toutes les requêtes sont indexées et rendent
-quelques centaines de lignes au plus. `busy_timeout` et WAL couvrent la
-concurrence lecture/sync.
+**Consequences.** The better-sqlite3 API is synchronous, which blocks the event loop —
+acceptable because all queries are indexed and return no more than a few hundred rows.
+`busy_timeout` and WAL cover concurrent reads and synchronisation.

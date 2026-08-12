@@ -1,48 +1,47 @@
-# D68 — Le repli d'une journée est une donnée du layout, et ne survit pas à la page
+# D68 — A day's collapsed state is layout data and does not survive the page
 
-**Contexte.** Le découpage par jour ne se voyait pas. Un en-tête de section
-suivi de deux cents vignettes, puis un autre en-tête : rien, dans le défilement,
-ne dit où une journée s'arrête et où la suivante commence. Le remède demandé
-était de pouvoir replier une journée pour lire l'album comme un sommaire.
+**Context.** The division by day was not visible. A section header followed by
+two hundred thumbnails, then another header: nothing while scrolling indicates
+where one day ends and the next begins. The requested remedy was to collapse a
+day so the album could be read as a table of contents.
 
-Deux questions se posaient : où le repli agit, et jusqu'où il dure.
+Two questions arose: where does collapsing act, and how long does it last?
 
-**Choix.** Le repli est une **entrée de `computeLayout`**
-(`LayoutOptions.isCollapsed`), pas un masquage au rendu. Une section repliée ne
-place aucune ligne : sa hauteur vaut exactement celle de son en-tête, et les
-sections suivantes remontent d'autant. C'est la seule position tenable, parce
-que `totalHeight` gouverne la barre de défilement et la virtualisation — un
-`display: none` posé après coup laisserait la page haute de tout ce qu'elle
-n'affiche plus, et la barre mentirait sur ce qui reste à parcourir.
+**Choice.** Collapsing is an **input to `computeLayout`**
+(`LayoutOptions.isCollapsed`), not a render-time hide. A collapsed section places
+no row: its height is exactly that of its header, and following sections move up
+accordingly. This is the only tenable position because `totalHeight` governs the
+scroll bar and virtualisation — a subsequent `display: none` would leave the page
+as tall as everything it no longer displays, and the bar would lie about what
+remains to browse.
 
-Le repli agit **au niveau de la section**, pas de la journée. Les deux
-découpages en profitent pour le même code ; le restreindre au jour aurait
-demandé une condition de plus, pour rien. Les clés ne se confondent pas
-(`2026-07` contre `2026-07-14`), un seul ensemble les porte donc toutes.
+Collapsing acts **at section level**, not day level. Both groupings benefit from
+the same code; restricting it to days would require another condition for no
+benefit. The keys cannot collide (`2026-07` versus `2026-07-14`), so one set
+carries them all.
 
-L'état vit dans un `useState` d'`AlbumPage`, **en mémoire seule**.
+The state lives in an `AlbumPage` `useState`, **in memory only**.
 
-**Écarté.** L'URL, comme `?photo=` et `?order=` : une liste de jours repliés y
-tiendrait mal — vingt clés de dix caractères — et rendrait illisible ce qui est
-aussi ce qu'on partage. Écarté aussi `localStorage`, à la manière de
-`lib/seenComments.ts` : rouvrir des mois plus tard un album dont tout est replié
-sans se rappeler l'avoir fait est un défaut plus coûteux que de redéplier une
-journée. Le repli sert à parcourir maintenant, pas à configurer une vue.
+**Rejected.** The URL, like `?photo=` and `?order=`: a list of collapsed days
+would fit poorly — twenty ten-character keys — and make what is also shared
+unreadable. Also rejected: `localStorage`, as in `lib/seenComments.ts`; reopening
+an album months later with everything collapsed and no memory of doing so is a
+more costly defect than expanding a day again. Collapsing helps with browsing
+now, not configuring a view.
 
-**Conséquences.** `LayoutSection` porte `count` et `collapsed`. `count` n'est
-pas déductible de `rows` — une section repliée n'en a plus, et c'est justement
-là que son en-tête doit annoncer ce qu'elle cache.
+**Consequences.** `LayoutSection` carries `count` and `collapsed`. `count` cannot
+be derived from `rows` — a collapsed section has none, precisely when its header
+must announce what it hides.
 
-Surtout, **`moveSelection` change de repère**. Elle travaillait dans l'espace
-des index de la liste d'origine, où `gauche`/`droite` valaient `± 1`. Les deux
-espaces coïncidaient tant que la grille montrait tout ; une section repliée les
-sépare. La navigation se fait désormais dans l'ordre des cellules réellement
-placées (`layout.rows`), faute de quoi une flèche enverrait la sélection sur une
-vignette absente du layout : plus rien à mettre en évidence, et
-`scrollSelectionIntoView` sans cible. Le paramètre `totalItems` disparaît, le
-layout portant seul cette information.
+Above all, **`moveSelection` changes coordinate systems**. It operated in the
+index space of the original list, where `gauche`/`droite` meant `± 1`. The two spaces
+coincided while the grid displayed everything; a collapsed section separates
+them. Navigation now follows the order of actually placed cells (`layout.rows`),
+otherwise an arrow would send the selection to a thumbnail absent from the
+layout: nothing to highlight, and `scrollSelectionIntoView` with no target. The
+`totalItems` parameter disappears, since the layout alone carries this
+information.
 
-La visionneuse, elle, **ignore le repli** et continue de parcourir l'album
-entier. Replier est une aide à la lecture de la grille, pas un filtre : une
-flèche qui sauterait silencieusement quarante photos parce qu'une journée est
-fermée ailleurs serait un piège.
+The viewer **ignores collapsed state** and continues through the entire album.
+Collapsing is a reading aid for the grid, not a filter: an arrow silently skipping
+forty photos because a day is closed elsewhere would be a trap.

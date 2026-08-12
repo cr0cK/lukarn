@@ -1,52 +1,50 @@
-import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@nonni/shared';
 import { formatDate } from './format';
 
 /**
- * Calcul du layout « justifié » de la grille : des lignes de hauteur variable
- * dont les images conservent leur proportion et remplissent exactement la
- * largeur disponible — la disposition de Google Photos.
+ * Computes the grid's "justified" layout: variable-height rows whose images
+ * preserve their proportions and exactly fill the available width — the Google
+ * Photos arrangement.
  *
- * Tout est calculé à partir des dimensions déjà connues (elles viennent de
- * l'index côté serveur), donc sans charger la moindre image : la grille peut
- * être positionnée et virtualisée avant tout téléchargement, et le défilement
- * ne provoque aucun décalage de mise en page.
+ * Everything uses already known dimensions from the server index, without
+ * loading any image: the grid can be positioned and virtualised before any
+ * download, and scrolling causes no layout shift.
  */
 
 export interface LayoutOptions {
   containerWidth: number;
-  /** Hauteur visée pour une ligne. Les lignes s'en écartent pour tomber juste. */
+  /** Target row height. Rows deviate from it to fit exactly. */
   targetRowHeight: number;
   gap: number;
-  /** Hauteur de l'en-tête de section, quand rien ne la fait varier. */
+  /** Section header height when nothing varies it. */
   headerHeight: number;
   /**
-   * Hauteur de l'en-tête d'une section donnée, quand elle porte plus que son
-   * libellé — un lieu, une note. Omise, ou rendant une valeur nulle, c'est
-   * `headerHeight` qui s'applique.
+   * Header height for a given section when it contains more than its label — a
+   * place or note. When omitted or returning null, `headerHeight` applies.
    *
-   * La hauteur est **une donnée d'entrée du calcul**, jamais une mesure : tout
-   * le layout est calculé avant que le moindre nœud DOM n'existe, et c'est ce
-   * qui rend la virtualisation et l'absence de décalage possibles.
+   * Height is **an input to the calculation**, never a measurement: the entire
+   * layout is computed before any DOM node exists, enabling virtualisation and
+   * the absence of shifts.
    */
   headerHeightFor?: (key: string) => number;
-  /** Marge sous chaque section. */
+  /** Margin beneath each section. */
   sectionGap: number;
-  /** Découpage en sections. Omis, c'est le mois — le défaut partagé. */
+  /** Section grouping. Omitted means month — the shared default. */
   groupBy?: GroupBy;
   /**
-   * Sections repliées : elles gardent leur en-tête et perdent leurs lignes.
+   * Collapsed sections keep their header and lose their rows.
    *
-   * Le repli passe par le calcul du layout plutôt que par un `display: none`
-   * côté rendu, pour la même raison que les hauteurs d'en-tête : la barre de
-   * défilement et la virtualisation lisent `totalHeight`. Masquer les vignettes
-   * après coup laisserait la page haute de tout ce qu'elle n'affiche plus.
+   * Collapse goes through layout calculation rather than render-side
+   * `display: none` for the same reason as header heights: the scrollbar and
+   * virtualisation read `totalHeight`. Hiding thumbnails afterwards would leave
+   * the page as tall as everything it no longer displays.
    */
   isCollapsed?: (key: string) => boolean;
 }
 
 export interface LayoutCell {
   item: MediaItem;
-  /** Index dans la liste d'origine : sert à la navigation clavier et à la visionneuse. */
+  /** Index in the original list, used by keyboard navigation and the viewer. */
   index: number;
   x: number;
   y: number;
@@ -63,34 +61,33 @@ export interface LayoutRow {
 export interface LayoutSection {
   key: string;
   label: string;
-  /** Position de l'en-tête ; les lignes commencent à `y + headerHeight`. */
+  /** Header position; rows begin at `y + headerHeight`. */
   y: number;
-  /** Hauteur réservée à l'en-tête. Le composant y dimensionne sa boîte. */
+  /** Height reserved for the header. The component sizes its box to it. */
   headerHeight: number;
   height: number;
   rows: LayoutRow[];
   /**
-   * Nombre de médias de la section.
+   * Number of media in the section.
    *
-   * Porté par la section et non recompté depuis `rows` : une section repliée
-   * n'a plus de lignes, et c'est précisément là que son en-tête a besoin
-   * d'annoncer ce qu'elle cache.
+   * Carried by the section rather than recounted from `rows`: a collapsed section
+   * has no rows, precisely when its header needs to announce what it hides.
    */
   count: number;
-  /** Repliée : `rows` est vide et `height` vaut exactement `headerHeight`. */
+  /** Collapsed: `rows` is empty and `height` equals `headerHeight`. */
   collapsed: boolean;
 }
 
 export interface Layout {
   sections: LayoutSection[];
   totalHeight: number;
-  /** Toutes les lignes, toutes sections confondues, dans l'ordre d'affichage. */
+  /** Every row across all sections in display order. */
   rows: LayoutRow[];
 }
 
-/** Proportion de repli quand le serveur n'a pas les dimensions du fichier. */
+/** Fallback aspect ratio when the server lacks file dimensions. */
 const FALLBACK_RATIO = 4 / 3;
-/** Une image très panoramique déformerait toute sa ligne : on la borne. */
+/** An extremely wide image would distort its whole row, so cap it. */
 const MAX_RATIO = 3.5;
 const MIN_RATIO = 0.4;
 
@@ -100,22 +97,22 @@ function ratioOf(item: MediaItem): number {
 }
 
 /**
- * Clé de regroupement `YYYY-MM`, sur la date de prise de vue en UTC.
+ * `YYYY-MM` grouping key based on capture date in UTC.
  *
- * Découper sur la chaîne ISO plutôt que sur un `Date` garde le découpage en
- * UTC : `getMonth()` bascule de mois pour une photo du 31 à 23 h vue depuis
- * Paris, alors que `taken_at` est déjà l'heure de l'appareil.
+ * Slicing the ISO string rather than using `Date` preserves UTC grouping:
+ * `getMonth()` changes month for a photo from the 31st at 23:00 viewed in Paris,
+ * although `taken_at` is already camera time.
  */
 export function monthKey(iso: string): string {
   return iso.slice(0, 7);
 }
 
-/** Clé de regroupement `YYYY-MM-DD`, en UTC pour la même raison que `monthKey`. */
+/** `YYYY-MM-DD` grouping key in UTC for the same reason as `monthKey`. */
 export function dayKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
-export function monthLabel(key: string, locale = 'fr-FR'): string {
+export function monthLabel(key: string, locale = 'en-GB'): string {
   const [year, month] = key.split('-');
   const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
   const label = new Intl.DateTimeFormat(locale, {
@@ -127,23 +124,22 @@ export function monthLabel(key: string, locale = 'fr-FR'): string {
 }
 
 /**
- * Jour d'un instant sur l'horloge de celui qui regarde, en `YYYY-MM-DD`.
+ * Day of an instant on the viewer's clock, as `YYYY-MM-DD`.
  *
- * Volontairement le calendrier **local** et non le jour UTC, à l'inverse de
- * tout le reste : `taken_at` est l'heure qu'affichait l'appareil, c'est-à-dire
- * la même horloge murale que celle du navigateur. Comparer au jour UTC
- * refuserait « Aujourd'hui » à un après-midi encore en cours à Montréal, et
- * l'accorderait à Auckland avant que la journée n'ait commencé.
+ * Deliberately use the **local** calendar rather than UTC day, unlike everything
+ * else: `taken_at` is the time shown by the camera, the same wall clock as the
+ * browser. Comparing with UTC would deny "Today" during an ongoing afternoon in
+ * Montreal and grant it in Auckland before the day began.
  *
- * Sert aussi à grouper la file de modération, pour une raison voisine : la date
- * d'un commentaire est un instant réel, pas une heure murale (voir `format.ts`).
+ * Also groups the moderation queue for a related reason: a comment date is a real
+ * instant, not wall time (see `format.ts`).
  */
 export function localDayKey(now: Date): string {
   const pad = (value: number): string => String(value).padStart(2, '0');
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** Jour calendaire précédant `key`, en `YYYY-MM-DD`. */
+/** Calendar day before `key`, as `YYYY-MM-DD`. */
 function previousDayKey(key: string): string {
   const [year, month, day] = key.split('-').map(Number);
   const date = new Date(Date.UTC(year!, month! - 1, day! - 1));
@@ -151,31 +147,30 @@ function previousDayKey(key: string): string {
 }
 
 /**
- * Libellé d'une section jour : « 14 juillet 2026 », ou un repère relatif pour
- * les deux jours les plus récents.
+ * Day-section label: "14 July 2026", or a relative marker for the two latest days.
  *
- * Une date complète est illisible en série — vingt en-têtes qui ne diffèrent
- * que par le quantième obligent à lire chaque chiffre. « Aujourd'hui » et
- * « Hier » se reconnaissent d'un coup d'œil ; au-delà, le repère relatif
- * (« il y a 5 jours ») demanderait un calcul mental de plus que la date elle-même.
+ * Full dates are unreadable in series — twenty headings differing only by the
+ * day require reading every number. "Today" and "Yesterday" are recognised at a
+ * glance; beyond that, a relative marker ("5 days ago") takes more mental work
+ * than the date itself.
  *
- * `today` est injectable pour que les tests ne dépendent pas de la date du jour.
+ * `today` is injectable so tests do not depend on the current date.
  */
 export function dayLabel(key: string, today = localDayKey(new Date())): string {
-  if (key === today) return "Aujourd'hui";
-  if (key === previousDayKey(today)) return 'Hier';
-  // Midi et non minuit : une clé de jour n'est qu'un quantième, et si un
-  // formateur de `format.ts` cessait un jour d'être en UTC, minuit basculerait
-  // de jour dans la moitié des fuseaux — midi ne bascule dans aucun.
+  if (key === today) return 'Today';
+  if (key === previousDayKey(today)) return 'Yesterday';
+  // Use noon, not midnight: a day key is only a calendar date, and if a
+  // `format.ts` formatter ever stopped using UTC, midnight would change day in
+  // half the time zones — noon changes in none.
   return formatDate(`${key}T12:00:00.000Z`);
 }
 
-/** Clé de section d'un média, selon le découpage demandé. */
+/** Section key for media according to the requested grouping. */
 export function sectionKeyOf(iso: string, groupBy: GroupBy): string {
   return groupBy === 'day' ? dayKey(iso) : monthKey(iso);
 }
 
-/** En-tête affiché pour une clé de section, selon le découpage demandé. */
+/** Header displayed for a section key according to the requested grouping. */
 export function sectionLabelOf(key: string, groupBy: GroupBy): string {
   return groupBy === 'day' ? dayLabel(key) : monthLabel(key);
 }
@@ -200,10 +195,9 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
   const allRows: LayoutRow[] = [];
   let cursorY = 0;
 
-  // Les items arrivent déjà triés chronologiquement, dans un sens ou dans
-  // l'autre selon le choix de l'utilisateur : un simple parcours suffit à les
-  // découper en sections consécutives, sans présumer de la direction. Un
-  // regroupement qui trierait ses clés casserait le tri ascendant.
+  // Items arrive already sorted chronologically in the user's chosen direction:
+  // one pass can split them into consecutive sections without assuming the
+  // direction. Grouping that sorted its keys would break ascending order.
   let index = 0;
   while (index < items.length) {
     const key = sectionKeyOf(items[index]!.takenAt, groupBy);
@@ -225,17 +219,17 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
 
       const totalGap = gap * (buffer.length - 1);
       const available = containerWidth - totalGap;
-      // Hauteur qui fait tenir la ligne pile dans la largeur disponible.
+      // Height that fits the row exactly into the available width.
       const exactHeight = available / ratioSum;
-      // La dernière ligne d'une section est rarement pleine : l'étirer donnerait
-      // des vignettes démesurées, on la laisse à la hauteur cible.
+      // A section's final row is rarely full: stretching would create oversized
+      // thumbnails, so keep the target height.
       const height = justified ? exactHeight : Math.min(exactHeight, targetRowHeight);
 
       const cells: LayoutCell[] = [];
       let x = 0;
       buffer.forEach((entry, position) => {
-        // Le dernier de la ligne absorbe l'arrondi cumulé pour que la ligne
-        // finisse exactement au bord droit, sans liseré d'un pixel.
+        // The last item absorbs accumulated rounding so the row ends exactly at
+        // the right edge without a one-pixel gap.
         const width =
           justified && position === buffer.length - 1
             ? containerWidth - x
@@ -254,26 +248,25 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
       ratioSum = 0;
     };
 
-    // Repliée, la section ne place aucune ligne : ses cellules n'existent nulle
-    // part, ni dans `rows` ni dans `allRows`. C'est voulu — tout ce qui parcourt
-    // la grille (virtualisation, navigation clavier) lit ces tableaux, et
-    // n'aurait aucun moyen de savoir qu'une cellule est masquée autrement.
+    // A collapsed section places no rows: its cells exist neither in `rows` nor
+    // `allRows`. This is deliberate — everything traversing the grid
+    // (virtualisation, keyboard navigation) reads these arrays and would have
+    // no other way to know that a cell is hidden.
     if (!collapsed) {
       sectionItems.forEach((item, offset) => {
         const ratio = ratioOf(item);
         buffer.push({ item, index: start + offset, ratio });
         ratioSum += ratio;
 
-        // La ligne est pleine dès que la hauteur nécessaire pour la remplir
-        // passe sous la hauteur cible.
+        // The row is full once the height needed to fill it falls below the target.
         const height = (containerWidth - gap * (buffer.length - 1)) / ratioSum;
         if (height <= targetRowHeight) flush(true);
       });
       flush(false);
     }
 
-    // `rowY` a avancé d'un `gap` de trop après la dernière ligne. Sans ligne du
-    // tout, ce retrait ferait remonter la section suivante sous l'en-tête.
+    // `rowY` advanced one extra `gap` after the last row. With no rows at all,
+    // subtracting it would move the next section beneath the header.
     const sectionHeight = collapsed ? sectionHeaderHeight : Math.max(0, rowY - gap - sectionY);
     sections.push({
       key,
@@ -296,9 +289,8 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
 }
 
 /**
- * Choisit la hauteur de ligne selon la largeur disponible : des lignes hautes
- * sur un grand écran, plus basses sur mobile pour garder plusieurs photos par
- * ligne plutôt qu'une seule bande par photo.
+ * Chooses row height from available width: taller rows on large screens, shorter
+ * on mobile to keep several photos per row instead of one band per photo.
  */
 export function targetRowHeightFor(containerWidth: number): number {
   if (containerWidth < 480) return 110;

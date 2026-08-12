@@ -10,20 +10,19 @@ export interface CacheStats {
 
 interface Entry {
   size: number;
-  /** Horodatage du dernier accès, tenu en mémoire — `atime` n'est pas fiable
-   *  sur un montage `relatime`, qui est le défaut sur la plupart des VPS. */
+  /** Last-access timestamp held in memory — `atime` is unreliable on a `relatime`
+   *  mount, the default on most VPSs. */
   lastAccess: number;
   /**
-   * Estampille strictement croissante, réattribuée à chaque accès. L'éviction
-   * relève celle des entrées qu'elle s'apprête à supprimer, puis la recompare
-   * juste avant le `rm` : c'est le seul moyen de savoir qu'une entrée a été
-   * touchée entre-temps. `lastAccess` ne suffirait pas — deux accès dans la
-   * même milliseconde laissent la même valeur.
+   * Strictly increasing stamp reassigned on every access. Eviction records it for
+   * entries about to be deleted, then compares it again immediately before `rm`: this
+   * is the only way to know an entry was touched meanwhile. `lastAccess` is insufficient —
+   * two accesses in the same millisecond leave the same value.
    */
   stamp: number;
 }
 
-/** Ce que le cache a besoin de dire, et rien de plus. */
+/** What the cache needs to report, and nothing more. */
 interface CacheLogger {
   warn: (msg: string) => void;
 }
@@ -31,30 +30,29 @@ interface CacheLogger {
 const SILENT: CacheLogger = { warn: () => {} };
 
 /**
- * Nom d'un rayon du cache : les deux premiers caractères hexadécimaux du hash
- * d'une clé (voir `pathFor`).
+ * Name of a cache shard: the first two hexadecimal characters of a key hash
+ * (see `pathFor`).
  *
- * L'inventaire ne descend que dans ceux-là, et le vidage ne supprime que
- * ceux-là. Sans cette borne, un cache monté sur `CACHE_DIR` inventorierait le
- * magasin vidéo de `CACHE_DIR/video` comme s'il était à lui — il en compterait
- * les octets dans son budget, et « vider le cache » depuis /admin emporterait
- * des heures de transcodage avec les vignettes (D260809b).
+ * Inventory descends only into these, and clearing deletes only these. Without this
+ * boundary, a cache mounted on `CACHE_DIR` would inventory the video store at
+ * `CACHE_DIR/video` as its own — counting those bytes in its budget, while "clear
+ * cache" from /admin would remove hours of transcoding with the thumbnails (D260809b).
  */
 const RAYON = /^[0-9a-f]{2}$/;
 
 /**
- * Cache disque des dérivés d'images (vignettes et rendus pleine largeur).
- * Chaque entrée est un fichier ; l'inventaire des tailles est tenu en mémoire
- * pour décider des évictions sans re-parcourir l'arborescence.
+ * Disk cache for image derivatives (thumbnails and full-width renders). Each entry
+ * is a file; the size inventory is held in memory to decide eviction without
+ * traversing the directory tree again.
  *
- * Il n'est jamais nécessaire d'invalider une entrée : la clé contient l'id du
- * fichier Drive, qui change lorsque le fichier est remplacé.
+ * An entry never needs invalidation: its key contains the Drive file ID, which changes
+ * when the file is replaced.
  */
 export class MediaCache {
   private readonly entries = new Map<string, Entry>();
   private bytes = 0;
   private evicting: Promise<void> | null = null;
-  /** Source des estampilles d'accès. Jamais remise à zéro de tout le process. */
+  /** Source of access stamps. Never reset during the process lifetime. */
   private clock = 0;
 
   constructor(
@@ -64,17 +62,16 @@ export class MediaCache {
   ) {}
 
   /**
-   * Nouvelle limite de taille, appliquée à chaud depuis les réglages. Une
-   * limite abaissée déclenche l'éviction tout de suite plutôt qu'à la
-   * prochaine écriture : c'est justement quand on veut récupérer de la place
-   * qu'on abaisse la limite.
+   * New size limit applied live from settings. Lowering it triggers eviction
+   * immediately rather than on the next write: recovering space is precisely why the
+   * limit is lowered.
    */
   setMaxBytes(bytes: number): void {
     this.maxBytes = bytes;
     this.evictInBackground();
   }
 
-  /** Reconstruit l'inventaire à partir du disque. À appeler au démarrage. */
+  /** Rebuilds inventory from disk. Call at startup. */
   async load(): Promise<void> {
     this.entries.clear();
     this.bytes = 0;
@@ -93,11 +90,11 @@ export class MediaCache {
     for (const entry of listing) {
       const path = join(dir, entry.name);
       if (entry.isDirectory()) {
-        // Un répertoire qui n'est pas un rayon appartient à quelqu'un d'autre.
+        // A directory that is not a shard belongs to something else.
         if (RAYON.test(entry.name)) await this.scan(path);
         continue;
       }
-      // Fichiers temporaires laissés par une écriture interrompue.
+      // Temporary files left by an interrupted write.
       if (entry.name.endsWith('.tmp')) {
         await rm(path, { force: true });
         continue;
@@ -107,14 +104,14 @@ export class MediaCache {
         this.entries.set(path, { size: info.size, lastAccess: info.mtimeMs, stamp: ++this.clock });
         this.bytes += info.size;
       } catch {
-        // Fichier disparu entre readdir et stat : rien à inventorier.
+        // File disappeared between readdir and stat: nothing to inventory.
       }
     }
   }
 
   /**
-   * Chemin de l'entrée si elle est en cache, sinon `null`.
-   * Marque l'entrée comme utilisée pour la retarder dans l'ordre d'éviction.
+   * Path to the entry if cached, otherwise `null`. Marks the entry as used to delay
+   * it in eviction order.
    */
   hit(key: string): string | null {
     const path = this.pathFor(key);
@@ -126,22 +123,21 @@ export class MediaCache {
   }
 
   /**
-   * L'entrée est-elle inventoriée ? Contrairement à `hit`, ne touche **pas** à
-   * l'ordre d'éviction : le préchauffage consulte le cache sans avoir à
-   * prétendre qu'on a regardé la photo, sans quoi il protégerait de l'éviction
-   * ce que personne n'a jamais ouvert.
+   * Is the entry inventoried? Unlike `hit`, does **not** affect eviction order:
+   * prewarming checks the cache without pretending the photo was viewed, otherwise it
+   * would protect from eviction content nobody opened.
    */
   has(key: string): boolean {
     return this.entries.has(this.pathFor(key));
   }
 
-  /** Écrit une entrée et renvoie son chemin. Déclenche l'éviction si besoin. */
+  /** Writes an entry and returns its path. Triggers eviction if needed. */
   async put(key: string, data: Buffer): Promise<string> {
     const path = this.pathFor(key);
     await mkdir(dirname(path), { recursive: true });
 
-    // Écriture puis renommage : un lecteur concurrent ne voit jamais un fichier
-    // partiel, le rename étant atomique sur le même système de fichiers.
+    // Write then rename: a concurrent reader never sees a partial file because rename
+    // is atomic on the same file system.
     const temp = `${path}.${process.pid}.${this.entries.size}.tmp`;
     await writeFile(temp, data);
     await rename(temp, path);
@@ -160,24 +156,22 @@ export class MediaCache {
   }
 
   /**
-   * Range un fichier **déjà écrit sur disque**, par simple renommage, et rend
-   * son chemin dans le cache.
+   * Stores a file **already written to disk** through a simple rename and returns its
+   * cache path.
    *
-   * `put` charge son contenu en mémoire : c'est sans conséquence pour une
-   * vignette de quelques dizaines de Ko, ce ne l'est pas pour les trente Mo
-   * d'un dérivé vidéo, dont le producteur écrit de toute façon un fichier.
+   * `put` loads content into memory: harmless for a thumbnail of tens of KB, but not
+   * for a 30 MB video derivative whose producer already writes a file.
    *
-   * `source` doit être sur le **même système de fichiers** que le cache — c'est
-   * pourquoi le transcodage écrit ses temporaires sous la racine du magasin :
-   * `rename` échouerait sinon en `EXDEV`, après plusieurs minutes de travail.
+   * `source` must be on the **same file system** as the cache — hence transcoding writes
+   * temporary files under the store root; otherwise `rename` would fail with `EXDEV`
+   * after several minutes of work.
    */
   async putFile(key: string, source: string): Promise<string> {
     const path = this.pathFor(key);
     await mkdir(dirname(path), { recursive: true });
 
-    // La taille est relevée avant le renommage : après, le chemin source
-    // n'existe plus, et un `stat` sur la destination coûterait une syscall de
-    // plus pour la même valeur.
+    // Size is read before renaming: afterwards the source path no longer exists, and
+    // a `stat` on the destination would cost another syscall for the same value.
     const { size } = await stat(source);
     await rename(source, path);
 
@@ -195,10 +189,10 @@ export class MediaCache {
   }
 
   /**
-   * Vide le cache. Ses rayons seulement : un `rm -rf` de la racine emporterait
-   * ce qu'un autre magasin y a déposé — le magasin vidéo vit sous
-   * `CACHE_DIR/video`, et « vider le cache » ne doit pas coûter des heures de
-   * transcodage à qui voulait récupérer quelques giga-octets de vignettes.
+   * Clears only the cache's shards: `rm -rf` on the root would remove what another
+   * store placed there — the video store lives under `CACHE_DIR/video`, and "clear
+   * cache" must not cost hours of transcoding when recovering a few gigabytes of
+   * thumbnails.
    */
   async clear(): Promise<void> {
     await mkdir(this.root, { recursive: true });
@@ -214,27 +208,25 @@ export class MediaCache {
   }
 
   /**
-   * Éviction lancée sans être attendue — l'appelant vient d'écrire, il n'a pas
-   * à patienter pendant le ménage. Le `catch` n'est pas décoratif : sans lui,
-   * un `rm` qui échoue (disque remonté en lecture seule, erreur d'E/S) produit
-   * un rejet non géré, et Node termine le process là-dessus. Toute la galerie
-   * tomberait parce qu'un fichier de cache n'a pas pu être supprimé.
+   * Eviction starts without being awaited — the caller has just written and need not
+   * wait for cleanup. The `catch` is essential: without it, a failed `rm` (read-only
+   * remount or I/O error) produces an unhandled rejection and Node terminates the
+   * process. The whole gallery would go down because one cache file could not be removed.
    */
   private evictInBackground(): void {
     void this.evictIfNeeded().catch((error: unknown) => {
-      this.log.warn(`Éviction du cache interrompue : ${(error as Error).message}`);
+      this.log.warn(`Cache eviction interrupted: ${(error as Error).message}`);
     });
   }
 
   /**
-   * Supprime les entrées les moins récemment utilisées jusqu'à redescendre à
-   * 90 % de la limite : évincer pile à la limite déclencherait une éviction à
-   * chaque écriture suivante.
+   * Removes least recently used entries until usage falls to 90% of the limit:
+   * evicting exactly to the limit would trigger eviction on every subsequent write.
    */
   private evictIfNeeded(): Promise<void> {
     if (this.bytes <= this.maxBytes) return Promise.resolve();
-    // Une seule passe d'éviction à la fois, sinon deux passes concurrentes
-    // supprimeraient chacune de quoi revenir sous la limite.
+    // Only one eviction pass at a time, otherwise concurrent passes would each remove
+    // enough to return below the limit.
     this.evicting ??= this.evict().finally(() => {
       this.evicting = null;
     });
@@ -243,9 +235,8 @@ export class MediaCache {
 
   private async evict(): Promise<void> {
     const target = this.maxBytes * 0.9;
-    // L'ordre est figé ici, mais chaque candidat est revérifié avant sa
-    // suppression : `rm` rend la main à la boucle d'événements, donc une requête
-    // peut très bien servir cette entrée entre le tri et le `rm`.
+    // Order is fixed here, but every candidate is checked again before deletion: `rm`
+    // yields to the event loop, so a request may serve the entry between sorting and `rm`.
     const ordered = [...this.entries.entries()]
       .sort((a, b) => a[1].lastAccess - b[1].lastAccess)
       .map(([path, entry]) => ({ path, stamp: entry.stamp }));
@@ -254,21 +245,18 @@ export class MediaCache {
       if (this.bytes <= target) break;
 
       const entry = this.entries.get(candidate.path);
-      // Déjà partie, ou réécrite : plus rien à évincer sous ce chemin.
+      // Already gone or rewritten: nothing remains to evict at this path.
       if (!entry) continue;
-      // Touchée depuis le tri. La supprimer quand même ferait échouer en
-      // `ENOENT` le `createReadStream` de la requête qui vient de la demander.
+      // Touched since sorting. Deleting it would make `createReadStream` fail with
+      // `ENOENT` for the request that just asked for it.
       if (entry.stamp !== candidate.stamp) continue;
 
       try {
         await rm(candidate.path, { force: true });
       } catch (error) {
-        // L'entrée reste inventoriée : le fichier est toujours là, l'oublier
-        // ferait mentir `stats()` et perdrait sa taille pour toutes les
-        // évictions suivantes.
-        this.log.warn(
-          `Entrée de cache non supprimable (${candidate.path}) : ${(error as Error).message}`,
-        );
+        // The entry remains inventoried: the file still exists, and forgetting it
+        // would make `stats()` inaccurate and lose its size for later evictions.
+        this.log.warn(`Cache entry not removable (${candidate.path}): ${(error as Error).message}`);
         continue;
       }
 
@@ -278,9 +266,9 @@ export class MediaCache {
   }
 
   /**
-   * `cache/ab/<hash>.bin` — le hash évite d'avoir à assainir des ids Drive dans
-   * des noms de fichiers, et le préfixe à deux caractères répartit les entrées
-   * sur 256 sous-dossiers pour ne pas créer un répertoire à 100 000 fichiers.
+   * `cache/ab/<hash>.bin` — the hash avoids sanitising Drive IDs for file names, and
+   * the two-character prefix distributes entries over 256 subdirectories rather than
+   * creating one directory with 100,000 files.
    */
   private pathFor(key: string): string {
     const hash = createHash('sha256').update(key).digest('hex');

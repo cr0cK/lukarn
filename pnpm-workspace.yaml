@@ -1,8 +1,8 @@
 packages:
   - 'packages/*'
 
-# Modules natifs : leurs scripts de build doivent tourner (compilation ou
-# téléchargement du binaire prébuilt).
+# Native modules: their build scripts have to run (either compiling, or
+# downloading the prebuilt binary).
 allowBuilds:
   argon2: true
   better-sqlite3: true

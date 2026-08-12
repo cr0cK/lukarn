@@ -10,14 +10,14 @@ import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Installation neuve sans aucun compte.
+ * Fresh installation without any account.
  *
- * Le serveur démarre et répond normalement, mais aucune connexion ne peut
- * aboutir : sans signal, l'application paraît en panne alors qu'il manque
- * seulement `pnpm create-admin`. L'écran de connexion doit pouvoir le dire.
+ * The server starts and responds normally, but no login can succeed: without a
+ * signal, the application appears broken when only `pnpm create-admin` is
+ * missing. The login screen must be able to explain this.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-setup-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-setup-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -27,8 +27,8 @@ before(async () => {
     NODE_ENV: 'test',
     SESSION_SECRET: 's'.repeat(48),
     TOKEN_KEY: 't'.repeat(48),
-    // Ni compte en base, ni fichier d'amorçage : le cas d'une première
-    // installation où l'on a suivi le README jusqu'au démarrage.
+    // Neither a database account nor a bootstrap file: this is a first
+    // installation where the README has been followed through to start-up.
     CONFIG_PATH: join(root, 'albums-absent.yaml'),
     DATA_DIR: join(root, 'data'),
     CACHE_DIR: join(root, 'cache'),
@@ -47,22 +47,22 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('état d’installation', () => {
-  it('signale une base sans aucun compte', async () => {
+describe('setup state', () => {
+  it('reports a database without any account', async () => {
     const response = await server.inject({ method: 'GET', url: '/api/auth/setup-state' });
 
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), { needsSetup: true });
   });
 
-  it('répond sans session : c’est justement à ce moment qu’on en a besoin', async () => {
-    // La route est interrogée depuis l'écran de connexion, donc par un visiteur
-    // anonyme. Exiger une session la rendrait inutile.
+  it('responds without a session because that is when it is needed', async () => {
+    // The login screen calls this route as an anonymous visitor. Requiring a
+    // session would make it useless.
     const response = await server.inject({ method: 'GET', url: '/api/auth/setup-state' });
     assert.notEqual(response.statusCode, 401);
   });
 
-  it('ne signale plus rien dès qu’un compte existe', async () => {
+  it('stops reporting setup as soon as an account exists', async () => {
     context.config.createUser({
       username: 'patron',
       passwordHash: await argon2.hash('motdepasse123', { type: argon2.argon2id }),
@@ -74,9 +74,9 @@ describe('état d’installation', () => {
     assert.deepEqual(response.json(), { needsSetup: false });
   });
 
-  it('ne divulgue aucun identifiant', async () => {
-    // Le seul renseignement livré est « y a-t-il quelqu'un » ; la liste des
-    // comptes reste réservée à l'administration.
+  it('does not disclose any identifier', async () => {
+    // The only information exposed is "does anyone exist"; the account list
+    // remains restricted to administration.
     const response = await server.inject({ method: 'GET', url: '/api/auth/setup-state' });
     assert.equal(Object.keys(response.json() as object).length, 1);
     assert.doesNotMatch(response.body, /patron/);

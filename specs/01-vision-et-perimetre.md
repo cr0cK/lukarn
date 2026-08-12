@@ -1,112 +1,105 @@
-# 01 — Vision et périmètre
+# 01 — Vision and scope
 
-## Le problème
+## The problem
 
-La prévisualisation native de Google Drive est un explorateur de fichiers, pas
-une galerie photo : pas de grille justifiée, pas de regroupement chronologique,
-pas de tri sur la date de prise de vue, navigation clavier pauvre. Partager un
-dossier de photos suppose par ailleurs que le destinataire ait un compte Google,
-et un lien de partage Drive donne l'accès à quiconque le récupère.
+Google Drive's native preview is a file browser, not a photo gallery: it has no
+justified grid, no chronological grouping, no sorting by capture date, and poor
+keyboard navigation. Sharing a photo folder also assumes that the recipient has
+a Google account, while a Drive sharing link grants access to anyone who obtains
+it.
 
-L'application remplace cette prévisualisation par une galerie auto-hébergée qui
-lit le Drive du propriétaire et l'expose derrière un identifiant et un mot de
-passe, album par album.
+The application replaces this preview with a self-hosted gallery that reads the
+owner's Drive and exposes it behind a username and password, one album at a time.
 
-## Pour qui
+## Intended users
 
-Deux rôles, et seulement deux :
+There are two roles, and only two:
 
-| Rôle            | Combien              | Ce qu'il fait                                                                      |
-| --------------- | -------------------- | ---------------------------------------------------------------------------------- |
-| Le propriétaire | Un seul par instance | Connecte son Drive une fois en OAuth, administre comptes et albums depuis `/admin` |
-| Les visiteurs   | Quelques comptes     | Se connectent avec un identifiant/mot de passe et consultent leurs albums          |
+| Role      | How many         | What they do                                                                   |
+| --------- | ---------------- | ------------------------------------------------------------------------------ |
+| The owner | One per instance | Connects their Drive once via OAuth, manages accounts and albums from `/admin` |
+| Visitors  | A few accounts   | Sign in with a username/password and view their albums                         |
 
-Un **compte n'est pas une personne** : c'est une clé d'accès, et rien n'interdit
-d'en confier une à tout un foyer — c'est même l'usage prévu depuis
-`albums.yaml`. Quand il s'agit de signer un commentaire, chacun se déclare avec
-son nom et son adresse, vérifiée par un code (voir [04](./04-securite-et-acces.md)).
+An **account is not a person**: it is an access key, and nothing prevents an
+entire household from sharing one — that has been the intended use since
+`albums.yaml`. When signing a comment, each person identifies themselves with
+their name and address, verified by a code (see [04](./04-securite-et-acces.md)).
 
-Un visiteur n'a jamais de compte Google et ne voit jamais une URL Google. Tout
-le contenu transite par le serveur, qui l'obtient avec l'unique jeton du
-propriétaire.
+A visitor never has a Google account and never sees a Google URL. All content
+passes through the server, which obtains it with the owner's single token.
 
-## Hors périmètre — délibérément
+## Deliberately out of scope
 
-Ces absences ne sont pas des manques à combler, ce sont des choix qui tiennent
-le projet à sa taille.
+These omissions are not gaps to fill; they are choices that keep the project
+manageable.
 
-| Absent                                                                  | Pourquoi                                                                                                                                                                                                                      |
-| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Toute écriture dans Drive                                               | Le scope demandé est `drive.readonly` (`packages/server/src/drive/service.ts`). Aucun bug de l'app ne peut détruire les originaux.                                                                                            |
-| Édition, retouche, rotation persistée                                   | Les originaux appartiennent à Drive ; l'app n'en produit que des dérivés jetables.                                                                                                                                            |
-| Inscription, mot de passe oublié                                        | Les comptes sont créés par le propriétaire depuis `/admin`. Pas de formulaire public, pas de courriel à envoyer.                                                                                                              |
-| Partage public par lien                                                 | Toute route média exige une session. Un lien copié à un tiers ne lui donne rien.                                                                                                                                              |
-| Reconnaissance faciale, recherche, tags                                 | Demanderait un traitement du contenu — donc de télécharger tous les originaux, ce que l'indexation évite précisément.                                                                                                         |
-| Commentaires publics, ou signés d'un compte Google                      | Commenter suppose la session qui donne déjà accès à l'album. Un identifiant tiers ouvrirait une seconde population d'utilisateurs sans droits, à réconcilier avec `user_albums` (D33).                                        |
-| Édition **libre** d'un commentaire, réactions, mentions, fils imbriqués | Ce qui sépare une conversation sous une photo d'un forum. Un seul niveau de réponse. Son auteur peut corriger une faute de frappe pendant **30 s** après publication (D57) ; passé ce délai, le recours reste la suppression. |
-| Transcodage vidéo                                                       | ffmpeg sur un VPS modeste consomme le CPU qu'on n'a pas. Les `Range` sont relayées telles quelles à Drive. Une vidéo a bien une vignette, mais elle vient de l'aperçu Drive : aucun octet n'est décodé ici (D92).             |
-| Albums construits par requête (dates, tags)                             | Un album = un dossier Drive, point. Le mapping reste vérifiable à l'œil dans `/admin`.                                                                                                                                        |
-| Correction du lieu **d'une photo**                                      | Le lieu se corrige à la journée. Par photo, il faudrait une table d'override hors de `media` — que `upsertMany` réécrit intégralement à chaque sync —, sa fusion partout où le GPS est lu, et un sélecteur de carte (D51).    |
-| Carte, recherche par lieu                                               | Les coordonnées servent à nommer une journée, pas à explorer. Une carte demanderait une tuile tierce dans une app qui ne fait sortir aucune requête du navigateur.                                                            |
-| Multi-tenant, plusieurs Drive                                           | La table `oauth_token` a une contrainte `CHECK (id = 1)` : une instance, un Drive.                                                                                                                                            |
+| Excluded                                                              | Why                                                                                                                                                                                                                        |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Writing anything to Drive                                             | The requested scope is `drive.readonly` (`packages/server/src/drive/service.ts`). No app bug can destroy the originals.                                                                                                    |
+| Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                               |
+| Registration, forgotten passwords                                     | The owner creates accounts from `/admin`. There is no public form and no email to send.                                                                                                                                    |
+| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                   |
+| Facial recognition, search, tags                                      | These would require processing the content — and therefore downloading every original, which indexing is specifically designed to avoid.                                                                                   |
+| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).      |
+| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                  |
+| Video transcoding                                                     | ffmpeg on a modest VPS consumes CPU that is not available. `Range` requests are relayed unchanged to Drive. A video does have a thumbnail, but it comes from the Drive preview: no bytes are decoded here (D92).           |
+| Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                            |
+| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51). |
+| Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                 |
+| Multi-tenancy, multiple Drives                                        | The `oauth_token` table has a `CHECK (id = 1)` constraint: one instance, one Drive.                                                                                                                                        |
 
-## Les contraintes qui ont guidé la conception
+## Constraints that shaped the design
 
-**Un VPS modeste.** Cible : un conteneur, quelques centaines de Mo de RAM,
-pas de Postgres à côté, pas de Redis, pas de worker séparé. D'où SQLite en
-process, un cache disque avec inventaire en mémoire, un throttle de connexion en
-mémoire, une synchronisation séquentielle plutôt que parallèle. Le
-`docker-compose.yml` n'a qu'un service.
+**A modest VPS.** The target: one container, a few hundred MB of RAM, no Postgres
+alongside it, no Redis, and no separate worker. Hence in-process SQLite, a disk
+cache with an in-memory inventory, in-memory login throttling, and sequential
+rather than parallel synchronisation. `docker-compose.yml` has only one service.
 
-**Le quota de l'API Drive.** Chaque appel compte, et une galerie qui interroge
-Drive à chaque défilement le brûle vite. La parade est un index local rempli par
-`files.list`, qui renvoie déjà dimensions et EXIF sans qu'aucun octet de photo
-ne soit téléchargé (`packages/server/src/drive/sync.ts`). Un album de plusieurs
-milliers de photos s'indexe en une poignée de requêtes.
+**The Drive API quota.** Every call counts, and a gallery that queries Drive on
+every scroll burns through it quickly. The solution is a local index populated by
+`files.list`, which already returns dimensions and EXIF without downloading a
+single byte of any photo (`packages/server/src/drive/sync.ts`). An album with
+several thousand photos can be indexed in a handful of requests.
 
-**Un seul propriétaire de Drive.** Il n'y a qu'un refresh token, chiffré, dans
-une table à une ligne. Ça simplifie tout : pas de sélection de compte, pas de
-jonction utilisateur↔jeton, un seul point de panne à surveiller dans `/admin`.
+**A single Drive owner.** There is only one encrypted refresh token in a
+single-row table. This simplifies everything: no account selection, no
+user-to-token join, and only one point of failure to monitor in `/admin`.
 
-**Le réseau du visiteur.** La grille doit être utilisable avant que la moindre
-image n'arrive : les dimensions viennent de l'index, la mise en page est donc
-calculée à vide et ne bouge plus (voir [07](./07-frontend.md)).
+**The visitor's network.** The grid must be usable before a single image arrives:
+dimensions come from the index, so the layout is calculated while empty and does
+not move afterwards (see [07](./07-frontend.md)).
 
-## Ce que ça donne
+## The result
 
-- Grille justifiée groupée par mois ou par jour, virtualisée, sens chronologique
-  basculable. Le découpage par défaut appartient à l'album : un séjour se lit
-  par jour, dix ans de photos d'enfants par mois.
-- **Une journée peut être annotée**, et porter le lieu que ses photos indiquent.
-  Un album n'était qu'une grille datée : rien n'y disait ce qu'on avait fait.
-  La note se saisit dans l'album, en face des photos qu'elle décrit ; le lieu se
-  déduit des coordonnées EXIF par géocodage inverse en tâche de fond, et se
-  corrige à la main quand il tombe à côté. La description de l'album, elle,
-  s'affiche enfin — elle était saisie depuis `/admin` sans être montrée nulle
-  part.
-- Visionneuse plein écran pilotable au clavier, avec EXIF et téléchargement de
-  l'original.
-- Photos (JPEG, PNG, WebP, HEIC…) et vidéos (MP4, MOV) — tout ce que
-  `classify()` reconnaît comme `image/*` ou `video/*`.
-- Vignettes WebP générées à la demande, mises en cache sur disque avec éviction
-  LRU.
-- Commentaires par photo, avec un niveau de réponse, modérés a posteriori depuis
-  `/admin` et notifiés par email. Ils sont signés par une **identité** — un nom
-  et une adresse vérifiée par code — distincte de la clé d'accès, qu'un foyer
-  peut partager. Sans serveur SMTP, aucun code ne part et les commentaires
-  restent indisponibles.
-- **Fil d'activité** : les derniers commentaires des albums qu'on a le droit de
-  voir, tous albums et toutes photos confondus, dans un tiroir ouvert depuis la
-  barre supérieure. Une conversation ne se découvre pas en ouvrant la bonne
-  photo par hasard : sans cette vue, un message pouvait vivre et s'éteindre sans
-  qu'aucun de ses destinataires ne le voie (voir D82).
-- **Appairage d'un écran sans clavier** : un téléviseur affiche un QR code, un
-  téléphone déjà connecté l'approuve, l'écran reçoit la session. Taper un mot de
-  passe masqué à la télécommande est la façon la plus pénible d'ouvrir une
-  galerie familiale, et c'est justement l'écran où on la regarde. L'appairage
-  délègue un accès existant, il n'en crée aucun (voir D260809c).
-- **Annonce par email des nouvelles photos d'un album**, aux identités vérifiées
-  qui ont ouvert cet album. Personne ne revient spontanément sur une galerie
-  auto-hébergée : sans cette annonce, les photos déposées et les commentaires
-  qu'elles appelleraient resteraient sans lecteur. L'abonnement est automatique
-  et le désabonnement se fait par album (voir D41).
+- Justified grid grouped by month or day, virtualised, with a reversible
+  chronological order. The album determines its default grouping: a trip is read
+  by day, ten years of children's photos by month.
+- **A day can be annotated** and display the location indicated by its photos. An
+  album used to be only a dated grid: nothing in it said what happened. The note
+  is entered in the album beside the photos it describes; the location is inferred
+  from EXIF coordinates through background reverse geocoding, and corrected
+  manually when it is inaccurate. The album description is finally displayed —
+  it used to be entered from `/admin` but shown nowhere.
+- A keyboard-controlled full-screen viewer with EXIF and original-file download.
+- Photos (JPEG, PNG, WebP, HEIC…) and videos (MP4, MOV) — anything `classify()`
+  recognises as `image/*` or `video/*`.
+- WebP thumbnails generated on demand and cached on disk with LRU eviction.
+- Per-photo comments with one reply level, moderated after the fact from `/admin`
+  and notified by email. They are signed by an **identity** — a name and an address
+  verified by code — separate from the access key, which a household can share.
+  Without an SMTP server, no code is sent and comments remain unavailable.
+- **Activity feed**: the latest comments from albums the visitor is authorised to
+  view, across all albums and photos, in a drawer opened from the top bar. A
+  conversation should not be discovered only by opening the right photo by chance:
+  without this view, a message could appear and fade away without any of its
+  recipients seeing it (see D82).
+- **Pairing a screen without a keyboard**: a television displays a QR code, an
+  already signed-in phone approves it, and the screen receives the session. Typing
+  a masked password with a remote control is the most painful way to open a family
+  gallery, yet this is precisely the screen where people view it. Pairing delegates
+  existing access; it creates none (see D260809c).
+- **Email announcement of new photos in an album**, sent to verified identities
+  that have opened that album. Nobody spontaneously returns to a self-hosted
+  gallery: without this announcement, uploaded photos and the comments they might
+  prompt would have no audience. Subscription is automatic and unsubscription is
+  per album (see D41).

@@ -1,32 +1,31 @@
-import { VERIFICATION_CODE_LENGTH, type CommenterIdentity } from '@gdv/shared';
+import { VERIFICATION_CODE_LENGTH, type CommenterIdentity } from '@nonni/shared';
 import { randomInt } from 'node:crypto';
 import { hashVerificationCode, safeEqual } from './crypto.js';
 import type { Db } from './db.js';
 
 /**
- * Identités de commentateur : les personnes, par opposition aux clés d'accès de
- * `users`.
+ * Commenter identities: people, as opposed to access keys in `users`.
  *
- * Un identifiant et son mot de passe ouvrent des albums, et rien n'empêche de
- * les confier à toute une famille. Pour signer un commentaire il faut en
- * revanche être quelqu'un : c'est le rôle de cette table, où l'adresse email —
- * vérifiée par un code — sert de clé stable. Se ré-identifier avec la même
- * adresse depuis un autre appareil retrouve donc ses commentaires.
+ * A username and password open albums, and nothing prevents sharing them with an
+ * entire family. Signing a comment, however, requires being a person: that is the
+ * role of this table, where an email address — verified by a code — serves as the
+ * stable key. Identifying oneself again with the same address on another device
+ * therefore finds the same comments.
  *
- * L'adresse est vérifiée parce que l'identité est déclarative : sans code,
- * n'importe qui derrière la clé partagée pourrait signer du nom d'un autre, ou
- * faire arriver les notifications dans la boîte d'un tiers.
+ * The address is verified because identity is declarative: without a code, anyone
+ * behind the shared key could sign using someone else's name or send notifications
+ * to a third party's inbox.
  */
 
-/** Durée de validité d'un code. Assez pour aller chercher son email, pas plus. */
+/** Code lifetime. Long enough to fetch the email, but no longer. */
 const CODE_TTL_MS = 15 * 60 * 1000;
 
-/** Délai minimal entre deux envois à la même adresse. */
+/** Minimum delay between two deliveries to the same address. */
 const RESEND_DELAY_MS = 60 * 1000;
 
 /**
- * Essais avant invalidation du code. Six chiffres se parcourent en un million
- * de tentatives : sans plafond, la vérification ne vérifierait rien.
+ * Attempts before invalidating the code. Six digits can be exhausted in one million
+ * attempts; without a limit, verification would verify nothing.
  */
 const MAX_ATTEMPTS = 5;
 
@@ -63,7 +62,7 @@ function toCommenter(row: CommenterRow): StoredCommenter {
   };
 }
 
-/** Forme exposée à son titulaire. Réduite : le reste ne le regarde pas. */
+/** Shape exposed to its holder. Reduced because the rest is not their concern. */
 export function toIdentity(commenter: StoredCommenter): CommenterIdentity {
   return {
     email: commenter.email,
@@ -72,10 +71,10 @@ export function toIdentity(commenter: StoredCommenter): CommenterIdentity {
   };
 }
 
-/** Ce qui empêche d'envoyer un code, dans un terme que la route sait traduire. */
+/** What prevents sending a code, expressed in a term the route can translate. */
 export type RequestFailure = 'too_soon';
 
-/** Ce qui empêche de valider un code. */
+/** What prevents validating a code. */
 export type VerifyFailure = 'unknown' | 'expired' | 'too_many_attempts' | 'mismatch';
 
 export class CommenterRepo {
@@ -97,19 +96,18 @@ export class CommenterRepo {
   }
 
   /**
-   * Prépare une vérification : crée l'identité si l'adresse est inconnue, tire
-   * un code et le rend en clair **une seule fois**, à l'appelant qui l'enverra
-   * par email. Seul son HMAC est conservé.
+   * Prepares a verification: creates the identity if the address is unknown,
+   * generates a code and returns it in plain text **once** to the caller that will
+   * send it by email. Only its HMAC is retained.
    *
-   * Le nom fourni **n'est pas appliqué tout de suite** à une identité déjà
-   * vérifiée : il attend dans `pending_display_name` que `verify` prouve qu'on
-   * tient la boîte. Sans ce délai, il suffisait de connaître l'adresse de
-   * quelqu'un pour la renommer — et la signature des commentaires étant relue à
-   * chaque requête, tout son historique changeait de nom à la seconde, sans
-   * qu'aucun code n'ait été saisi.
+   * The supplied name is **not applied immediately** to an already verified identity:
+   * it waits in `pending_display_name` until `verify` proves control of the inbox.
+   * Without this delay, knowing someone's address would be enough to rename them —
+   * and because comment signatures are read on every request, their entire history
+   * would change names instantly without any code being entered.
    *
-   * Une identité pas encore vérifiée s'écrit directement : rien n'est signé
-   * d'elle, il n'y a donc rien à détourner.
+   * An identity that is not yet verified is written directly: nothing is signed by
+   * it yet, so there is nothing to hijack.
    */
   requestCode(
     email: string,
@@ -123,8 +121,8 @@ export class CommenterRepo {
     const existing = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(normalized) as
       CommenterRow | undefined;
 
-    // Sans ce délai, le formulaire deviendrait un moyen d'expédier des emails en
-    // rafale vers une adresse qu'on ne possède pas.
+    // Without this delay, the form would become a way to send bursts of email to an
+    // address the requester does not control.
     if (existing?.code_sent_at) {
       const elapsed = now - new Date(existing.code_sent_at).getTime();
       if (elapsed < RESEND_DELAY_MS) {
@@ -132,7 +130,7 @@ export class CommenterRepo {
       }
     }
 
-    // `randomInt` et non `Math.random` : c'est un secret, même court-vécu.
+    // `randomInt` rather than `Math.random`: this is a secret, however short-lived.
     const code = String(randomInt(0, 10 ** VERIFICATION_CODE_LENGTH)).padStart(
       VERIFICATION_CODE_LENGTH,
       '0',
@@ -142,8 +140,8 @@ export class CommenterRepo {
     const hash = hashVerificationCode(normalized, code, this.secret);
 
     if (existing) {
-      // Le nom de colonne est choisi entre deux littéraux de ce fichier, jamais
-      // construit depuis la requête : rien à injecter par là.
+      // The column name is selected from two literals in this file, never built from
+      // the request, so nothing can be injected through it.
       const column = existing.verified_at === null ? 'display_name' : 'pending_display_name';
       this.db
         .prepare(
@@ -168,8 +166,8 @@ export class CommenterRepo {
   }
 
   /**
-   * Valide un code. Chaque tentative est comptée **avant** la comparaison :
-   * un abandon en cours de route ne doit pas rendre des essais gratuits.
+   * Validates a code. Every attempt is counted **before** comparison so abandoning
+   * partway through cannot provide free attempts.
    */
   verify(email: string, code: string): { commenter: StoredCommenter } | { failure: VerifyFailure } {
     const row = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(email.trim()) as
@@ -186,9 +184,9 @@ export class CommenterRepo {
     const expected = hashVerificationCode(row.email, code.trim(), this.secret);
     if (!safeEqual(expected, row.code_hash)) return { failure: 'mismatch' };
 
-    // Le code est consommé : le rejouer ne doit pas re-valider une adresse dont
-    // on aurait retiré l'accès entre-temps. C'est aussi ici, et nulle part
-    // ailleurs, qu'un renommage prend effet — la preuve vient d'être faite.
+    // The code is consumed: replaying it must not revalidate an address whose access
+    // was revoked in the meantime. This is also where, and nowhere else, a rename
+    // takes effect — control has just been proved.
     this.db
       .prepare(
         `UPDATE commenters
@@ -203,18 +201,17 @@ export class CommenterRepo {
     return { commenter: this.byId(row.id)! };
   }
 
-  /** Coupe les notifications sans effacer l'adresse : réabonner reste possible. */
+  /** Disables notifications without deleting the address, so resubscribing remains possible. */
   setNotify(id: number, notify: boolean): void {
     this.db.prepare('UPDATE commenters SET notify = ? WHERE id = ?').run(notify ? 1 : 0, id);
   }
 
   /**
-   * Destinataires d'une notification : l'auteur de la racine du fil quand il
-   * s'agit d'une réponse. L'adresse de modération est ajoutée par l'appelant —
-   * elle vient des réglages, pas de cette table.
+   * Notification recipients: the author of the thread root for a reply. The caller
+   * adds the moderation address — it comes from settings, not this table.
    *
-   * L'auteur du message n'y figure jamais : recevoir un email pour ce qu'on
-   * vient d'écrire est le premier réflexe qui fait couper les notifications.
+   * The message author is never included: receiving an email about something just
+   * written is the quickest way to make someone disable notifications.
    */
   recipientForReply(parentCommentId: number, authorId: number): StoredCommenter | null {
     const row = this.db

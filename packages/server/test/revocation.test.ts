@@ -9,13 +9,13 @@ import { DriveKeyMismatchError, DriveRevokedError, DriveService } from '../src/d
 import { loadEnv, type Env } from '../src/env.js';
 
 /**
- * Révocation du refresh token. Google renvoie `invalid_grant` dès qu'il n'est
- * plus échangeable — accès retiré, six mois d'inactivité, ou application
- * repassée en statut « Test ». Sans détection, /admin continuerait d'afficher
- * « Connecté » pendant que chaque vignette échoue.
+ * Refresh token revocation. Google returns `invalid_grant` once it can no longer
+ * be exchanged — revoked access, six months of inactivity, or an application
+ * returned to "Test" status. Without detection, /admin would show "Connected"
+ * while every thumbnail fails.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'gdv-revoke-'));
+const root = mkdtempSync(join(tmpdir(), 'nonni-revoke-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const TOKEN_KEY = 'k'.repeat(48);
@@ -51,20 +51,20 @@ beforeEach(() => {
 
 after(() => db?.close());
 
-/** Erreur telle que la remonte google-auth-library après un refus du jeton. */
+/** Error as reported by google-auth-library after token refusal. */
 function invalidGrant(): Error {
   return Object.assign(new Error('invalid_grant'), {
     response: { data: { error: 'invalid_grant', error_description: 'Token has been expired' } },
   });
 }
 
-describe('détection de invalid_grant', () => {
-  it('part de connecté', () => {
+describe('invalid_grant detection', () => {
+  it('starts connected', () => {
     assert.equal(service.connected, true);
     assert.equal(service.connection?.revokedAt, null);
   });
 
-  it("marque la connexion révoquée et traduit l'erreur", async () => {
+  it('marks the connection revoked and translates the error', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
       DriveRevokedError,
@@ -72,34 +72,34 @@ describe('détection de invalid_grant', () => {
 
     assert.equal(service.connected, false);
     assert.notEqual(service.connection?.revokedAt, null);
-    // Le compte reste lisible : /admin peut nommer l'autorisation perdue.
+    // The account remains readable so /admin can name the lost authorisation.
     assert.equal(service.connection?.account, 'photos@exemple.fr');
   });
 
-  it('reconnaît la forme imbriquée seule', async () => {
-    const nested = Object.assign(new Error('Une erreur générique'), {
+  it('recognises the nested form alone', async () => {
+    const nested = Object.assign(new Error('A generic error'), {
       response: { data: { error: 'invalid_grant' } },
     });
     await assert.rejects(() => service.guard(() => Promise.reject(nested)), DriveRevokedError);
     assert.equal(service.connected, false);
   });
 
-  it('laisse passer les autres erreurs sans toucher à la connexion', async () => {
+  it('passes other errors through without touching the connection', async () => {
     const network = new Error('ECONNRESET');
     await assert.rejects(() => service.guard(() => Promise.reject(network)), /ECONNRESET/);
 
-    // Une coupure réseau ou un 500 de Google ne signifient pas une révocation :
-    // invalider la connexion imposerait un nouveau consentement pour rien.
+    // A network outage or Google 500 does not mean revocation: invalidating the
+    // connection would require new consent for no reason.
     assert.equal(service.connected, true);
     assert.equal(service.connection?.revokedAt, null);
   });
 
-  it('ne perturbe pas un appel qui réussit', async () => {
+  it('does not disrupt a successful call', async () => {
     assert.equal(await service.guard(() => Promise.resolve('ok')), 'ok');
     assert.equal(service.connected, true);
   });
 
-  it('échoue immédiatement une fois révoqué, sans rappeler Google', async () => {
+  it('fails immediately once revoked without calling Google again', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
       DriveRevokedError,
@@ -111,23 +111,23 @@ describe('détection de invalid_grant', () => {
       await service.fetchFile('un-fichier');
     }, DriveRevokedError);
 
-    // `fetchFile` doit refuser avant toute tentative réseau.
+    // `fetchFile` must refuse before any network attempt.
     assert.equal(appels, 1);
   });
 
-  it('garde la révocation après redémarrage', async () => {
+  it('retains revocation after restart', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
       DriveRevokedError,
     );
 
-    // Nouveau service sur la même base : l'état est en base, pas en mémoire.
+    // New service on the same database: state lives in the database, not memory.
     const rechargé = new DriveService(env, db, silent);
     assert.equal(rechargé.connected, false);
     assert.notEqual(rechargé.connection?.revokedAt, null);
   });
 
-  it('repart propre après une déconnexion manuelle', async () => {
+  it('starts clean after manual disconnection', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
       DriveRevokedError,
@@ -138,12 +138,12 @@ describe('détection de invalid_grant', () => {
     assert.equal(service.connected, false);
   });
 
-  it('ne révoque pas un jeton enregistré pendant que la requête était en vol', async () => {
+  it('does not revoke a token saved while the request was in flight', async () => {
     await assert.rejects(
       () =>
         service.guard(() => {
-          // Le propriétaire réautorise l'accès depuis /admin pendant qu'une
-          // requête partie avant est encore en cours.
+          // The owner reauthorises access from /admin while an earlier request
+          // is still in flight.
           db.prepare('UPDATE oauth_token SET ciphertext = ? WHERE id = 1').run(
             encryptSecret('refresh-token-tout-neuf', TOKEN_KEY),
           );
@@ -152,22 +152,22 @@ describe('détection de invalid_grant', () => {
       DriveRevokedError,
     );
 
-    // C'est l'ancien jeton que Google a refusé. Marquer le nouveau ferait
-    // réclamer à /admin une reconnexion qui vient précisément d'être faite.
+    // Google refused the old token. Marking the new one would make /admin ask
+    // for the reconnection that just happened.
     assert.equal(service.connected, true);
     assert.equal(service.connection?.revokedAt, null);
   });
 
-  it('conserve un jeton que TOKEN_KEY ne déchiffre plus', () => {
+  it('retains a token TOKEN_KEY can no longer decrypt', () => {
     const avecMauvaiseCle = new DriveService({ ...env, tokenKey: 'z'.repeat(48) }, db, silent);
 
-    // Le jeton est illisible : l'instance ne peut rien faire de Drive et doit
-    // le dire, /admin proposant alors de reconnecter.
+    // The token is unreadable: the instance cannot use Drive and must say so,
+    // allowing /admin to offer reconnection.
     assert.throws(() => avecMauvaiseCle.api(), DriveKeyMismatchError);
     assert.equal(avecMauvaiseCle.connected, false);
 
-    // Mais il est toujours là. Une clé mal recopiée dans un déploiement ne doit
-    // pas coûter l'autorisation Google elle-même : rétablir la clé suffit.
+    // But it remains. A deployment with a mistyped key must not lose Google
+    // authorisation itself: restoring the key is enough.
     assert.equal(service.connected, true);
     assert.ok(db.prepare('SELECT ciphertext FROM oauth_token WHERE id = 1').get());
     assert.equal(service.connection?.account, 'photos@exemple.fr');
@@ -175,20 +175,19 @@ describe('détection de invalid_grant', () => {
 });
 
 /**
- * Refus de l'access token par Drive (401). Il ne remonte pas comme
- * `invalid_grant` : c'est la réponse HTTP du téléchargement qui le porte, et
- * sans traitement il devient une erreur opaque répétée jusqu'à l'expiration
- * naturelle du jeton — une heure pendant laquelle /admin affiche « connecté ».
+ * Drive refusal of the access token (401). It does not surface as
+ * `invalid_grant`: the download HTTP response carries it, and without handling
+ * it becomes an opaque error repeated until natural token expiry — an hour
+ * during which /admin shows "connected".
  */
-describe('téléchargement refusé par Drive', () => {
+describe('download refused by Drive', () => {
   class ServiceInstrumente extends DriveService {
     readonly jetons: string[] = [];
     renouvellementRefuse = false;
 
     protected override async accessToken(force: boolean): Promise<string> {
       if (force && this.renouvellementRefuse) {
-        // Google refuse aussi le refresh token : c'est ici que la révocation
-        // se constate pour de bon.
+        // Google also refuses the refresh token: revocation is confirmed here.
         return this.guard<string>(() => Promise.reject(invalidGrant()));
       }
       const token = force ? 'jeton-neuf' : 'jeton-perime';
@@ -196,7 +195,7 @@ describe('téléchargement refusé par Drive', () => {
       return Promise.resolve(token);
     }
 
-    /** Attentes enregistrées plutôt que subies : le test dure des millisecondes. */
+    /** Waits recorded rather than incurred so the test takes milliseconds. */
     readonly attentes: number[] = [];
 
     protected override delay(ms: number): Promise<void> {
@@ -210,20 +209,20 @@ describe('téléchargement refusé par Drive', () => {
     globalThis.fetch = vraiFetch;
   });
 
-  /** Réponses servies dans l'ordre, une par appel. */
+  /** Responses served in order, one per call. */
   function reponses(...suite: Response[]): { jetonsPresentes: (string | null)[] } {
     const jetonsPresentes: (string | null)[] = [];
     let index = 0;
     globalThis.fetch = (_url: unknown, init?: { headers?: Record<string, string> }) => {
       jetonsPresentes.push(init?.headers?.Authorization ?? null);
       const reponse = suite[index++];
-      assert.ok(reponse, `appel réseau nº ${index} non prévu`);
+      assert.ok(reponse, `unexpected network call no. ${index}`);
       return Promise.resolve(reponse);
     };
     return { jetonsPresentes };
   }
 
-  it('renouvelle le jeton et retente une seule fois sur un 401', async () => {
+  it('refreshes the token and retries only once after a 401', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     const { jetonsPresentes } = reponses(
       new Response(null, { status: 401 }),
@@ -234,23 +233,23 @@ describe('téléchargement refusé par Drive', () => {
 
     assert.equal(response.status, 200);
     assert.deepEqual(jetonsPresentes, ['Bearer jeton-perime', 'Bearer jeton-neuf']);
-    // Une seule reprise : boucler sur un 401 persistant ferait tourner le
-    // serveur à vide sur chaque vignette de la grille.
+    // One retry only: looping on a persistent 401 would waste server work on
+    // every grid thumbnail.
     assert.equal(instrumente.jetons.length, 2);
   });
 
-  it('constate la révocation quand le renouvellement est refusé à son tour', async () => {
+  it('records revocation when refresh is also refused', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     instrumente.renouvellementRefuse = true;
     reponses(new Response(null, { status: 401 }));
 
     await assert.rejects(() => instrumente.fetchFile('une-photo'), DriveRevokedError);
 
-    // Sans ça, /admin afficherait « connecté » pendant que chaque image échoue.
+    // Otherwise /admin would show "connected" while every image fails.
     assert.equal(instrumente.connected, false);
   });
 
-  it('attend et retente quand Drive limite le débit', async () => {
+  it('waits and retries when Drive rate-limits', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}', { status: 403 }),
@@ -260,15 +259,15 @@ describe('téléchargement refusé par Drive', () => {
 
     const response = await instrumente.fetchFile('une-photo');
 
-    // Sans réessai, chaque refus devient une vignette cassée que rien ne
-    // rattrape — alors que la seconde d'après serait passée.
+    // Without retry, every refusal becomes a broken thumbnail despite the next
+    // second succeeding.
     assert.equal(response.status, 200);
-    // Doublement à chaque tentative : marteler à intervalle fixe est
-    // exactement ce que la limite demande d'arrêter.
+    // Double on every attempt: hammering at fixed intervals is exactly what the
+    // limit asks clients to stop.
     assert.deepEqual(instrumente.attentes, [1000, 2000]);
   });
 
-  it('respecte le Retry-After annoncé par Google', async () => {
+  it('respects Retry-After reported by Google', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}', {
@@ -283,20 +282,19 @@ describe('téléchargement refusé par Drive', () => {
     assert.deepEqual(instrumente.attentes, [7000]);
   });
 
-  it('ne retente pas un 403 qui refuse l’accès', async () => {
+  it('does not retry a 403 that denies access', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"insufficientPermissions"}]}}', { status: 403 }),
     );
 
-    // Un fichier interdit reste interdit : quatre tentatives ne feraient que
-    // retarder l'échec, et le 403 d'une permission ressemble en tout au 403
-    // d'une limite de débit hors de son corps.
+    // A forbidden file remains forbidden: four attempts only delay failure, and
+    // outside its body a permission 403 looks exactly like a rate-limit 403.
     await assert.rejects(() => instrumente.fetchFile('une-photo'), /403/);
     assert.deepEqual(instrumente.attentes, []);
   });
 
-  it('abandonne un quota de téléchargement, qui ne se vide pas en trente secondes', async () => {
+  it('gives up on a download quota that will not clear in thirty seconds', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"downloadQuotaExceeded"}]}}', { status: 403 }),
@@ -306,12 +304,12 @@ describe('téléchargement refusé par Drive', () => {
     assert.deepEqual(instrumente.attentes, []);
   });
 
-  it('relaie une plage insatisfaisable au lieu de lever', async () => {
+  it('relays an unsatisfiable range instead of throwing', async () => {
     const instrumente = new ServiceInstrumente(env, db, silent);
     reponses(new Response(null, { status: 416, headers: { 'content-range': 'bytes */4096' } }));
 
-    // Demander un offset au-delà de la fin fait partie du protocole `Range` :
-    // cela arrive dès qu'un lecteur change de vidéo pendant une requête.
+    // Requesting an offset beyond the end is part of the `Range` protocol: it
+    // happens when a player changes video during a request.
     const response = await instrumente.fetchFile('une-video', 'bytes=99999-');
 
     assert.equal(response.status, 416);

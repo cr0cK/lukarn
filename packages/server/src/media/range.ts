@@ -1,19 +1,19 @@
 /**
- * Validation du header `Range` avant relais vers Drive.
+ * Validation of the `Range` header before relaying to Drive.
  *
- * Le header n'est pas réécrit — il est transmis tel quel pour que Google
- * réponde directement le bon fragment. On refuse simplement ce qu'on ne veut
- * pas propager : les plages multiples (réponse `multipart/byteranges`, que le
- * proxy ne sait pas recomposer) et les unités autres que `bytes`.
+ * The header is not rewritten — it is forwarded as-is so Google returns the correct
+ * fragment directly. Only values that must not propagate are refused: multiple ranges
+ * (`multipart/byteranges`, which the proxy cannot reconstruct) and units other than
+ * `bytes`.
  *
- * Un header invalide n'est pas une erreur : on l'ignore et on sert le fichier
- * entier, ce que la RFC 9110 recommande explicitement.
+ * An invalid header is not an error: ignore it and serve the whole file, as RFC 9110
+ * explicitly recommends.
  */
 
 export interface ByteRange {
-  /** Début inclusif, ou `null` pour une plage suffixe (`bytes=-500`). */
+  /** Inclusive start, or `null` for a suffix range (`bytes=-500`). */
   start: number | null;
-  /** Fin inclusive, ou `null` pour « jusqu'à la fin ». */
+  /** Inclusive end, or `null` for "to the end". */
   end: number | null;
 }
 
@@ -27,7 +27,7 @@ export function parseRange(header: string | undefined | null): ByteRange | null 
   const hasStart = rawStart !== '';
   const hasEnd = rawEnd !== '';
 
-  // `bytes=-` ne désigne rien.
+  // `bytes=-` identifies nothing.
   if (!hasStart && !hasEnd) return null;
 
   const start = hasStart ? Number(rawStart) : null;
@@ -35,15 +35,15 @@ export function parseRange(header: string | undefined | null): ByteRange | null 
 
   if (start !== null && !Number.isSafeInteger(start)) return null;
   if (end !== null && !Number.isSafeInteger(end)) return null;
-  // Plage à l'envers : le client s'est trompé, on sert tout.
+  // Reversed range: the client is mistaken, so serve everything.
   if (start !== null && end !== null && end < start) return null;
-  // `bytes=-0` demande zéro octet depuis la fin.
+  // `bytes=-0` requests zero bytes from the end.
   if (start === null && end === 0) return null;
 
   return { start, end };
 }
 
-/** Reconstruit le header à relayer, sous forme normalisée. */
+/** Reconstructs the header to relay in normalised form. */
 export function formatRange(range: ByteRange): string {
   const start = range.start === null ? '' : String(range.start);
   const end = range.end === null ? '' : String(range.end);

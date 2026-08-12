@@ -1,0 +1,45 @@
+# Static analysis of the TypeScript, looking for the classes of flaw a type
+# checker does not see: an unsanitised path reaching the filesystem, a template
+# fed by a request, a comparison that leaks a secret through timing.
+#
+# **Only runs on a public repository.** CodeQL is free for public repositories and
+# needs GitHub Advanced Security on private ones; guarding on visibility keeps
+# this from failing on every push while the repository is still private, rather
+# than teaching everyone to ignore a red check.
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # A weekly pass catches queries added to the CodeQL suites after the code was
+    # written — most findings on a stable codebase arrive that way.
+    - cron: '32 4 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # `security-extended` over the default suite: this application holds an
+          # OAuth token, hashes passwords and serves files by path, so the extra
+          # queries are aimed at exactly what would hurt here.
+          queries: security-extended
+
+      # The build is not needed to analyse TypeScript, and skipping it keeps the
+      # run short enough to sit on a pull request.
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript

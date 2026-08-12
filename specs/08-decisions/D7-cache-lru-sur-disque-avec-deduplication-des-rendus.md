@@ -1,25 +1,23 @@
-# D7 — Cache LRU sur disque avec déduplication des rendus concurrents
+# D7 — On-disk LRU cache with deduplication of concurrent renders
 
-**Contexte.** Ouvrir un album déclenche des dizaines de requêtes de vignettes en
-même temps ; produire une vignette coûte un téléchargement Drive plus un décodage
-sharp.
+**Context.** Opening an album triggers dozens of thumbnail requests at once; producing a
+thumbnail requires a Drive download and sharp decoding.
 
-**Choix.** Un fichier par entrée sous `CACHE_DIR`, clé
-`sha256("<fileId>:<variante>")` répartie sur 256 sous-dossiers, inventaire des
-tailles et des derniers accès **en mémoire**, éviction LRU jusqu'à 90 % de la
-limite. `MediaRenderer.inFlight` mémorise les rendus en cours par clé : dix
-requêtes simultanées sur la même vignette ne déclenchent qu'un téléchargement.
+**Decision.** One file per entry under `CACHE_DIR`, with the key
+`sha256("<fileId>:<variant>")` distributed across 256 subdirectories, and an inventory
+of sizes and last access times kept **in memory**; LRU eviction continues until 90% of
+the limit is reached. `MediaRenderer.inFlight` tracks ongoing renders by key: ten
+simultaneous requests for the same thumbnail trigger only one download.
 
-**Écarté.** Se fier à `atime` du système de fichiers pour l'ordre LRU : sur un
-montage `relatime` — le défaut de la plupart des VPS — il n'est pas mis à jour de
-façon exploitable. Écarté aussi : évincer pile à la limite, ce qui déclencherait
-une éviction à chaque écriture suivante ; d'où le seuil à 90 %.
+**Rejected.** Relying on the file system's `atime` for LRU ordering: on a `relatime`
+mount — the default on most VPSs — it is not updated in a usable way. Also rejected:
+evicting precisely to the limit, which would trigger an eviction on every subsequent
+write; hence the 90% threshold.
 
-**Conséquences.** L'inventaire est reconstruit au démarrage par
-`MediaCache.load()`, qui nettoie au passage les `.tmp` d'écritures interrompues.
-**Un fichier déposé dans le cache pendant que le serveur tourne est invisible
-jusqu'au redémarrage** — c'est le piège documenté de `seed-demo`. Les écritures
-passent par un fichier temporaire puis un `rename` atomique : un lecteur
-concurrent ne voit jamais un fichier partiel.
+**Consequences.** The inventory is rebuilt on startup by `MediaCache.load()`, which also
+cleans up `.tmp` files left by interrupted writes. **A file placed in the cache while
+the server is running remains invisible until restart** — this is the documented
+`seed-demo` trap. Writes go through a temporary file followed by an atomic `rename`: a
+concurrent reader never sees a partial file.
 
-Aucune invalidation n'est prévue : la clé contient l'id du fichier Drive.
+No invalidation is planned: the key contains the Drive file ID.

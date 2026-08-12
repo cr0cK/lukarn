@@ -1,33 +1,30 @@
-# D89 — La description de l'album quitte la légende : on l'a lue en entrant
+# D89 — The album description leaves the caption: it was read on entry
 
-**Contexte.** [D84](./D84-le-contexte-descend-en-bas-de-la-visionneuse-a-toutes-les.md)
-a rassemblé trois textes en bas de la visionneuse, du plus précis au plus
-général : la photo, la journée, l'album. Le raisonnement tenait pour les deux
-premiers — ils sont propres à ce qu'on regarde. Il tenait moins pour le
-troisième, et l'usage l'a montré : la description d'album est **la même sur
-toutes les photos de l'album**, et on vient de la lire en tête de grille. Une
-ligne de bandeau par photo pour un texte identique neuf cents fois, sur une
-zone dont le défaut est justement de manger le cadrage.
+**Context.** [D84](./D84-le-contexte-descend-en-bas-de-la-visionneuse-a-toutes-les.md)
+gathered three texts at the bottom of the viewer, from most specific to most
+general: photo, day, album. The reasoning held for the first two — they belong to
+what is being viewed. It held less well for the third, as use showed: the album
+description is **the same on every photo in the album**, and was just read at the
+top of the grid. One strip line per photo for text repeated nine hundred times,
+in an area whose defect is precisely consuming the framing.
 
-**Décision.** La portée `album` disparaît de `captionEntries` — du type, du
-composant, et de la plomberie qui descendait `albumDescription` depuis
-`AlbumPage`. Le bandeau porte deux lignes : la photo, puis la journée.
+**Decision.** The `album` scope disappears from `captionEntries` — from the type,
+component, and plumbing that passed `albumDescription` down from `AlbumPage`.
+The strip carries two lines: photo, then day.
 
-Ce que la visionneuse doit à l'album, c'est de dire **lequel**, pas de le
-raconter. Son titre est passé en tête de l'en-tête au même moment
+What the viewer owes the album is saying **which one**, not narrating it. Its
+title moved to the top of the header at the same time
 ([D88](./D88-la-photo-ouverte-dit-d-ou-elle-vient-et-s-en-debarrasse-d.md)),
-et c'est ce qui rend ce retrait sans perte : quelqu'un qui arrive par un lien
-partagé sait toujours où il est, en un mot au lieu d'un paragraphe.
+which makes this removal lossless: someone arriving through a shared link still
+knows where they are, in one phrase rather than a paragraph.
 
-**Écarté.** Garder la ligne en la repliant par défaut : le bandeau se déplie
-d'un bloc, un troisième texte replié restait une ligne de plus à l'écran et un
-clic de plus à comprendre. Écarté aussi : ne l'afficher que sur la première
-photo ouverte d'une session. Un affichage qui dépend de l'ordre des gestes ne
-s'explique pas, et il n'y a rien à expliquer ici — le texte est ailleurs, à un
-endroit qu'on a traversé.
+**Rejected.** Keeping the line collapsed by default: the strip expands as a
+whole, so a third collapsed text remained another line on screen and another
+click to understand. Also rejected: only displaying it on the first photo opened
+in a session. A display depending on action order cannot be explained, and there
+is nothing to explain here — the text is elsewhere, in a place already crossed.
 
-**Conséquences.** La description d'album n'a plus qu'un seul lieu, la tête de
-grille — où elle prend désormais toute la largeur (D88). Un lien partagé qui
-ouvre directement une photo ne la montre donc pas ; refermer la visionneuse la
-donne, et c'est le geste qu'on fait de toute façon pour voir le reste de
-l'album.
+**Consequences.** The album description now has one location, the top of the
+grid — where it takes the full width (D88). A shared link opening a photo directly
+therefore does not show it; closing the viewer does, which is the natural action
+to see the rest of the album anyway.

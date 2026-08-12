@@ -1,24 +1,24 @@
-# D61 — Le préchauffage s'arrête quand Drive n'est pas connecté
+# D61 — Prewarming stops when Drive is not connected
 
-**Contexte.** `CachePrewarmer` ne consultait que `prewarmCache`. Sans connexion
-Drive — instance neuve, consentement révoqué, clé de compte de service absente —
-le passage parcourait l'album entier en échouant photo par photo, **pause d'une
-seconde comprise** puisqu'elle est hors du `try`. Sur mille photos, c'est un
-quart d'heure de boucle stérile par passage horaire, et autant de lignes de
-journal qui noient ce qu'on cherche vraiment.
+**Context.** `CachePrewarmer` only checked `prewarmCache`. With no Drive
+connection — a fresh instance, revoked consent, or a missing service account key
+— the pass traversed the entire album, failing photo by photo, **including a
+one-second pause** because it sits outside the `try`. For a thousand photos, that
+is a quarter-hour of pointless looping per hourly pass and as many log lines
+drowning out what actually matters.
 
-**Choix.** La connexion entre dans le prédicat existant :
-`enabled: () => this.settings.prewarmCache && this.drive.connected`. Ce prédicat
-est déjà relu à l'entrée de `run()` **et** à chaque photo (D45), donc le passage
-s'arrête immédiatement, et une révocation en cours de passage l'interrompt comme
-le ferait un décochage du réglage.
+**Choice.** Connection becomes part of the existing predicate:
+`enabled: () => this.settings.prewarmCache && this.drive.connected`. This
+predicate is already reread on entry to `run()` **and** for every photo (D45), so
+the pass stops immediately, and a revocation during the pass interrupts it just
+as unchecking the setting would.
 
-**Écarté.** _Ajouter `drive` à `PrewarmDeps`_ : une dépendance de plus vers un
-service entier, là où un booléen suffit — et `CachePrewarmer` n'a aucune autre
-raison de connaître Drive. _Un `try` autour de la pause_ : cela accélérerait la
-boucle stérile au lieu de l'éviter.
+**Rejected.** _Adding `drive` to `PrewarmDeps`_: one more dependency on an entire
+service where a boolean is enough — and `CachePrewarmer` has no other reason to
+know about Drive. _A `try` around the pause_: this would accelerate the pointless
+loop instead of preventing it.
 
-**Conséquences.** Le passage ne reprend qu'au déclencheur suivant — ménage
-horaire, démarrage, ou fin de synchronisation (D58). Reconnecter Drive ne relance
-donc pas le préchauffage dans la seconde ; en pratique le retour d'OAuth
-enchaîne une synchronisation, qui le déclenche.
+**Consequences.** The pass only resumes on the next trigger — hourly housekeeping,
+startup, or the end of synchronisation (D58). Reconnecting Drive therefore does
+not restart prewarming within a second; in practice, the return from OAuth starts
+a synchronisation, which triggers it.

@@ -1,9 +1,9 @@
-# Contrôle à chaque poussée et à chaque proposition de fusion.
+# Runs on every push to main and every pull request.
 #
-# La documentation fait partie du contrôle, au même titre que les types et les
-# tests : `check:specs` compare ce que le code expose — routes, variables
-# d'environnement, migrations, modules — à ce que les specs décrivent. Une règle
-# qu'on doit se rappeler d'appliquer finit par être oubliée ; celle-ci échoue.
+# Documentation is part of the gate, on the same footing as types and tests:
+# `check:specs` compares what the code exposes — routes, environment variables,
+# migrations, modules — against what the specs describe. A rule you have to
+# remember to apply is a rule that eventually gets forgotten; this one fails.
 name: verify
 
 on:
@@ -11,9 +11,23 @@ on:
     branches: [main]
   pull_request:
 
+# A force-push to a pull request makes the run already in flight pointless.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+
+    strategy:
+      # One version failing should not hide the state of the other.
+      fail-fast: false
+      matrix:
+        # 22 is what package.json asks of a contributor, 24 is what the
+        # Dockerfile ships. Testing one leaves the other free to break, and the
+        # breakage then surfaces on someone else's machine, or in production.
+        node: [22, 24]
 
     steps:
       - uses: actions/checkout@v4
@@ -22,16 +36,75 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
-      # Les modules natifs (sharp, better-sqlite3, argon2) ont besoin de leurs
-      # scripts d'installation ; `allowBuilds` de pnpm-workspace.yaml les
-      # autorise déjà nommément.
+      # Native modules (sharp, better-sqlite3, argon2) need their install
+      # scripts; `allowBuilds` in pnpm-workspace.yaml already permits them by
+      # name.
       - run: pnpm install --frozen-lockfile
 
-      # `shared` doit être compilé avant que les deux autres paquets ne
-      # typecheckent : ils importent ses déclarations depuis `dist`.
-      - run: pnpm --filter @gdv/shared build
+      # `shared` has to be compiled before the other two typecheck: they import
+      # its declarations from `dist`.
+      - run: pnpm --filter @nonni/shared build
 
       - run: pnpm verify
+
+  # The image is what production runs, and nothing built it before a tag was
+  # pushed: a broken Dockerfile passed every check and only showed itself at
+  # deploy time, on the machine, with the site down.
+  image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Nothing is published here — this job proves the build, and
+          # release.yml does the pushing.
+          push: false
+          load: true
+          tags: nonni:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Building and starting are two different claims. A missing runtime
+      # dependency, a wrong CMD, a path that exists only in the builder stage:
+      # each produces an image that builds and then dies on boot. So the
+      # container is actually run, with the two secrets it refuses to start
+      # without and no Drive credentials — a configuration it supports.
+      - name: Start the container and wait for /api/health
+        run: |
+          docker run -d --name nonni-ci -p 8080:8080 \
+            -e SESSION_SECRET=$(openssl rand -hex 32) \
+            -e TOKEN_KEY=$(openssl rand -hex 32) \
+            -e PUBLIC_URL=http://localhost:8080 \
+            nonni:ci
+
+          # The image carries its own HEALTHCHECK, so its verdict is read rather
+          # than a second one written here: a divergence between the two would
+          # mean CI passing on a container Docker considers sick.
+          #
+          # 120s, and the margin is deliberate. The check runs every 30s, so a
+          # first attempt missed on a loaded runner pushes the verdict to ~60s —
+          # a tighter ceiling would fail on machine load rather than on the
+          # image. Locally it reports healthy in about 7s.
+          for i in $(seq 1 120); do
+            etat=$(docker inspect -f '{{.State.Health.Status}}' nonni-ci 2>/dev/null || echo none)
+            case $etat in
+              healthy) echo "healthy after ${i}s"; exit 0 ;;
+              unhealthy) break ;;
+            esac
+            sleep 1
+          done
+
+          echo "::error::the container never reported itself healthy"
+          exit 1
+
+      - name: Container logs
+        if: failure()
+        run: docker logs nonni-ci 2>&1 | tail -40

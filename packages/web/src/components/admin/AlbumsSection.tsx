@@ -1,4 +1,4 @@
-import type { AdminAlbum, SyncStatus } from '@gdv/shared';
+import type { AdminAlbum, SyncStatus } from '@nonni/shared';
 import { type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useDeleteAlbum, useResync, useUpdateAlbum } from '../../api/hooks';
@@ -8,20 +8,20 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 const SYNC_LABELS: Record<SyncStatus, { text: string; className: string }> = {
-  never: { text: 'jamais synchronisé', className: 'text-ink-400' },
-  running: { text: 'synchronisation en cours', className: 'text-accent' },
-  ok: { text: 'à jour', className: 'text-emerald-400' },
-  error: { text: 'en erreur', className: 'text-red-400' },
+  never: { text: 'never synced', className: 'text-ink-400' },
+  running: { text: 'sync in progress', className: 'text-accent' },
+  ok: { text: 'up to date', className: 'text-emerald-400' },
+  error: { text: 'failed', className: 'text-red-400' },
 };
 
 interface AlbumsSectionProps {
   albums: AdminAlbum[];
-  /** Sans compte Drive connecté, aucune synchronisation ne peut partir. */
+  /** No sync can start without a connected Drive account. */
   driveConnected: boolean;
   notify: Notify;
 }
 
-/** Section « Albums » : liste, création, modification, suppression, resynchronisation. */
+/** "Albums" section: list, create, edit, delete and resynchronise. */
 export function AlbumsSection({
   albums,
   driveConnected,
@@ -40,20 +40,16 @@ export function AlbumsSection({
       onSuccess: ({ started }) =>
         notify({
           tone: 'ok',
-          text: started.length
-            ? `Synchronisation lancée : ${started.join(', ')}`
-            : 'Aucun album à synchroniser.',
+          text: started.length ? `Sync started: ${started.join(', ')}` : 'No album to sync.',
         }),
-      onError: (error) =>
-        notify({ tone: 'error', text: errorText(error, 'Synchronisation impossible.') }),
+      onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot sync.') }),
     });
   };
 
   /**
-   * Rend la couverture au choix automatique. Le geste inverse — désigner une
-   * photo — se fait dans l'album, sur la photo elle-même : un sélecteur ici
-   * rejouerait la grille sans rien apporter, et on choisit une couverture en la
-   * regardant en grand.
+   * Returns cover selection to automatic. The reverse action — choosing a photo
+   * — happens in the album on the photo itself: a picker here would reproduce the
+   * grid without adding anything, and a cover is chosen while viewing it large.
    */
   const clearCover = (album: AdminAlbum): void => {
     update.mutate(
@@ -62,10 +58,9 @@ export function AlbumsSection({
         onSuccess: () =>
           notify({
             tone: 'ok',
-            text: `L'album « ${album.title} » reprend sa photo la plus récente en couverture.`,
+            text: `Album "${album.title}" takes its most recent photo as cover again.`,
           }),
-        onError: (error) =>
-          notify({ tone: 'error', text: errorText(error, 'Modification impossible.') }),
+        onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot update.') }),
       },
     );
   };
@@ -73,11 +68,11 @@ export function AlbumsSection({
   const confirmDelete = (album: AdminAlbum): void => {
     remove.mutate(album.id, {
       onSuccess: () => {
-        notify({ tone: 'ok', text: `Album « ${album.title} » supprimé.` });
+        notify({ tone: 'ok', text: `Album "${album.title}" deleted.` });
         setConfirming(null);
       },
       onError: (error) => {
-        notify({ tone: 'error', text: errorText(error, 'Suppression impossible.') });
+        notify({ tone: 'error', text: errorText(error, 'Cannot delete.') });
         setConfirming(null);
       },
     });
@@ -86,15 +81,15 @@ export function AlbumsSection({
   return (
     <Section
       title="Albums"
-      description="Un album = un dossier Google Drive indexé. Sa couverture se choisit sur la photo, depuis l'album."
+      description="One album = one indexed Google Drive folder. Its cover is chosen on the photo, from the album."
       action={
         <div className="flex gap-2">
           <Button
             onClick={() => startResync(undefined)}
             disabled={!driveConnected || resync.isPending}
-            title={driveConnected ? undefined : 'Aucun compte Google Drive connecté.'}
+            title={driveConnected ? undefined : 'No Google Drive account connected.'}
           >
-            Tout resynchroniser
+            Resync everything
           </Button>
           <Button
             variant="primary"
@@ -104,7 +99,7 @@ export function AlbumsSection({
             }}
             disabled={creating}
           >
-            Nouvel album
+            New album
           </Button>
         </div>
       }
@@ -113,7 +108,7 @@ export function AlbumsSection({
 
       {albums.length === 0 && !creating && (
         <p className="px-4 py-6 text-sm text-ink-400">
-          Aucun album. Crée-en un à partir d'un dossier de ton Drive.
+          No album. Create one from a folder of your Drive.
         </p>
       )}
 
@@ -133,26 +128,25 @@ export function AlbumsSection({
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-ink-100">{album.title}</p>
               <p className="truncate text-xs text-ink-400">
-                <code>{album.id}</code> · {album.itemCount.toLocaleString('fr-FR')} éléments
-                {album.recursive ? ' · sous-dossiers inclus' : ''}
+                <code>{album.id}</code> · {album.itemCount.toLocaleString('en-GB')} items
+                {album.recursive ? ' · subfolders included' : ''}
                 {formatRelative(album.lastSyncAt)
-                  ? ` · synchronisé ${formatRelative(album.lastSyncAt)}`
+                  ? ` · synced ${formatRelative(album.lastSyncAt)}`
                   : ''}
               </p>
               <p className="truncate text-xs text-ink-400">
                 {album.members.length > 0
-                  ? `Attribué à ${album.members.join(', ')}`
-                  : 'Attribué à aucun compte nommément'}
+                  ? `Assigned to ${album.members.join(', ')}`
+                  : 'Assigned to no account by name'}
               </p>
               {album.syncError && (
                 <p className="mt-1 text-xs break-words text-red-400">{album.syncError}</p>
               )}
             </div>
 
-            {/* L'état de synchronisation ouvre le groupe d'actions au lieu de
-                fermer les métadonnées : c'est lui qu'on lit avant de décider de
-                resynchroniser, et il reste ainsi contre le bouton qu'il appelle
-                une fois la ligne empilée. */}
+            {/* Sync status opens the action group rather than closing metadata:
+                it is read before deciding to resynchronise, and thus stays next
+                to the button it prompts once the row stacks. */}
             <div className={ROW_ACTIONS_CLASS}>
               <span className={`mr-1 text-xs ${SYNC_LABELS[album.syncStatus].className}`}>
                 {SYNC_LABELS[album.syncStatus].text}
@@ -161,22 +155,22 @@ export function AlbumsSection({
               <Button
                 onClick={() => startResync(album.id)}
                 disabled={album.syncStatus === 'running' || !driveConnected}
-                ariaLabel={`Resynchroniser l'album ${album.title}`}
+                ariaLabel={`Resync album ${album.title}`}
               >
-                Resynchroniser
+                Resync
               </Button>
 
-              {/* Sa seule présence dit qu'une couverture a été choisie : la ligne
-                  de métadonnées au-dessus est tronquée dès que la fenêtre se
-                  resserre, et un indicateur qu'on ne voit pas n'en est pas un. */}
+              {/* Its presence alone says a cover was selected: the metadata row
+                  above is truncated as the window narrows, and an unseen
+                  indicator is no indicator. */}
               {album.coverId && (
                 <Button
                   onClick={() => clearCover(album)}
                   disabled={update.isPending}
-                  title="Une photo a été choisie comme couverture. Rendre à l'album sa photo la plus récente."
-                  ariaLabel={`Rendre automatique la couverture de l'album ${album.title}`}
+                  title="A photo was chosen as cover. Give the album its most recent photo back."
+                  ariaLabel={`Make the cover of album ${album.title} automatic again`}
                 >
-                  Couverture automatique
+                  Automatic cover
                 </Button>
               )}
 
@@ -185,17 +179,17 @@ export function AlbumsSection({
                   setCreating(false);
                   setEditing(album.id);
                 }}
-                ariaLabel={`Modifier l'album ${album.title}`}
+                ariaLabel={`Edit album ${album.title}`}
               >
-                Modifier
+                Edit
               </Button>
 
               <Button
                 variant="danger"
                 onClick={() => setConfirming(album)}
-                ariaLabel={`Supprimer l'album ${album.title}`}
+                ariaLabel={`Delete album ${album.title}`}
               >
-                Supprimer
+                Delete
               </Button>
             </div>
           </div>
@@ -204,20 +198,20 @@ export function AlbumsSection({
 
       {confirming && (
         <ConfirmDialog
-          title={`Supprimer l'album « ${confirming.title} » ?`}
-          confirmLabel="Supprimer l'album"
+          title={`Delete album "${confirming.title}"?`}
+          confirmLabel="Delete the album"
           busy={remove.isPending}
           onConfirm={() => confirmDelete(confirming)}
           onCancel={() => setConfirming(null)}
         >
           <p>
-            Les {confirming.itemCount.toLocaleString('fr-FR')} médias indexés sont retirés de la
-            visionneuse, et l'album disparaît pour les comptes qui y avaient accès.
+            The {confirming.itemCount.toLocaleString('en-GB')} indexed media are removed from the
+            viewer, and the album disappears for the accounts that could reach it.
           </p>
           <p className="text-ink-200">
-            Rien n'est supprimé dans Google Drive : les fichiers restent dans le dossier{' '}
-            <code className="break-all">{confirming.folderId}</code>. Recréer l'album sur le même
-            dossier le réindexera.
+            Nothing is deleted in Google Drive: the files stay in folder{' '}
+            <code className="break-all">{confirming.folderId}</code>. Recreating the album on the
+            same folder will reindex it.
           </p>
         </ConfirmDialog>
       )}

@@ -1,30 +1,30 @@
 import { readFileSync } from 'node:fs';
-import { DEFAULT_GROUP_BY, DEFAULT_SORT_ORDER } from '@gdv/shared';
+import { DEFAULT_GROUP_BY, DEFAULT_SORT_ORDER } from '@nonni/shared';
 import yaml from 'js-yaml';
 import { z } from 'zod';
 
 /**
- * Lecture de `config/albums.yaml` : comptes, albums, droits et réglages.
+ * Reads `config/albums.yaml`: accounts, albums, permissions and settings.
  *
- * Ce fichier n'est plus la source de vérité — la base l'est, et l'application
- * s'administre depuis `/admin`. Il ne sert qu'à **amorcer** une installation
- * neuve (voir `bootstrap.ts`) : dès qu'un compte existe en base, il n'est plus
- * jamais relu. Le schéma reste donc figé sur ce que les installations
- * existantes ont pu écrire.
+ * This file is no longer the source of truth — the database is, and the application
+ * is administered from `/admin`. It is only used to **bootstrap** a new installation
+ * (see `bootstrap.ts`): as soon as an account exists in the database, it is never
+ * read again. The schema therefore remains fixed to what existing installations
+ * may have written.
  */
 
 const identifier = z
   .string()
   .min(1)
   .max(64)
-  .regex(/^[a-z0-9][a-z0-9._-]*$/i, 'lettres, chiffres, point, tiret et underscore uniquement');
+  .regex(/^[a-z0-9][a-z0-9._-]*$/i, 'letters, digits, dot, hyphen and underscore only');
 
 const userSchema = z.object({
   username: identifier,
-  /** Hash argon2id produit par `pnpm hash-password`. */
-  passwordHash: z.string().startsWith('$argon2', 'doit être un hash argon2 (pnpm hash-password)'),
+  /** argon2id hash produced by `pnpm hash-password`. */
+  passwordHash: z.string().startsWith('$argon2', 'must be an argon2 hash (pnpm hash-password)'),
   admin: z.boolean().default(false),
-  /** Liste d'ids d'albums, ou `["*"]` pour tous. */
+  /** List of album IDs, or `["*"]` for all of them. */
   albums: z.array(z.string().min(1)).default([]),
 });
 
@@ -32,24 +32,24 @@ const albumSchema = z.object({
   id: identifier,
   title: z.string().min(1),
   description: z.string().optional(),
-  /** Id du dossier Drive : le segment après /folders/ dans son URL. */
+  /** Drive folder ID: the segment after /folders/ in its URL. */
   folderId: z.string().min(1),
-  /** Descendre dans les sous-dossiers. */
+  /** Descend into subfolders. */
   recursive: z.boolean().default(true),
-  /** Découpage de la grille à l'ouverture : un séjour se lit par jour. */
+  /** Grid grouping on opening: a trip is read day by day. */
   groupBy: z.enum(['month', 'day']).default(DEFAULT_GROUP_BY),
-  /** Sens de lecture à l'ouverture : un séjour se lit du premier jour au dernier. */
+  /** Reading order on opening: a trip is read from its first day to its last. */
   sortOrder: z.enum(['desc', 'asc']).default(DEFAULT_SORT_ORDER),
 });
 
 const configSchema = z
   .object({
-    users: z.array(userSchema).min(1, 'au moins un utilisateur est nécessaire'),
-    albums: z.array(albumSchema).min(1, 'au moins un album est nécessaire'),
+    users: z.array(userSchema).min(1, 'at least one user is required'),
+    albums: z.array(albumSchema).min(1, 'at least one album is required'),
     sync: z
       .object({
         intervalMinutes: z.number().int().min(0).default(30),
-        /** Resynchroniser tous les albums au démarrage du serveur. */
+        /** Resynchronise all albums when the server starts. */
         onStartup: z.boolean().default(true),
       })
       .default({}),
@@ -68,7 +68,7 @@ const configSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['albums', index, 'id'],
-          message: `album en double : "${album.id}"`,
+          message: `duplicate album: "${album.id}"`,
         });
       }
       seenAlbum.add(album.id);
@@ -81,19 +81,19 @@ const configSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['users', index, 'username'],
-          message: `utilisateur en double : "${user.username}"`,
+          message: `duplicate user: "${user.username}"`,
         });
       }
       seenUser.add(key);
 
-      // Une référence à un album inexistant est presque toujours une faute de
-      // frappe qui prive silencieusement l'utilisateur de son accès.
+      // A reference to a non-existent album is almost always a typo that silently
+      // deprives the user of access.
       user.albums.forEach((albumId, albumIndex) => {
         if (albumId !== '*' && !albumIds.has(albumId)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             path: ['users', index, 'albums', albumIndex],
-            message: `album inconnu : "${albumId}"`,
+            message: `unknown album: "${albumId}"`,
           });
         }
       });
@@ -109,7 +109,7 @@ export function parseConfig(raw: string): AppConfig {
   try {
     document = yaml.load(raw);
   } catch (error) {
-    throw new Error(`YAML invalide : ${(error as Error).message}`);
+    throw new Error(`Invalid YAML: ${(error as Error).message}`);
   }
 
   const parsed = configSchema.safeParse(document ?? {});
@@ -117,7 +117,7 @@ export function parseConfig(raw: string): AppConfig {
     const details = parsed.error.issues
       .map((issue) => `  ${issue.path.join('.') || '(racine)'}: ${issue.message}`)
       .join('\n');
-    throw new Error(`Configuration invalide :\n${details}`);
+    throw new Error(`Invalid configuration:\n${details}`);
   }
   return parsed.data;
 }
@@ -130,8 +130,8 @@ export function loadConfig(path: string): AppConfig {
     const err = error as NodeJS.ErrnoException;
     if (err.code === 'ENOENT') {
       throw new Error(
-        `Fichier de configuration introuvable : ${path}\n` +
-          'Copie config/albums.example.yaml vers config/albums.yaml pour démarrer.',
+        `Configuration file not found: ${path}\n` +
+          'Copy config/albums.example.yaml to config/albums.yaml to get started.',
       );
     }
     throw error;

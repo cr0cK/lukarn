@@ -4,11 +4,11 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    // `.claude/worktrees/` contient des worktrees git — d'autres branches du
-    // même dépôt, montées sur disque. Les analyser fait relire les mêmes
-    // fichiers dans un état arbitraire, et suffit à faire échouer `pnpm lint`,
-    // donc `pnpm verify` et le hook `pre-push`, sans qu'aucun fichier suivi
-    // n'ait de problème.
+    // `.claude/worktrees/` holds git worktrees — other branches of this same
+    // repository, checked out on disk. Linting them re-reads the same files in an
+    // arbitrary state, which is enough to fail `pnpm lint`, and therefore
+    // `pnpm verify` and the `pre-push` hook, without a single tracked file being
+    // at fault.
     ignores: ['**/dist/**', '**/node_modules/**', '.claude/worktrees/**'],
   },
   js.configs.recommended,
@@ -18,13 +18,13 @@ export default tseslint.config(
       parserOptions: { ecmaVersion: 2023, sourceType: 'module' },
     },
     rules: {
-      // Le préfixe `_` marque un paramètre volontairement inutilisé.
+      // A leading `_` marks a parameter left unused on purpose.
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // Les assertions `!` servent après des vérifications que le compilateur
-      // ne peut pas suivre (accès indexé, paramètres de route Fastify).
+      // `!` assertions follow checks the compiler cannot track (indexed access,
+      // Fastify route params).
       '@typescript-eslint/no-non-null-assertion': 'off',
     },
   },
@@ -33,13 +33,13 @@ export default tseslint.config(
       'packages/server/**/*.ts',
       'eslint.config.js',
       '**/vite.config.ts',
-      // Outillage du dépôt : contrôle des specs, scripts de maintenance.
+      // Repository tooling: the spec checks, maintenance scripts.
       'tools/**/*.mjs',
     ],
     languageOptions: { globals: globals.node },
   },
   {
-    // Le front tourne dans le navigateur : pas de globales Node ici.
+    // The front end runs in the browser: no Node globals here.
     files: ['packages/web/src/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
   },
@@ -48,8 +48,8 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
-    // Le service worker : ni Node, ni fenêtre. `self`, `caches` et `clients`
-    // n'existent que dans ce contexte, et seraient autrement des erreurs.
+    // The service worker: neither Node nor a window. `self`, `caches` and
+    // `clients` exist only in that context, and would otherwise be errors.
     files: ['packages/web/public/*.js'],
     languageOptions: { globals: globals.serviceworker },
   },

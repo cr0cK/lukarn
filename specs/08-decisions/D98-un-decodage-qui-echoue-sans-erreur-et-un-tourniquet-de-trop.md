@@ -1,38 +1,35 @@
-# D98 — Un décodage qui échoue sans erreur, et un tourniquet de trop
+# D98 — Decoding that fails without an error, and one spinner too many
 
-**Contexte.** Sur les mêmes quarante vidéos, vingt-sept sont en HEVC (`hvc1`).
-Chromium en décode la piste AAC et ignore la piste vidéo : le son sort, l'image
-n'arrive jamais, `videoWidth` reste à 0, `totalVideoFrames` à 0 — et **aucun
-`MediaError` n'est émis**, puisque le conteneur et la piste audio sont valides.
-Le repli de [D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)
-écoute `error` : il ne se déclenchait donc pas. Le `poster` restait affiché sous
-les contrôles, ce qui se lit comme une image gelée — pire que l'écran noir que
-D79 venait de corriger, parce que rien n'y signale un échec.
+**Context.** Of those same forty videos, twenty-seven use HEVC (`hvc1`). Chromium
+decodes the AAC track and ignores the video track: sound plays, no image arrives,
+`videoWidth` remains 0, and `totalVideoFrames` remains 0 — with **no `MediaError`
+emitted**, because the container and audio track are valid. The fallback in
+[D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)
+listens for `error`, so it never triggered. The `poster` remained beneath the
+controls, appearing as a frozen image — worse than D79's corrected black screen
+because nothing signalled failure.
 
-Au même endroit, deux tourniquets se superposaient à l'ouverture : celui de la
-visionneuse et celui, natif, des contrôles du navigateur, tous deux centrés sur
-le lecteur.
+In the same place, two spinners overlapped on opening: the viewer's and the
+browser controls' native spinner, both centred on the player.
 
-**Choix.** L'échec se constate sur ce qui est arrivé, pas sur une erreur qui ne
-viendra pas : `loadeddata` et `playing` marquent la vidéo comme illisible quand
-`videoWidth === 0`. À ces deux moments, une piste vidéo décodable a forcément
-livré une image ; une largeur nulle ne peut donc dire qu'une chose. Le message
-et le bouton **Télécharger** de D79 s'affichent alors, inchangés.
+**Choice.** Failure is detected from what arrived, not an error that never will:
+`loadeddata` and `playing` mark video unplayable when `videoWidth === 0`. At both
+points, a decodable video track must have delivered a frame; zero width can only
+mean one thing. D79's unchanged message and **Download** button then appear.
 
-Et le tourniquet de la visionneuse disparaît : le `poster` occupe l'attente, les
-contrôles natifs portent leur propre indicateur. La vidéo n'ayant plus qu'un état
-binaire, elle ne passe plus par `previewOverlay`, qui redevient la règle de la
-seule photo.
+And the viewer spinner disappears: the `poster` occupies the wait, and native
+controls carry their own indicator. With video reduced to a binary state, it no
+longer uses `previewOverlay`, which returns to governing photos only.
 
-**Écarté.** Sonder `canPlayType` avant d'afficher — ce que D79 écartait déjà, et
-pour un motif que ce défaut confirme : la réponse `maybe` de tous les navigateurs
-sur `video/mp4` n'apprend rien du codec réellement contenu. La détection retenue
-ne coûte aucun sondage et constate le cas exact, HEVC ou non.
+**Rejected.** Probing `canPlayType` before displaying — already rejected by D79,
+for a reason confirmed by this defect: every browser responds `maybe` for
+`video/mp4`, saying nothing about the contained codec. The chosen detection costs
+no probe and observes the exact case, HEVC or otherwise.
 
-Écarté aussi : n'écouter que `playing`. Une vidéo dont la lecture automatique est
-refusée par le navigateur n'émet jamais cet événement, et l'échec resterait
-invisible jusqu'au premier clic sur Lire.
+Also rejected: listening only to `playing`. A video whose autoplay is refused by
+the browser never emits that event, leaving failure invisible until the first
+click on Play.
 
-**Conséquences.** Cette PR ne rend pas les HEVC lisibles — elle les fait dire
-qu'ils ne le sont pas. Le transcodage reste à faire, et la reconnaissance du
-codec qu'il suppose est désormais en place.
+**Consequences.** This PR does not make HEVC playable — it makes videos say they
+are not. Transcoding remains to be done, and the codec recognition it requires is
+now present.

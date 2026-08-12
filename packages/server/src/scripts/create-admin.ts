@@ -4,7 +4,7 @@ import {
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
-} from '@gdv/shared';
+} from '@nonni/shared';
 import argon2 from 'argon2';
 import { ConfigRepo } from '../config-repo.js';
 import { openDb } from '../db.js';
@@ -13,30 +13,30 @@ import { loadEnv } from '../env.js';
 import { promptPassword } from './prompt.js';
 
 /**
- * Crée le premier administrateur d'une installation neuve, quand il n'y a ni
- * compte en base ni `config/albums.yaml` pour l'amorcer.
+ * Creates the first administrator of a new installation when neither a database
+ * account nor `config/albums.yaml` exists to bootstrap it.
  *
- *   pnpm create-admin alexis              → demande le mot de passe sans l'afficher
- *   pnpm create-admin alexis monSecret    → laisse une trace dans l'historique du shell
+ *   pnpm create-admin alexis              → prompts for the password without displaying it
+ *   pnpm create-admin alexis monSecret    → leaves a trace in shell history
  *
- * C'est la seule porte d'entrée hors application : tout le reste s'administre
- * depuis `/admin`.
+ * This is the only entry point outside the application; everything else is administered
+ * from `/admin`.
  */
 async function main(): Promise<void> {
   const username = process.argv[2];
   if (!username) {
-    throw new Error('Usage : pnpm create-admin <identifiant> [mot de passe]');
+    throw new Error('Usage: pnpm create-admin <username> [password]');
   }
   if (username.length > USERNAME_MAX_LENGTH || !USERNAME_PATTERN.test(username)) {
     throw new Error(
-      `Identifiant invalide : lettres, chiffres, point, tiret et underscore uniquement, ` +
-        `${USERNAME_MAX_LENGTH} caractères au plus.`,
+      `Invalid username: letters, digits, dot, dash and underscore only, ` +
+        `${USERNAME_MAX_LENGTH} characters at most.`,
     );
   }
 
   const password = process.argv[3] ?? (await promptPassword());
   if (password.length < PASSWORD_MIN_LENGTH) {
-    throw new Error(`Mot de passe trop court : ${PASSWORD_MIN_LENGTH} caractères au minimum.`);
+    throw new Error(`Password too short: ${PASSWORD_MIN_LENGTH} characters minimum.`);
   }
 
   const envFile = loadDotEnv();
@@ -47,13 +47,13 @@ async function main(): Promise<void> {
   if (config.user(username)) {
     db.close();
     throw new Error(
-      `Le compte "${username}" existe déjà. Modifie-le depuis /admin, ou choisis un autre identifiant.`,
+      `Account "${username}" already exists. Edit it from /admin, or pick another username.`,
     );
   }
 
-  // Le joker : cet administrateur voit les albums qu'il va créer, y compris
-  // ceux d'après. Sans lui, il administrerait des albums qu'il ne peut pas
-  // ouvrir — `admin` n'accorde aucun album par lui-même.
+  // The wildcard lets this administrator see albums they create now and later.
+  // Without it, they would administer albums they cannot open — `admin` grants no
+  // album by itself.
   config.createUser({
     username,
     passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
@@ -62,8 +62,8 @@ async function main(): Promise<void> {
   });
   db.close();
 
-  console.log(`\n  Administrateur "${username}" créé, avec accès à tous les albums.`);
-  console.log('  Connecte-toi, puis crée tes albums depuis /admin.\n');
+  console.log(`\n  Administrator "${username}" created, with access to every album.`);
+  console.log('  Sign in, then create your albums from /admin.\n');
 }
 
 main().catch((error: unknown) => {

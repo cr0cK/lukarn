@@ -1,70 +1,66 @@
 /**
- * Règles du rail de la visionneuse : ce que devient un balayage horizontal une
- * fois le doigt levé.
+ * Viewer rail rules: what happens to a horizontal swipe after the finger lifts.
  *
- * Le rail suit le doigt au pixel — c'est lui qui rend le geste visible, donc
- * découvrable —, mais la décision de changer de photo se prend au relâchement.
- * Elle est ici, hors de React, parce qu'elle a des seuils qu'on veut pouvoir
- * éprouver : la moitié des gestes ratés viennent d'un seuil, jamais d'un
- * gestionnaire d'événement.
+ * The rail follows the finger pixel for pixel — making the gesture visible and
+ * discoverable — but the photo-change decision happens on release. It lives here
+ * outside React because its thresholds need testing: half of failed gestures
+ * come from a threshold, never an event handler.
  */
 
 /**
- * Écart entre deux photos sur le rail, en pixels. Sans lui, la photo suivante
- * paraît collée à la précédente pendant le balayage — deux images bord à bord
- * se lisent comme une seule image coupée.
+ * Gap between rail photos in pixels. Without it, the next photo appears attached
+ * to the previous one during a swipe — two edge-to-edge images read as one cut image.
  */
 export const GUTTER_PX = 24;
 
 /**
- * Fraction de la largeur au-delà de laquelle le rail bascule sur la voisine.
+ * Width fraction beyond which the rail switches to the neighbour.
  *
- * Un quart environ : plus haut, il faut traverser l'écran pour changer de
- * photo, ce qui est épuisant sur un grand téléphone ; plus bas, un geste
- * hésitant fait sauter une photo.
+ * Roughly one quarter: higher requires crossing the screen to change photo,
+ * tiring on a large phone; lower lets a hesitant gesture skip a photo.
  */
 export const COMMIT_FRACTION = 0.22;
 
 /**
- * Vitesse (px/ms) à partir de laquelle un geste bref bascule quand même. C'est
- * ce qui fait qu'un lancer sec du pouce suffit, sans avoir à parcourir le quart
- * de l'écran : le geste natif que tout le monde a dans les doigts.
+ * Speed (px/ms) at which a short gesture still switches. This lets a quick thumb
+ * flick suffice without crossing a quarter of the screen: the native gesture
+ * everyone already knows.
  */
 export const FLICK_VELOCITY = 0.35;
 
-/** En deçà, ce n'est pas un lancer mais un appui qui tremble. */
+/** Below this, it is a trembling press rather than a flick. */
 const FLICK_MIN_PX = 12;
 
 /**
- * Ce qu'il reste du déplacement quand il n'y a pas de photo de ce côté. Le rail
- * bouge, donc le geste est reçu, mais il résiste : c'est ainsi qu'un bord se
- * fait sentir sans message ni blocage sec.
+ * Remaining movement when no photo exists on that side. The rail moves, showing
+ * that the gesture was received, but resists: an edge is felt without a message
+ * or abrupt block.
  */
 export const EDGE_RESISTANCE = 0.35;
 
-/** Bornes de la remise en place, pour qu'elle reste vive sans paraître sèche. */
+/** Bounds for settling so it stays lively without feeling abrupt. */
 const SETTLE_MIN_MS = 160;
 const SETTLE_MAX_MS = 320;
 
-/** Vitesse plancher du calcul de durée : évite de diviser par un doigt immobile. */
+/** Minimum speed for duration calculation, avoiding division by a still finger. */
 const SETTLE_MIN_VELOCITY = 0.5;
 
 interface SwipeDecision {
-  /** Déplacement horizontal total du doigt, en pixels. */
+  /** Total horizontal finger movement in pixels. */
   dx: number;
-  /** Vitesse à l'instant du relâchement, en px/ms, signée comme `dx`. */
+  /** Speed at release in px/ms, signed like `dx`. */
   velocity: number;
-  /** Largeur du cadre : c'est elle qui donne l'échelle du geste. */
+  /** Frame width, which determines gesture scale. */
   width: number;
   canPrev: boolean;
   canNext: boolean;
 }
 
 /**
- * Déplacement réellement appliqué au rail, bord compris.
+ * Movement actually applied to the rail, including edges.
  *
- * Le doigt tire librement tant qu'il y a une photo de ce côté ; au-delà du
- * premier ou du dernier média, il ne reste qu'une fraction du geste.
+ * The finger pulls freely while a photo exists on that side; beyond the first or
+ * last media, only a fraction of the gesture remains.
  */
 export function resistAtEdge(dx: number, canPrev: boolean, canNext: boolean): number {
   if (dx > 0 && !canPrev) return dx * EDGE_RESISTANCE;
@@ -73,13 +69,11 @@ export function resistAtEdge(dx: number, canPrev: boolean, canNext: boolean): nu
 }
 
 /**
- * Ce que devient le geste : `1` pour la photo suivante, `-1` pour la
- * précédente, `0` pour un retour en place.
+ * Gesture outcome: `1` for the next photo, `-1` for the previous and `0` to settle back.
  *
- * Deux façons de valider, parce qu'il y a deux gestes : traverser une fraction
- * de l'écran — on regarde ce qui vient avant de lâcher —, ou lancer le rail
- * d'un coup de pouce sans regarder. N'en retenir qu'une rendrait l'autre
- * inopérante.
+ * Two validation paths for two gestures: cross a fraction of the screen — seeing
+ * what comes before release — or flick the rail without looking. Keeping only
+ * one would make the other ineffective.
  */
 export function decideSwipe({ dx, velocity, width, canPrev, canNext }: SwipeDecision): -1 | 0 | 1 {
   if (dx === 0) return 0;
@@ -89,8 +83,8 @@ export function decideSwipe({ dx, velocity, width, canPrev, canNext }: SwipeDeci
 
   if (Math.abs(dx) >= width * COMMIT_FRACTION) return towards;
 
-  // Le lancer ne compte que s'il va dans le sens du déplacement : un doigt qui
-  // revient sur ses pas au dernier moment annule, il ne valide pas.
+  // A flick counts only in the movement direction: a finger reversing at the
+  // last moment cancels rather than confirms.
   const flick =
     Math.abs(velocity) >= FLICK_VELOCITY &&
     Math.sign(velocity) === Math.sign(dx) &&
@@ -100,12 +94,11 @@ export function decideSwipe({ dx, velocity, width, canPrev, canNext }: SwipeDeci
 }
 
 /**
- * Durée de la remise en place, déduite de ce qu'il reste à parcourir et de la
- * vitesse qu'avait le doigt.
+ * Settling duration derived from remaining distance and finger speed.
  *
- * Une durée fixe trahit le geste : après un lancer sec, le rail semble
- * s'engluer ; après un glissement lent presque abouti, il part d'un coup. Ici
- * l'animation prolonge le mouvement du doigt au lieu de le remplacer.
+ * A fixed duration betrays the gesture: after a quick flick the rail seems to
+ * stick; after a slow nearly complete drag it shoots away. Here animation
+ * extends finger movement instead of replacing it.
  */
 export function settleDuration(remainingPx: number, velocity: number): number {
   const speed = Math.max(Math.abs(velocity), SETTLE_MIN_VELOCITY);

@@ -1,13 +1,13 @@
 import type { ReactElement, ReactNode } from 'react';
 import { PasswordInput } from '../PasswordInput';
 
-/** Message d'issue d'une action, affiché en haut de la page d'administration. */
+/** Action outcome shown at the top of the administration page. */
 export interface Notice {
   tone: 'ok' | 'error';
   text: string;
 }
 
-/** Signale une issue d'action à la page. */
+/** Reports an action outcome to the page. */
 export type Notify = (notice: Notice) => void;
 
 const BUTTON_VARIANTS = {
@@ -23,7 +23,7 @@ interface ButtonProps {
   disabled?: boolean;
   variant?: keyof typeof BUTTON_VARIANTS;
   type?: 'button' | 'submit';
-  /** Obligatoire quand le libellé visible ne suffit pas hors contexte. */
+  /** Required when the visible label is insufficient outside its context. */
   ariaLabel?: string;
   title?: string;
 }
@@ -51,7 +51,7 @@ export function Button({
   );
 }
 
-/** Bloc de la page d'administration : un titre, une action facultative, du contenu. */
+/** Administration page block: a title, an optional action and content. */
 export function Section({
   title,
   description,
@@ -78,32 +78,29 @@ export function Section({
 }
 
 /**
- * Ligne d'administration : ce qui décrit d'un côté, ce qui agit de l'autre.
+ * Administration row: description on one side, actions on the other.
  *
- * **Empilée sous `xl`, en rangée au-delà.** Côte à côte, le bloc de description
- * est le seul des deux à pouvoir se rétracter — les boutons portent
- * `whitespace-nowrap` — et il tombait à deux caractères suivis d'une ellipse :
- * « 2… » pour un album, un badge « administrateur » coupé à « administ »,
- * l'avertissement de `DriveSection` rendu à un mot par ligne. Un intitulé qu'on
- * ne peut plus lire ne désigne plus rien.
+ * **Stacked below `xl`, in a row above it.** Side by side, only the description
+ * block can shrink — buttons have `whitespace-nowrap` — and it fell to two
+ * characters plus an ellipsis: "2…" for an album, an "administrator" badge cut
+ * to "administ", or the `DriveSection` warning rendered one word per line. An
+ * unreadable label no longer identifies anything.
  *
- * **`xl` et non `sm`**, parce que la place manque bien au-delà du téléphone :
- * dès `md`, `AdminNav` passe en colonne et prélève 12 rem sur la largeur, si
- * bien qu'une rangée à quatre boutons rognait encore le titre à 1024 px.
- * Empiler y coûte une hauteur de bouton et rend le titre entier ; les largeurs
- * de portable courantes (1280, 1366, 1440) restent au-dessus du seuil et
- * gardent la rangée.
+ * **`xl`, not `sm`**, because space remains scarce beyond phones: at `md`,
+ * `AdminNav` becomes a column and takes 12 rem, so a four-button row still
+ * clipped the title at 1024 px. Stacking costs one button height and preserves
+ * the full title; common laptop widths (1280, 1366, 1440) stay above the
+ * threshold and keep the row.
  *
- * L'alignement vertical reste à la charge de chaque appelant : une ligne de
- * liste centre ses deux blocs, un commentaire de plusieurs lignes garde son
- * bouton en haut. Deux classes concurrentes dans la même chaîne se
- * départageraient sur l'ordre de la feuille de style, pas sur celui écrit ici.
+ * Each caller still owns vertical alignment: a list row centres both blocks,
+ * while a multiline comment keeps its button at the top. Two competing classes
+ * in one string would be resolved by stylesheet order, not the order written here.
  */
 export const ROW_CLASS = 'flex flex-col gap-3 xl:flex-row xl:gap-4';
 
 /**
- * Groupe d'actions d'une ligne. Sur une rangée il se colle à droite ; empilé,
- * il garde la largeur de ses boutons au lieu de s'étirer sur toute la ligne.
+ * Row action group. In a row it aligns right; when stacked, it keeps button width
+ * instead of stretching across the line.
  */
 export const ROW_ACTIONS_CLASS = 'flex flex-wrap items-center gap-2 xl:justify-end';
 
@@ -125,11 +122,11 @@ interface TextFieldProps {
   readOnly?: boolean;
   inputMode?: 'numeric' | 'decimal';
   onBlur?: () => void;
-  /** Rend un `textarea` : la description d'un album tient sur plusieurs lignes. */
+  /** Renders a `textarea`: an album description spans several lines. */
   multiline?: boolean;
 }
 
-/** Champ de saisie avec son libellé, son aide et son erreur, tous reliés par `id`. */
+/** Input with label, help and error, all connected by `id`. */
 export function TextField({
   id,
   label,
@@ -196,7 +193,7 @@ export function TextField({
   );
 }
 
-/** Case à cocher avec libellé cliquable et explication facultative. */
+/** Checkbox with a clickable label and optional explanation. */
 export function Checkbox({
   id,
   label,
@@ -242,7 +239,7 @@ export function Checkbox({
   );
 }
 
-/** Erreur renvoyée par le serveur pour un formulaire entier. */
+/** Server error applying to an entire form. */
 export function FormError({ message }: { message: string | null }): ReactElement | null {
   if (!message) return null;
   return (

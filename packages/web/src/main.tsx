@@ -9,8 +9,8 @@ import './styles.css';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // Les albums ne changent qu'au rythme des synchronisations : refetcher à
-      // chaque retour d'onglet ne ferait que recharger des données identiques.
+      // Albums change only when syncs run: refetching on every tab return would
+      // merely reload identical data.
       refetchOnWindowFocus: false,
       staleTime: 60 * 1000,
       retry: 1,
@@ -21,7 +21,7 @@ const queryClient = new QueryClient({
 registerServiceWorker();
 
 const container = document.getElementById('root');
-if (!container) throw new Error('#root introuvable');
+if (!container) throw new Error('#root not found');
 
 createRoot(container).render(
   <StrictMode>

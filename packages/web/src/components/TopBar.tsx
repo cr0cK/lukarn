@@ -6,28 +6,26 @@ import { ActionMenu, type MenuEntry } from './ActionMenu';
 import { InstallInstructions } from './InstallInstructions';
 
 /**
- * Un contrôle de vue, décrit plutôt que rendu.
+ * A view control, described rather than rendered.
  *
- * La page ne fournit plus du JSX mais ce qu'il faut pour l'afficher des deux
- * façons : en icône dans la barre, en ligne libellée dans le menu. C'est la
- * seule manière d'avoir **un** nom par contrôle — passer des `children`
- * obligeait à masquer le libellé sous `sm`, et les deux icônes se retrouvaient
- * seules sur une seconde rangée sans rien pour les nommer.
+ * The page supplies data rather than JSX so it can be displayed in two ways: as
+ * a bar icon and a labelled menu row. This is the only way to have **one** name
+ * per control — passing `children` required hiding the label below `sm`, leaving
+ * both icons alone on a second row without names.
  */
 export interface TopBarAction {
-  /** L'état courant, affiché dans la barre : « Par mois ». */
+  /** Current state shown in the bar: "By month". */
   label: string;
-  /** Ce que le déclenchement fera : « Regrouper par jour ». C'est le libellé du menu. */
+  /** What triggering will do: "Group by day". This is the menu label. */
   action: string;
   /**
-   * Le **contenu** d'un `<svg viewBox="0 0 24 24">` — des `path`, des `rect` —,
-   * pas la balise. C'est la barre qui l'enveloppe, et elle seule sait à quelle
-   * taille : 20 px alignée sur les autres icônes de la rangée, 16 px dans le
-   * menu où toutes les entrées de l'application s'accordent. Une page qui
-   * livrerait le `<svg>` tout fait imposerait la même aux deux, et c'est
-   * l'écart de quatre pixels qu'on voyait dans la barre.
+   * The **contents** of an `<svg viewBox="0 0 24 24">` — `path`, `rect` — not the
+   * element. The bar wraps it and alone knows the size: 20 px aligned with other
+   * row icons, 16 px in the menu where all application entries match. A page
+   * supplying a complete `<svg>` would impose one size on both, producing the
+   * four-pixel discrepancy visible in the bar.
    *
-   * Même convention que les actions de `Lightbox`.
+   * The same convention as `Lightbox` actions.
    */
   icon: ReactNode;
   onSelect: () => void;
@@ -36,34 +34,33 @@ export interface TopBarAction {
 interface TopBarProps {
   title: string;
   subtitle?: string | null;
-  /** Affiche une flèche de retour vers la liste des albums. */
+  /** Shows a back arrow to the album list. */
   back?: boolean;
-  /** Contrôles propres à la page, à gauche de ceux du compte. */
+  /** Page-specific controls to the left of account controls. */
   actions?: TopBarAction[];
   /**
-   * Champ de recherche, **centré** dans la barre : le titre et les contrôles du
-   * compte se partagent le reste à parts égales de part et d'autre.
+   * Search field **centred** in the bar: the title and account controls share
+   * the remaining space equally on either side.
    *
-   * Un `ReactNode` et non un descripteur à la `TopBarAction` : le champ n'a
-   * qu'un seul rendu — il ne se replie pas en entrée de menu —, et son état
-   * appartient à la page qui le monte, pas à la barre qui l'héberge.
+   * A `ReactNode`, not a `TopBarAction`-style descriptor: the field has one
+   * rendering — it does not collapse into a menu entry — and its state belongs
+   * to the page mounting it, not the bar hosting it.
    */
   search?: ReactNode;
   /**
-   * Ouverture du tiroir d'activité, avec le nombre de messages arrivés depuis
-   * le dernier passage. Absent sur les pages où le fil n'a pas de sens.
+   * Opens the activity drawer with the number of messages received since the
+   * last visit. Absent on pages where the feed has no meaning.
    */
   feed?: { unread: number; onOpen: () => void };
 }
 
 /**
- * Un contrôle de vue : une icône, rien d'autre.
+ * A view control: one icon and nothing else.
  *
- * Boîte carrée de 36 px — le retrait compense les 16 px du tracé pour retomber
- * sur celle du fil d'activité, qui en fait 20. Sans le libellé qui les
- * allongeait, deux cibles de 28 px voisinaient avec une de 36 dans la même
- * rangée, et l'écart devenait le seul irrégulier d'un alignement par ailleurs
- * régulier.
+ * Square 36 px box — padding compensates for the 16 px path to match the activity
+ * feed's 20 px icon. Without the label that lengthened them, two 28 px targets
+ * sat beside a 36 px one in the same row, becoming the only irregularity in an
+ * otherwise regular alignment.
  */
 const CLASSE_BOUTON =
   'flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100';
@@ -72,31 +69,29 @@ const CLASSE_PASTILLE =
   'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-sm font-medium text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
 
 /**
- * L'initiale du compte, faute d'une photo à afficher.
+ * Account initial when there is no photo to display.
  *
- * `Array.from` plutôt que `[0]` : un identifiant peut commencer hors du plan de
- * base — un emoji, un idéogramme —, dont l'accès indexé ne rendrait que la
- * moitié, soit un caractère de remplacement à l'écran.
+ * Use `Array.from` rather than `[0]`: an identifier may start outside the Basic
+ * Multilingual Plane — an emoji or ideogram — where indexed access would return
+ * only half and display a replacement character.
  */
 const initiale = (username: string): string => Array.from(username)[0]?.toUpperCase() ?? '?';
 
 /**
- * Barre supérieure collante, commune à toutes les pages authentifiées.
+ * Sticky top bar shared by all authenticated pages.
  *
- * Une seule rangée, quelle que soit la largeur, et deux familles qui ne se
- * mélangent pas : **ce que fait cette page** — les contrôles de vue — puis, tout
- * à droite, **qui la regarde** — la pastille du compte, qui ne s'ouvre que si on
- * le demande. Admin, Déconnexion et Installer n'ont plus à tenir dans la barre,
- * ce qui rend au titre la largeur qu'ils lui prenaient.
+ * One row at every width, with two separate families: **what this page does** —
+ * view controls — then, on the far right, **who is viewing it** — the account
+ * badge, opened only on request. Admin, Sign out and Install no longer need to
+ * fit in the bar, returning their width to the title.
  *
- * Sous `sm`, les contrôles de vue passent à leur tour dans un menu : cinq
- * contrôles alignés sur 393 px réduisaient le titre d'album à une initiale et
- * les repoussaient sur une rangée à eux seuls, soit 101 px d'en-tête sur une
- * application où ce qui doit ressortir, ce sont les photos.
+ * Below `sm`, view controls move into a menu: five controls across 393 px reduced
+ * the album title to an initial and pushed them onto their own row, producing a
+ * 101 px header in an application where photos should stand out.
  *
- * Entre `sm` et `lg`, ils reviennent dans la barre mais gardent leurs seules
- * icônes. Mesuré — à 768 px, afficher les libellés ramenait le titre de 456 à
- * 144 px et tronquait le sous-titre, soit exactement le défaut qu'on corrige.
+ * Between `sm` and `lg`, they return to the bar but remain icons only. At 768 px,
+ * measured labels reduced the title from 456 to 144 px and truncated the
+ * subtitle, precisely the defect being fixed.
  */
 export function TopBar({
   title,
@@ -120,38 +115,35 @@ export function TopBar({
     else install.installer();
   };
 
-  // L'installation est **la dernière**, y compris après « Déconnexion » : elle
-  // apparaît et disparaît selon le navigateur et selon qu'on a déjà installé,
-  // et la mettre ailleurs ferait bouger la position des contrôles permanents
-  // d'une visite à l'autre.
+  // Installation is **last**, even after "Sign out": it appears and disappears
+  // by browser and installation status, and placing it elsewhere would shift
+  // permanent controls between visits.
   const compte: MenuEntry[] = [
     ...(user?.admin
       ? [{ label: 'Administration', icon: <IconeAdmin />, onSelect: () => void navigate('/admin') }]
       : []),
-    { label: 'Déconnexion', icon: <IconeDeconnexion />, onSelect: seDeconnecter },
+    { label: 'Sign out', icon: <IconeDeconnexion />, onSelect: seDeconnecter },
     ...(install.disponible
-      ? [{ label: 'Installer', icon: <IconeInstaller />, onSelect: proposerInstallation }]
+      ? [{ label: 'Install', icon: <IconeInstaller />, onSelect: proposerInstallation }]
       : []),
   ];
 
   return (
-    // `ink-800` sur un corps en `ink-900` : la barre est une surface, pas une
-    // portion de page. Aux deux mêmes valeurs, elle ne tenait que par son filet
-    // d'un pixel, et ce qui s'y trouve isolé — la pastille, à l'autre bout d'un
-    // écran large — paraissait posé sur le vide. Le filet monte d'autant, sans
-    // quoi il disparaîtrait dans le fond qu'il est censé délimiter.
+    // Use `ink-800` on an `ink-900` body: the bar is a surface, not part of the
+    // page. At the same values, only its one-pixel rule defined it, and isolated
+    // content — the badge at the far end of a wide screen — appeared to float.
+    // Raise the rule accordingly or it disappears into the background it marks.
     <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-800/85 backdrop-blur-md">
-      {/* `min-h-16` : la hauteur est **réservée**, jamais déduite du contenu.
-          Une page sans sous-titre — la liste des albums — donnait sinon une
-          barre de 57 px là où une page d'album en fait 65, et tout ce qui y est
-          centré sautait de 8 px d'une navigation à l'autre. La pastille, seule à
-          son extrémité, est ce qui le montrait le mieux. */}
+      {/* `min-h-16`: height is **reserved**, never inferred from content. A page
+          without a subtitle — the album list — otherwise produced a 57 px bar
+          where an album page had 65 px, and centred content jumped 8 px between
+          navigations. The lone badge at its end revealed this most clearly. */}
       <div className="mx-auto flex min-h-16 max-w-[2000px] items-center gap-x-2 px-4 py-3 sm:gap-x-3 sm:px-6">
         {back && (
           <Link
             to="/"
             className="-ml-1 rounded-full p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
-            aria-label="Retour aux albums"
+            aria-label="Back to the albums"
           >
             <svg
               viewBox="0 0 24 24"
@@ -165,23 +157,22 @@ export function TopBar({
           </Link>
         )}
 
-        {/* Le titre s'efface sous `sm` quand la page porte un champ de
-            recherche : la rangée reste unique à toutes les largeurs, et sur la
-            racine « Albums » ne dit rien que l'URL ne dise déjà. Le champ, lui,
-            ne se replie nulle part — un menu ne se cherche pas dedans. */}
+        {/* Hide the title below `sm` when the page has a search field: keep one
+            row at every width, and "Albums" at the root says nothing beyond the
+            URL. The field cannot collapse elsewhere — a menu cannot be searched
+            from within itself. */}
         <div className={`min-w-0 flex-1 ${search ? 'hidden sm:block' : ''}`}>
           <h1 className="truncate text-base font-medium tracking-tight">{title}</h1>
           {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
         </div>
 
-        {/* Centré, et c'est ce qui fixe la largeur : à partir de `sm` le champ
-            ne s'étire plus, il tient 20 rem et ce sont les deux côtés qui se
-            partagent le reste à parts égales — d'où le `flex-1` symétrique sur
-            le titre et sur le groupe de droite. Étiré, il collait aux contrôles
-            du compte et la barre paraissait pencher de ce côté.
+        {/* Centring determines the width: from `sm`, the field stops growing at
+            20 rem and both sides share the remainder equally — hence symmetrical
+            `flex-1` on the title and right group. When stretched, it touched the
+            account controls and made the bar appear to lean that way.
 
-            Sous `sm` il reprend toute la ligne : le titre s'efface, et 20 rem
-            fixes y laisseraient un blanc au milieu d'un écran de 393 px. */}
+            Below `sm` it fills the line again: the title disappears, and a fixed
+            20 rem would leave a gap in the middle of a 393 px screen. */}
         {search && <div className="min-w-0 flex-1 sm:flex-none sm:basis-80">{search}</div>}
 
         <div
@@ -189,16 +180,15 @@ export function TopBar({
             search ? 'sm:flex-1 sm:justify-end' : ''
           }`}
         >
-          {/* L'activité reste **en ligne à toutes les largeurs**, contrairement
-            aux contrôles de vue : son icône porte la pastille des non-lus, et
-            c'est le seul signe qu'une conversation a bougé quelque part.
-            Rangée dans le menu sous `sm`, elle ne signalerait plus rien — même
-            raison que le bouton « Commentaires » de la visionneuse. */}
+          {/* Activity remains **inline at every width**, unlike view controls:
+            its icon carries the unread badge, the only sign that a conversation
+            changed somewhere. Inside the menu below `sm`, it would no longer
+            signal anything — the same reason as the viewer's "Comments" button. */}
           {feed && (
             <button
               type="button"
               onClick={feed.onOpen}
-              title="Activité récente"
+              title="Recent activity"
               aria-label={feedLabel(feed.unread)}
               className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
             >
@@ -216,9 +206,9 @@ export function TopBar({
               {feed.unread > 0 && (
                 <span
                   aria-hidden="true"
-                  // Plafonnée à « 9+ », comme celle de la visionneuse : au-delà le
-                  // chiffre déborde de l'icône, et savoir s'il y en a douze ou
-                  // dix-sept ne change aucun geste.
+                  // Cap at "9+" like the viewer badge: beyond that the number
+                  // overflows the icon, and knowing whether there are twelve or
+                  // seventeen changes no action.
                   className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
                 >
                   {feed.unread > 9 ? '9+' : feed.unread}
@@ -227,16 +217,15 @@ export function TopBar({
             </button>
           )}
 
-          {/* À partir de `sm` : les contrôles de vue dans la barre, **en icônes
-            seules à toutes les largeurs**. Le libellé y revenait au-delà de
-            `lg`, et « Plus récentes d'abord » y tenait à lui seul plus de place
-            que le sous-titre de l'album : deux réglages qu'on touche une fois
-            par visite pesaient en permanence autant que ce qu'ils règlent. Ils
-            se nomment au survol, comme le reste des icônes de cette interface.
+          {/* From `sm`: view controls in the bar, **icons only at every width**.
+            Labels used to return beyond `lg`, where "Newest first" alone took
+            more space than the album subtitle: two settings touched once per
+            visit permanently weighed as much as what they controlled. Hover
+            names them like the rest of this interface's icons.
 
-            L'infobulle dit l'état **et** l'effet du clic, la même phrase que le
-            nom accessible : une icône seule ne dit ni l'un ni l'autre, et
-            n'annoncer que l'effet laisserait deviner d'où l'on part. */}
+            The tooltip states both current state **and** click effect, using the
+            accessible name: an icon alone says neither, while announcing only
+            the effect would leave the starting point implicit. */}
           <div className="hidden shrink-0 items-center gap-1 sm:flex lg:gap-2">
             {actions.map((item) => (
               <button
@@ -252,12 +241,12 @@ export function TopBar({
             ))}
           </div>
 
-          {/* Sous `sm` seulement, et seulement s'il y a quelque chose à y mettre :
-            un menu vide n'offrirait qu'une cible qui ne fait rien. */}
+          {/* Only below `sm`, and only when it has content: an empty menu would
+            offer a target that does nothing. */}
           {actions.length > 0 && (
             <div className="sm:hidden">
               <ActionMenu
-                label="Affichage"
+                label="View"
                 groupes={[
                   actions.map((item) => ({
                     label: item.action,
@@ -269,21 +258,20 @@ export function TopBar({
             </div>
           )}
 
-          {/* Le compte, à toutes les largeurs. Rendu seulement une fois la session
-            connue : une pastille sans initiale le temps d'un aller-retour
-            réseau, puis une lettre, ferait sursauter la barre à chaque page. */}
+          {/* Account at every width. Render only once the session is known: an
+            empty badge during a network round trip followed by a letter would
+            make the bar jump on every page. */}
           {user && (
             <ActionMenu
-              label="Compte"
-              // L'initiale de l'identifiant, pas celle du nom d'affichage : c'est
-              // la première ligne du menu qu'elle abrège, et deux lettres
-              // différentes de part et d'autre du clic se liraient comme un défaut.
+              label="Account"
+              // Use the identifier initial, not the display-name initial: it
+              // abbreviates the menu's first line, and different letters before
+              // and after the click would look like a defect.
               trigger={initiale(user.username)}
               triggerClassName={CLASSE_PASTILLE}
-              // L'identifiant ouvre des albums et peut être partagé par tout un
-              // foyer ; l'adresse, elle, dit qui signe les commentaires. Les deux
-              // quand elles diffèrent — c'est justement là qu'on se demande sous
-              // quel nom on écrit.
+              // The identifier opens albums and may be shared by a household;
+              // the address says who signs comments. Show both when they differ
+              // — precisely when someone wonders which name they write under.
               entete={[user.username, ...(user.identity ? [user.identity.email] : [])]}
               groupes={[compte]}
             />
@@ -296,17 +284,17 @@ export function TopBar({
   );
 }
 /**
- * Nom accessible du bouton d'activité : c'est lui qui porte l'information de la
- * pastille, celle-ci étant purement visuelle.
+ * Accessible activity button name: it carries the badge information because the
+ * badge is purely visual.
  */
 function feedLabel(unread: number): string {
-  if (unread === 0) return 'Activité récente';
-  return `Activité récente : ${unread} message${unread > 1 ? 's' : ''} non lu${unread > 1 ? 's' : ''}`;
+  if (unread === 0) return 'Recent activity';
+  return `Recent activity: ${unread} unread message${unread > 1 ? 's' : ''}`;
 }
 
 /**
- * Enveloppe SVG d'un contrôle de vue. Le tracé vient de la page, la taille de
- * l'endroit où il s'affiche — c'est tout l'intérêt de ne pas recevoir la balise.
+ * SVG wrapper for a view control. The page supplies the path and the display
+ * location supplies the size — the reason not to receive the whole element.
  */
 function IconeAction({
   taille,

@@ -1,4 +1,4 @@
-import { SEARCH_MIN_LENGTH, type SearchHit, type SearchHitKind } from '@gdv/shared';
+import { SEARCH_MIN_LENGTH, type SearchHit, type SearchHitKind } from '@nonni/shared';
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearch } from '../api/hooks';
@@ -7,29 +7,28 @@ import { useDebounced } from '../lib/useDebounced';
 import { useShortcut } from '../lib/useShortcut';
 
 /**
- * Recherche dans toute la bibliothèque, depuis la barre supérieure.
+ * Searches the entire library from the top bar.
  *
- * Ce qu'elle suggère sont des **entités navigables** — un album, une journée,
- * une photo — et non des extraits de texte : « Marseille » ouvre la journée à
- * Marseille, il ne montre pas la ligne où le mot apparaît. C'est ce qui permet
- * de garder trois groupes courts plutôt qu'une page de résultats.
+ * It suggests **navigable entities** — an album, a day or a photo — rather than
+ * text excerpts: "Marseille" opens the day in Marseille; it does not show the
+ * line containing the word. This keeps three short groups instead of a results page.
  *
- * Combobox au sens ARIA : le focus ne quitte jamais le champ, la liste est
- * désignée par `aria-activedescendant`. Déplacer réellement le focus sur les
- * options couperait la frappe, qui est tout l'intérêt d'une suggestion.
+ * Combobox in the ARIA sense: focus never leaves the field and
+ * `aria-activedescendant` identifies the list. Actually moving focus to options
+ * would interrupt typing, defeating the purpose of suggestions.
  */
 
 const GROUPES: { kind: SearchHitKind; titre: string }[] = [
   { kind: 'album', titre: 'Albums' },
-  { kind: 'day', titre: 'Journées et lieux' },
+  { kind: 'day', titre: 'Days and places' },
   { kind: 'media', titre: 'Photos' },
 ];
 
-/** Où mène un résultat. */
+/** Where a result leads. */
 function lienDe(hit: SearchHit): string {
   const base = `/album/${encodeURIComponent(hit.albumId)}`;
-  // `group=day` avec la journée : en découpage par mois, les clés de section
-  // valent `2026-07` et la journée visée n'y existe pas.
+  // Include `group=day` with the day: when grouped by month, section keys look
+  // like `2026-07` and the target day does not exist among them.
   if (hit.kind === 'day' && hit.day) {
     return `${base}?group=day&day=${encodeURIComponent(hit.day)}`;
   }
@@ -40,9 +39,9 @@ function lienDe(hit: SearchHit): string {
 }
 
 /**
- * La ligne sous le libellé : ce qui situe le résultat. Le titre de l'album n'y
- * figure que là où il n'est pas déjà le libellé, et la date est mise en forme
- * ici, comme toutes les dates de l'application (`format.ts`, en UTC).
+ * The line beneath the label: context for the result. The album title appears
+ * only when it is not already the label, and the date is formatted here like
+ * every application date (`format.ts`, in UTC).
  */
 function situationDe(hit: SearchHit): string | null {
   const parts = [
@@ -55,8 +54,8 @@ function situationDe(hit: SearchHit): string | null {
 
 interface SearchBoxProps {
   /**
-   * Le raccourci `/`. Coupé quand un panneau recouvre la page : il focaliserait
-   * un champ que personne ne voit, et la frappe suivante disparaîtrait dedans.
+   * The `/` shortcut. Disabled while a panel covers the page: it would focus an
+   * invisible field and swallow the next keystroke.
    */
   shortcutEnabled?: boolean;
 }
@@ -75,9 +74,9 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
 
   useShortcut('/', () => champ.current?.focus(), shortcutEnabled);
 
-  // Le premier résultat est mis en évidence d'emblée : taper puis appuyer sur
-  // Entrée est le geste le plus fréquent, et exiger une flèche d'abord ferait
-  // d'un raccourci une manœuvre.
+  // Highlight the first result immediately: typing then pressing Enter is the
+  // most common action, and requiring an arrow first would turn a shortcut
+  // into a manoeuvre.
   useEffect(() => setActif(0), [hits]);
 
   useEffect(() => {
@@ -93,9 +92,8 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
   const deplie = ouvert && assezLong;
 
   const aller = (hit: SearchHit): void => {
-    // Vider avant de naviguer : la barre reste montée d'une page à l'autre, et
-    // une liste laissée ouverte se retrouverait par-dessus l'album qu'elle
-    // vient d'ouvrir.
+    // Clear before navigating: the bar remains mounted between pages, and a list
+    // left open would sit above the album it just opened.
     setSaisie('');
     setOuvert(false);
     champ.current?.blur();
@@ -104,12 +102,12 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
 
   const surTouche = (event: React.KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') {
-      // Le premier `Échap` referme la liste, le second vide le champ : fermer et
-      // effacer d'un coup fait perdre une recherche qu'on voulait seulement
-      // masquer le temps de regarder la page.
+      // The first `Escape` closes the list; the second clears the field. Closing
+      // and clearing at once would lose a search meant only to be hidden while
+      // looking at the page.
       //
-      // `preventDefault` parce que Chrome vide de lui-même un `type="search"` à
-      // `Échap` : sans lui, le premier appui ferait les deux gestes à la fois.
+      // Use `preventDefault` because Chrome clears `type="search"` on `Escape` by
+      // itself: without it, the first keypress would perform both actions.
       event.preventDefault();
       event.stopPropagation();
       if (deplie) setOuvert(false);
@@ -137,8 +135,8 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
     }
   };
 
-  // Les groupes vides disparaissent avec leur titre : « Photos » suivi de rien
-  // ferait chercher ce qui manque.
+  // Hide empty groups with their heading: "Photos" followed by nothing would
+  // make people look for what is missing.
   const groupes = GROUPES.map((groupe) => ({
     ...groupe,
     entrees: hits
@@ -165,12 +163,12 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
         ref={champ}
         type="search"
         role="combobox"
-        aria-label="Rechercher"
+        aria-label="Search"
         aria-expanded={deplie}
         aria-controls="recherche-resultats"
         aria-autocomplete="list"
         aria-activedescendant={deplie && hits[actif] ? `recherche-option-${actif}` : undefined}
-        placeholder="Rechercher…"
+        placeholder="Search…"
         value={saisie}
         onChange={(event) => {
           setSaisie(event.target.value);
@@ -178,21 +176,20 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
         }}
         onFocus={() => setOuvert(true)}
         onKeyDown={surTouche}
-        // `[&::-webkit-search-cancel-button]:hidden` : la croix native de
-        // `type="search"` est dessinée en clair par WebKit, illisible sur un
-        // fond sombre. Le type reste `search` pour l'annonce des lecteurs
-        // d'écran et le clavier des mobiles.
+        // `[&::-webkit-search-cancel-button]:hidden`: WebKit draws the native
+        // `type="search"` cross in a light colour, unreadable on a dark background.
+        // Keep the `search` type for screen-reader announcements and mobile keyboards.
         className="w-full rounded-lg border border-ink-700 bg-ink-850 py-1.5 pr-3 pl-8 text-sm text-ink-100 placeholder:text-ink-400 focus:border-ink-600 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
       />
 
       {deplie && (
-        // `absolute` et non `fixed` : la barre porte un `backdrop-blur`, qui en
-        // fait le bloc conteneur d'un élément fixé — même piège qu'`ActionMenu`.
+        // Use `absolute`, not `fixed`: the bar has a `backdrop-blur`, making it
+        // the containing block for a fixed element — the same trap as `ActionMenu`.
         <div className="absolute top-full right-0 left-0 z-40 mt-2 max-h-[70vh] min-w-72 overflow-y-auto rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl">
-          {/* Des `div` et non des listes : un `role="listbox"` ne possède que
-              des `option` et des `group`, et le rôle `list` implicite d'un `ul`
-              imbriqué s'interposerait entre les deux. */}
-          <div id="recherche-resultats" role="listbox" aria-label="Résultats de recherche">
+          {/* Use `div` elements rather than lists: a `role="listbox"` owns only
+              `option` and `group`, and the implicit `list` role of a nested `ul`
+              would sit between them. */}
+          <div id="recherche-resultats" role="listbox" aria-label="Search results">
             {groupes.map((groupe) => (
               <div key={groupe.kind} role="group" aria-label={groupe.titre}>
                 <p
@@ -209,10 +206,9 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
                       id={`recherche-option-${rang}`}
                       role="option"
                       aria-selected={rang === actif}
-                      // `pointerdown` plutôt que `click` : le pointeur sortant du
-                      // champ lui fait perdre le focus, et l'écouteur « clic
-                      // dehors » refermerait la liste avant que le clic n'atteigne
-                      // l'option.
+                      // Use `pointerdown` rather than `click`: leaving the field
+                      // drops its focus, and the outside-click listener would close
+                      // the list before the click reached the option.
                       onPointerDown={(event) => {
                         event.preventDefault();
                         aller(hit);
@@ -231,13 +227,13 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
             ))}
           </div>
 
-          {/* Sur la toute première recherche, `data` est encore vide sans que
-              rien ne manque — les suivantes gardent la liste précédente
-              (`keepPreviousData`). Annoncer « aucun résultat » là ferait
-              clignoter un constat faux entre deux caractères. */}
+          {/* On the very first search, `data` is still empty without anything
+              being absent — later searches retain the previous list
+              (`keepPreviousData`). Announcing "no results" here would flash a
+              false statement between two characters. */}
           {hits.length === 0 && (
             <p className="px-3 py-4 text-center text-sm text-ink-400">
-              {isFetching ? 'Recherche…' : 'Aucun résultat'}
+              {isFetching ? 'Searching…' : 'No result'}
             </p>
           )}
         </div>

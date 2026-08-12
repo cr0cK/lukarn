@@ -1,4 +1,4 @@
-import type { SessionUser } from '@gdv/shared';
+import type { SessionUser } from '@nonni/shared';
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { toIdentity } from '../commenters.js';
@@ -7,21 +7,21 @@ import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    /** Clé d'accès authentifiée, ou `null` si la requête est anonyme. */
+    /** Authenticated access key, or `null` for an anonymous request. */
     user: SessionUser | null;
     sessionId: string | null;
     /**
-     * Identité de commentateur portée par la session, `null` si personne ne
-     * s'est déclaré. Distincte de `user` : le même identifiant peut être
-     * partagé, chaque personne signe de son nom.
+     * Commenter identity carried by the session, `null` if nobody has identified
+     * themselves. Distinct from `user`: one username may be shared, while each person
+     * signs with their own name.
      */
     commenterId: number | null;
   }
 }
 
 /**
- * Résout la session à chaque requête. Ne rejette rien : ce sont les
- * `preHandler` ci-dessous qui décident si une route tolère l'anonymat.
+ * Resolves the session on every request. Rejects nothing: the `preHandler`s below
+ * decide whether a route allows anonymity.
  */
 const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { context }) => {
   app.decorateRequest('user', null);
@@ -32,38 +32,37 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
     const raw = request.cookies[SESSION_COOKIE];
     if (!raw) return;
 
-    // Cookie signé : une valeur trafiquée est écartée avant même de toucher la base.
+    // Signed cookie: a tampered value is rejected before touching the database.
     const unsigned = request.unsignCookie(raw);
     if (!unsigned.valid || !unsigned.value) return;
 
     const session = context.sessions.get(unsigned.value);
     if (!session) return;
 
-    // La configuration en base fait autorité : un compte supprimé depuis
-    // /admin perd l'accès immédiatement, même si sa session n'a pas expiré.
-    // La lecture passe par le cache mémoire du dépôt, pas par SQLite.
+    // Database configuration is authoritative: an account deleted from /admin loses
+    // access immediately even if its session has not expired. The read uses the
+    // repository's memory cache, not SQLite.
     const configured = context.config.user(session.username);
     if (!configured) {
       context.sessions.destroy(session.id);
       return;
     }
 
-    // L'identité est relue à chaque requête plutôt que figée à la connexion :
-    // une adresse effacée depuis un autre appareil doit retirer le droit de
-    // commenter sans attendre une reconnexion — la session dure un an.
+    // Identity is reread on every request rather than fixed at sign-in: an address
+    // deleted from another device must revoke commenting without waiting for another
+    // sign-in — the session lasts a year.
     const commenter =
       session.commenterId === null ? null : context.commenters.byId(session.commenterId);
-    // Identité supprimée entre-temps : on délie plutôt que de garder un
-    // identifiant qui ne désigne plus rien.
+    // Identity deleted meanwhile: detach it rather than retaining an identifier that
+    // no longer identifies anything.
     if (session.commenterId !== null && !commenter) {
       context.sessions.attachCommenter(session.id, null);
     }
 
-    // La base vient de repousser l'échéance : le cookie doit suivre. Il porte
-    // sa propre date d'expiration, que le navigateur applique sans rien savoir
-    // de la base — sans cette réémission, un visiteur assidu se retrouverait
-    // déconnecté un an après sa connexion, et la prolongation ne servirait à
-    // rien qu'à faire grossir `sessions`.
+    // The database just extended expiry, so the cookie must follow. It carries its own
+    // expiry date applied by the browser without database knowledge — without reissuing,
+    // an active visitor would be signed out a year after sign-in and renewal would only
+    // grow `sessions`.
     if (session.renewed) {
       void reply.setCookie(
         SESSION_COOKIE,
@@ -87,16 +86,16 @@ export default fp(authPlugin, { name: 'auth', dependencies: ['@fastify/cookie'] 
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
-    await reply.code(401).send({ error: 'unauthorized', message: 'Authentification requise' });
+    await reply.code(401).send({ error: 'unauthorized', message: 'Authentication required' });
   }
 }
 
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
-    await reply.code(401).send({ error: 'unauthorized', message: 'Authentification requise' });
+    await reply.code(401).send({ error: 'unauthorized', message: 'Authentication required' });
     return;
   }
   if (!request.user.admin) {
-    await reply.code(403).send({ error: 'forbidden', message: 'Réservé aux administrateurs' });
+    await reply.code(403).send({ error: 'forbidden', message: 'Administrators only' });
   }
 }

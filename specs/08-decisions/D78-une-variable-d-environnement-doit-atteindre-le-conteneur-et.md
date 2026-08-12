@@ -1,52 +1,49 @@
-# D78 — Une variable d'environnement doit atteindre le conteneur, et c'est contrôlé
+# D78 — An environment variable must reach the container, and this is checked
 
-**Contexte.** `APP_NAME` (D72) et `GEOCODING_URL` étaient déclarées dans le
-schéma zod d'`env.ts`, dans `.env.example`, et décrites dans `05`, `06` et `08`.
-Aucune des deux n'atteignait le processus en production.
+**Context.** `APP_NAME` (D72) and `GEOCODING_URL` were declared in the zod schema
+in `env.ts`, in `.env.example`, and described in `05`, `06`, and `08`. Neither
+reached the production process.
 
-Compose ne propage pas l'environnement de l'hôte : seul ce que le bloc
-`environment:` énumère parvient au conteneur. Le `.env` que Compose lit ne sert
-qu'à **l'interpolation** de ce bloc — écrire une variable dedans qui n'y est
-référencée nulle part n'a strictement aucun effet. Les deux variables tombaient
-donc systématiquement sur leur défaut zod.
+Compose does not propagate the host environment: only what the `environment:`
+block lists reaches the container. The `.env` read by Compose is only used to
+**interpolate** this block — writing a variable there that is referenced nowhere
+has strictly no effect. Both variables therefore always fell back to their zod
+defaults.
 
-**Ce que ça démentait.** `06` affirmait qu'un redémarrage suffisait à renommer
-l'instance ; c'était faux, le nom était figé sur `Photos`. `deploy/README.md`
-indiquait qu'une `GEOCODING_URL` vide coupait le géocodage ; c'était faux aussi,
-et il s'agit du seul réglage de confidentialité de l'application — les
-coordonnées EXIF arrondies au kilomètre partaient chez un tiers sans qu'aucune
-manipulation documentée puisse l'empêcher.
+**What this disproved.** `06` claimed that a restart was enough to rename the
+instance; that was false, as the name was fixed to `Photos`. `deploy/README.md`
+said that an empty `GEOCODING_URL` disabled geocoding; that was also false, and
+this is the application's only privacy setting — EXIF coordinates rounded to a
+kilometre were sent to a third party with no documented way to prevent it.
 
-Le défaut est de ceux qui ne se voient pas : rien n'échoue, rien n'est journalisé,
-et la variable paraît réglable partout où on la lit. `check:specs` ne pouvait pas
-l'attraper — il vérifiait qu'une variable est **mentionnée dans les specs**, pas
-qu'elle est **câblée jusqu'au conteneur**. Deux propriétés distinctes, et c'est
-la seconde qui décide de ce que l'exploitant peut réellement changer.
+This defect is invisible: nothing fails, nothing is logged, and the variable
+appears configurable everywhere it is read. `check:specs` could not catch it —
+it checked that a variable was **mentioned in the specs**, not that it was
+**wired through to the container**. Two distinct properties, of which the second
+determines what the operator can actually change.
 
-**Décision.** Les deux variables sont ajoutées au bloc `environment:`, et
-`check:specs` compare désormais le schéma zod à `docker-compose.yml` et au
-`Dockerfile` : toute variable lue par le serveur sans être transmise par l'un ou
-fixée par l'autre fait échouer la CI. Le contrôle porte sur la forme
-`NOM: ${NOM…}` et non sur la simple présence du nom — une variable citée dans un
-commentaire n'est pas un câblage.
+**Decision.** Both variables are added to the `environment:` block, and
+`check:specs` now compares the zod schema with `docker-compose.yml` and the
+`Dockerfile`: any variable read by the server without being passed by one or set
+by the other fails CI. The check looks for the form `NAME: ${NAME…}`, not the
+mere presence of the name — a variable cited in a comment is not wiring.
 
-**La nuance qui porte tout le sens : `-` et non `:-`.** `${VAR:-défaut}`
-substitue le défaut à une valeur absente **ou vide**. Or vide veut dire quelque
-chose : pour `GEOCODING_URL`, « n'appelle aucun service » — avec `:-`, la
-désactivation resterait impossible, et le correctif n'aurait corrigé que la
-moitié du défaut. `${VAR-défaut}` ne substitue que si la variable est absente.
-Retenu pour les deux, y compris `APP_NAME`, dont une valeur vide doit remonter
-jusqu'à zod pour être refusée plutôt que silencieusement remplacée.
+**The nuance carrying the entire meaning: `-`, not `:-`.** `${VAR:-default}`
+substitutes the default for an absent **or empty** value. But empty has meaning:
+for `GEOCODING_URL`, it means "call no service" — with `:-`, disabling would
+remain impossible and the fix would only address half the defect.
+`${VAR-default}` only substitutes when the variable is absent. It is used for
+both, including `APP_NAME`, whose empty value must reach zod and be rejected
+rather than silently replaced.
 
-**Conséquences.** Le défaut de Compose duplique celui de zod pour ces deux
-variables — deux endroits à tenir en phase. C'est le prix de la substitution sur
-variable absente, que la forme `map` de Compose ne sait pas rendre autrement :
-elle ne permet pas d'omettre une clé conditionnellement. Le contrôle ne compare
-pas ces défauts entre eux ; il vérifie le câblage, qui est la classe de défaut
-observée.
+**Consequences.** The Compose default duplicates the zod default for these two
+variables — two places to keep aligned. This is the price of substitution for an
+absent variable, which Compose's map form cannot express otherwise: it cannot
+omit a key conditionally. The check does not compare these defaults; it verifies
+wiring, the class of defect observed.
 
-**Écarté.** La forme `environment: - NOM`, qui laisse passer la variable telle
-quelle et évite la duplication du défaut. Elle interdit de mélanger les deux
-écritures dans un même bloc, ce qui aurait imposé de convertir les onze entrées
-existantes — dont trois portent un `:?` qui refuse le démarrage avec un message,
-et que la forme liste ne sait pas exprimer.
+**Rejected.** The `environment: - NAME` form, which passes the variable through
+unchanged and avoids duplicating the default. It forbids mixing both forms in one
+block, which would require converting the eleven existing entries — three of
+which use `:?` to refuse startup with a message, something list form cannot
+express.

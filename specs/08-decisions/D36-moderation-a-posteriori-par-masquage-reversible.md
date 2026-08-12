@@ -1,29 +1,27 @@
-# D36 — Modération a posteriori, par masquage réversible
+# D36 — Post-publication moderation through reversible hiding
 
-**Contexte.** Il fallait un moyen pour l'administrateur de retirer un
-commentaire.
+**Context.** The administrator needed a way to remove a comment.
 
-**Choix.** Le commentaire est publié immédiatement et peut être **masqué** après
-coup depuis `/admin`. `hidden_at` et `hidden_by` portent la décision. Un
-commentaire masqué disparaît de la lecture pour tout le monde, son auteur
-compris.
+**Decision.** The comment is published immediately and can be **hidden**
+afterwards from `/admin`. `hidden_at` and `hidden_by` carry the decision. A
+hidden comment disappears from view for everyone, including its author.
 
-**Écarté.** La pré-modération, où chaque message attend une validation. Sur une
-galerie familiale dont les comptes sont créés à la main par le propriétaire, elle
-retarde tout le monde pour un risque qui n'existe pas : il n'y a pas d'inconnus.
-Elle a de plus un coût caché — l'auteur ne voit pas son propre message
-apparaître, et croit à une panne.
+**Rejected.** Pre-moderation, where every message awaits approval. On a family
+gallery whose accounts are created manually by the owner, it delays everyone
+for a risk that does not exist: there are no strangers. It also has a hidden
+cost — the author does not see their own message appear and assumes something
+is broken.
 
-Écarté aussi : **laisser l'auteur voir son commentaire masqué**, comme le font
-les grandes plateformes. Cela revient à lui laisser croire qu'on le lit encore.
-Autant que la décision soit visible : c'est ce qui distingue une modération
-assumée d'un bannissement furtif.
+Also rejected: **letting the author see their hidden comment**, as major
+platforms do. This amounts to letting them believe people can still read it.
+The decision might as well be visible: that is what distinguishes transparent
+moderation from shadow banning.
 
-Écarté enfin : la suppression pure. Masquer garde la décision réversible, ce qui
-compte quand elle est prise vite. La suppression définitive reste possible, par
+Finally, outright deletion was rejected. Hiding keeps the decision reversible,
+which matters when it is made quickly. Permanent deletion remains possible via
 `DELETE /api/comments/:id`.
 
-**Conséquences.** Une réponse dont la racine est masquée remonte en tête de fil
-(voir D35). `hidden_by` est affiché dans la file de modération plutôt que gardé
-comme trace morte : sur une instance à plusieurs administrateurs, c'est la
-question qu'on se pose en premier.
+**Consequences.** A reply whose root is hidden moves to the top of the thread
+(see D35). `hidden_by` is displayed in the moderation queue rather than kept as
+a dead trace: on an instance with several administrators, that is the first
+question people ask.

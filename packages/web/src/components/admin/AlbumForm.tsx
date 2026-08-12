@@ -1,4 +1,4 @@
-import type { AdminAlbum, UpdateAlbumRequest } from '@gdv/shared';
+import type { AdminAlbum, UpdateAlbumRequest } from '@nonni/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateAlbum, useUpdateAlbum } from '../../api/hooks';
@@ -12,13 +12,13 @@ import {
 import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
 
 interface AlbumFormProps {
-  /** Absent = création d'un album. */
+  /** Absent means creating an album. */
   album?: AdminAlbum;
   onClose: () => void;
   notify: Notify;
 }
 
-/** Formulaire de création et de modification d'un album. */
+/** Form for creating and editing an album. */
 export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElement {
   const fieldId = useId();
   const create = useCreateAlbum();
@@ -26,8 +26,8 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
   const editing = album !== undefined;
 
   const [albumId, setAlbumId] = useState(album?.id ?? '');
-  // Tant que l'identifiant n'a pas été touché, il suit le titre : c'est la
-  // valeur qu'on retrouve dans l'URL de l'album, autant qu'elle soit lisible.
+  // Until the identifier is touched, follow the title: this value appears in the
+  // album URL, so keep it readable.
   const [idTouchedByUser, setIdTouchedByUser] = useState(editing);
   const [title, setTitle] = useState(album?.title ?? '');
   const [description, setDescription] = useState(album?.description ?? '');
@@ -71,7 +71,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           onSuccess: (created) => {
             notify({
               tone: 'ok',
-              text: `Album « ${created.title} » créé. La synchronisation le remplira.`,
+              text: `Album "${created.title}" created. Syncing will fill it.`,
             });
             onClose();
           },
@@ -80,8 +80,8 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
       return;
     }
 
-    // Seuls les champs modifiés partent : un champ absent reste inchangé côté
-    // serveur, et `description: null` est le seul moyen de l'effacer.
+    // Send only changed fields: an absent field remains unchanged server-side,
+    // and `description: null` is the only way to clear it.
     const body: UpdateAlbumRequest = {};
     if (title.trim() !== album.title) body.title = title.trim();
     if ((description.trim() || null) !== album.description) {
@@ -103,7 +103,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
       { albumId: album.id, body },
       {
         onSuccess: (saved) => {
-          notify({ tone: 'ok', text: `Album « ${saved.title} » modifié.` });
+          notify({ tone: 'ok', text: `Album "${saved.title}" saved.` });
           onClose();
         },
       },
@@ -115,7 +115,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id={`${fieldId}-title`}
-          label="Titre"
+          label="Title"
           value={title}
           onChange={changeTitle}
           autoFocus={!editing}
@@ -125,7 +125,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
 
         <TextField
           id={`${fieldId}-id`}
-          label="Identifiant"
+          label="Identifier"
           value={albumId}
           onChange={(value) => {
             setIdTouchedByUser(true);
@@ -137,15 +137,15 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           error={touched ? idError : null}
           hint={
             editing
-              ? "L'identifiant ne se change pas : il sert d'adresse à l'album."
-              : "Apparaît dans l'URL de l'album. Proposé d'après le titre."
+              ? 'The identifier does not change: it is the address of the album.'
+              : 'Appears in the URL of the album. Suggested from the title.'
           }
         />
       </div>
 
       <TextField
         id={`${fieldId}-description`}
-        label="Description (facultative)"
+        label="Description (optional)"
         value={description}
         onChange={setDescription}
         disabled={pending}
@@ -154,12 +154,11 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
 
       <TextField
         id={`${fieldId}-folder`}
-        label="Dossier Google Drive"
+        label="Google Drive folder"
         value={folder}
         onChange={setFolder}
         onBlur={() => {
-          // Normaliser à la sortie du champ : ce qui reste affiché est
-          // exactement ce qui sera envoyé.
+          // Normalise on blur so the displayed value is exactly what is sent.
           if (folderId !== null) setFolder(folderId);
         }}
         autoComplete="off"
@@ -169,51 +168,49 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         hint={
           extracted ? (
             <>
-              Identifiant retenu : <code className="text-ink-300">{folderId}</code>
+              Identifier used: <code className="text-ink-300">{folderId}</code>
             </>
           ) : (
-            "Colle l'URL du dossier : l'identifiant est le segment après /folders/."
+            'Paste the folder URL: the identifier is the segment after /folders/.'
           )
         }
       />
 
       <Checkbox
         id={`${fieldId}-recursive`}
-        label="Inclure les sous-dossiers"
+        label="Include subfolders"
         checked={recursive}
         onChange={setRecursive}
         disabled={pending}
-        hint="Décoche pour n'indexer que les fichiers posés directement dans le dossier."
+        hint="Untick to index only the files sitting directly in the folder."
       />
 
       <Checkbox
         id={`${fieldId}-group-by`}
-        label="Ouvrir la grille regroupée par jour"
+        label="Open the grid grouped by day"
         checked={byDay}
         onChange={setByDay}
         disabled={pending}
-        hint="Le bon découpage pour un séjour. Les notes de journée ne s'affichent que par jour. Le visiteur peut toujours rebasculer."
+        hint="The right split for a trip. Day notes only show up per day. A visitor can always flip it back."
       />
 
       <Checkbox
         id={`${fieldId}-sort-order`}
-        label="Ouvrir l'album des plus récentes d'abord"
+        label="Open the album newest first"
         checked={newestFirst}
         onChange={setNewestFirst}
         disabled={pending}
-        hint="Décoché, l'album se lit dans l'ordre où il a été vécu. À cocher pour une bibliothèque qu'on alimente au fil de l'eau. Le visiteur peut rebasculer, et son navigateur s'en souvient."
+        hint="Unticked, the album reads in the order it was lived. Tick it for a library fed as things happen. A visitor can flip it back, and their browser remembers."
       />
 
-      <FormError
-        message={serverError ? errorText(serverError, "L'enregistrement a échoué.") : null}
-      />
+      <FormError message={serverError ? errorText(serverError, 'Saving failed.') : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={onClose} disabled={pending}>
-          Annuler
+          Cancel
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Enregistrement…' : editing ? 'Enregistrer' : "Créer l'album"}
+          {pending ? 'Saving…' : editing ? 'Save' : 'Create the album'}
         </Button>
       </div>
     </form>
