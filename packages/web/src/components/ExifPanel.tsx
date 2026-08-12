@@ -3,12 +3,12 @@ import type { ReactElement } from 'react';
 import { exifRows } from '../lib/exifRows';
 
 /**
- * Contenu de l'onglet « Infos » du panneau latéral.
+ * Contents of the side panel's "Info" tab.
  *
- * Ne rend que ses lignes : l'`aside`, l'en-tête et les onglets appartiennent à
- * `SidePanel`, qui les partage avec les commentaires. Les deux onglets se
- * disputaient sinon la même largeur avec chacun son cadre. Le choix des lignes
- * vit dans `lib/exifRows`, qui se teste sans DOM.
+ * Renders only its rows: the `aside`, header and tabs belong to `SidePanel`,
+ * which shares them with comments. Otherwise both tabs competed for the same
+ * width with separate frames. Row selection lives in `lib/exifRows`, which can
+ * be tested without a DOM.
  */
 export function ExifPanel({
   detail,
@@ -22,12 +22,11 @@ export function ExifPanel({
   return (
     <dl className="divide-y divide-ink-800">
       {exifRows(detail, day).map((row) => (
-        // `items-baseline` : le libellé est en 12 px, sa valeur en 14 px. Alignés
-        // par le haut de leur boîte, leurs deux lignes de base tombent à trois
-        // pixels d'écart — assez pour que chaque libellé paraisse flotter
-        // au-dessus de sa valeur. La ligne de base est ce qui les accorde, et
-        // elle reste celle de la **première** ligne quand une valeur en occupe
-        // deux (« NIKON CORPORATION NIKON Z 6_2 »).
+        // `items-baseline`: the label is 12 px and its value 14 px. Aligned by the
+        // top of their boxes, their baselines differ by three pixels — enough to
+        // make every label seem to float above its value. The baseline aligns them
+        // and remains that of the **first** line when a value takes two ("NIKON
+        // CORPORATION NIKON Z 6_2").
         <div key={row.label} className="flex items-baseline gap-4 px-5 py-3">
           <dt className="w-28 shrink-0 text-xs tracking-wide text-ink-400 uppercase">
             {row.label}

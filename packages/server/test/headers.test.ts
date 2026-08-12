@@ -10,16 +10,16 @@ import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * En-têtes de sécurité. L'invariant tenu ici n'est pas la valeur exacte de la
- * CSP — elle bougera — mais le fait qu'**aucune** réponse n'y échappe : ni le
- * front servi par `@fastify/static`, ni une 404, ni l'API. C'est précisément ce
- * qu'un en-tête posé au reverse-proxy ne garantit pas.
+ * Security headers. The invariant here is not the exact CSP value — it will
+ * change — but that **no** response escapes it: neither the front end served by
+ * `@fastify/static`, nor a 404, nor the API. A header set at the reverse proxy
+ * cannot guarantee precisely this.
  */
 
 const root = mkdtempSync(join(tmpdir(), 'nonni-headers-'));
 const webDir = join(root, 'web');
 
-/** Monte une instance dont seule `PUBLIC_URL` varie. */
+/** Builds an instance in which only `PUBLIC_URL` varies. */
 async function monter(
   publicUrl: string,
 ): Promise<{ server: FastifyInstance; context: AppContext }> {
@@ -80,17 +80,17 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('en-têtes de sécurité', () => {
+describe('security headers', () => {
   const urls = [
-    ['/', 'le front'],
-    ['/assets/index-abc123.js', 'un asset'],
-    ['/api/health', "l'API"],
-    ['/api/inconnue', 'une 404 API'],
-    ['/album/vacances', 'une route du front'],
+    ['/', 'the front end'],
+    ['/assets/index-abc123.js', 'an asset'],
+    ['/api/health', 'the API'],
+    ['/api/inconnue', 'an API 404'],
+    ['/album/vacances', 'a front-end route'],
   ] as const;
 
   for (const [url, quoi] of urls) {
-    it(`couvre ${quoi} (${url})`, async () => {
+    it(`covers ${quoi} (${url})`, async () => {
       const response = await http.inject({ method: 'GET', url });
       assert.match(response.headers['content-security-policy'] as string, /script-src 'self'/);
       assert.equal(response.headers['x-content-type-options'], 'nosniff');
@@ -99,7 +99,7 @@ describe('en-têtes de sécurité', () => {
     });
   }
 
-  it("interdit l'encadrement et les origines tierces", async () => {
+  it('forbids framing and third-party origins', async () => {
     const csp = (await http.inject({ method: 'GET', url: '/' })).headers[
       'content-security-policy'
     ] as string;
@@ -111,25 +111,25 @@ describe('en-têtes de sécurité', () => {
       "frame-ancestors 'none'",
       "connect-src 'self'",
     ]) {
-      assert.ok(csp.includes(directive), `directive absente : ${directive}`);
+      assert.ok(csp.includes(directive), `missing directive: ${directive}`);
     }
   });
 
-  it('ne pose pas HSTS quand PUBLIC_URL est en http', async () => {
-    // Sinon un navigateur ayant ouvert une instance de développement réclamerait
-    // du HTTPS à localhost pendant six mois, sans moyen simple de revenir.
+  it('does not set HSTS when PUBLIC_URL uses http', async () => {
+    // Otherwise a browser that opened a development instance would require
+    // HTTPS on localhost for six months, with no simple way back.
     const response = await http.inject({ method: 'GET', url: '/' });
     assert.equal(response.headers['strict-transport-security'], undefined);
   });
 
-  it('pose HSTS quand PUBLIC_URL est en https', async () => {
+  it('sets HSTS when PUBLIC_URL uses https', async () => {
     const response = await https.inject({ method: 'GET', url: '/' });
     assert.equal(response.headers['strict-transport-security'], 'max-age=15552000');
   });
 
-  it('laisse intact le Cache-Control des assets', async () => {
-    // Le hook touche aux en-têtes de toutes les réponses : il ne doit pas
-    // écraser ce que @fastify/static pose ensuite.
+  it('leaves asset Cache-Control intact', async () => {
+    // The hook touches every response's headers: it must not overwrite what
+    // @fastify/static sets afterwards.
     const response = await http.inject({ method: 'GET', url: '/assets/index-abc123.js' });
     assert.match(response.headers['cache-control'] as string, /immutable/);
   });

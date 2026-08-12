@@ -1,53 +1,51 @@
-# D67 — La file de modération est une liste de travail, pas un flux
+# D67 — The moderation queue is a work list, not a feed
 
-**Contexte.** La file rendait cinquante lignes antéchronologiques, un bouton
-« Charger plus » qui empilait, et deux filtres — tout, ou masqué. Trois défauts,
-tous mesurables :
+**Context.** The queue rendered fifty reverse-chronological rows, a "Load more"
+button that stacked them, and two filters — all or hidden. Three defects, all
+measurable:
 
-- chaque masquage invalidait la file, et TanStack Query recharge **toutes** les
-  pages d'une requête infinie : après quatre « Charger plus », un seul clic sur
-  « Masquer » redemandait deux cents lignes ;
-- rien ne disait si les lignes affichées étaient tout le corpus ou le centième ;
-- on ne pouvait ni chercher, ni restreindre à un album, ni voir seulement ce qui
-  est encore en ligne.
+- every hide action invalidated the queue, and TanStack Query reloads **all**
+  pages of an infinite query: after four "Load more" actions, one click on
+  "Hide" requested two hundred rows again;
+- nothing indicated whether the displayed rows were the entire corpus or one
+  hundredth of it;
+- it was impossible to search, restrict to one album, or only see what remained
+  visible.
 
-Or on ne parcourt pas une file de modération, on y arrive avec une intention :
-un message dont on nous a parlé, ce qui s'est dit hier, tout ce qu'a écrit une
-adresse.
+A moderation queue is not browsed; it is opened with an intention: a message
+someone mentioned, what was said yesterday, or everything written by one address.
 
-**Choix.** Une page à la fois, vingt-cinq lignes, avec `‹ Précédent` et
-`Suivant ›` — une pile de curseurs côté client tient le chemin parcouru, seul
-moyen de revenir en arrière avec une pagination par curseur. La réponse porte
-`total`, compté **sans le curseur** : c'est la taille du corpus filtré, pas celle
-du reste. Trois filtres qui partitionnent (`all`, `visible`, `hidden`), un filtre
-d'album, et une recherche sur le corps, le nom déclaré et l'adresse. La page
-affichée est rangée par journée puis par photo, côté client. Enfin, une action
-groupée par identité : masquer d'un coup tous les messages d'une adresse.
+**Choice.** One page at a time, twenty-five rows, with `‹ Previous` and `Next ›`
+— a client-side cursor stack records the path taken, the only way to go backwards
+with cursor pagination. The response carries `total`, counted **without the
+cursor**: it is the size of the filtered corpus, not of the remainder. Three
+partitioning filters (`all`, `visible`, `hidden`), an album filter, and a search
+over the body, declared name, and address. The displayed page is grouped by day
+and then photo on the client. Finally, an identity-wide bulk action hides all
+messages from one address at once.
 
-La journée du regroupement est celle du **lecteur**, pas UTC — troisième
-exception à la règle du dépôt, et pour la raison déjà écrite en D31 et dans
-`format.ts` : `created_at` est un instant réel, pas une heure murale d'appareil.
+The grouping day is the **reader's**, not UTC — the repository's third exception
+to the rule, for the reason already stated in D31 and `format.ts`: `created_at`
+is a real instant, not a device wall-clock time.
 
-**Écarté.** Garder le défilement infini en n'ajoutant que le total : le compte
-manquant n'était qu'un des trois défauts, et le plus visible — le rechargement
-complet à chaque geste serait resté. Écartées aussi les pages numérotées en
-`OFFSET` : elles offrent l'accès direct à la page 5, mais leur numérotation
-glisse dès qu'un commentaire arrive pendant la modération, et le dépôt a déjà
-tranché contre `OFFSET` pour les médias (voir la pagination par curseur en
-[03](../03-modele-de-donnees.md)). Écartée enfin une table FTS5 en `unicode61`
-pour la recherche : une table virtuelle et des déclencheurs de synchronisation à
-maintenir pour un corpus de quelques milliers de lignes, alors qu'un `LIKE`
-échappé y répond en microsecondes.
+**Rejected.** Keeping infinite scrolling and only adding the total: the missing
+count was only one of the three defects, and the most visible — the complete
+reload after every action would remain. Also rejected: numbered pages using
+`OFFSET`; they provide direct access to page 5, but their numbering shifts as
+soon as a comment arrives during moderation, and the repository already rejected
+`OFFSET` for media (see cursor pagination in
+[03](../03-modele-de-donnees.md)). Finally rejected: an FTS5 table using
+`unicode61` for search — a virtual table and synchronisation triggers to maintain
+for a corpus of a few thousand rows, while an escaped `LIKE` answers in
+microseconds.
 
-**Conséquences.** Le regroupement ne vaut que pour la page reçue : une photo dont
-les commentaires enjambent une frontière de page apparaît des deux côtés. Faire
-autrement supposerait un serveur qui pagine des groupes entiers, donc des pages
-de taille inconnue. La casse n'est repliée que sur l'ASCII — chercher « Éric » ne
-trouve pas « éric », limite de `LIKE` en SQLite, et c'est ce que la table FTS
-aurait corrigé. **Aucun index n'a été ajouté** : une recherche `LIKE '%…%'` est
-un parcours qu'aucun index ne sert, et le corpus est borné par ce que des humains
-écrivent ; à revoir au-delà de la dizaine de milliers de commentaires, où le
-`COUNT(*)` de chaque page se paierait. L'action groupée, elle, ne bannit
-personne : elle retire des messages, l'identité peut toujours écrire. Fermer la
-porte reste l'affaire de la clé d'accès, que la file affiche à côté de chaque
-message.
+**Consequences.** Grouping only applies to the received page: a photo whose
+comments cross a page boundary appears on both sides. Doing otherwise would
+require a server that paginates whole groups, producing pages of unknown size.
+Case folding only covers ASCII — searching for "Éric" does not find "éric", a
+limitation of `LIKE` in SQLite and one the FTS table would have fixed. **No index
+was added**: a `LIKE '%…%'` search is a scan no index can serve, and the corpus is
+bounded by what humans write; revisit beyond ten thousand comments, where the
+`COUNT(*)` on every page would have a cost. The bulk action does not ban anyone:
+it removes messages, while the identity can still write. Closing the door remains
+the access key's job, which the queue displays beside each message.

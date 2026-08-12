@@ -8,11 +8,11 @@ import { MediaCache } from '../src/media/cache.js';
 const root = mkdtempSync(join(tmpdir(), 'nonni-cache-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
-/** Laisse l'éviction asynchrone se terminer avant d'observer le cache. */
+/** Lets asynchronous eviction finish before inspecting the cache. */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 30));
 
-describe('cache disque', () => {
-  it('rend une entrée écrite et rate sur une clé inconnue', async () => {
+describe('disk cache', () => {
+  it('returns a written entry and misses an unknown key', async () => {
     const cache = new MediaCache(join(root, 'basic'), 1024 * 1024);
     await cache.load();
 
@@ -25,7 +25,7 @@ describe('cache disque', () => {
     assert.equal(cache.stats().bytes, 64);
   });
 
-  it('retrouve ses entrées après un redémarrage', async () => {
+  it('finds its entries after a restart', async () => {
     const dir = join(root, 'reload');
     const first = new MediaCache(dir, 1024 * 1024);
     await first.load();
@@ -39,8 +39,8 @@ describe('cache disque', () => {
     assert.ok(second.hit('photo:t640'));
   });
 
-  it('évince les entrées les moins récemment utilisées', async () => {
-    // Limite volontairement basse : 4 entrées de 100 o suffisent à la dépasser.
+  it('evicts the least recently used entries', async () => {
+    // Deliberately low limit: four 100-byte entries are enough to exceed it.
     const cache = new MediaCache(join(root, 'lru'), 300);
     await cache.load();
 
@@ -48,19 +48,19 @@ describe('cache disque', () => {
     await cache.put('moyen', Buffer.alloc(100, 2));
     await cache.put('recent', Buffer.alloc(100, 3));
 
-    // Remet « vieux » en tête de la file d'usage : c'est « moyen » qui doit
-    // partir en premier, pas lui.
+    // Moves "vieux" to the front of the usage queue: "moyen" must leave first,
+    // not it.
     cache.hit('vieux');
 
     await cache.put('nouveau', Buffer.alloc(100, 4));
     await settle();
 
-    assert.ok(cache.stats().bytes <= 300, 'la limite doit être respectée');
-    assert.ok(cache.hit('nouveau'), 'la dernière écriture doit survivre');
-    assert.equal(cache.hit('moyen'), null, 'la moins récemment utilisée doit partir');
+    assert.ok(cache.stats().bytes <= 300, 'the limit must be respected');
+    assert.ok(cache.hit('nouveau'), 'the latest write must survive');
+    assert.equal(cache.hit('moyen'), null, 'the least recently used entry must leave');
   });
 
-  it('remplace une entrée sans compter sa taille deux fois', async () => {
+  it('replaces an entry without counting its size twice', async () => {
     const cache = new MediaCache(join(root, 'replace'), 1024 * 1024);
     await cache.load();
 
@@ -71,7 +71,7 @@ describe('cache disque', () => {
     assert.equal(cache.stats().bytes, 250);
   });
 
-  it('se vide entièrement', async () => {
+  it('clears completely', async () => {
     const cache = new MediaCache(join(root, 'clear'), 1024 * 1024);
     await cache.load();
     await cache.put('k', Buffer.alloc(100, 1));
@@ -83,7 +83,7 @@ describe('cache disque', () => {
     assert.equal(cache.hit('k'), null);
   });
 
-  it('range un fichier déjà écrit sans le charger en mémoire', async () => {
+  it('stores an existing file without loading it into memory', async () => {
     const dir = join(root, 'putfile');
     const cache = new MediaCache(dir, 1024 * 1024);
     await cache.load();
@@ -94,14 +94,14 @@ describe('cache disque', () => {
     const path = await cache.putFile('clip:empreinte', source);
 
     assert.ok(existsSync(path));
-    // Déplacé, pas copié : un dérivé vidéo pèse des dizaines de Mo, le laisser
-    // derrière doublerait la place occupée.
+    // Moved, not copied: a derived video is tens of MB, and leaving it behind
+    // would double the space used.
     assert.equal(existsSync(source), false);
     assert.equal(cache.hit('clip:empreinte'), path);
     assert.equal(cache.stats().bytes, 4096);
   });
 
-  it('évince aussi ce qui est entré par renommage', async () => {
+  it('also evicts entries stored by rename', async () => {
     const dir = join(root, 'putfile-lru');
     const cache = new MediaCache(dir, 300);
     await cache.load();
@@ -113,17 +113,17 @@ describe('cache disque', () => {
     }
     await settle();
 
-    // La taille est comptée à l'entrée : sans ça, le magasin grossirait sans
-    // limite et le budget des vidéos ne voudrait rien dire.
-    assert.ok(cache.stats().bytes <= 300, 'la limite doit être respectée');
-    assert.equal(cache.hit('vieux'), null, 'la moins récemment utilisée doit partir');
-    assert.ok(cache.hit('nouveau'), 'la dernière écriture doit survivre');
+    // Size is counted on entry: otherwise the store would grow without bound
+    // and the video budget would be meaningless.
+    assert.ok(cache.stats().bytes <= 300, 'the limit must be respected');
+    assert.equal(cache.hit('vieux'), null, 'the least recently used entry must leave');
+    assert.ok(cache.hit('nouveau'), 'the latest write must survive');
   });
 
-  it('n’inventorie ni ne vide ce qui n’est pas à lui', async () => {
-    // Le magasin vidéo vit sous `CACHE_DIR/video` : un cache qui compterait ses
-    // octets dans son budget les évincerait, et « vider le cache » depuis
-    // /admin emporterait des heures de transcodage avec les vignettes.
+  it('neither inventories nor clears files it does not own', async () => {
+    // The video store lives under `CACHE_DIR/video`: a cache that counted those
+    // bytes in its budget would evict them, and "clear cache" from /admin would
+    // discard hours of transcoding alongside the thumbnails.
     const dir = join(root, 'voisin');
     const cache = new MediaCache(dir, 1024 * 1024);
     await cache.load();
@@ -136,13 +136,13 @@ describe('cache disque', () => {
 
     const relu = new MediaCache(dir, 1024 * 1024);
     await relu.load();
-    assert.equal(relu.stats().bytes, 100, 'seul son propre rayon est inventorié');
+    assert.equal(relu.stats().bytes, 100, 'only its own shelf is inventoried');
 
     await relu.clear();
-    assert.ok(existsSync(etranger), 'le magasin voisin doit survivre au vidage');
+    assert.ok(existsSync(etranger), 'the neighbouring store must survive clearing');
   });
 
-  it("épargne une entrée réclamée pendant que l'éviction tourne", async () => {
+  it('spares an entry requested while eviction is running', async () => {
     const cache = new MediaCache(join(root, 'lru-course'), 300);
     await cache.load();
 
@@ -150,31 +150,31 @@ describe('cache disque', () => {
     await cache.put('b', Buffer.alloc(100, 2));
     await cache.put('c', Buffer.alloc(100, 3));
 
-    // La quatrième écriture dépasse la limite et lance l'éviction, qui a déjà
-    // figé son ordre — « a » puis « b » — quand la ligne suivante s'exécute.
+    // The fourth write exceeds the limit and starts eviction, which has already
+    // fixed its order — "a" then "b" — when the next line runs.
     await cache.put('d', Buffer.alloc(100, 4));
 
-    // Une requête réclame « b » à cet instant précis. Elle va en lire le
-    // fichier : le supprimer maintenant lui rendrait un ENOENT.
+    // A request claims "b" at this exact moment. It is about to read the file:
+    // deleting it now would return ENOENT.
     const reclame = cache.hit('b');
-    assert.ok(reclame, 'la mise en scène suppose que « b » est encore là');
+    assert.ok(reclame, 'the setup assumes "b" is still present');
 
     await settle();
 
-    assert.ok(cache.stats().bytes <= 300, 'la limite doit rester respectée');
-    assert.ok(cache.hit('b'), 'une entrée réclamée pendant l’éviction doit survivre');
-    assert.ok(existsSync(reclame), 'son fichier doit exister quand on va le lire');
+    assert.ok(cache.stats().bytes <= 300, 'the limit must remain respected');
+    assert.ok(cache.hit('b'), 'an entry requested during eviction must survive');
+    assert.ok(existsSync(reclame), 'its file must exist when it is about to be read');
   });
 
-  it('poursuit son ménage quand une suppression échoue', async () => {
+  it('continues cleaning when a deletion fails', async () => {
     const avertissements: string[] = [];
     const cache = new MediaCache(join(root, 'rm-ko'), 300, {
       warn: (msg) => avertissements.push(msg),
     });
     await cache.load();
 
-    // Un répertoire à la place du fichier : `rm` le refuse, comme le ferait un
-    // volume remonté en lecture seule ou une erreur d'E/S.
+    // A directory in place of the file: `rm` rejects it, as it would for a
+    // remounted read-only volume or an I/O error.
     const bloque = await cache.put('bloque', Buffer.alloc(100, 1));
     rmSync(bloque);
     mkdirSync(join(bloque, 'occupe'), { recursive: true });
@@ -185,11 +185,11 @@ describe('cache disque', () => {
 
     await settle();
 
-    // Sans traitement de l'échec, l'éviction s'arrêtait sur « bloque » : rien
-    // n'était libéré et le rejet non géré pouvait terminer le process.
-    assert.equal(cache.hit('b'), null, 'les entrées suivantes doivent partir quand même');
-    assert.ok(avertissements.length > 0, "l'échec doit être journalisé");
-    // L'entrée récalcitrante reste inventoriée : son fichier est toujours là.
-    assert.ok(cache.hit('bloque'), "l'inventaire doit continuer de décrire le disque");
+    // Without handling the failure, eviction stopped at "bloque": nothing was
+    // freed and the unhandled rejection could terminate the process.
+    assert.equal(cache.hit('b'), null, 'subsequent entries must still be removed');
+    assert.ok(avertissements.length > 0, 'the failure must be logged');
+    // The stubborn entry remains inventoried: its file is still there.
+    assert.ok(cache.hit('bloque'), 'the inventory must keep describing the disk');
   });
 });

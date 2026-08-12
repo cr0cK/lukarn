@@ -19,14 +19,12 @@ import { Mailer, type MailMessage } from '../src/mail.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Commentaires : cloisonnement, profondeur, modération et droits de
- * suppression.
+ * Comments: isolation, depth, moderation and deletion rights.
  *
- * Ces tests portent sur les invariants, pas sur la forme des payloads. Le
- * cloisonnement est le plus important : un fil appartient au couple (album,
- * média), et un album qu'on ne voit pas doit rester indistinguable d'un album
- * qui n'existe pas — y compris à travers les commentaires, qui sont un chemin
- * de lecture de plus vers le même contenu.
+ * These tests cover invariants, not payload shapes. Isolation matters most: a
+ * thread belongs to the (album, media) pair, and an inaccessible album must
+ * remain indistinguishable from one that does not exist — including through
+ * comments, which provide another read path to the same content.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -71,18 +69,18 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
   const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
-  assert.ok(cookie, 'cookie de session absent');
+  assert.ok(cookie, 'session cookie missing');
   return `nonni_session=${cookie.value}`;
 }
 
 /**
- * Déclare une identité sur cette session et valide le code reçu.
+ * Declares an identity for this session and validates the received code.
  *
- * Le code n'est jamais rendu par l'API : il part par email. Le test le récupère
- * donc dans le message capturé par le faux transport, ce qui vérifie au passage
- * qu'il est bien envoyé.
+ * The API never returns the code: it is sent by email. The test therefore
+ * retrieves it from the message captured by the fake transport, also verifying
+ * that it was sent.
  */
 async function identify(cookie: string, email: string, displayName: string): Promise<void> {
   envoyes.length = 0;
@@ -96,10 +94,10 @@ async function identify(cookie: string, email: string, displayName: string): Pro
   await context.mailer.drain();
 
   const message = envoyes.at(-1);
-  assert.ok(message, 'aucun code envoyé');
-  // Le code est dans le corps, pas dans le sujet — voir D65.
+  assert.ok(message, 'no code sent');
+  // The code is in the body, not the subject — see D65.
   const code = /\b(\d{6})\b/.exec(message.text)?.[1];
-  assert.ok(code, `code introuvable dans le corps du message « ${message.subject} »`);
+  assert.ok(code, `code not found in the body of message "${message.subject}"`);
 
   const verified = await server.inject({
     method: 'POST',
@@ -110,7 +108,7 @@ async function identify(cookie: string, email: string, displayName: string): Pro
   assert.equal(verified.statusCode, 200, verified.body);
 }
 
-/** Poste un commentaire et rend l'objet créé, en vérifiant le code de retour. */
+/** Posts a comment and returns the created object after checking the status code. */
 async function post(
   cookie: string,
   albumId: string,
@@ -140,7 +138,7 @@ async function read(cookie: string, albumId: string, mediaId: string): Promise<C
 
 let adminCookie: string;
 let familleCookie: string;
-/** Messages capturés : l'instance de test n'ouvre évidemment pas de SMTP. */
+/** Captured messages: the test instance does not open an SMTP connection. */
 const envoyes: MailMessage[] = [];
 
 before(async () => {
@@ -161,8 +159,8 @@ before(async () => {
   server = built.server;
   context = built.context;
 
-  // Sans transport, aucun code ne peut partir et personne ne peut commenter :
-  // c'est le comportement voulu, mais il rendrait ces tests inertes.
+  // Without a transport, no code can be sent and nobody can comment: this is
+  // the intended behaviour, but it would make these tests inert.
   context.mailer = new Mailer(async (message) => {
     envoyes.push(message);
   }, silencieux);
@@ -186,8 +184,8 @@ before(async () => {
     admin: true,
     albums: [ALL_ALBUMS],
   });
-  // Une seule clé d'accès pour tout le foyer : c'est l'usage prévu, et c'est
-  // pour ça que l'identité ne peut pas venir du compte.
+  // One access key for the whole household: this is the intended use, which is
+  // why identity cannot come from the account.
   context.config.createUser({
     username: 'famille',
     passwordHash: hash,
@@ -195,8 +193,8 @@ before(async () => {
     albums: ['vacances'],
   });
 
-  // La même photo Drive indexée dans les deux albums : c'est le cas qui rend le
-  // cloisonnement des fils nécessaire.
+  // The same Drive photo indexed in both albums: this is why thread isolation
+  // is necessary.
   context.media.upsertMany(
     [media('vacances', 'photo-partagee'), media('prive', 'photo-partagee')],
     '2025-01-01T00:00:00.000Z',
@@ -215,8 +213,8 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('cloisonnement des fils', () => {
-  it('sépare les conversations d’un même fichier indexé sous deux albums', async () => {
+describe('thread isolation', () => {
+  it('separates conversations for one file indexed under two albums', async () => {
     await post(adminCookie, 'vacances', 'photo-partagee', 'Vu depuis les vacances');
     await post(adminCookie, 'prive', 'photo-partagee', 'Vu depuis le privé');
 
@@ -225,7 +223,7 @@ describe('cloisonnement des fils', () => {
     assert.equal(publique.threads[0]!.root.body, 'Vu depuis les vacances');
   });
 
-  it('répond 404 sur le fil d’un album non attribué, comme pour un album inexistant', async () => {
+  it('returns 404 for an unassigned album thread as it does for a missing album', async () => {
     const interdit = await server.inject({
       method: 'GET',
       url: '/api/comments/prive/photo-partagee',
@@ -239,11 +237,11 @@ describe('cloisonnement des fils', () => {
 
     assert.equal(interdit.statusCode, 404);
     assert.equal(inexistant.statusCode, 404);
-    // Indistinguables : c'est tout l'intérêt du 404 (D12).
+    // Indistinguishable: that is the entire purpose of the 404 (D12).
     assert.deepEqual(interdit.json(), inexistant.json());
   });
 
-  it('refuse de rattacher une réponse à un fil d’un autre album', async () => {
+  it('refuses to attach a reply to a thread from another album', async () => {
     const ailleurs = await post(adminCookie, 'prive', 'photo-partagee', 'Racine privée');
 
     const response = await server.inject({
@@ -256,7 +254,7 @@ describe('cloisonnement des fils', () => {
     assert.equal(response.statusCode, 404);
   });
 
-  it('refuse un commentaire anonyme', async () => {
+  it('rejects an anonymous comment', async () => {
     const response = await server.inject({
       method: 'POST',
       url: '/api/comments/vacances/photo-partagee',
@@ -266,12 +264,12 @@ describe('cloisonnement des fils', () => {
   });
 });
 
-describe('profondeur limitée à un niveau', () => {
-  it('rattache la réponse d’une réponse à la racine du fil', async () => {
+describe('depth limited to one level', () => {
+  it('attaches a reply to a reply at the thread root', async () => {
     const racine = await post(adminCookie, 'vacances', 'photo-partagee', 'Racine');
     const reponse = await post(familleCookie, 'vacances', 'photo-partagee', 'Réponse', racine.id);
-    // On répond à la réponse : le serveur doit remonter à la racine plutôt que
-    // de créer un second niveau.
+    // When replying to a reply, the server must move back to the root rather
+    // than creating a second level.
     const petiteFille = await post(
       adminCookie,
       'vacances',
@@ -281,7 +279,7 @@ describe('profondeur limitée à un niveau', () => {
     );
 
     assert.equal(reponse.parentId, racine.id);
-    assert.equal(petiteFille.parentId, racine.id, 'un second niveau a été créé');
+    assert.equal(petiteFille.parentId, racine.id, 'a second level was created');
 
     const page = await read(adminCookie, 'vacances', 'photo-partagee');
     const thread = page.threads.find((entry) => entry.root.id === racine.id);
@@ -291,8 +289,8 @@ describe('profondeur limitée à un niveau', () => {
   });
 });
 
-describe('identité de l’auteur', () => {
-  it('signe du nom déclaré, pas de la clé d’accès partagée', async () => {
+describe('author identity', () => {
+  it('signs with the declared name, not the shared access key', async () => {
     const parMamie = await post(familleCookie, 'vacances', 'photo-partagee', 'Signé');
     const parAdmin = await post(adminCookie, 'vacances', 'photo-partagee', 'Signé aussi');
 
@@ -300,14 +298,14 @@ describe('identité de l’auteur', () => {
     assert.equal(parAdmin.author.displayName, 'Alexis');
   });
 
-  it('n’expose jamais l’adresse email dans un fil', async () => {
+  it('never exposes the email address in a thread', async () => {
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
-    // L'adresse identifie et notifie ; elle n'a pas à circuler auprès des autres
-    // lecteurs du fil.
+    // The address identifies and notifies; it must not circulate among the
+    // thread's other readers.
     assert.ok(!JSON.stringify(page).includes('@exemple.fr'));
   });
 
-  it('refuse de commenter tant qu’aucune identité n’est vérifiée', async () => {
+  it('refuses comments until an identity is verified', async () => {
     const anonyme = await login('famille');
     const response = await server.inject({
       method: 'POST',
@@ -316,19 +314,19 @@ describe('identité de l’auteur', () => {
       payload: { body: 'Sans identité' },
     });
 
-    // 403 et non 404 : le refus porte sur l'état de son propre compte, pas sur
-    // une ressource d'autrui dont il faudrait cacher l'existence.
+    // 403, not 404: the refusal concerns the state of the user's own account,
+    // not somebody else's resource whose existence must be hidden.
     assert.equal(response.statusCode, 403);
     assert.equal(response.json<{ error: string }>().error, 'identity_required');
   });
 
-  it('retrouve ses commentaires en se ré-identifiant avec la même adresse', async () => {
+  it('recovers its comments after identifying again with the same address', async () => {
     const mien = await post(familleCookie, 'vacances', 'photo-partagee', 'À retrouver');
 
-    // Nouvel appareil : session neuve, aucune identité.
+    // New device: fresh session, no identity.
     const autreAppareil = await login('famille');
-    // Le délai anti-renvoi refuse un second code dans la minute — ce qui est
-    // voulu en service, mais rendrait ce test tributaire d'une attente réelle.
+    // The resend delay rejects a second code within a minute — desirable in
+    // production, but it would make this test depend on a real wait.
     context.db
       .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
       .run('mamie@exemple.fr');
@@ -336,18 +334,18 @@ describe('identité de l’auteur', () => {
 
     const page = await read(autreAppareil, 'vacances', 'photo-partagee');
     const retrouve = page.threads.find((thread) => thread.root.id === mien.id);
-    assert.ok(retrouve, 'le commentaire a disparu');
-    // L'adresse identifie la personne : elle garde la main sur ses messages.
+    assert.ok(retrouve, 'the comment disappeared');
+    // The address identifies the person: they retain control over their messages.
     assert.equal(retrouve.root.canDelete, true);
   });
 
-  it('ne renomme personne tant que le code n’est pas validé', async () => {
+  it('renames nobody until the code is validated', async () => {
     const signe = await post(familleCookie, 'vacances', 'photo-partagee', 'Écrit par Mamie');
     assert.equal(signe.author.displayName, 'Mamie');
 
-    // Quelqu'un d'autre derrière la même clé partagée demande un code pour
-    // l'adresse de Mamie, en déclarant le nom de son choix. Le code part chez
-    // elle : il ne le verra jamais.
+    // Someone else behind the same shared key requests a code for Mamie's
+    // address while declaring any name they choose. The code goes to her: they
+    // will never see it.
     const usurpateur = await login('famille');
     context.db
       .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
@@ -360,14 +358,14 @@ describe('identité de l’auteur', () => {
     });
     assert.equal(demande.statusCode, 202, demande.body);
 
-    // La signature est relue à chaque requête : si la demande avait écrit le
-    // nom, tout l'historique de Mamie porterait déjà celui de l'usurpateur.
+    // The signature is read on every request: if the request had written the
+    // name, Mamie's entire history would already carry the impersonator's name.
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
     const apres = page.threads.find((thread) => thread.root.id === signe.id);
     assert.equal(apres?.root.author.displayName, 'Mamie');
   });
 
-  it('applique le nouveau nom une fois le code validé', async () => {
+  it('applies the new name once the code is validated', async () => {
     const avant = await post(familleCookie, 'vacances', 'photo-partagee', 'Avant le renommage');
     assert.equal(avant.author.displayName, 'Mamie');
 
@@ -380,7 +378,7 @@ describe('identité de l’auteur', () => {
     const apres = page.threads.find((thread) => thread.root.id === avant.id);
     assert.equal(apres?.root.author.displayName, 'Grand-mère');
 
-    // Remis en état : les tests suivants attendent « Mamie ».
+    // Restored: subsequent tests expect "Mamie".
     context.db
       .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
       .run('mamie@exemple.fr');
@@ -388,8 +386,8 @@ describe('identité de l’auteur', () => {
   });
 });
 
-describe('suppression', () => {
-  it('laisse l’auteur supprimer son commentaire', async () => {
+describe('deletion', () => {
+  it('allows the author to delete their comment', async () => {
     const mien = await post(familleCookie, 'vacances', 'photo-partagee', 'À supprimer');
 
     const response = await server.inject({
@@ -402,7 +400,7 @@ describe('suppression', () => {
     assert.equal(mien.canDelete, true);
   });
 
-  it('refuse en 404 la suppression du commentaire d’un autre', async () => {
+  it("returns 404 when deleting someone else's comment", async () => {
     const autrui = await post(adminCookie, 'vacances', 'photo-partagee', 'Pas touche');
 
     const response = await server.inject({
@@ -416,7 +414,7 @@ describe('suppression', () => {
     assert.ok(page.threads.some((thread) => thread.root.id === autrui.id));
   });
 
-  it('laisse un administrateur supprimer n’importe quel commentaire', async () => {
+  it('allows an administrator to delete any comment', async () => {
     const dUnAutre = await post(familleCookie, 'vacances', 'photo-partagee', 'Supprimé par admin');
 
     const response = await server.inject({
@@ -429,8 +427,8 @@ describe('suppression', () => {
   });
 });
 
-describe('modération', () => {
-  it('retire un commentaire masqué de la lecture, y compris pour son auteur', async () => {
+describe('moderation', () => {
+  it('removes a hidden comment from reads, including for its author', async () => {
     const gênant = await post(familleCookie, 'vacances', 'photo-partagee', 'À modérer');
 
     const masquage = await server.inject({
@@ -443,11 +441,11 @@ describe('modération', () => {
     const vuParAuteur = await read(familleCookie, 'vacances', 'photo-partagee');
     assert.ok(
       !vuParAuteur.threads.some((thread) => thread.root.id === gênant.id),
-      'un commentaire masqué reste visible pour son auteur',
+      'a hidden comment remains visible to its author',
     );
 
-    // Rendu visible, il revient — masquer est réversible, c'est ce qui distingue
-    // la modération de la suppression.
+    // Once visible again, it returns — hiding is reversible, which distinguishes
+    // moderation from deletion.
     await server.inject({
       method: 'POST',
       url: `/api/admin/comments/${gênant.id}/show`,
@@ -457,7 +455,7 @@ describe('modération', () => {
     assert.ok(revenu.threads.some((thread) => thread.root.id === gênant.id));
   });
 
-  it('refuse la modération à un visiteur, en 403 et non en 404', async () => {
+  it('rejects visitor moderation with 403 rather than 404', async () => {
     const cible = await post(familleCookie, 'vacances', 'photo-partagee', 'Tentative');
 
     const response = await server.inject({
@@ -466,11 +464,11 @@ describe('modération', () => {
       headers: { cookie: familleCookie },
     });
 
-    // L'espace d'administration est la seule exception assumée au 404 (D12).
+    // The administration area is the only deliberate exception to 404 (D12).
     assert.equal(response.statusCode, 403);
   });
 
-  it('remonte une réponse en tête de fil quand sa racine est masquée', async () => {
+  it('promotes a reply to the thread root when its root is hidden', async () => {
     const racine = await post(adminCookie, 'vacances', 'photo-partagee', 'Racine à masquer');
     const reponse = await post(familleCookie, 'vacances', 'photo-partagee', 'Orpheline', racine.id);
 
@@ -482,14 +480,14 @@ describe('modération', () => {
 
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
     const promue = page.threads.find((thread) => thread.root.id === reponse.id);
-    assert.ok(promue, 'la réponse a disparu avec sa racine');
-    // Elle est devenue une racine : son parent ne doit plus être annoncé.
+    assert.ok(promue, 'the reply disappeared with its root');
+    // It has become a root: its parent must no longer be reported.
     assert.equal(promue.root.parentId, null);
   });
 });
 
-describe('compteur servi avec le détail du média', () => {
-  it('compte les commentaires visibles, réponses comprises, masqués exclus', async () => {
+describe('counter served with media details', () => {
+  it('counts visible comments including replies and excluding hidden ones', async () => {
     const detail = await server.inject({
       method: 'GET',
       url: '/api/albums/vacances/items/photo-partagee',
@@ -502,7 +500,7 @@ describe('compteur servi avec le détail du média', () => {
   });
 });
 
-describe('correction dans la fenêtre qui suit la publication', () => {
+describe('editing within the window after publication', () => {
   async function patch(cookie: string, id: number, body: string) {
     return server.inject({
       method: 'PATCH',
@@ -512,7 +510,7 @@ describe('correction dans la fenêtre qui suit la publication', () => {
     });
   }
 
-  it('accepte la correction de son auteur', async () => {
+  it('accepts an edit from its author', async () => {
     const publie = await post(familleCookie, 'vacances', 'photo-partagee', 'Boujour');
     const corrige = await patch(familleCookie, publie.id, 'Bonjour');
 
@@ -522,14 +520,14 @@ describe('correction dans la fenêtre qui suit la publication', () => {
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
     const relu = page.threads.find((thread) => thread.root.id === publie.id);
     assert.equal(relu?.root.body, 'Bonjour');
-    // La date de publication ne bouge pas : le message doit rester à sa place
-    // dans un fil que d'autres lisaient déjà.
+    // The publication date does not change: the message must stay in place in a
+    // thread that others may already be reading.
     assert.equal(relu?.root.createdAt, publie.createdAt);
   });
 
-  it('refuse une fois le délai passé, et le dit', async () => {
-    // La fenêtre se lit sur `created_at` : antidater le commentaire la franchit
-    // sans faire attendre le test trente secondes.
+  it('rejects the edit once the window has elapsed and says why', async () => {
+    // The window uses `created_at`: backdating the comment crosses it without
+    // making the test wait thirty seconds.
     const vieux = await post(familleCookie, 'vacances', 'photo-partagee', 'Trop tard');
     context.db
       .prepare('UPDATE comments SET created_at = ? WHERE id = ?')
@@ -537,8 +535,8 @@ describe('correction dans la fenêtre qui suit la publication', () => {
 
     const tentative = await patch(familleCookie, vieux.id, 'Corrigé');
 
-    // 409 et non 404 : le refus porte sur l'état du message, pas sur un droit
-    // d'accès — son auteur le voit déjà, il n'y a rien à lui cacher.
+    // 409, not 404: the refusal concerns the message state, not access rights —
+    // its author can already see it, so there is nothing to hide.
     assert.equal(tentative.statusCode, 409);
     assert.equal(tentative.json<{ error: string }>().error, 'edit_window_closed');
 
@@ -548,48 +546,48 @@ describe('correction dans la fenêtre qui suit la publication', () => {
     assert.equal(inchange?.root.canEdit, false);
   });
 
-  it('refuse la correction du commentaire de quelqu’un d’autre', async () => {
+  it("rejects edits to someone else's comment", async () => {
     const dautrui = await post(adminCookie, 'vacances', 'photo-partagee', 'À moi');
     const tentative = await patch(familleCookie, dautrui.id, 'Volé');
 
-    // 404 et non 403 : rien ne doit distinguer « pas à toi » de « n'existe pas ».
+    // 404, not 403: nothing must distinguish "not yours" from "does not exist".
     assert.equal(tentative.statusCode, 404);
 
     const page = await read(adminCookie, 'vacances', 'photo-partagee');
     assert.ok(
       page.threads.some((thread) => thread.root.body === 'À moi'),
-      'le commentaire a été réécrit par quelqu’un d’autre',
+      'the comment was rewritten by somebody else',
     );
   });
 
-  it('ne donne aucun privilège de réécriture à l’administrateur', async () => {
-    // Modérer, c'est masquer ou supprimer. Mettre d'autres mots sous le nom de
-    // quelqu'un est un pouvoir d'une autre nature.
+  it('gives the administrator no rewriting privilege', async () => {
+    // Moderation means hiding or deleting. Putting different words under
+    // somebody's name is a different kind of power.
     const deMamie = await post(familleCookie, 'vacances', 'photo-partagee', 'Mot de Mamie');
     const tentative = await patch(adminCookie, deMamie.id, 'Mot réécrit');
 
     assert.equal(tentative.statusCode, 404);
   });
 
-  it('refuse un corps vide', async () => {
+  it('rejects an empty body', async () => {
     const publie = await post(familleCookie, 'vacances', 'photo-partagee', 'Quelque chose');
     const vide = await patch(familleCookie, publie.id, '   ');
 
     assert.equal(vide.statusCode, 400);
   });
 
-  it('n’annonce pas la correction sur le message d’un autre', async () => {
+  it("does not advertise editing on someone else's message", async () => {
     const deMamie = await post(familleCookie, 'vacances', 'photo-partagee', 'Frais');
     const vuParAlexis = await read(adminCookie, 'vacances', 'photo-partagee');
     const trouve = vuParAlexis.threads.find((thread) => thread.root.id === deMamie.id);
 
     assert.equal(trouve?.root.canEdit, false);
-    // Il peut en revanche le supprimer : les deux droits ne se confondent pas.
+    // It may still delete it: the two rights are distinct.
     assert.equal(trouve?.root.canDelete, true);
   });
 });
 
-describe('compteurs de tout un album', () => {
+describe('whole-album counters', () => {
   async function counts(cookie: string, albumId: string): Promise<AlbumCommentCounts> {
     const response = await server.inject({
       method: 'GET',
@@ -600,22 +598,22 @@ describe('compteurs de tout un album', () => {
     return response.json<AlbumCommentCounts>();
   }
 
-  it('dit la même chose que le fil, photo par photo', async () => {
+  it('matches the thread for each photo', async () => {
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
     const groupe = await counts(familleCookie, 'vacances');
 
-    // L'invariant qui compte : la pastille et le fil ne peuvent pas diverger,
-    // sinon on annonce des commentaires que le panneau ne montre pas.
+    // The invariant that matters: the badge and the thread cannot diverge,
+    // otherwise comments are announced that the panel does not show.
     assert.equal(groupe.counts['photo-partagee'], page.total);
   });
 
-  it('n’expose pas les commentaires d’un album qu’on ne voit pas', async () => {
-    // `photo-partagee` est indexée dans les deux albums : si le cloisonnement
-    // cédait ici, le compte de l'album privé fuirait sous la même clé.
+  it('does not expose comments from an inaccessible album', async () => {
+    // `photo-partagee` is indexed in both albums: if isolation failed here, the
+    // private album count would leak under the same key.
     const groupe = await counts(familleCookie, 'vacances');
     const prive = await read(adminCookie, 'prive', 'photo-partagee');
 
-    assert.ok(prive.total > 0, 'le fil privé est vide, le test ne prouve rien');
+    assert.ok(prive.total > 0, 'the private thread is empty, so the test proves nothing');
     assert.notEqual(groupe.counts['photo-partagee'], prive.total);
 
     const refus = await server.inject({
@@ -626,18 +624,18 @@ describe('compteurs de tout un album', () => {
     assert.equal(refus.statusCode, 404);
   });
 
-  it('omet les photos sans commentaire', async () => {
+  it('omits photos without comments', async () => {
     context.media.upsertMany([media('vacances', 'photo-muette')], '2025-01-01T00:00:00.000Z');
 
     const groupe = await counts(familleCookie, 'vacances');
     assert.equal(groupe.counts['photo-muette'], undefined);
   });
 
-  it('laisse passer le désabonnement malgré la route paramétrique', async () => {
-    // `/:albumId` et `/unsubscribe` cohabitent sous le même préfixe. Si le
-    // paramètre l'emportait, le lien des emails déjà partis répondrait 401 —
-    // impossible à rattraper une fois les messages envoyés.
+  it('allows unsubscribe through despite the parameterised route', async () => {
+    // `/:albumId` and `/unsubscribe` share the same prefix. If the parameter
+    // took precedence, links in emails already sent would return 401 —
+    // impossible to remedy once the messages have gone out.
     const response = await server.inject({ method: 'GET', url: '/api/comments/unsubscribe' });
-    assert.equal(response.statusCode, 400, 'la route sans session n’est plus atteinte');
+    assert.equal(response.statusCode, 400, 'the route without a session is no longer reached');
   });
 });

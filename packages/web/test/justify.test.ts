@@ -38,7 +38,7 @@ function photo(id: string, takenAt: string, width = 4000, height = 3000): MediaI
   };
 }
 
-/** 30 photos réparties sur trois mois consécutifs. */
+/** 30 photos spread across three consecutive months. */
 const items = Array.from({ length: 30 }, (_, index) => {
   const month = String(3 + Math.floor(index / 10)).padStart(2, '0');
   const day = String((index % 10) + 1).padStart(2, '0');
@@ -46,18 +46,18 @@ const items = Array.from({ length: 30 }, (_, index) => {
 });
 
 describe('computeLayout', () => {
-  it('ne rend rien sans largeur mesurée', () => {
+  it('returns nothing without a measured width', () => {
     const layout = computeLayout(items, { ...OPTIONS, containerWidth: 0 });
     assert.equal(layout.totalHeight, 0);
     assert.deepEqual(layout.sections, []);
   });
 
-  it('ne rend rien sans média', () => {
+  it('returns nothing without media', () => {
     const layout = computeLayout([], OPTIONS);
     assert.equal(layout.totalHeight, 0);
   });
 
-  it("regroupe par mois dans l'ordre reçu", () => {
+  it('groups by month in received order', () => {
     const layout = computeLayout(items, OPTIONS);
     assert.deepEqual(
       layout.sections.map((section) => section.key),
@@ -65,10 +65,10 @@ describe('computeLayout', () => {
     );
   });
 
-  it('segmente aussi bien un album servi du plus ancien au plus récent', () => {
-    // La grille ne trie rien : elle découpe la suite reçue en mois consécutifs.
-    // Le tri ascendant de l'API doit donc lui suffire tel quel, en-têtes dans
-    // l'ordre inverse et sans mois dédoublé.
+  it('also segments an album served from oldest to newest', () => {
+    // The grid sorts nothing: it splits the received sequence into consecutive
+    // months. The API's ascending order must therefore work as is, with headings
+    // in reverse order and no duplicated month.
     const layout = computeLayout([...items].reverse(), OPTIONS);
 
     assert.deepEqual(
@@ -78,7 +78,7 @@ describe('computeLayout', () => {
     assert.equal(layout.rows.flatMap((row) => row.cells).length, items.length);
   });
 
-  it('place chaque média une fois et une seule', () => {
+  it('places every media item exactly once', () => {
     const layout = computeLayout(items, OPTIONS);
     const indexes = layout.rows.flatMap((row) => row.cells.map((cell) => cell.index));
 
@@ -89,24 +89,24 @@ describe('computeLayout', () => {
     );
   });
 
-  it('remplit exactement la largeur sur les lignes justifiées', () => {
+  it('fills the width exactly on justified rows', () => {
     const layout = computeLayout(items, OPTIONS);
 
     for (const section of layout.sections) {
-      // La dernière ligne d'une section n'est volontairement pas justifiée.
+      // The last row of a section is deliberately not justified.
       for (const row of section.rows.slice(0, -1)) {
         const last = row.cells.at(-1)!;
         assert.equal(
           last.x + last.width,
           OPTIONS.containerWidth,
-          'une ligne justifiée doit finir pile au bord droit',
+          'a justified row must end exactly at the right edge',
         );
       }
     }
   });
 
-  it("n'étire pas la dernière ligne d'une section", () => {
-    // Deux photos seules ne peuvent pas remplir 1200 px sans devenir énormes.
+  it('does not stretch the last row of a section', () => {
+    // Two photos alone cannot fill 1200 px without becoming enormous.
     const layout = computeLayout(
       [photo('a', '2024-03-01T10:00:00.000Z'), photo('b', '2024-03-02T10:00:00.000Z')],
       OPTIONS,
@@ -117,7 +117,7 @@ describe('computeLayout', () => {
     assert.ok(row.cells.at(-1)!.x + row.cells.at(-1)!.width < OPTIONS.containerWidth);
   });
 
-  it('respecte les proportions de chaque image', () => {
+  it('preserves the proportions of every image', () => {
     const layout = computeLayout(
       [
         photo('paysage', '2024-03-01T10:00:00.000Z', 3000, 2000),
@@ -127,11 +127,11 @@ describe('computeLayout', () => {
     );
 
     const [paysage, portrait] = layout.rows[0]!.cells;
-    assert.ok(paysage!.width > portrait!.width, 'le paysage doit être plus large que le portrait');
+    assert.ok(paysage!.width > portrait!.width, 'landscape must be wider than portrait');
     assert.ok(Math.abs(paysage!.width / paysage!.height - 1.5) < 0.05);
   });
 
-  it('donne une proportion de repli aux médias sans dimensions', () => {
+  it('gives media without dimensions a fallback aspect ratio', () => {
     const orphan: MediaItem = {
       ...photo('x', '2024-03-01T10:00:00.000Z'),
       width: null,
@@ -143,8 +143,8 @@ describe('computeLayout', () => {
     assert.ok(cell.width > 0 && cell.height > 0);
   });
 
-  it('borne les images extrêmement panoramiques', () => {
-    // Sans borne, un panorama 20:1 écraserait toute sa ligne.
+  it('bounds extremely panoramic images', () => {
+    // Without a bound, a 20:1 panorama would flatten its entire row.
     const panorama = photo('pano', '2024-03-01T10:00:00.000Z', 20000, 1000);
     const layout = computeLayout([panorama], OPTIONS);
     const cell = layout.rows[0]!.cells[0]!;
@@ -152,7 +152,7 @@ describe('computeLayout', () => {
     assert.ok(cell.width / cell.height <= 3.6);
   });
 
-  it('empile les sections sans chevauchement', () => {
+  it('stacks sections without overlap', () => {
     const layout = computeLayout(items, OPTIONS);
 
     for (let index = 1; index < layout.sections.length; index++) {
@@ -165,7 +165,7 @@ describe('computeLayout', () => {
     assert.equal(layout.totalHeight, last.y + last.height);
   });
 
-  it('produit des lignes plus courtes quand la fenêtre rétrécit', () => {
+  it('produces shorter rows when the window narrows', () => {
     const large = computeLayout(items, OPTIONS);
     const small = computeLayout(items, { ...OPTIONS, containerWidth: 480 });
 
@@ -174,51 +174,51 @@ describe('computeLayout', () => {
   });
 });
 
-describe('regroupement par mois', () => {
-  it('extrait la clé YYYY-MM', () => {
+describe('grouping by month', () => {
+  it('extracts the YYYY-MM key', () => {
     assert.equal(monthKey('2024-07-14T18:32:10.000Z'), '2024-07');
   });
 
-  it('rend un libellé lisible avec majuscule', () => {
+  it('returns a readable label with an initial capital', () => {
     assert.equal(monthLabel('2024-07'), 'July 2024');
   });
 });
 
-describe('regroupement par jour', () => {
-  it('extrait la clé YYYY-MM-DD', () => {
+describe('grouping by day', () => {
+  it('extracts the YYYY-MM-DD key', () => {
     assert.equal(dayKey('2024-07-14T18:32:10.000Z'), '2024-07-14');
   });
 
-  it('ne bascule pas de jour pour une prise de vue de fin de soirée', () => {
-    // Le piège du fuseau : lue en Europe/Paris, une photo de 23 h 30 le 14
-    // tomberait au 15. `taken_at` étant l'heure de l'appareil, elle doit rester
-    // au 14 quel que soit le fuseau du navigateur.
+  it('does not change day for a late-evening photo', () => {
+    // The time-zone trap: read in Europe/Paris, a photo taken at 23:30 on the
+    // 14th would fall on the 15th. Because `taken_at` is device time, it must
+    // remain on the 14th regardless of the browser's time zone.
     assert.equal(dayKey('2024-07-14T23:30:00.000Z'), '2024-07-14');
     assert.equal(dayKey('2024-07-15T00:30:00.000Z'), '2024-07-15');
   });
 
-  it('rend une date lisible plutôt que la clé technique', () => {
+  it('returns a readable date rather than the technical key', () => {
     assert.equal(dayLabel('2026-07-14', '2026-08-01'), '14 July 2026');
   });
 
-  it('nomme les deux jours les plus récents plutôt que de les dater', () => {
-    // Dans un album qu'on vient d'alimenter, « Aujourd'hui » se repère d'un
-    // coup d'œil là où deux quantièmes voisins demandent de lire les chiffres.
+  it('names the two most recent days instead of dating them', () => {
+    // In a newly updated album, "Today" is recognisable at a glance whereas two
+    // neighbouring day numbers require reading the digits.
     assert.equal(dayLabel('2026-08-01', '2026-08-01'), 'Today');
     assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Yesterday');
     assert.equal(dayLabel('2026-07-30', '2026-08-01'), '30 July 2026');
   });
 
-  it('trouve la veille par-dessus un changement de mois et une année bissextile', () => {
-    // Un décalage naïf sur le quantième daterait « Hier » au 0 mars.
+  it('finds yesterday across a month boundary and a leap year', () => {
+    // Naively decrementing the day number would date "Yesterday" as 0 March.
     assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Yesterday');
     assert.equal(dayLabel('2024-02-29', '2024-03-01'), 'Yesterday');
     assert.equal(dayLabel('2025-12-31', '2026-01-01'), 'Yesterday');
   });
 });
 
-describe('computeLayout, découpage en sections', () => {
-  /** Deux photos par jour sur quatre jours à cheval sur deux mois. */
+describe('computeLayout section splitting', () => {
+  /** Two photos per day over four days spanning two months. */
   const acrossMonths = [
     photo('a', '2024-03-30T09:00:00.000Z'),
     photo('b', '2024-03-30T18:00:00.000Z'),
@@ -227,8 +227,8 @@ describe('computeLayout, découpage en sections', () => {
     photo('e', '2024-04-30T09:00:00.000Z'),
   ];
 
-  it("découpe par mois quand rien n'est demandé", () => {
-    // `month` est le défaut partagé : l'omettre ne doit pas changer la grille.
+  it('splits by month when nothing is requested', () => {
+    // `month` is the shared default, so omitting it must not change the grid.
     const implicite = computeLayout(items, OPTIONS);
     const explicite = computeLayout(items, { ...OPTIONS, groupBy: 'month' });
     assert.deepEqual(
@@ -237,7 +237,7 @@ describe('computeLayout, découpage en sections', () => {
     );
   });
 
-  it('produit une section par jour', () => {
+  it('produces one section per day', () => {
     const layout = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'day' });
     assert.deepEqual(
       layout.sections.map((section) => section.key),
@@ -245,9 +245,9 @@ describe('computeLayout, découpage en sections', () => {
     );
   });
 
-  it('sépare deux photos du même quantième mais de mois différents', () => {
-    // Le 30 mars et le 30 avril partagent leur quantième : une clé qui ne
-    // porterait que le jour les fusionnerait en une seule section.
+  it('separates two photos with the same day number in different months', () => {
+    // 30 March and 30 April share their day number: a key containing only the
+    // day would merge them into one section.
     const layout = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'day' });
     const mars = layout.sections.find((section) => section.key === '2024-03-30')!;
     const avril = layout.sections.find((section) => section.key === '2024-04-30')!;
@@ -256,8 +256,8 @@ describe('computeLayout, découpage en sections', () => {
     assert.equal(avril.rows.flatMap((row) => row.cells).length, 1);
   });
 
-  it('réunit dans un même mois des jours que le découpage par jour sépare', () => {
-    // La réciproque : trois jours de mars, un seul en-tête « Mars 2024 ».
+  it('combines days into one month when day splitting separates them', () => {
+    // The converse: three March days under a single "March 2024" heading.
     const layout = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'month' });
     assert.deepEqual(
       layout.sections.map((section) => section.key),
@@ -266,7 +266,7 @@ describe('computeLayout, découpage en sections', () => {
     assert.equal(layout.sections[0]!.rows.flatMap((row) => row.cells).length, 3);
   });
 
-  it('ne fusionne jamais deux photos de jours différents dans la même section', () => {
+  it('never merges photos from different days into one section', () => {
     const layout = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
 
     for (const section of layout.sections) {
@@ -276,9 +276,9 @@ describe('computeLayout, découpage en sections', () => {
     }
   });
 
-  it('découpe par jour dans les deux sens de tri', () => {
-    // La grille ne trie rien : le tri ascendant de l'API doit lui suffire tel
-    // quel, en-têtes dans l'ordre inverse et sans jour dédoublé.
+  it('splits by day in both sort directions', () => {
+    // The grid sorts nothing: the API's ascending order must work as is, with
+    // headings in reverse order and no duplicated day.
     const desc = computeLayout(acrossMonths, { ...OPTIONS, groupBy: 'day' });
     const asc = computeLayout([...acrossMonths].reverse(), { ...OPTIONS, groupBy: 'day' });
 
@@ -289,7 +289,7 @@ describe('computeLayout, découpage en sections', () => {
     assert.equal(asc.rows.flatMap((row) => row.cells).length, acrossMonths.length);
   });
 
-  it('place chaque média une fois et une seule par jour aussi', () => {
+  it('also places every media item exactly once when grouping by day', () => {
     const layout = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
     const indexes = layout.rows.flatMap((row) => row.cells.map((cell) => cell.index));
 
@@ -299,9 +299,9 @@ describe('computeLayout, découpage en sections', () => {
     );
   });
 
-  it('empile les sections de jour sans chevauchement', () => {
-    // Le découpage par jour multiplie les en-têtes : c'est là qu'une hauteur de
-    // section mal calculée ferait se recouvrir deux grilles.
+  it('stacks day sections without overlap', () => {
+    // Splitting by day multiplies headings: this is where a miscalculated
+    // section height would make two grids overlap.
     const layout = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
 
     for (let index = 1; index < layout.sections.length; index++) {
@@ -312,9 +312,9 @@ describe('computeLayout, découpage en sections', () => {
     assert.equal(layout.totalHeight, last.y + last.height);
   });
 
-  it('donne une grille plus haute par jour que par mois', () => {
-    // Chaque jour ajoute un en-tête et une dernière ligne non justifiée : la
-    // hauteur totale, dont dépend la barre de défilement, doit suivre.
+  it('produces a taller grid by day than by month', () => {
+    // Every day adds a heading and an unjustified final row: the total height,
+    // which controls the scrollbar, must follow.
     const parMois = computeLayout(items, { ...OPTIONS, groupBy: 'month' });
     const parJour = computeLayout(items, { ...OPTIONS, groupBy: 'day' });
 
@@ -323,16 +323,16 @@ describe('computeLayout, découpage en sections', () => {
   });
 });
 
-describe('hauteur d’en-tête variable', () => {
-  /** Six photos réparties sur trois jours consécutifs. */
+describe('variable heading height', () => {
+  /** Six photos spread across three consecutive days. */
   const troisJours = Array.from({ length: 6 }, (_, index) =>
     photo(`j${index}`, `2024-03-0${Math.floor(index / 2) + 1}T10:00:00.000Z`),
   );
 
-  it('décale les sections suivantes de ce que l’en-tête a pris en plus', () => {
-    // C'est l'invariant qui tient toute la fonctionnalité : la hauteur est une
-    // donnée d'entrée du calcul, jamais une mesure. Si le décalage ne suivait
-    // pas, la note passerait sous les photos de sa propre section.
+  it('shifts later sections by the heading height increase', () => {
+    // This invariant supports the entire feature: height is an input to the
+    // calculation, never a measurement. If the offset did not follow, the note
+    // would sit beneath photos in its own section.
     const base = computeLayout(troisJours, { ...OPTIONS, groupBy: 'day' });
     const grandi = computeLayout(troisJours, {
       ...OPTIONS,
@@ -347,7 +347,7 @@ describe('hauteur d’en-tête variable', () => {
     assert.equal(grandi.totalHeight, base.totalHeight + 60);
   });
 
-  it('descend les lignes de la section, pas seulement son en-tête', () => {
+  it('moves the section rows down, not just its heading', () => {
     const grandi = computeLayout(troisJours, {
       ...OPTIONS,
       groupBy: 'day',
@@ -359,7 +359,7 @@ describe('hauteur d’en-tête variable', () => {
     }
   });
 
-  it('retombe sur la hauteur de base quand la fonction est absente ou rend zéro', () => {
+  it('falls back to base height when the function is absent or returns zero', () => {
     const sans = computeLayout(troisJours, { ...OPTIONS, groupBy: 'day' });
     const nul = computeLayout(troisJours, {
       ...OPTIONS,
@@ -372,14 +372,14 @@ describe('hauteur d’en-tête variable', () => {
   });
 });
 
-describe('sections repliées', () => {
-  /** Six photos réparties sur trois jours consécutifs. */
+describe('collapsed sections', () => {
+  /** Six photos spread across three consecutive days. */
   const troisJours = Array.from({ length: 6 }, (_, index) =>
     photo(`j${index}`, `2024-03-0${Math.floor(index / 2) + 1}T10:00:00.000Z`),
   );
   const parJour = { ...OPTIONS, groupBy: 'day' as const };
 
-  it('réduit la section à la hauteur de son en-tête, sans retrancher de gap', () => {
+  it('reduces the section to its heading height without subtracting a gap', () => {
     const layout = computeLayout(troisJours, {
       ...parJour,
       isCollapsed: (key) => key === '2024-03-01',
@@ -389,7 +389,7 @@ describe('sections repliées', () => {
     assert.deepEqual(layout.sections[0]!.rows, []);
   });
 
-  it('remonte les sections suivantes de ce que le repli a libéré', () => {
+  it('moves later sections up by the space released by collapsing', () => {
     const base = computeLayout(troisJours, parJour);
     const replie = computeLayout(troisJours, {
       ...parJour,
@@ -402,10 +402,9 @@ describe('sections repliées', () => {
     assert.equal(replie.totalHeight, base.totalHeight - libere);
   });
 
-  it('retire les cellules repliées de toutes les lignes du layout', () => {
-    // C'est l'invariant dont dépend la navigation clavier : elle se déplace
-    // dans `layout.rows`, et n'a aucun autre moyen de savoir qu'une vignette
-    // est masquée.
+  it('removes collapsed cells from every layout row', () => {
+    // Keyboard navigation depends on this invariant: it moves through
+    // `layout.rows` and has no other way to know that a thumbnail is hidden.
     const layout = computeLayout(troisJours, {
       ...parJour,
       isCollapsed: (key) => key === '2024-03-01',
@@ -415,7 +414,7 @@ describe('sections repliées', () => {
     assert.deepEqual(places, ['j2', 'j3', 'j4', 'j5']);
   });
 
-  it('garde le compte de la section, seul témoin de ce qu’elle cache', () => {
+  it('keeps the section count as the only sign of what it hides', () => {
     const layout = computeLayout(troisJours, { ...parJour, isCollapsed: () => true });
 
     assert.deepEqual(
@@ -425,7 +424,7 @@ describe('sections repliées', () => {
     assert.deepEqual(layout.rows, []);
   });
 
-  it('empile trois en-têtes repliés sans les chevaucher', () => {
+  it('stacks three collapsed headings without overlap', () => {
     const layout = computeLayout(troisJours, { ...parJour, isCollapsed: () => true });
 
     layout.sections.forEach((section, position) => {
@@ -435,7 +434,7 @@ describe('sections repliées', () => {
     });
   });
 
-  it('laisse le layout intact quand la fonction est absente', () => {
+  it('leaves the layout intact when the function is absent', () => {
     const layout = computeLayout(troisJours, parJour);
 
     assert.equal(layout.sections[0]!.collapsed, false);
@@ -444,7 +443,7 @@ describe('sections repliées', () => {
 });
 
 describe('targetRowHeightFor', () => {
-  it('grandit avec la largeur disponible', () => {
+  it('grows with the available width', () => {
     const widths = [400, 600, 1000, 1600, 2400];
     const heights = widths.map(targetRowHeightFor);
     assert.deepEqual(

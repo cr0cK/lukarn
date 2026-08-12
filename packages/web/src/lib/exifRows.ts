@@ -10,22 +10,22 @@ import {
   formatFocalLength,
 } from './format';
 
-/** Une ligne de l'onglet « Infos » : un libellé, sa valeur, et son statut. */
+/** A row in the "Info" tab: a label, its value and status. */
 export interface ExifRow {
   label: string;
   value: string;
-  /** Lien optionnel (géolocalisation). */
+  /** Optional link (geolocation). */
   href?: string;
-  /** Ligne qui constate une absence, et non une donnée : rendue en retrait. */
+  /** Row reporting absence rather than data; rendered as secondary. */
   absent?: boolean;
 }
 
 /**
- * Les lignes du panneau d'informations d'un média.
+ * Rows in a media information panel.
  *
- * Hors du composant, comme `captionEntries` : c'est la seule partie du panneau
- * qui ait des cas — une donnée présente, absente, ou absente et dite — et la
- * seule qui se vérifie sans DOM.
+ * Outside the component like `captionEntries`: this is the only panel part with
+ * cases — data present, absent, or absent and stated — and the only one verifiable
+ * without the DOM.
  */
 export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRow[] {
   const rows: ExifRow[] = [];
@@ -33,17 +33,16 @@ export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRo
     if (value) rows.push(href ? { label, value, href } : { label, value });
   };
 
-  // La journée d'abord : c'est le seul texte écrit par un humain sur cette
-  // photo, et il dit ce que ni le nom de fichier ni l'EXIF ne diront jamais.
+  // Day first: this is the only human-written text on the photo, saying what
+  // neither the filename nor EXIF ever will.
   //
-  // **Ces deux lignes sont sans condition de largeur, et c'est délibéré.**
-  // L'en-tête de la visionneuse ne montre le contexte du jour qu'à partir de
-  // `md` (D70) : sous ce seuil, elles sont le seul accès à la note depuis une
-  // photo ouverte. Les conditionner ferait disparaître l'information sur
-  // téléphone sans rien casser de visible.
+  // **These two lines have no width condition, deliberately.** The viewer header
+  // shows day context only from `md` (D70): below that, they are the only access
+  // to the note from an open photo. Conditioning them would remove information
+  // on phones without visibly breaking anything.
   //
-  // `place` prime sur `autoPlaces` — c'est une correction saisie à la main, et
-  // une correction que le géocodage écraserait ne servirait à rien (D51).
+  // `place` takes precedence over `autoPlaces` — it is a manual correction, and
+  // a correction overwritten by geocoding would serve no purpose (D51).
   push('Lieu', day?.place ?? day?.autoPlaces.join(' · '));
   push('That day', day?.description);
 
@@ -58,19 +57,17 @@ export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRo
   push('Shutter', formatExposure(detail.exif.exposureTime));
   push('ISO', detail.exif.isoSpeed ? String(detail.exif.isoSpeed) : null);
 
-  // La position sort de l'EXIF de **cette** photo, et ne doit donc rien au
-  // géocodage inverse : elle s'affiche que « Lieu » ait un nom ou pas (D94).
+  // Position comes from **this** photo's EXIF and owes nothing to reverse
+  // geocoding: display it whether "Place" has a name or not (D94).
   //
-  // Son absence se dit, là où toutes les autres lignes s'effacent en silence.
-  // C'est la seule dont on se demande, en ne la voyant pas, si la photo n'a
-  // rien à donner ou si l'application n'a pas fini son travail — la première
-  // réponse est définitive, la seconde invite à revenir plus tard, et rien à
-  // l'écran ne les distinguait.
+  // State its absence where every other row disappears silently. It is the only
+  // missing row that leaves doubt between no photo data and unfinished work —
+  // the first is final, the second invites a later return, and the screen did not
+  // distinguish them.
   //
-  // Réservé aux photos : Drive ne rend de position que dans
-  // `imageMediaMetadata`, jamais pour une vidéo. La ligne y vaudrait « aucune »
-  // sur la totalité des fichiers, ce qui n'apprendrait rien de celui qu'on
-  // regarde et laisserait croire à une vidéo dégéolocalisée.
+  // Photos only: Drive returns position in `imageMediaMetadata`, never for video.
+  // The row would say "none" for every file, revealing nothing about the viewed
+  // one and implying geolocation had been removed from a video.
   const coordinates = formatCoordinates(detail.exif.latitude, detail.exif.longitude);
   if (coordinates) {
     rows.push({

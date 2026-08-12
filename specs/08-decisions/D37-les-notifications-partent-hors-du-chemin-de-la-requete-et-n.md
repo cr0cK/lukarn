@@ -1,28 +1,28 @@
-# D37 — Les notifications partent hors du chemin de la requête, et n'échouent jamais
+# D37 — Notifications are sent outside the request path and never fail it
 
-**Contexte.** Un commentaire doit prévenir le propriétaire de l'instance, et
-l'auteur d'un fil quand on lui répond. L'application n'avait jusque-là aucune dépendance
-d'envoi d'email — « pas de courriel à envoyer » figurait même dans le hors
-périmètre de [01](../01-vision-et-perimetre.md), à propos de l'inscription.
+**Context.** A comment must notify the instance owner, and a thread's author
+when someone replies. Until then, the application had no email-sending
+dependency — "no email to send" even appeared in the out-of-scope section of
+[01](../01-vision-et-perimetre.md), regarding registration.
 
-**Choix.** `nodemailer` derrière `SMTP_URL` et `MAIL_FROM`. `POST` répond dès que
-la ligne est écrite ; les messages sont mis dans une file sérialisée et partent
-après. Un échec est **journalisé et abandonné**, sans réessai. Sans configuration
-SMTP, le `Mailer` est inerte plutôt qu'absent : aucun appelant n'a à savoir si
-l'instance envoie des emails.
+**Decision.** `nodemailer` behind `SMTP_URL` and `MAIL_FROM`. `POST` responds as
+soon as the row is written; messages enter a serialised queue and are sent
+afterwards. A failure is **logged and abandoned**, with no retry. Without SMTP
+configuration, the `Mailer` is inert rather than absent: no caller needs to
+know whether the instance sends emails.
 
-**Écarté.** Envoyer dans le handler : un relais SMTP lent ferait attendre
-plusieurs secondes après un clic sur « Publier », pour un travail qui ne
-concerne pas celui qui attend. Écarté aussi : une file persistante avec
-réessais — c'est un mécanisme à surveiller, alors qu'une notification manquée
-est un désagrément et que le commentaire, lui, est bien enregistré. Écarté
-enfin : écrire un client SMTP maison pour éviter la dépendance ; `nodemailer`
-n'a aucune dépendance runtime, ce qui rejoint le raisonnement de D5.
+**Rejected.** Sending in the handler: a slow SMTP relay would cause a wait of
+several seconds after clicking "Publish", for work unrelated to the person
+waiting. Also rejected: a persistent queue with retries — it is a mechanism to
+monitor, while a missed notification is an inconvenience and the comment is
+safely recorded. Finally, writing an in-house SMTP client to avoid the
+dependency was rejected; `nodemailer` has no runtime dependency, in line with
+the reasoning in D5.
 
-**Conséquences.** Le `drain()` de l'arrêt gracieux est indispensable : sans lui,
-un commentaire posté juste avant un redéploiement serait enregistré sans que
-personne n'en soit prévenu. Le lien de désabonnement est un HMAC sans expiration
-et sans session (voir [04](../04-securite-et-acces.md)) — un email se rouvre des
-mois plus tard, et demander de se connecter pour cesser d'être dérangé serait une
-façon de ne pas répondre. `PUBLIC_URL` devient structurante une fois de plus :
-mal renseignée, elle produit des notifications qui ne mènent nulle part.
+**Consequences.** The graceful shutdown's `drain()` is essential: without it, a
+comment posted just before a redeployment would be recorded without anyone
+being notified. The unsubscribe link is an HMAC with no expiry and no session
+(see [04](../04-securite-et-acces.md)) — an email may be reopened months later,
+and requiring sign-in to stop being bothered would be a way of not responding.
+`PUBLIC_URL` becomes foundational once again: configured incorrectly, it
+produces notifications that lead nowhere.

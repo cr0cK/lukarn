@@ -14,14 +14,13 @@ import { AlbumNotifier } from '../src/notifier.js';
 import { encodeCursor, type MediaUpsert } from '../src/repo.js';
 
 /**
- * Abonnement aux nouveautés d'un album, et annonce de celles-ci.
+ * Subscription to new album content and its announcement.
  *
- * Trois idées gouvernent ce qui suit. On s'abonne **en ouvrant l'album**, parce
- * qu'une identité n'est rattachée à aucun album et qu'une case à cocher ne
- * serait jamais cochée. Un refus, lui, ne se reprend pas : rouvrir l'album le
- * lendemain d'un désabonnement ne réabonne pas. Et ce qui est nouveau se
- * compte sur `added_at`, jamais sur `seen_at` que la synchronisation réécrit
- * partout à chaque passage.
+ * Three ideas govern what follows. Visitors subscribe **by opening the album**,
+ * because an identity is not tied to any album and a checkbox would never be
+ * selected. Refusal, however, is permanent: reopening the album the day after
+ * unsubscribing does not resubscribe. New content is counted using `added_at`,
+ * never `seen_at`, which synchronisation rewrites everywhere on every run.
  */
 
 const root = mkdtempSync(join(tmpdir(), 'nonni-abo-'));
@@ -46,7 +45,7 @@ const MOT_DE_PASSE = 'mot-de-passe-de-test';
 let server: FastifyInstance;
 let context: AppContext;
 
-/** Identité vérifiée d'emblée : le chemin du code est éprouvé ailleurs. */
+/** Pre-verified identity: the code path is tested elsewhere. */
 function identiteVerifiee(email: string, nom: string): number {
   const asked = context.commenters.requestCode(email, nom);
   assert.ok('code' in asked);
@@ -55,7 +54,7 @@ function identiteVerifiee(email: string, nom: string): number {
   return verified.commenter.id;
 }
 
-/** Ouvre une session sur la clé d'accès partagée et rend son cookie. */
+/** Opens a session with the shared access key and returns its cookie. */
 async function connexion(username: string): Promise<string> {
   const response = await server.inject({
     method: 'POST',
@@ -69,9 +68,8 @@ async function connexion(username: string): Promise<string> {
 }
 
 /**
- * Rattache une identité vérifiée à cette session. Le code n'est jamais rendu
- * par l'API : il est relu dans le message capturé, ce qui vérifie au passage
- * qu'il part bien.
+ * Attaches a verified identity to this session. The API never returns the code:
+ * it is read from the captured message, which also verifies that it was sent.
  */
 async function identification(cookie: string, email: string, nom: string): Promise<void> {
   boiteAuxLettres.length = 0;
@@ -84,9 +82,9 @@ async function identification(cookie: string, email: string, nom: string): Promi
   assert.equal(asked.statusCode, 202, asked.body);
   await context.mailer.drain();
 
-  // Le code est dans le corps, pas dans le sujet — voir D65.
+  // The code is in the body, not the subject — see D65.
   const code = /\b(\d{6})\b/.exec(boiteAuxLettres.at(-1)?.text ?? '')?.[1];
-  assert.ok(code, 'aucun code envoyé');
+  assert.ok(code, 'no code sent');
 
   const verified = await server.inject({
     method: 'POST',
@@ -127,9 +125,9 @@ function photo(albumId: string, id: string): MediaUpsert {
 }
 
 /**
- * Notifieur relié à une boîte d'envoi observable. `vider` attend la file : les
- * messages partent hors du chemin de l'appel (D37), donc rien n'est arrivé
- * juste après `run()`.
+ * Notifier connected to an observable outbox. `vider` waits for the queue:
+ * messages are sent outside the call path (D37), so nothing has arrived just
+ * after `run()`.
  */
 function notifieur(envoyes: MailMessage[]): {
   passage: AlbumNotifier;
@@ -152,7 +150,7 @@ function notifieur(envoyes: MailMessage[]): {
   return { passage, vider: () => mailer.drain() };
 }
 
-/** Messages capturés : l'instance de test n'ouvre évidemment pas de SMTP. */
+/** Captured messages: the test instance never opens an SMTP connection. */
 const boiteAuxLettres: MailMessage[] = [];
 
 before(async () => {
@@ -160,8 +158,8 @@ before(async () => {
   server = built.server;
   context = built.context;
 
-  // Sans transport, aucun code ne peut partir et personne ne peut s'identifier :
-  // c'est le comportement voulu, mais il rendrait ces tests inertes.
+  // Without transport, no code can be sent and nobody can identify themselves:
+  // that is the intended behaviour, but it would make these tests inert.
   context.mailer = new Mailer(async (message) => {
     boiteAuxLettres.push(message);
   }, silencieux);
@@ -187,7 +185,7 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('abonnement à l’ouverture d’un album', () => {
+describe('subscription when opening an album', () => {
   let mamie: number;
 
   before(() => {
@@ -198,7 +196,7 @@ describe('abonnement à l’ouverture d’un album', () => {
     context.db.prepare('DELETE FROM album_subscriptions').run();
   });
 
-  it('abonne une identité vérifiée qui ouvre l’album', () => {
+  it('subscribes a verified identity that opens the album', () => {
     context.subscriptions.subscribe(mamie, 'vacances');
     assert.equal(context.subscriptions.state(mamie, 'vacances'), 'auto');
     assert.deepEqual(
@@ -207,37 +205,37 @@ describe('abonnement à l’ouverture d’un album', () => {
     );
   });
 
-  it('n’abonne jamais une identité non vérifiée', () => {
+  it('never subscribes an unverified identity', () => {
     const asked = context.commenters.requestCode('abo-inconnu@exemple.fr', 'Inconnu');
     assert.ok('code' in asked);
 
     context.subscriptions.subscribe(asked.commenter.id, 'vacances');
 
-    // L'adresse n'est que déclarée : elle peut être celle d'un tiers, à qui
-    // cette galerie n'a rien à écrire.
+    // The address has only been declared: it may belong to a third party whom
+    // this gallery has no right to contact.
     assert.equal(context.subscriptions.state(asked.commenter.id, 'vacances'), null);
     assert.deepEqual(context.subscriptions.subscribers('vacances'), []);
   });
 
-  it('laisse un désabonnement survivre à la réouverture de l’album', () => {
+  it('preserves an unsubscribe when the album is reopened', () => {
     context.subscriptions.subscribe(mamie, 'noel');
     context.subscriptions.unsubscribe(mamie, 'noel');
 
-    // Le lendemain, on rouvre l'album : l'abonnement étant automatique, c'est
-    // ici que tout se joue. Réabonner serait précisément ce qui fait détester
-    // un service.
+    // The album is reopened the next day: because subscription is automatic,
+    // this is where it matters. Resubscribing is exactly what makes people hate
+    // a service.
     context.subscriptions.subscribe(mamie, 'noel');
 
     assert.equal(context.subscriptions.state(mamie, 'noel'), 'opted_out');
     assert.deepEqual(context.subscriptions.subscribers('noel'), []);
   });
 
-  it('ne coupe qu’un album à la fois', () => {
+  it('unsubscribes from only one album at a time', () => {
     context.subscriptions.subscribe(mamie, 'vacances');
     context.subscriptions.subscribe(mamie, 'noel');
     context.subscriptions.unsubscribe(mamie, 'noel');
 
-    // Trouver « Noël 2019 » trop bavard ne doit pas faire taire le reste.
+    // Finding "Noël 2019" too noisy must not silence everything else.
     assert.equal(context.subscriptions.state(mamie, 'vacances'), 'auto');
     assert.deepEqual(
       context.subscriptions.subscribers('vacances').map((abonne) => abonne.email),
@@ -245,23 +243,23 @@ describe('abonnement à l’ouverture d’un album', () => {
     );
   });
 
-  it('n’écrit plus à qui a coupé toutes ses notifications', () => {
+  it('stops writing to someone who disabled all notifications', () => {
     context.subscriptions.subscribe(mamie, 'vacances');
     context.commenters.setNotify(mamie, false);
 
-    // `notify` est le seul interrupteur qui dise « plus aucun email de cette
-    // galerie » : continuer à écrire finirait en indésirable.
+    // `notify` is the only switch that says "no more email from this gallery":
+    // continuing to write would eventually be marked as spam.
     assert.deepEqual(context.subscriptions.subscribers('vacances'), []);
     context.commenters.setNotify(mamie, true);
   });
 });
 
-describe('date d’entrée dans l’index', () => {
+describe('date added to the index', () => {
   beforeEach(() => {
     context.db.prepare('DELETE FROM media').run();
   });
 
-  it('ne bouge plus quand la synchronisation revoit un média', () => {
+  it('does not change when synchronisation sees media again', () => {
     context.media.upsertMany([photo('vacances', 'img-1')], '2026-07-01T00:00:00.000Z');
     context.media.upsertMany([photo('vacances', 'img-1')], '2026-07-02T00:00:00.000Z');
 
@@ -269,20 +267,20 @@ describe('date d’entrée dans l’index', () => {
       .prepare('SELECT added_at, seen_at FROM media WHERE album_id = ? AND id = ?')
       .get('vacances', 'img-1') as { added_at: string; seen_at: string };
 
-    // C'est tout le point : `seen_at` suit la dernière sync, `added_at` non.
-    // Compter les nouveautés sur `seen_at` compterait l'album entier à chaque
-    // passage.
+    // This is the point: `seen_at` follows the latest synchronisation, while
+    // `added_at` does not. Counting new content using `seen_at` would count the
+    // whole album on every run.
     assert.equal(ligne.added_at, '2026-07-01T00:00:00.000Z');
     assert.equal(ligne.seen_at, '2026-07-02T00:00:00.000Z');
   });
 
-  it('ne compte comme nouveaux que les médias entrés après la borne', () => {
+  it('counts only media added after the boundary as new', () => {
     context.media.upsertMany([photo('vacances', 'img-1')], '2026-07-01T00:00:00.000Z');
     context.media.upsertMany(
       [photo('vacances', 'img-2'), photo('vacances', 'img-3')],
       '2026-07-03T00:00:00.000Z',
     );
-    // Le premier média revu au même passage : nouveau pour `seen_at`, connu ici.
+    // The first item is seen again in the same run: new to `seen_at`, known here.
     context.media.upsertMany([photo('vacances', 'img-1')], '2026-07-03T00:00:00.000Z');
 
     assert.deepEqual(context.media.countAddedSince('vacances', '2026-07-02T00:00:00.000Z'), {
@@ -292,7 +290,7 @@ describe('date d’entrée dans l’index', () => {
   });
 });
 
-describe('annonce des nouveautés', () => {
+describe('new content announcements', () => {
   let papi: number;
 
   before(() => {
@@ -306,9 +304,9 @@ describe('annonce des nouveautés', () => {
     context.subscriptions.subscribe(papi, 'vacances');
   });
 
-  it('n’annonce rien rétroactivement sur une base qui vient d’être migrée', async () => {
-    // Une instance en service : des photos indexées avant la migration, donc
-    // sans `added_at`, et aucune borne d'annonce.
+  it('announces nothing retroactively on a newly migrated database', async () => {
+    // A running instance has photos indexed before the migration, therefore
+    // without `added_at`, and no announcement boundary.
     context.db
       .prepare(
         `INSERT INTO media (album_id, id, name, mime_type, kind, taken_at, modified_time, seen_at)
@@ -328,15 +326,15 @@ describe('annonce des nouveautés', () => {
 
     assert.equal(passage.run(maintenant), 0);
     await vider();
-    assert.deepEqual(envoyes, [], "la mise à jour ne doit pas annoncer l'historique");
-    // La borne est posée sans envoi : le passage suivant repart de là.
+    assert.deepEqual(envoyes, [], 'the update must not announce historical content');
+    // The boundary is set without sending, so the next run starts from there.
     assert.equal(context.syncState.notifiedAt('vacances'), new Date(maintenant).toISOString());
     assert.equal(passage.run(maintenant + HEURE_MS), 0);
     await vider();
     assert.deepEqual(envoyes, []);
   });
 
-  it('attend que la synchronisation soit calme', async () => {
+  it('waits for synchronisation to settle', async () => {
     context.syncState.set('vacances', {
       lastSyncAt: '2026-07-01T00:00:00.000Z',
       status: 'ok',
@@ -348,26 +346,26 @@ describe('annonce des nouveautés', () => {
     const envoyes: MailMessage[] = [];
     const { passage, vider } = notifieur(envoyes);
 
-    // Dix minutes après la dernière sync : les lots suivants peuvent encore
-    // arriver, et annoncer maintenant enverrait dix emails dans la journée.
+    // Ten minutes after the latest synchronisation, later batches may still
+    // arrive, and announcing now would send ten emails in one day.
     assert.equal(passage.run(Date.parse('2026-07-01T00:20:00.000Z')), 0);
     await vider();
     assert.deepEqual(envoyes, []);
 
-    // Une heure plus tard, plus rien ne bouge : l'annonce part.
+    // An hour later nothing is changing, so the announcement is sent.
     assert.equal(passage.run(Date.parse('2026-07-01T01:30:00.000Z')), 1);
     await vider();
     assert.equal(envoyes.length, 1);
     assert.match(envoyes[0]!.subject, /1 new photo in Vacances/);
     assert.equal(envoyes[0]!.to, 'abo-papi@exemple.fr');
-    // Le lien mène à ce que le message annonce. Depuis que les albums se lisent
-    // du début (D99), l'ouvrir sans `?order=desc` poserait le lecteur sur les
-    // photos les plus anciennes — l'inverse de « il y a du nouveau ».
+    // The link leads to what the message announces. Since albums are read from
+    // the beginning (D99), opening it without `?order=desc` would place the
+    // reader on the oldest photos — the opposite of "there is new content".
     assert.match(envoyes[0]!.text, /\/album\/vacances\?order=desc/);
     assert.match(envoyes[0]!.html, /\/album\/vacances\?order=desc/);
   });
 
-  it('n’annonce pas deux fois les mêmes photos', async () => {
+  it('does not announce the same photos twice', async () => {
     context.syncState.set('vacances', {
       lastSyncAt: '2026-07-01T00:00:00.000Z',
       status: 'ok',
@@ -387,13 +385,13 @@ describe('annonce des nouveautés', () => {
     await vider();
     assert.match(envoyes[0]!.subject, /2 new photos in Vacances/);
 
-    // Sans la borne, chaque passage horaire réannoncerait le même lot.
+    // Without the boundary, every hourly run would announce the same batch again.
     assert.equal(passage.run(maintenant + HEURE_MS), 0);
     await vider();
     assert.equal(envoyes.length, 1);
   });
 
-  it('n’annonce pas un album dont la dernière synchronisation a échoué', async () => {
+  it('does not announce an album whose latest synchronisation failed', async () => {
     context.syncState.set('vacances', {
       lastSyncAt: '2026-07-01T00:00:00.000Z',
       status: 'error',
@@ -404,15 +402,15 @@ describe('annonce des nouveautés', () => {
 
     const envoyes: MailMessage[] = [];
     const { passage, vider } = notifieur(envoyes);
-    // L'index est partiel : en tirer un compte de nouveautés dirait n'importe
-    // quoi, et la borne ne doit pas avancer pour autant.
+    // The index is partial: deriving a new-content count from it would be
+    // meaningless, and the boundary must not advance either.
     assert.equal(passage.run(Date.parse('2026-07-02T00:00:00.000Z')), 0);
     await vider();
     assert.deepEqual(envoyes, []);
     assert.equal(context.syncState.notifiedAt('vacances'), '2026-06-01T00:00:00.000Z');
   });
 
-  it('avance la borne même sans abonné', () => {
+  it('advances the boundary even without subscribers', () => {
     context.db.prepare('DELETE FROM album_subscriptions').run();
     context.syncState.set('vacances', {
       lastSyncAt: '2026-07-01T00:00:00.000Z',
@@ -424,12 +422,12 @@ describe('annonce des nouveautés', () => {
 
     const envoyes: MailMessage[] = [];
     assert.equal(notifieur(envoyes).passage.run(Date.parse('2026-07-02T00:00:00.000Z')), 0);
-    // Sans cela, le premier abonné venu recevrait pour son premier email les
-    // nouveautés arrivées bien avant qu'il ne s'abonne.
+    // Otherwise, a new subscriber's first email would include content that
+    // arrived long before they subscribed.
     assert.equal(context.syncState.notifiedAt('vacances'), '2026-07-01T00:00:00.000Z');
   });
 
-  it('ne touche à rien tant que SMTP n’est pas configuré', () => {
+  it('changes nothing until SMTP is configured', () => {
     context.syncState.set('vacances', {
       lastSyncAt: '2026-07-01T00:00:00.000Z',
       status: 'ok',
@@ -448,20 +446,20 @@ describe('annonce des nouveautés', () => {
     });
 
     assert.equal(inerte.run(Date.parse('2026-07-02T00:00:00.000Z')), 0);
-    // La borne reste vide : le jour où SMTP arrive, c'est ce passage-là qui
-    // l'initialisera, sans annoncer les photos d'avant.
+    // The boundary remains empty: when SMTP is configured, that run will
+    // initialise it without announcing earlier photos.
     assert.equal(context.syncState.notifiedAt('vacances'), null);
   });
 });
 
-describe('lien de désabonnement d’un album', () => {
-  it('ne vaut pas pour un autre album', () => {
+describe('album unsubscribe link', () => {
+  it('does not apply to another album', () => {
     const jeton = signAlbumUnsubscribeToken('abo-mamie@exemple.fr', 'noel', env.sessionSecret);
 
     assert.ok(
       verifyAlbumUnsubscribeToken('abo-mamie@exemple.fr', 'noel', jeton, env.sessionSecret),
     );
-    // Rejouer d'un album à l'autre couperait un abonnement qu'on n'a pas visé.
+    // Replaying it across albums would remove a subscription that was not targeted.
     assert.ok(
       !verifyAlbumUnsubscribeToken('abo-mamie@exemple.fr', 'vacances', jeton, env.sessionSecret),
     );
@@ -470,7 +468,7 @@ describe('lien de désabonnement d’un album', () => {
     );
   });
 
-  it('rejette un jeton tronqué sans lever', () => {
+  it('rejects a truncated token without throwing', () => {
     const jeton = signAlbumUnsubscribeToken('abo-mamie@exemple.fr', 'noel', env.sessionSecret);
     assert.doesNotThrow(() =>
       verifyAlbumUnsubscribeToken(
@@ -483,7 +481,7 @@ describe('lien de désabonnement d’un album', () => {
   });
 });
 
-describe('par l’API', () => {
+describe('through the API', () => {
   let cookie: string;
   let lecteur: number;
 
@@ -503,27 +501,27 @@ describe('par l’API', () => {
     assert.equal(response.statusCode, 200, response.body);
   }
 
-  it('abonne celui qui ouvre la première page de l’album', async () => {
+  it('subscribes whoever opens the first page of the album', async () => {
     await ouvrir('/api/albums/vacances/items');
     assert.equal(context.subscriptions.state(lecteur, 'vacances'), 'auto');
   });
 
-  it('n’abonne pas depuis le détail d’un média', async () => {
+  it('does not subscribe from media details', async () => {
     await ouvrir('/api/albums/vacances/items/img-api');
-    // Sinon cliquer « Voir la photo » depuis une notification de commentaire
-    // abonnerait aux nouveautés de l'album, ce que personne n'a demandé.
+    // Otherwise, clicking "View photo" from a comment notification would
+    // subscribe to new album content, which nobody requested.
     assert.equal(context.subscriptions.state(lecteur, 'vacances'), null);
   });
 
-  it('n’abonne pas en tournant les pages', async () => {
+  it('does not subscribe while paging', async () => {
     const curseur = encodeCursor('2026-07-01T10:00:00.000Z', 'img-api');
     await ouvrir(`/api/albums/vacances/items?cursor=${encodeURIComponent(curseur)}`);
-    // Les pages suivantes sont le même geste que la première : une écriture par
-    // défilement ne changerait rien à l'abonnement et coûterait à chaque scroll.
+    // Later pages are part of the same action as the first: writing on every
+    // page would not change the subscription and would add a cost to each scroll.
     assert.equal(context.subscriptions.state(lecteur, 'vacances'), null);
   });
 
-  it('coupe l’album visé par le lien, et lui seul, sans session', async () => {
+  it('unsubscribes from only the album targeted by the link without a session', async () => {
     await ouvrir('/api/albums/vacances/items');
     await ouvrir('/api/albums/noel/items');
 
@@ -533,15 +531,15 @@ describe('par l’API', () => {
       url: `/api/subscriptions/unsubscribe?u=${encodeURIComponent('abo-lecteur@exemple.fr')}&a=noel&t=${jeton}`,
     });
 
-    // Aucun cookie : on clique ce lien depuis sa boîte aux lettres, souvent sur
-    // un autre appareil.
+    // There is no cookie because the link is opened from an inbox, often on
+    // another device.
     assert.equal(response.statusCode, 200, response.body);
     assert.match(response.headers['content-type'] as string, /text\/html/);
     assert.equal(context.subscriptions.state(lecteur, 'noel'), 'opted_out');
     assert.equal(context.subscriptions.state(lecteur, 'vacances'), 'auto');
   });
 
-  it('refuse le jeton d’un autre album', async () => {
+  it('rejects a token for another album', async () => {
     await ouvrir('/api/albums/noel/items');
 
     const jeton = signAlbumUnsubscribeToken(
@@ -559,12 +557,13 @@ describe('par l’API', () => {
   });
 });
 
-describe('couplage du notifieur au service d’envoi', () => {
-  it('résout le service d’envoi à chaque passage, pas à sa construction', async () => {
-    // `comments.test.ts` remplace `context.mailer` pour observer les envois. Si
-    // le notifieur avait capturé l'instance à sa construction, il écrirait dans
-    // l'ancienne : le test attendrait un message parti ailleurs, et son échec ne
-    // dirait rien de la cause. Ce test verrouille l'indirection qui l'évite.
+describe('notifier coupling to the delivery service', () => {
+  it('resolves the delivery service on every run, not at construction', async () => {
+    // `comments.test.ts` replaces `context.mailer` to observe deliveries. If
+    // the notifier captured the instance at construction, it would write to
+    // the old one: the test would wait for a message sent elsewhere, and its
+    // failure would not explain why. This test locks down the indirection that
+    // prevents that.
     const papi = identiteVerifiee('abo-tardif@exemple.fr', 'Papi');
     context.db.prepare('DELETE FROM media').run();
     context.db.prepare('DELETE FROM sync_state').run();
@@ -591,8 +590,8 @@ describe('couplage du notifieur au service d’envoi', () => {
       log: silencieux,
     });
 
-    // Remplacé **après** la construction, comme le ferait un test qui installe
-    // son observateur une fois le contexte monté.
+    // Replaced **after** construction, as a test would do when installing its
+    // observer after the context is ready.
     mailer = new Mailer(async (message) => {
       envoyes.push(message);
     }, silencieux);
@@ -600,7 +599,7 @@ describe('couplage du notifieur au service d’envoi', () => {
     passage.run(Date.parse('2026-07-01T02:00:00.000Z'));
     await mailer.drain();
 
-    assert.equal(envoyes.length, 1, 'le remplacement doit être vu par le notifieur');
+    assert.equal(envoyes.length, 1, 'the notifier must see the replacement');
     assert.equal(envoyes[0]!.to, 'abo-tardif@exemple.fr');
   });
 });

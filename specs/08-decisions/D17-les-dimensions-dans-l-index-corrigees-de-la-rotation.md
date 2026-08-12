@@ -1,15 +1,15 @@
-# D17 — Les dimensions dans l'index, corrigées de la rotation
+# D17 — Dimensions in the index, corrected for rotation
 
-**Contexte.** La grille justifiée a besoin des proportions de chaque image avant
-de pouvoir se dessiner.
+**Context.** The justified grid needs the proportions of each image before it
+can be drawn.
 
-**Choix.** `width` et `height` sont stockés en base, **déjà inversés** quand
-`imageMediaMetadata.rotation` est impair (5 à 8 en EXIF).
+**Decision.** `width` and `height` are stored in the database, **already swapped**
+when `imageMediaMetadata.rotation` is odd (5 to 8 in EXIF).
 
-**Écarté.** Mesurer les images au chargement côté client, ce qui produirait un
-reflow à chaque vignette qui arrive — exactement le défaut que la disposition
-justifiée est censée éviter.
+**Rejected.** Measuring images as they load on the client, which would cause a
+reflow as each thumbnail arrives — precisely the flaw that the justified layout
+is meant to avoid.
 
-**Conséquences.** C'est la décision dont dépend tout le frontend : mise en page
-stable, barre de défilement correcte dès le premier rendu, virtualisation
-possible. Voir [07](../07-frontend.md).
+**Consequences.** The entire frontend depends on this decision: a stable layout,
+a correct scrollbar from the first render, and possible virtualisation. See
+[07](../07-frontend.md).

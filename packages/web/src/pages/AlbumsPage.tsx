@@ -37,9 +37,9 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
 
       <div className="px-3.5 py-3">
         <h2 className="truncate text-sm font-medium text-ink-100">{album.title}</h2>
-        {/* Deux lignes clampées : la vignette est ce qui doit rester visible,
-            et la carte ne peut pas changer de hauteur selon l'album sans
-            trouer la grille. Le titre entier reste dans `title`. */}
+        {/* Clamp to two lines: the thumbnail must remain visible, and card
+            height cannot vary by album without leaving holes in the grid. The
+            full title remains in `title`. */}
         {album.description && (
           <p className="mt-1 line-clamp-2 text-xs leading-4 text-ink-300" title={album.description}>
             {album.description}
@@ -64,9 +64,9 @@ export default function AlbumsPage(): ReactElement {
 
   return (
     <div className="min-h-full">
-      {/* La recherche est ici et pas dans un album : elle porte sur toute la
-          bibliothèque, et c'est précisément passé une vingtaine d'albums que
-          « où sont les photos de Marseille » cesse d'avoir une réponse. */}
+      {/* Search belongs here, not inside an album: it covers the whole library,
+          and after roughly twenty albums "where are the Marseille photos?" stops
+          having an obvious answer. */}
       <TopBar
         title="Albums"
         search={<SearchBox shortcutEnabled={!activity.isOpen && !showShortcuts} />}
@@ -78,16 +78,16 @@ export default function AlbumsPage(): ReactElement {
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            Impossible de charger les albums.
+            Cannot load the albums.
           </p>
         )}
 
         {albums && albums.length === 0 && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
             <p className="text-sm text-ink-300">No album is assigned to you.</p>
-            {/* Plus de renvoi vers `config/albums.yaml` : la base fait autorité
-                dès qu'un compte existe, et le fichier n'est plus relu. Suivre
-                cette consigne revenait à éditer un fichier sans effet. */}
+            {/* Do not refer to `config/albums.yaml`: once an account exists the
+                database is authoritative and the file is never reread. Following
+                that instruction meant editing a file with no effect. */}
             <p className="mt-1 text-xs text-ink-400">
               {user?.admin
                 ? 'Create an album from /admin, then assign it to an account.'

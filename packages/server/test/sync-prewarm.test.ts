@@ -10,17 +10,17 @@ import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Une synchronisation prépare les vignettes de ce qu'elle vient d'indexer, et
- * nomme les journées que ses photos géolocalisées permettent de nommer.
+ * A synchronisation prepares thumbnails for what it has just indexed and names
+ * the days that its geolocated photos make it possible to name.
  *
- * C'est le seul moment où l'instance sait qu'il y a du neuf, et le neuf est
- * précisément ce qu'on ouvre. Sans cet enchaînement, un album fraîchement
- * synchronisé reste froid jusqu'au ménage horaire : sa grille demande une
- * plusieurs dizaines de vignettes d'un coup, le serveur n'en rend que deux à
- * quatre à la fois selon les cœurs, et chacune commence par un téléchargement
- * Drive de deux secondes. Les lieux ont le même défaut sous une autre forme :
- * l'en-tête d'une journée resterait muet une heure alors que l'EXIF qu'on vient
- * d'indexer dit déjà où elle s'est passée (D91).
+ * This is the only time the instance knows there is new content, which is
+ * precisely what visitors open. Without this sequence, a freshly synchronised
+ * album stays cold until hourly maintenance: its grid requests several dozen
+ * thumbnails at once, the server renders only two to four concurrently
+ * depending on the core count, and each starts with a two-second Drive
+ * download. Places have the same problem in another form: a day's heading
+ * would remain silent for an hour even though the newly indexed EXIF already
+ * says where it was taken (D91).
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -54,8 +54,8 @@ before(async () => {
   });
   context.config.createAlbum({ id: 'vacances', title: 'Vacances', folderId: 'dossier-1' });
 
-  // La route refuse de synchroniser sans Drive : c'est la seule chose qu'on
-  // simule, tout le reste du chemin est le vrai.
+  // The route refuses to synchronise without Drive: this is the only thing we
+  // simulate; the rest of the path is real.
   Object.defineProperty(context.drive, 'connected', { get: () => true });
 
   const response = await server.inject({
@@ -72,7 +72,7 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-/** Remplace les trois collaborateurs et note l'ordre dans lequel ils sont appelés. */
+/** Replaces all three collaborators and records their call order. */
 function espionner(): string[] {
   const ordre: string[] = [];
   const remplacable = context as unknown as {
@@ -102,32 +102,32 @@ function espionner(): string[] {
   return ordre;
 }
 
-describe('synchronisation puis préchauffage', () => {
-  it('préchauffe après la sync, jamais avant', async () => {
+describe('synchronisation followed by prewarming', () => {
+  it('prewarms after synchronisation, never before', async () => {
     const ordre = espionner();
 
     await context.syncThenPrewarm([]);
 
-    // L'ordre est le fond du sujet : préchauffer d'abord passerait sur l'index
-    // d'avant, c'est-à-dire sur tout sauf les photos qui viennent d'arriver.
-    // Les lieux s'intercalent parce qu'ils sont détachés — le préchauffage
-    // n'attend pas leur géocodage, qui dure des minutes.
+    // Order is the point: prewarming first would use the previous index, which
+    // contains everything except the photos that just arrived. Places run in
+    // between because they are detached — prewarming does not wait for their
+    // geocoding, which takes minutes.
     assert.deepEqual(ordre, ['sync', 'lieux', 'prechauffage']);
   });
 
-  it('déduit les lieux des photos qui viennent d’arriver', async () => {
+  it('derives places from photos that have just arrived', async () => {
     const ordre = espionner();
 
     await context.syncThenPrewarm([]);
 
-    // Le cas qui motive le déclencheur : on verse dans le Drive des photos
-    // géolocalisées, et la journée porte son lieu sans attendre le ménage
-    // horaire. Les lieux après la sync et jamais avant, pour la même raison que
-    // le préchauffage : avant, ils agrégeraient les positions d'hier.
+    // This is why the trigger exists: geolocated photos are added to Drive and
+    // the day gets its place without waiting for hourly maintenance. Places run
+    // after synchronisation and never before, for the same reason as prewarming:
+    // beforehand, they would aggregate yesterday's positions.
     assert.equal(ordre.indexOf('lieux'), ordre.indexOf('sync') + 1);
   });
 
-  it('une resynchronisation demandée depuis /admin y passe aussi', async () => {
+  it('also applies to resynchronisation requested from /admin', async () => {
     const ordre = espionner();
 
     const response = await server.inject({
@@ -138,12 +138,12 @@ describe('synchronisation puis préchauffage', () => {
     });
     assert.equal(response.statusCode, 202);
 
-    // Le déclenchement est en tâche de fond : la réponse part avant la fin.
+    // This runs in the background, so the response is sent before completion.
     await new Promise((resolve) => setImmediate(resolve));
 
-    // Le cas qui a motivé tout ça : on crée un album, on le synchronise depuis
-    // /admin, et on l'ouvre dans la foulée. Une route qui appellerait `syncer`
-    // en direct rendrait cet album froid sans que rien ne le signale.
+    // This is the case that motivated the sequence: an album is created,
+    // synchronised from /admin and immediately opened. A route calling `syncer`
+    // directly would leave that album cold without any visible warning.
     assert.deepEqual(ordre, ['sync', 'lieux', 'prechauffage']);
   });
 });

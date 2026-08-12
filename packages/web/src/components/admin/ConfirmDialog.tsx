@@ -2,9 +2,9 @@ import { type ReactElement, type ReactNode, useEffect, useId, useRef } from 'rea
 import { Button } from './ui';
 
 interface ConfirmDialogProps {
-  /** Nomme ce qui va être supprimé — jamais « Êtes-vous sûr ? ». */
+  /** Names what will be deleted — never "Are you sure?". */
   title: string;
-  /** Décrit la conséquence exacte, y compris ce qui n'est PAS touché. */
+  /** Describes the exact consequence, including what is NOT affected. */
   children: ReactNode;
   confirmLabel: string;
   busy?: boolean;
@@ -13,12 +13,11 @@ interface ConfirmDialogProps {
 }
 
 /**
- * Confirmation modale d'une action destructrice.
+ * Modal confirmation of a destructive action.
  *
- * Volontairement pas `window.confirm` : le texte doit citer l'objet concerné et
- * ses conséquences, ce qu'une boîte native ne met pas en forme, et le bouton
- * dangereux ne doit pas prendre le focus à l'ouverture — un Entrée réflexe
- * suffirait alors à supprimer.
+ * Deliberately not `window.confirm`: the text must name the affected object and
+ * consequences, which a native dialog cannot format, and the dangerous button
+ * must not receive focus on opening — a reflexive Enter would then delete it.
  */
 export function ConfirmDialog({
   title,
@@ -34,8 +33,8 @@ export function ConfirmDialog({
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
-    // Rendre le focus à l'élément déclencheur : sans ça, la navigation clavier
-    // repart du début de la page après chaque annulation.
+    // Restore focus to the triggering element: otherwise keyboard navigation
+    // restarts at the top of the page after every cancellation.
     return () => previous?.focus();
   }, []);
 

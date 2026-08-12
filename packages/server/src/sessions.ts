@@ -5,32 +5,32 @@ import type { Db } from './db.js';
 export const SESSION_COOKIE = 'nonni_session';
 
 /**
- * Un an, prolongé en cours de route (voir `get`). En pratique on ne se
- * déconnecte donc jamais tant qu'on utilise la galerie.
+ * One year, extended along the way (see `get`). In practice, users are never signed
+ * out while they continue to use the gallery.
  *
- * Pourquoi pas d'expiration du tout : une session éternelle est un jeton de
- * connexion permanent — volé une fois, valable à vie — et la table grossirait
- * sans que rien ne la nettoie. Une échéance repoussée à chaque visite donne le
- * confort recherché tout en laissant s'éteindre ce qui n'est plus utilisé.
+ * Why not omit expiry entirely: an eternal session is a permanent sign-in token —
+ * stolen once, valid for life — and the table would grow with nothing to clean it.
+ * An expiry extended on each visit provides the intended convenience while allowing
+ * unused sessions to expire.
  *
- * Attention au vocabulaire : un *cookie de session* au sens HTTP, sans `maxAge`,
- * est celui qui meurt à la fermeture du navigateur — exactement l'inverse. Le
- * cookie posé ici est persistant, avec ce `maxAge`.
+ * Beware the terminology: an HTTP *session cookie*, without `maxAge`, dies when the
+ * browser closes — exactly the opposite. The cookie set here is persistent, with
+ * this `maxAge`.
  */
 const SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 /**
- * Seuil de prolongation. Repousser l'échéance à chaque requête coûterait une
- * écriture SQLite par vignette ; ne la repousser qu'à mi-vie ramène ça à une
- * écriture par visiteur et par semestre, pour le même résultat.
+ * Renewal threshold. Extending the expiry on every request would cost one SQLite
+ * write per thumbnail; extending it only at mid-life reduces this to one write per
+ * visitor every six months, for the same result.
  */
 const RENEW_AFTER_MS = SESSION_TTL_MS / 2;
 
 /**
- * Plafond d'écriture de `last_seen_at`, sur le raisonnement de `RENEW_AFTER_MS`
- * ci-dessus : sans lui, chaque vignette d'une grille déclencherait un UPDATE
- * SQLite. À l'heure, la question à laquelle cette colonne répond — « cette clé
- * est-elle venue cette semaine ? » — garde exactement la même réponse.
+ * Write cap for `last_seen_at`, following the reasoning for `RENEW_AFTER_MS` above:
+ * without it, every thumbnail in a grid would trigger a SQLite UPDATE. At hourly
+ * precision, the question this column answers — "was this key used this week?" —
+ * has exactly the same answer.
  */
 const SEEN_AFTER_MS = 60 * 60 * 1000;
 
@@ -38,27 +38,26 @@ export interface SessionRecord {
   id: string;
   username: string;
   expiresAt: string;
-  /** Identité de commentateur mémorisée, `null` si personne ne s'est déclaré. */
+  /** Remembered commenter identity, `null` if nobody has identified themselves. */
   commenterId: number | null;
   /**
-   * Dernière requête reçue de cette session, à l'heure près. Alimente l'onglet
-   * « Visites » : `created_at` ne dit que « quelqu'un s'est connecté un jour »,
-   * jamais « quelqu'un est venu cette semaine » (D260809h).
+   * Last request received from this session, to the nearest hour. Feeds the "Visits"
+   * tab: `created_at` only says "someone signed in once", never "someone visited
+   * this week" (D260809h).
    */
   lastSeenAt: string | null;
   /**
-   * Vrai quand cette lecture vient de repousser l'échéance. L'appelant doit
-   * alors réémettre le cookie : sans lui, la prolongation ne vivrait qu'en
-   * base et le navigateur jetterait quand même le sien à la date d'origine —
-   * la session la plus assidue finirait déconnectée au bout d'un an.
+   * True when this read has just extended the expiry. The caller must then reissue
+   * the cookie: otherwise the extension would exist only in the database and the
+   * browser would still discard its copy on the original date — even the most active
+   * session would eventually be signed out after a year.
    */
   renewed: boolean;
 }
 
 /**
- * Options du cookie de session, partagées entre la connexion et la
- * prolongation. Deux jeux d'options qui divergent, c'est un cookie qui change
- * de portée ou de politique `sameSite` au premier renouvellement.
+ * Session-cookie options shared by sign-in and renewal. If two sets of options
+ * diverge, the cookie changes scope or `sameSite` policy on its first renewal.
  */
 export function sessionCookieOptions(
   publicUrl: string,
@@ -74,10 +73,10 @@ export function sessionCookieOptions(
   return {
     path: '/',
     httpOnly: true,
-    // `lax` laisse passer la navigation entrante (retour du callback OAuth)
-    // tout en bloquant les requêtes cross-site déclenchées par un tiers.
+    // `lax` permits inbound navigation (the OAuth callback return) while blocking
+    // cross-site requests triggered by a third party.
     sameSite: 'lax',
-    // En HTTP local le cookie `secure` ne serait jamais renvoyé.
+    // Over local HTTP, a `secure` cookie would never be sent back.
     secure: publicUrl.startsWith('https://'),
     maxAge: Math.floor(ttlMs / 1000),
     signed: true,
@@ -85,22 +84,21 @@ export function sessionCookieOptions(
 }
 
 /**
- * Sessions persistées en base plutôt qu'un JWT stateless : ça permet de couper
- * l'accès immédiatement (logout, retrait d'un utilisateur de la config) sans
- * attendre l'expiration d'un jeton déjà distribué.
+ * Sessions are persisted in the database rather than a stateless JWT, allowing
+ * access to be revoked immediately (sign-out, removing a user from configuration)
+ * without waiting for an already issued token to expire.
  *
- * La session porte aussi l'identité de commentateur — mais elle ne la
- * **définit** pas : c'est l'adresse email vérifiée qui identifie une personne,
- * et la session ne fait que s'en souvenir d'une visite à l'autre.
+ * The session also carries the commenter identity — but does not **define** it:
+ * the verified email address identifies a person, and the session merely remembers
+ * it from one visit to the next.
  */
 export class SessionStore {
   constructor(private readonly db: Db) {}
 
   /**
-   * Ouvre une session. `device` est la classe d'appareil déduite du user-agent
-   * de la requête de connexion — c'est le seul moment où on la lit, et elle
-   * n'est pas relue ensuite : un navigateur ne change pas d'appareil en cours
-   * de session.
+   * Opens a session. `device` is the device class inferred from the sign-in request's
+   * user-agent — the only time it is read, as a browser does not change devices
+   * during a session.
    */
   create(username: string, device: DeviceKind | null = null): SessionRecord {
     const id = randomBytes(32).toString('base64url');
@@ -125,14 +123,13 @@ export class SessionStore {
   }
 
   /**
-   * Renvoie la session si elle existe et n'est pas expirée, sinon `null`.
-   * Prolonge l'échéance au passage si la session a dépassé sa mi-vie, et note
-   * le passage si la dernière trace date de plus d'une heure.
+   * Returns the session if it exists and has not expired, otherwise `null`.
+   * Extends its expiry when the session has passed mid-life, and records the visit
+   * if the previous trace is more than an hour old.
    */
   get(id: string): SessionRecord | null {
-    // `last_seen_at` ne coûte aucune lecture supplémentaire : cette ligne est
-    // déjà relue à chaque requête pour vérifier l'échéance, on ajoute une
-    // colonne au SELECT.
+    // `last_seen_at` costs no additional read: this row is already fetched on every
+    // request to check the expiry, so only one column is added to the SELECT.
     const row = this.db
       .prepare(
         `SELECT id, username, expires_at AS expiresAt, commenter_id AS commenterId,
@@ -150,9 +147,9 @@ export class SessionStore {
       return null;
     }
 
-    // NULL sur une session ouverte avant la migration 15 : la première requête
-    // qui la relit la date, sans quoi elle resterait invisible de l'onglet
-    // « Visites » jusqu'à sa reconnexion, c'est-à-dire un an.
+    // NULL for a session opened before migration 15: the first request that reads it
+    // assigns a date, otherwise it would remain invisible from the "Visits" tab until
+    // the next sign-in — potentially a year.
     const seenAt = row.lastSeenAt === null ? 0 : new Date(row.lastSeenAt).getTime();
     const lastSeenAt = now - seenAt >= SEEN_AFTER_MS ? new Date(now).toISOString() : row.lastSeenAt;
     if (lastSeenAt !== row.lastSeenAt) {
@@ -169,10 +166,10 @@ export class SessionStore {
   }
 
   /**
-   * Rattache une identité vérifiée à la session. Toutes les sessions ouvertes
-   * de cette même identité ne sont pas touchées : quelqu'un peut être identifié
-   * sur son téléphone et pas sur l'ordinateur familial, ce qui est précisément
-   * l'intérêt de porter l'identité par session plutôt que par compte.
+   * Attaches a verified identity to the session. Other open sessions for the same
+   * identity are untouched: someone may be identified on their phone but not on the
+   * family computer, precisely why identity is carried per session rather than per
+   * account.
    */
   attachCommenter(sessionId: string, commenterId: number | null): void {
     this.db
@@ -184,7 +181,7 @@ export class SessionStore {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
-  /** Coupe toutes les sessions d'un utilisateur (retiré de la config, par exemple). */
+  /** Revokes all sessions for a user (removed from configuration, for example). */
   destroyForUser(username: string): void {
     this.db.prepare('DELETE FROM sessions WHERE username = ?').run(username);
   }

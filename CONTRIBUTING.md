@@ -105,9 +105,7 @@ something used to be keeps the names it had at the time.
 
 ## Commits and pull requests
 
-**In English**, both, title included — along with the two READMEs. Everything
-else in the repository is being moved to English too; write anything new in
-English.
+**In English**, both, title included — like the rest of the repository.
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org):
 `feat(admin):`, `fix(web):`, `docs:`, `refactor(media):`. The scope is the
@@ -137,11 +135,10 @@ bottom. No file-by-file restatement of the diff; the Files tab does that better.
   clock at the shutter, read from EXIF without a timezone. Every displayed date
   goes through `packages/web/src/lib/format.ts`.
 
-**A note on language.** The code, its comments, the interface and the design
-documents in `specs/` are currently in French, and are being translated to
-English. Until that finishes you will meet French in the source; write your
-additions in English regardless, and don't feel obliged to translate the
-surroundings of your change.
+**A note on language.** The repository is entirely in English — code, comments,
+interface and `specs/`. A few code identifiers predating the rule remain in
+French (see `CLAUDE.md`); renaming them is separate work, not to be folded into
+a prose-only change.
 
 ## Things that will be turned down
 

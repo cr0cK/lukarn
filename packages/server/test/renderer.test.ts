@@ -9,9 +9,9 @@ import { MediaCache } from '../src/media/cache.js';
 import { MediaRenderer } from '../src/media/renderer.js';
 
 /**
- * Production des dérivés WebP. Les deux scénarios couverts ici sont ceux où le
- * rendu doit se rattraper tout seul : un fichier de cache disparu sous ses
- * pieds, et une image que la libvips embarquée ne sait pas décoder.
+ * WebP derivative production. Both scenarios covered here require rendering to
+ * recover by itself: a cache file disappearing underneath it, and an image the
+ * bundled libvips cannot decode.
  */
 
 const root = mkdtempSync(join(tmpdir(), 'nonni-renderer-'));
@@ -28,8 +28,8 @@ before(async () => {
     .toBuffer();
 });
 
-describe('rendu depuis le cache', () => {
-  it('régénère un dérivé dont le fichier a disparu du disque', async () => {
+describe('rendering from cache', () => {
+  it('regenerates a derivative whose file disappeared from disk', async () => {
     const cache = new MediaCache(join(root, 'disparu'), 1024 * 1024);
     await cache.load();
 
@@ -45,19 +45,19 @@ describe('rendu depuis le cache', () => {
     const premier = await renderer.render('photo', { kind: 'thumb', size: 320 }, 'empreinte');
     assert.equal(telechargements, 1);
 
-    // « Vider le cache » depuis /admin, ou un ménage manuel sur le volume :
-    // l'inventaire mémoire désigne alors un fichier qui n'existe plus.
+    // "Clear cache" from /admin, or manual cleanup on the volume: the in-memory
+    // inventory then points to a file that no longer exists.
     rmSync(premier.path);
 
     const second = await renderer.render('photo', { kind: 'thumb', size: 320 }, 'empreinte');
 
-    assert.equal(telechargements, 2, 'le dérivé manquant doit être refabriqué');
-    assert.ok(existsSync(second.path), 'le chemin rendu doit être lisible');
+    assert.equal(telechargements, 2, 'the missing derivative must be rebuilt');
+    assert.ok(existsSync(second.path), 'the returned path must be readable');
   });
 });
 
-describe('préparation de plusieurs variantes', () => {
-  it('ne télécharge l’original qu’une fois pour les trois tailles', async () => {
+describe('preparing multiple variants', () => {
+  it('downloads the original only once for all three sizes', async () => {
     const cache = new MediaCache(join(root, 'prepare'), 1024 * 1024);
     await cache.load();
 
@@ -80,10 +80,10 @@ describe('préparation de plusieurs variantes', () => {
       'empreinte',
     );
 
-    // C'est tout l'intérêt de ce chemin : le téléchargement pèse ~2 s là où le
-    // rendu pèse ~50 ms. Trois `render()` successifs tireraient trois fois le
-    // même fichier, soit trois fois le trafic Drive du préchauffage.
-    assert.equal(telechargements, 1, 'un seul téléchargement pour les trois tailles');
+    // This is the entire point of this path: downloading takes ~2 s while
+    // rendering takes ~50 ms. Three successive `render()` calls would fetch the
+    // same file three times, tripling prewarming's Drive traffic.
+    assert.equal(telechargements, 1, 'one download for all three sizes');
     assert.equal(produits, 3);
 
     for (const size of [320, 640, 1280] as const) {
@@ -91,7 +91,7 @@ describe('préparation de plusieurs variantes', () => {
     }
   });
 
-  it('ne refait ni ne retélécharge ce qui est déjà en cache', async () => {
+  it('neither rebuilds nor redownloads what is already cached', async () => {
     const cache = new MediaCache(join(root, 'prepare-cache'), 1024 * 1024);
     await cache.load();
 
@@ -112,14 +112,13 @@ describe('préparation de plusieurs variantes', () => {
     await renderer.prepare('photo', [...variants], null);
     const seconde = await renderer.prepare('photo', [...variants], null);
 
-    // Un passage de préchauffage repasse sur les mêmes albums heure après
-    // heure : sans ce court-circuit, il retéléchargerait toute la
-    // bibliothèque à chaque tour.
+    // A prewarming pass revisits the same albums hour after hour: without this
+    // short circuit, it would redownload the entire library on every pass.
     assert.equal(seconde, 0);
     assert.equal(telechargements, 1);
   });
 
-  it('demande l’aperçu Drive à la plus grande taille voulue', async () => {
+  it('requests the Drive preview at the largest required size', async () => {
     const cache = new MediaCache(join(root, 'prepare-repli'), 1024 * 1024);
     await cache.load();
 
@@ -148,23 +147,23 @@ describe('préparation de plusieurs variantes', () => {
       null,
     );
 
-    // L'aperçu sert de source aux tailles suivantes, et `withoutEnlargement`
-    // interdit de remonter : le demander en 320 livrerait une vignette de
-    // 320 px sous la clé du 1280.
+    // The preview is the source for subsequent sizes, and `withoutEnlargement`
+    // prevents scaling up: requesting 320 would store a 320 px thumbnail under
+    // the 1280 key.
     assert.deepEqual(urls, ['https://lh3.exemple/Q=s1280']);
     assert.equal(produits, 2);
   });
 });
 
-describe('aperçu d’une vidéo', () => {
-  it('part de l’aperçu Drive sans jamais toucher à l’original', async () => {
+describe('video preview', () => {
+  it('starts from the Drive preview without ever touching the original', async () => {
     const cache = new MediaCache(join(root, 'poster'), 1024 * 1024);
     await cache.load();
 
     const urls: string[] = [];
     const drive = {
       fetchFile: () => {
-        throw new Error('un original de vidéo ne doit jamais être téléchargé');
+        throw new Error('a video original must never be downloaded');
       },
       guard: <T>(operation: () => Promise<T>) => operation(),
       api: () => ({
@@ -190,10 +189,10 @@ describe('aperçu d’une vidéo', () => {
       'poster',
     );
 
-    // Tirer un MP4 de 48 Mo pour le voir refuser par `MAX_DECODE_BYTES` à
-    // chaque vignette est précisément ce que le court-circuit évite : aucun
-    // octet de vidéo ne transite, et D6 (pas de transcodage) reste intact.
-    assert.deepEqual(urls, ['https://lh3.exemple/Vid=s1280'], 'un seul aperçu, à la plus grande');
+    // Fetching a 48 MB MP4 only for `MAX_DECODE_BYTES` to reject it on every
+    // thumbnail is precisely what the short circuit avoids: no video byte is
+    // transferred, and D6 (no transcoding) remains intact.
+    assert.deepEqual(urls, ['https://lh3.exemple/Vid=s1280'], 'one preview at the largest size');
     assert.equal(produits, 3);
 
     for (const size of [320, 640, 1280] as const) {
@@ -201,14 +200,14 @@ describe('aperçu d’une vidéo', () => {
     }
   });
 
-  it('sert un rendu isolé depuis l’aperçu, sans repli à retenter', async () => {
+  it('serves an isolated render from the preview without another fallback', async () => {
     const cache = new MediaCache(join(root, 'poster-unique'), 1024 * 1024);
     await cache.load();
 
     let apercus = 0;
     const drive = {
       fetchFile: () => {
-        throw new Error('un original de vidéo ne doit jamais être téléchargé');
+        throw new Error('a video original must never be downloaded');
       },
       guard: <T>(operation: () => Promise<T>) => operation(),
       api: () => ({
@@ -226,20 +225,20 @@ describe('aperçu d’une vidéo', () => {
     const rendu = await renderer.render('clip', { kind: 'thumb', size: 320 }, null, 'poster');
 
     assert.ok(existsSync(rendu.path));
-    // L'aperçu Drive **est** la source : le repli du chemin photo n'a rien de
-    // plus à tenter, et le redemander ne ferait que rejouer le même appel.
+    // The Drive preview **is** the source: the photo path fallback has nothing
+    // else to try, and requesting it again would only repeat the same call.
     assert.equal(apercus, 1);
   });
 });
 
-describe('repli sur la vignette Drive', () => {
-  it('demande la vignette avec le jeton OAuth et non en anonyme', async () => {
+describe('fallback to the Drive thumbnail', () => {
+  it('requests the thumbnail with the OAuth token rather than anonymously', async () => {
     const cache = new MediaCache(join(root, 'repli'), 1024 * 1024);
     await cache.load();
 
     const urlsAuthentifiees: string[] = [];
     const drive = {
-      // Contenu que sharp ne décode pas : c'est le cas HEIC/RAW.
+      // Content sharp cannot decode: the HEIC/RAW case.
       fetchFile: () => Promise.resolve(new Response(Buffer.from('ceci n’est pas une image'))),
       guard: <T>(operation: () => Promise<T>) => operation(),
       api: () => ({
@@ -253,11 +252,11 @@ describe('repli sur la vignette Drive', () => {
       },
     } as unknown as DriveService;
 
-    // Le `thumbnailLink` d'un fichier privé répond 401/403 sans en-tête
-    // Authorization : un appel anonyme doit être un échec franc.
+    // A private file's `thumbnailLink` returns 401/403 without an Authorization
+    // header: an anonymous call must fail clearly.
     const vraiFetch = globalThis.fetch;
     globalThis.fetch = () => {
-      throw new Error('appel anonyme interdit');
+      throw new Error('anonymous call forbidden');
     };
 
     try {
@@ -272,17 +271,16 @@ describe('repli sur la vignette Drive', () => {
   });
 });
 
-describe('original trop lourd', () => {
-  it('renonce sur la taille annoncée et passe par l’aperçu Drive', async () => {
+describe('oversized original', () => {
+  it('gives up based on the announced size and uses the Drive preview', async () => {
     const cache = new MediaCache(join(root, 'enorme'), 1024 * 1024);
     await cache.load();
 
     let repliDemande = 0;
     const drive = {
-      // Le corps est une image parfaitement décodable : seul l'en-tête de
-      // taille doit provoquer le renoncement. Sans ce contrôle, sharp la
-      // décoderait et le repli ne servirait jamais — c'est ce qui distingue ce
-      // test d'un simple « format non supporté ».
+      // The body is a perfectly decodable image: only the size header should
+      // trigger giving up. Without this check, sharp would decode it and the
+      // fallback would never run — distinguishing this from an unsupported format.
       fetchFile: () =>
         Promise.resolve(
           new Response(jpeg, { headers: { 'content-length': String(500 * 1024 * 1024) } }),
@@ -302,31 +300,31 @@ describe('original trop lourd', () => {
     const renderer = new MediaRenderer(drive, cache, silencieux);
     const rendu = await renderer.render('panorama', { kind: 'full' }, null);
 
-    // La photo reste servie — c'est l'aperçu de Drive, pas un échec : refuser
-    // afficherait une case cassée dans la grille pour un fichier valide.
-    assert.equal(repliDemande, 1, 'un original hors limite ne doit pas être décodé sur place');
+    // The photo is still served — as the Drive preview, not a failure: refusing
+    // would show a broken grid cell for a valid file.
+    assert.equal(repliDemande, 1, 'an oversized original must not be decoded locally');
     assert.ok(existsSync(rendu.path));
   });
 });
 
-describe('échec transitoire de Drive', () => {
-  it('remonte une indisponibilité quand le repli échoue à son tour', async () => {
+describe('transient Drive failure', () => {
+  it('reports unavailability when the fallback also fails', async () => {
     const cache = new MediaCache(join(root, 'transitoire'), 1024 * 1024);
     await cache.load();
 
-    // Le téléchargement de l'original dépasse le délai, et l'aperçu Drive
-    // n'aboutit pas non plus : c'est le seul cas où l'échec atteint la route, et
-    // il doit y rester reconnaissable comme transitoire pour qu'elle réponde
-    // 503 plutôt que 500 — un 500 ferait renoncer le navigateur.
+    // The original download times out and the Drive preview also fails: this is
+    // the only case where failure reaches the route, and it must remain
+    // recognisably transient so the route returns 503 rather than 500 — a 500
+    // would make the browser give up.
     const drive = {
-      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'délai dépassé')),
+      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'timed out')),
       guard: <T>(operation: () => Promise<T>) => operation(),
       api: () => ({
         files: {
           get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/AbC=s220' } }),
         },
       }),
-      fetchAuthorized: () => Promise.reject(new DriveUnavailableError('aperçu', 5, 'Drive 429')),
+      fetchAuthorized: () => Promise.reject(new DriveUnavailableError('preview', 5, 'Drive 429')),
     } as unknown as DriveService;
 
     const renderer = new MediaRenderer(drive, cache, silencieux);
@@ -337,17 +335,17 @@ describe('échec transitoire de Drive', () => {
     );
   });
 
-  it('ne garde rien en cache après un échec', async () => {
-    // L'invariant qui rend le réessai possible : un échec ne doit jamais être
-    // mémorisé, sans quoi la vignette resterait cassée jusqu'à l'éviction.
+  it('keeps nothing cached after a failure', async () => {
+    // The invariant that makes retry possible: a failure must never be cached,
+    // otherwise the thumbnail would remain broken until eviction.
     const cache = new MediaCache(join(root, 'sans-trace'), 1024 * 1024);
     await cache.load();
 
     const drive = {
-      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'délai dépassé')),
+      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'timed out')),
       guard: <T>(operation: () => Promise<T>) => operation(),
       api: () => ({ files: { get: () => Promise.resolve({ data: {} }) } }),
-      fetchAuthorized: () => Promise.reject(new Error('pas d’aperçu')),
+      fetchAuthorized: () => Promise.reject(new Error('no preview')),
     } as unknown as DriveService;
 
     const renderer = new MediaRenderer(drive, cache, silencieux);

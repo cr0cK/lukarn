@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Vérifie que la documentation n'a pas décroché du code.
+ * Checks that the documentation has not drifted from the code.
  *
- * Une règle écrite se respecte tant qu'on y pense. Ce contrôle ne demande pas
- * d'y penser : il compare ce que le code expose à ce que les specs décrivent, et
- * échoue sur l'écart. Il ne juge pas la qualité de la prose — seulement le fait
- * qu'une route, une variable d'environnement ou un module existe sans être
- * mentionné nulle part.
+ * A written rule is followed for as long as someone remembers it. This check
+ * removes that burden: it compares what the code exposes with what the specs
+ * describe, and fails on any discrepancy. It does not judge the quality of the
+ * prose — only whether a route, environment variable or module exists without
+ * being mentioned anywhere.
  *
- * Volontairement fondé sur des points d'ancrage vérifiables plutôt que sur
- * « le commit a-t-il touché specs/ ? », qui se satisferait d'une ligne vide.
+ * Deliberately based on verifiable anchors rather than "did the commit touch
+ * specs/?", which an empty line would satisfy.
  *
  *   node tools/check-specs.mjs
  */
@@ -21,16 +21,15 @@ const RACINE = fileURLToPath(new URL('..', import.meta.url));
 const SPECS = join(RACINE, 'specs');
 
 /**
- * Modules dont le comportement est documenté sans que le fichier soit nommé.
- * Les specs décrivent ce que fait l'application, pas l'inventaire de ses
- * fichiers : exiger le nom d'un composant trivial produirait du bruit, et du
- * bruit fait désactiver un contrôle.
+ * Modules whose behaviour is documented without naming the file. The specs
+ * describe what the application does, not its file inventory: requiring the
+ * name of a trivial component would create noise, and noisy checks get disabled.
  */
 const MODULES_TOLERES = new Set([
-  'Spinner', // indicateur générique, cité par son rôle
-  'ShortcutsOverlay', // l'aide `?` est décrite dans le tableau des raccourcis
-  'main', // point d'entrée, décrit par ce qu'il démarre
-  'index', // barils de types
+  'Spinner', // generic indicator, referred to by its role
+  'ShortcutsOverlay', // the `?` help is described in the shortcuts table
+  'main', // entry point, described by what it starts
+  'index', // type barrels
 ]);
 
 function lire(chemin) {
@@ -57,8 +56,8 @@ const manques = [];
 /* ------------------------------------------------------------------ Routes */
 
 /**
- * Une route non documentée est le manque le plus coûteux : c'est le contrat
- * public de l'application, et rien dans le code ne signale son absence.
+ * An undocumented route is the most costly omission: it is the application's
+ * public contract, and nothing in the code signals that it is missing.
  */
 const routesDeclarees = new Set();
 for (const chemin of fichiers(join(RACINE, 'packages/server/src/routes'), (n) =>
@@ -66,8 +65,8 @@ for (const chemin of fichiers(join(RACINE, 'packages/server/src/routes'), (n) =>
 )) {
   const source = lire(chemin);
   for (const [, methode, url] of source.matchAll(/app\.(get|post|patch|delete)\(\s*'([^']+)'/g)) {
-    // Le préfixe de montage vient d'`app.ts` ; on ne compare que le segment
-    // final, suffisamment discriminant et insensible au remaniement des préfixes.
+    // The mount prefix comes from `app.ts`; only the final segment is compared,
+    // as it is distinctive enough and unaffected by prefix restructuring.
     const segment = url
       .replace(/:[a-zA-Z]+/g, '')
       .replace(/\/+/g, '/')
@@ -80,64 +79,61 @@ for (const route of routesDeclarees) {
   const segment = route.split(' ')[1];
   const motif = segment.split('/').filter(Boolean).pop();
   if (motif && !specApi.includes(motif)) {
-    manques.push(`Route « ${route} » absente de specs/05-api.md (cherché « ${motif} »)`);
+    manques.push(`Route "${route}" missing from specs/05-api.md (searched for "${motif}")`);
   }
 }
 
-/* ------------------------------------------- Variables d'environnement */
+/* ------------------------------------------------- Environment variables */
 
 const envSource = lire(join(RACINE, 'packages/server/src/env.ts'));
 const variables = new Set(
   [...envSource.matchAll(/^\s{2}([A-Z][A-Z0-9_]{2,}):\s/gm)].map((m) => m[1]),
 );
-// Réglée hors du schéma zod, mais tout aussi structurante pour l'exploitation.
+// Set outside the zod schema, but just as important to operations.
 variables.add('UV_THREADPOOL_SIZE');
 
 for (const variable of variables) {
   if (!specConfig.includes(variable)) {
-    manques.push(`Variable d'environnement « ${variable} » absente de specs/06`);
+    manques.push(`Environment variable "${variable}" missing from specs/06`);
   }
 }
 
-/* ------------------------- Variables réellement câblées jusqu'au conteneur */
+/* ------------------------------- Variables actually wired to the container */
 
-// Être mentionnée dans les specs ne suffit pas : encore faut-il que la valeur
-// atteigne le processus. Compose ne propage pas l'environnement de l'hôte, et
-// `.env` ne sert qu'à l'interpolation — une variable absente du bloc
-// `environment:` et non fixée par le Dockerfile est donc **inchangeable en
-// production**, la seule installation qui compte.
+// Being mentioned in the specs is not enough: the value still has to reach the
+// process. Compose does not pass through the host environment, and `.env` is
+// only used for interpolation — a variable missing from the `environment:`
+// block and not set by the Dockerfile is therefore **unchangeable in
+// production**, the only installation that matters.
 //
-// Le défaut n'est pas théorique : `APP_NAME` et `GEOCODING_URL` ont vécu
-// déclarées dans le schéma zod, dans `.env.example` et dans trois specs, sans
-// jamais parvenir au conteneur. La documentation promettait qu'un redémarrage
-// suffisait à renommer l'instance, et qu'une valeur vide coupait le géocodage :
-// les deux étaient faux, et rien ne le signalait (D78).
+// The defect is not theoretical: `APP_NAME` and `GEOCODING_URL` were declared
+// in the zod schema, in `.env.example` and in three specs without ever reaching
+// the container. The documentation promised that a restart was enough to
+// rename the instance, and that an empty value disabled geocoding: both claims
+// were false, and nothing flagged them (D78).
 const compose = lire(join(RACINE, 'docker-compose.yml'));
 const dockerfile = lire(join(RACINE, 'Dockerfile'));
 
 for (const variable of variables) {
-  // `NOM: ${NOM…}` plutôt que la seule présence du nom : le contrôle porte sur
-  // le câblage, et une variable citée dans un commentaire n'en est pas un.
+  // `NAME: ${NAME…}` rather than the mere presence of the name: the check covers
+  // wiring, and a variable mentioned in a comment is not wired.
   const transmise = new RegExp(String.raw`^\s+${variable}:\s*\$\{${variable}[:}-]`, 'm').test(
     compose,
   );
   const fixee = new RegExp(String.raw`^ENV ${variable}=`, 'm').test(dockerfile);
   if (!transmise && !fixee) {
-    manques.push(
-      `Variable « ${variable} » lue par env.ts, mais ni transmise par docker-compose.yml ni fixée par le Dockerfile : inchangeable en production`,
-    );
+    manques.push(`Variable "${variable}" read by env.ts is not wired to the production container`);
   }
 }
 
 /* ----------------------------------------------------------- Migrations */
 
 const dbSource = lire(join(RACINE, 'packages/server/src/db.ts'));
-// Une migration ouvre son littéral par un backtick seul sur sa ligne ; elle le
-// referme par « `, », qui ne correspond pas à ce motif. Compter les ouvertures
-// donne donc directement le nombre de migrations — le diviser par deux, comme
-// on le faisait, rendait un compte deux fois trop petit, et carrément
-// fractionnaire en nombre impair : `Number.isInteger` était alors faux et le
-// contrôle se désactivait sans rien dire.
+// A migration opens its literal with a backtick alone on its line; it closes it
+// with "`,", which does not match this pattern. Counting the openings therefore
+// gives the number of migrations directly — dividing it by two, as before, made
+// the count half as large, and even fractional for an odd number:
+// `Number.isInteger` was then false and silently disabled the check.
 const nbMigrations = (dbSource.match(/^\s{2}`$/gm) ?? []).length;
 const annoncees = [...lire(join(SPECS, '03-modele-de-donnees.md')).matchAll(/migration (\d+)/gi)]
   .map((m) => Number(m[1]))
@@ -145,7 +141,7 @@ const annoncees = [...lire(join(SPECS, '03-modele-de-donnees.md')).matchAll(/mig
 
 if (Number.isInteger(nbMigrations) && nbMigrations > 0 && annoncees < nbMigrations) {
   manques.push(
-    `${nbMigrations} migrations dans db.ts, mais specs/03 ne va que jusqu'à la ${annoncees}`,
+    `${nbMigrations} migrations in db.ts, but specs/03 only documents up to migration ${annoncees}`,
   );
 }
 
@@ -163,57 +159,57 @@ for (const chemin of sources) {
     .pop()
     .replace(/\.tsx?$/, '');
   if (MODULES_TOLERES.has(nom)) continue;
-  // Les scripts d'exploitation sont documentés par leur commande `pnpm`.
+  // Operational scripts are documented by their `pnpm` command.
   if (chemin.includes('/scripts/')) continue;
   if (!texteSpecs.includes(nom)) {
-    manques.push(`Module « ${relative(RACINE, chemin)} » cité nulle part dans specs/`);
+    manques.push(`Module "${relative(RACINE, chemin)}" not mentioned anywhere in specs/`);
   }
 }
 
-/* ------------------------------------------------------------- Décisions */
+/* ------------------------------------------------------------- Decisions */
 
 /**
- * Une décision porte un identifiant, et rien dans git ne l'arbitre.
+ * A decision has an identifier, and nothing in git arbitrates it.
  *
- * Deux défauts en découlent, qu'aucun des contrôles ci-dessus n'attrape. Le
- * premier : deux entrées portant le même identifiant. Le second, plus coûteux :
- * un renvoi `(Dxx)` vers une décision qui n'existe pas, ou qui a changé de sens
- * depuis. Un tel renvoi ne casse rien, se lit sans accroc, et envoie le lecteur
- * sur une décision qui parle d'autre chose.
+ * This leaves two faults that none of the checks above catch. First: two entries
+ * with the same identifier. Second, and more costly: a `(Dxx)` reference to a
+ * decision that does not exist, or whose meaning has since changed. Such a
+ * reference breaks nothing, reads smoothly, and sends the reader to a decision
+ * about something else.
  *
- * `check-links.mjs` ne peut pas les voir : un renvoi `(D67)` en texte brut
- * n'est pas un lien markdown.
+ * `check-links.mjs` cannot see them: a plain-text `(D67)` reference is not a
+ * markdown link.
  */
 
 /**
- * Deux familles d'identifiants, et c'est assumé.
+ * There are deliberately two families of identifiers.
  *
- * `D260809` : la date de la décision, au format AAMMJJ, une lettre si le jour en
- * porte déjà une. C'est la forme de toute décision nouvelle — une date se
- * connaît sans regarder les autres branches, un rang non.
+ * `D260809`: the decision date in YYMMDD format, with a letter if the day already
+ * has one. Every new decision uses this form — a date is known without looking
+ * at other branches, whereas a sequence number is not.
  *
- * `D1` à `D99` : le rang qu'elles avaient du temps du fichier unique. Les
- * renommer traverserait les trois cents renvois que le code leur adresse, et un
- * identifiant qui change après coup n'en est plus un (D260809).
+ * `D1` to `D99`: the sequence number they had when there was a single file.
+ * Renaming them would touch the three hundred references from the code, and an
+ * identifier that changes afterwards is no longer an identifier (D260809).
  */
 const FORMAT_DATE = /^D(\d{2})(\d{2})(\d{2})([a-z])?$/;
 const FORMAT_RANG = /^D([1-9]\d{0,2})$/;
 
-/** Identifiant → d'où il vient, pour nommer les deux fautifs sur un doublon. */
+/** Identifier → its origin, so both offenders can be named for a duplicate. */
 const definies = new Map();
 
 function definir(identifiant, origine) {
   const deja = definies.get(identifiant);
   if (deja) {
-    manques.push(`Décision « ${identifiant} » définie deux fois : ${deja} et ${origine}`);
+    manques.push(`Decision "${identifiant}" defined twice: ${deja} and ${origine}`);
     return;
   }
   definies.set(identifiant, origine);
 }
 
-// Une décision par fichier : c'est ce qui rend deux branches parallèles
-// fusionnables sans arbitrage, le conflit d'insertion en fin de journal ayant
-// coûté plus cher que la collision d'identifiant elle-même.
+// One decision per file: this makes two parallel branches mergeable without
+// arbitration, as the insertion conflict at the end of the log cost more than
+// the identifier collision itself.
 for (const chemin of fichiers(join(SPECS, '08-decisions'), (n) => n.endsWith('.md'))) {
   const nomDeFichier = chemin.split('/').pop();
   if (nomDeFichier === 'README.md') continue;
@@ -222,8 +218,8 @@ for (const chemin of fichiers(join(SPECS, '08-decisions'), (n) => n.endsWith('.m
   const titres = [...lire(chemin).matchAll(/^#\s+(\S+)\s+—\s/gm)];
   if (titres.length !== 1) {
     manques.push(
-      `${ici} : une décision porte un titre « # D<AAMMJJ> — … » et un seul ` +
-        `(${titres.length} trouvé(s))`,
+      `${ici}: a decision must have exactly one "# D<YYMMDD> — …" title ` +
+        `(${titres.length} found)`,
     );
     continue;
   }
@@ -231,28 +227,26 @@ for (const chemin of fichiers(join(SPECS, '08-decisions'), (n) => n.endsWith('.m
   const identifiant = titres[0][1];
   const date = FORMAT_DATE.exec(identifiant);
   if (!date && !FORMAT_RANG.test(identifiant)) {
-    manques.push(
-      `${ici} : « ${identifiant} » n'est pas un « D<AAMMJJ> » suivi d'une lettre au plus`,
-    );
+    manques.push(`${ici}: "${identifiant}" is not a "D<YYMMDD>" followed by at most one letter`);
     continue;
   }
   if (date && (Number(date[2]) < 1 || Number(date[2]) > 12)) {
-    manques.push(`${ici} : « ${identifiant} » n'encode pas une date (AAMMJJ)`);
+    manques.push(`${ici}: "${identifiant}" does not encode a date (YYMMDD)`);
   } else if (date && (Number(date[3]) < 1 || Number(date[3]) > 31)) {
-    manques.push(`${ici} : « ${identifiant} » n'encode pas une date (AAMMJJ)`);
+    manques.push(`${ici}: "${identifiant}" does not encode a date (YYMMDD)`);
   }
-  // Le nom de fichier est ce qu'on lit dans `git log` et dans le dossier ; il
-  // ment dès qu'il diverge du titre, sans que rien ne s'en aperçoive.
+  // The filename is what appears in `git log` and in the directory; it lies as
+  // soon as it diverges from the title, without anything noticing.
   if (!nomDeFichier.startsWith(`${identifiant}-`)) {
-    manques.push(`${ici} : le fichier devrait s'appeler « ${identifiant}-<slug>.md »`);
+    manques.push(`${ici}: the file should be named "${identifiant}-<slug>.md"`);
   }
 
   definir(identifiant, ici);
 }
 
-// Les renvois vivent autant dans le code que dans les specs : un commentaire
-// qui justifie une ligne par une décision est la forme la plus utile du renvoi,
-// et la plus facile à laisser pourrir.
+// References live in the code as much as in the specs: a comment that justifies
+// a line with a decision is the most useful form of reference, and the easiest
+// one to let rot.
 const porteursDeRenvois = [
   ...fichiers(SPECS, (n) => n.endsWith('.md')),
   ...fichiers(join(RACINE, 'tools'), (n) => n.endsWith('.mjs')),
@@ -271,28 +265,28 @@ for (const chemin of porteursDeRenvois) {
       for (const [identifiant] of ligne.matchAll(/\bD\d+[a-z]?\b/g)) {
         if (definies.has(identifiant)) continue;
         manques.push(
-          `${relative(RACINE, chemin)}:${index + 1} renvoie à « ${identifiant} », qui n'existe pas`,
+          `${relative(RACINE, chemin)}:${index + 1} references missing decision "${identifiant}"`,
         );
       }
     });
 }
 
-/* ------------------------------------------- Renvois d'une spec à une autre */
+/* ------------------------------------------- References between spec files */
 
 /**
- * Un document de specs cité en texte, entre backticks, désigne-t-il un fichier
- * qui existe ?
+ * Does a specs document cited in text, between backticks, identify an existing
+ * file?
  *
- * Entre `check-links.mjs`, qui suit les liens markdown, et le contrôle des
- * renvois `(Dxx)` ci-dessus, ce cas passait : « une décision est un fichier de
- * `specs/decisions/` » est resté vrai jusqu'au jour où le répertoire a changé de
- * nom, et rien ne l'a signalé (D260809d).
+ * Between `check-links.mjs`, which follows markdown links, and the `(Dxx)`
+ * reference check above, this case slipped through: "a decision is a file in
+ * `specs/decisions/`" remained true until the directory was renamed, and nothing
+ * flagged it (D260809d).
  *
- * Le répertoire des décisions en est exclu : un journal parle du passé par
- * nature — il nomme ce qui a été remplacé, et l'exiger présent le rendrait
- * inécrivable.
+ * The decisions directory is excluded: a log inherently talks about the past —
+ * it names what has been replaced, and requiring it to remain present would
+ * make the log impossible to write.
  */
-const ABREVIATION = /^specs\/0\d$/; // « voir specs/06 », l'usage du dépôt
+const ABREVIATION = /^specs\/0\d$/; // "see specs/06", the repository convention
 const DESIGNE_UNE_SPEC = /^(specs\/|0\d-[a-z-]+(\.md)?$|decisions\/|08-decisions)/;
 
 const citantDesSpecs = [
@@ -307,11 +301,11 @@ const citantDesSpecs = [
 for (const chemin of citantDesSpecs) {
   for (const [, cite] of lire(chemin).matchAll(/`([^`\n]+)`/g)) {
     if (!DESIGNE_UNE_SPEC.test(cite) || ABREVIATION.test(cite)) continue;
-    // Une forme (`D<AAMMJJ>`, un joker) ne promet aucun fichier précis.
+    // A form (`D<YYMMDD>`, a wildcard) does not promise a specific file.
     if (cite.includes('<') || cite.includes('*')) continue;
     const candidats = [join(RACINE, cite), join(SPECS, cite), join(SPECS, `${cite}.md`)];
     if (candidats.some((c) => existsSync(c))) continue;
-    manques.push(`${relative(RACINE, chemin)} cite « ${cite} », qui n'existe pas`);
+    manques.push(`${relative(RACINE, chemin)} cites "${cite}", which does not exist`);
   }
 }
 
@@ -319,15 +313,15 @@ for (const chemin of citantDesSpecs) {
 
 if (manques.length === 0) {
   console.log(
-    `specs : à jour (routes, variables, migrations, modules, ${definies.size} décisions)`,
+    `specs: up to date (routes, variables, migrations, modules, ${definies.size} decisions)`,
   );
   process.exit(0);
 }
 
-console.error(`\nLa documentation a décroché du code — ${manques.length} écart(s) :\n`);
+console.error(`\nDocumentation has drifted from code — ${manques.length} issue(s):\n`);
 for (const manque of manques) console.error(`  · ${manque}`);
 console.error(
-  '\nCLAUDE.md indique quel document suit quel fichier. Un changement de code' +
-    "\nsans changement de spec n'est pas terminé.\n",
+  '\nCLAUDE.md states which document tracks each file. A code change' +
+    '\nwithout a spec change is not complete.\n',
 );
 process.exit(1);

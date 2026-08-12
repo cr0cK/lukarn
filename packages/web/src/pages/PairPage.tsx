@@ -6,13 +6,12 @@ import { useApprovePairing, usePairingState } from '../api/hooks';
 import { Spinner } from '../components/Spinner';
 
 /**
- * L'appairage vu du téléphone (D260809c). `RequireAuth` la garde : sans session, on
- * passe d'abord par `/login`, qui ramène ici avec le code.
+ * Pairing as seen from the phone (D260809c). `RequireAuth` guards it: without a
+ * session, `/login` comes first and returns here with the code.
  *
- * Elle ne fait qu'une chose, et le fait explicitement : montrer le code **tel
- * que l'écran l'affiche**, et demander une confirmation. Cette comparaison est
- * la seule vérification possible contre un QR qui ne serait pas celui qu'on
- * regarde.
+ * It does one thing explicitly: shows the code **as displayed by the screen**
+ * and asks for confirmation. This comparison is the only possible check against
+ * a QR code from a different screen.
  */
 export default function PairPage(): ReactElement {
   const [params, setParams] = useSearchParams();
@@ -39,8 +38,8 @@ export default function PairPage(): ReactElement {
       <Card>
         <Title>That code is no longer valid</Title>
         <p className="text-sm text-ink-400">
-          A request expires after five minutes. Start the sign-in again from the screen, then scanne
-          le nouveau code.
+          A request expires after five minutes. Start the sign-in again from the screen, then scan
+          the new code.
         </p>
         <SecondaryButton onClick={() => setParams({})}>Enter another code</SecondaryButton>
       </Card>
@@ -53,16 +52,15 @@ export default function PairPage(): ReactElement {
         <Title>All set</Title>
         <p className="text-sm text-ink-400">
           The screen opens in a few seconds, with the albums of{' '}
-          <span className="text-ink-200">ton compte</span>.
+          <span className="text-ink-200">your account</span>.
         </p>
         <SecondaryButton onClick={() => void navigate('/')}>Back to the albums</SecondaryButton>
       </Card>
     );
   }
 
-  // Approuvée par quelqu'un d'autre avant qu'on n'arrive : ce n'est pas une
-  // erreur, c'est un état à annoncer — sans quoi le bouton promettrait une
-  // action que le serveur refusera par un 409.
+  // Approved by somebody else before arrival: this is not an error but a state
+  // to announce — otherwise the button promises an action the server rejects with 409.
   if (state.data.approved) {
     return (
       <Card>
@@ -91,7 +89,7 @@ export default function PairPage(): ReactElement {
 
       <p className="text-xs text-ink-400">
         The screen will reach the same albums as you, for as long as nobody changes the password of
-        ce compte. Il ne pourra pas signer de commentaire en ton nom.
+        this account. It won't be able to sign comments in your name.
       </p>
 
       {message && (
@@ -113,7 +111,7 @@ export default function PairPage(): ReactElement {
   );
 }
 
-/** La saisie du code, pour qui ouvre `/pair` sans avoir scanné le QR. */
+/** Code input for someone opening `/pair` without scanning the QR code. */
 function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElement {
   const [value, setValue] = useState('');
   const code = normalizeUserCode(value);
@@ -130,8 +128,8 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElem
       <form onSubmit={submit} className="space-y-4">
         <input
           name="code"
-          // `characters` et non `words` : le champ est en majuscules, et la
-          // correction automatique remplacerait un code par un mot connu.
+          // Use `characters`, not `words`: the field is uppercase, and autocorrection
+          // would replace a code with a known word.
           autoCapitalize="characters"
           autoCorrect="off"
           spellCheck={false}

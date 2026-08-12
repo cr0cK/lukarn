@@ -1,21 +1,21 @@
-# D34 — Un fil par couple (album, média), et non par média
+# D34 — One thread per (album, media) pair, not per media item
 
-**Contexte.** Un même fichier Drive apparaît dans plusieurs albums quand leurs
-dossiers sont imbriqués — c'est déjà la raison de la clé primaire composite
-`(album_id, id)` de `media` et de `albumsContaining()`.
+**Context.** The same Drive file appears in several albums when their folders
+are nested — this is already the reason for the composite primary key
+`(album_id, id)` of `media` and for `albumsContaining()`.
 
-**Choix.** `comments` porte `album_id` **et** `media_id`. La même photo vue
-depuis deux albums montre deux conversations distinctes.
+**Decision.** `comments` carries `album_id` **and** `media_id`. The same photo
+viewed from two albums shows two separate conversations.
 
-**Écarté.** Indexer sur le seul `media_id`, ce qui aurait donné une conversation
-unique par fichier — plus naturel a priori, et moins de lignes. Mais le contrôle
-d'accès média accorde l'accès dès qu'**un** album contenant le fichier est
-visible : un visiteur de l'album « Vacances » lirait alors les propos tenus dans
-« Privé » par ceux qui y ont accès. Le cloisonnement de D12 porte sur les octets
-de la photo ; il n'aurait rien dit de ce qu'on en écrit.
+**Rejected.** Indexing on `media_id` alone, which would have produced one
+conversation per file — more natural at first sight, and fewer rows. But media
+access control grants access as soon as **one** album containing the file is
+visible: a visitor to the "Holidays" album would then read what those with
+access said in "Private". D12's isolation covers the photo's bytes; it would have
+said nothing about what people write about it.
 
-**Conséquences.** Une photo rangée dans deux albums peut porter deux fils sans
-que personne ne s'en aperçoive. C'est le prix du cloisonnement, et le cas est
-rare : les albums d'une même instance se recoupent peu. Le `parentId` d'une
-réponse est vérifié contre le média courant pour la même raison — sans quoi un
-identifiant deviné suffirait à greffer un message dans un fil illisible.
+**Consequences.** A photo placed in two albums can have two threads without
+anyone noticing. That is the price of isolation, and the case is rare: albums
+on the same instance overlap little. A reply's `parentId` is checked against the
+current media item for the same reason — otherwise, a guessed identifier would
+be enough to graft a message onto a thread they cannot read.

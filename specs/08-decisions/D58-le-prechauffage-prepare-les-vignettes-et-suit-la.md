@@ -1,65 +1,61 @@
-# D58 — Le préchauffage prépare les vignettes, et suit la synchronisation
+# D58 — Prewarming prepares thumbnails and follows synchronisation
 
-**Contexte.** D45 avait tranché : le préchauffage rend la variante `full`, et
-n'est jamais branché sur la fin d'une synchronisation. Les deux points se sont
-révélés faux à l'usage, et il a fallu qu'un compte de test ouvre un album de
-941 photos jamais consulté pour le voir — **2 min 36 avant la première image**.
+**Context.** D45 had decided that prewarming renders the `full` variant and is
+never connected to the end of a synchronisation. Both points proved wrong in use,
+and it took a test account opening an album of 941 never-viewed photos to reveal
+it — **2 min 36 before the first image**.
 
-Ce qui l'explique, avec la provenance de chaque chiffre — elle compte, ils n'ont
-pas tous la même solidité :
+The explanation, with the source of each figure — it matters, as they do not all
+have the same strength:
 
-- **Un dérivé coûte ~2 s, dont la quasi-totalité en téléchargement Drive.** Repris
-  de la mesure de D45, prise sur une instance en service.
-- **Le rendu lui-même est négligeable devant ce téléchargement**, de l'ordre de
-  quelques dizaines de millisecondes pour une vignette. Cohérent avec D45, qui
-  relevait 1,5 s pour un `full` d'un reflex de 8 Mo — une vignette est sans
-  commune mesure.
-- **Le limiteur ne sert que 2 à 4 rendus à la fois.** Lu dans le code :
-  `renderConcurrencyFor` rend `max(2, min(4, cœurs - 2))`, donc **deux** places
-  sur le VPS à deux cœurs visé par ce projet, quatre sur une machine de
-  développement. Le pire cas est celui de la production.
-- **Une grille froide en demande plusieurs dizaines d'un coup.** Mesuré sur
-  `seed-demo 941`, contexte navigateur neuf, à l'ouverture et avant tout
-  défilement : **26** vignettes montées en 1280 × 720, 31 en 1920 × 1080, 36 en
-  2560 × 1440, 41 en 1440 × 2400, 26 en 390 × 844. Recoupé côté serveur : 26
-  requêtes `/thumb` distinctes ont bien atteint Fastify à 1280 × 720. Le compte
-  est **indépendant du nombre de photos de l'album** — c'est `OVERSCAN_PX` et la
-  hauteur de rangée cible qui le fixent — mais il dépend de la fenêtre et des
-  formats présents ; « de l'ordre de trente » est le registre à retenir. Sur
-  l'album qui a motivé cette entrée, l'attente observée était de 2 min 36.
+- **A derivative costs ~2 s, almost all of it spent downloading from Drive.**
+  Taken from D45's measurement on a live instance.
+- **Rendering itself is negligible beside that download**, around a few dozen
+  milliseconds for a thumbnail. This is consistent with D45, which recorded
+  1.5 s for a `full` render of an 8 MB DSLR image — a thumbnail is incomparable.
+- **The limiter only serves 2 to 4 renders at once.** Read from the code:
+  `renderConcurrencyFor` returns `max(2, min(4, cores - 2))`, meaning **two**
+  slots on the two-core VPS targeted by this project and four on a development
+  machine. Production is the worst case.
+- **A cold grid requests several dozen at once.** Measured with `seed-demo 941`,
+  in a fresh browser context, on opening and before any scrolling: **26**
+  thumbnails mounted at 1280 × 720, 31 at 1920 × 1080, 36 at 2560 × 1440, 41 at
+  1440 × 2400, and 26 at 390 × 844. Cross-checked on the server: 26 distinct
+  `/thumb` requests did reach Fastify at 1280 × 720. The count is **independent
+  of the number of photos in the album** — it is set by `OVERSCAN_PX` and the
+  target row height — but depends on the viewport and the formats present;
+  "around thirty" is the range to remember. On the album that prompted this
+  entry, the observed wait was 2 min 36.
 
-Or D45 ne préparait pas de vignettes du tout, mais
-la variante `full` — celle du clic sur une photo, pas celle de l'affichage de
-l'album. Le préchauffage travaillait donc consciencieusement à supprimer une
-attente d'une seconde, en laissant intacte celle de plusieurs minutes qui la
-précède.
+But D45 prepared no thumbnails at all, only the `full` variant — the one used
+when clicking a photo, not when displaying the album. Prewarming therefore
+worked diligently to eliminate a one-second wait while leaving untouched the
+several-minute wait that preceded it.
 
-**Choix.** Le passage prépare les **trois tailles de vignette** et rien d'autre.
-La taille retenue dépend de la largeur de la case et de la densité de l'écran :
-les trois doivent être prêtes, faute de quoi la moitié des écrans repartirait à
-zéro. `MediaRenderer.prepare` les produit en **un seul téléchargement** et sur
-une seule place du limiteur — c'est l'original en mémoire qui pèse, et il est le
-même pour les trois. Le rendu `full` sort du préchauffage : dix fois le poids
-d'une vignette, pour une attente déjà couverte par le préchargement des voisines
-dans la visionneuse.
+**Choice.** The pass prepares the **three thumbnail sizes** and nothing else.
+The chosen size depends on the cell width and screen density: all three must be
+ready, otherwise half of screens would start from zero. `MediaRenderer.prepare`
+produces them in **one download** and in one limiter slot — the original in memory
+is what weighs heavily, and it is the same for all three. The `full` render leaves
+prewarming: it is ten times the weight of a thumbnail, for a wait already covered
+by preloading adjacent photos in the viewer.
 
-Le passage est en outre branché sur la **fin de chaque synchronisation**
-(`AppContext.syncThenPrewarm`). C'est le seul instant où l'on sait qu'il y a du
-neuf, et les photos qui viennent d'arriver sont exactement celles qu'on va
-ouvrir. D45 l'avait écarté au motif que la synchronisation peut être désactivée —
-l'argument tient, mais il justifie de **garder** les autres déclencheurs, pas
-d'écarter celui-là.
+The pass is also connected to the **end of every synchronisation**
+(`AppContext.syncThenPrewarm`). This is the only time when new content is known to
+exist, and the photos that have just arrived are exactly the ones people will
+open. D45 rejected it because synchronisation can be disabled — the argument is
+valid, but it justifies **keeping** the other triggers, not rejecting this one.
 
-**Écarté.** _Préparer aussi le rendu `full`_ : sur 941 photos, on passe de
-quelques dizaines de Mo à plusieurs Go, contre un plafond `cacheMaxSizeGB` qui se
-mettrait à évincer — et l'éviction est LRU globale, donc ce sont les vignettes
-des albums qu'on regarde vraiment qui partiraient. _Verrouiller un album jusqu'à
-son préchauffage complet_, ou _afficher une progression_ : deux réponses au
-symptôme, écartées parce que la cause était ailleurs (voir D59) et qu'une fois
-celle-ci traitée, l'attente résiduelle ne justifie plus d'appareillage.
+**Rejected.** _Also preparing the `full` render_: for 941 photos, the volume
+increases from a few dozen MB to several GB, against a `cacheMaxSizeGB` limit that
+would start evicting — and eviction is global LRU, so thumbnails from albums
+actually being viewed would go. _Locking an album until prewarming completes_, or
+_displaying progress_: two responses to the symptom, rejected because the cause
+was elsewhere (see D59) and, once addressed, the residual wait no longer justifies
+the machinery.
 
-**Conséquences.** `prewarmCache` reste un réglage, à `true` par défaut : le
-comportement voulu est donc celui d'une instance neuve, et le décocher reste
-possible pour une bande passante comptée. Un album déjà préparé ne consomme plus
-un passage entier à ne rien faire — `prepare` rend `0` quand tout est en cache,
-et le passage saute alors sa pause d'une seconde au lieu de la subir par photo.
+**Consequences.** `prewarmCache` remains a setting, `true` by default: the desired
+behaviour is therefore that of a fresh instance, while it can still be unchecked
+on a metered connection. An album that has already been prepared no longer spends
+an entire pass doing nothing — `prepare` returns `0` when everything is cached,
+and the pass then skips its one-second pause instead of incurring it per photo.

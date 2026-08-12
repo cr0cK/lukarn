@@ -22,14 +22,13 @@ import { isTyping } from '../lib/typing';
 import { moveSelection, scrollSelectionIntoView, useGridLayout } from '../lib/useGridLayout';
 import { useShortcut } from '../lib/useShortcut';
 
-/** Les réglages de vue portés par la barre d'adresse de l'album. */
+/** View settings carried by the album address bar. */
 type ViewParam = 'photo' | 'panel' | 'order' | 'group' | 'day';
 
 /**
- * Marge laissée au-dessus d'une journée visée par l'URL. La barre supérieure
- * est collante et haute de 64 px : poser la section pile à son ordonnée la
- * glisserait dessous, et l'en-tête qu'on vient de chercher serait le seul
- * élément invisible de l'écran.
+ * Margin above a day targeted by the URL. The top bar is sticky and 64 px high:
+ * placing the section at its exact coordinate would slide it underneath, making
+ * the sought heading the only invisible element on screen.
  */
 const DAY_SCROLL_MARGIN = 80;
 
@@ -41,19 +40,19 @@ export default function AlbumPage(): ReactElement {
   const album = useAlbum(albumId);
   const { data: me } = useMe();
 
-  // Le sens de lecture vient de trois sources, dans cet ordre : l'URL — un lien
-  // partagé restitue la vue exacte —, ce que ce navigateur a retenu de l'album,
-  // puis le défaut que l'album porte. Voir `lib/albumOrder.ts`.
+  // Reading order comes from three sources in order: the URL — a shared link
+  // restores the exact view —, what this browser remembers for the album, then
+  // the album default. See `lib/albumOrder.ts`.
   const { stored: storedOrder, remember: rememberOrder } = useStoredOrder(albumId);
   const albumSortOrder = album.data?.sortOrder;
   const order = resolveOrder(searchParams.get('order'), storedOrder, albumSortOrder);
-  // Ce que le bouton annonce le temps que l'album réponde. La grille, elle,
-  // attend le vrai sens plutôt que d'afficher deux cents photos à l'envers.
+  // What the button announces while awaiting the album. The grid waits for the
+  // actual order instead of displaying two hundred photos backwards.
   const shownOrder: SortOrder = order ?? DEFAULT_SORT_ORDER;
 
-  // Le découpage en sections suit la même règle, à une source près : il n'a pas
-  // de mémoire par navigateur. Un séjour se lit par jour, dix ans de photos
-  // d'enfants par mois, et personne n'a à le redemander à chaque ouverture.
+  // Section grouping follows the same rule except for browser memory. A trip is
+  // read by day, ten years of children's photos by month, and nobody should need
+  // to request it on every opening.
   const albumGroupBy = album.data?.groupBy ?? DEFAULT_GROUP_BY;
   const groupParam = searchParams.get('group');
   const groupBy: GroupBy = isGroupBy(groupParam) ? groupParam : albumGroupBy;
@@ -64,32 +63,31 @@ export default function AlbumPage(): ReactElement {
     order !== null,
   );
 
-  // La photo ouverte vit dans l'URL : le bouton Retour la referme, et un lien
-  // partagé rouvre exactement la même vue.
+  // The open photo lives in the URL: Back closes it, and a shared link restores
+  // the exact same view.
   const openedId = searchParams.get('photo');
   const openedIndex = openedId ? items.findIndex((item) => item.id === openedId) : -1;
   const isOpen = openedIndex >= 0;
 
-  // L'onglet du panneau suit la même règle, et c'est ce qui permet d'arriver
-  // sur la conversation elle-même : le tiroir d'activité et les emails de
-  // notification renvoient vers `?photo=…&panel=comments`. Sans ce paramètre,
-  // ils ouvriraient la photo en laissant les messages fermés, c'est-à-dire
-  // invisibles.
+  // The panel tab follows the same rule, allowing direct arrival at the
+  // conversation: the activity drawer and notification emails link to
+  // `?photo=…&panel=comments`. Without the parameter, they would open the photo
+  // with messages closed and therefore invisible.
   const panelParam = searchParams.get('panel');
   const panel: PanelTab | null = isPanelTab(panelParam) ? panelParam : null;
 
-  // La visionneuse porte le contexte de la journée, elle a donc besoin des
-  // notes même en découpage par mois. Même `queryKey` que la grille : ouvrir
-  // une photo depuis un album par jour ne relance aucune requête.
+  // The viewer carries day context and therefore needs notes even when grouped
+  // by month. Use the grid's `queryKey`: opening a photo from a day-grouped album
+  // triggers no new request.
   const { byDay, isPending: daysPending } = useAlbumDays(albumId, groupBy === 'day' || isOpen);
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const activity = useActivityFeed();
 
-  // Repli des sections, par clé. En mémoire seule et volontairement : dans
-  // l'URL, la liste des jours repliés la rendrait illisible ; persisté, on
-  // rouvrirait un album vide des mois plus tard sans comprendre pourquoi.
+  // Collapsed sections by key. Memory-only deliberately: a list of collapsed
+  // days would make the URL unreadable; persisted, it could reopen an empty album
+  // months later without explanation.
   const [collapsedKeys, setCollapsedKeys] = useState<ReadonlySet<string>>(() => new Set());
 
   const toggleSection = useCallback((key: string) => {
@@ -102,13 +100,12 @@ export default function AlbumPage(): ReactElement {
 
   const grid = useGridLayout(items, groupBy, byDay, collapsedKeys);
 
-  // `photo`, `panel`, `order` et `group` sont quatre réglages indépendants de la
-  // même URL : chaque écriture repart des paramètres courants, sinon ouvrir une
-  // photo effacerait le tri et le refermer le rétablirait tout seul. Plusieurs
-  // clés d'un coup pour les gestes qui en touchent deux — fermer la visionneuse
-  // retire la photo **et** son panneau, et deux écritures successives
-  // laisseraient une entrée d'historique intermédiaire où l'une est partie sans
-  // l'autre.
+  // `photo`, `panel`, `order` and `group` are four independent settings in one
+  // URL: every write starts from current parameters, or opening a photo would
+  // clear sorting and closing it would restore sorting by itself. Update several
+  // keys together for actions touching two — closing the viewer removes the photo
+  // **and** panel, while two writes would leave an intermediate history entry
+  // where one disappeared without the other.
   const setParams = useCallback(
     (values: Partial<Record<ViewParam, string | null>>, replace: boolean) => {
       setSearchParams(
@@ -135,9 +132,8 @@ export default function AlbumPage(): ReactElement {
     [items, setParams],
   );
 
-  // Navigation d'une photo à l'autre dans la visionneuse : en `replace`, sinon
-  // parcourir 50 photos aux flèches empilerait 50 entrées d'historique et le
-  // bouton Retour ne ramènerait plus à la grille.
+  // Use `replace` for viewer photo navigation, or moving through 50 photos with
+  // arrows would stack 50 history entries and Back would no longer return to the grid.
   const showAt = useCallback(
     (index: number) => {
       const item = items[index];
@@ -147,15 +143,14 @@ export default function AlbumPage(): ReactElement {
     [items, setParams],
   );
 
-  // Le panneau part avec la photo : resté seul dans l'URL, il rouvrirait la
-  // photo suivante sur un onglet que personne n'a redemandé.
+  // The panel leaves with the photo: left alone in the URL, it would open the
+  // next photo on a tab nobody requested again.
   const closeLightbox = useCallback(() => {
     setParams({ photo: null, panel: null }, true);
   }, [setParams]);
 
-  // En `replace`, comme la navigation d'une photo à l'autre : ouvrir et refermer
-  // le panneau trois fois empilerait sinon six entrées d'historique entre la
-  // grille et le bouton Retour.
+  // Use `replace` like photo navigation: opening and closing the panel three times
+  // would otherwise stack six history entries between the grid and Back.
   const setPanel = useCallback(
     (next: PanelTab | null) => {
       setParams({ panel: next }, true);
@@ -165,47 +160,44 @@ export default function AlbumPage(): ReactElement {
 
   const toggleOrder = useCallback(() => {
     const next: SortOrder = shownOrder === 'desc' ? 'asc' : 'desc';
-    // Toujours retenu par le navigateur : c'est ce qui évite de rebasculer le
-    // même album à chaque visite. Dans l'URL, en revanche, le paramètre n'est
-    // écrit que s'il contredit la préférence de l'album — la règle de
-    // `toggleGroupBy` : revenir à celle-ci rend à l'album son adresse d'origine.
+    // Always remembered by the browser to avoid switching the same album on
+    // every visit. In the URL, write the parameter only when it contradicts the
+    // album preference — the `toggleGroupBy` rule: returning to the preference
+    // restores the album's original address.
     rememberOrder(next);
     setParams({ order: next === albumSortOrder ? null : next }, false);
   }, [shownOrder, albumSortOrder, rememberOrder, setParams]);
 
   const toggleGroupBy = useCallback(() => {
     const next: GroupBy = groupBy === 'month' ? 'day' : 'month';
-    // Le paramètre n'est écrit que s'il contredit la préférence de l'album :
-    // revenir à celle-ci doit rendre à l'album son adresse d'origine, sinon un
-    // lien partagé traînerait un `?group=` qui ne dit rien de plus.
+    // Write the parameter only when it contradicts the album preference:
+    // returning to the preference must restore the original address, or a shared
+    // link would carry a `?group=` saying nothing extra.
     setParams({ group: next === albumGroupBy ? null : next }, false);
   }, [groupBy, albumGroupBy, setParams]);
 
-  // Une photo demandée par l'URL mais pas encore chargée : on continue de
-  // paginer jusqu'à la trouver (ou jusqu'à la fin de l'album).
+  // For a photo requested by the URL but not loaded yet, keep paginating until
+  // it is found or the album ends.
   useEffect(() => {
     if (openedId && openedIndex === -1 && hasNextPage && !isFetchingNextPage) {
       void fetchNextPage();
     }
   }, [openedId, openedIndex, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Referme la visionneuse si la photo ciblée n'existe pas dans cet album.
+  // Close the viewer if the target photo does not exist in this album.
   useEffect(() => {
     if (openedId && openedIndex === -1 && !hasNextPage && items.length > 0) closeLightbox();
   }, [openedId, openedIndex, hasNextPage, items.length, closeLightbox]);
 
-  // Inverser le tri renumérote tout l'album : conserver l'index sélectionné
-  // désignerait une autre photo, et la position de défilement un autre mois.
-  // Changer de regroupement ne renumérote rien, mais recalcule toutes les
-  // hauteurs : la même ordonnée tombe ailleurs, et la sélection se retrouve
-  // hors écran. Dans les deux cas on repart du haut.
+  // Reversing sort renumbers the whole album: retaining the selected index would
+  // point to another photo and the scroll position to another month. Changing
+  // grouping renumbers nothing but recomputes all heights: the same coordinate
+  // lands elsewhere and moves selection off-screen. Restart at the top in both cases.
   //
-  // Rien tant que l'album n'est pas chargé, et c'est indispensable : `groupBy`
-  // comme `order` partent d'un défaut puis basculent sur la préférence de
-  // l'album à l'arrivée de la réponse — ensemble, dans le même rendu. Sans
-  // cette garde, ouvrir un album réglé sur « jour » remettrait la sélection à
-  // zéro et remonterait la page une seconde fois, après coup, sous le curseur
-  // de quelqu'un qui avait déjà commencé à défiler.
+  // Do nothing until the album loads: both `groupBy` and `order` start from a
+  // default then switch together to the album preference when the response
+  // arrives. Without this guard, opening an album set to "day" would reset
+  // selection and scroll to the top a second time beneath someone already scrolling.
   const albumLoaded = !album.isPending;
   useEffect(() => {
     if (!albumLoaded) return;
@@ -217,48 +209,44 @@ export default function AlbumPage(): ReactElement {
     if (isOpen) setSelectedIndex(openedIndex);
   }, [isOpen, openedIndex]);
 
-  // Une journée demandée par l'URL — un résultat de recherche. Le paramètre
-  // n'est honoré qu'en découpage par jour : en découpage par mois, les clés de
-  // section valent `2026-07`, la journée n'y existe pas, et l'effet chargerait
-  // l'album entier à la recherche d'une section qui ne viendra jamais.
+  // A day requested by the URL — a search result. Honour it only when grouping by
+  // day: with month grouping, section keys are `2026-07`, the day does not exist,
+  // and the effect would load the whole album looking for a section that never comes.
   const dayParam = searchParams.get('day');
   const targetDay = dayParam && groupBy === 'day' ? dayParam : null;
-  // Une ordonnée, pas la section : `grid` est un objet neuf à chaque rendu, et
-  // en dépendance l'effet se rejouerait en plein défilement.
+  // Depend on a coordinate, not the section: `grid` is new on every render and
+  // would rerun the effect while scrolling.
   const targetY = targetDay
     ? (grid.layout.sections.find((section) => section.key === targetDay)?.y ?? null)
     : null;
 
-  // Après l'effet qui remonte en haut au changement de découpage, et après lui
-  // seulement : les deux tirent dans le même sens le temps d'un rendu quand
-  // l'album arrive déjà réglé sur « jour ».
+  // Run only after the effect scrolling to the top on grouping changes: both pull
+  // in the same direction for one render when the album arrives set to "day".
   useEffect(() => {
-    // Les journées annotées sont attendues : chaque lieu et chaque note ajoute
-    // une ligne à l'en-tête de sa section, donc tant qu'elles n'ont pas répondu
-    // toutes les ordonnées au-dessus de la cible peuvent encore grandir. En
-    // pratique cette requête-là arrive bien avant la seconde page de médias, et
-    // on ne voit pas la différence ; la garde est là pour l'album où ce ne
-    // serait pas le cas, où l'on atterrirait quelques centaines de pixels trop
-    // haut sans qu'aucune erreur ne le signale.
+    // Wait for annotated days: every place and note adds a line to its section
+    // header, so coordinates above the target may still grow before they arrive.
+    // In practice this request arrives before the second media page and the
+    // difference is invisible; the guard covers an album where it does not, which
+    // would land hundreds of pixels too high without an error.
     if (!albumLoaded || daysPending || targetDay === null) return;
 
     if (targetY === null) {
-      // Pas encore chargée : on continue de paginer jusqu'à la trouver, exactement
-      // comme pour une photo demandée par `?photo=`.
+      // Not loaded yet: keep paginating until found, exactly like a photo requested
+      // through `?photo=`.
       if (hasNextPage) {
         if (!isFetchingNextPage) void fetchNextPage();
       } else if (items.length > 0) {
-        // Journée absente de cet album : le paramètre n'a plus rien à viser, et
-        // le laisser ferait repaginer tout l'album au rendu suivant.
+        // Day absent from the album: the parameter has no target, and leaving it
+        // would paginate the whole album again on the next render.
         setParams({ day: null }, true);
       }
       return;
     }
 
     window.scrollTo({ top: Math.max(0, targetY + grid.offsetTop - DAY_SCROLL_MARGIN) });
-    // En `replace`, et tout de suite : le paramètre a joué son rôle. Gardé, il
-    // ramènerait la page sur la journée à chaque défilement qui recalcule le
-    // layout, et le bouton Retour rejouerait le saut au lieu de revenir.
+    // Remove with `replace` immediately after the parameter serves its purpose.
+    // Retained, it would return the page to the day on every layout-recomputing
+    // scroll, and Back would replay the jump instead of returning.
     setParams({ day: null }, true);
   }, [
     albumLoaded,
@@ -277,9 +265,9 @@ export default function AlbumPage(): ReactElement {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  // Navigation clavier dans la grille. Désactivée quand la visionneuse ou le
-  // tiroir d'activité est ouvert : chacun gère ses propres touches, et `Échap`
-  // ramènerait sinon aux albums en même temps qu'il referme le tiroir.
+  // Grid keyboard navigation. Disabled while the viewer or activity drawer is
+  // open: each handles its own keys, and `Escape` would otherwise return to the
+  // albums while closing the drawer.
   useEffect(() => {
     if (isOpen || showShortcuts || activity.isOpen) return;
 
@@ -325,13 +313,12 @@ export default function AlbumPage(): ReactElement {
     navigate,
   ]);
 
-  // Le layout est lu par une ref, et n'est **pas** une dépendance : c'est un
-  // objet neuf à chaque page chargée, à chaque redimensionnement et à chaque
-  // section repliée. En dépendance, l'effet se rejouait donc en plein
-  // défilement et ramenait la page — en douceur, ce qui la rendait d'autant
-  // plus déroutante — sur la dernière vignette sélectionnée. Mesuré : en
-  // descendant sans rien toucher, la vue repartait de y≈13000 à y≈2845 à
-  // chaque page d'items. La mise en vue suit la **sélection**, rien d'autre.
+  // Read layout through a ref and **not** as a dependency: it is new on every
+  // loaded page, resize and collapsed section. As a dependency, the effect reran
+  // during scrolling and smoothly — therefore more confusingly — returned to
+  // the latest selected thumbnail. Measured while scrolling without interaction:
+  // the view jumped from y≈13000 to y≈2845 on every item page. Scrolling into
+  // view follows **selection**, nothing else.
   const gridRef = useRef(grid);
   gridRef.current = grid;
   useEffect(() => {
@@ -351,12 +338,11 @@ export default function AlbumPage(): ReactElement {
         .join(' · ')
     : null;
 
-  // Le bouton annonce l'état courant ; l'infobulle annonce ce que le clic fera.
+  // The button states the current state; the tooltip states what clicking will do.
   const orderLabel = shownOrder === 'desc' ? 'Newest first' : 'Oldest first';
   const orderAction = shownOrder === 'desc' ? 'Show oldest first' : 'Show newest first';
 
-  // Même règle pour le regroupement : le libellé dit l'état, l'infobulle dit
-  // l'effet du clic.
+  // Same rule for grouping: the label states the state, the tooltip the click effect.
   const groupLabel = groupBy === 'month' ? 'By month' : 'By day';
   const groupAction = groupBy === 'month' ? 'Group by day' : 'Group by month';
 
@@ -372,8 +358,8 @@ export default function AlbumPage(): ReactElement {
             label: orderLabel,
             action: orderAction,
             onSelect: toggleOrder,
-            // Le tracé seul, sans sa balise : c'est `TopBar` qui l'enveloppe, à
-            // la taille de l'endroit où il s'affiche — la barre ou son menu.
+            // Supply only the path, not its element: `TopBar` wraps it at the size of
+            // its display location — bar or menu.
             icon: (
               <>
                 <path d="M12 5v14" />
@@ -389,7 +375,7 @@ export default function AlbumPage(): ReactElement {
               <>
                 <rect x="3" y="5" width="18" height="16" rx="2" />
                 <path d="M3 10h18M8 3v4M16 3v4" />
-                {/* Plusieurs traits pour le mois, un seul repère pour le jour. */}
+                {/* Several lines for month, one marker for day. */}
                 <path d={groupBy === 'month' ? 'M7 14h10M7 17.5h6' : 'M11 14h2v3h-2z'} />
               </>
             ),
@@ -410,16 +396,16 @@ export default function AlbumPage(): ReactElement {
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            Impossible de charger cet album.
+            Cannot load this album.
           </p>
         )}
 
         {!isPending && items.length === 0 && !error && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
-            <p className="text-sm text-ink-300">Cet album ne contient encore aucune photo.</p>
+            <p className="text-sm text-ink-300">This album has no photos yet.</p>
             <p className="mt-1 text-xs text-ink-400">
               {album.data?.syncStatus === 'never'
-                ? "Lance une synchronisation depuis la page d'administration."
+                ? 'Start a sync from the administration page.'
                 : 'Check the Drive folder it points at.'}
             </p>
           </div>
@@ -430,8 +416,7 @@ export default function AlbumPage(): ReactElement {
             grid={grid}
             albumId={albumId}
             days={byDay}
-            // Une note appartient à une journée : en découpage par mois, il n'y
-            // aurait pas d'en-tête à qui l'accrocher.
+            // A note belongs to a day: with month grouping, no header exists to attach it to.
             canAnnotate={Boolean(me?.admin) && groupBy === 'day'}
             onToggleSection={toggleSection}
             selectedIndex={selectedIndex}

@@ -1,81 +1,80 @@
-# 08 — Journal des décisions
+# 08 — Decision log
 
-Une décision par fichier : le contexte, le choix, ce qui a été écarté et
-pourquoi. On ajoute une décision plutôt que de réécrire une décision existante —
-une décision revenue sur elle-même reste une information utile.
+One decision per file: its context, the decision, what was rejected, and why. A
+new decision is added instead of rewriting an existing one — a decision that was
+later reversed remains useful information.
 
-Le journal a été un fichier unique jusqu'à D99. Il est devenu ce répertoire pour
-que deux branches parallèles cessent de se disputer la même fin de fichier, et
-pour qu'amender une décision ancienne ne touche qu'elle
+The log was a single file up to D99. It became this directory so that two
+parallel branches would stop competing over the same end of file, and so that
+amending an old decision would touch only that decision
 ([D260809](./D260809-numerotation-des-decisions.md)).
 
-## L'identifiant
+## The identifier
 
-`D` suivi de la **date** où la décision est prise, au format `AAMMJJ` :
-`D260809` est celle du 9 août 2026. Si le même jour en porte une seconde, elle
-ajoute une lettre au même préfixe — `b`, puis `c`. Une date se connaît sans
-regarder les autres branches ; un rang, non.
+`D` followed by the **date** on which the decision is made, in `YYMMDD` format:
+`D260809` is the decision from 9 August 2026. If a second decision is made on the
+same day, it adds a letter to the same prefix — `b`, then `c`. A date can be
+known without looking at the other branches; a sequential number cannot.
 
-Les décisions **D1 à D99** gardent le rang qu'elles avaient : les renvois qui les
-citent depuis le code sont trop nombreux pour qu'un renommage se justifie, et un
-identifiant qui change après coup n'est plus un identifiant. Elles se trient donc
-par rang, les autres par date — le répertoire n'est chronologique qu'à
-l'intérieur de chaque famille.
+Decisions **D1 to D99** retain their original numbers: too many references cite
+them from the code to justify a rename, and an identifier that changes after the
+fact is no longer an identifier. They therefore sort by number, while the others
+sort by date — the directory is chronological only within each family.
 
-Il n'y a pas d'index à tenir : un index redeviendrait le fichier unique que ce
-répertoire remplace.
+There is no index to maintain: an index would become once again the single file
+that this directory replaces.
 
-## Ajouter une décision
+## Adding a decision
 
-Le nom du fichier reprend l'identifiant du titre, suivi d'un slug :
-`D<AAMMJJ>-<slug>.md`. C'est contrôlé.
-
-```markdown
-# D<AAMMJJ> — Une phrase qui énonce le choix, pas le problème
-
-**Contexte.** Ce qui a rendu la décision nécessaire.
-
-**Choix.** Ce qui est décidé, et ce qui le justifie.
-
-**Écarté.** Les autres options, et la raison de ne pas les avoir prises.
-
-**Conséquences.** Ce que ce choix impose, coûte ou rend impossible.
-```
-
-## Renvoyer à une autre décision
-
-`(Dxx)` en texte, sans lien : c'est la forme de l'écrasante majorité des renvois
-du dépôt, et la seule possible dans un commentaire de code. `check:specs` vérifie
-que la décision citée existe.
-
-Un lien cliquable reste légitime quand le renvoi porte le fil de la lecture
-plutôt qu'une simple caution :
+The filename uses the identifier from the title, followed by a slug:
+`D<YYMMDD>-<slug>.md`. This is checked.
 
 ```markdown
-depuis ce répertoire [D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)
-depuis specs/ [D38](./08-decisions/D38-une-cle-d-acces-n-est-pas-une-personne.md)
+# D<YYMMDD> — A sentence stating the decision, not the problem
+
+**Context.** What made the decision necessary.
+
+**Decision.** What is decided and why.
+
+**Rejected.** The other options and why they were not chosen.
+
+**Consequences.** What this decision requires, costs, or makes impossible.
 ```
 
-Une ancre `#dxx--…` ne mène nulle part : elle date du fichier unique, où toutes
-les décisions partageaient une page. `check:links` résout chaque lien et signale
-celui qui ne mène plus à un fichier.
+## Referring to another decision
 
-## Renvoyer à une autre spec
+`(Dxx)` as text, without a link: this is the form used by the overwhelming
+majority of references in the repository, and the only possible form in a code
+comment. `check:specs` verifies that the cited decision exists.
 
-Ce répertoire est **un cran plus bas** que le reste des specs : un lien vers un
-autre document s'écrit `[03](../03-modele-de-donnees.md)`, jamais `./`.
-`check:links` l'attrape.
+A clickable link remains appropriate when the reference carries the thread of
+the text rather than serving as a simple citation:
 
-Le cas inverse échappe à tout contrôle : une spec qui renvoie vers une décision
-en visant le mauvais fichier envoie le lecteur sur une décision qui parle d'autre
-chose, et le lien résout. C'est le « paragraphe devenu faux » du `CLAUDE.md` : à
-la charge de qui écrit.
+```markdown
+from this directory [D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)
+from specs/ [D38](./08-decisions/D38-une-cle-d-acces-n-est-pas-une-personne.md)
+```
 
-## Ce qui est contrôlé
+A `#dxx--…` anchor leads nowhere: it dates from the single file, where all
+decisions shared one page. `check:links` resolves every link and reports any
+that no longer leads to a file.
 
-`pnpm check:specs` vérifie le format de l'identifiant, l'accord entre le titre et
-le nom du fichier, l'absence de doublon, et le fait que chaque renvoi `(Dxx)` des
-specs et du code mène à une décision qui existe. Ce dernier point vaut partout, y
-compris dans un exemple : un identifiant écrit pour illustrer est un identifiant
-que le contrôle exige de trouver. On écrit donc `D<AAMMJJ>` là où l'on ne désigne
-aucune décision précise.
+## Referring to another spec
+
+This directory is **one level below** the rest of the specs: a link to another
+document is written as `[03](../03-modele-de-donnees.md)`, never `./`.
+`check:links` catches this.
+
+The reverse case escapes every check: a spec that refers to a decision but
+targets the wrong file sends the reader to a decision about something else, and
+the link still resolves. This is the "paragraph that became false" from
+`CLAUDE.md`: the writer is responsible for it.
+
+## What is checked
+
+`pnpm check:specs` verifies the identifier format, agreement between the title
+and filename, the absence of duplicates, and that every `(Dxx)` reference from
+the specs and code leads to an existing decision. This last rule applies
+everywhere, including in an example: an identifier written for illustration is
+an identifier the check expects to find. Use `D<YYMMDD>` when no specific
+decision is intended.

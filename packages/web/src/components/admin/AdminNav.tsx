@@ -2,11 +2,10 @@ import type { ReactElement } from 'react';
 import { NavLink } from 'react-router-dom';
 
 /**
- * Les rubriques de l'administration, dans leur ordre d'affichage.
+ * Administration sections in display order.
  *
- * Source unique : la navigation les rend, et `AdminPage` valide contre cette
- * liste le segment d'URL qu'elle reçoit. Une rubrique ajoutée ici n'a pas de
- * second endroit à mettre à jour.
+ * Single source: navigation renders them, and `AdminPage` validates its URL
+ * segment against this list. Adding a section here requires no second update.
  */
 export const ADMIN_TABS = [
   { slug: 'albums', label: 'Albums' },
@@ -16,31 +15,30 @@ export const ADMIN_TABS = [
   { slug: 'visits', label: 'Visits' },
 ] as const;
 
-/** Rubrique d'administration, telle qu'elle apparaît dans l'URL. */
+/** Administration section as it appears in the URL. */
 export type AdminTab = (typeof ADMIN_TABS)[number]['slug'];
 
-/** Vrai si le segment d'URL reçu désigne une rubrique connue. */
+/** Whether the received URL segment identifies a known section. */
 export function isAdminTab(valeur: string | undefined): valeur is AdminTab {
   return ADMIN_TABS.some((tab) => tab.slug === valeur);
 }
 
 /**
- * Navigation entre les rubriques de `/admin`.
+ * Navigation between `/admin` sections.
  *
- * Des `NavLink` plutôt que des boutons : la rubrique vit dans l'URL, donc
- * `aria-current="page"` et l'état actif viennent du routeur au lieu d'être
- * recalculés en comparant des chemins à la main.
+ * Use `NavLink` rather than buttons: the section lives in the URL, so
+ * `aria-current="page"` and active state come from the router instead of manual
+ * path comparisons.
  */
 export function AdminNav(): ReactElement {
   return (
     <nav
       aria-label="Administration sections"
-      // Deux régimes selon la largeur, comme `SidePanel`. À partir de `md`, une
-      // colonne collante : elle reste sous les yeux pendant qu'on fait défiler
-      // la file de modération, qui est paginée et donc longue. En dessous, une
-      // rangée qui défile horizontalement — 12 rem prélevées sur un écran de
-      // téléphone ne laisseraient rien au contenu. Le débord négatif lui rend
-      // les marges de la page, pour que ce défilement aille d'un bord à l'autre.
+      // Two width-dependent modes, like `SidePanel`. From `md`, use a sticky
+      // column that remains visible while scrolling the paginated, and therefore
+      // long, moderation queue. Below that, use a horizontally scrolling row —
+      // taking 12 rem from a phone screen would leave no content. Negative
+      // overflow restores page margins so scrolling reaches edge to edge.
       className="-mx-4 flex shrink-0 gap-1 overflow-x-auto px-4 sm:-mx-6 sm:px-6 md:sticky md:top-20 md:mx-0 md:w-48 md:flex-col md:self-start md:overflow-visible md:px-0"
     >
       {ADMIN_TABS.map((tab) => (

@@ -12,29 +12,25 @@ import {
 import type { Db } from './db.js';
 
 /**
- * Dépôt des commentaires : lecture d'un fil, écriture, suppression et
- * modération.
+ * Comment repository: reading a thread, writing, deleting and moderating.
  *
- * Un commentaire est signé par une **identité** (`commenters`), pas par la clé
- * d'accès qui a servi à ouvrir l'album : le même identifiant peut être partagé
- * par plusieurs personnes, et chacune doit signer de son nom. La clé d'accès est
- * tout de même conservée dans `account`, parce que c'est elle qu'on change quand
- * un mot de passe a trop circulé.
+ * A comment is signed by an **identity** (`commenters`), not by the access key used
+ * to open the album: the same username may be shared by several people, and each
+ * must sign with their own name. The access key is still retained in `account`
+ * because it is what gets changed when a password has circulated too widely.
  *
- * Le fil appartient au couple `(albumId, mediaId)` et non au seul média. Un même
- * fichier Drive indexé sous deux albums porte deux conversations séparées : les
- * réunir montrerait à un visiteur ce qui s'est dit dans un album qu'il n'a pas
- * le droit de voir, alors que tout le reste de l'application cloisonne par
- * album (D12).
+ * A thread belongs to the `(albumId, mediaId)` pair, not to the media alone. The
+ * same Drive file indexed under two albums carries two separate conversations:
+ * merging them would show a visitor what was said in an album they may not view,
+ * while the rest of the application isolates data by album (D12).
  *
- * Toutes les lectures écartent les commentaires masqués, sauf celles de la
- * modération. C'est le seul endroit qui décide de cette visibilité — une route
- * qui la rejouerait finirait par diverger.
+ * All reads exclude hidden comments except moderation reads. This is the only place
+ * that decides visibility — duplicating the rule in a route would eventually diverge.
  */
 
-/** Qui lit. Détermine `canDelete` et l'accès aux commentaires masqués. */
+/** Who is reading. Determines `canDelete` and access to hidden comments. */
 export interface Viewer {
-  /** Identité en cours, `null` si personne ne s'est identifié sur la session. */
+  /** Current identity, `null` if nobody has identified themselves in the session. */
   commenterId: number | null;
   admin: boolean;
 }
@@ -43,31 +39,30 @@ export interface CreateCommentInput {
   albumId: string;
   mediaId: string;
   commenterId: number;
-  /** Clé d'accès utilisée, conservée pour la modération. */
+  /** Access key used, retained for moderation. */
   account: string;
   body: string;
-  /** Commentaire auquel on répond, ou `null` pour ouvrir un fil. */
+  /** Comment being replied to, or `null` to open a thread. */
   parentId: number | null;
 }
 
-/** Ce que le fil d'activité demande au dépôt. */
+/** What the activity feed requests from the repository. */
 export interface FeedQuery {
   /**
-   * Albums que le demandeur a le droit de voir. Une liste vide rend une page
-   * vide — et non tout le corpus, ce que produirait un `IN ()` oublié.
+   * Albums the requester may view. An empty list returns an empty page — not the
+   * entire corpus, as an omitted `IN ()` would.
    */
   albumIds: string[];
-  /** Identifiant de la dernière ligne de la page précédente, `null` pour la première. */
+  /** Identifier of the previous page's last row, `null` for the first page. */
   cursor: number | null;
   limit: number;
   viewer: Viewer;
 }
 
 /**
- * Échec de création qui doit devenir une réponse HTTP précise plutôt qu'une
- * 500. Le seul cas : répondre à un commentaire qui n'existe pas, ou qui vit sur
- * un autre média — ce dernier étant une tentative de rattacher un message à une
- * conversation qu'on ne peut pas lire.
+ * Creation failure that must become a precise HTTP response rather than a 500. The
+ * only case is replying to a comment that does not exist or belongs to another media
+ * item — the latter attempts to attach a message to a conversation that cannot be read.
  */
 export class UnknownParentError extends Error {
   constructor() {
@@ -77,9 +72,9 @@ export class UnknownParentError extends Error {
 }
 
 /**
- * La fenêtre de correction s'est refermée. Distinct d'un refus d'accès : le
- * commentaire est bien celui du demandeur, c'est son **état** qui ne s'y prête
- * plus. D'où un 409 côté route, et non le 404 des refus d'accès.
+ * The editing window has closed. Distinct from denied access: the comment does belong
+ * to the requester, but its **state** no longer permits editing. The route therefore
+ * returns 409 rather than the 404 used for access denials.
  */
 export class EditWindowClosedError extends Error {
   constructor() {
@@ -106,11 +101,11 @@ function toComment(row: CommentRow, viewer: Viewer, now = Date.now()): Comment {
     author: { displayName: row.display_name },
     body: row.body,
     createdAt: row.created_at,
-    // L'administrateur peut tout retirer ; chacun peut retirer ce qu'il a écrit.
+    // The administrator may remove anything; everyone may remove what they wrote.
     canDelete: viewer.admin || mine,
-    // Corriger n'est pas modérer : l'administrateur peut masquer ou supprimer,
-    // jamais réécrire. Mettre d'autres mots dans la bouche de quelqu'un sous son
-    // nom serait un pouvoir d'une autre nature que celui de retirer un propos.
+    // Editing is not moderating: the administrator may hide or delete, but never
+    // rewrite. Putting different words in someone's mouth under their name would
+    // be a fundamentally different power from removing a statement.
     canEdit: mine && remainingEditMs(row.created_at, now) > 0,
   };
 }
@@ -124,13 +119,12 @@ const SELECT_COMMENT = `
 export class CommentRepo {
   constructor(private readonly db: Db) {}
 
-  /* ----------------------------------------------------------------- lecture */
+  /* -------------------------------------------------------------------- reading */
 
   /**
-   * Fil d'un média, racines dans l'ordre chronologique et réponses sous leur
-   * racine. Les commentaires masqués n'y figurent pas, y compris pour leur
-   * auteur : lui laisser croire que son message est lu alors qu'il ne l'est
-   * plus serait un mensonge par omission.
+   * Thread for a media item, with roots in chronological order and replies below
+   * their root. Hidden comments are absent even for their author: letting someone
+   * believe their message is being read when it no longer is would be a lie by omission.
    */
   thread(albumId: string, mediaId: string, viewer: Viewer): CommentsPage {
     const rows = this.db
@@ -144,8 +138,8 @@ export class CommentRepo {
     const threads: CommentThread[] = [];
     const byId = new Map<number, CommentThread>();
 
-    // Une passe suffit : l'ordre par id est l'ordre d'écriture, donc une racine
-    // précède toujours ses réponses.
+    // One pass is enough: ID order is insertion order, so a root always precedes
+    // its replies.
     for (const row of rows) {
       const comment = toComment(row, viewer);
       if (row.parent_id === null) {
@@ -154,10 +148,10 @@ export class CommentRepo {
         threads.push(thread);
         continue;
       }
-      // Une réponse dont la racine est masquée n'a plus de fil où s'accrocher.
-      // La laisser de côté la ferait disparaître sans que personne ne l'ait
-      // décidé : elle remonte donc en tête de fil, `parentId` remis à `null`
-      // pour que la forme rendue dise la vérité.
+      // A reply whose root is hidden no longer has a thread to attach to. Leaving
+      // it out would make it disappear without anyone deciding to remove it, so it
+      // is promoted to a thread root with `parentId` reset to `null`, making the
+      // returned shape truthful.
       const parent = byId.get(row.parent_id);
       if (parent) parent.replies.push(comment);
       else {
@@ -171,13 +165,12 @@ export class CommentRepo {
   }
 
   /**
-   * Compteurs de tout un album, masqués exclus, photos sans commentaire omises.
+   * Counts for a whole album, excluding hidden comments and omitting uncommented photos.
    *
-   * Le regroupement se fait en base et non en mémoire : `idx_comments_thread`
-   * porte `(album_id, media_id, id)`, donc SQLite lit la tranche de l'album déjà
-   * ordonnée par média. Rendre les lignes une à une pour les compter côté
-   * serveur ferait traverser tout le fil de chaque photo pour n'en garder qu'un
-   * entier.
+   * Grouping happens in the database rather than memory: `idx_comments_thread`
+   * carries `(album_id, media_id, id)`, so SQLite reads the album slice already
+   * ordered by media. Returning rows individually to count them on the server would
+   * traverse every photo's full thread only to retain one integer.
    */
   countsByAlbum(albumId: string): Record<string, number> {
     const rows = this.db
@@ -194,22 +187,21 @@ export class CommentRepo {
   }
 
   /**
-   * Fil d'activité : les derniers commentaires des albums qu'on a le droit de
-   * voir, du plus récent au plus ancien, tous albums et toutes photos confondus.
+   * Activity feed: the latest comments from albums the requester may view, newest
+   * first, across all albums and photos.
    *
-   * **`albumIds` est la seule barrière de cloisonnement.** Rien d'autre dans
-   * cette requête ne restreint la portée, et un appelant qui passerait la liste
-   * de tous les albums de l'instance servirait à un visiteur les conversations
-   * d'albums qu'il n'a pas. La liste vient de `albumsFor()`, jamais du client.
+   * **`albumIds` is the only isolation boundary.** Nothing else in this query limits
+   * its scope, and a caller passing every album in the instance would serve a visitor
+   * conversations from albums they do not have. The list comes from `albumsFor()`,
+   * never from the client.
    *
-   * L'ordre est celui de la clé primaire, décroissant : SQLite parcourt la table
-   * à rebours et s'arrête au `LIMIT`, sans tri ni index supplémentaire. Le prix
-   * de ce choix est visible dans un seul cas — un compte qui ne voit qu'un album
-   * sur cinquante fait traverser les commentaires des quarante-neuf autres avant
-   * de réunir sa page. Sur le corpus d'une galerie familiale, cela reste un
-   * balayage de quelques milliers de lignes ; un index `(album_id, id DESC)` ne
-   * l'éviterait pas, SQLite ne sachant pas fusionner l'ordre de plusieurs
-   * tranches d'un `IN`.
+   * Ordering follows the primary key in descending order: SQLite scans the table
+   * backwards and stops at `LIMIT`, with no sorting or extra index. The cost of this
+   * choice appears in one case — an account that sees only one album out of fifty
+   * scans comments from the other forty-nine before assembling its page. For a family
+   * gallery's corpus, this remains a scan of a few thousand rows; an
+   * `(album_id, id DESC)` index would not avoid it because SQLite cannot merge the
+   * order of several slices from an `IN`.
    */
   listFeed(query: FeedQuery): CommentsFeedPage {
     if (query.albumIds.length === 0) return { comments: [], nextCursor: null };
@@ -233,8 +225,8 @@ export class CommentRepo {
            FROM comments c
            JOIN commenters a ON a.id = c.commenter_id
            LEFT JOIN albums al ON al.id = c.album_id
-           -- LEFT JOIN, même raison qu'en modération : un commentaire survit à
-           -- la disparition de sa photo de l'index (migration 4).
+           -- LEFT JOIN, for the same reason as in moderation: a comment survives its
+           -- photo disappearing from the index (migration 4).
            LEFT JOIN media m ON m.album_id = c.album_id AND m.id = c.media_id
            ${where(conditions)}
            ORDER BY c.id DESC
@@ -257,15 +249,15 @@ export class CommentRepo {
       albumTitle: row.album_title ?? row.album_id,
       mediaId: row.media_id,
       mediaName: row.media_name,
-      // Même troncature qu'en `repo.ts` : la vignette est servie en `immutable`,
-      // son URL doit donc changer quand le fichier Drive change de contenu.
+      // Same truncation as in `repo.ts`: the thumbnail is served as `immutable`, so
+      // its URL must change when the Drive file's content changes.
       mediaVersion: row.media_md5 ? row.media_md5.slice(0, 8) : null,
     }));
 
     return { comments, nextCursor: hasMore ? String(page.at(-1)!.id) : null };
   }
 
-  /** Compteur affiché avec le détail d'un média, masqués exclus. */
+  /** Count displayed with media details, excluding hidden comments. */
   countFor(albumId: string, mediaId: string): number {
     const row = this.db
       .prepare(
@@ -276,13 +268,12 @@ export class CommentRepo {
     return row.count;
   }
 
-  /* ---------------------------------------------------------------- écriture */
+  /* -------------------------------------------------------------------- writing */
 
   /**
-   * Publie un commentaire. Répondre à une réponse rattache le message à la
-   * racine du fil plutôt que de refuser : l'utilisateur a cliqué « Répondre »
-   * sous un message, l'intention est claire, et un second niveau d'imbrication
-   * transformerait le panneau en forum.
+   * Publishes a comment. Replying to a reply attaches the message to the thread root
+   * rather than refusing it: the user clicked "Reply" below a message, so the intent
+   * is clear, while a second nesting level would turn the panel into a forum.
    */
   create(input: CreateCommentInput): Comment {
     const parentId = input.parentId === null ? null : this.rootOf(input);
@@ -310,9 +301,9 @@ export class CommentRepo {
   }
 
   /**
-   * Racine du fil désigné par `parentId`, après avoir vérifié qu'il vit bien
-   * sur ce média. Sans ce contrôle, un client pourrait greffer sa réponse sur
-   * un fil d'un autre album en devinant un identifiant.
+   * Root of the thread identified by `parentId`, after verifying that it belongs to
+   * this media item. Without this check, a client could graft a reply onto a thread
+   * from another album by guessing an identifier.
    */
   private rootOf(input: CreateCommentInput): number {
     const parent = this.db
@@ -325,16 +316,16 @@ export class CommentRepo {
   }
 
   /**
-   * Corrige un commentaire dans la fenêtre qui suit sa publication.
+   * Edits a comment within the window following publication.
    *
-   * Réservé à son auteur, administrateur compris — et l'administrateur n'y a
-   * aucun privilège : il modère en masquant, pas en réécrivant.
+   * Reserved for its author, including when the author is an administrator — the
+   * administrator has no special privilege here and moderates by hiding, not rewriting.
    *
-   * Rend `false` si le commentaire n'existe pas, n'est pas celui du demandeur,
-   * ou a été masqué depuis. Ces trois cas sont indistinguables pour la même
-   * raison que dans `remove`. La fenêtre écoulée, elle, **lève** : c'est le seul
-   * refus que l'auteur doit pouvoir comprendre, puisqu'il porte sur son propre
-   * message et qu'il ne révèle rien.
+   * Returns `false` if the comment does not exist, does not belong to the requester,
+   * or has since been hidden. These three cases are indistinguishable for the same
+   * reason as in `remove`. An elapsed window **throws**: it is the only refusal the
+   * author should be able to understand, since it concerns their own message and
+   * reveals nothing.
    */
   edit(id: number, viewer: Viewer, body: string, now = Date.now()): Comment | null {
     if (viewer.commenterId === null) return null;
@@ -348,20 +339,20 @@ export class CommentRepo {
     if (!row) return null;
     if (remainingEditMs(row.created_at, now) <= 0) throw new EditWindowClosedError();
 
-    // `created_at` reste celui de la publication : la place du message dans le
-    // fil ne doit pas bouger sous les yeux de ceux qui le lisaient déjà.
+    // `created_at` remains the publication time: the message must not move within
+    // the thread while people are already reading it.
     this.db.prepare('UPDATE comments SET body = ? WHERE id = ?').run(body, id);
     return this.byId(id, viewer, now);
   }
 
-  /** Rend le commentaire tel que ce lecteur le verrait, masqués compris. */
+  /** Returns the comment as this reader would see it, including hidden comments. */
   byId(id: number, viewer: Viewer, now = Date.now()): Comment | null {
     const row = this.db.prepare(`${SELECT_COMMENT} WHERE c.id = ?`).get(id) as
       CommentRow | undefined;
     return row ? toComment(row, viewer, now) : null;
   }
 
-  /** Album et média porteurs de ce commentaire, pour recomposer un lien. */
+  /** Album and media carrying this comment, used to reconstruct a link. */
   locate(id: number): { albumId: string; mediaId: string } | null {
     const row = this.db.prepare('SELECT album_id, media_id FROM comments WHERE id = ?').get(id) as
       { album_id: string; media_id: string } | undefined;
@@ -369,10 +360,10 @@ export class CommentRepo {
   }
 
   /**
-   * Supprime définitivement — chacun son message, l'administrateur n'importe
-   * lequel. Rend `false` si le commentaire n'existe pas ou n'appartient pas au
-   * demandeur, sans distinguer les deux : celui-ci n'a pas à apprendre qu'un
-   * identifiant qu'il a deviné correspond au message de quelqu'un.
+   * Deletes permanently — each person their own message, the administrator any
+   * message. Returns `false` if the comment does not exist or does not belong to the
+   * requester, without distinguishing the two: the requester must not learn that a
+   * guessed identifier belongs to someone else's message.
    */
   remove(id: number, viewer: Viewer): boolean {
     if (viewer.admin) {
@@ -386,9 +377,9 @@ export class CommentRepo {
     );
   }
 
-  /* -------------------------------------------------------------- modération */
+  /* ---------------------------------------------------------------- moderation */
 
-  /** Masquer plutôt que supprimer : la décision reste réversible. */
+  /** Hide rather than delete so the decision remains reversible. */
   hide(id: number, by: string): boolean {
     return (
       this.db
@@ -407,22 +398,22 @@ export class CommentRepo {
   }
 
   /**
-   * File de modération, du plus récent au plus ancien, tous albums confondus.
+   * Moderation queue, newest to oldest, across all albums.
    *
-   * Le curseur est un simple identifiant : `AUTOINCREMENT` garantit que l'ordre
-   * des id est l'ordre d'écriture, ce qui évite le curseur composite dont la
-   * pagination des médias a besoin (voir `repo.ts`).
+   * The cursor is a simple identifier: `AUTOINCREMENT` guarantees that ID order is
+   * insertion order, avoiding the composite cursor required by media pagination
+   * (see `repo.ts`).
    *
-   * Modérer n'est pas parcourir : on arrive avec une intention — un message
-   * signalé, une journée, une adresse. D'où le filtre, l'album et la recherche,
-   * et d'où `total`, qui dit ce que le filtre retient en tout (D67).
+   * Moderating is not browsing: the user arrives with an intent — a reported message,
+   * a day, an address. Hence the filter, album and search, and `total`, which reports
+   * everything retained by the filter (D67).
    */
   listForModeration(query: ModerationQuery): AdminCommentsPage {
     const { conditions, params } = moderationConditions(query);
 
-    // Le total ignore le curseur : c'est la taille du corpus filtré, pas celle
-    // du reste à parcourir. Les `LEFT JOIN` d'album et de média sont inutiles
-    // ici — ils ne changent pas le nombre de lignes.
+    // The total ignores the cursor: it is the size of the filtered corpus, not the
+    // remainder to browse. The album and media `LEFT JOIN`s are unnecessary here —
+    // they do not change the number of rows.
     const totalRow = this.db
       .prepare(
         `SELECT COUNT(*) AS count
@@ -445,8 +436,8 @@ export class CommentRepo {
            FROM comments c
            JOIN commenters a ON a.id = c.commenter_id
            LEFT JOIN albums al ON al.id = c.album_id
-           -- LEFT JOIN : un commentaire survit à la disparition de sa photo de
-           -- l'index (voir la migration 4). Il doit rester modérable.
+           -- LEFT JOIN: a comment survives its photo disappearing from the index
+           -- (see migration 4). It must remain available for moderation.
            LEFT JOIN media m ON m.album_id = c.album_id AND m.id = c.media_id
            ${where(conditions)}
            ORDER BY c.id DESC
@@ -465,7 +456,7 @@ export class CommentRepo {
     const hasMore = rows.length > query.limit;
     const page = hasMore ? rows.slice(0, query.limit) : rows;
 
-    // L'administrateur peut tout supprimer : `canDelete` est vrai partout ici.
+    // The administrator may delete anything, so `canDelete` is true throughout here.
     const viewer: Viewer = { commenterId: null, admin: true };
     const comments: AdminComment[] = page.map((row) => ({
       ...toComment(row, viewer),
@@ -488,14 +479,12 @@ export class CommentRepo {
   }
 
   /**
-   * Masque tous les messages encore en ligne d'une identité, et rend leur
-   * nombre.
+   * Hides every still-visible message from an identity and returns their count.
    *
-   * C'est le geste d'après une clé d'accès qui a trop circulé, ou d'un
-   * commentateur devenu insistant : les retirer un par un est un travail que
-   * personne ne fait. `AND hidden_at IS NULL` préserve la date d'un message
-   * déjà masqué — c'est celle de la décision d'origine qui compte, même règle
-   * qu'à l'unité.
+   * This follows an access key that has circulated too widely or a commenter who
+   * has become persistent: nobody will remove the messages one by one.
+   * `AND hidden_at IS NULL` preserves the date of an already hidden message — the
+   * original decision date is what matters, following the same rule as a single item.
    */
   hideAllFrom(commenterId: number, by: string): number {
     return this.db
@@ -506,7 +495,7 @@ export class CommentRepo {
       .run(new Date().toISOString(), by, commenterId).changes;
   }
 
-  /** Rend visibles tous les messages masqués d'une identité, et rend leur nombre. */
+  /** Makes every hidden message from an identity visible and returns their count. */
   showAllFrom(commenterId: number): number {
     return this.db
       .prepare(
@@ -516,7 +505,7 @@ export class CommentRepo {
       .run(commenterId).changes;
   }
 
-  /** Nombre de commentaires masqués, pour la pastille de la section modération. */
+  /** Number of hidden comments, for the moderation section badge. */
   hiddenCount(): number {
     const row = this.db
       .prepare('SELECT COUNT(*) AS count FROM comments WHERE hidden_at IS NOT NULL')
@@ -526,11 +515,11 @@ export class CommentRepo {
 }
 
 /**
- * Échappe les jokers de `LIKE`.
+ * Escapes `LIKE` wildcards.
  *
- * Sans cela, un `%` saisi dans la recherche ramènerait tout le corpus et un `_`
- * remplacerait n'importe quel caractère : on chercherait autre chose que ce
- * qu'on a tapé, sans que rien ne le signale.
+ * Without this, a `%` entered in search would return the whole corpus and `_` would
+ * replace any character: the query would search for something other than what was
+ * entered, with no indication of the difference.
  */
 function escapeLike(term: string): string {
   return term.replace(/[\\%_]/g, (character) => `\\${character}`);
@@ -541,9 +530,9 @@ function where(conditions: string[]): string {
 }
 
 /**
- * Conditions communes au comptage et à la page — le curseur excepté, qui ne
- * concerne que la seconde. Les écrire deux fois les ferait diverger, et le
- * total annoncerait un corpus qui n'est pas celui qu'on liste.
+ * Conditions shared by the count and the page — except the cursor, which only applies
+ * to the latter. Writing them twice would let them diverge, and the total would
+ * describe a different corpus from the one being listed.
  */
 function moderationConditions(query: ModerationQuery): {
   conditions: string[];
@@ -561,13 +550,13 @@ function moderationConditions(query: ModerationQuery): {
   }
 
   if (query.q !== null) {
-    // Le nom et l'adresse autant que le corps : on cherche aussi bien un mot
-    // qu'on nous a rapporté que la personne qui l'a écrit.
+    // Search the name and address as well as the body: users may look for a reported
+    // word or for the person who wrote it.
     conditions.push(
       `(c.body LIKE ? ESCAPE '\\' OR a.display_name LIKE ? ESCAPE '\\' OR a.email LIKE ? ESCAPE '\\')`,
     );
-    const motif = `%${escapeLike(query.q)}%`;
-    params.push(motif, motif, motif);
+    const pattern = `%${escapeLike(query.q)}%`;
+    params.push(pattern, pattern, pattern);
   }
 
   return { conditions, params };

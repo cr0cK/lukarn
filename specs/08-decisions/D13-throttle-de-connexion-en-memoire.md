@@ -1,17 +1,17 @@
-# D13 — Throttle de connexion en mémoire
+# D13 — In-memory login throttling
 
-**Contexte.** Freiner les attaques par dictionnaire sans gêner une erreur de
-frappe.
+**Context.** Slow down dictionary attacks without penalising a typing mistake.
 
-**Choix.** Une `Map` en mémoire, clé `<ip>:<username>`, cinq tentatives libres
-puis doublement du délai jusqu'à 15 minutes, oubli après une heure sans échec.
+**Decision.** An in-memory `Map`, keyed by `<ip>:<username>`, five unrestricted
+attempts, then a delay that doubles up to 15 minutes; the entry is forgotten
+after one hour without a failure.
 
-**Écarté.** Un compteur en base ou dans Redis. L'application est mono-process et
-compte quelques utilisateurs : la persistance n'apporterait qu'une dépendance de
-plus. Écarté aussi : un délai fixe, qui gêne les vrais utilisateurs sans
-décourager un attaquant patient.
+**Rejected.** A counter in the database or in Redis. The application runs as a
+single process and has only a few users: persistence would only add another
+dependency. Also rejected: a fixed delay, which inconveniences genuine users
+without discouraging a patient attacker.
 
-**Conséquences.** Les compteurs sont perdus au redémarrage — un attaquant qui
-provoquerait un redémarrage remettrait le compteur à zéro, ce qui est un scénario
-bien plus coûteux pour lui que d'attendre. La clé combine IP et identifiant :
-une attaque distribuée sur un seul compte n'est pas ralentie globalement.
+**Consequences.** Counters are lost on restart — an attacker who caused a restart
+would reset the counter, a much more costly scenario for them than waiting. The
+key combines the IP and identifier: a distributed attack on a single account is
+not throttled globally.

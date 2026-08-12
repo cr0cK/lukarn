@@ -9,17 +9,17 @@ export interface BootstrapLogger {
 }
 
 /**
- * Amorçage d'une installation neuve depuis `config/albums.yaml`.
+ * Bootstraps a new installation from `config/albums.yaml`.
  *
- * La base fait autorité : ce fichier n'est lu **que** tant qu'aucun compte
- * n'existe. Dès qu'il y en a un, le YAML est ignoré pour toujours — sinon une
- * modification faite dans l'application serait écrasée au redémarrage suivant
- * par un fichier resté figé.
+ * The database is authoritative: this file is read **only** while no account
+ * exists. As soon as one does, the YAML is ignored permanently — otherwise a
+ * change made in the application would be overwritten on the next restart by
+ * a file that has remained unchanged.
  *
- * C'est aussi le chemin de mise à jour d'une instance en service : au premier
- * démarrage après la migration, ses comptes, albums, droits et réglages sont
- * repris tels quels du fichier qu'elle utilisait déjà. Rien n'est réindexé,
- * l'index média et le jeton OAuth ne sont pas touchés.
+ * This is also the upgrade path for a running instance: on the first start after
+ * the migration, its accounts, albums, permissions and settings are carried over
+ * unchanged from the file it already used. Nothing is re-indexed, and neither the
+ * media index nor the OAuth token is touched.
  */
 export function bootstrapFromYaml(config: ConfigRepo, env: Env, log: BootstrapLogger): void {
   if (config.userCount() > 0) return;
@@ -33,9 +33,9 @@ export function bootstrapFromYaml(config: ConfigRepo, env: Env, log: BootstrapLo
     return;
   }
 
-  // Un fichier présent mais invalide fait échouer le démarrage, comme avant :
-  // laisser passer donnerait une instance sans aucun compte, donc inutilisable,
-  // alors que la faute de frappe est sous les yeux de l'installateur.
+  // A present but invalid file prevents startup, as before: accepting it would
+  // produce an unusable instance with no accounts, while the typo is visible to
+  // the installer.
   const yaml = loadConfig(env.configPath);
 
   config.seed({

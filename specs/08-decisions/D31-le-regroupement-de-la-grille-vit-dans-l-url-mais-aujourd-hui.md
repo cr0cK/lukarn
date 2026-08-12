@@ -1,41 +1,39 @@
-# D31 — Le regroupement de la grille vit dans l'URL, mais « aujourd'hui » se lit sur l'horloge locale
+# D31 — Grid grouping lives in the URL, but "today" is read from the local clock
 
-**Contexte.** La grille découpait les photos en mois, en dur. Sur un album de
-vacances — trois mille photos sur trois semaines — cela produit une ou deux
-sections, c'est-à-dire aucun repère. Le découpage par jour donne des en-têtes
-utiles, mais tout le front affiche ses dates en UTC (voir `CLAUDE.md`), et un
-découpage par jour en heure locale ferait basculer de section les photos de fin
-de soirée.
+**Context.** The grid used to split photos into hard-coded months. On a holiday
+album — three thousand photos over three weeks — this produces one or two
+sections, which provides no meaningful landmark. Splitting by day gives useful
+headers, but the entire front end displays dates in UTC (see `CLAUDE.md`), and
+splitting by day in local time would move late-evening photos between sections.
 
-**Choix.** `GroupBy = 'month' | 'day'` dans `@nonni/shared`, `?group=day` dans
-l'URL comme `?order=asc`, et `LayoutOptions.groupBy` dans `computeLayout`. Les
-deux clés de section sont des tranches de la chaîne ISO (`slice(0, 7)`,
-`slice(0, 10)`), donc en UTC par construction : aucun objet `Date` n'intervient
-dans le découpage, et un navigateur à Auckland segmente exactement comme un
-navigateur à Lisbonne.
+**Decision.** `GroupBy = 'month' | 'day'` in `@nonni/shared`, `?group=day` in
+the URL like `?order=asc`, and `LayoutOptions.groupBy` in `computeLayout`. Both
+section keys are slices of the ISO string (`slice(0, 7)`, `slice(0, 10)`), so
+they are in UTC by construction: no `Date` object is involved in the split, and
+a browser in Auckland segments it exactly like a browser in Lisbon.
 
-**Choix.** `dayLabel` nomme « Aujourd'hui » et « Hier » les deux jours les plus
-récents, et **compare au calendrier local du navigateur**, pas au jour UTC.
-C'est la seule date du front qui ne soit pas en UTC, et c'est cohérent :
-`taken_at` est l'heure qu'affichait l'appareil, donc l'horloge murale de celui
-qui a pris la photo — la même que celle de celui qui la regarde. Comparer au
-jour UTC refuserait « Aujourd'hui » à un après-midi encore en cours à Montréal,
-et l'accorderait à Auckland avant que la journée n'ait commencé. La date
-complète, elle, reste rendue par `formatDate`, en UTC.
+**Decision.** `dayLabel` names the two most recent days "Today" and
+"Yesterday", and **compares against the browser's local calendar**, not the UTC
+day. This is the only date in the front end that is not in UTC, and that is
+consistent: `taken_at` is the time displayed by the device, hence the wall
+clock of the person who took the photo — the same as that of the person viewing
+it. Comparing against the UTC day would deny "Today" to an afternoon still in
+progress in Montreal, and grant it in Auckland before the day had begun. The
+full date, meanwhile, remains rendered by `formatDate`, in UTC.
 
-**Écarté.** Un regroupement par année : sur l'album qui motive la fonctionnalité
-il ne produit qu'une seule section. Écarté aussi : envoyer `group` au serveur et
-le mettre dans la clé TanStack Query — la liste servie est identique, seule la
-mise en page la segmente, et l'y mettre rechargerait tout l'album à chaque
-bascule. Écarté enfin : un repère relatif au-delà de la veille (« il y a
-5 jours »), qui demande un calcul mental de plus que la date elle-même.
+**Rejected.** Grouping by year: on the album that prompted the feature, it only
+produces one section. Also rejected: sending `group` to the server and putting
+it in the TanStack Query key — the list served is identical and only the layout
+segments it, so putting it there would reload the entire album on every toggle.
+Finally, a relative landmark beyond the previous day ("5 days ago") was
+rejected because it requires more mental calculation than the date itself.
 
-**Conséquences.** Par jour, `layout.sections` est beaucoup plus long, et
-`JustifiedGrid` le balaie à chaque événement de défilement. Mesuré sur le pire
-cas — 3 000 photos, 3 000 sections — ce balayage coûte 0,02 ms, contre 0,004 ms
-pour les 99 sections du même album par mois : la virtualisation tient sans
-changement, et une recherche dichotomique n'apporterait rien de mesurable pour
-une invariante de tri en plus. La hauteur totale, en revanche, explose (94 000 px
-par mois contre 837 000 px par jour sur ce même cas) : c'est le prix d'un en-tête
-et d'une dernière ligne non justifiée par section, et c'est assumé. La bascule
-remet la sélection clavier à zéro et remonte la page, comme l'inversion du tri.
+**Consequences.** By day, `layout.sections` is much longer, and `JustifiedGrid`
+scans it on every scroll event. Measured on the worst case — 3,000 photos, 3,000
+sections — this scan costs 0.02 ms, compared with 0.004 ms for the 99 sections
+of the same album by month: virtualisation holds without changes, and a binary
+search would bring no measurable benefit while adding another sorting
+invariant. The total height, however, explodes (94,000 px by month compared with
+837,000 px by day in the same case): that is the cost of a header and a final
+unjustified row per section, and it is accepted. The toggle resets keyboard
+selection and scrolls the page to the top, like reversing the sort order.

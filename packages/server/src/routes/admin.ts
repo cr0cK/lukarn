@@ -38,32 +38,32 @@ const identifier = z
   .string()
   .min(1)
   .max(USERNAME_MAX_LENGTH)
-  .regex(USERNAME_PATTERN, 'lettres, chiffres, point, tiret et underscore uniquement');
+  .regex(USERNAME_PATTERN, 'letters, digits, dot, hyphen and underscore only');
 
 const albumId = z
   .string()
   .min(1)
   .max(USERNAME_MAX_LENGTH)
-  .regex(ALBUM_ID_PATTERN, 'lettres, chiffres, point, tiret et underscore uniquement');
+  .regex(ALBUM_ID_PATTERN, 'letters, digits, dot, hyphen and underscore only');
 
 const password = z
   .string()
   .min(PASSWORD_MIN_LENGTH, `at least ${PASSWORD_MIN_LENGTH} characters`)
-  // Argon2 accepte des mots de passe bien plus longs ; la borne protège
-  // simplement le CPU d'un hachage démesuré demandé par mégarde.
+  // Argon2 accepts much longer passwords; the limit merely protects CPU time from an
+  // accidentally requested, excessively large hash.
   .max(512);
 
-/** `['*']` ou une liste d'ids. Le contenu est confronté aux albums existants. */
+/** `['*']` or a list of IDs. The contents are checked against existing albums. */
 const albumList = z.array(z.union([z.literal(ALL_ALBUMS), albumId])).max(500);
 
 /**
- * Adresse prévenue de chaque commentaire. La chaîne vide est acceptée à côté
- * d'une adresse valide : c'est ce qu'envoie un champ de formulaire qu'on vient
- * de vider, et la refuser obligerait le front à traduire « vide » en `null`
- * avant chaque envoi. `ConfigRepo` ramène les deux au même `NULL`.
+ * Address notified of every comment. An empty string is accepted alongside a valid
+ * address because that is what a newly cleared form field sends; refusing it would
+ * force the front end to translate "empty" into `null` before every request.
+ * `ConfigRepo` reduces both to the same `NULL`.
  */
 const moderationEmail = z
-  .union([z.string().trim().email('adresse invalide').max(EMAIL_MAX_LENGTH), z.literal('')])
+  .union([z.string().trim().email('invalid address').max(EMAIL_MAX_LENGTH), z.literal('')])
   .nullable()
   .optional();
 
@@ -83,17 +83,16 @@ const updateUserSchema = z.object({
 const moderationQuerySchema = z.object({
   filter: z.enum(['all', 'visible', 'hidden']).default('all'),
   albumId: albumId.optional(),
-  // Borné à 200 caractères comme le reste des saisies libres : au-delà, ce
-  // n'est plus une recherche mais un corps de commentaire recollé.
+  // Limited to 200 characters like other free-form input: beyond that, it is no longer
+  // a search but a pasted comment body.
   q: z.string().trim().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   cursor: z.coerce.number().int().positive().optional(),
 });
 
 /**
- * Fenêtre de la télémétrie de visite. Bornée à un an : au-delà, la purge
- * horaire a déjà oublié les journées, et la requête rendrait une fenêtre que la
- * base ne peut plus remplir.
+ * Visit-telemetry window. Limited to one year: beyond that, hourly cleanup has already
+ * forgotten the days, and the request would return a window the database cannot fill.
  */
 const visitsQuerySchema = z.object({
   days: z.coerce.number().int().min(1).max(VISIT_WINDOW_MAX).default(VISIT_WINDOW_DEFAULT),
@@ -119,33 +118,33 @@ const updateAlbumSchema = z.object({
   recursive: z.boolean().optional(),
   groupBy: groupBy.optional(),
   sortOrder: sortOrder.optional(),
-  // Un identifiant de fichier Drive, borné comme celui d'un dossier. `null`
-  // rend la couverture au choix automatique — la photo la plus récente.
+  // A Drive file identifier, bounded like a folder identifier. `null` returns the
+  // cover to automatic selection — the most recent photo.
   coverId: z.string().min(1).max(256).nullable().optional(),
 });
 
-/** `YYYY-MM-DD`, la clé de journée du découpage par jour. */
-const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'attendu : AAAA-MM-JJ');
+/** `YYYY-MM-DD`, the day key used by day grouping. */
+const dayKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected: YYYY-MM-DD');
 
 /**
- * Note d'une journée. La chaîne vide est acceptée à côté d'un texte, pour la
- * même raison que `moderationEmail` : c'est ce qu'envoie un champ qu'on vient
- * de vider, et la refuser obligerait le front à traduire « vide » en `null`
- * avant chaque envoi. `AlbumDayRepo` ramène les deux au même `NULL`.
+ * Day note. An empty string is accepted alongside text for the same reason as
+ * `moderationEmail`: it is what a newly cleared field sends, and refusing it would
+ * force the front end to translate "empty" into `null` before every request.
+ * `AlbumDayRepo` reduces both to the same `NULL`.
  */
 const updateAlbumDaySchema = z.object({
   description: z.string().max(ALBUM_DAY_DESCRIPTION_MAX_LENGTH).nullable().optional(),
   place: z.string().max(ALBUM_DAY_PLACE_MAX_LENGTH).nullable().optional(),
 });
 
-/** Légende d'une photo. Chaîne vide acceptée et ramenée à `null`, comme ci-dessus. */
+/** Photo caption. An empty string is accepted and reduced to `null`, as above. */
 const updateMediaSchema = z.object({
   description: z.string().max(MEDIA_DESCRIPTION_MAX_LENGTH).nullable().optional(),
 });
 
 const updateSettingsSchema = z.object({
-  // Une semaine de plafond : au-delà, `setInterval` n'est plus un réglage mais
-  // une désactivation, qui s'écrit `0`.
+  // One-week maximum: beyond that, `setInterval` is no longer a setting but a
+  // disabled state, represented by `0`.
   syncIntervalMinutes: z.number().int().min(0).max(10080).optional(),
   syncOnStartup: z.boolean().optional(),
   cacheMaxSizeGB: z.number().positive().max(10000).optional(),
@@ -155,13 +154,13 @@ const updateSettingsSchema = z.object({
   moderationEmail,
 });
 
-/** Identité visée par une modération groupée, ou `null` si le segment n'en est pas une. */
+/** Identity targeted by bulk moderation, or `null` if the segment is not one. */
 function commenterIdOf(params: unknown): number | null {
   const id = Number((params as { commenterId: string }).commenterId);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-/** Message d'erreur lisible : le chemin du champ fautif, puis la raison. */
+/** Readable error message: the invalid field's path followed by the reason. */
 function badRequest(reply: FastifyReply, error: z.ZodError): FastifyReply {
   const details = error.issues
     .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
@@ -172,7 +171,7 @@ function badRequest(reply: FastifyReply, error: z.ZodError): FastifyReply {
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   const secureCookies = context.env.publicUrl.startsWith('https://');
 
-  /** Vue album de l'administration : la config, l'index et l'état de sync. */
+  /** Administration album view: configuration, index and sync state. */
   function toAdminAlbum(album: StoredAlbum): AdminAlbum {
     const state = context.syncState.get(album.id);
     return {
@@ -195,9 +194,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   }
 
   /**
-   * Une référence à un album inexistant est presque toujours une faute de
-   * frappe qui priverait silencieusement quelqu'un de son accès — la même
-   * vérification que faisait le chargement du YAML.
+   * A reference to a non-existent album is almost always a typo that would silently
+   * deprive someone of access — the same check previously performed when loading YAML.
    */
   function unknownAlbum(albums: string[]): string | null {
     return albums.find((id) => id !== ALL_ALBUMS && !context.findAlbum(id)) ?? null;
@@ -223,12 +221,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Qui est venu, et ce qui a été regardé. Deux agrégations bornées à une
-     * fenêtre de jours, lues d'une table déjà agrégée à l'écriture (D260809h).
+     * Who visited and what was viewed. Two aggregations bounded to a window of days,
+     * read from a table already aggregated on write (D260809h).
      *
-     * Les visites de la clé d'administration sont **montrées, pas exclues** :
-     * les retirer ferait mentir les totaux, et la colonne « admin » suffit à
-     * les lire pour ce qu'elles sont.
+     * Visits by the administration key are **shown, not excluded**: removing them
+     * would make totals inaccurate, and the "admin" column is enough to interpret
+     * them correctly.
      */
     app.get('/visits', async (request, reply) => {
       const parsed = visitsQuerySchema.safeParse(request.query);
@@ -238,7 +236,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       return reply.send(overview);
     });
 
-    /* ------------------------------------------------------------- comptes */
+    /* ------------------------------------------------------------- accounts */
 
     app.get('/users', async (_request, reply) =>
       reply.send(context.config.users().map(toAdminUser)),
@@ -249,8 +247,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) return badRequest(reply, parsed.error);
       const input = parsed.data;
 
-      // Écraser un compte existant reviendrait à changer son mot de passe et
-      // ses droits sans que personne ne l'ait demandé.
+      // Overwriting an existing account would change its password and permissions
+      // without anyone requesting it.
       if (context.config.user(input.username)) {
         return reply.code(409).send({
           error: 'conflict',
@@ -262,7 +260,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (missing) {
         return reply
           .code(400)
-          .send({ error: 'unknown_album', message: `Album inconnu : "${missing}"` });
+          .send({ error: 'unknown_album', message: `Unknown album: "${missing}"` });
       }
 
       const user = context.config.createUser({
@@ -272,7 +270,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         albums: input.albums,
       });
 
-      request.log.info(`Compte "${user.username}" created`);
+      request.log.info(`Account "${user.username}" created`);
       return reply.code(201).send(toAdminUser(user));
     });
 
@@ -287,9 +285,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) return badRequest(reply, parsed.error);
       const patch = parsed.data;
 
-      // Retirer le rôle du dernier administrateur rendrait l'instance
-      // inadministrable : plus personne ne pourrait connecter Drive, créer un
-      // compte, ni même rendre le rôle à quiconque.
+      // Removing the last administrator's role would make the instance impossible to
+      // administer: nobody could connect Drive, create an account or restore the role.
       if (patch.admin === false && stored.admin && context.config.adminCount() <= 1) {
         return reply.code(409).send({
           error: 'last_admin',
@@ -304,7 +301,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         if (missing) {
           return reply
             .code(400)
-            .send({ error: 'unknown_album', message: `Album inconnu : "${missing}"` });
+            .send({ error: 'unknown_album', message: `Unknown album: "${missing}"` });
         }
       }
 
@@ -317,14 +314,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       });
 
       /**
-       * Changer un mot de passe ferme les sessions ouvertes : sinon le
-       * navigateur déjà connecté continuerait de naviguer avec l'ancien, ce
-       * qui est précisément ce qu'on cherche à couper.
+       * Changing a password closes open sessions: otherwise an already signed-in
+       * browser would continue navigating with the old password, precisely the access
+       * being revoked.
        *
-       * Retirer le rôle d'administrateur ne déconnecte pas : le compte reste
-       * légitime, et `plugins/auth.ts` relit `admin` à chaque requête, donc
-       * l'accès à /api/admin tombe dès la requête suivante. Modifier la liste
-       * d'albums ne déconnecte pas non plus, pour la même raison.
+       * Removing the administrator role does not sign out: the account remains valid,
+       * and `plugins/auth.ts` rereads `admin` on every request, so /api/admin access
+       * disappears on the next request. Changing the album list does not sign out for
+       * the same reason.
        */
       if (patch.password) {
         context.sessions.destroyForUser(stored.username);
@@ -345,26 +342,25 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(409).send({
           error: 'last_admin',
           message:
-            "Impossible de supprimer le dernier administrateur : l'instance deviendrait " +
-            'inadministrable.',
+            'The last administrator cannot be deleted: the instance would become ' +
+            'unadministrable.',
         });
       }
 
       context.config.deleteUser(stored.username);
-      // Un compte supprimé ne doit pas continuer à naviguer avec sa session.
+      // A deleted account must not continue navigating with its session.
       context.sessions.destroyForUser(stored.username);
-      request.log.info(`Compte "${stored.username}" deleted, its sessions are closed`);
+      request.log.info(`Account "${stored.username}" deleted, its sessions are closed`);
 
       return reply.send({ ok: true });
     });
 
-    /* ---------------------------------------------------------- modération */
+    /* --------------------------------------------------------- moderation */
 
     /**
-     * File de modération, tous albums confondus — y compris ceux que cet
-     * administrateur ne verrait pas dans la galerie. Modérer suppose de tout
-     * lire : restreindre la file au périmètre de lecture laisserait des
-     * commentaires que personne ne pourrait traiter.
+     * Moderation queue across all albums — including those this administrator would
+     * not see in the gallery. Moderating requires reading everything: limiting the
+     * queue to viewing scope would leave comments nobody could handle.
      */
     app.get('/comments', async (request, reply) => {
       const parsed = moderationQuerySchema.safeParse(request.query);
@@ -388,8 +384,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
       }
 
-      // Masquer deux fois n'est pas une erreur, mais ne doit pas réécrire la
-      // date : c'est celle de la décision d'origine qui intéresse.
+      // Hiding twice is not an error but must not rewrite the date: the original
+      // decision date is what matters.
       if (!context.comments.hide(id, request.user!.username)) {
         const existing = context.comments.byId(id, { commenterId: null, admin: true });
         if (!existing) {
@@ -416,23 +412,22 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Modération groupée : tous les messages d'une même identité, d'un coup.
+     * Bulk moderation: every message from one identity at once.
      *
-     * Le geste d'après une clé d'accès qui a trop circulé, ou d'un commentateur
-     * devenu insistant. Retirer quinze messages un par un est un travail que
-     * personne ne fait — et laisser ce travail non fait est le vrai risque.
+     * The action taken after an access key has circulated too widely or a commenter
+     * has become persistent. Nobody removes fifteen messages one by one — leaving
+     * that work undone is the real risk.
      *
-     * L'identité et non la clé d'accès : c'est la personne qu'on modère. La clé
-     * reste affichée à côté de chaque message, parce que c'est elle qu'on change
-     * ensuite.
+     * The identity rather than the access key: moderation targets the person. The key
+     * remains displayed beside each message because it is what gets changed afterwards.
      */
     app.post('/commenters/:commenterId/hide', async (request, reply) => {
       const id = commenterIdOf(request.params);
       if (id === null) {
         return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
       }
-      // Sans cette vérification, un identifiant inventé rendrait
-      // « 0 message touché » — indiscernable d'une identité qui n'a rien écrit.
+      // Without this check, an invented identifier would return "0 messages affected" —
+      // indistinguishable from an identity that wrote nothing.
       if (!context.commenters.byId(id)) {
         return reply.code(404).send({ error: 'not_found', message: 'Identity not found' });
       }
@@ -506,10 +501,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { coverId, ...patch } = parsed.data;
 
       /**
-       * Une couverture prise hors de cet album, ou posée sur une vidéo, ne
-       * s'afficherait jamais : `stats` la refuse et l'album retomberait
-       * silencieusement sur sa photo la plus récente. Le refus dit tout de
-       * suite ce que ce silence ferait découvrir depuis la page d'accueil.
+       * A cover selected outside this album or set to a video would never appear:
+       * `stats` rejects it and the album silently falls back to its most recent photo.
+       * Refusing immediately explains what silence would only reveal on the home page.
        */
       if (coverId) {
         const chosen = context.media.getDetail(id, coverId);
@@ -524,18 +518,16 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const album = context.config.updateAlbum(id, { ...patch, coverMediaId: coverId });
 
       /**
-       * Changer le périmètre change le contenu de l'album : les médias indexés
-       * désignent l'ancien et resteraient visibles — donc consultables par les
-       * comptes qui ont cet album — jusqu'à la prochaine synchronisation. Purge
-       * immédiate plutôt que d'attendre `deleteStale` : la fenêtre entre les
-       * deux est exactement celle où l'album montre ce que le propriétaire vient
-       * de vouloir retirer. La resynchronisation qui suit le remplit à nouveau,
-       * sans qu'il ait à la déclencher lui-même.
+       * Changing scope changes album content: indexed media refers to the old scope
+       * and would remain visible — and therefore accessible to accounts with this
+       * album — until the next synchronisation. Purge immediately rather than waiting
+       * for `deleteStale`: the gap is exactly when the album would show what the owner
+       * just chose to remove. The following resynchronisation fills it again without
+       * requiring a manual trigger.
        *
-       * `recursive` compte autant que `folderId` : le repasser à `false` doit
-       * retirer les sous-dossiers tout de suite, et non à la prochaine sync
-       * périodique — jamais, sur une instance où la sync automatique est
-       * coupée.
+       * `recursive` matters as much as `folderId`: setting it back to `false` must
+       * remove subfolders immediately, not at the next periodic sync — which is never
+       * on an instance with automatic sync disabled.
        */
       const perimetreChange =
         (patch.folderId !== undefined && patch.folderId !== stored.folderId) ||
@@ -562,16 +554,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       context.config.deleteAlbum(id);
 
       /**
-       * L'index suit l'album : `pruneAlbums` retire ses médias et son état de
-       * synchronisation. Un fichier présent dans un autre album y garde sa
-       * ligne — la clé primaire est `(album_id, id)` — donc il reste
-       * consultable par ce chemin-là, ce qui est le comportement voulu.
+       * The index follows the album: `pruneAlbums` removes its media and synchronisation
+       * state. A file also present in another album retains its row there — the primary
+       * key is `(album_id, id)` — so it remains accessible through that path, as intended.
        *
-       * Les dérivés en cache disque, eux, sont laissés en place : ils sont
-       * indexés par id de fichier seul et sont donc partagés entre albums ;
-       * les supprimer priverait les autres albums de leurs vignettes. Ceux qui
-       * deviennent orphelins partiront par éviction LRU, ou tout de suite via
-       * « vider le cache ». Ils sont régénérables, contrairement à l'index.
+       * Derivatives in the disk cache remain: they are indexed by file ID alone and
+       * therefore shared between albums; deleting them would deprive other albums of
+       * their thumbnails. Orphans leave through LRU eviction or immediately through
+       * "clear cache". Unlike the index, they can be regenerated.
        */
       const removed = context.media.pruneAlbums(context.albums.map((album) => album.id));
       request.log.info(`Album "${id}" deleted, ${removed} media removed from the index`);
@@ -580,10 +570,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Annote une journée. La **saisie** vit dans l'album, en face des photos
-     * qu'on décrit ; la **mutation** reste ici, sous `/api/admin`. C'est ce qui
-     * garde l'invariant « 403 nulle part ailleurs » : partout ailleurs, un
-     * refus d'accès répond 404 pour ne pas révéler ce qui existe (D50).
+     * Annotates a day. **Input** lives in the album beside the photos being described;
+     * the **mutation** remains here under `/api/admin`. This preserves the "403 nowhere
+     * else" invariant: everywhere else, denied access returns 404 to avoid revealing
+     * what exists (D50).
      */
     app.patch('/albums/:id/days/:day', async (request, reply) => {
       const params = request.params as { id: string; day: string };
@@ -601,10 +591,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Décrit une photo. Même partage que la journée ci-dessus : on écrit la
-     * légende depuis la galerie, en voyant l'image et ses voisines, mais la
-     * mutation reste sous `/api/admin` — le seul préfixe qui réponde 403,
-     * l'invariant « refus d'accès = 404 » tenant partout ailleurs (D50).
+     * Describes a photo. Same split as the day above: the caption is written from the
+     * gallery while viewing the image and its neighbours, but the mutation remains
+     * under `/api/admin` — the only prefix that returns 403, while the "denied access
+     * = 404" invariant holds everywhere else (D50).
      */
     app.patch('/albums/:id/items/:mediaId', async (request, reply) => {
       const params = request.params as { id: string; mediaId: string };
@@ -615,8 +605,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const parsed = updateMediaSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error);
 
-      // Décrire une photo absente de l'index laisserait un texte que rien
-      // n'affiche jamais, sur un identifiant peut-être inventé.
+      // Describing a photo absent from the index would leave text that is never
+      // displayed, attached to a possibly invented identifier.
       const item = context.media.setDescription(params.id, params.mediaId, parsed.data);
       if (!item) {
         return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
@@ -625,7 +615,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       return reply.send(item);
     });
 
-    /* ------------------------------------------------------------ réglages */
+    /* ------------------------------------------------------------- settings */
 
     app.get('/settings', async (_request, reply) => reply.send(context.settings));
 
@@ -633,8 +623,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const parsed = updateSettingsSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error);
 
-      // `updateSettings` applique aussi : limite du cache disque et
-      // reprogrammation du minuteur de synchronisation, sans redémarrage.
+      // `updateSettings` also applies changes: disk-cache limit and synchronisation
+      // timer rescheduling, without a restart.
       const settings: AppSettings = context.updateSettings(parsed.data);
       return reply.send(settings);
     });
@@ -642,16 +632,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     /* --------------------------------------------------------------- Drive */
 
     /**
-     * Démarre le consentement Google. Le `state` est tiré au hasard, déposé
-     * dans un cookie signé et recomparé au retour : sans ça, un tiers pourrait
-     * faire aboutir un callback avec un code obtenu ailleurs et connecter le
-     * Drive de quelqu'un d'autre à cette instance.
+     * Starts Google consent. `state` is generated randomly, stored in a signed cookie
+     * and compared again on return: without this, a third party could complete a
+     * callback with a code obtained elsewhere and connect someone else's Drive to
+     * this instance.
      */
     /**
-     * Le consentement n'a pas de sens en compte de service : l'autorisation
-     * vient du partage du dossier côté Drive. Le refuser ici plutôt que de le
-     * laisser aboutir évite d'enregistrer un jeton que rien n'utiliserait, et
-     * de laisser croire qu'il faut le faire.
+     * Consent is meaningless with a service account: authorisation comes from sharing
+     * the folder in Drive. Refusing it here rather than allowing completion avoids
+     * recording a token nothing would use and suggesting that consent is required.
      */
     app.get('/oauth/start', async (_request, reply) => {
       if (context.drive.mode === 'service_account') {
@@ -683,9 +672,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     app.post('/drive/disconnect', async (_request, reply) => {
-      // Rien à déconnecter : la clé vient de la configuration, et l'accès du
-      // partage Drive. Répondre « fait » laisserait croire que l'instance est
-      // coupée alors qu'elle continue de tout lire.
+      // Nothing to disconnect: the key comes from configuration and access from Drive
+      // sharing. Responding "done" would suggest the instance is disconnected while
+      // it continues to read everything.
       if (context.drive.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
@@ -719,9 +708,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
       }
 
-      // La sync tourne en tâche de fond : sur un gros album elle dépasse
-      // largement le timeout d'une requête HTTP. L'avancement se suit via
-      // `syncStatus` dans /status.
+      // Sync runs in the background: on a large album it greatly exceeds an HTTP
+      // request timeout. Progress is tracked through `syncStatus` in /status.
       void context.syncThenPrewarm(targets).catch((error: unknown) => {
         request.log.error({ err: error }, 'Sync failed');
       });
@@ -735,7 +723,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
   };
 
-  /** Indexation en tâche de fond, silencieuse tant que Drive n'est pas connecté. */
+  /** Background indexing, silent until Drive is connected. */
   function startSync(album: StoredAlbum, log: FastifyBaseLogger): void {
     if (!context.drive.connected) return;
     void context.syncThenPrewarm([album]).catch((error: unknown) => {
@@ -745,12 +733,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 }
 
 /**
- * Callback OAuth. Monté hors du préfixe `/admin` parce que son URL est figée
- * dans la console Google — mais il exige la même session administrateur.
+ * OAuth callback. Mounted outside the `/admin` prefix because its URL is fixed in the
+ * Google console — but it requires the same administrator session.
  *
- * Les retours visent `/admin/serveur`, la rubrique qui porte le bouton de
- * connexion : c'est de là qu'on est parti, et le message y répond à un geste
- * encore en tête (D66).
+ * Returns target `/admin/server`, the section containing the connect button: that
+ * is where the flow started, and the message responds there to an action still fresh
+ * in mind (D66).
  */
 export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsync {
   return async (app) => {
@@ -758,17 +746,17 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       const query = request.query as { code?: string; state?: string; error?: string };
 
       if (query.error) {
-        return reply.redirect(`/admin/serveur?oauth=denied`);
+        return reply.redirect(`/admin/server?oauth=denied`);
       }
       if (!query.code || !query.state) {
-        return reply.redirect(`/admin/serveur?oauth=invalid`);
+        return reply.redirect(`/admin/server?oauth=invalid`);
       }
 
       const cookie = request.cookies[OAUTH_STATE_COOKIE];
       const unsigned = cookie ? request.unsignCookie(cookie) : null;
       if (!unsigned?.valid || unsigned.value !== query.state) {
         request.log.warn('Invalid OAuth state, callback rejected');
-        return reply.redirect(`/admin/serveur?oauth=state_mismatch`);
+        return reply.redirect(`/admin/server?oauth=state_mismatch`);
       }
 
       reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api' });
@@ -777,16 +765,16 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
         await context.drive.completeAuth(query.code);
       } catch (error) {
         request.log.error({ err: error }, 'Connecting Drive failed');
-        return reply.redirect(`/admin/serveur?oauth=error`);
+        return reply.redirect(`/admin/server?oauth=error`);
       }
 
-      // Première connexion : l'index est vide, autant le remplir sans attendre
-      // que l'administrateur clique sur « resynchroniser ».
+      // First connection: the index is empty, so fill it without waiting for the
+      // administrator to click "resynchronise".
       void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
         request.log.error({ err: error }, 'Initial sync failed');
       });
 
-      return reply.redirect(`/admin/serveur?oauth=connected`);
+      return reply.redirect(`/admin/server?oauth=connected`);
     });
   };
 }

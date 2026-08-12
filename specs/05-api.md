@@ -1,272 +1,276 @@
 # 05 — API
 
-Tout est monté sous le préfixe `/api` (`packages/server/src/app.ts`). Les formes
-de réponse sont les types de `packages/shared/src/index.ts`.
+Everything is mounted under the `/api` prefix (`packages/server/src/app.ts`). Response
+shapes are the types from `packages/shared/src/index.ts`.
 
-Colonne « Accès » :
+"Access" column:
 
-- **aucun** — route ouverte ;
-- **session** — cookie `nonni_session` valide, sinon 401 `unauthorized` ;
-- **admin** — session **et** `admin: true`, sinon 401 ou 403 `forbidden`.
+- **none** — open route;
+- **session** — valid `nonni_session` cookie, otherwise 401 `unauthorized`;
+- **admin** — session **and** `admin: true`, otherwise 401 or 403 `forbidden`.
 
-## Réponses d'erreur
+## Error responses
 
-Toutes les erreurs ont la forme `ApiError` :
-`{ "error": "<code>", "message": "<texte français>" }`.
+All errors have the `ApiError` shape:
+`{ "error": "<code>", "message": "<English text>" }`.
 
-Le gestionnaire global d'`app.ts` renvoie `internal_error` / « Erreur interne »
-pour tout statut ≥ 500 — le détail reste dans les logs — et `request_error` avec
-le message réel en dessous.
+The global handler in `app.ts` returns `internal_error` / "Internal error" for
+any status ≥ 500 — the detail stays in the logs — and `request_error` with the
+actual message otherwise.
 
-## Santé
+## Health
 
-| Méthode | Chemin        | Accès | Réponse                |
-| ------- | ------------- | ----- | ---------------------- |
-| GET     | `/api/health` | aucun | `200 { status: 'ok' }` |
+| Method | Path          | Access | Response               |
+| ------ | ------------- | ------ | ---------------------- |
+| GET    | `/api/health` | none   | `200 { status: 'ok' }` |
 
-Utilisée par le `HEALTHCHECK` du Dockerfile.
+Used by the Dockerfile's `HEALTHCHECK`.
 
-## Authentification — `routes/auth.ts`
+## Authentication — `routes/auth.ts`
 
-| Méthode | Chemin                               | Accès   |
-| ------- | ------------------------------------ | ------- |
-| POST    | `/api/auth/login`                    | aucun   |
-| POST    | `/api/auth/logout`                   | aucun   |
-| GET     | `/api/auth/me`                       | aucun\* |
-| GET     | `/api/auth/setup-state`              | aucun   |
-| POST    | `/api/auth/device/start`             | aucun   |
-| POST    | `/api/auth/device/poll`              | aucun   |
-| GET     | `/api/auth/device/:userCode`         | session |
-| POST    | `/api/auth/device/:userCode/approve` | session |
+| Method | Path                                 | Access  |
+| ------ | ------------------------------------ | ------- |
+| POST   | `/api/auth/login`                    | none    |
+| POST   | `/api/auth/logout`                   | none    |
+| GET    | `/api/auth/me`                       | none\*  |
+| GET    | `/api/auth/setup-state`              | none    |
+| POST   | `/api/auth/device/start`             | none    |
+| POST   | `/api/auth/device/poll`              | none    |
+| GET    | `/api/auth/device/:userCode`         | session |
+| POST   | `/api/auth/device/:userCode/approve` | session |
 
-**`POST /api/auth/login`** — corps `{ username, password }` (1–64 et 1–512
-caractères). **L'identifiant est replié** avant d'être cherché — les bornes
-s'appliquent à la valeur repliée, `"   "` répond donc `400`. Aucun compte ne
-peut porter d'espace (`USERNAME_PATTERN`), et en refuser une venue d'une
-autocomplétion mobile ferait échouer une saisie juste sous le message d'un mot
-de passe faux. Le mot de passe n'est pas touché : il a le droit d'en contenir.
+**`POST /api/auth/login`** — body `{ username, password }` (1–64 and 1–512
+characters). **The username is trimmed** before being looked up — the bounds
+apply to the trimmed value, so `"   "` returns `400`. No account can contain a
+space (`USERNAME_PATTERN`), and rejecting one that came from a mobile
+autocomplete would fail a submission right under the message for a wrong
+password. The password is left untouched: it is allowed to contain one.
 
-| Code | Corps                                       | Quand                                                                               |
-| ---- | ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| 200  | `SessionUser` = `{ username, admin }`       | Succès. Pose le cookie `nonni_session`.                                             |
-| 400  | `bad_request`                               | Corps absent ou hors bornes.                                                        |
-| 401  | `invalid_credentials`                       | Identifiant inconnu **ou** mot de passe faux — message identique dans les deux cas. |
-| 429  | `too_many_attempts` + en-tête `Retry-After` | Throttle actif sur l'un des trois axes : couple IP/identifiant, identifiant, IP.    |
+| Code | Body                                       | When                                                                      |
+| ---- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| 200  | `SessionUser` = `{ username, admin }`      | Success. Sets the `nonni_session` cookie.                                 |
+| 400  | `bad_request`                              | Missing body or out of bounds.                                            |
+| 401  | `invalid_credentials`                      | Unknown username **or** wrong password — identical message in both cases. |
+| 429  | `too_many_attempts` + `Retry-After` header | Throttle active on one of three axes: IP/username pair, username, IP.     |
 
-**`POST /api/auth/logout`** — détruit la session si le cookie en désigne une,
-efface le cookie. Répond toujours `200 { ok: true }`, même sans session.
+**`POST /api/auth/logout`** — destroys the session if the cookie names one,
+clears the cookie. Always responds `200 { ok: true }`, even without a session.
 
-**`GET /api/auth/me`** — `200 SessionUser` si connecté, `401 unauthorized`
-sinon. \*Route ouverte au sens où elle ne rejette pas avant d'entrer : le 401 est
-la réponse normale d'un visiteur non connecté, et le front s'en sert pour décider
-d'afficher le formulaire.
+**`GET /api/auth/me`** — `200 SessionUser` if signed in, `401 unauthorized`
+otherwise. \*Open route in the sense that it does not reject before entering: the
+401 is the normal response for a signed-out visitor, and the front end uses it to
+decide whether to show the sign-in form.
 
-**`GET /api/auth/setup-state`** — `200 { needsSetup: boolean }`. Dit si la base
-ne contient encore aucun compte, auquel cas l'écran de connexion affiche la
-commande à lancer (`pnpm create-admin`) au lieu de refuser toutes les tentatives
-sans explication.
+**`GET /api/auth/setup-state`** — `200 { needsSetup: boolean }`. Says whether the
+database still holds no account, in which case the sign-in screen shows the
+command to run (`pnpm create-admin`) instead of rejecting every attempt without
+explanation.
 
-Publique, et elle doit l'être : elle est interrogée avant toute connexion. Elle
-ne divulgue rien — sur une instance sans compte il n'y a rien à protéger, et la
-réponse ne dit jamais **qui** existe, seulement s'il existe quelqu'un
-(`packages/server/test/setup-state.test.ts` le vérifie).
+Public, and it has to be: it is queried before any sign-in. It discloses
+nothing — on an instance with no account there is nothing to protect, and the
+response never says **who** exists, only whether anyone does
+(`packages/server/test/setup-state.test.ts` verifies this).
 
-### Appairage d'un écran — `pairings.ts`
+### Pairing a screen — `pairings.ts`
 
-Quatre routes pour un même échange : un écran sans clavier affiche un code, un
-téléphone déjà connecté l'approuve, l'écran relève la session. Le raisonnement
-est en [D260809c](./08-decisions/D260809c-approbation-ecran.md), ses règles d'accès
-en [04](./04-securite-et-acces.md).
+Four routes for a single exchange: a keyboard-less screen shows a code, a phone
+already signed in approves it, the screen picks up the session. The reasoning is
+in [D260809c](./08-decisions/D260809c-approbation-ecran.md), its access rules in
+[04](./04-securite-et-acces.md).
 
-**`POST /api/auth/device/start`** — sans corps. Ouvre une demande.
+**`POST /api/auth/device/start`** — no body. Opens a request.
 
-| Code | Corps                                       | Quand                                                                     |
-| ---- | ------------------------------------------- | ------------------------------------------------------------------------- |
-| 200  | `DevicePairingStart`                        | Succès. `{ userCode, deviceCode, expiresAt, intervalMs }`.                |
-| 429  | `too_many_pairings` + en-tête `Retry-After` | `MAX_PENDING` demandes en attente : la table est bornée, pas la patience. |
+| Code | Body                                       | When                                                                    |
+| ---- | ------------------------------------------ | ----------------------------------------------------------------------- |
+| 200  | `DevicePairingStart`                       | Success. `{ userCode, deviceCode, expiresAt, intervalMs }`.             |
+| 429  | `too_many_pairings` + `Retry-After` header | `MAX_PENDING` pending requests: the table is bounded, not the patience. |
 
-`userCode` est fait pour être lu à l'écran — huit caractères d'un alphabet sans
-`I`, `O`, `0` ni `1`, servis groupés par quatre. `deviceCode` ne l'est pas : 32
-octets rendus **une seule fois**, au demandeur, et jamais affichés.
+`userCode` is meant to be read on screen — eight characters from an alphabet
+without `I`, `O`, `0` or `1`, delivered grouped by four. `deviceCode` is not:
+32 bytes rendered **once only**, to the requester, and never displayed.
 
-**`POST /api/auth/device/poll`** — corps `{ deviceCode }`. Le sondage de
-l'écran, toutes les `intervalMs` (2 s).
+**`POST /api/auth/device/poll`** — body `{ deviceCode }`. The screen's polling,
+every `intervalMs` (2 s).
 
-| Code | Corps                               | Quand                                                                 |
-| ---- | ----------------------------------- | --------------------------------------------------------------------- |
-| 200  | `{ status: 'approved', user }`      | Approuvée. Pose le cookie `nonni_session` et **supprime la demande**. |
-| 202  | `{ status: 'pending' }`             | Personne n'a encore approuvé.                                         |
-| 400  | `bad_request`                       | Corps absent ou hors bornes.                                          |
-| 404  | `unknown_code`                      | Inconnue, expirée, déjà relevée, ou compte approbateur disparu.       |
-| 429  | `too_many_attempts` + `Retry-After` | Throttle, sur les trois axes de la connexion.                         |
+| Code | Body                                | When                                                                   |
+| ---- | ----------------------------------- | ---------------------------------------------------------------------- |
+| 200  | `{ status: 'approved', user }`      | Approved. Sets the `nonni_session` cookie and **deletes the request**. |
+| 202  | `{ status: 'pending' }`             | No one has approved yet.                                               |
+| 400  | `bad_request`                       | Missing body or out of bounds.                                         |
+| 404  | `unknown_code`                      | Unknown, expired, already picked up, or the approving account is gone. |
+| 429  | `too_many_attempts` + `Retry-After` | Throttle, on the sign-in flow's three axes.                            |
 
-Un POST et non un GET : la réponse pose un cookie, et le `deviceCode` n'a rien à
-faire dans une URL — journaux d'accès et historique la gardent.
+A POST rather than a GET: the response sets a cookie, and the `deviceCode` has no
+business being in a URL — access logs and history would keep it.
 
-**`GET /api/auth/device/:userCode`** — ce que le téléphone affiche avant
-d'approuver : `200 { userCode, expiresAt, approved }`, ou `404 unknown_code`. Un
-code déjà approuvé n'est pas une erreur — c'est ce qui permet de dire « c'est
-fait » plutôt que « ce code n'existe pas » à qui rouvre la page.
+**`GET /api/auth/device/:userCode`** — what the phone shows before approving:
+`200 { userCode, expiresAt, approved }`, or `404 unknown_code`. An already
+approved code is not an error — it is what lets the page say "This screen has
+already been paired" rather than "That code is no longer valid" to whoever
+reopens it.
 
-**`POST /api/auth/device/:userCode/approve`** — sans corps.
+**`POST /api/auth/device/:userCode/approve`** — no body.
 
-| Code | Corps            | Quand                                                                                 |
-| ---- | ---------------- | ------------------------------------------------------------------------------------- |
-| 200  | `{ ok: true }`   | Approuvée au nom de la session appelante. Rejouer la même approbation ne change rien. |
-| 401  | `unauthorized`   | Aucune session : le téléphone se connecte d'abord, et revient.                        |
-| 404  | `unknown_code`   | Inconnue ou expirée.                                                                  |
-| 409  | `already_paired` | Un **autre** compte l'a approuvée entre-temps.                                        |
+| Code | Body             | When                                                                                    |
+| ---- | ---------------- | --------------------------------------------------------------------------------------- |
+| 200  | `{ ok: true }`   | Approved on behalf of the calling session. Replaying the same approval changes nothing. |
+| 401  | `unauthorized`   | No session: the phone signs in first, then comes back.                                  |
+| 404  | `unknown_code`   | Unknown or expired.                                                                     |
+| 409  | `already_paired` | Some **other** account approved it in the meantime.                                     |
 
-Aucune session n'est créée ici : l'approbation inscrit qui approuve, et c'est le
-sondage qui crée la session — sinon un écran éteint entre-temps laisserait
-derrière lui une session d'un an que personne n'a ouverte.
+No session is created here: the approval records who approved it, and it is the
+polling that creates the session — otherwise a screen switched off in the
+meantime would leave behind a year-long session that no one ever opened.
 
 ## Albums — `routes/albums.ts`
 
-`requireAuth` en `preHandler` sur tout le préfixe.
+`requireAuth` as a `preHandler` on the whole prefix.
 
-| Méthode | Chemin                                | Accès   | Réponse       |
-| ------- | ------------------------------------- | ------- | ------------- |
-| GET     | `/api/albums`                         | session | `Album[]`     |
-| GET     | `/api/albums/:albumId`                | session | `Album`       |
-| GET     | `/api/albums/:albumId/days`           | session | `AlbumDay[]`  |
-| GET     | `/api/albums/:albumId/items`          | session | `ItemsPage`   |
-| GET     | `/api/albums/:albumId/items/:mediaId` | session | `MediaDetail` |
+| Method | Path                                  | Access  | Response      |
+| ------ | ------------------------------------- | ------- | ------------- |
+| GET    | `/api/albums`                         | session | `Album[]`     |
+| GET    | `/api/albums/:albumId`                | session | `Album`       |
+| GET    | `/api/albums/:albumId/days`           | session | `AlbumDay[]`  |
+| GET    | `/api/albums/:albumId/items`          | session | `ItemsPage`   |
+| GET    | `/api/albums/:albumId/items/:mediaId` | session | `MediaDetail` |
 
-**`GET /api/albums`** — uniquement les albums attribués à l'utilisateur, dans
-leur ordre de création (colonne `position`). Tableau nu, non enveloppé.
+**`GET /api/albums`** — only the albums assigned to the user, in their creation
+order (`position` column). A bare array, not wrapped.
 
-`Album` porte `groupBy` (`month` \| `day`) : le découpage appliqué à l'ouverture
-de l'album, que le paramètre `?group=` de l'URL peut contredire. C'est une
-préférence de l'album, pas un découpage de la requête — la liste servie est la
-même dans les deux cas.
+`Album` carries `groupBy` (`month` \| `day`): the split applied when the album is
+opened, which the URL's `?group=` parameter can override. It is a preference of
+the album, not a split of the request — the list served is the same either way.
 
-Il porte de même `sortOrder` (`desc` \| `asc`) : le sens de lecture appliqué à
-l'ouverture, que `?order=` contredit. Là, en revanche, ce n'est pas seulement une
-question de mise en page — le sens part au serveur, qui trie et pagine dans ce
-sens. Le front s'en sert comme **dernier** recours : l'URL prime, puis ce que le
-navigateur a retenu de cet album (voir [07](./07-frontend.md) et D99).
+It likewise carries `sortOrder` (`desc` \| `asc`): the reading direction applied
+when opened, which `?order=` overrides. Here, though, it is not just a matter of
+layout — the direction goes to the server, which sorts and paginates in that
+direction. The front end uses it as a **last** resort: the URL takes precedence,
+then what the browser remembered for this album (see [07](./07-frontend.md) and
+D99).
 
-**`GET /api/albums/:albumId`** — `404 not_found` si l'album n'existe pas **ou**
-n'est pas attribué (voir [04](./04-securite-et-acces.md)).
+**`GET /api/albums/:albumId`** — `404 not_found` if the album does not exist
+**or** is not assigned (see [04](./04-securite-et-acces.md)).
 
-**`GET /api/albums/:albumId/days`** — les journées annotées de l'album. Même
-règle d'accès que le reste : `404 not_found` si l'album est inconnu **ou** non
-attribué.
+**`GET /api/albums/:albumId/days`** — the annotated days of the album. Same
+access rule as everything else: `404 not_found` if the album is unknown **or**
+not assigned.
 
 ```ts
 interface AlbumDay {
-  day: string; // 'YYYY-MM-DD' UTC, la clé du découpage par jour
+  day: string; // 'YYYY-MM-DD' UTC, the key of the day-level split
   description: string | null;
-  place: string | null; // saisi à la main, prime sur autoPlaces
-  autoPlaces: string[]; // déduits de l'EXIF, du plus tôt au plus tard
+  place: string | null; // typed by hand, takes precedence over autoPlaces
+  autoPlaces: string[]; // inferred from EXIF, earliest to latest
 }
 ```
 
-Ne sont rendues que les journées **qui ont quelque chose à montrer** : une note,
-un lieu saisi, ou au moins un lieu déduit déjà géocodé. Une journée réduite à
-des cellules qu'aucun géocodage n'a encore nommées n'a rien à afficher, et la
-transporter ajouterait une entrée par jour d'album. Une cellule sans libellé
-disparaît d'`autoPlaces` au lieu d'y laisser un trou.
+Only days **that have something to show** are rendered: a note, a typed place,
+or at least one inferred place already geocoded. A day reduced to cells that no
+geocoding has yet named has nothing to display, and carrying it would add one
+entry per album day. A cell with no label disappears from `autoPlaces` instead
+of leaving a gap there.
 
-`autoPlaces` est asynchrone par nature : le géocodage tourne en fond, plafonné à
-une requête par seconde (voir [02](./02-architecture.md) et D48). L'interface
-doit donc tenir sans lui, et les lieux s'allument tout seuls au passage suivant.
+`autoPlaces` is asynchronous by nature: geocoding runs in the background,
+capped at one request per second (see [02](./02-architecture.md) and D48). The
+interface must therefore hold up without it, and places light up on their own on
+the next pass.
 
-**`GET /api/albums/:albumId/items`** — paramètres de requête :
+**`GET /api/albums/:albumId/items`** — query parameters:
 
-| Paramètre | Type             | Défaut | Contrainte                                                     |
-| --------- | ---------------- | ------ | -------------------------------------------------------------- |
-| `cursor`  | chaîne base64url | —      | ≤ 512 caractères. Illisible ⇒ ignoré, la page repart du début. |
-| `limit`   | entier           | 200    | 1 à 500                                                        |
-| `order`   | `desc` \| `asc`  | `asc`  | Toute autre valeur ⇒ **400**, pas de repli silencieux.         |
+| Parameter | Type             | Default | Constraint                                                              |
+| --------- | ---------------- | ------- | ----------------------------------------------------------------------- |
+| `cursor`  | base64url string | —       | ≤ 512 characters. Unreadable ⇒ ignored, the page restarts from the top. |
+| `limit`   | integer          | 200     | 1 to 500                                                                |
+| `order`   | `desc` \| `asc`  | `asc`   | Any other value ⇒ **400**, no silent fallback.                          |
 
-Réponse `ItemsPage` = `{ items: MediaItem[], nextCursor: string | null }`.
-`nextCursor: null` signale la fin de l'album. Codes : `400 bad_request` si les
-paramètres sont invalides, `404 not_found` si l'album est inconnu ou interdit —
-le contrôle d'accès passe **avant** la validation des paramètres.
+Response `ItemsPage` = `{ items: MediaItem[], nextCursor: string | null }`.
+`nextCursor: null` signals the end of the album. Codes: `400 bad_request` if the
+parameters are invalid, `404 not_found` if the album is unknown or forbidden —
+access control runs **before** parameter validation.
 
-**Effet de bord assumé** : sur la **première page** seulement (`cursor` absent),
-si la session porte une identité vérifiée, un `INSERT OR IGNORE` abonne cette
-personne aux nouveautés de l'album (voir [04](./04-securite-et-acces.md) et
-[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md)). Une écriture par ouverture d'album, négligeable.
-Ni les pages suivantes ni `/items/:mediaId` ne le font.
+**A deliberate side effect**: on the **first page** only (`cursor` absent), if
+the session carries a verified identity, an `INSERT OR IGNORE` subscribes that
+person to the album's new items (see [04](./04-securite-et-acces.md) and
+[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md)). One
+write per album opening, negligible. Neither later pages nor `/items/:mediaId`
+do this.
 
-Le défaut est `DEFAULT_SORT_ORDER`, la même constante que la colonne
-`albums.sort_order` : la route ne lit pas la préférence de l'album, elle ne
-connaît que ce que le client lui passe. C'est le front qui résout le sens — URL,
-puis navigateur, puis album — et qui envoie le résultat (voir
-[07](./07-frontend.md)).
+The default is `DEFAULT_SORT_ORDER`, the same constant as the `albums.sort_order`
+column: the route does not read the album's preference, it only knows what the
+client passes it. It is the front end that resolves the direction — URL, then
+browser, then album — and sends the result (see [07](./07-frontend.md)).
 
-`packages/server/test/items-order.test.ts` verrouille le contrat de cette route :
-le défaut `asc` (un album se lit dans le sens où il a été vécu tant que rien n'en
-demande un autre, D99), la pagination dans le sens demandé, le 400 sur `zigzag`,
-`ASC`, `''` ou `asc,desc`, et le 404 sur un album interdit quel que soit l'ordre.
+`packages/server/test/items-order.test.ts` locks down this route's contract: the
+`asc` default (an album reads in the direction it was lived, as long as nothing
+asks for another, D99), pagination in the requested direction, `400` on
+`zigzag`, `ASC`, `''` or `asc,desc`, and `404` on a forbidden album regardless of
+the order.
 
 **`GET /api/albums/:albumId/items/:mediaId`** — `MediaDetail` = `MediaItem` plus
-le bloc `exif` et `commentCount`. `404` si l'album est inconnu/interdit, `404` si
-le média n'est pas dans **cet** album.
+the `exif` block and `commentCount`. `404` if the album is unknown/forbidden,
+`404` if the item is not in **this** album.
 
-`commentCount` est composé par la route, pas par `MediaRepo` : l'index média n'a
-pas à connaître les commentaires, sans quoi chaque requête média deviendrait une
-jointure de plus. Il compte les commentaires **visibles**, réponses comprises, et
-voyage avec le détail pour que la visionneuse affiche « 3 » sur son onglet sans
-charger un fil que la plupart des visiteurs n'ouvriront pas.
+`commentCount` is composed by the route, not by `MediaRepo`: the media index has
+no business knowing about comments, or every media request would become one
+more join. It counts **visible** comments, replies included, and travels with
+the detail so the viewer can show "3" on its tab without loading a thread most
+visitors will never open.
 
-**`MediaItem.hasPreview`** — le serveur sait-il rendre une image de ce média ?
-Vrai pour toute photo, et pour une vidéo dont Drive a produit l'aperçu de la
-première seconde ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). C'est une **question, pas une
-colonne** : le front demande une vignette « quand il y en a une » sans rejouer
-de son côté la règle photo/vidéo, et sans réclamer à chaque chargement de grille
-une image vouée au 415 sur la vidéo dont Drive n'a pas d'aperçu — codec qu'il ne
-lit pas, ou fichier déposé trop récemment pour avoir été traité.
+**`MediaItem.hasPreview`** — can the server render an image for this item? True
+for every photo, and for a video whose first-second preview Drive has produced
+([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). It is a **question, not a
+column**: the front end asks for a thumbnail "when there is one" without
+replaying the photo/video rule on its side, and without requesting, on every
+grid load, an image doomed to a 415 for a video Drive has no preview for — a
+codec it does not read, or a file dropped too recently to have been processed.
 
-**`MediaItem.videoCodec`** — le code à quatre lettres du codec de la piste image
-d'une vidéo, tel qu'il est écrit dans le fichier : `avc1`, `hvc1`, `hev1`.
-`null` sur une photo et sur toute vidéo dont l'en-tête n'a pas été lu, chaîne
-vide quand il l'a été sans qu'on y reconnaisse de piste image (voir les trois
-états de `video_codec` dans [03](./03-modele-de-donnees.md)).
+**`MediaItem.videoCodec`** — the four-letter code of a video's image-track
+codec, as written in the file: `avc1`, `hvc1`, `hev1`. `null` for a photo and for
+any video whose header has not been read, an empty string when it has been read
+without recognising an image track in it (see the three states of `video_codec`
+in [03](./03-modele-de-donnees.md)).
 
-Il voyage avec l'item parce que **c'est le client qui choisit sa source** : avec
-le codec réel, `canPlayType` donne une réponse franche là où `video/mp4` seul
-répond `maybe` partout et n'apprend rien (D98). Chrome demande donc `/playable`,
-Safari et un iPhone gardent `/original` en pleine qualité (D260809b).
+It travels with the item because **the client chooses its own source**: with the
+real codec, `canPlayType` gives a straight answer where `video/mp4` alone
+answers `maybe` everywhere and learns nothing (D98). Chrome therefore requests
+`/playable`, while Safari and an iPhone keep `/original` at full quality
+(D260809b).
 
-**`MediaItem.description`** — la légende écrite à la main sur cette photo,
-`null` si personne n'en a écrit. Elle est portée par le couple **(album,
-média)** : le même fichier indexé sous deux albums en porte deux, comme il porte
-deux fils de commentaires ([04](./04-securite-et-acces.md), D12).
+**`MediaItem.description`** — the caption typed by hand on this photo, `null` if
+no one has written one. It is carried by the **(album, item)** pair: the same
+file indexed under two albums carries two of them, just as it carries two
+comment threads ([04](./04-securite-et-acces.md), D12).
 
-Elle voyage avec l'item, et non par un appel groupé comme `AlbumCommentCounts` :
-la visionneuse doit l'afficher sur la photo qu'on vient d'atteindre à la flèche,
-la liste est déjà chargée, et le texte est court là où un compteur par photo
-tient en un entier (D83). Côté serveur c'est une jointure 1-pour-1 sur la clé
-primaire de `media_notes`, sans effet sur la pagination.
+It travels with the item, rather than through a batch call like
+`AlbumCommentCounts`: the viewer must display it on the photo just reached by
+the arrow key, the list is already loaded, and the text is short where a
+per-photo count fits in a single integer (D83). On the server side this is a
+1-to-1 join on `media_notes`'s primary key, with no effect on pagination.
 
-`MediaDetail` en hérite en étendant `MediaItem` : le panneau `i` n'a rien à
-demander de plus.
+`MediaDetail` inherits it by extending `MediaItem`: the `i` panel has nothing
+further to ask for.
 
-## Recherche — `routes/search.ts`
+## Search — `routes/search.ts`
 
-`requireAuth` en `preHandler` sur tout le préfixe.
+`requireAuth` as a `preHandler` on the whole prefix.
 
-| Méthode | Chemin        | Accès   | Réponse       |
-| ------- | ------------- | ------- | ------------- |
-| GET     | `/api/search` | session | `SearchHit[]` |
+| Method | Path          | Access  | Response      |
+| ------ | ------------- | ------- | ------------- |
+| GET    | `/api/search` | session | `SearchHit[]` |
 
-| Paramètre | Type   | Contrainte                                               |
-| --------- | ------ | -------------------------------------------------------- |
-| `q`       | chaîne | 2 à 100 caractères. Hors bornes ⇒ **400**, pas de repli. |
+| Parameter | Type   | Constraint                                                 |
+| --------- | ------ | ---------------------------------------------------------- |
+| `q`       | string | 2 to 100 characters. Out of bounds ⇒ **400**, no fallback. |
 
-**Le périmètre vient du serveur, jamais du client.** Il est celui de
-`context.albumsFor(session)` : aucun résultat ne peut désigner un album non
-attribué, et une session sans album répond `[]` sans interroger la base. Il n'y
-a donc pas de paramètre pour restreindre la recherche — la restreindre
-davantage serait un filtre d'affichage, pas une question de sécurité.
+**The scope comes from the server, never from the client.** It is
+`context.albumsFor(session)`'s scope: no result can name an unassigned album,
+and a session with no album responds `[]` without querying the database. There
+is therefore no parameter to narrow the search — narrowing it further would be a
+display filter, not a security matter.
 
-**Ce qui est rendu est une entité navigable, pas un extrait de texte.**
-« Marseille » doit ouvrir la journée à Marseille, pas afficher la ligne où le mot
-apparaît — c'est ce qui distingue cette route d'un `grep`.
+**What is rendered is a navigable entity, not a text excerpt.** "Marseille"
+should open the day at Marseille, not display the line where the word appears —
+that is what distinguishes this route from a `grep`.
 
 ```ts
 type SearchHitKind = 'album' | 'day' | 'media';
@@ -275,681 +279,682 @@ interface SearchHit {
   kind: SearchHitKind;
   albumId: string;
   albumTitle: string;
-  label: string; // titre d'album, lieu, ou début de note
-  context: string | null; // ce qui situe sans répéter le libellé
-  day?: string; // 'YYYY-MM-DD', présent pour kind: 'day'
-  mediaId?: string; // présent pour kind: 'media'
+  label: string; // album title, place, or the start of a note
+  context: string | null; // what situates it without repeating the label
+  day?: string; // 'YYYY-MM-DD', present for kind: 'day'
+  mediaId?: string; // present for kind: 'media'
 }
 ```
 
-Ni la date ni le nom d'album ne sont composés dans `context` : ils voyagent à
-part (`day`, `albumTitle`) parce que les dates s'affichent en UTC via
-`format.ts` (voir [07](./07-frontend.md)), et que les composer ici les figerait
-dans le fuseau du serveur.
+Neither the date nor the album name is composed into `context`: they travel
+separately (`day`, `albumTitle`) because dates are displayed in UTC through
+`format.ts` (see [07](./07-frontend.md)), and composing them here would freeze
+them in the server's time zone.
 
-**Ce qui est indexé, et ce qui ne l'est pas :**
+**What is indexed, and what is not:**
 
-| Source                               | Type rendu | Navigue vers                          |
-| ------------------------------------ | ---------- | ------------------------------------- |
-| `albums.title`, `albums.description` | `album`    | `/album/:id`                          |
-| `album_days.description`, `.place`   | `day`      | `/album/:id?group=day&day=YYYY-MM-DD` |
-| `geo_places.label` (via `.cells`)    | `day`      | idem                                  |
-| `media_notes.description`            | `media`    | `/album/:id?photo=<mediaId>`          |
+| Source                               | Rendered type | Navigates to                          |
+| ------------------------------------ | ------------- | ------------------------------------- |
+| `albums.title`, `albums.description` | `album`       | `/album/:id`                          |
+| `album_days.description`, `.place`   | `day`         | `/album/:id?group=day&day=YYYY-MM-DD` |
+| `geo_places.label` (via `.cells`)    | `day`         | same                                  |
+| `media_notes.description`            | `media`       | `/album/:id?photo=<mediaId>`          |
 
-`media.name` est exclu : `IMG_1234.jpg` est du bruit, et l'indexer noierait les
-vrais libellés. `camera_make` et `camera_model` aussi — chercher « iPhone »
-rendrait la moitié de la bibliothèque. Les commentaires restent hors périmètre :
-chercher dans ce que d'autres ont écrit est une autre fonctionnalité, avec ses
-propres règles de visibilité ([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
+`media.name` is excluded: `IMG_1234.jpg` is noise, and indexing it would drown
+out real labels. So are `camera_make` and `camera_model` — searching "iPhone"
+would return half the library. Comments stay out of scope: searching what
+others have written is a different feature, with its own visibility rules
+([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
 
-**Le classement s'arrête à l'intérieur d'un type.** Chaque groupe est trié par
-`bm25()` et borné à `SEARCH_HITS_PER_KIND` (5) ; les résultats arrivent dans
-l'ordre des groupes affichés — albums, journées, photos. Aucun score n'est
-comparé d'un type à l'autre : celui d'un titre de trois mots et celui d'une note
-de trois lignes ne veulent pas dire la même chose, et l'affichage étant groupé,
-la question ne se pose pas.
+**Ranking stops within a single type.** Each group is sorted by `bm25()` and
+capped at `SEARCH_HITS_PER_KIND` (5); results arrive in the order the groups are
+displayed — albums, days, photos. No score is compared across types: a
+three-word title's score and a three-line note's do not mean the same thing,
+and since the display is grouped, the question does not arise.
 
-Deux filtrages ne sont pas décoratifs : une description dont le média a quitté
-l'index (`deleteStale`, D83) ne rend rien — un résultat vers une photo absente
-ouvrirait une visionneuse vide — et une journée qui correspond **à la fois** par
-sa note et par son lieu n'apparaît qu'une fois.
+Two filters are not decorative: a description whose media item has left the
+index (`deleteStale`, D83) renders nothing — a result pointing at a missing
+photo would open an empty viewer — and a day that matches **both** through its
+note and through its place appears only once.
 
-L'index lui-même est décrit dans [03](./03-modele-de-donnees.md) : quatre tables
-FTS5 à contenu externe tenues par des déclencheurs SQL, migration 11.
-`packages/server/test/search.test.ts` verrouille le cloisonnement, les accents,
-les préfixes, la déduplication et le fait que l'index suive les écritures.
+The index itself is described in [03](./03-modele-de-donnees.md): four
+external-content FTS5 tables maintained by SQL triggers, migration 11.
+`packages/server/test/search.test.ts` locks down the isolation, accents,
+prefixes, deduplication, and the fact that the index follows writes.
 
-## Identité de commentateur — `routes/identity.ts`
+## Commenter identity — `routes/identity.ts`
 
-`requireAuth` sur tout le préfixe : on déclare une identité depuis une session
-déjà ouverte, la clé d'accès et la personne étant deux choses distinctes.
+`requireAuth` on the whole prefix: an identity is declared from a session that
+is already open, the access key and the person being two distinct things.
 
-| Méthode | Chemin                       | Réponse       |
-| ------- | ---------------------------- | ------------- |
-| POST    | `/api/identity/request-code` | `202`         |
-| POST    | `/api/identity/verify`       | `SessionUser` |
-| POST    | `/api/identity/forget`       | `SessionUser` |
+| Method | Path                         | Response      |
+| ------ | ---------------------------- | ------------- |
+| POST   | `/api/identity/request-code` | `202`         |
+| POST   | `/api/identity/verify`       | `SessionUser` |
+| POST   | `/api/identity/forget`       | `SessionUser` |
 
-**`request-code`** — corps `IdentityRequest` = `{ email, displayName }`. Envoie
-un code à six chiffres et répond `202` **que l'adresse soit déjà connue ou
-non** : distinguer les deux dirait à qui l'essaie quelles adresses ont déjà
-commenté ici. Le nom fourni n'est pas appliqué tout de suite si l'identité est
-déjà vérifiée — il attend le code (D42). `429 too_soon` avec `Retry-After` si un code a été envoyé
-dans la minute — sans quoi le formulaire expédierait des emails en rafale vers
-une adresse qu'on ne possède pas. `503 mail_not_configured` sans SMTP : aucun
-code ne peut partir, donc personne ne peut commenter.
+**`request-code`** — body `IdentityRequest` = `{ email, displayName }`. Sends a
+six-digit code and responds `202` **whether the address is already known or
+not**: telling the two apart would tell whoever tries it which addresses have
+already commented here. The supplied name is not applied straight away if the
+identity is already verified — it waits for the code (D42). `429 too_soon` with
+`Retry-After` if a code was sent within the last minute — otherwise the form
+would fire emails in bursts at an address the requester does not own. `503
+mail_not_configured` with no SMTP: no code can go out, so no one can comment.
 
-**`verify`** — corps `VerifyIdentityRequest` = `{ email, code }`. Rattache
-l'identité à la session et rend le `SessionUser` à jour. `400` sur un code faux,
-expiré ou épuisé — **le même message dans les trois cas**, détailler lequel
-aidant surtout celui qui essaie des codes au hasard. Cinq tentatives, puis il
-faut redemander un code.
+**`verify`** — body `VerifyIdentityRequest` = `{ email, code }`. Attaches the
+identity to the session and returns the updated `SessionUser`. `400` on a wrong,
+expired or exhausted code — **the same message in all three cases**, since
+detailing which one would mostly help someone trying codes at random. Five
+attempts, then a new code must be requested.
 
-**`forget`** — délie l'identité de cette session. Les commentaires déjà écrits
-restent en place : ils appartiennent à la conversation, pas à l'appareil. Se
-ré-identifier avec la même adresse les retrouve, et le droit de les supprimer
-avec.
+**`forget`** — detaches the identity from this session. Comments already
+written stay in place: they belong to the conversation, not to the device.
+Re-identifying with the same address finds them again, and the right to delete
+them along with it.
 
-La signature affichée est **celle du moment**, pas celle de l'écriture : le fil
-lit `commenters.display_name` par jointure. Se renommer renomme donc tout son
-historique, ce qui est le comportement voulu — l'identité est l'adresse, le nom
-n'en est que l'étiquette courante. C'est aussi pourquoi un renommage attend la
-validation du code (`pending_display_name`, voir
-[03](./03-modele-de-donnees.md)) : sans cela, la demande seule aurait suffi à
-réécrire la signature de tous les messages d'un tiers.
+The signature shown is **the current one**, not the one at the time of writing:
+the thread reads `commenters.display_name` through a join. Renaming yourself
+therefore renames your entire history, which is the intended behaviour — the
+identity is the address, the name is only its current label. This is also why a
+rename waits for code validation (`pending_display_name`, see
+[03](./03-modele-de-donnees.md)): without that, the request alone would have
+been enough to rewrite the signature on all of someone else's messages.
 
-## Commentaires — `routes/comments.ts`
+## Comments — `routes/comments.ts`
 
-| Méthode | Chemin                            | Accès     | Réponse              |
-| ------- | --------------------------------- | --------- | -------------------- |
-| GET     | `/api/comments/feed`              | session   | `CommentsFeedPage`   |
-| GET     | `/api/comments/:albumId`          | session   | `AlbumCommentCounts` |
-| GET     | `/api/comments/:albumId/:mediaId` | session   | `CommentsPage`       |
-| POST    | `/api/comments/:albumId/:mediaId` | session   | `Comment`            |
-| PATCH   | `/api/comments/:commentId`        | session   | `Comment`            |
-| DELETE  | `/api/comments/:commentId`        | session   | `204`                |
-| GET     | `/api/comments/unsubscribe`       | **aucun** | page HTML            |
+| Method | Path                              | Access   | Response             |
+| ------ | --------------------------------- | -------- | -------------------- |
+| GET    | `/api/comments/feed`              | session  | `CommentsFeedPage`   |
+| GET    | `/api/comments/:albumId`          | session  | `AlbumCommentCounts` |
+| GET    | `/api/comments/:albumId/:mediaId` | session  | `CommentsPage`       |
+| POST   | `/api/comments/:albumId/:mediaId` | session  | `Comment`            |
+| PATCH  | `/api/comments/:commentId`        | session  | `Comment`            |
+| DELETE | `/api/comments/:commentId`        | session  | `204`                |
+| GET    | `/api/comments/unsubscribe`       | **none** | HTML page            |
 
-Le contrôle d'accès est refait dans chaque handler plutôt que posé en
-`preHandler` de préfixe comme pour les médias : ici l'album n'occupe pas un
-segment fixe de l'URL. Il reste identique à celui des albums — **404 et jamais
-403** sur un album inconnu ou non attribué (voir
-[04](./04-securite-et-acces.md)).
+Access control is redone in each handler rather than set as a prefix
+`preHandler` as for media: here the album does not occupy a fixed URL segment.
+It stays identical to the one for albums — **404 and never 403** on an unknown
+or unassigned album (see [04](./04-securite-et-acces.md)).
 
 **`GET /api/comments/feed?album=&cursor=&limit=`** — `CommentsFeedPage` =
-`{ comments: FeedComment[], nextCursor }`, du plus récent au plus ancien, tous
-albums et toutes photos confondus. `FeedComment` est un `Comment` augmenté de
-quoi le situer et y revenir : `albumId`, `albumTitle`, `mediaId`, `mediaName` et
-`mediaVersion` — les deux derniers `null` si la photo a quitté l'index, le
-message restant lisible sans vignette ni lien.
+`{ comments: FeedComment[], nextCursor }`, from most recent to oldest, across
+every album and photo. `FeedComment` is a `Comment` augmented with what
+situates it and lets you go back to it: `albumId`, `albumTitle`, `mediaId`,
+`mediaName` and `mediaVersion` — the last two `null` if the photo has left the
+index, the message remaining readable with no thumbnail or link.
 
-C'est la seule route qui rend, en une réponse, des messages venus d'albums
-différents. **La portée vient de `albumsFor()`, jamais de la requête** :
-`?album=` ne fait que la restreindre, et un album qu'on ne voit pas répond 404
-comme partout ailleurs. Une session sans aucun album rend une page vide.
+This is the only route that renders, in one response, messages from different
+albums. **The scope comes from `albumsFor()`, never from the request**:
+`?album=` only narrows it, and an album you cannot see responds 404 as
+everywhere else. A session with no album at all renders an empty page.
 
-`limit` va de 1 à 100, `COMMENTS_FEED_PAGE_SIZE` (30) par défaut. La borne haute
-n'est pas cosmétique : `better-sqlite3` est synchrone, et composer une page de
-cent mille commentaires bloquerait la boucle d'événements le temps de la rendre.
+`limit` ranges from 1 to 100, `COMMENTS_FEED_PAGE_SIZE` (30) by default. The
+upper bound is not cosmetic: `better-sqlite3` is synchronous, and composing a
+page of a hundred thousand comments would block the event loop for the time it
+takes to render it.
 
-Le curseur est un identifiant de commentaire, comme celui de la modération. Pas
-de `total` : on ne modère pas ici, on regarde ce qui vient d'arriver, et compter
-tout le corpus visible coûterait une requête pour un nombre que personne ne lit.
-L'ordre est celui de la clé primaire décroissante — SQLite parcourt la table à
-rebours et s'arrête au `LIMIT`, sans index supplémentaire (voir
-[03](./03-modele-de-donnees.md)).
+The cursor is a comment id, like the one used for moderation. No `total`: this
+is not moderation, it is watching what has just arrived, and counting the whole
+visible corpus would cost a query for a number no one reads. The order is
+descending primary key — SQLite walks the table backwards and stops at
+`LIMIT`, with no extra index needed (see [03](./03-modele-de-donnees.md)).
 
-Le segment littéral `feed` est protégé par la même précédence que
-`unsubscribe`, et le revers vaut aussi : un album dont l'identifiant serait
-`feed` n'obtiendrait jamais ses compteurs. Un test le vérifie.
+The literal `feed` segment is protected by the same precedence as
+`unsubscribe`, and the reverse holds too: an album whose id was `feed` would
+never get its counts. A test verifies this.
 
-**`GET /api/comments/:albumId`** — `AlbumCommentCounts` = `{ counts: Record<mediaId, number> }`,
-masqués exclus. Les photos sans commentaire **n'y figurent pas** : sur un album
-de milliers de vues dont une dizaine porte une conversation, la réponse tient en
-quelques centaines d'octets. Une photo absente vaut donc zéro.
+**`GET /api/comments/:albumId`** — `AlbumCommentCounts` =
+`{ counts: Record<mediaId, number> }`, hidden ones excluded. Photos with no
+comment **do not appear in it**: on an album with thousands of views where a
+handful carry a conversation, the response fits in a few hundred bytes. A
+missing photo therefore counts as zero.
 
-Un appel pour l'album entier, et non un par photo : la pastille de la visionneuse
-doit être là dès qu'on atteint une photo, et parcourir un album à la flèche
-déclencherait sinon une requête par photo traversée (voir
-[D54](./08-decisions/D54-les-compteurs-de-commentaires-se-demandent-par-album-pas-par.md)). Le compteur de `MediaDetail.commentCount` reste :
-il sert l'onglet du panneau ouvert, sur une photo précise.
+One call for the whole album, not one per photo: the viewer's badge must be
+there as soon as a photo is reached, and stepping through an album with the
+arrow key would otherwise trigger one request per photo crossed (see
+[D54](./08-decisions/D54-les-compteurs-de-commentaires-se-demandent-par-album-pas-par.md)).
+The `MediaDetail.commentCount` counter stays: it serves the open panel's tab,
+for one specific photo.
 
-Cette route paramétrique **ne masque pas `/api/comments/unsubscribe`** : la table
-de routage de Fastify fait passer un segment littéral avant un paramètre. C'est
-vérifié par un test — l'inverse ferait répondre 401 aux liens de désabonnement
-des emails déjà partis, sans rattrapage possible.
+This parametric route **does not shadow `/api/comments/unsubscribe`**:
+Fastify's routing table matches a literal segment before a parameter. This is
+verified by a test — the reverse would make the comment-unsubscribe links in
+emails already sent respond 401, with no way to recover.
 
-Le revers est vrai depuis cette route, et il faut le savoir : `ALBUM_ID_PATTERN`
-autorise l'identifiant `unsubscribe`, créable depuis `/admin`. Un tel album
-n'obtiendrait **jamais** ses compteurs — `GET /api/comments/unsubscribe` rendrait
-la page HTML de désabonnement, hors session. C'est une collision assumée : la
-précédence protège le lien des emails déjà partis, ce qui est le cas irréparable,
-contre un identifiant d'album que son créateur peut renommer.
+The reverse is also true from this route, and it is worth knowing:
+`ALBUM_ID_PATTERN` allows the id `unsubscribe`, creatable from `/admin`. Such an
+album would **never** get its counts — `GET /api/comments/unsubscribe` would
+render the unsubscribe HTML page, outside any session. This is an accepted
+collision: precedence protects the link in emails already sent, which is the
+irreparable case, over an album id its creator can rename.
 
-**`GET /api/comments/:albumId/:mediaId`** — `CommentsPage` = `{ threads: CommentThread[], total: number }`, où
-`CommentThread` = `{ root, replies }`. Les commentaires masqués par la modération
-n'y figurent pas, **y compris pour leur auteur**. Une réponse dont la racine
-vient d'être masquée remonte en tête de fil, `parentId` remis à `null` : la
-laisser accrochée à un parent absent la ferait disparaître sans que personne ne
-l'ait décidé.
+**`GET /api/comments/:albumId/:mediaId`** — `CommentsPage` =
+`{ threads: CommentThread[], total: number }`, where `CommentThread` =
+`{ root, replies }`. Comments hidden by moderation do not appear in it,
+**including for their own author**. A reply whose root has just been hidden
+rises to the top of the thread, `parentId` reset to `null`: leaving it attached
+to a missing parent would make it disappear without anyone having decided so.
 
-**`POST`** — corps `CreateCommentRequest` = `{ body, parentId? }`. `body` est
-découpé aux espaces avant contrôle : 1 à `COMMENT_MAX_LENGTH` (2000) caractères.
-`201` avec le `Comment` créé.
+**`POST`** — body `CreateCommentRequest` = `{ body, parentId? }`. `body` is
+trimmed of surrounding spaces before validation: 1 to `COMMENT_MAX_LENGTH`
+(2000) characters. `201` with the created `Comment`.
 
-- **`403 identity_required`** tant qu'aucune identité vérifiée n'est rattachée à
-  la session. Seconde exception assumée au « 404 et jamais 403 » (voir
-  [04](./04-securite-et-acces.md)) : le refus porte sur l'état de son propre
-  compte, pas sur une ressource d'autrui.
+- **`403 identity_required`** as long as no verified identity is attached to
+  the session. Second accepted exception to "404 and never 403" (see
+  [04](./04-securite-et-acces.md)): the refusal concerns the state of one's own
+  account, not someone else's resource.
 
-- `404` si l'album est inconnu/interdit, ou si le média n'est pas dans cet album.
-- `404` si `parentId` désigne un commentaire inexistant **ou vivant sur un autre
-  média** — sans ce second contrôle, un client pourrait greffer sa réponse sur un
-  fil qu'il n'a pas le droit de lire en devinant un identifiant.
-- Répondre à une réponse **n'échoue pas** : le message est rattaché à la racine
-  du fil (voir [D35](./08-decisions/D35-repondre-a-une-reponse-rattache-a-la-racine-plutot-que-de.md)).
+- `404` if the album is unknown/forbidden, or if the media item is not in this
+  album.
+- `404` if `parentId` names a comment that does not exist **or lives on another
+  media item** — without this second check, a client could graft its reply onto
+  a thread it has no right to read by guessing an id.
+- Replying to a reply **does not fail**: the message is attached to the
+  thread's root (see
+  [D35](./08-decisions/D35-repondre-a-une-reponse-rattache-a-la-racine-plutot-que-de.md)).
 
-**`PATCH`** — corps `UpdateCommentRequest` = `{ body }`, mêmes bornes que le
-`POST`. **Son auteur seulement**, et seulement pendant `COMMENT_EDIT_WINDOW_MS`
-(30 s) après la publication. `parentId` est **ignoré** : le schéma ne retient que
-`body`, et Zod écarte silencieusement les clés inconnues — un `PATCH` qui en
-enverrait un répond `200` sans avoir déplacé le message, il ne répond pas `400`.
-Corriger une faute de frappe ne doit pas permettre de changer de conversation.
-`created_at` ne bouge
-pas non plus — le message reste à sa place dans un fil que d'autres lisaient
-déjà. Voir [D57](./08-decisions/D57-trente-secondes-pour-corriger-une-faute-de-frappe-et-rien-de.md).
+**`PATCH`** — body `UpdateCommentRequest` = `{ body }`, same bounds as `POST`.
+**Its author only**, and only within `COMMENT_EDIT_WINDOW_MS` (30 s) after
+publication. `parentId` is **ignored**: the schema only keeps `body`, and Zod
+silently drops unknown keys — a `PATCH` sending one responds `200` without
+having moved the message; it does not respond `400`. Fixing a typo must not
+allow moving to another conversation. `created_at` does not move either — the
+message stays in its place in a thread others were already reading. See
+[D57](./08-decisions/D57-trente-secondes-pour-corriger-une-faute-de-frappe-et-rien-de.md).
 
-- **`409 edit_window_closed`** quand le délai est passé. Ni 403 ni 404 : le refus
-  porte sur l'**état** du message et non sur un droit d'accès — son auteur le
-  voit déjà, il n'y a rien à lui cacher. La doctrine du 404 (D12) ne s'y applique
-  donc pas.
-- `404` si le commentaire n'existe pas, appartient à quelqu'un d'autre, a été
-  masqué depuis, ou vit dans un album qu'on ne voit plus. Ces cas restent
-  indistinguables, comme pour `DELETE`.
-- **L'administrateur n'y a aucun privilège.** Il modère en masquant ou en
-  supprimant ; réécrire sous le nom d'un autre est un pouvoir d'une autre nature.
+- **`409 edit_window_closed`** once the delay has passed. Neither 403 nor 404:
+  the refusal concerns the message's **state**, not an access right — its
+  author can already see it, there is nothing to hide from them. The 404
+  doctrine (D12) therefore does not apply here.
+- `404` if the comment does not exist, belongs to someone else, has since been
+  hidden, or lives in an album no longer visible. These cases remain
+  indistinguishable, as for `DELETE`.
+- **The administrator has no privilege here.** They moderate by hiding or
+  deleting; rewriting under someone else's name is a power of a different
+  nature.
 
-Le contrôle du délai est **côté serveur**, pas seulement dans l'interface : une
-règle que seul le front applique n'est pas une règle.
+The delay check happens **server-side**, not only in the interface: a rule only
+the front end enforces is not a rule.
 
-Un `Comment` porte donc **deux droits calculés par le serveur**, et leur
-asymétrie est la décision de D57 :
+A `Comment` therefore carries **two rights computed by the server**, and their
+asymmetry is D57's decision:
 
-- `canDelete` — son propre commentaire, ou n'importe lequel si l'on est
-  administrateur. Stable tant que la session ne change pas.
-- `canEdit` — son propre commentaire, et seulement dans la fenêtre. Aucun
-  privilège d'administrateur. C'est une valeur qui **périme toute seule** : elle
-  dit ce que le serveur accepterait à l'instant de la réponse, et le front doit
-  la recouper avec `createdAt` via `remainingEditMs`, partagée pour que les deux
-  côtés tranchent à l'identique.
+- `canDelete` — one's own comment, or any comment for an administrator. Stable
+  as long as the session does not change.
+- `canEdit` — one's own comment, and only within the window. No administrator
+  privilege. This is a value that **expires on its own**: it states what the
+  server would accept at the instant of the response, and the front end must
+  cross-check it against `createdAt` through `remainingEditMs`, shared so both
+  sides reach the same verdict.
 
-Le front ne rejoue jamais ces règles d'autorisation lui-même.
+The front end never replays these authorisation rules itself.
 
-**`DELETE`** — l'auteur son propre commentaire, un administrateur n'importe
-lequel. `404` dans tous les cas de refus, sans distinguer « inexistant » de
-« pas à toi ». Un visiteur ne peut supprimer que dans un album qu'il voit encore,
-sinon un accès retiré laisserait subsister un droit d'écriture.
+**`DELETE`** — the author their own comment, an administrator any comment.
+`404` in every refusal case, without distinguishing "does not exist" from
+"not yours". A visitor can only delete within an album they can still see,
+otherwise a revoked access would leave a write right standing.
 
-**`GET /api/comments/unsubscribe?u=&t=`** — `u` est l'**adresse email**, pas un
-identifiant de compte : c'est elle qui identifie une personne. **Seule route de
-ce préfixe sans session.** On clique ce lien depuis sa boîte aux lettres, souvent sur un autre
-appareil : exiger une connexion pour cesser d'être dérangé reviendrait à ne pas
-répondre à la demande. `t` est un HMAC de l'identifiant, sans expiration (voir
-[04](./04-securite-et-acces.md)). Rend une page HTML servie par le serveur — pas
-le front, qui redirigerait vers l'écran de connexion. Un jeton invalide répond
-`400` ; un compte supprimé depuis l'envoi rend la page en le disant.
+**`GET /api/comments/unsubscribe?u=&t=`** — `u` is the **email address**, not an
+account id: it is the address that identifies a person. **The only route in
+this prefix with no session.** This link is clicked from a mailbox, often on
+another device: requiring a sign-in to stop being disturbed would amount to not
+answering the request. `t` is an HMAC of the id, with no expiry (see
+[04](./04-securite-et-acces.md)). Renders an HTML page served by the server —
+not the front end, which would redirect to the sign-in screen. An invalid token
+responds `400`; an account deleted since the email was sent renders the page
+saying so.
 
-## Abonnements — `routes/subscriptions.ts`
+## Subscriptions — `routes/subscriptions.ts`
 
-| Méthode | Chemin                           | Accès     | Réponse   |
-| ------- | -------------------------------- | --------- | --------- |
-| GET     | `/api/subscriptions/unsubscribe` | **aucun** | page HTML |
+| Method | Path                             | Access   | Response  |
+| ------ | -------------------------------- | -------- | --------- |
+| GET    | `/api/subscriptions/unsubscribe` | **none** | HTML page |
 
-On ne s'abonne par aucune route : l'abonnement est l'effet de bord de
-l'ouverture de l'album décrit plus haut. Ce préfixe ne porte donc que le
-désabonnement.
+There is no route to subscribe: the subscription is the side effect of opening
+an album, described above. This prefix therefore only carries the
+unsubscription.
 
-**`GET /api/subscriptions/unsubscribe?u=&a=&t=`** — `u` l'adresse email, `a`
-l'id de l'album, `t` un HMAC du **couple**, sans expiration : le jeton d'un
-album ne vaut pas pour un autre, sinon un lien recopié couperait un abonnement
-qu'on n'a pas visé. Sans session, comme le désabonnement des commentaires — on
-clique depuis sa boîte aux lettres, souvent sur un autre appareil.
+**`GET /api/subscriptions/unsubscribe?u=&a=&t=`** — `u` the email address, `a`
+the album id, `t` an HMAC of the **pair**, with no expiry: one album's token is
+not valid for another, otherwise a copied link would cut a subscription that
+was not the target. No session, like the comment unsubscription — this is
+clicked from a mailbox, often on another device.
 
-`400 bad_request` sur un lien incomplet, un id d'album hors motif ou un jeton
-invalide. Sinon `200` et une page HTML servie par le serveur : celle du front
-redirigerait vers l'écran de connexion. Un album supprimé ou une identité
-effacée depuis l'envoi rendent la page en le disant, sans erreur. Le
-désabonnement ne touche que cet album — les réponses aux commentaires
-continuent d'arriver, elles se coupent depuis `/api/comments/unsubscribe`.
+`400 bad_request` on an incomplete link, an album id outside the pattern, or an
+invalid token. Otherwise `200` and an HTML page served by the server: the front
+end's version would redirect to the sign-in screen. An album deleted or an
+identity erased since the email was sent renders the page saying so, without an
+error. Unsubscribing only affects this album — replies to comments keep
+arriving; they are cut off from `/api/comments/unsubscribe`.
 
-## Médias — `routes/media.ts`
+## Media — `routes/media.ts`
 
-`requireAuth` puis `authorize` en `preHandler` sur tout le préfixe. `authorize`
-répond `404 not_found` dès que l'utilisateur n'a droit à aucun album contenant ce
-média.
+`requireAuth` then `authorize` as a `preHandler` on the whole prefix.
+`authorize` responds `404 not_found` as soon as the user has no right to any
+album containing this media item.
 
-Un gestionnaire d'erreurs local traduit les pannes Drive : `503 drive_revoked`
-(`DriveRevokedError`) et `503 drive_disconnected` (`DriveNotConnectedError`),
-plutôt qu'une 500 opaque répétée sur chaque vignette de la grille.
+A local error handler translates Drive failures: `503 drive_revoked`
+(`DriveRevokedError`) and `503 drive_disconnected` (`DriveNotConnectedError`),
+rather than an opaque 500 repeated on every thumbnail in the grid.
 
-| Méthode | Chemin                         | Accès           | Réponse                   |
-| ------- | ------------------------------ | --------------- | ------------------------- |
-| GET     | `/api/media/:mediaId/thumb?s=` | session + accès | `image/webp`              |
-| GET     | `/api/media/:mediaId/full`     | session + accès | `image/webp`              |
-| GET     | `/api/media/:mediaId/hd`       | session + accès | `image/webp`              |
-| GET     | `/api/media/:mediaId/original` | session + accès | flux du fichier d'origine |
-| GET     | `/api/media/:mediaId/playable` | session + accès | `video/mp4` transcodé     |
+| Method | Path                           | Access           | Response               |
+| ------ | ------------------------------ | ---------------- | ---------------------- |
+| GET    | `/api/media/:mediaId/thumb?s=` | session + access | `image/webp`           |
+| GET    | `/api/media/:mediaId/full`     | session + access | `image/webp`           |
+| GET    | `/api/media/:mediaId/hd`       | session + access | `image/webp`           |
+| GET    | `/api/media/:mediaId/original` | session + access | original file stream   |
+| GET    | `/api/media/:mediaId/playable` | session + access | transcoded `video/mp4` |
 
-**`thumb`** — `s` vaut 320 (défaut), 640 ou 1280 ; toute autre valeur donne
-`400 bad_request`. Un `s` non numérique retombe sur 320 plutôt que d'échouer.
+**`thumb`** — `s` is 320 (default), 640 or 1280; any other value gives
+`400 bad_request`. A non-numeric `s` falls back to 320 rather than failing.
 
-**`full`** — rendu plein écran, côté long plafonné à 2560 px, qualité WebP 82.
+**`full`** — full-screen rendering, long side capped at 2560 px, WebP quality 82.
 
-**`hd`** — rendu de zoom, côté long plafonné à 4096 px, qualité 88.
-`withoutEnlargement` empêche de suréchantillonner : une photo de 3000 px reste à
-3000 px.
+**`hd`** — zoom rendering, long side capped at 4096 px, quality 88.
+`withoutEnlargement` prevents upsampling: a 3000 px photo stays at 3000 px.
 
-Les trois répondent :
+All three respond:
 
-| Code | Quand                                                                                                                                                       |
+| Code | When                                                                                                                                                        |
 | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 200  | `Content-Type: image/webp`, `Cache-Control: private, max-age=31536000, immutable`, `Vary: Cookie`, `ETag: "<mediaId>-<version>-<320\|640\|1280\|full\|hd>"` |
-| 304  | `If-None-Match` correspondant à l'ETag                                                                                                                      |
-| 404  | Média absent de l'index, ou album interdit                                                                                                                  |
-| 415  | `unsupported` — deux cas, tous deux propres aux vidéos, détaillés juste après                                                                               |
-| 503  | Drive non connecté ou révoqué                                                                                                                               |
+| 304  | `If-None-Match` matching the ETag                                                                                                                           |
+| 404  | Media item absent from the index, or album forbidden                                                                                                        |
+| 415  | `unsupported` — two cases, both specific to videos, detailed just below                                                                                     |
+| 503  | Drive disconnected or revoked                                                                                                                               |
 
-Une vidéo **a** une vignette : l'aperçu que Drive produit de sa première
-seconde, servi comme n'importe quel autre dérivé WebP et mis en cache disque de
-la même façon ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). Rien n'en est décodé localement.
-Les deux refus qui restent :
+A video **does** have a thumbnail: the preview Drive produces of its first
+second, served like any other WebP derivative and disk-cached the same way
+([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). Nothing is decoded locally.
+The two refusals that remain:
 
-| Refus                             | Pourquoi                                                                                                                                             |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `full` ou `hd` sur une vidéo      | L'aperçu Drive fait quelques centaines de pixels : l'agrandir ne montrerait qu'une image floue, servie en `immutable` pour un an.                    |
-| `thumb` sur une vidéo sans aperçu | `media.has_thumbnail` vaut 0 — Drive n'a pas d'image à donner. Le savoir évite un appel dont on connaît déjà l'issue, à chaque chargement de grille. |
+| Refusal                            | Why                                                                                                                                     |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `full` or `hd` on a video          | Drive's preview is a few hundred pixels: enlarging it would only show a blurry image, served `immutable` for a year.                    |
+| `thumb` on a video with no preview | `media.has_thumbnail` is 0 — Drive has no image to give. Knowing this avoids a call whose outcome is already known, on every grid load. |
 
-Le front n'y arrive normalement pas : `MediaItem.hasPreview` lui dit d'avance
-s'il y a une image à demander.
+The front end normally never hits this: `MediaItem.hasPreview` tells it in
+advance whether there is an image to request.
 
-**`original`** — le fichier tel quel, relayé depuis Drive sans passer par le
-cache disque.
+**`original`** — the file as-is, relayed from Drive without passing through the
+disk cache.
 
-- `?download=1` ajoute `Content-Disposition: attachment; filename*=UTF-8''…`.
-- Le header `Range` de la requête est validé (`media/range.ts`) puis transmis à
-  Drive ; `Content-Length` et `Content-Range` de la réponse Drive sont recopiés
-  tels quels. Un `Range` invalide ou multiple est **ignoré** et le fichier entier
-  est servi, conformément à la RFC 9110.
-- Réponse `206` si Drive a répondu 206, sinon `200`. Toujours
-  `Accept-Ranges: bytes` — sans quoi le navigateur refuserait le seek vidéo.
-- **`416`** si Drive a répondu 416 : le `Content-Range` reçu est recopié et le
-  corps est vide. Une plage insatisfaisable — offset au-delà de la fin, courant
-  quand on change de vidéo pendant qu'une requête est en vol — appartient au
-  protocole `Range` normal ; en faire une erreur serveur donnerait un 500 là où
-  le lecteur attend un code qu'il sait interpréter.
-- `502 bad_gateway` si Drive répond sans corps ; `404` si le média n'est pas
-  indexé ; `503` sur Drive non connecté ou révoqué.
-- **`503 drive_unavailable`, avec `Retry-After`**, sur un échec **transitoire** :
-  délai de téléchargement dépassé, ou débit limité par Google au-delà des
-  réessais. À distinguer d'un 500, que le navigateur traite comme définitif :
-  ici la vignette doit revenir, et elle le fait d'elle-même (D60). Aucun en-tête
-  de cache n'accompagne cette réponse — un échec ne se mémorise jamais.
-- Un `401` de Drive n'est jamais relayé : le jeton d'accès est renouvelé et la
-  requête retentée une fois. Si Google refuse aussi le renouvellement, la
-  connexion est marquée révoquée et la réponse est `503 drive_revoked`.
-- Contrairement aux rendus, cette route ne filtre pas sur `kind` : elle sert
-  aussi bien l'original d'une photo que le flux d'une vidéo.
+- `?download=1` adds `Content-Disposition: attachment; filename*=UTF-8''…`.
+- The request's `Range` header is validated (`media/range.ts`) then forwarded
+  to Drive; the Drive response's `Content-Length` and `Content-Range` are
+  copied through unchanged. An invalid or multi-range `Range` is **ignored**
+  and the whole file is served, in line with RFC 9110.
+- `206` response if Drive responded 206, otherwise `200`. Always
+  `Accept-Ranges: bytes` — without which the browser would refuse video
+  seeking.
+- **`416`** if Drive responded 416: the received `Content-Range` is copied
+  through and the body is empty. An unsatisfiable range — offset past the end,
+  common when switching videos while a request is in flight — belongs to the
+  normal `Range` protocol; turning it into a server error would give a 500
+  where the player expects a code it knows how to interpret.
+- `502 bad_gateway` if Drive responds with no body; `404` if the media item is
+  not indexed; `503` on Drive disconnected or revoked.
+- **`503 drive_unavailable`, with `Retry-After`**, on a **transient** failure:
+  download timeout exceeded, or throughput rate-limited by Google beyond the
+  retries. Distinguished from a 500, which the browser treats as final: here
+  the thumbnail must come back, and it does so on its own (D60). No cache
+  header accompanies this response — a failure is never memorised.
+- A `401` from Drive is never relayed: the access token is refreshed and the
+  request retried once. If Google also refuses the refresh, the connection is
+  marked revoked and the response is `503 drive_revoked`.
+- Unlike the rendered variants, this route does not filter on `kind`: it serves
+  a photo's original just as well as a video's stream.
 
-**`playable`** — la version H.264 préparée par le serveur pour les vidéos dont
-aucun navigateur courant ne décode le codec
-([D260809b](./08-decisions/D260809b-transcodage-video.md)). Elle
-vient du magasin disque, pas de Drive : les plages sont donc résolues ici plutôt
-que relayées.
+**`playable`** — the H.264 version the server prepares for videos whose codec
+no mainstream browser decodes
+([D260809b](./08-decisions/D260809b-transcodage-video.md)). It comes
+from the disk store, not from Drive: ranges are therefore resolved here rather
+than relayed.
 
-| Code | Quand                                                                                                                    |
-| ---- | ------------------------------------------------------------------------------------------------------------------------ |
-| 200  | `Content-Type: video/mp4`, `Accept-Ranges: bytes`, `Content-Length`, `Cache-Control: …immutable`, `Vary: Cookie`, ETag   |
-| 206  | `Range` valide : `Content-Range: bytes <début>-<fin>/<taille>`, bornée à la taille réelle                                |
-| 304  | `If-None-Match` correspondant à `"<mediaId>-<version>-playable"`                                                         |
-| 404  | `not_ready` — la version n'est pas (encore) préparée ; `not_found` si le média est absent de l'index ou l'album interdit |
-| 416  | Plage entièrement au-delà de la fin : `Content-Range: bytes */<taille>`, corps vide                                      |
+| Code | When                                                                                                                           |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 200  | `Content-Type: video/mp4`, `Accept-Ranges: bytes`, `Content-Length`, `Cache-Control: …immutable`, `Vary: Cookie`, ETag         |
+| 206  | Valid `Range`: `Content-Range: bytes <start>-<end>/<size>`, bounded to the actual size                                         |
+| 304  | `If-None-Match` matching `"<mediaId>-<version>-playable"`                                                                      |
+| 404  | `not_ready` — the version is not (yet) prepared; `not_found` if the media item is absent from the index or the album forbidden |
+| 416  | Range entirely past the end: `Content-Range: bytes */<size>`, empty body                                                       |
 
-Le **404 `not_ready` est le contrat avec le front**, pas une erreur : la
-préparation est anticipée et dure des minutes, une vidéo arrivée il y a un quart
-d'heure n'a pas encore la sienne. La visionneuse l'affiche comme « en
-préparation », avec le bouton **Télécharger** de D79. Rien ne déclenche un
-transcodage à la demande — ce serait une requête HTTP tenue ouverte dix minutes,
-et autant de ffmpeg simultanés que de curieux.
+The **404 `not_ready` is the contract with the front end**, not an error:
+preparation is anticipated and takes minutes, a video that arrived a quarter of
+an hour ago does not have its own yet. The viewer displays it as "being
+prepared", with the **Download** button from D79. Nothing triggers an
+on-demand transcode — that would mean an HTTP request held open for ten
+minutes, and as many concurrent ffmpeg processes as curious visitors.
 
-Le type est toujours `video/mp4`, quel que soit le conteneur d'origine : c'est ce
-que ffmpeg vient de produire. Le contenu servi est un dérivé, donc l'ETag porte
-la même version que les autres — une nouvelle version du fichier Drive produit
-une nouvelle clé de magasin, donc un nouveau dérivé.
+The type is always `video/mp4`, regardless of the original container: that is
+what ffmpeg has just produced. The content served is a derivative, so the ETag
+carries the same version as the others — a new version of the Drive file
+produces a new store key, hence a new derivative.
 
 ## Administration — `routes/admin.ts`
 
-`requireAdmin` en `preHandler` sur tout le préfixe `/api/admin`.
+`requireAdmin` as a `preHandler` on the whole `/api/admin` prefix.
 
-| Méthode | Chemin                            | Réponse                                                        |
-| ------- | --------------------------------- | -------------------------------------------------------------- |
-| GET     | `/api/admin/status`               | `200 AdminStatus`                                              |
-| GET     | `/api/admin/visits`               | `200 VisitsOverview` · `400`                                   |
-| GET     | `/api/admin/users`                | `200 AdminUser[]`                                              |
-| POST    | `/api/admin/users`                | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
-| PATCH   | `/api/admin/users/:username`      | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
-| DELETE  | `/api/admin/users/:username`      | `200 { ok: true }` · `404` · `409 last_admin`                  |
-| GET     | `/api/admin/albums`               | `200 AdminAlbum[]`                                             |
-| POST    | `/api/admin/albums`               | `201 AdminAlbum` · `400` · `409 conflict`                      |
-| PATCH   | `/api/admin/albums/:id`           | `200 AdminAlbum` · `400` · `404`                               |
-| DELETE  | `/api/admin/albums/:id`           | `200 { ok: true }` · `404`                                     |
-| PATCH   | `/api/admin/albums/:id/days/:day` | `200 AlbumDay` · `400` · `404`                                 |
-| GET     | `/api/admin/settings`             | `200 AppSettings`                                              |
-| PATCH   | `/api/admin/settings`             | `200 AppSettings` · `400`                                      |
-| GET     | `/api/admin/oauth/start`          | `200 { url }` · `400 oauth_not_configured`                     |
-| POST    | `/api/admin/drive/disconnect`     | `200 { ok: true }`                                             |
-| POST    | `/api/admin/resync`               | `202 { started: string[] }` · `400` · `404` · `503`            |
-| POST    | `/api/admin/cache/clear`          | `200 { ok: true }`                                             |
+| Method | Path                              | Response                                                       |
+| ------ | --------------------------------- | -------------------------------------------------------------- |
+| GET    | `/api/admin/status`               | `200 AdminStatus`                                              |
+| GET    | `/api/admin/visits`               | `200 VisitsOverview` · `400`                                   |
+| GET    | `/api/admin/users`                | `200 AdminUser[]`                                              |
+| POST   | `/api/admin/users`                | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
+| PATCH  | `/api/admin/users/:username`      | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
+| DELETE | `/api/admin/users/:username`      | `200 { ok: true }` · `404` · `409 last_admin`                  |
+| GET    | `/api/admin/albums`               | `200 AdminAlbum[]`                                             |
+| POST   | `/api/admin/albums`               | `201 AdminAlbum` · `400` · `409 conflict`                      |
+| PATCH  | `/api/admin/albums/:id`           | `200 AdminAlbum` · `400` · `404`                               |
+| DELETE | `/api/admin/albums/:id`           | `200 { ok: true }` · `404`                                     |
+| PATCH  | `/api/admin/albums/:id/days/:day` | `200 AlbumDay` · `400` · `404`                                 |
+| GET    | `/api/admin/settings`             | `200 AppSettings`                                              |
+| PATCH  | `/api/admin/settings`             | `200 AppSettings` · `400`                                      |
+| GET    | `/api/admin/oauth/start`          | `200 { url }` · `400 oauth_not_configured`                     |
+| POST   | `/api/admin/drive/disconnect`     | `200 { ok: true }`                                             |
+| POST   | `/api/admin/resync`               | `202 { started: string[] }` · `400` · `404` · `503`            |
+| POST   | `/api/admin/cache/clear`          | `200 { ok: true }`                                             |
 
-**`status`** — `AdminStatus` : `driveConnected`, `driveAccount`,
-`driveRevokedAt`, `oauthConfigured`, `albums` (**tous** les albums déclarés, pas
-seulement ceux de l'administrateur), `cache: { entryCount, bytes, maxBytes }`.
-Le front réinterroge toutes les 2 s tant qu'un album est en `syncStatus:
-'running'`.
+**`status`** — `AdminStatus`: `driveConnected`, `driveAccount`,
+`driveRevokedAt`, `oauthConfigured`, `albums` (**all** declared albums, not just
+the administrator's), `cache: { entryCount, bytes, maxBytes }`. The front end
+polls it again every 2 s while an album is `syncStatus: 'running'`.
 
-**`visits`** — `?days=` (défaut 30, entier de 1 à 365) borne la fenêtre. Rend un
-`VisitsOverview` = `{ days, since, visitors, albums }`, où `since` est le premier
-jour compté (`YYYY-MM-DD` en UTC, la borne étant incluse).
+**`visits`** — `?days=` (default 30, integer from 1 to 365) bounds the window.
+Renders a `VisitsOverview` = `{ days, since, visitors, albums }`, where `since`
+is the first day counted (`YYYY-MM-DD` in UTC, the bound being inclusive).
 
-| Champ                     | Contenu                                                                                                                                   |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `visitors[]: VisitorRow`  | Par clé d'accès : `admin`, `devices`, `lastAt`, `lastSeenAt`, `days`, `sessions`, `albums`, `visits`, `photos`                            |
-| `albums[]: AlbumVisitRow` | Par album : `title` (`null` si supprimé depuis), `visitors` (sessions distinctes), `keys` (clés distinctes), `visits`, `photos`, `lastAt` |
+| Field                     | Content                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `visitors[]: VisitorRow`  | Per access key: `admin`, `devices`, `lastAt`, `lastSeenAt`, `days`, `sessions`, `albums`, `visits`, `photos`                       |
+| `albums[]: AlbumVisitRow` | Per album: `title` (`null` if deleted since), `visitors` (distinct sessions), `keys` (distinct keys), `visits`, `photos`, `lastAt` |
 
-Trois points de lecture :
+Three points worth reading:
 
-- **Un visiteur est une session, pas une clé.** Une clé d'accès se partage (D38) ;
-  deux navigateurs derrière la même en font bien deux visiteurs. `keys` est donc
-  toujours inférieur ou égal à `visitors`.
-- **Une clé connectée sans rien ouvrir figure quand même**, à zéro : c'est une
-  réponse, et la faire disparaître ferait croire à une absence de visiteur. Sa
-  ligne vient alors de `sessions.last_seen_at` seul, et `lastAt` vaut `null`.
-- **Les visites de l'administrateur sont montrées, pas exclues.** Les retirer
-  ferait mentir les totaux ; la colonne `admin` suffit à les lire pour ce
-  qu'elles sont (D260809h).
+- **A visitor is a session, not a key.** An access key can be shared (D38); two
+  browsers behind the same one do count as two visitors. `keys` is therefore
+  always less than or equal to `visitors`.
+- **A key that signed in without opening anything still appears**, at zero:
+  that is a real response, and hiding it would suggest there was no visitor at
+  all. Its row then comes from `sessions.last_seen_at` alone, and `lastAt` is
+  `null`.
+- **The administrator's own visits are shown, not excluded.** Removing them
+  would make the totals lie; the `admin` column is enough to read them for what
+  they are (D260809h).
 
-Les compteurs viennent d'`album_visits`, agrégée à l'écriture : la route ne fait
-que trois lectures bornées, sans balayage (voir [03](./03-modele-de-donnees.md)).
+The counters come from `album_visits`, aggregated on write: the route only does
+three bounded reads, with no scan (see [03](./03-modele-de-donnees.md)).
 
-**`oauth/start`** — `400 oauth_not_configured` si `GOOGLE_CLIENT_ID` /
-`GOOGLE_CLIENT_SECRET` sont absents. Sinon pose le cookie signé
-`nonni_oauth_state` et renvoie l'URL de consentement, que le front suit en
-redirection pleine page.
+**`oauth/start`** — `400 oauth_not_configured` if `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` are missing. Otherwise sets the signed
+`nonni_oauth_state` cookie and returns the consent URL, which the front end
+follows as a full-page redirect.
 
-**`drive/disconnect`** — supprime la ligne `oauth_token`. L'index et le cache
-restent, les albums restent consultables tant que les vignettes sont en cache.
+**`drive/disconnect`** — deletes the `oauth_token` row. The index and cache
+remain; albums stay browsable as long as thumbnails are cached.
 
-**`resync`** — corps optionnel `{ albumId }`. Sans lui, tous les albums.
-`503 drive_disconnected` si Drive n'est pas connecté, `404 not_found` si
-l'`albumId` fourni n'existe pas. Répond **202** immédiatement : la
-synchronisation tourne en tâche de fond, elle dépasserait le timeout d'une
-requête HTTP sur un gros album. L'avancement se suit dans `status`.
+**`resync`** — optional body `{ albumId }`. Without it, every album.
+`503 drive_disconnected` if Drive is not connected, `404 not_found` if the
+supplied `albumId` does not exist. Responds **202** immediately: the
+synchronisation runs as a background task, since it would exceed an HTTP
+request's timeout on a large album. Progress is tracked through `status`.
 
-**`cache/clear`** — supprime le répertoire de cache et le recrée. Les vignettes
-sont régénérées à la demande.
+**`cache/clear`** — deletes the cache directory and recreates it. Thumbnails
+are regenerated on demand.
 
-### Comptes
+### Accounts
 
-Corps de `POST` : `CreateUserRequest` = `{ username, password, admin?, albums? }`.
-`PATCH` : `UpdateUserRequest` = `{ password?, admin?, albums? }`, champ absent
-valant « inchangé ». La réponse est un `AdminUser` — **jamais d'empreinte de mot
-de passe, sous aucune clé**.
+`POST` body: `CreateUserRequest` = `{ username, password, admin?, albums? }`.
+`PATCH`: `UpdateUserRequest` = `{ password?, admin?, albums? }`, an absent field
+meaning "unchanged". The response is an `AdminUser` — **never a password hash,
+under any key**.
 
-**Aucune adresse email ici** : un compte est une clé d'accès, possiblement
-partagée, pas quelqu'un de joignable. Les adresses appartiennent aux identités
-de commentateur, et celle prévenue des nouveaux commentaires est le réglage
-`moderationEmail`.
+**No email address here**: an account is an access key, possibly shared, not
+someone reachable. Addresses belong to commenter identities, and the one
+notified of new comments is the `moderationEmail` setting.
 
-- `username` : `USERNAME_PATTERN`, 64 caractères au plus. `password` :
-  `PASSWORD_MIN_LENGTH` (8) au minimum, 512 au plus.
-- `albums` : liste d'ids, ou `['*']` (`ALL_ALBUMS`) pour le joker. Un id inconnu
-  répond `400 unknown_album` en nommant le fautif. Une liste mêlant `'*'` et des
-  ids vaut joker.
-- `409 conflict` si l'identifiant est pris, **casse comprise**.
-- `409 last_admin` sur la suppression du dernier administrateur ou le retrait de
-  son rôle.
-- Supprimer un compte et changer son mot de passe ferment ses sessions ; changer
-  son rôle ou ses albums non (voir [04](./04-securite-et-acces.md)).
+- `username`: `USERNAME_PATTERN`, 64 characters at most. `password`:
+  `PASSWORD_MIN_LENGTH` (8) at minimum, 512 at most.
+- `albums`: a list of ids, or `['*']` (`ALL_ALBUMS`) as a wildcard. An unknown
+  id responds `400 unknown_album`, naming the culprit. A list mixing `'*'` with
+  ids counts as a wildcard.
+- `409 conflict` if the username is taken, **case included**.
+- `409 last_admin` on deleting the last administrator or removing their role.
+- Deleting an account and changing its password close its sessions; changing
+  its role or albums does not (see [04](./04-securite-et-acces.md)).
 
 ### Albums
 
-`POST` : `CreateAlbumRequest` = `{ id, title, description?, folderId,
-recursive?, groupBy?, sortOrder? }` (`recursive` vaut `true` par défaut,
-`groupBy` vaut `month`, `sortOrder` vaut `asc`). `PATCH` :
-`UpdateAlbumRequest`, où `description: null` efface la description.
-`409 conflict` sur un id déjà pris.
+`POST`: `CreateAlbumRequest` = `{ id, title, description?, folderId,
+recursive?, groupBy?, sortOrder? }` (`recursive` defaults to `true`, `groupBy`
+defaults to `month`, `sortOrder` defaults to `asc`). `PATCH`:
+`UpdateAlbumRequest`, where `description: null` clears the description.
+`409 conflict` on an id already taken.
 
-`groupBy` est le découpage appliqué à l'ouverture de l'album, `sortOrder` son
-sens de lecture — deux préférences, que `?group=` et `?order=` contredisent.
-Les changer ne touche **pas** à l'index : contrairement à `folderId` et
-`recursive`, ils ne modifient pas le périmètre Drive.
+`groupBy` is the split applied when the album is opened, `sortOrder` its
+reading direction — two preferences, which `?group=` and `?order=` override.
+Changing them does **not** touch the index: unlike `folderId` and `recursive`,
+they do not change the Drive scope.
 
-`AdminAlbum` complète la configuration par l'état réel : `itemCount`,
-`lastSyncAt`, `syncStatus`, `syncError`, `coverId`, et `members` — les comptes
-ayant un accès **explicite**, les détenteurs du joker n'y figurant pas.
+`AdminAlbum` completes the configuration with the actual state: `itemCount`,
+`lastSyncAt`, `syncStatus`, `syncError`, `coverId`, and `members` — the accounts
+with **explicit** access, wildcard holders not appearing in it.
 
-`coverId` de `UpdateAlbumRequest` désigne la photo de couverture ; `null` rend le
-choix automatique. La photo doit être indexée **dans cet album** et ne pas être
-une vidéo, sinon `400 unknown_cover`. Une vidéo a pourtant une vignette depuis
-D92 — mais celle-ci appartient à Drive et peut manquer sur un fichier ré-encodé,
-or la couverture est la seule image dont l'absence se voit depuis la page
-d'accueil, sans repli (D80 ne couvre que la photo sortie de l'index). Deux champs
-homonymes à ne pas confondre — `AdminAlbum.coverId` est le **choix** (`null` =
-automatique), `Album.coverId` la couverture **effectivement servie**, qui retombe
-sur la photo la plus récente quand la photo choisie a quitté l'index sans que le
-choix soit effacé (D80).
+`UpdateAlbumRequest`'s `coverId` names the cover photo; `null` restores the
+automatic choice. The photo must be indexed **in this album** and must not be a
+video, otherwise `400 unknown_cover`. A video does have a thumbnail since D92 —
+but it belongs to Drive and can be missing on a re-encoded file, and the cover
+is the only image whose absence shows from the home page, with no fallback
+(D80 only covers a photo that has left the index). Two identically named fields
+not to be confused — `AdminAlbum.coverId` is the **choice** (`null` = automatic),
+`Album.coverId` the cover **actually served**, which falls back to the most
+recent photo when the chosen one has left the index without the choice being
+cleared (D80).
 
-Deux effets de bord assumés :
+Two deliberate side effects:
 
-- **Changer `folderId` vide l'index de l'album** et remet son état de synchro à
-  `never` ; une resynchronisation démarre en fond si Drive est connecté. Les
-  médias indexés désignaient l'ancien dossier : les laisser en place les
-  laisserait consultables jusqu'à la prochaine sync.
-- **Supprimer un album retire ses médias de l'index.** Un fichier présent dans un
-  autre album y garde sa ligne (clé primaire `(album_id, id)`). Les dérivés en
-  cache disque sont laissés : ils sont indexés par id de fichier, donc partagés
-  entre albums, et régénérables — `cache/clear` les balaie tous.
+- **Changing `folderId` empties the album's index** and resets its sync state to
+  `never`; a resynchronisation starts in the background if Drive is connected.
+  The indexed media items named the old folder: leaving them in place would
+  keep them browsable until the next sync.
+- **Deleting an album removes its media items from the index.** A file present
+  in another album keeps its row there (primary key `(album_id, id)`). Cached
+  disk derivatives are left alone: they are indexed by file id, so shared
+  across albums, and regenerable — `cache/clear` sweeps them all away.
 
-### Journées d'un album
+### An album's days
 
-`PATCH /api/admin/albums/:id/days/:day` — corps `UpdateAlbumDayRequest` =
-`{ description?, place? }`. Champ absent = inchangé, `null` **ou chaîne vide** =
-effacé (les deux sont ramenés au même `NULL`, comme `moderationEmail`, pour que
-le front n'ait pas à traduire un champ vidé). Bornes : 300 caractères pour la
-description, 120 pour le lieu. `:day` doit être `AAAA-MM-JJ`, sinon `400`. `404`
-si l'album est inconnu. La réponse est l'`AlbumDay` à jour.
+`PATCH /api/admin/albums/:id/days/:day` — body `UpdateAlbumDayRequest` =
+`{ description?, place? }`. Absent field = unchanged, `null` **or an empty
+string** = cleared (both are folded into the same `NULL`, like
+`moderationEmail`, so the front end does not have to translate a cleared
+field). Bounds: 300 characters for the description, 120 for the place. `:day`
+must be `YYYY-MM-DD`, otherwise `400`. `404` if the album is unknown. The
+response is the updated `AlbumDay`.
 
-**La saisie vit dans l'album, la mutation reste ici.** On décrit une journée en
-voyant ses photos, donc le crayon est dans la grille ; mais l'écriture passe par
-`/api/admin`, seul préfixe qui répond **403**. Partout ailleurs un refus d'accès
-répond 404, et cette route ne déplace pas cet invariant (D50).
+**The input lives in the album, the mutation stays here.** A day is described
+while looking at its photos, so the pencil is in the grid; but the write goes
+through `/api/admin`, the only prefix that responds **403**. Everywhere else an
+access refusal responds 404, and this route does not move that invariant (D50).
 
-La **couverture** suit la même règle, et pour la même raison : on choisit une
-photo en la regardant, donc l'action est dans la visionneuse ; l'écriture passe
-par `PATCH /api/admin/albums/:id`, avec le champ `coverId`. Le retour à
-l'automatique (`coverId: null`), lui, est un bouton de `/admin` : c'est le seul
-endroit qui sache distinguer une couverture choisie d'une couverture par défaut.
+The **cover** follows the same rule, and for the same reason: a photo is chosen
+while looking at it, so the action is in the viewer; the write goes through
+`PATCH /api/admin/albums/:id`, with the `coverId` field. Reverting to automatic
+(`coverId: null`), though, is a button in `/admin`: it is the only place that
+knows how to distinguish a chosen cover from a default one.
 
-La **description de l'album** suit exactement la même règle : son crayon vit sur
-la page de l'album, son écriture passe par `PATCH /api/admin/albums/:id`, avec le
-champ `description` de `UpdateAlbumRequest`. Sa borne est
-`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exportée par `@nonni/shared` plutôt
-qu'écrite en littéral dans le schéma Zod : le compteur de caractères du front la
-lit désormais, et deux limites divergentes rendraient une saisie acceptée à
-l'écran refusée par le serveur.
+The **album description** follows exactly the same rule: its pencil lives on
+the album page, its write goes through `PATCH /api/admin/albums/:id`, with the
+`description` field of `UpdateAlbumRequest`. Its bound is
+`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exported by `@nonni/shared` rather than
+written as a literal in the Zod schema: the front end's character counter now
+reads it, and two diverging limits would make an input accepted on screen get
+refused by the server.
 
-La ligne est créée si la journée n'en avait pas : on peut annoter une journée
-dont aucune photo ne porte de position. Une journée vidée de sa note **et** de
-son lieu disparaît de `GET /days` si l'EXIF ne lui en donne aucun.
+The row is created if the day did not have one: a day with no photo carrying a
+position can still be annotated. A day emptied of both its note **and** its
+place disappears from `GET /days` if EXIF gives it none.
 
-### Description d'une photo
+### A photo's description
 
-`PATCH /api/admin/albums/:id/items/:mediaId` — corps `UpdateMediaRequest` =
-`{ description? }`. Champ absent = inchangé (la réponse rend alors l'item tel
-quel), `null` **ou chaîne vide** = effacé — la ligne de `media_notes` est
-supprimée, une description vide ne disant rien de plus qu'une absente. Borne :
-`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exportée par `@nonni/shared` et appliquée
-des deux côtés, sinon `400`. La réponse est le `MediaItem` à jour.
+`PATCH /api/admin/albums/:id/items/:mediaId` — body `UpdateMediaRequest` =
+`{ description? }`. Absent field = unchanged (the response then returns the
+item as-is), `null` **or an empty string** = cleared — the `media_notes` row is
+deleted, an empty description saying no more than a missing one. Bound:
+`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exported by `@nonni/shared` and applied
+on both sides, otherwise `400`. The response is the updated `MediaItem`.
 
-Deux `404` distincts, et il faut les deux : album inconnu ou supprimé, et média
-non indexé **dans cet album**. Sans le second, on écrirait un texte que rien
-n'affichera jamais, sur un identifiant peut-être inventé.
+Two distinct `404`s, and both are needed: an unknown or deleted album, and a
+media item not indexed **in this album**. Without the second, text could be
+written that nothing will ever display, against a possibly made-up id.
 
-Même partage que les deux textes voisins : **la saisie est dans la galerie** —
-on décrit une photo en la voyant, avec ses voisines autour —, **la mutation est
-sous `/api/admin`**, seul préfixe qui réponde 403 (D50, D83). Les vidéos sont
-acceptées, contrairement à `coverId` : une vidéo mérite une légende, et rien
-dans le pipeline ne s'y oppose.
+Same split as the two neighbouring texts: **the input is in the gallery** — a
+photo is described while looking at it, with its neighbours around it —, **the
+mutation is under `/api/admin`**, the only prefix that responds 403 (D50, D83).
+Videos are accepted, unlike for `coverId`: a video deserves a caption, and
+nothing in the pipeline opposes it.
 
-### Modération des commentaires
+### Comment moderation
 
-| Méthode | Chemin                                    | Réponse                |
-| ------- | ----------------------------------------- | ---------------------- |
-| GET     | `/api/admin/comments`                     | `AdminCommentsPage`    |
-| POST    | `/api/admin/comments/:id/hide`            | `{ ok: true }`         |
-| POST    | `/api/admin/comments/:id/show`            | `{ ok: true }`         |
-| POST    | `/api/admin/commenters/:commenterId/hide` | `BulkModerationResult` |
-| POST    | `/api/admin/commenters/:commenterId/show` | `BulkModerationResult` |
+| Method | Path                                      | Response               |
+| ------ | ----------------------------------------- | ---------------------- |
+| GET    | `/api/admin/comments`                     | `AdminCommentsPage`    |
+| POST   | `/api/admin/comments/:id/hide`            | `{ ok: true }`         |
+| POST   | `/api/admin/comments/:id/show`            | `{ ok: true }`         |
+| POST   | `/api/admin/commenters/:commenterId/hide` | `BulkModerationResult` |
+| POST   | `/api/admin/commenters/:commenterId/show` | `BulkModerationResult` |
 
-Paramètres de `GET` :
+`GET` parameters:
 
-| Paramètre | Valeurs                              | Défaut |
-| --------- | ------------------------------------ | ------ |
-| `filter`  | `all`, `visible`, `hidden`           | `all`  |
-| `albumId` | un identifiant d'album               | tous   |
-| `q`       | 1 à 200 caractères, coupés aux bords | —      |
-| `limit`   | 1 à 200                              | 50     |
-| `cursor`  | entier positif                       | —      |
+| Parameter | Values                                    | Default |
+| --------- | ----------------------------------------- | ------- |
+| `filter`  | `all`, `visible`, `hidden`                | `all`   |
+| `albumId` | an album id                               | all     |
+| `q`       | 1 to 200 characters, trimmed at the edges | —       |
+| `limit`   | 1 to 200                                  | 50      |
+| `cursor`  | positive integer                          | —       |
 
-Le curseur est un **simple entier**, l'identifiant du dernier commentaire rendu :
-`AUTOINCREMENT` garantit que l'ordre des id est l'ordre d'écriture, ce qui évite
-le curseur composite dont la pagination des médias a besoin.
+The cursor is a **plain integer**, the id of the last comment rendered:
+`AUTOINCREMENT` guarantees that id order is write order, which avoids the
+composite cursor media pagination needs.
 
-`q` est cherché dans le corps, le nom déclaré **et** l'adresse — on cherche aussi
-bien un mot qu'on nous a rapporté que la personne qui l'a écrit. Les jokers de
-`LIKE` sont échappés : taper `%` cherche un pourcent, il ne ramène pas tout le
-corpus. La casse n'est repliée que sur l'ASCII, limite de `LIKE` en SQLite
-(D67).
+`q` is searched in the body, the declared name, **and** the address — this
+searches both a word that was reported to us and the person who wrote it.
+`LIKE` wildcards are escaped: typing `%` searches for a percent sign, it does
+not return the whole corpus. Case is folded only over ASCII, a `LIKE`
+limitation in SQLite (D67).
 
-`AdminCommentsPage` = `{ comments, nextCursor, total }`. **`total` ignore le
-curseur** : c'est la taille du corpus que le filtre retient, pas celle du reste à
-parcourir — sans quoi « 3 sur 6 » deviendrait « 3 sur 4 » en tournant la page.
+`AdminCommentsPage` = `{ comments, nextCursor, total }`. **`total` ignores the
+cursor**: it is the size of the corpus the filter retains, not what remains to
+be paged through — otherwise "3 of 6" would become "3 of 4" while turning the
+page.
 
-`AdminComment` ajoute au `Comment` de quoi savoir de quelle photo on parle et
-qui écrit — `albumId`, `albumTitle`, `mediaId`, `mediaName`, `authorEmail`,
-`commenterId`, `account`, `hiddenAt`, `hiddenBy`. `authorEmail` et `commenterId`
-n'apparaissent **qu'ici** : la modération a besoin de savoir qui parle derrière
-un nom déclaré, et de pouvoir viser tous ses messages ; le fil public n'a ni
-l'un ni l'autre à révéler.
-`account` est la clé d'accès employée pour écrire, ce qui dit quel mot de passe
-partagé changer.
-`mediaName` vaut `null` si le média a disparu de l'index depuis : le commentaire
-reste modérable, seul le lien vers la photo n'est plus rendu.
+`AdminComment` adds to `Comment` what is needed to know which photo is being
+discussed and who is writing — `albumId`, `albumTitle`, `mediaId`, `mediaName`,
+`authorEmail`, `commenterId`, `account`, `hiddenAt`, `hiddenBy`. `authorEmail`
+and `commenterId` appear **only here**: moderation needs to know who is behind a
+declared name, and to be able to target all of their messages; the public
+thread has neither to reveal.
+`account` is the access key used to write, which says which shared password to
+change.
+`mediaName` is `null` if the media item has since left the index: the comment
+remains moderable, only the link to the photo is no longer rendered.
 
-La file couvre **tous les albums**, y compris ceux que cet administrateur ne
-verrait pas dans la galerie : modérer suppose de tout lire, et restreindre la
-file au périmètre de lecture laisserait des commentaires que personne ne
-pourrait traiter.
+The queue covers **every album**, including ones this administrator would not
+see in the gallery: moderating requires reading everything, and restricting the
+queue to the reading scope would leave comments no one could act on.
 
-**`hide` / `show`** — masquer plutôt que supprimer : la décision reste
-réversible. Masquer deux fois n'est pas une erreur et ne réécrit pas `hiddenAt`,
-qui doit garder la date de la décision d'origine. La suppression définitive passe
-par `DELETE /api/comments/:commentId`, où l'administrateur a tous les droits.
+**`hide` / `show`** — hiding rather than deleting: the decision stays
+reversible. Hiding twice is not an error and does not rewrite `hiddenAt`, which
+must keep the date of the original decision. Permanent deletion goes through
+`DELETE /api/comments/:commentId`, where the administrator has full rights.
 
-**`/commenters/:commenterId/hide|show`** — la même décision, sur **tous les
-messages d'une identité à la fois**, tous albums confondus. Le geste d'après une
-clé d'accès qui a trop circulé : retirer quinze messages un par un est un travail
-que personne ne fait. `BulkModerationResult` = `{ affected }`, le nombre de
-messages réellement touchés — les déjà-masqués n'en font pas partie, pour la même
-raison qu'à l'unité. Une identité inconnue répond **404** et non `{affected: 0}`,
-qui serait indiscernable d'une identité sans message.
+**`/commenters/:commenterId/hide|show`** — the same decision, on **all of an
+identity's messages at once**, across every album. The move for after an access
+key that has circulated too widely: removing fifteen messages one by one is
+work no one does. `BulkModerationResult` = `{ affected }`, the number of
+messages actually touched — already-hidden ones are not counted, for the same
+reason as at the single-comment level. An unknown identity responds **404**,
+not `{affected: 0}`, which would be indistinguishable from an identity with no
+messages.
 
-`AdminStatus` porte `hiddenComments` (pastille de la file) et `mailConfigured` —
-sans SMTP, renseigner une adresse ne produit rien, et l'écran d'administration
-doit le dire plutôt que de laisser espérer des notifications.
+`AdminStatus` carries `hiddenComments` (the queue's badge) and
+`mailConfigured` — with no SMTP, entering an address produces nothing, and the
+administration screen must say so rather than let notifications be expected.
 
-### Réglages
+### Settings
 
 `AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB,
 prewarmCache, transcodeVideos, videoCacheMaxSizeGB, moderationEmail }`. `PATCH`
-accepte un sous-ensemble (`UpdateSettingsRequest`) et renvoie l'état complet.
-Bornes : `syncIntervalMinutes` entier de 0 à 10080, `cacheMaxSizeGB` > 0,
-`prewarmCache` booléen (défaut `true`, relu à chaque photo par le préchauffage —
-le décocher arrête le passage en cours, pas seulement le suivant),
-`transcodeVideos` booléen (défaut `true`, relu de la même façon à chaque vidéo),
-`videoCacheMaxSizeGB` > 0 (défaut 5).
-`moderationEmail` accepte une adresse valide, `null` ou la chaîne vide — les deux
-dernières valant « aucune alerte », `ConfigRepo` les ramenant au même `NULL`.
+accepts a subset (`UpdateSettingsRequest`) and returns the full state. Bounds:
+`syncIntervalMinutes` integer from 0 to 10080, `cacheMaxSizeGB` > 0,
+`prewarmCache` boolean (default `true`, re-read on every photo by the
+prewarming — unchecking it stops the current pass, not just the next one),
+`transcodeVideos` boolean (default `true`, re-read the same way on every
+video), `videoCacheMaxSizeGB` > 0 (default 5).
+`moderationEmail` accepts a valid address, `null`, or an empty string — the
+latter two meaning "no alert", `ConfigRepo` folding them into the same `NULL`.
 
-`videoCacheMaxSizeGB` est un budget **distinct** de `cacheMaxSizeGB`, et non une
-part de celui-ci : les deux dérivés n'ont pas le même coût de reconstruction —
-quelques secondes pour une vignette, plusieurs minutes de processeur pour une
-vidéo. Un LRU commun laisserait une navigation dans la grille évincer des heures
-de travail (D260809b).
+`videoCacheMaxSizeGB` is a budget **separate** from `cacheMaxSizeGB`, not a
+share of it: the two derivatives do not cost the same to rebuild — a few
+seconds for a thumbnail, several minutes of processor time for a video. A
+shared LRU would let browsing the grid evict hours of work (D260809b).
 
-**Les réglages s'appliquent sans redémarrage** : les limites des deux
-`MediaCache` sont ajustées dans la foulée (avec éviction si elles baissent) et le
-minuteur de synchronisation de `main.ts` est reprogrammé. C'était la limite du rechargement
-de configuration d'avant, qui ne relisait ces valeurs qu'au démarrage.
+**Settings apply without a restart**: the two `MediaCache` limits are adjusted
+straight away (with eviction if they are lowered) and `main.ts`'s
+synchronisation timer is rescheduled. That was the limit of the earlier
+configuration reload, which only re-read these values at startup.
 
-## Callback OAuth — `routes/admin.ts`
+## OAuth callback — `routes/admin.ts`
 
-| Méthode | Chemin                | Accès |
-| ------- | --------------------- | ----- |
-| GET     | `/api/oauth/callback` | admin |
+| Method | Path                  | Access |
+| ------ | --------------------- | ------ |
+| GET    | `/api/oauth/callback` | admin  |
 
-Monté hors du préfixe `/admin` parce que son URL est figée dans la console
-Google Cloud, mais protégé par le même `requireAdmin`. Paramètres `code`,
-`state`, `error` posés par Google.
+Mounted outside the `/admin` prefix because its URL is fixed in the Google
+Cloud console, but protected by the same `requireAdmin`. Parameters `code`,
+`state`, `error` set by Google.
 
-Ne renvoie jamais de JSON : redirige toujours vers `/admin/serveur?oauth=<raison>`
-— la rubrique qui porte le bouton de connexion (D66).
+Never returns JSON: always redirects to `/admin/server?oauth=<reason>`
+— the section carrying the connect button (D66).
 
-| `oauth=`         | Cause                                              |
-| ---------------- | -------------------------------------------------- |
-| `connected`      | Succès. Une première synchronisation démarre.      |
-| `denied`         | Google a renvoyé `error` (consentement refusé).    |
-| `invalid`        | `code` ou `state` manquant.                        |
-| `state_mismatch` | Le cookie anti-CSRF ne correspond pas.             |
-| `error`          | L'échange du code a échoué (détail dans les logs). |
+| `oauth=`         | Cause                                          |
+| ---------------- | ---------------------------------------------- |
+| `connected`      | Success. A first synchronisation starts.       |
+| `denied`         | Google returned `error` (consent refused).     |
+| `invalid`        | Missing `code` or `state`.                     |
+| `state_mismatch` | The anti-CSRF cookie does not match.           |
+| `error`          | The code exchange failed (detail in the logs). |
 
-## Routes non-API
+## Non-API routes
 
-Servies par `registerFrontend` (`app.ts`) quand `WEB_DIR/index.html` existe.
+Served by `registerFrontend` (`app.ts`) when `WEB_DIR/index.html` exists.
 
-| Chemin                  | Comportement                                                                                                    |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `/`                     | `index.html`, `Cache-Control: no-cache`                                                                         |
-| `/manifest.webmanifest` | Le manifeste, `application/manifest+json`, `Cache-Control: no-cache`                                            |
-| `/sw.js`, `/icons/*`    | Fichiers réels de `public/`. Hors `/assets/`, donc `Cache-Control: no-cache` — voulu pour le service worker.    |
-| `/assets/*`             | Fichier réel, `Cache-Control: public, max-age=31536000, immutable`. Absent ⇒ **404 JSON**, jamais `index.html`. |
-| `/api/*`                | Inconnu ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                               |
-| tout le reste           | `index.html` — le routage vit dans le front, un rechargement sur `/album/x` doit fonctionner                    |
+| Path                    | Behaviour                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `/`                     | `index.html`, `Cache-Control: no-cache`                                                                             |
+| `/manifest.webmanifest` | The manifest, `application/manifest+json`, `Cache-Control: no-cache`                                                |
+| `/sw.js`, `/icons/*`    | Actual files from `public/`. Outside `/assets/`, hence `Cache-Control: no-cache` — intended for the service worker. |
+| `/assets/*`             | Actual file, `Cache-Control: public, max-age=31536000, immutable`. Missing ⇒ **404 JSON**, never `index.html`.      |
+| `/api/*`                | Unknown ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                                   |
+| everything else         | `index.html` — routing lives in the front end, a reload on `/album/x` must work                                     |
 
-**`/` et `/manifest.webmanifest` ne sont pas servis depuis le disque** : les deux
-portent `APP_NAME`, substitué une fois au démarrage et rendu depuis la mémoire
-(`shell.ts`, voir [07](./07-frontend.md)). Ce sont des routes exactes, donc
-prioritaires sur la route générique de `@fastify/static` qui servirait sinon les
-fichiers bruts. Un manifeste absent du build n'est qu'un avertissement au
-démarrage ; présent mais illisible, il arrête le démarrage.
+**`/` and `/manifest.webmanifest` are not served from disk**: both carry
+`APP_NAME`, substituted once at startup and rendered from memory (`shell.ts`,
+see [07](./07-frontend.md)). These are exact routes, so they take precedence
+over `@fastify/static`'s generic route, which would otherwise serve the raw
+files. A manifest missing from the build is only a warning at startup; present
+but unreadable, it stops startup.
 
-**Conséquence à connaître : rebuilder le front sous un serveur qui tourne ne
-suffit pas.** Il continue de servir l'`index.html` d'avant, qui référence des
-bundles que le build vient de supprimer — la page se charge et reste blanche.
-Il faut le redémarrer. En production c'est sans objet (une image se construit
-puis se lance) et en développement non plus (Vite sert le front lui-même) ; le
-cas se produit exactement quand on fait tourner le serveur buildé en rebuildant
-à côté.
+**A consequence worth knowing: rebuilding the front end under a running server
+is not enough.** It keeps serving the previous `index.html`, which references
+bundles the build has just removed — the page loads and stays blank. It must be
+restarted. In production this does not apply (an image is built, then run) and
+neither does it in development (Vite serves the front end itself); the case
+occurs exactly when running a built server while rebuilding alongside it.
 
-Sans build du front, toutes les routes non-`/api` répondent un 404 JSON invitant
-à lancer `pnpm dev` ou `pnpm build`. `packages/server/test/static.test.ts`
-verrouille chacun de ces comportements.
+With no front-end build, every non-`/api` route responds with a 404 JSON
+prompting `pnpm dev` or `pnpm build`. `packages/server/test/static.test.ts`
+locks down each of these behaviours.

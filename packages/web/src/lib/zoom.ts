@@ -1,55 +1,52 @@
 /**
- * Échelles de zoom de la visionneuse.
+ * Viewer zoom scales.
  *
- * Le calcul est isolé ici parce qu'une erreur y est invisible à l'œil : une
- * échelle fausse de 40 % ressemble à une image un peu molle, pas à un bug. Le
- * point délicat est que la photo affichée n'est jamais le fichier d'origine
- * mais un rendu WebP dont le serveur plafonne le plus grand côté — le nombre de
- * pixels réellement disponibles ne se déduit donc pas des dimensions de l'index.
+ * Calculation is isolated because an error is invisible to the eye: a scale 40%
+ * off looks like a slightly soft image, not a bug. The subtlety is that the
+ * displayed photo is never the original file but a WebP render whose longest
+ * side the server caps — available pixels cannot be inferred from index dimensions.
  */
 
 /**
- * Plafond du plus grand côté du rendu `hd`, en miroir de `HD_MAX_EDGE`
+ * Longest-side cap for the `hd` render, mirroring `HD_MAX_EDGE`
  * (`packages/server/src/media/renderer.ts`).
  *
- * Il n'y est que pour anticiper : la variante `hd` n'est chargée qu'au premier
- * agrandissement, et il faut savoir avant ce chargement jusqu'où le zoom pourra
- * aller. Dès que le rendu est là, c'est sa mesure qui fait autorité — une
- * divergence avec le serveur se corrige donc d'elle-même à l'affichage.
+ * It exists only for anticipation: the `hd` variant loads on first enlargement,
+ * and the zoom limit is needed before then. Once the render arrives, its
+ * measurement is authoritative — any server divergence corrects itself on display.
  */
 export const HD_MAX_EDGE = 4096;
 
 export interface ZoomScaleInput {
-  /** Largeur du fichier d'origine d'après l'index, `0` si inconnue. */
+  /** Original file width from the index, `0` if unknown. */
   sourceWidth: number;
-  /** Hauteur du fichier d'origine d'après l'index, `0` si inconnue. */
+  /** Original file height from the index, `0` if unknown. */
   sourceHeight: number;
-  /** `naturalWidth` du rendu effectivement chargé, `0` avant le premier chargement. */
+  /** `naturalWidth` of the render actually loaded, `0` before the first load. */
   renderedWidth: number;
-  /** Vrai quand le rendu mesuré est la variante `hd` : la mesure fait alors autorité. */
+  /** True when the measured render is `hd`, making the measurement authoritative. */
   hdLoaded: boolean;
-  /** Largeur de l'image une fois ajustée au cadre, en pixels CSS. */
+  /** Image width after fitting the frame, in CSS pixels. */
   displayedWidth: number;
-  /** Plafond de zoom du composant. */
+  /** Component zoom cap. */
   maxScale: number;
 }
 
 export interface ZoomScale {
-  /** Pixels réellement disponibles sur la largeur, une fois le rendu `hd` en place. */
+  /** Pixels actually available across the width once the `hd` render is in place. */
   availableWidth: number;
   /**
-   * Échelle à laquelle un pixel disponible occupe un pixel d'écran : c'est le
-   * « 100 % » de l'indicateur, et la cible de la touche `z` et du clic.
+   * Scale where one available pixel occupies one screen pixel: the indicator's
+   * "100%" and the target of the `z` key and click.
    */
   pixelScale: number;
-  /** Vrai quand le rendu disponible contient moins de pixels que le fichier d'origine. */
+  /** True when the available render has fewer pixels than the original file. */
   limited: boolean;
 }
 
 /**
- * Résolution du rendu `hd` telle que le serveur la produira : le plus grand
- * côté est ramené à `HD_MAX_EDGE`, et `withoutEnlargement` interdit d'agrandir
- * une photo plus petite.
+ * Resolution of the `hd` render the server will produce: reduce the longest side
+ * to `HD_MAX_EDGE`, while `withoutEnlargement` prevents enlarging a smaller photo.
  */
 function hdWidthFor(sourceWidth: number, sourceHeight: number): number {
   const longest = Math.max(sourceWidth, sourceHeight);
@@ -58,15 +55,13 @@ function hdWidthFor(sourceWidth: number, sourceHeight: number): number {
 }
 
 /**
- * Échelles de zoom d'après la résolution réellement disponible, et non d'après
- * les dimensions du fichier d'origine.
+ * Zoom scales from actually available resolution, not original file dimensions.
  *
- * Une photo de 6000 px n'est servie qu'en 4096 px : caler le « 100 % » sur
- * 6000 px reviendrait à annoncer des pixels natifs en interpolant un pixel sur
- * trois. Ici, 100 % signifie « un pixel du rendu par pixel d'écran », donc la
- * limite au-delà de laquelle le navigateur invente ; `limited` dit si cette
- * limite est en deçà du fichier d'origine, pour que l'interface puisse
- * l'annoncer plutôt que le cacher.
+ * A 6000 px photo is served at only 4096 px: basing "100%" on 6000 px would claim
+ * native pixels while interpolating one in three. Here, 100% means "one render
+ * pixel per screen pixel", the boundary beyond which the browser invents;
+ * `limited` says whether that boundary falls below the original file so the
+ * interface can disclose rather than hide it.
  */
 export function computeZoomScale({
   sourceWidth,
@@ -81,8 +76,8 @@ export function computeZoomScale({
       ? renderedWidth
       : sourceWidth > 0 && sourceHeight > 0
         ? hdWidthFor(sourceWidth, sourceHeight)
-        : // Index sans dimensions : le rendu déjà reçu est tout ce qu'on sait.
-          // Le zoom part plus bas, puis se corrige quand `hd` est mesuré.
+        : // With no index dimensions, the received render is all that is known.
+          // Zoom starts lower, then corrects when `hd` is measured.
           renderedWidth;
 
   if (available <= 0 || displayedWidth <= 0) {
@@ -97,14 +92,12 @@ export function computeZoomScale({
 }
 
 /**
- * Pourcentage affiché : part des pixels disponibles réellement peints à
- * l'écran. 100 % = un pixel du rendu par pixel d'écran, au-delà le navigateur
- * interpole.
+ * Displayed percentage: share of available pixels actually painted on screen.
+ * 100% means one render pixel per screen pixel; above it the browser interpolates.
  *
- * Il se calcule à partir de `availableWidth` et non de `pixelScale`, qui est
- * plafonné par `maxScale` : sur une photo qui demanderait plus que ce plafond,
- * rapporter l'échelle à `pixelScale` afficherait 100 % là où le zoom maximal ne
- * montre encore qu'une partie des pixels.
+ * Calculate from `availableWidth`, not `pixelScale`, which `maxScale` caps: on a
+ * photo requiring more than that cap, comparing scale to `pixelScale` would show
+ * 100% while maximum zoom still displayed only some pixels.
  */
 export function zoomPercent(displayedWidth: number, scale: number, availableWidth: number): number {
   if (availableWidth <= 0 || displayedWidth <= 0) return 100;
@@ -117,11 +110,10 @@ export interface Point {
 }
 
 /**
- * Part de l'image occupée par la zone visible, sur chaque axe, dans `[0, 1]`.
+ * Fraction of the image occupied by the visible area on each axis, in `[0, 1]`.
  *
- * Sert au cadre du repère de position : `1` signifie que l'image tient
- * entièrement dans la fenêtre sur cet axe — le cadre couvre alors tout le
- * repère, ce qui est la lecture juste.
+ * Used by the position-indicator frame: `1` means the image fits entirely in the
+ * window on that axis — the frame then covers the whole indicator, correctly.
  */
 export function visibleFraction(
   displayedSize: number,
@@ -133,10 +125,10 @@ export function visibleFraction(
 }
 
 /**
- * Position du centre de la zone visible dans l'image, en fractions `[0, 1]`.
+ * Centre of the visible area in the image, as fractions `[0, 1]`.
  *
- * Le déplacement décale l'image sous une fenêtre fixe : la zone regardée se
- * déplace donc en sens inverse, d'où le signe négatif.
+ * Pan moves the image beneath a fixed window, so the viewed area moves in the
+ * opposite direction, hence the negative sign.
  */
 export function viewCenter(
   offset: Point,
@@ -150,13 +142,11 @@ export function viewCenter(
 }
 
 /**
- * Réciproque de `viewCenter` : déplacement à appliquer pour amener un point de
- * l'image au centre de la fenêtre.
+ * Inverse of `viewCenter`: pan required to bring an image point to window centre.
  *
- * C'est ce qui rend le repère de position manipulable — cliquer dedans désigne
- * un endroit de la photo, et l'affichage doit s'y rendre. Le résultat n'est pas
- * borné ici : c'est à l'appelant d'appliquer ses limites de débordement, qu'il
- * est le seul à connaître.
+ * This makes the position indicator interactive — clicking selects a location in
+ * the photo and the display must move there. Do not bound the result here: only
+ * the caller knows its overflow limits.
  */
 export function offsetForCenter(
   center: Point,
@@ -170,23 +160,19 @@ export function offsetForCenter(
 }
 
 /**
- * Tolérance de déplacement, en pixels, sous laquelle un pointeur relâché compte
- * encore comme un clic.
+ * Movement tolerance in pixels below which a released pointer still counts as a click.
  *
- * Zéro ne conviendrait pas : une main tremble, et un pointeur fin — stylet,
- * doigt — bouge toujours d'un ou deux pixels entre l'appui et le relâchement,
- * si bien qu'aucun clic ne serait jamais reconnu. Trop large, un début de
- * déplacement délibéré finirait par basculer le zoom.
+ * Zero would fail: hands tremble, and a fine pointer — stylus or finger — always
+ * moves one or two pixels between press and release, so no click would register.
+ * Too large would let the start of an intentional pan toggle zoom.
  */
 export const TAP_SLOP_PX = 5;
 
 /**
- * Distingue le clic du glisser, d'après le seul déplacement parcouru depuis
- * l'appui.
+ * Distinguishes click from drag using only movement since press.
  *
- * La durée ne sert pas de critère : un glisser lent et court reste un glisser,
- * et un doigt posé longuement sans bouger reste un clic. C'est le déplacement,
- * pas le temps, qui sépare l'intention de désigner de celle de déplacer.
+ * Duration is not a criterion: a slow short drag remains a drag, and a finger
+ * held still remains a click. Movement, not time, separates selecting from panning.
  */
 export function isTap(origin: Point, release: Point, slop: number = TAP_SLOP_PX): boolean {
   return Math.hypot(release.x - origin.x, release.y - origin.y) <= slop;

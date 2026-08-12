@@ -5,30 +5,26 @@ import Database from 'better-sqlite3';
 export type Db = Database.Database;
 
 /**
- * Trois colonnes sont écrites sans qu'aucune requête ne les relise. Ce n'est
- * pas un oubli, et il ne faut pas les supprimer — SQLite ne sait pas retirer
- * une colonne autrement qu'en recréant la table, ce qui ne vaut pas le gain sur
- * une base en service :
+ * Three columns are written without any query reading them. This is intentional; do
+ * not remove them — SQLite can only drop a column by recreating the table, not worth
+ * the gain on a live database:
  *
- * - `media.modified_time` — date de modification Drive, seul repère
- *   chronologique quand l'EXIF manque. `takenAt` en dérive au moment de la
- *   synchronisation ; la garder permet de recalculer sans réindexer, et de
- *   diagnostiquer un `taken_at` qui surprend.
- * - `oauth_token.scope` — portée demandée lors du consentement. Elle sert à
- *   savoir, quand `SCOPES` évoluera, si le jeton stocké couvre encore ce que
- *   l'application demande ou s'il faut refaire le consentement.
- * - `sessions.created_at` — date d'ouverture. `expires_at` suffit à la purge,
- *   mais c'est la seule trace qui dise depuis quand une session traîne, ce qui
- *   est la première question posée après un accès suspect.
+ * - `media.modified_time` — Drive modification date, the only chronological reference
+ *   without EXIF. `takenAt` derives from it during sync; retaining it permits
+ *   recalculation without reindexing and diagnosis of surprising `taken_at` values.
+ * - `oauth_token.scope` — scope requested at consent. When `SCOPES` changes, it shows
+ *   whether the stored token still covers the application or consent must be repeated.
+ * - `sessions.created_at` — opening date. `expires_at` suffices for cleanup, but this
+ *   is the only trace of how long a session has lingered, the first question after
+ *   suspicious access.
  *
- * Migrations appliquées dans l'ordre, suivies par `PRAGMA user_version`.
- * Ne jamais modifier une migration déjà publiée : en ajouter une nouvelle.
+ * Migrations applied in order and tracked by `PRAGMA user_version`.
+ * Never change a published migration: add a new one.
  *
- * Exporté pour que les tests puissent reconstituer une base d'une version
- * antérieure et vérifier qu'elle se met à jour sans perdre de données.
+ * Exported so tests can reconstruct an older database and verify lossless upgrades.
  */
 export const MIGRATIONS: string[] = [
-  // 1 — schéma initial
+  // 1 — initial schema
   `
   CREATE TABLE media (
     album_id            TEXT NOT NULL,
@@ -57,9 +53,9 @@ export const MIGRATIONS: string[] = [
     PRIMARY KEY (album_id, id)
   );
 
-  -- Sert le tri chronologique de la grille et la pagination par curseur.
+  -- Supports chronological grid sorting and cursor pagination.
   CREATE INDEX idx_media_album_taken ON media (album_id, taken_at DESC, id DESC);
-  -- Sert la résolution mediaId -> albums pour le contrôle d'accès.
+  -- Supports mediaId -> albums resolution for access control.
   CREATE INDEX idx_media_id ON media (id);
 
   CREATE TABLE sync_state (
@@ -69,7 +65,7 @@ export const MIGRATIONS: string[] = [
     error         TEXT
   );
 
-  -- Ligne unique (id = 1) : le refresh token Google chiffré.
+  -- Single row (id = 1): the encrypted Google refresh token.
   CREATE TABLE oauth_token (
     id          INTEGER PRIMARY KEY CHECK (id = 1),
     ciphertext  TEXT NOT NULL,
@@ -88,31 +84,27 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_sessions_expires ON sessions (expires_at);
   `,
 
-  // 2 — trace de la révocation du refresh token par Google (`invalid_grant`),
-  // pour que /admin distingue « jamais connecté » de « accès retiré ».
+  // 2 — records Google refresh-token revocation (`invalid_grant`) so /admin can
+  // distinguish "never connected" from "access removed".
   `
   ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT;
   `,
 
-  // 3 — comptes, albums et réglages passent de config/albums.yaml à la base.
-  // Le fichier ne sert plus qu'à amorcer une installation neuve ; une fois ces
-  // tables peuplées, il n'est plus jamais relu.
+  // 3 — moves accounts, albums and settings from config/albums.yaml to the database.
+  // The file only bootstraps new installations and is never reread once populated.
   `
   CREATE TABLE users (
-    -- COLLATE NOCASE sur la clé primaire : le login est déjà insensible à la
-    -- casse, et l'unicité doit l'être aussi — sinon « Alexis » et « alexis »
-    -- coexisteraient et la connexion en désignerait un au hasard. La casse
-    -- saisie reste stockée telle quelle et c'est elle qui est affichée. Une
-    -- seconde colonne en minuscules donnerait le même résultat, au prix d'un
-    -- risque de désynchronisation entre les deux. NOCASE ne replie que
-    -- l'ASCII : c'est exactement ce qu'accepte USERNAME_PATTERN.
+    -- COLLATE NOCASE on the primary key: sign-in is already case-insensitive, so
+    -- uniqueness must be too; otherwise "Alexis" and "alexis" could coexist and
+    -- sign-in would select one arbitrarily. Entered casing remains stored and displayed.
+    -- A second lower-case column would risk divergence. NOCASE folds only ASCII,
+    -- exactly what USERNAME_PATTERN accepts.
     username       TEXT PRIMARY KEY COLLATE NOCASE,
     password_hash  TEXT NOT NULL,
     admin          INTEGER NOT NULL DEFAULT 0,
-    -- Joker « tous les albums ». Un booléen plutôt qu'une ligne '*' dans
-    -- user_albums : cette ligne-là exigerait un album fictif pour satisfaire la
-    -- clé étrangère, ou d'y renoncer. Et le joker doit suivre les albums créés
-    -- plus tard, ce qu'une liste de liaisons figées ne ferait pas.
+    -- "All albums" wildcard. A boolean rather than a '*' row in user_albums, which
+    -- would require a fictitious album or no foreign key. The wildcard must also
+    -- include future albums, unlike a fixed association list.
     all_albums     INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
@@ -124,261 +116,225 @@ export const MIGRATIONS: string[] = [
     description  TEXT,
     folder_id    TEXT NOT NULL,
     recursive    INTEGER NOT NULL DEFAULT 1,
-    -- Rang d'affichage. Il remplace l'ordre de déclaration du YAML, que
-    -- created_at ne restituerait pas : l'amorçage crée tous les albums dans la
-    -- même milliseconde.
+    -- Display rank. Replaces YAML declaration order, which created_at cannot reproduce
+    -- because bootstrap creates all albums in the same millisecond.
     position     INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL
   );
 
-  -- ON DELETE CASCADE : une liaison orpheline redonnerait l'accès à un compte
-  -- homonyme recréé plus tard, ou à un album recréé sous le même id.
+  -- ON DELETE CASCADE: an orphan association would grant access to a later recreated
+  -- account with the same name or album with the same ID.
   CREATE TABLE user_albums (
     username  TEXT NOT NULL REFERENCES users (username) ON DELETE CASCADE,
     album_id  TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
     PRIMARY KEY (username, album_id)
   );
 
-  -- Sert « qui a accès à cet album », affiché dans l'écran d'administration.
+  -- Supports "who has access to this album" in administration.
   CREATE INDEX idx_user_albums_album ON user_albums (album_id);
 
-  -- Réglages en clé/valeur JSON. Les défauts vivent dans le code : une clé
-  -- absente n'est pas une anomalie, et ajouter un réglage ne demande pas de
-  -- migration.
+  -- Settings as JSON key/value pairs. Defaults live in code: a missing key is valid,
+  -- and adding a setting requires no migration.
   CREATE TABLE settings (
     key    TEXT PRIMARY KEY,
     value  TEXT NOT NULL
   );
   `,
 
-  // 4 — commentaires, et l'identité qui les signe.
+  // 4 — comments and the identity signing them.
   //
-  // Deux niveaux à ne pas confondre, et c'est toute la raison de cette migration :
+  // Two levels that must remain distinct, the entire reason for this migration:
   //
-  //   users      — une CLÉ D'ACCÈS. Elle ouvre des albums, et rien n'interdit de
-  //                la confier à plusieurs personnes : un mot de passe partagé par
-  //                toute une famille est l'usage prévu depuis albums.yaml.
-  //   commenters — une PERSONNE, identifiée par une adresse qu'elle a vérifiée
-  //                elle-même. C'est elle qui signe un commentaire.
+  //   users      — an ACCESS KEY. It opens albums and may be shared by several people;
+  //                a family-wide password has been intended since albums.yaml.
+  //   commenters — a PERSON identified by an address they verified themselves. This
+  //                person signs a comment.
   //
-  // Les confondre ferait signer « famille » tous les messages du foyer, et
-  // laisserait l'administrateur responsable d'adresses qui ne sont pas les
-  // siennes.
+  // Conflating them would sign every household message as "family" and make the
+  // administrator responsible for addresses that are not theirs.
   `
   CREATE TABLE commenters (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- L'adresse EST l'identité : se ré-identifier avec la même, depuis un autre
-    -- appareil ou après avoir vidé ses cookies, retrouve ses commentaires. Sans
-    -- cette clé stable, chaque navigateur créerait une personne de plus.
+    -- The address IS the identity: identifying again with it from another device or
+    -- after clearing cookies finds the same comments. Without this stable key, every
+    -- browser would create another person.
     email           TEXT NOT NULL UNIQUE COLLATE NOCASE,
     display_name    TEXT NOT NULL,
     notify          INTEGER NOT NULL DEFAULT 1,
-    -- NULL tant que le code reçu par email n'a pas été saisi. Sans cette
-    -- vérification l'identité serait purement déclarative : n'importe qui
-    -- derrière la clé d'accès partagée pourrait signer du nom d'un autre, ou
-    -- faire atterrir les notifications dans la boîte d'un tiers.
+    -- NULL until the emailed code is entered. Without verification, identity would be
+    -- purely declarative: anyone behind the shared access key could use another name
+    -- or send notifications to a third party.
     verified_at     TEXT,
-    -- HMAC du code, jamais le code en clair : un dump de la base ne doit pas
-    -- livrer de quoi valider une adresse. Même secret que le lien de
-    -- désabonnement, SESSION_SECRET.
+    -- HMAC of the code, never plaintext: a database dump must not validate an address.
+    -- Uses SESSION_SECRET, like the unsubscribe link.
     code_hash       TEXT,
     code_expires_at TEXT,
-    -- Date du dernier envoi : sans elle, le formulaire deviendrait une machine à
-    -- expédier des emails vers une adresse qu'on ne possède pas.
+    -- Last delivery date: without it, the form could bombard an uncontrolled address.
     code_sent_at    TEXT,
-    -- Six chiffres se parcourent en un million d'essais. Sans plafond, la
-    -- vérification ne vérifierait rien.
+    -- Six digits can be exhausted in one million attempts. Without a cap,
+    -- verification would verify nothing.
     code_attempts   INTEGER NOT NULL DEFAULT 0,
     created_at      TEXT NOT NULL
   );
 
-  -- La session mémorise l'identité, elle ne la définit pas. ON DELETE SET NULL :
-  -- perdre son identité ne coupe pas l'accès aux albums, qui ne vient que de la
-  -- clé d'accès.
+  -- The session remembers identity; it does not define it. ON DELETE SET NULL: losing
+  -- identity does not revoke album access, which comes only from the access key.
   ALTER TABLE sessions ADD COLUMN commenter_id INTEGER REFERENCES commenters (id) ON DELETE SET NULL;
 
-  -- AUTOINCREMENT, contrairement au rowid ordinaire : sans lui, SQLite réattribue
-  -- l'identifiant d'une ligne supprimée à la ligne suivante. Les emails de
-  -- notification portent un lien vers #<id> et survivent des mois dans une boîte
-  -- aux lettres ; un id recyclé ferait pointer un vieux message vers la
-  -- conversation de quelqu'un d'autre.
+  -- AUTOINCREMENT unlike an ordinary rowid: otherwise SQLite reuses a deleted row's
+  -- ID. Notification emails link to #<id> and remain for months; a recycled ID would
+  -- point an old message to someone else's conversation.
   CREATE TABLE comments (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    -- Le fil appartient au couple (album, média), jamais au seul média : le même
-    -- fichier Drive indexé sous deux albums porte deux conversations. Les
-    -- mélanger montrerait à un visiteur les propos tenus dans un album auquel il
-    -- n'a pas accès, ce qui contredirait le cloisonnement décidé en D12.
+    -- A thread belongs to (album, media), never media alone: one Drive file in two
+    -- albums has two conversations. Mixing them would expose words from an inaccessible
+    -- album, contradicting isolation in D12.
     album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
-    -- Pas de clé étrangère vers media : deleteStale retire une photo dès
-    -- qu'une synchronisation ne la revoit pas — dossier renommé, sync
-    -- interrompue, corbeille Drive le temps d'un retour en arrière. Une cascade
-    -- détruirait les commentaires sur un simple contretemps d'indexation, alors
-    -- que l'identifiant Drive est stable : la photo revenue retrouve son fil.
+    -- No foreign key to media: deleteStale removes a photo whenever sync misses it —
+    -- renamed folder, interrupted sync or temporary Drive bin. A cascade would destroy
+    -- comments over an indexing incident, while stable Drive IDs let returning photos
+    -- recover their thread.
     media_id    TEXT NOT NULL,
-    -- ON DELETE SET NULL et non CASCADE : supprimer une identité emporte ses
-    -- messages, mais les réponses que d'autres y ont écrites leur appartiennent.
-    -- Elles remontent en tête de fil plutôt que de disparaître avec lui.
+    -- ON DELETE SET NULL, not CASCADE: deleting an identity removes its messages, but
+    -- replies written by others belong to them and rise to thread roots instead.
     parent_id   INTEGER REFERENCES comments (id) ON DELETE SET NULL,
-    -- L'auteur est une personne, pas une clé d'accès.
+    -- The author is a person, not an access key.
     commenter_id INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
-    -- Clé d'accès utilisée au moment d'écrire, gardée pour la modération : c'est
-    -- ce qui dit par quel mot de passe partagé un message gênant est arrivé,
-    -- donc lequel changer. ON DELETE SET NULL — supprimer un compte ne doit pas
-    -- emporter des commentaires qui ne lui appartiennent pas.
+    -- Access key used to write, retained for moderation: it identifies which shared
+    -- password delivered a problem and must change. ON DELETE SET NULL — deleting an
+    -- account must not remove comments it does not own.
     account     TEXT COLLATE NOCASE REFERENCES users (username) ON DELETE SET NULL,
     body        TEXT NOT NULL,
     created_at  TEXT NOT NULL,
-    -- Modération a posteriori : le commentaire est publié tout de suite et
-    -- masqué après coup, plutôt que retenu jusqu'à validation. Masquer plutôt que
-    -- supprimer laisse à l'administrateur le droit de se raviser.
+    -- Moderation after publication: comments appear immediately and may be hidden
+    -- later rather than awaiting approval. Hiding keeps the decision reversible.
     hidden_at   TEXT,
     hidden_by   TEXT COLLATE NOCASE
   );
 
-  -- Sert la lecture d'un fil et le compteur affiché avec le détail d'un média.
-  -- Trier sur id plutôt que sur created_at suffit : AUTOINCREMENT ne réattribue
-  -- jamais un identifiant, donc l'ordre des id est l'ordre d'écriture. C'est ce
-  -- qui permet aussi à la file de modération de paginer sur un simple entier
-  -- plutôt que sur un curseur (date, id).
+  -- Supports thread reads and the count shown with media details. Sorting by ID is
+  -- enough: AUTOINCREMENT never reassigns IDs, so ID order is insertion order. This
+  -- also lets moderation paginate by one integer rather than a (date, id) cursor.
   CREATE INDEX idx_comments_thread ON comments (album_id, media_id, id);
-  -- Sert le rattachement des réponses à leur racine, et leur remontée en tête de
-  -- fil quand le parent disparaît (ON DELETE SET NULL ci-dessus).
+  -- Supports attaching replies to roots and promoting them when the parent disappears
+  -- (ON DELETE SET NULL above).
   CREATE INDEX idx_comments_parent ON comments (parent_id);
-  -- Sert « mes commentaires » : ceux que le lecteur courant peut supprimer.
+  -- Supports "my comments": those the current reader may delete.
   CREATE INDEX idx_comments_commenter ON comments (commenter_id);
   `,
 
-  // 5 — annonce des nouvelles photos d'un album à ceux qui l'ouvrent.
+  // 5 — announces an album's new photos to those who open it.
   //
-  // Une identité n'est rattachée à aucun album : l'accès vient de la clé, et
-  // l'identité de l'adresse vérifiée. On ne sait donc pas nativement à qui
-  // écrire — d'où l'abonnement à l'ouverture, et cette table pour le porter.
+  // Identity is attached to no album: access comes from the key and identity from the
+  // verified address. There is no inherent recipient, hence subscription on opening
+  // and this table to store it.
   `
   CREATE TABLE album_subscriptions (
     commenter_id INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
     album_id     TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
-    -- 'auto' : abonné en ouvrant l'album. 'opted_out' : s'est désabonné.
+    -- 'auto': subscribed by opening the album. 'opted_out': unsubscribed.
     --
-    -- Un état plutôt qu'une simple présence, parce que l'abonnement est
-    -- automatique : sans lui, rouvrir l'album le lendemain d'un désabonnement
-    -- réabonnerait — précisément ce qui fait détester un service. L'inscription
-    -- s'écrit INSERT OR IGNORE, qui laisse intacte une ligne déjà 'opted_out'.
+    -- State rather than mere presence because subscription is automatic: otherwise
+    -- reopening after unsubscribing would resubscribe. INSERT OR IGNORE retains an
+    -- existing 'opted_out' row.
     state        TEXT NOT NULL CHECK (state IN ('auto', 'opted_out')),
     created_at   TEXT NOT NULL,
     PRIMARY KEY (commenter_id, album_id)
   );
 
-  -- Sert « qui est abonné à cet album », la seule lecture du notifieur. Le sens
-  -- inverse est déjà couvert par la clé primaire.
+  -- Supports "who subscribes to this album", the notifier's only read. The reverse
+  -- direction is covered by the primary key.
   CREATE INDEX idx_album_subscriptions_album ON album_subscriptions (album_id);
 
-  -- Date des dernières photos annoncées. Sans elle, une seconde synchronisation
-  -- réannoncerait tout : l'index ne garde aucune trace de ce qui a été signalé.
-  -- NULL sur une base déjà en service : la première exécution l'initialise sans
-  -- rien envoyer, faute de quoi la mise à jour annoncerait tout l'historique.
+  -- Date of last announced photos. Without it a second sync would reannounce everything.
+  -- NULL on an existing database: the first run initialises without sending, avoiding
+  -- an announcement of all history after upgrade.
   ALTER TABLE sync_state ADD COLUMN notified_at TEXT;
 
-  -- Date d'entrée dans l'index, renseignée à l'INSERT et JAMAIS touchée par le
-  -- ON CONFLICT DO UPDATE de upsertMany. La colonne seen_at ne peut pas jouer
-  -- ce rôle : elle est réécrite sur *tous* les médias à chaque passage de la
-  -- sync, y compris ceux déjà connus — compter les nouveautés dessus les
-  -- compterait toutes.
+  -- Index insertion date, set on INSERT and NEVER touched by upsertMany's ON CONFLICT
+  -- DO UPDATE. seen_at cannot serve: sync rewrites it for *all* media, so it would
+  -- count every item as new.
   --
-  -- Les lignes existantes restent à NULL, et WHERE added_at > ? les exclut :
-  -- c'est ce qui évite d'annoncer rétroactivement un album entier.
+  -- Existing rows remain NULL and WHERE added_at > ? excludes them, preventing
+  -- retroactive announcement of a whole album.
   ALTER TABLE media ADD COLUMN added_at TEXT;
   `,
 
-  // 6 — un renommage n'a lieu qu'une fois le code validé.
+  // 6 — renaming happens only after code validation.
   //
-  // `requestCode` écrivait `display_name` immédiatement, avant toute
-  // vérification : demander un code pour l'adresse d'un tiers déjà vérifié
-  // renommait donc son identité, et avec elle tous ses commentaires passés — la
-  // signature affichée est lue à chaque requête, pas figée à l'écriture. Le nom
-  // demandé attend ici jusqu'à ce que le code prouve qu'on tient la boîte.
+  // `requestCode` previously wrote `display_name` before verification, so requesting
+  // a code for a verified third-party address renamed its identity and all past
+  // comments. The requested name now waits until the code proves inbox control.
   `
   ALTER TABLE commenters ADD COLUMN pending_display_name TEXT;
   `,
 
-  // 7 — annoter une journée, et nommer le lieu que les photos portent déjà.
+  // 7 — annotates a day and names the place its photos already carry.
   //
-  // Deux colonnes distinctes pour le lieu, et c'est tout l'intérêt de cette
-  // migration : `cells` est déduit de l'EXIF, `place` est saisi à la main.
-  // L'agrégation des positions est déterministe et hors réseau, le géocodage
-  // est lent et faillible. Les séparer permet de recalculer les journées à
-  // chaque passage sans rappeler Nominatim, et fait que les libellés
-  // s'allument tout seuls quand ils finissent par arriver.
+  // Two place columns are the point of this migration: `cells` comes from EXIF while
+  // `place` is manual. Position aggregation is deterministic and offline; geocoding
+  // is slow and fallible. Separation permits free recalculation without recalling
+  // Nominatim, and labels appear when they arrive.
   `
   CREATE TABLE album_days (
     album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
-    -- 'YYYY-MM-DD' en UTC, exactement la clé que dayKey() calcule côté front.
-    -- Un jour local ferait basculer de section une photo de 23 h 30.
+    -- 'YYYY-MM-DD' in UTC, exactly the key calculated by front-end dayKey(). A local
+    -- day would move a 23:30 photo to another section.
     day         TEXT NOT NULL,
     description TEXT,
-    -- Lieu saisi à la main. Prime sur cells : c'est une correction, et une
-    -- correction que le recalcul écraserait ne servirait à rien.
+    -- Manually entered place. Takes precedence over cells: recalculation must not
+    -- overwrite a correction.
     place       TEXT,
-    -- JSON string[] de clés geo_places, dans l'ordre chronologique des
-    -- grappes. Réécrit à chaque passage ; description et place, jamais.
+    -- JSON string[] of geo_places keys in chronological cluster order. Rewritten on
+    -- every pass; description and place never are.
     cells       TEXT,
     updated_at  TEXT NOT NULL,
     PRIMARY KEY (album_id, day)
   );
 
-  -- Cache de géocodage inverse, partagé par tous les albums : deux séjours au
-  -- même endroit ne comptent qu'un appel à Nominatim, dont la politique
-  -- plafonne à une requête par seconde.
+  -- Reverse-geocoding cache shared by all albums: two stays in one place cost one
+  -- Nominatim call, whose policy caps requests at one per second.
   CREATE TABLE geo_places (
-    -- 'lat,lng' arrondis à 2 décimales, soit ~1,1 km — la maille en deçà de
-    -- laquelle deux photos portent de toute façon le même nom de lieu.
+    -- 'lat,lng' rounded to 2 decimals, ~1.1 km — below this grid size two photos have
+    -- the same place name anyway.
     cell       TEXT PRIMARY KEY,
-    -- NULL : le géocodage a abouti sans résultat exploitable. La ligne existe
-    -- quand même, c'est ce qui empêche de redemander éternellement. Un échec
-    -- réseau, lui, n'écrit aucune ligne et sera retenté au passage suivant.
+    -- NULL: geocoding completed without a usable result. The row prevents endless
+    -- retries; a network failure writes no row and is retried next pass.
     label      TEXT,
     fetched_at TEXT NOT NULL
   );
 
-  -- Découpage par défaut de la grille. Il vivait uniquement dans l'URL, donc
-  -- nulle part : un album de vacances se lit par jour, un album « les enfants »
-  -- couvrant dix ans se lit par mois, et personne n'a à le redemander à chaque
-  -- ouverture.
+  -- Default grid grouping. It previously lived only in the URL, effectively nowhere:
+  -- a holiday album reads by day and ten years of children by month, without asking
+  -- on every opening.
   ALTER TABLE albums ADD COLUMN group_by TEXT NOT NULL DEFAULT 'month'
     CHECK (group_by IN ('month', 'day'));
   `,
 
-  // 8 — la couverture d'un album se choisit, au lieu d'être toujours sa photo
-  // la plus récente. NULL vaut « automatique », et reste le repli permanent.
+  // 8 — makes album covers selectable rather than always newest. NULL means
+  // "automatic" and remains the permanent fallback.
   //
-  // Aucune clé étrangère vers media, pour la même raison que comments.media_id :
-  // deleteStale retire une photo dès qu'une synchronisation ne la revoit pas —
-  // corbeille Drive le temps d'un retour en arrière, dossier renommé, sync
-  // interrompue. Une cascade effacerait le choix sur un contretemps
-  // d'indexation, alors que l'identifiant Drive est stable : la photo revenue
-  // redevient la couverture, et l'album montre la plus récente entre-temps.
+  // No foreign key to media for the same reason as comments.media_id: deleteStale may
+  // remove a temporarily missing photo. A cascade would erase the choice over an
+  // indexing incident; stable Drive IDs let it become cover again on return while the
+  // album shows the newest meanwhile.
   `
   ALTER TABLE albums ADD COLUMN cover_media_id TEXT;
   `,
 
-  // 9 — une description par photo. L'album dit où l'on était, la journée ce
-  // qu'on y a fait ; ce qui se passe sur une image précise ne se déduit ni du
-  // nom de fichier, ni de l'EXIF, ni de la note du jour.
+  // 9 — one description per photo. Album says where, day says what happened; one
+  // image's event cannot be inferred from file name, EXIF or day note.
   `
   CREATE TABLE media_notes (
-    -- Le texte appartient au couple (album, média), jamais au seul média : le
-    -- même fichier Drive indexé sous deux albums porte deux descriptions,
-    -- exactement comme il porte deux fils de commentaires. Les confondre
-    -- montrerait à un visiteur ce qui a été écrit dans un album auquel il n'a
-    -- pas accès, ce qui contredirait le cloisonnement décidé en D12.
+    -- Text belongs to (album, media), never media alone: one Drive file in two albums
+    -- has two descriptions, like two comment threads. Mixing them would expose text
+    -- from an inaccessible album, contradicting D12.
     album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
-    -- Aucune clé étrangère vers media, pour la raison de comments.media_id et
-    -- d'albums.cover_media_id : deleteStale retire une photo dès qu'une
-    -- synchronisation ne la revoit pas — corbeille Drive le temps d'un retour
-    -- en arrière, dossier renommé, sync interrompue. Une cascade détruirait sur
-    -- un contretemps d'indexation un texte écrit à la main, que rien ne
-    -- régénère. L'identifiant Drive est stable : la photo revenue retrouve sa
-    -- description (D83).
+    -- No foreign key to media for the reasons behind comments.media_id and
+    -- albums.cover_media_id: deleteStale may remove a temporarily missing photo. A
+    -- cascade would destroy irreplaceable manual text; stable Drive IDs let returning
+    -- photos recover their description (D83).
     media_id    TEXT NOT NULL,
     description TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
@@ -386,42 +342,33 @@ export const MIGRATIONS: string[] = [
   );
   `,
 
-  // 10 — Drive dit s'il a produit un aperçu du fichier. C'est ce qui permet à
-  // une vidéo d'avoir une vignette de grille sans qu'un seul octet de vidéo
-  // soit décodé ici (D92).
+  // 10 — records whether Drive produced a file preview, allowing video thumbnails
+  // without decoding one video byte here (D92).
   //
-  // Le défaut à 0 est délibéré : les lignes déjà indexées n'affichent pas
-  // d'aperçu tant que la synchronisation suivante n'a pas rempli la colonne. Un
-  // manque passager vaut mieux qu'une rafale de requêtes vouées au 415, une par
-  // vidéo et par chargement de grille, sur une information que seule la sync
-  // peut donner.
+  // Default 0 is deliberate: existing rows show no preview until the next sync fills
+  // the column. A temporary absence is better than one doomed 415 request per video
+  // and grid load for information only sync can provide.
   `
   ALTER TABLE media ADD COLUMN has_thumbnail INTEGER NOT NULL DEFAULT 0;
   `,
 
-  // 11 — index de recherche : quatre tables FTS5 **à contenu externe**, tenues
-  // par des déclencheurs.
+  // 11 — search index: four **external-content** FTS5 tables maintained by triggers.
   //
-  // Le coût d'une recherche ici n'est pas la requête — quelques milliers de
-  // lignes, moins d'une milliseconde — mais de tenir l'index à jour. Ces textes
-  // s'écrivent depuis six endroits (ConfigRepo.saveAlbum, AlbumDayRepo.upsertNote
-  // et .replaceCells, Geocoder, MediaRepo.setDescription, et les suppressions en
-  // cascade d'un album). Réindexer depuis le code demanderait de n'en oublier
-  // aucun, aujourd'hui et dans tout chemin d'écriture écrit plus tard — et un
-  // index périmé ne se voit pas : il rend simplement moins de résultats.
+  // Search cost is not the query — a few thousand rows in under a millisecond — but
+  // maintaining the index. Text is written from six places (ConfigRepo.saveAlbum,
+  // AlbumDayRepo.upsertNote and .replaceCells, Geocoder, MediaRepo.setDescription and
+  // cascading album deletion). Code-side indexing would need every present and future
+  // path; a stale index silently returns fewer results.
   //
-  // `content='<table>'` : la table FTS ne stocke que l'index, jamais une copie du
-  // texte. Le contrat de cette forme est que chaque écriture soit répercutée,
-  // d'où les trois déclencheurs par table — la suppression passe par la commande
-  // 'delete' avec les **anciennes** valeurs, seule façon pour FTS5 de retrouver
-  // les termes à retirer sans relire la ligne, qui n'existe plus.
+  // `content='<table>'`: FTS stores only the index, never text copies. Every write must
+  // propagate, hence three triggers per table — deletion uses the 'delete' command
+  // with **old** values, the only way FTS5 can find terms after the row is gone.
   //
-  // Le tokenizer replie les diacritiques : « ete » trouve « été », « nim »
-  // trouve « Nîmes », sans colonne normalisée à tenir à la main.
+  // The tokenizer folds diacritics: "ete" finds "été" and "nim" finds "Nîmes"
+  // without a manually maintained normalised column.
   //
-  // Le `rebuild` final indexe ce qui est déjà là : sans lui, une instance en
-  // service ne deviendrait interrogeable qu'au fil des écritures suivantes,
-  // c'est-à-dire jamais pour un album qu'on ne retouche plus (D96).
+  // Final `rebuild` indexes existing data: otherwise a live instance would become
+  // searchable only through future writes, never for untouched albums (D96).
   `
   CREATE VIRTUAL TABLE albums_fts USING fts5(
     title, description,
@@ -509,120 +456,102 @@ export const MIGRATIONS: string[] = [
   INSERT INTO geo_places_fts (geo_places_fts) VALUES ('rebuild');
   `,
 
-  // 12 — sens de lecture par défaut de la grille, à côté du découpage. Il vivait
-  // dans une constante globale, donc identique pour tous les albums, et
-  // uniquement dans l'URL : on découvrait un séjour par sa dernière journée, et
-  // le sens rebasculé était perdu en quittant la page.
+  // 12 — default grid reading order beside grouping. It previously lived in one global
+  // constant and only in the URL: trips opened on their last day and a changed order
+  // was lost on leaving the page.
   //
-  // `DEFAULT 'asc'` fait basculer les albums déjà en service, et c'est voulu :
-  // le sens sortant n'a jamais été choisi par personne, c'était le seul
-  // disponible (D99).
+  // `DEFAULT 'asc'` switches existing albums deliberately: nobody chose the previous
+  // descending order; it was the only available one (D99).
   `
   ALTER TABLE albums ADD COLUMN sort_order TEXT NOT NULL DEFAULT 'asc'
     CHECK (sort_order IN ('desc', 'asc'));
   `,
 
-  // 13 — appairer un écran sans clavier, au lieu d'y taper un mot de passe.
+  // 13 — pairs a keyboardless screen instead of typing a password on it.
   //
-  // Table de passage : une ligne y vit cinq minutes au plus, et disparaît dès
-  // que l'écran demandeur a relevé sa session. Elle n'ouvre aucun accès
-  // nouveau — l'appairage délègue une clé existante, et celui qui approuve doit
-  // déjà être connecté (D260809c).
+  // Transient table: rows live at most five minutes and disappear when the screen
+  // claims its session. Pairing grants no new access; it delegates an existing key
+  // from an already signed-in approver (D260809c).
   `
   CREATE TABLE device_pairings (
-    -- Les huit caractères affichés sur l'écran et repris dans le QR. En clair,
-    -- et c'est délibéré : ils s'affichent dans un salon, les hacher ne
-    -- protégerait rien de ce que la pièce voit déjà.
+    -- Eight characters displayed on screen and in the QR code. Deliberately plaintext:
+    -- they appear in a room, so hashing protects nothing the room cannot already see.
     user_code    TEXT PRIMARY KEY,
-    -- HMAC du deviceCode de 32 octets rendu au seul demandeur. C'est LUI qui
-    -- autorise à relever la session, jamais le code affiché : sans cette
-    -- séparation, une photo du téléviseur suffirait à prendre sa place. Haché
-    -- pour la raison de commenters.code_hash — un dump de la base ne doit pas
-    -- livrer de quoi se substituer à un écran en attente.
+    -- HMAC of the 32-byte deviceCode returned only to the requester. IT authorises
+    -- claiming the session, never the displayed code; otherwise a television photo
+    -- would suffice. Hashed for the commenters.code_hash reason: a database dump must
+    -- not impersonate a pending screen.
     device_hash  TEXT NOT NULL UNIQUE,
-    -- Le compte de celui qui a approuvé, NULL tant que personne ne l'a fait.
-    -- CASCADE : une demande approuvée par un compte supprimé entre-temps ne
-    -- doit pas pouvoir devenir une session.
+    -- Approver's account, NULL until approval. CASCADE prevents a request approved by
+    -- a subsequently deleted account from becoming a session.
     username     TEXT COLLATE NOCASE REFERENCES users (username) ON DELETE CASCADE,
     approved_at  TEXT,
     created_at   TEXT NOT NULL,
-    -- Cinq minutes. Au-delà, un code approuvable traînerait sur un écran allumé.
+    -- Five minutes. Longer would leave an approvable code on a lit screen.
     expires_at   TEXT NOT NULL
   );
 
-  -- Sert la purge horaire, et la borne du nombre de demandes en attente.
+  -- Supports hourly cleanup and the pending-request limit.
   CREATE INDEX idx_device_pairings_expires ON device_pairings (expires_at);
   `,
 
-  // 14 — le codec réellement contenu dans la piste image d'une vidéo, lu dans le
-  // `moov` au même passage de fenêtres que sa date. C'est lui qui décide de ce
-  // qui est transcodé, et de la source que le client demande (D260809b).
+  // 14 — actual video-track codec, read from `moov` in the same window pass as its date.
+  // It decides what is transcoded and which source the client requests (D260809b).
   //
-  // Trois valeurs, et la distinction compte :
+  // Three values whose distinction matters:
   //
-  //   NULL          le fichier n'a jamais été examiné — ligne d'avant cette
-  //                 migration, ou en-tête que Drive n'a pas rendu. La sync le
-  //                 rouvrira.
-  //   ''            en-tête lu, aucune piste image reconnue. Le rouvrir à chaque
-  //                 passage relirait quelques centaines de Ko pour rien.
-  //   'hvc1', …     le code à quatre lettres tel qu'il est écrit dans le `stsd`.
+  //   NULL          file never examined — a pre-migration row or header Drive did not
+  //                 return. Sync reopens it.
+  //   ''            header read, no video track recognised. Reopening every pass would
+  //                 reread hundreds of KB for nothing.
+  //   'hvc1', …     four-letter code as written in `stsd`.
   //
-  // Sans le troisième état, un conteneur exotique serait relu à chaque
-  // synchronisation, indéfiniment.
+  // Without the third state, an unusual container would be reread on every sync forever.
   `
   ALTER TABLE media ADD COLUMN video_codec TEXT;
   `,
 
-  // 15 — qui regarde quoi, et depuis quand.
+  // 15 — who views what, and since when.
   //
-  // L'instance ne disait rien de son usage : `sessions.created_at` répond
-  // « quelqu'un s'est connecté un jour », pas « ai-je des visiteurs cette
-  // semaine », ni « qui ouvre quel album ». Les commentaires étaient le seul
-  // signal disponible, et ils sous-estiment massivement la lecture — on regarde
-  // un album sans commenter (D260809h).
+  // The instance previously said nothing about use: `sessions.created_at` answers
+  // "someone once signed in", not "were there visitors this week" or "who opens which
+  // album". Comments were the only signal and severely undercount viewing (D260809h).
   `
-  -- Dernière requête reçue de cette session. Écrite au plus une fois par heure
-  -- et par session : sans ce plafond, chaque vignette déclencherait un UPDATE.
+  -- Last request from this session. Written at most hourly per session; otherwise every
+  -- thumbnail would trigger an UPDATE.
   ALTER TABLE sessions ADD COLUMN last_seen_at TEXT;
 
-  -- Classe d'appareil déduite du user-agent à la connexion, puis jetée : seule
-  -- la classe est stockée. Une valeur parmi quatre ne ré-identifie personne, là
-  -- où le user-agent complet est une empreinte. NULL sur les sessions ouvertes
-  -- avant cette migration, et sur celles dont la requête n'a pas d'en-tête.
+  -- Device class inferred from user-agent at sign-in, then discarded: only the class
+  -- is stored. One of four values cannot re-identify anyone, unlike a full user-agent.
+  -- NULL for pre-migration sessions and requests without the header.
   ALTER TABLE sessions ADD COLUMN device TEXT;
 
-  -- Agrégée à l'écriture : une ligne par (album, clé, session, jour) avec des
-  -- compteurs, jamais une ligne par requête. La table reste de l'ordre de la
-  -- dizaine de lignes par jour au lieu de la dizaine de milliers, et il n'y a
-  -- aucune purge sérieuse à écrire.
+  -- Aggregated on write: one row per (album, key, session, day) with counters, never
+  -- per request. The table stays around ten rows daily rather than tens of thousands.
   --
-  -- Aucune clé étrangère, ni vers sessions ni vers albums, et c'est le point
-  -- de la table : une déconnexion détruit la session mais ne doit pas effacer
-  -- l'historique de ce qui a été regardé — session_id n'est ici qu'un seau
-  -- pour compter des visiteurs distincts, pas un lien. Un album supprimé suit
-  -- la même règle : sa fréquentation passée reste vraie.
+  -- No foreign key to sessions or albums, by design: sign-out deletes the session but
+  -- must not erase viewing history — session_id is a bucket for distinct visitors,
+  -- not a link. A deleted album follows the same rule: past visits remain real.
   --
-  -- WITHOUT ROWID : la table est entièrement définie par sa clé primaire
-  -- composite, l'index secondaire implicite ne servirait à rien.
+  -- WITHOUT ROWID: the composite primary key fully defines the table, so an implicit
+  -- secondary index would be useless.
   CREATE TABLE album_visits (
     album_id   TEXT NOT NULL,
-    -- COLLATE NOCASE comme users.username : « Alexis » et « alexis » sont la
-    -- même clé d'accès, les compter séparément ferait deux visiteurs d'un seul.
+    -- COLLATE NOCASE like users.username: "Alexis" and "alexis" are one access key;
+    -- counting them separately would make one visitor into two.
     username   TEXT NOT NULL COLLATE NOCASE,
     session_id TEXT NOT NULL,
-    -- 'YYYY-MM-DD' en UTC, comme toute date de ce dépôt.
+    -- 'YYYY-MM-DD' in UTC, like every date in this repository.
     day        TEXT NOT NULL,
-    -- Ouvertures de l'album : la première page de la grille, jamais les
-    -- suivantes qui sont le même geste.
+    -- Album openings: the first grid page, never subsequent pages of the same action.
     visits     INTEGER NOT NULL DEFAULT 0,
-    -- Photos ouvertes en visionneuse.
+    -- Photos opened in the viewer.
     photos     INTEGER NOT NULL DEFAULT 0,
     last_at    TEXT NOT NULL,
     PRIMARY KEY (album_id, username, session_id, day)
   ) WITHOUT ROWID;
 
-  -- Sert les deux agrégations de l'onglet « Visites », toutes deux bornées par
-  -- « day >= ? », et la purge annuelle.
+  -- Supports both "Visits" tab aggregations, bounded by "day >= ?", and annual cleanup.
   CREATE INDEX idx_album_visits_day ON album_visits (day);
   `,
 ];
@@ -631,11 +560,11 @@ export function openDb(dataDir: string): Db {
   mkdirSync(dataDir, { recursive: true });
   const db = new Database(join(dataDir, 'nonni.db'));
 
-  // WAL : les lectures de la grille ne bloquent pas la sync qui écrit en fond.
+  // WAL: grid reads do not block background sync writes.
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
   db.pragma('foreign_keys = ON');
-  // Une écriture concurrente attend au lieu de renvoyer SQLITE_BUSY.
+  // A concurrent write waits instead of returning SQLITE_BUSY.
   db.pragma('busy_timeout = 5000');
 
   migrate(db);

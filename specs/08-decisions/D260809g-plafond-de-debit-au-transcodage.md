@@ -1,89 +1,89 @@
-# D260809g — Un dérivé ne peut plus être plus lourd que la vidéo dont il vient
+# D260809g — A derivative can no longer be larger than its source video
 
-**Contexte.** [D260809b](./D260809b-transcodage-video.md) prévoyait un dérivé
-1,5 fois plus léger que sa source, et le premier passage en production a bien
-donné ce chiffre : 1234 Mo d'originaux pour 818 Mo de sortie sur vingt vidéos.
-La moyenne cachait un cas que personne n'avait envisagé — **trois de ces vingt
-dérivés étaient plus gros que leur original** :
+**Context.** [D260809b](./D260809b-transcodage-video.md) anticipated a derivative
+1.5 times smaller than its source, and the first production batch did yield that
+figure: 1,234 MB of originals for 818 MB of output across twenty videos. The
+average concealed a case nobody had considered — **three of those twenty
+derivatives were larger than their originals**:
 
-| Source         | Dérivé H.264 |
-| -------------- | ------------ |
-| 30,3 Mo — 12 s | 35,5 Mo      |
-| 34,0 Mo — 13 s | 37,5 Mo      |
-| 50,1 Mo — 20 s | **66,8 Mo**  |
+| Source         | H.264 derivative |
+| -------------- | ---------------- |
+| 30.3 MB — 12 s | 35.5 MB          |
+| 34.0 MB — 13 s | 37.5 MB          |
+| 50.1 MB — 20 s | **66.8 MB**      |
 
-C'est le comportement normal de `-crf` : un débit **variable**, sans borne
-haute. Sur une scène chargée — du feuillage tenu à la main, le pire cas déjà
-identifié par D260809b — x264 dépense ce qu'il faut pour tenir la qualité
-demandée, et un HEVC de téléphone déjà bien encodé le laisse loin derrière. Le
-magasin garde alors un fichier qui coûte du disque **et** de la bande passante
-sans rien rendre en échange.
+This is the normal behaviour of `-crf`: a **variable** bit rate, with no upper
+bound. On a busy scene — handheld footage of foliage, the worst case already
+identified by D260809b — x264 spends whatever is needed to maintain the requested
+quality, leaving an already well-encoded phone HEVC far behind. The store then
+keeps a file that costs disk space **and** bandwidth without providing anything
+in return.
 
-**Choix.** Le débit image est borné par celui de la source, calculé sur le
-fichier réellement téléchargé : `-maxrate` à la place laissée par le son et par
-le conteneur, `-bufsize` au double. Le CRF 23 reste : ensemble, ils font ce que
-x264 appelle un CRF contraint — viser la qualité, et n'écrêter que si elle coûte
-plus que le plafond.
+**Decision.** The video bit rate is capped based on that of the source,
+calculated from the file actually downloaded: `-maxrate` uses the room left by
+audio and the container, with `-bufsize` at twice that value. CRF 23 remains:
+together, they form what x264 calls constrained CRF — target the quality and
+clip only when it costs more than the cap.
 
-Le plafond ne mord donc que sur les cas pathologiques. Les dix-sept autres
-vidéos du même passage sortaient très en dessous de leur source, et sont
-encodées exactement comme avant.
+The cap therefore affects only pathological cases. The other seventeen videos
+in the same batch were far below their source and are encoded exactly as before.
 
-**Le plafond vaut 0,95 / 1,15 du débit de la source, pas 1.** Deux corrections
-s'y empilent, et chacune est mesurée :
+**The cap is 0.95 / 1.15 of the source bit rate, not 1.** Two adjustments are
+stacked, and each is measured:
 
-- **5 % pour le conteneur** — l'en-tête MP4 et l'index que `+faststart` remonte
-  en tête. Viser le débit de la source à l'octet près produirait un fichier
-  légèrement plus gros qu'elle.
-- **15 % pour le débordement de x264** — et c'est la correction qui manquait à
-  la première version de cette décision. `-maxrate` n'est pas un plafond sur la
-  moyenne : c'est une contrainte VBV sur la fenêtre de `-bufsize`, que
-  l'encodeur déborde quand la source est trop dure pour le débit accordé.
-  Mesuré sur ffmpeg 7.1 en `veryfast` : **+9 à +10 %** sur une source réaliste,
-  **+14 %** sur du bruit pur, le pire cas théorique.
+- **5% for the container** — the MP4 header and the index that `+faststart`
+  moves to the front. Targeting the source bit rate exactly would produce a file
+  slightly larger than the source.
+- **15% for x264 overshoot** — the adjustment missing from the first version of
+  this decision. `-maxrate` is not a cap on the average: it is a VBV constraint
+  over the `-bufsize` window, which the encoder exceeds when the source is too
+  difficult for the allotted bit rate. Measured with ffmpeg 7.1 using
+  `veryfast`: **+9 to +10%** on a realistic source and **+14%** on pure noise,
+  the theoretical worst case.
 
-Sans la seconde, la marge de conteneur seule laissait le dérivé repasser
-au-dessus de sa source — le plafond aurait échoué exactement dans le cas pour
-lequel il existe. Sur les 50,1 Mo du tableau, 5 % seuls autorisaient 52,3 Mo de
-sortie ; les deux ensemble la bornent à 47,5 Mo dans le pire cas, et à environ
-44 Mo au débordement réellement observé.
+Without the second adjustment, the container margin alone allowed the
+derivative to grow larger than its source again — the cap would have failed in
+exactly the case for which it exists. For the 50.1 MB file in the table, 5%
+alone allowed 52.3 MB of output; together, the two adjustments cap it at 47.5 MB
+in the worst case and about 44 MB with the overshoot actually observed.
 
-**La durée vient de l'index, le poids du disque.** `durationMs` traverse
-l'interface `Transcoder` parce que c'est la seule des deux grandeurs que le
-producteur ne peut pas obtenir sans un `ffprobe` de plus. Le poids, lui, est
-mesuré sur le fichier reçu et non lu dans l'index : c'est ce que ffmpeg va
-réellement encoder, et Drive déclare parfois une taille absente ou périmée.
+**Duration comes from the index, size from the disk.** `durationMs` crosses the
+`Transcoder` interface because it is the only one of the two values the producer
+cannot obtain without another `ffprobe`. The size, by contrast, is measured on
+the received file rather than read from the index: this is what ffmpeg will
+actually encode, and Drive sometimes reports no size or a stale one.
 
-**Écarté — jeter le dérivé plus lourd que sa source.** C'était la réaction
-naturelle, et elle se retourne contre la fonctionnalité : la vidéo redevient
-illisible, avec le seul bouton Télécharger de
+**Rejected — discarding a derivative larger than its source.** This was the
+natural reaction, but it defeats the feature: the video becomes unplayable
+again, leaving only the Download button from
 [D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md).
-Or ce qu'on achète est la lisibilité, pas le poids — D260809b le dit déjà. Il
-aurait fallu en plus une marque persistante en base, donc une migration, sans
-quoi le passage horaire aurait refait l'encodage à chaque tour pour le jeter à
-chaque fois.
+What is being bought is playability, not a smaller file — D260809b already says
+so. It would also have required a persistent marker in the database, and
+therefore a migration; without one, the hourly pass would encode the file again
+each time only to discard it every time.
 
-**Écarté — monter le CRF, ou descendre à `-preset medium`.** Les deux gagnent de
-la place partout, y compris sur les dix-sept vidéos qui n'ont aucun problème :
-l'un dégrade une image qui allait bien, l'autre double le temps processeur. Le
-défaut est local à trois fichiers, le remède doit l'être aussi.
+**Rejected — raising CRF or dropping to `-preset medium`.** Both save space
+everywhere, including on the seventeen videos that have no problem: one degrades
+a picture that was fine, while the other doubles processor time. The flaw is
+local to three files, so the remedy must be local too.
 
-**Conséquences.** Sur une scène très chargée d'une source à haut débit, l'image
-est un peu moins bonne qu'avant ce changement — c'est le prix, et il ne se paie
-que là où le dérivé aurait dépassé sa source. Le plafond à 0,83 du débit source
-mord un peu plus large que les trois cas du tableau : les deux vidéos du même
-passage qui sortaient à 86 % et 98 % de leur original y passent aussi. C'est
-voulu — un dérivé à 98 % de sa source ne vaut pas mieux que ceux qu'on corrige.
+**Consequences.** On a very busy scene from a high-bit-rate source, the picture
+is slightly worse than before this change — that is the cost, paid only where
+the derivative would have exceeded its source. The cap at 0.83 of the source bit
+rate applies slightly more broadly than the three cases in the table: the two
+videos from the same batch that came out at 86% and 98% of their originals are
+affected too. This is deliberate — a derivative at 98% of its source is no more
+valuable than the ones being corrected.
 
-En dessous de 500 kbit/s, aucun plafond n'est posé : une source très courte ou
-à la durée mal déclarée donnerait un plafond absurde, et un 1080p bridé si bas
-serait inregardable. Mieux vaut un dérivé un peu lourd qu'un dérivé qu'on ne
-peut pas regarder. Une vidéo dont l'index n'a pas la durée est dans le même cas,
-et retombe sur le CRF seul, c'est-à-dire sur le comportement d'avant.
+Below 500 kbit/s, no cap is applied: a very short source or an incorrectly
+reported duration would produce an absurd cap, and 1080p constrained that low
+would be unwatchable. A slightly large derivative is better than one that cannot
+be watched. A video whose index has no duration is treated the same way and
+falls back to CRF alone, which is the previous behaviour.
 
-**Les trois dérivés déjà produits ne sont pas repris.** Leur clé de magasin ne
-dépend que du fichier et de son empreinte, pas des arguments d'encodage : ils
-restent servis tels quels jusqu'à une éviction ou un remplacement du contenu sur
-Drive. Les reprendre supposerait de savoir avec quels arguments chacun a été
-produit, une information qu'on ne stocke pas — pour trois fichiers et 40 Mo,
-c'est une colonne de trop.
+**The three derivatives already produced are not regenerated.** Their store key
+depends only on the file and its fingerprint, not on the encoding arguments:
+they remain available as they are until eviction or a content replacement on
+Drive. Regenerating them would require knowing the arguments used for each one,
+information that is not stored — for three files and 40 MB, that is one column
+too many.

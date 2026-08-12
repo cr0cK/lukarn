@@ -1,9 +1,8 @@
 @import 'tailwindcss';
 
 /**
- * Palette sombre neutre et légèrement froide. Volontairement peu contrastée
- * entre les niveaux de fond : ce qui doit ressortir, ce sont les photos, pas
- * le chrome de l'application.
+ * Neutral, slightly cool dark palette. Deliberately low contrast between
+ * background levels: photos should stand out, not application chrome.
  */
 @theme {
   --color-ink-950: #08080a;
@@ -32,18 +31,16 @@
     height: 100%;
   }
 
-  /* La gouttière de la barre de défilement est réservée en permanence.
+  /* The scrollbar gutter is permanently reserved.
 
-     Sans elle, la largeur utile change en cours de session — entre une page
-     courte et une longue, et surtout à chaque ouverture de la visionneuse, qui
-     gèle le défilement du corps. Toute la mise en page glisse alors de la
-     largeur de la barre, en-tête compris ; la pastille du compte, seule à son
-     extrémité, est ce qui le montre le mieux.
+     Without it, usable width changes during a session — between a short and long
+     page, and especially whenever the viewer opens and freezes body scrolling.
+     The entire layout then shifts by the scrollbar width, including the header;
+     the lone account badge at its edge reveals this most clearly.
 
-     Le prix est une bande vide de même largeur là où la barre est en
-     surimpression et ne prenait rien : mesuré à 10 px, la valeur fixée par la
-     règle `::-webkit-scrollbar` ci-dessous. Un décalage à chaque photo ouverte
-     coûte plus cher que dix pixels constants. */
+     The cost is an equally wide empty band where the overlaid bar took no space:
+     measured at 10 px, the value fixed by the `::-webkit-scrollbar` rule below.
+     A shift on every opened photo costs more than ten constant pixels. */
   html {
     scrollbar-gutter: stable;
   }
@@ -58,7 +55,7 @@
     overscroll-behavior-y: none;
   }
 
-  /* Barre de défilement discrète, accordée au fond sombre. */
+  /* Subtle scrollbar matching the dark background. */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-ink-600) transparent;
@@ -76,8 +73,8 @@
     background-clip: content-box;
   }
 
-  /* Anneau de focus visible uniquement au clavier : l'app se pilote aux
-     flèches, la cible active doit toujours être repérable. */
+  /* Focus ring visible only from the keyboard: arrow keys control the application,
+     so the active target must always be identifiable. */
   :focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
@@ -87,15 +84,13 @@
     -webkit-user-drag: none;
   }
 
-  /* Tailwind v4 a retiré le `cursor: pointer` que sa v3 posait sur les boutons,
-     pour s'aligner sur le défaut du navigateur. Résultat : plus rien dans cette
-     interface n'annonce au survol qu'il est cliquable, alors qu'elle est faite
-     de boutons sans bordure posés sur des photos — le curseur y était le seul
-     indice. On le remet ici plutôt que par une classe sur chaque bouton, qu'on
-     oublierait au premier composant ajouté.
+  /* Tailwind v4 removed the `cursor: pointer` its v3 put on buttons to match the
+     browser default. As a result, nothing in this interface signals clickability
+     on hover even though it consists of borderless buttons over photos — the
+     cursor was the only cue. Restore it here rather than with a class on every
+     button, which the next component would forget.
 
-     Les éléments désactivés en sont exclus : leur curseur doit dire qu'il ne se
-     passera rien. */
+     Disabled elements are excluded: their cursor must say nothing will happen. */
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),
   summary,
@@ -105,8 +100,7 @@
 }
 
 @layer utilities {
-  /* Apparition des vignettes une fois décodées, pour éviter le clignotement
-     d'une grille qui se remplit par à-coups. */
+  /* Reveal thumbnails once decoded to avoid flashing as the grid fills in bursts. */
   .fade-in {
     animation: fade-in 220ms ease-out both;
   }
@@ -135,8 +129,7 @@
     }
   }
 
-  /* Les utilisateurs qui réduisent les animations n'ont que des apparitions
-     instantanées — rien d'essentiel n'est porté par le mouvement. */
+  /* Users who reduce motion get instant reveals — movement carries nothing essential. */
   @media (prefers-reduced-motion: reduce) {
     .fade-in,
     .lightbox-enter {

@@ -6,7 +6,7 @@ import { queryKeys } from '../../api/hooks';
 import { formatBytes } from '../../lib/format';
 import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
-/** Section « Maintenance » : occupation du cache et purge. */
+/** "Maintenance" section: cache usage and purge. */
 export function MaintenanceSection({
   status,
   notify,
@@ -22,7 +22,7 @@ export function MaintenanceSection({
       notify({ tone: 'ok', text: 'Cache cleared. Thumbnails will be regenerated on demand.' });
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
-    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Purge impossible.') }),
+    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot clear cache.') }),
   });
 
   return (
@@ -43,7 +43,7 @@ export function MaintenanceSection({
             onClick={() => clearCache.mutate()}
             disabled={clearCache.isPending}
           >
-            Vider le cache
+            Clear cache
           </Button>
         </div>
       </div>

@@ -1,14 +1,14 @@
-# D21 — Préchargement asymétrique dans la visionneuse
+# D21 — Asymmetric preloading in the viewer
 
-**Contexte.** Chaque photo absente du cache serveur coûte un téléchargement
-d'original depuis Drive ; précharger large sature la file et ralentit la photo
-qu'on regarde.
+**Context.** Each photo missing from the server cache requires downloading an
+original from Drive; preloading too widely saturates the queue and slows down the
+photo being viewed.
 
-**Choix.** Quatre photos dans le sens de navigation, une seule dans l'autre, les
-plus proches demandées en premier. Le sens est déduit du dernier déplacement. Le
-nettoyage de l'effet annule (`image.src = ''`) les téléchargements devenus
-inutiles quand on enchaîne vite.
+**Decision.** Four photos in the direction of navigation, only one in the other
+direction, with the closest requested first. The direction is inferred from the
+last movement. Effect cleanup cancels (`image.src = ''`) downloads that have
+become unnecessary when navigating quickly.
 
-**Écarté.** Un rayon symétrique (l'ancienne version en chargeait deux de chaque
-côté) : à nombre de requêtes égal, il dépense la moitié de son budget dans une
-direction que l'utilisateur vient de quitter.
+**Rejected.** A symmetrical radius (the previous version loaded two on each
+side): for the same number of requests, it spends half its budget in a direction
+the user has just left.

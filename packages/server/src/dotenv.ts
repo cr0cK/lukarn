@@ -3,14 +3,15 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Charge le `.env` de la racine du dépôt.
+ * Loads the `.env` file from the repository root.
  *
- * Node sait lire un `.env` nativement, mais seulement relatif au répertoire
- * courant : un script lancé depuis `packages/server` ne le trouverait pas. On
- * remonte donc l'arborescence depuis le cwd puis depuis ce module.
+ * Node can read a `.env` file natively, but only relative to the current
+ * directory: a script launched from `packages/server` would not find it. The
+ * directory tree is therefore searched upwards from the cwd and then from this
+ * module.
  *
- * L'absence de fichier n'est pas une erreur — en conteneur, les variables
- * viennent de l'environnement.
+ * A missing file is not an error — in a container, the variables come from the
+ * environment.
  */
 export function loadDotEnv(): string | null {
   const starts = [process.cwd(), dirname(fileURLToPath(import.meta.url))];

@@ -5,42 +5,40 @@ import { useUpdateMedia } from '../api/hooks';
 import { captionEntries, type CaptionEntry } from '../lib/caption';
 
 /**
- * Bandeau de légende de la visionneuse : la description de la photo, puis la
- * note de sa journée — dans cet ordre, et à **toutes les largeurs**.
+ * Viewer caption bar: the photo description, then its day note — in that order,
+ * at **every width**.
  *
- * Il vit dans son propre fichier parce que `Lightbox.tsx` en fait déjà 850, et
- * parce que ce qu'il porte n'a rien à voir avec la navigation entre photos :
- * deux textes, un dépliement, un masquage, et un éditeur pour
- * l'administrateur (D84). La description de l'album en a été retirée (D89) :
- * elle se lit en ouvrant l'album, et la répéter sur chacune de ses photos
- * coûtait une ligne de bandeau pour un texte déjà lu.
+ * It lives in its own file because `Lightbox.tsx` already spans 850 lines and
+ * because its contents have nothing to do with photo navigation: two texts,
+ * expansion, hiding and an administrator editor (D84). The album description
+ * was removed from it (D89): it is read when opening the album, and repeating it
+ * on every photo cost a bar line for text already read.
  *
- * L'éditeur est repris d'`AlbumDescription` — surimpression, compteur de
- * caractères, Annuler/Enregistrer. Deux façons de corriger un texte dans la
- * même application se remarqueraient tout de suite.
+ * The editor follows `AlbumDescription` — overlay, character count,
+ * Cancel/Save. Two ways to correct text in the same application would be
+ * immediately noticeable.
  */
 interface MediaCaptionProps {
   albumId: string;
   mediaId: string;
-  /** Les deux textes candidats. Une chaîne vide ou blanche vaut absence. */
+  /** The two candidate texts. An empty or whitespace-only string means absent. */
   description: string | null;
   day: string | null;
-  /** Administrateur : lui seul voit le crayon et l'invitation à écrire. */
+  /** Administrator: only they see the pencil and invitation to write. */
   editable: boolean;
   hidden: boolean;
   onHiddenChange: (hidden: boolean) => void;
   /**
-   * L'ouverture de l'éditeur est pilotée par la visionneuse : c'est elle qui
-   * écoute `Échap`, et cette touche doit refermer le champ de saisie avant de
-   * fermer quoi que ce soit d'autre.
+   * The viewer controls editor opening: it listens for `Escape`, and that key
+   * must close the input before closing anything else.
    */
   editing: boolean;
   onEditingChange: (editing: boolean) => void;
   /**
-   * `false` sur une vidéo, seul cas où le bandeau **pousse** au lieu de
-   * recouvrir : les contrôles natifs de lecture vivent au bas de la balise, et
-   * sur une vidéo portrait qui remplit l'écran, un bandeau posé dessus rendrait
-   * play/pause et la barre de progression intouchables.
+   * `false` for a video, the only case where the bar **pushes** instead of
+   * overlaying: native playback controls live at the bottom of the element, and
+   * on a portrait video filling the screen, an overlaid bar would make play/pause
+   * and the progress bar unreachable.
    */
   overlay: boolean;
 }
@@ -58,21 +56,21 @@ export function MediaCaption({
   overlay,
 }: MediaCaptionProps): ReactElement | null {
   /**
-   * Le dépliement n'est **pas** persisté, contrairement au masquage : il répond
-   * à un texte précis, et n'a pas de sens sur la photo suivante. La visionneuse
-   * remonte ce composant à chaque photo (`key`), ce qui le remet à plat.
+   * Expansion is **not** persisted, unlike hiding: it relates to specific text
+   * and has no meaning on the next photo. The viewer remounts this component for
+   * each photo (`key`), which collapses it again.
    */
   const [expanded, setExpanded] = useState(false);
 
   const entries = captionEntries({ description, day });
 
-  // Rien à dire et rien à écrire : pas même un bouton fantôme, qui inviterait à
-  // découvrir un bandeau vide.
+  // Nothing to say or write: not even a ghost button inviting discovery of an
+  // empty bar.
   if (entries.length === 0 && !editable) return null;
 
   if (hidden) {
-    // Un état masqué sans porte de sortie est un piège : le bandeau reparti,
-    // plus rien ne dirait qu'il existe, ni comment le rappeler.
+    // A hidden state without an exit is a trap: once the bar is gone, nothing
+    // would reveal its existence or how to recall it.
     return (
       <div className={`${overlay ? 'absolute right-0 bottom-0 z-10' : 'flex justify-end'} p-3`}>
         <button
@@ -87,13 +85,12 @@ export function MediaCaption({
   }
 
   return (
-    // Symétrique de l'en-tête : même dégradé, retourné. Sans voile, une légende
-    // claire posée sur une plage surexposée est illisible.
+    // Mirror the header: same gradient, reversed. Without it, a light caption on
+    // an overexposed area is unreadable.
     //
-    // Les marges latérales tiennent compte de l'encoche, comme celles de
-    // l'en-tête : en paysage, elle mord exactement sur ce bord-là. Elles sont
-    // posées sur le contenu et non sur l'enveloppe, pour que le dégradé aille
-    // jusqu'au bord de l'écran.
+    // Side margins account for the notch like the header's: in landscape, it
+    // cuts into precisely that edge. Apply them to the content rather than the
+    // wrapper so the gradient reaches the edge of the screen.
     <div
       className={`${
         overlay ? 'absolute inset-x-0 bottom-0 z-10' : 'relative'
@@ -112,8 +109,8 @@ export function MediaCaption({
           )}
 
           {entries.length > 0 && (
-            // Le défilement est sur l'enveloppe et non sur le bouton : déplié,
-            // un texte de mille caractères couvrirait la photo entière.
+            // Scroll the wrapper rather than the button: when expanded, a thousand
+            // characters would cover the entire photo.
             <div className={expanded ? 'max-h-[50vh] overflow-y-auto' : undefined}>
               <button
                 type="button"
@@ -130,8 +127,8 @@ export function MediaCaption({
           )}
         </div>
 
-        {/* Le crayon en haut, le chevron en bas : chacun en face de la ligne
-            qu'il commande — la description de la photo, et le bandeau entier. */}
+        {/* Pencil at the top, chevron at the bottom: each faces the line it
+            controls — the photo description and the entire bar. */}
         <div className="flex shrink-0 flex-col justify-between">
           {editable && description ? (
             <IconButton label="Edit this photo description" onClick={() => onEditingChange(true)}>
@@ -161,10 +158,9 @@ export function MediaCaption({
 }
 
 /**
- * Une ligne du bandeau. Les deux portées se distinguent par la couleur et le
- * nombre de lignes visibles : plus la portée est large, plus la ligne
- * s'efface — c'est ce qui fait lire la description de la photo en premier sans
- * qu'aucun titre ne le dise.
+ * One bar row. Colour and visible line count distinguish the two scopes: the
+ * broader the scope, the more the row recedes — making the photo description
+ * read first without any heading saying so.
  */
 const LINE_STYLES: Record<CaptionEntry['scope'], string> = {
   photo: 'line-clamp-3 text-sm leading-5 text-ink-100',
@@ -240,8 +236,8 @@ function CaptionEditor({
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     update.mutate(
-      // La chaîne vide part en `null` : c'est le seul moyen d'effacer, et le
-      // serveur ramène de toute façon les deux au même.
+      // Send an empty string as `null`: it is the only way to clear the value,
+      // and the server normalises both to the same result anyway.
       { mediaId, body: { description: value.trim() || null } },
       { onSuccess: onClose },
     );
@@ -257,7 +253,7 @@ function CaptionEditor({
         onChange={(event) => setValue(event.target.value)}
         maxLength={MEDIA_DESCRIPTION_MAX_LENGTH}
         rows={3}
-        placeholder="Ce qui se passe sur cette photo"
+        placeholder="What's happening in this photo"
         aria-label="Photo description"
         autoFocus
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"

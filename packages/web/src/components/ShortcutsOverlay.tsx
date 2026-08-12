@@ -25,20 +25,20 @@ const GROUPS: { title: string; shortcuts: [string, string][] }[] = [
       ['← →', 'Previous / next photo'],
       ['Esc', 'Leave the zoom, then close'],
       ['F', 'Fullscreen'],
-      ['I', 'Informations et EXIF'],
+      ['I', 'Information and EXIF'],
       ['C', 'Comments'],
       ['D', 'Download the original'],
       ['Z', 'Zoom to 100%'],
       ['L', 'Hide / show the caption'],
       ['H', 'Hide the chrome, nothing but the photo'],
-      ['Molette', 'Zoom progressif'],
+      ['Wheel', 'Zoom in or out'],
       ['Drag', 'Move inside the image, or inside the locator at bottom right'],
       ['Space', 'Play / pause video'],
     ],
   },
 ];
 
-/** Aide-mémoire des raccourcis, ouverte avec `?`. */
+/** Shortcut reference opened with `?`. */
 export function ShortcutsOverlay({ onClose }: { onClose: () => void }): ReactElement {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {

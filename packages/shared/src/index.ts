@@ -1,10 +1,9 @@
 /**
- * Contrat d'API partagé entre le serveur Fastify et le front React.
- * Toute forme de payload qui traverse le réseau est décrite ici — le front ne
- * redéclare jamais un type de réponse de son côté.
+ * API contract shared by the Fastify server and React front end. Every payload shape
+ * crossing the network is described here; the front end never redeclares response types.
  */
 
-/** Tailles de vignettes que le serveur accepte de générer. */
+/** Thumbnail sizes the server accepts to generate. */
 export const THUMB_SIZES = [320, 640, 1280] as const;
 export type ThumbSize = (typeof THUMB_SIZES)[number];
 
@@ -14,17 +13,15 @@ export function isThumbSize(value: number): value is ThumbSize {
 
 export type MediaKind = 'photo' | 'video';
 
-/** Sens du tri chronologique d'un album. `desc` = le plus récent d'abord. */
+/** Direction of an album's chronological sort. `desc` = newest first. */
 export type SortOrder = 'desc' | 'asc';
 
 /**
- * Découpage de la grille en sections. La liste servie ne change pas d'un
- * découpage à l'autre : le serveur rend une suite triée, c'est la mise en page
- * qui la segmente. Ce qui traverse le réseau, c'est la **préférence** de
- * l'album (`Album.groupBy`), pas le découpage d'une requête.
+ * Grid grouping into sections. The served list does not change between groupings:
+ * the server returns a sorted sequence and layout segments it. The album **preference**
+ * (`Album.groupBy`) crosses the network, not the grouping of a request.
  *
- * Pas de regroupement par année : sur un album de vacances, il ne produirait
- * qu'une seule section, c'est-à-dire aucun repère.
+ * No yearly grouping: a holiday album would produce one section and no landmark.
  */
 export type GroupBy = 'month' | 'day';
 
@@ -35,11 +32,11 @@ export function isGroupBy(value: unknown): value is GroupBy {
 }
 
 /**
- * Sens appliqué tant que rien n'en impose un autre — défaut de la colonne
- * `albums.sort_order` comme du paramètre `?order=` de l'API.
+ * Direction used until something overrides it — the default for both
+ * `albums.sort_order` and the API `?order=` parameter.
  *
- * `asc` parce qu'un album se lit dans le sens où il a été vécu : ouvrir un
- * séjour sur sa dernière journée en donne la fin avant le début (D99).
+ * `asc` because an album reads in the order it was lived: opening a trip on its last
+ * day gives the ending before the beginning (D99).
  */
 export const DEFAULT_SORT_ORDER: SortOrder = 'asc';
 
@@ -48,9 +45,8 @@ export function isSortOrder(value: unknown): value is SortOrder {
 }
 
 /**
- * Variante de rendu servie par le pipeline média.
- * `hd` existe pour le zoom : `full` est plafonné à 2560 px, ce qui suffit à
- * remplir un écran mais pas à examiner une photo à sa résolution native.
+ * Render variant served by the media pipeline. `hd` exists for zoom: `full` is capped
+ * at 2560 px, enough to fill a screen but not inspect a photo at native resolution.
  */
 export const IMAGE_VARIANTS = ['full', 'hd'] as const;
 export type ImageVariant = (typeof IMAGE_VARIANTS)[number];
@@ -61,61 +57,54 @@ export interface MediaItem {
   name: string;
   kind: MediaKind;
   mimeType: string;
-  /** Octets. `null` pour les rares fichiers Drive sans taille déclarée. */
+  /** Bytes. `null` for rare Drive files without a reported size. */
   size: number | null;
   width: number | null;
   height: number | null;
-  /** ISO 8601. Date de prise de vue EXIF si connue, sinon date de modification Drive. */
+  /** ISO 8601. EXIF capture date when known, otherwise Drive modification date. */
   takenAt: string;
-  /** `true` si `takenAt` vient de l'EXIF, `false` s'il s'agit du repli Drive. */
+  /** `true` when `takenAt` comes from EXIF, `false` for the Drive fallback. */
   takenAtFromExif: boolean;
-  /** Durée en millisecondes, uniquement pour les vidéos. */
+  /** Duration in milliseconds, for videos only. */
   durationMs: number | null;
   /**
-   * `true` si le serveur sait rendre une image de ce média — la photo
-   * elle-même, ou l'aperçu que Drive produit de la première seconde d'une
-   * vidéo (D92).
+   * `true` when the server can render an image for this media — the photo itself or
+   * the preview Drive produces from a video's first second (D92).
    *
-   * Une question, pas une colonne : le front demande une vignette « quand il y
-   * en a une » sans rejouer de son côté la règle photo/vidéo, ni sans réclamer
-   * une image vouée au 415 sur la vidéo dont Drive n'a pas d'aperçu — codec
-   * exotique, ou fichier déposé trop récemment pour avoir été traité.
+   * A capability, not a column: the front end requests a thumbnail "when available"
+   * without duplicating the photo/video rule or requesting an image destined for 415
+   * when Drive has no preview — an unusual codec or a file uploaded too recently.
    */
   hasPreview: boolean;
   /**
-   * Empreinte courte du contenu, à joindre aux URLs média.
+   * Short content fingerprint appended to media URLs.
    *
-   * Drive conserve l'identifiant d'un fichier dont on remplace le contenu par
-   * une nouvelle version : sans ce discriminant dans l'URL, les dérivés servis
-   * en `immutable` resteraient éternellement ceux de l'ancienne version.
-   * `null` pour les rares fichiers sans empreinte.
+   * Drive retains a file ID when content is replaced by a new version: without this
+   * discriminator in the URL, derivatives served as `immutable` would forever remain
+   * from the old version. `null` for rare files without a fingerprint.
    */
   version: string | null;
   /**
-   * Code à quatre lettres du codec de la piste image d'une vidéo — `avc1`,
-   * `hvc1`, `hev1` — tel qu'il est écrit dans le fichier lui-même.
+   * Four-letter video-track codec — `avc1`, `hvc1`, `hev1` — as written in the file.
    *
-   * `null` sur une photo, sur une vidéo dont l'en-tête n'a pas pu être lu, et
-   * sur toute ligne indexée avant que la colonne existe. Chaîne vide quand
-   * l'en-tête a été lu sans qu'on y reconnaisse de piste image.
+   * `null` for a photo, a video whose header could not be read, and rows indexed before
+   * the column existed. Empty string when the header was read without a recognised
+   * video track.
    *
-   * C'est ce qui permet au client de choisir sa source : `canPlayType` sur
-   * `video/mp4` seul répond `maybe` partout et n'apprend rien (D98) ; avec le
-   * codec réel, la réponse est franche, et un navigateur qui sait lire l'HEVC
-   * garde l'original en pleine qualité (D260809b).
+   * This lets the client choose its source: `canPlayType` on `video/mp4` alone returns
+   * `maybe` everywhere and reveals nothing (D98); with the real codec, the answer is
+   * decisive and an HEVC-capable browser keeps the full-quality original (D260809b).
    */
   videoCodec: string | null;
   /**
-   * Légende écrite à la main sur cette photo, `null` si personne n'en a écrit.
+   * Manually written caption for this photo, `null` if nobody wrote one.
    *
-   * Portée par le couple **(album, média)** et non par le seul fichier Drive :
-   * le même fichier indexé sous deux albums porte deux descriptions, comme il
-   * porte deux fils de commentaires — le cloisonnement vaut aussi pour ce qu'on
-   * écrit (D12).
+   * Scoped to the **(album, media)** pair rather than the Drive file alone: one file
+   * indexed under two albums has two descriptions, like its two comment threads —
+   * isolation also applies to authored content (D12).
    *
-   * Elle voyage avec l'item, et non par un appel groupé comme les compteurs de
-   * commentaires : la visionneuse doit l'afficher sur la photo qu'on vient
-   * d'atteindre, et la liste des items est déjà chargée (D83).
+   * It travels with the item rather than a grouped call like comment counts: the viewer
+   * must display it on the newly reached photo, and the item list is already loaded (D83).
    */
   description: string | null;
 }
@@ -135,29 +124,27 @@ export interface MediaExif {
 export interface MediaDetail extends MediaItem {
   exif: MediaExif;
   /**
-   * Nombre de commentaires visibles, réponses comprises. Servi avec le détail
-   * pour que la visionneuse affiche le compte sur son bouton sans avoir à
-   * charger le fil : la plupart des photos sont regardées sans qu'on ouvre les
-   * commentaires.
+   * Number of visible comments including replies. Served with details so the viewer
+   * can show the count without loading the thread; most photos are viewed without
+   * opening comments.
    */
   commentCount: number;
 }
 
-/** Champ absent = inchangé, `null` = effacé. */
+/** Absent field = unchanged, `null` = cleared. */
 export interface UpdateMediaRequest {
   description?: string | null;
 }
 
 /**
- * Longueur maximale d'une description de photo.
+ * Maximum photo-description length.
  *
- * Entre les deux autres textes de l'écran, et pour la même raison de rendu :
- * plus généreuse qu'une note de journée (`ALBUM_DAY_DESCRIPTION_MAX_LENGTH`, 300),
- * dont l'en-tête de section précalcule la hauteur sans DOM (D49), plus courte
- * qu'une description d'album (`ALBUM_DESCRIPTION_MAX_LENGTH`, 2000), qui vit
- * dans un paragraphe libre. Celle-ci est posée sur la photo : dépliée, elle est
- * plafonnée à la moitié de la hauteur d'écran, et au-delà de mille caractères
- * elle cesserait d'être une légende pour devenir un texte qui cache l'image.
+ * Between the screen's other two text lengths for the same rendering reason: longer
+ * than a day note (`ALBUM_DAY_DESCRIPTION_MAX_LENGTH`, 300), whose section heading
+ * precalculates height without DOM (D49), and shorter than an album description
+ * (`ALBUM_DESCRIPTION_MAX_LENGTH`, 2000) in a free paragraph. This sits on the photo:
+ * expanded, it is capped at half the screen height, and beyond a thousand characters
+ * it would stop being a caption and hide the image.
  */
 export const MEDIA_DESCRIPTION_MAX_LENGTH = 1000;
 
@@ -166,28 +153,25 @@ export interface Album {
   title: string;
   description: string | null;
   /**
-   * Découpage appliqué à l'ouverture, tant que l'URL n'en impose pas un autre.
-   * Un séjour se lit par jour, dix ans de photos d'enfants par mois : le bon
-   * découpage dépend de l'album, pas d'un défaut global.
+   * Grouping applied on opening until the URL overrides it. A trip reads by day and
+   * ten years of children's photos by month: the right grouping depends on the album.
    */
   groupBy: GroupBy;
   /**
-   * Sens de lecture appliqué à l'ouverture, tant que ni l'URL ni la mémoire du
-   * navigateur n'en imposent un autre. Un séjour se raconte du premier au
-   * dernier jour, une bibliothèque courante par ses dernières arrivées : le bon
-   * sens dépend de l'album, pas d'un défaut global (D99).
+   * Reading order on opening until the URL or browser memory overrides it. A trip is
+   * told first to last day, a current library by latest arrivals: order depends on
+   * the album, not a global default (D99).
    */
   sortOrder: SortOrder;
   itemCount: number;
   /**
-   * Id du média affiché en couverture : celui qu'un administrateur a choisi, ou
-   * la photo la plus récente à défaut — y compris quand la photo choisie a
-   * quitté l'index. `null` si l'album n'a aucune photo.
+   * Media ID displayed as cover: the administrator's choice or the most recent photo
+   * as fallback, including when the chosen photo left the index. `null` if empty.
    */
   coverId: string | null;
-  /** Empreinte de la couverture, à joindre à son URL. Voir `MediaItem.version`. */
+  /** Cover fingerprint appended to its URL. See `MediaItem.version`. */
   coverVersion: string | null;
-  /** ISO 8601 des bornes chronologiques de l'album, `null` si vide. */
+  /** ISO 8601 chronological album bounds, `null` when empty. */
   newestAt: string | null;
   oldestAt: string | null;
   lastSyncAt: string | null;
@@ -198,38 +182,36 @@ export interface Album {
 export type SyncStatus = 'never' | 'running' | 'ok' | 'error';
 
 /**
- * Session en cours.
+ * Current session.
  *
- * `username` est une **clé d'accès**, pas une personne : le même identifiant
- * peut être partagé par plusieurs membres d'un foyer. Ce qui identifie
- * quelqu'un, c'est `identity` — déclaré par l'intéressé et vérifié par email.
+ * `username` is an **access key**, not a person: a household may share one username.
+ * `identity` identifies someone — self-declared and verified by email.
  */
 export interface SessionUser {
   username: string;
   admin: boolean;
-  /** `null` tant que personne ne s'est identifié sur cette session. */
+  /** `null` until someone identifies themselves in this session. */
   identity: CommenterIdentity | null;
   /**
-   * `false` si l'instance n'a pas de serveur SMTP : aucun code de vérification
-   * ne peut partir, donc personne ne peut s'identifier ni commenter. L'interface
-   * doit le dire plutôt que d'offrir un formulaire qui échouera.
+   * `false` if the instance has no SMTP server: no verification code can be sent, so
+   * nobody can identify themselves or comment. The interface must say so rather than
+   * offer a form that will fail.
    */
   commentsEnabled: boolean;
 }
 
 /**
- * Identité de commentateur, telle que son titulaire la voit. Présente
- * uniquement une fois l'adresse vérifiée : une identité non vérifiée n'est
- * rattachée à aucune session.
+ * Commenter identity as seen by its holder. Present only after address verification:
+ * an unverified identity is attached to no session.
  */
 export interface CommenterIdentity {
   email: string;
   displayName: string;
-  /** `false` après un désabonnement depuis un email reçu. */
+  /** `false` after unsubscribing from a received email. */
   notify: boolean;
 }
 
-/** Ce qu'on déclare pour s'identifier. L'adresse reçoit ensuite un code. */
+/** What is declared to identify oneself. The address then receives a code. */
 export interface IdentityRequest {
   email: string;
   displayName: string;
@@ -240,7 +222,7 @@ export interface VerifyIdentityRequest {
   code: string;
 }
 
-/** Longueur du code envoyé par email. Six chiffres, saisis à la main. */
+/** Length of the emailed code. Six digits entered by hand. */
 export const VERIFICATION_CODE_LENGTH = 6;
 
 export interface LoginRequest {
@@ -249,62 +231,59 @@ export interface LoginRequest {
 }
 
 /* --------------------------------------------------------------------------
- * Appairage d'un écran sans clavier
+ * Pairing a keyboardless screen
  *
- * Un téléviseur n'a pas de caméra : c'est lui qui affiche le QR, et un
- * téléphone déjà connecté qui le scanne. Deux valeurs de natures opposées
- * circulent donc — l'une est faite pour être vue de toute la pièce, l'autre
- * pour ne l'être jamais. Voir D260809c.
+ * A television has no camera: it displays the QR code and an already signed-in phone
+ * scans it. Two opposite values circulate — one intended for the whole room to see,
+ * the other never to be seen. See D260809c.
  * ------------------------------------------------------------------------ */
 
 /**
- * Alphabet du code affiché. Ni `I`, ni `O`, ni `0`, ni `1` : il se lit sur un
- * écran à trois mètres, et se recopie parfois à la main sur un téléphone.
+ * Displayed-code alphabet. No `I`, `O`, `0` or `1`: it is read on a screen three
+ * metres away and sometimes copied by hand onto a phone.
  */
 export const USER_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-/** Huit caractères de `USER_CODE_ALPHABET`, soit 40 bits. */
+/** Eight characters from `USER_CODE_ALPHABET`, providing 40 bits. */
 export const USER_CODE_LENGTH = 8;
 
-/** Ce que l'écran demandeur reçoit à l'ouverture d'une demande d'appairage. */
+/** What the requesting screen receives when opening a pairing request. */
 export interface DevicePairingStart {
-  /** Les huit caractères affichés, sans séparateur. */
+  /** The eight displayed characters without a separator. */
   userCode: string;
   /**
-   * Le secret du demandeur, rendu **une seule fois**. C'est lui qui relève la
-   * session ; il n'est jamais affiché, ni porté par le QR.
+   * Requester secret returned **once**. It claims the session and is never displayed
+   * or carried by the QR code.
    */
   deviceCode: string;
   expiresAt: string;
-  /** Cadence de sondage recommandée, en millisecondes. */
+  /** Recommended polling interval in milliseconds. */
   intervalMs: number;
 }
 
-/** Ce que le téléphone lit avant d'approuver. */
+/** What the phone reads before approval. */
 export interface DevicePairingState {
   userCode: string;
   expiresAt: string;
-  /** Vrai si quelqu'un a déjà approuvé — pas une erreur, un état à annoncer. */
+  /** True if someone already approved — state to report, not an error. */
   approved: boolean;
 }
 
 /**
- * Réponse au sondage. `pending` arrive en 202, `approved` en 200 avec le cookie
- * de session : le statut HTTP et le discriminant disent la même chose, l'un
- * pour les intermédiaires, l'autre pour le code appelant.
+ * Poll response. `pending` arrives as 202, `approved` as 200 with the session cookie:
+ * HTTP status and discriminant express the same thing for intermediaries and callers.
  */
 export type DevicePollResult = { status: 'pending' } | { status: 'approved'; user: SessionUser };
 
 /**
- * Replie un code saisi ou lu dans une URL sur sa forme stockée : majuscules,
- * sans séparateur. Sans ce repli, le code recopié depuis l'écran avec son tiret
- * ne désignerait aucune demande.
+ * Folds a typed or URL code into stored form: uppercase without separators. Without
+ * folding, a screen code copied with its hyphen would match no request.
  */
 export function normalizeUserCode(value: string): string {
   return value.replace(/[\s-]/g, '').toUpperCase();
 }
 
-/** Forme lisible du code, groupée par quatre : `ABCD-EFGH`. */
+/** Readable code form, grouped by four: `ABCD-EFGH`. */
 export function formatUserCode(value: string): string {
   const code = normalizeUserCode(value);
   return code.length <= 4 ? code : `${code.slice(0, 4)}-${code.slice(4)}`;
@@ -312,146 +291,142 @@ export function formatUserCode(value: string): string {
 
 export interface ItemsPage {
   items: MediaItem[];
-  /** À repasser en `?cursor=` pour la page suivante. `null` = fin de l'album. */
+  /** Pass back as `?cursor=` for the next page. `null` = end of album. */
   nextCursor: string | null;
 }
 
 /* --------------------------------------------------------------------------
- * Journées d'un album
+ * Album days
  *
- * Une grille datée ne dit pas ce qu'on a fait. Une journée peut donc porter une
- * note, et le lieu que ses photos portent déjà dans leur EXIF.
+ * A dated grid does not say what happened. A day may therefore carry a note and the
+ * place already present in its photos' EXIF data.
  * ------------------------------------------------------------------------ */
 
 /**
- * Une journée annotée. Servie uniquement pour les journées qui ont quelque
- * chose à montrer — inutile de transporter une ligne vide par jour d'album.
+ * An annotated day. Served only for days with something to show — no need to carry
+ * one empty row per album day.
  */
 export interface AlbumDay {
-  /** `YYYY-MM-DD` en UTC, la même clé que le découpage par jour de la grille. */
+  /** `YYYY-MM-DD` in UTC, the same key as day grouping in the grid. */
   day: string;
   description: string | null;
   /**
-   * Lieu saisi à la main. **Prime sur `autoPlaces`** : c'est une correction,
-   * et une correction qu'un recalcul écraserait ne servirait à rien.
+   * Manually entered place. **Takes precedence over `autoPlaces`**: it is a correction,
+   * and one overwritten by recalculation would be useless.
    */
   place: string | null;
   /**
-   * Lieux déduits des coordonnées EXIF, du plus tôt au plus tard dans la
-   * journée. Vide tant que le géocodage inverse n'a rien rendu — il est
-   * asynchrone, et l'interface doit tenir sans lui.
+   * Places inferred from EXIF coordinates, earliest to latest in the day. Empty until
+   * reverse geocoding returns something — it is asynchronous and the interface must
+   * work without it.
    */
   autoPlaces: string[];
 }
 
-/** Champ absent = inchangé, `null` = effacé. */
+/** Absent field = unchanged, `null` = cleared. */
 export interface UpdateAlbumDayRequest {
   description?: string | null;
   place?: string | null;
 }
 
 /**
- * Une note de journée est un repère, pas un récit : une ligne tronquée dans
- * l'en-tête de section, dont la hauteur est précalculée par le layout. Une
- * longueur libre le rendrait dépendant d'une mesure DOM (D49). Le texte entier
- * se lit dans le bandeau de la visionneuse, qui le déplie au clic (D85).
+ * A day note is a landmark, not a story: one truncated line in a section heading whose
+ * height layout precalculates. Unbounded length would require DOM measurement (D49).
+ * The full text appears in the viewer banner and expands on click (D85).
  */
 export const ALBUM_DAY_DESCRIPTION_MAX_LENGTH = 300;
 export const ALBUM_DAY_PLACE_MAX_LENGTH = 120;
 
 /* --------------------------------------------------------------------------
- * Recherche
+ * Search
  *
- * Ce que la recherche rend n'est pas un extrait de texte mais une **entité
- * navigable** : un album, une journée, une photo. « Marseille » doit ouvrir la
- * journée à Marseille, pas afficher la ligne où le mot apparaît — c'est ce qui
- * distingue une recherche d'un `grep`.
+ * Search returns a **navigable entity**, not a text excerpt: an album, day or photo.
+ * "Marseille" must open the day in Marseille rather than the matching line — what
+ * distinguishes search from `grep`.
  * ------------------------------------------------------------------------ */
 
-/** Ce vers quoi un résultat mène. Décide aussi du groupe où il s'affiche. */
+/** Where a result leads. Also decides its display group. */
 export type SearchHitKind = 'album' | 'day' | 'media';
 
-/** Un résultat de recherche : de quoi l'afficher, et de quoi y aller. */
+/** A search result: enough to display and navigate to it. */
 export interface SearchHit {
   kind: SearchHitKind;
   albumId: string;
   albumTitle: string;
-  /** Ce qu'on lit dans la liste : titre d'album, lieu, ou début de note. */
+  /** What appears in the list: album title, place or start of a note. */
   label: string;
   /**
-   * La ligne dessous : ce qui situe le résultat sans répéter le libellé — la
-   * description d'un album, la note d'une journée déjà nommée par son lieu.
-   * `null` quand le libellé se suffit.
+   * The line below: context without repeating the label — an album description or the
+   * note for a day already named by its place. `null` when the label is sufficient.
    *
-   * Le nom de l'album et la date voyagent à part (`albumTitle`, `day`) : les
-   * dates sont affichées en UTC par `format.ts`, et les composer ici les
-   * figerait dans le fuseau du serveur.
+   * Album name and date travel separately (`albumTitle`, `day`): `format.ts` displays
+   * dates in UTC, and composing them here would fix them to the server time zone.
    */
   context: string | null;
-  /** Journée visée, `YYYY-MM-DD`. Présent pour `kind: 'day'`. */
+  /** Target day, `YYYY-MM-DD`. Present for `kind: 'day'`. */
   day?: string;
-  /** Média visé. Présent pour `kind: 'media'`. */
+  /** Target media. Present for `kind: 'media'`. */
   mediaId?: string;
 }
 
 /**
- * En deçà, on ne cherche pas : une seule lettre en préfixe remonterait une
- * bonne part de la bibliothèque, pour une saisie qui n'a encore rien dit.
+ * Below this, do not search: one prefix letter would return much of the library for
+ * input that says almost nothing.
  */
 export const SEARCH_MIN_LENGTH = 2;
 
 /**
- * Résultats rendus **par type**. La liste est une suggestion au fil de la
- * frappe, pas une page de résultats : au-delà, elle cesse de tenir à l'écran et
- * la bonne réponse se lit moins vite qu'en précisant la recherche.
+ * Results returned **per type**. This is a type-ahead suggestion, not a results page:
+ * beyond the limit it no longer fits and the right answer is slower to find than by
+ * refining the query.
  */
 export const SEARCH_HITS_PER_KIND = 5;
 
 /* --------------------------------------------------------------------------
- * Commentaires
+ * Comments
  *
- * Un fil par média *et par album* : le même fichier Drive indexé sous deux
- * albums porte deux conversations distinctes. Voir `specs/04-securite-et-acces.md`.
+ * One thread per media *and album*: the same Drive file indexed under two albums has
+ * two distinct conversations. See `specs/04-securite-et-acces.md`.
  * ------------------------------------------------------------------------ */
 
 /**
- * Auteur d'un commentaire, réduit à ce que l'affichage demande.
+ * Comment author reduced to what display requires.
  *
- * **L'adresse email n'y figure pas et ne doit jamais y figurer** : elle sert à
- * identifier et à notifier, pas à être diffusée aux autres lecteurs du fil.
+ * **The email address is absent and must remain absent**: it identifies and notifies,
+ * but must not be disclosed to other thread readers.
  */
 export interface CommentAuthor {
-  /** Nom déclaré par l'intéressé, vérifié par email. Jamais vide. */
+  /** Self-declared name verified by email. Never empty. */
   displayName: string;
 }
 
 export interface Comment {
   id: number;
-  /** `null` pour un commentaire de premier niveau, sinon l'id de la racine du fil. */
+  /** `null` for a top-level comment, otherwise the thread-root ID. */
   parentId: number | null;
   author: CommentAuthor;
   body: string;
   createdAt: string;
   /**
-   * `true` si le commentaire peut être supprimé par le lecteur courant — son
-   * propre commentaire, ou n'importe lequel s'il est administrateur. Calculé
-   * par le serveur : le front n'a pas à rejouer la règle d'autorisation.
+   * `true` when the current reader may delete the comment — their own, or any comment
+   * for an administrator. Calculated by the server so the front end need not duplicate
+   * the authorisation rule.
    */
   canDelete: boolean;
   /**
-   * `true` si le serveur accepterait une correction **à l'instant où il a rendu
-   * cette réponse** : son auteur, et `COMMENT_EDIT_WINDOW_MS` non écoulées.
+   * `true` if the server would accept an edit **when it returned this response**: the
+   * reader is its author and `COMMENT_EDIT_WINDOW_MS` has not elapsed.
    *
-   * Contrairement à `canDelete`, cette valeur **périme toute seule**. Le front
-   * doit donc la recouper avec `createdAt` plutôt que s'y fier seule : un fil
-   * resté ouvert une heure la porterait encore à `true`.
+   * Unlike `canDelete`, this value **expires by itself**. The front end must compare it
+   * with `createdAt` rather than trust it alone: a thread open for an hour would still
+   * carry `true`.
    */
   canEdit: boolean;
 }
 
 /**
- * Un commentaire racine et ses réponses. La hiérarchie s'arrête là : répondre
- * à une réponse rattache le message à la racine du fil (voir D35).
+ * A root comment and its replies. Hierarchy stops there: replying to a reply attaches
+ * the message to the thread root (see D35).
  */
 export interface CommentThread {
   root: Comment;
@@ -460,68 +435,64 @@ export interface CommentThread {
 
 export interface CommentsPage {
   threads: CommentThread[];
-  /** Total visible, réponses comprises — ce qu'affiche le compteur du panneau. */
+  /** Visible total including replies — what the panel counter displays. */
   total: number;
 }
 
 export interface CreateCommentRequest {
   body: string;
-  /** Répondre à ce commentaire. Absent ou `null` pour ouvrir un nouveau fil. */
+  /** Reply to this comment. Absent or `null` to open a new thread. */
   parentId?: number | null;
 }
 
 /**
- * Nombre de commentaires visibles par photo, sur un album entier.
+ * Visible comment counts per photo across a whole album.
  *
- * Servi d'un bloc plutôt que photo par photo : la visionneuse doit pouvoir
- * marquer d'une pastille la photo qu'on vient d'atteindre, et demander ce compte
- * à chaque flèche coûterait une requête par photo traversée.
+ * Served in one block rather than per photo: the viewer must badge the newly reached
+ * photo, and requesting this count on every arrow would cost one request per photo.
  *
- * Seules les photos commentées figurent dans `counts` — sur un album de
- * milliers de vues dont une dizaine porte une conversation, la réponse tient en
- * quelques centaines d'octets. Une photo absente vaut donc zéro.
+ * Only commented photos appear in `counts`: for thousands of views with ten threads,
+ * the response remains a few hundred bytes. An absent photo therefore means zero.
  */
 export interface AlbumCommentCounts {
   counts: Record<string, number>;
 }
 
-/** Ce qu'on renvoie pour corriger un commentaire. Le fil de rattachement ne bouge pas. */
+/** What is returned to edit a comment. Its thread does not change. */
 export interface UpdateCommentRequest {
   body: string;
 }
 
 /**
- * Un commentaire situé hors de sa photo, tel que le fil d'activité le montre.
+ * A comment shown outside its photo in the activity feed.
  *
- * Une conversation ne se découvre pas en ouvrant la bonne photo par hasard : sur
- * un album de milliers de vues, personne ne tombe sur les dix qui portent un
- * message. D'où le contexte joint au message — sans lui, la liste dirait que
- * quelqu'un a écrit, jamais où.
+ * A conversation is not discovered by randomly opening the right photo among
+ * thousands. Hence context accompanies the message; otherwise the list says someone
+ * wrote, never where.
  */
 export interface FeedComment extends Comment {
   albumId: string;
   albumTitle: string;
   mediaId: string;
   /**
-   * `null` si la photo a quitté l'index depuis. Le message reste lisible —
-   * l'effacer parce que son support a disparu supprimerait une parole que
-   * personne n'a décidé de retirer — mais il n'a plus ni vignette ni lien.
+   * `null` if the photo has left the index. The message remains readable — deleting it
+   * with its missing medium would erase words nobody chose to remove — but has no
+   * thumbnail or link.
    */
   mediaName: string | null;
-  /** Empreinte de la photo, à joindre à l'URL de sa vignette. Voir `MediaItem.version`. */
+  /** Photo fingerprint appended to its thumbnail URL. See `MediaItem.version`. */
   mediaVersion: string | null;
 }
 
 /**
- * Une page du fil d'activité, du plus récent au plus ancien.
+ * One activity-feed page, newest to oldest.
  *
- * Le curseur est un identifiant de commentaire, comme celui de la modération :
- * `AUTOINCREMENT` fait que l'ordre des id est l'ordre d'écriture, ce qui évite
- * le curseur composite dont la pagination des médias a besoin.
+ * The cursor is a comment ID, as in moderation: `AUTOINCREMENT` makes ID order match
+ * insertion order, avoiding the composite cursor needed by media pagination.
  *
- * Pas de `total`, à l'inverse d'`AdminCommentsPage` : on ne modère pas ici, on
- * regarde ce qui vient d'arriver. Compter tout le corpus visible coûterait une
- * seconde requête pour un nombre que personne ne lirait.
+ * No `total`, unlike `AdminCommentsPage`: this shows what just arrived rather than
+ * moderating. Counting the whole visible corpus would cost a second query for an
+ * unread number.
  */
 export interface CommentsFeedPage {
   comments: FeedComment[];
@@ -529,30 +500,28 @@ export interface CommentsFeedPage {
 }
 
 /**
- * Taille d'une page du fil d'activité.
+ * Activity-feed page size.
  *
- * Assez large pour que la pastille des non-lus, plafonnée à « 9+ », se décide
- * toujours sur la seule première page — sinon un retour après une longue
- * absence afficherait « 9+ » puis un nombre plus petit à mesure du défilement.
+ * Large enough for the unread badge, capped at "9+", to be decided from the first
+ * page alone — otherwise returning after a long absence would show "9+" then a lower
+ * number while scrolling.
  */
 export const COMMENTS_FEED_PAGE_SIZE = 30;
 
 /**
- * Délai pendant lequel son auteur peut corriger un commentaire.
+ * Time during which an author may edit a comment.
  *
- * C'est une fenêtre de rattrapage de faute de frappe, pas un droit d'édition :
- * assez pour relire ce qu'on vient d'envoyer, trop court pour réécrire l'histoire
- * d'une conversation que d'autres ont déjà lue (D57).
+ * A typo-recovery window, not an editing right: long enough to reread what was sent,
+ * too short to rewrite a conversation others already read (D57).
  */
 export const COMMENT_EDIT_WINDOW_MS = 30_000;
 
 /**
- * Millisecondes restantes pour corriger, `0` une fois la fenêtre fermée.
+ * Milliseconds remaining to edit, `0` after the window closes.
  *
- * Partagée parce que les deux côtés doivent trancher **à l'identique** : le
- * serveur pour refuser, le front pour cesser de proposer. Deux calculs séparés
- * finiraient par diverger d'une seconde, et c'est exactement l'écart où l'on
- * clique sur un bouton qui répond non.
+ * Shared because both sides must decide **identically**: the server refuses while the
+ * front end stops offering. Separate calculations would diverge by a second, exactly
+ * where someone clicks a button that says no.
  */
 export function remainingEditMs(createdAt: string, now: number): number {
   const started = Date.parse(createdAt);
@@ -560,27 +529,26 @@ export function remainingEditMs(createdAt: string, now: number): number {
   return Math.max(0, started + COMMENT_EDIT_WINDOW_MS - now);
 }
 
-/** Longueur maximale d'un commentaire, contrôlée des deux côtés à l'identique. */
+/** Maximum comment length, checked identically on both sides. */
 export const COMMENT_MAX_LENGTH = 2000;
 
 export interface AdminStatus {
   /**
-   * Comment l'instance s'authentifie auprès de Drive. `service_account` :
-   * une clé fournie par la configuration, rien à connecter ni à renouveler,
-   * l'accès venant du partage du dossier côté Drive. `oauth` : le
-   * consentement du propriétaire, à donner depuis /admin.
+   * How the instance authenticates with Drive. `service_account`: a configuration key,
+   * nothing to connect or renew, with access from Drive folder sharing. `oauth`: owner
+   * consent granted from /admin.
    */
   driveMode: 'service_account' | 'oauth';
-  /** `true` si un refresh token Google est stocké et utilisable. */
+  /** `true` if a usable Google refresh token is stored. */
   driveConnected: boolean;
   driveAccount: string | null;
   /**
-   * ISO 8601 si Google a cessé d'accepter le refresh token (accès retiré,
-   * jeton expiré). `null` sinon. À distinguer d'une absence de connexion :
-   * ici il y a eu autorisation, elle ne vaut simplement plus.
+   * ISO 8601 if Google stopped accepting the refresh token (removed access, expired
+   * token), otherwise `null`. Distinct from no connection: authorisation existed but
+   * is no longer valid.
    */
   driveRevokedAt: string | null;
-  /** `true` si l'un des deux chemins d'authentification est configuré. */
+  /** `true` if either authentication path is configured. */
   oauthConfigured: boolean;
   albums: Album[];
   cache: {
@@ -588,12 +556,12 @@ export interface AdminStatus {
     bytes: number;
     maxBytes: number;
   };
-  /** Commentaires masqués, pour signaler la file de modération sans l'ouvrir. */
+  /** Hidden comments, used to signal the moderation queue without opening it. */
   hiddenComments: number;
   /**
-   * `true` si SMTP_URL et MAIL_FROM sont configurés. Sans quoi renseigner une
-   * adresse sur un compte ne produit rien, et l'écran d'administration doit le
-   * dire plutôt que de laisser croire à des notifications qui ne partiront pas.
+   * `true` if SMTP_URL and MAIL_FROM are configured. Otherwise entering an address
+   * produces nothing, and administration must say so rather than imply notifications
+   * will be sent.
    */
   mailConfigured: boolean;
 }
@@ -604,25 +572,24 @@ export interface ApiError {
 }
 
 /* --------------------------------------------------------------------------
- * Administration : comptes, albums et réglages
+ * Administration: accounts, albums and settings
  *
- * Ces objets sont administrés depuis l'application et vivent en base. Le
- * fichier `config/albums.yaml` ne sert plus qu'à amorcer une installation
- * neuve : une fois la base peuplée, il n'est plus relu.
+ * These objects are administered from the application and live in the database.
+ * `config/albums.yaml` only bootstraps a new installation and is never read again once
+ * the database is populated.
  * ------------------------------------------------------------------------ */
 
-/** Le joker `*` donne accès à tous les albums, présents et à venir. */
+/** The `*` wildcard grants access to all present and future albums. */
 export const ALL_ALBUMS = '*';
 
 /**
- * Une clé d'accès. Elle ouvre des albums et peut être partagée entre plusieurs
- * personnes : aucune adresse email ne lui est attachée, celles-ci appartiennent
- * aux identités de commentateur.
+ * An access key. It opens albums and may be shared by several people: no email address
+ * is attached; addresses belong to commenter identities.
  */
 export interface AdminUser {
   username: string;
   admin: boolean;
-  /** Liste d'ids d'albums, ou `['*']`. */
+  /** List of album IDs, or `['*']`. */
   albums: string[];
   createdAt: string;
   updatedAt: string;
@@ -635,7 +602,7 @@ export interface CreateUserRequest {
   albums?: string[];
 }
 
-/** Champs omis = inchangés. `password` absent laisse le mot de passe en place. */
+/** Omitted fields = unchanged. An absent `password` retains the password. */
 export interface UpdateUserRequest {
   password?: string;
   admin?: boolean;
@@ -648,22 +615,21 @@ export interface AdminAlbum {
   description: string | null;
   folderId: string;
   recursive: boolean;
-  /** Découpage appliqué à l'ouverture de l'album. Voir `Album.groupBy`. */
+  /** Grouping applied when the album opens. See `Album.groupBy`. */
   groupBy: GroupBy;
-  /** Sens de lecture appliqué à l'ouverture de l'album. Voir `Album.sortOrder`. */
+  /** Reading order applied when the album opens. See `Album.sortOrder`. */
   sortOrder: SortOrder;
-  /** Nombre de médias indexés, et état de la dernière synchronisation. */
+  /** Indexed-media count and latest synchronisation state. */
   itemCount: number;
   lastSyncAt: string | null;
   syncStatus: SyncStatus;
   syncError: string | null;
-  /** Comptes ayant explicitement accès, hors détenteurs du joker. */
+  /** Accounts with explicit access, excluding wildcard holders. */
   members: string[];
   /**
-   * Photo **choisie** comme couverture, `null` si l'album prend automatiquement
-   * la plus récente. À ne pas confondre avec `Album.coverId`, qui est la
-   * couverture effectivement servie : celle-ci retombe sur l'automatique quand
-   * la photo choisie n'est plus indexée, sans que ce choix soit effacé.
+   * Photo **chosen** as cover, `null` for the automatic latest photo. Distinct from
+   * `Album.coverId`, the cover actually served: that falls back to automatic when the
+   * choice is no longer indexed without erasing the choice.
    */
   coverId: string | null;
   createdAt: string;
@@ -688,55 +654,48 @@ export interface UpdateAlbumRequest {
   groupBy?: GroupBy;
   sortOrder?: SortOrder;
   /**
-   * Photo à afficher en couverture. Elle doit être indexée dans cet album et
-   * ne pas être une vidéo. `null` rend le choix automatique.
+   * Photo to display as cover. It must be indexed in this album and not be a video.
+   * `null` restores automatic selection.
    */
   coverId?: string | null;
 }
 
 /**
- * Longueur maximale d'une description d'album.
+ * Maximum album-description length.
  *
- * Bien plus généreuse que celle d'une note de journée
- * (`ALBUM_DAY_DESCRIPTION_MAX_LENGTH`), et pour une raison de rendu : la note
- * vit dans un en-tête dont le layout précalcule la hauteur sans DOM, la
- * description d'album dans un paragraphe libre qui n'a rien à tenir (D49).
+ * Much longer than a day note (`ALBUM_DAY_DESCRIPTION_MAX_LENGTH`) for a rendering
+ * reason: the note lives in a heading whose height layout precalculates without DOM,
+ * while an album description is a free paragraph with no fixed height (D49).
  */
 export const ALBUM_DESCRIPTION_MAX_LENGTH = 2000;
 
 export interface AppSettings {
-  /** Minutes entre deux synchronisations automatiques. 0 pour désactiver. */
+  /** Minutes between automatic synchronisations. 0 to disable. */
   syncIntervalMinutes: number;
   syncOnStartup: boolean;
   cacheMaxSizeGB: number;
   /**
-   * Rendre les photos en fond, sans attendre qu'on les ouvre. Coupe la
-   * première ouverture de plusieurs secondes à quelques millisecondes, au prix
-   * de téléchargements Drive faits d'avance.
+   * Renders photos in the background before they are opened. Reduces first opening
+   * from seconds to milliseconds at the cost of early Drive downloads.
    */
   prewarmCache: boolean;
   /**
-   * Préparer à l'avance une version lisible des vidéos dont le codec n'est
-   * décodé par aucun navigateur courant. Une vidéo à la fois, en fond et à
-   * priorité basse : compter environ une minute de processeur par minute de
-   * film (D260809b). Sans `ffmpeg` sur la machine, le réglage reste sans effet.
+   * Prepares a playable version of videos whose codec no current browser decodes. One
+   * video at a time in the background at low priority: around one CPU minute per film
+   * minute (D260809b). Without `ffmpeg`, the setting has no effect.
    */
   transcodeVideos: boolean;
   /**
-   * Place accordée aux versions lisibles des vidéos, distincte de celle des
-   * vignettes. Deux budgets et non un seul parce que les deux dérivés n'ont pas
-   * le même coût : une vignette se refait en quelques secondes, une vidéo en
-   * plusieurs minutes de processeur — un LRU commun laisserait la navigation
-   * dans la grille évincer une heure de travail (D260809b).
+   * Space for playable video versions, separate from thumbnails. Two budgets because
+   * their costs differ: a thumbnail takes seconds to recreate, a video several CPU
+   * minutes — shared LRU would let grid browsing evict an hour of work (D260809b).
    */
   videoCacheMaxSizeGB: number;
   /**
-   * Adresse prévenue de chaque nouveau commentaire. `null` pour n'en prévenir
-   * aucune.
+   * Address notified of every new comment. `null` to notify none.
    *
-   * C'est un réglage d'instance et non une colonne sur les comptes : un compte
-   * administrateur est une clé d'accès, pas quelqu'un de joignable, et
-   * l'instance n'a qu'un propriétaire.
+   * An instance setting rather than an account column: an administrator account is an
+   * access key, not a reachable person, and the instance has one owner.
    */
   moderationEmail: string | null;
 }
@@ -744,119 +703,116 @@ export interface AppSettings {
 export type UpdateSettingsRequest = Partial<AppSettings>;
 
 /**
- * Commentaire vu depuis la modération : les visiteurs lisent un fil sur une
- * photo qu'ils ont sous les yeux, l'administrateur balaie tous les albums et a
- * besoin de savoir de quelle photo on parle.
+ * Comment viewed in moderation: visitors read a thread on a photo in front of them;
+ * administrators scan every album and need to know which photo is discussed.
  */
 export interface AdminComment extends Comment {
   albumId: string;
   albumTitle: string;
   mediaId: string;
-  /** Nom du fichier Drive, ou `null` si le média a disparu de l'index depuis. */
+  /** Drive file name, or `null` if the media has since left the index. */
   mediaName: string | null;
   /**
-   * Adresse vérifiée de l'auteur. Visible **ici seulement** : la modération a
-   * besoin de savoir qui parle derrière un nom déclaré, le fil non.
+   * Author's verified address. Visible **only here**: moderation needs to know who is
+   * behind a declared name; the thread does not.
    */
   authorEmail: string;
   /**
-   * Identité de l'auteur, cible de la modération groupée. Absente de `Comment`
-   * pour la même raison qu'`authorEmail` : le fil public n'a pas à désigner une
-   * personne par une clé stable, qui permettrait de recoller ses messages d'un
-   * album à l'autre.
+   * Author identity targeted by bulk moderation. Absent from `Comment` for the same
+   * reason as `authorEmail`: a public thread must not identify a person with a stable
+   * key that links their messages across albums.
    */
   commenterId: number;
   /**
-   * Clé d'accès utilisée pour écrire, `null` si elle a été supprimée depuis.
-   * C'est elle qu'on change quand un mot de passe partagé a trop circulé.
+   * Access key used to write, `null` if since deleted. This is changed when a shared
+   * password has circulated too widely.
    */
   account: string | null;
-  /** ISO 8601 du masquage, `null` si le commentaire est visible. */
+  /** ISO 8601 hiding time, `null` if the comment is visible. */
   hiddenAt: string | null;
-  /** Administrateur ayant masqué. Sur une instance à plusieurs, c'est à qui en reparler. */
+  /** Administrator who hid it. On a multi-admin instance, this identifies whom to ask. */
   hiddenBy: string | null;
 }
 
 /**
- * Ce que la file de modération demande : tout, ce qui est encore en ligne, ou
- * ce qui a été retiré. Les deux derniers partitionnent le premier.
+ * What the moderation queue requests: everything, what remains visible, or what was
+ * removed. The latter two partition the first.
  */
 export type ModerationFilter = 'all' | 'visible' | 'hidden';
 
-/** Ce que la file de modération sait restreindre, en plus du filtre. */
+/** What the moderation queue can narrow beyond the filter. */
 export interface ModerationQuery {
   filter: ModerationFilter;
-  /** Restreint à un album, `null` pour tous. */
+  /** Restricted to one album, `null` for all. */
   albumId: string | null;
-  /** Cherché dans le corps, le nom déclaré et l'adresse. `null` pour ne pas chercher. */
+  /** Searched in body, declared name and address. `null` for no search. */
   q: string | null;
   limit: number;
-  /** Identifiant de la dernière ligne de la page précédente. `null` pour la première. */
+  /** Identifier of the previous page's last row. `null` for the first page. */
   cursor: number | null;
 }
 
 export interface AdminCommentsPage {
   comments: AdminComment[];
-  /** À repasser en `?cursor=`. `null` = fin de la liste. */
+  /** Pass back as `?cursor=`. `null` = end of list. */
   nextCursor: string | null;
   /**
-   * Nombre de commentaires que le filtre retient, **curseur exclu** : c'est la
-   * taille du corpus, pas celle du reste. Sans lui, une page ne dit pas si elle
-   * est tout ce qu'il y a à modérer ou le centième.
+   * Comments retained by the filter, **excluding the cursor**: corpus size, not the
+   * remainder. Without it, a page cannot say whether it contains everything to
+   * moderate or is the hundredth page.
    */
   total: number;
 }
 
-/** Ce que rend une modération groupée : le nombre de messages réellement touchés. */
+/** Bulk moderation result: the number of messages actually affected. */
 export interface BulkModerationResult {
   affected: number;
 }
 
 /* --------------------------------------------------------------------------
- * Télémétrie de visite
+ * Visit telemetry
  *
- * Mesurée côté serveur et agrégée à l'écriture : une ligne par (album, clé,
- * session, jour) avec des compteurs (D260809h). L'accès étant authentifié par
- * clé, seule l'instance sait *qui* regarde — ce qu'un traceur tiers, qui ne
- * verrait qu'un navigateur anonyme, raterait.
+ * Measured server-side and aggregated on write: one row per (album, key, session, day)
+ * with counters (D260809h). Because access is authenticated by key, only the instance
+ * knows *who* views — a third-party tracker would see only an anonymous browser.
  * ------------------------------------------------------------------------ */
 
 /**
- * Classe d'appareil, déduite du user-agent à la création de la session **puis
- * jetée** : seule la classe est conservée. Une valeur parmi quatre ne
- * ré-identifie personne, là où le user-agent complet est une empreinte.
+ * Device class inferred from the user-agent when the session is created, **then
+ * discarded**: only the class remains. One of four values cannot re-identify anyone,
+ * whereas a complete user-agent is a fingerprint.
  */
 export type DeviceKind = 'mobile' | 'tablette' | 'ordinateur' | 'tv';
 
-/** Ce qu'une clé d'accès a fait sur la fenêtre demandée. */
+/** What an access key did during the requested window. */
 export interface VisitorRow {
-  /** La clé d'accès, pas une personne : elle peut être partagée (D38). */
+  /** The access key, not a person: it may be shared (D38). */
   username: string;
-  /** Les visites de la clé d'administration sont montrées, pas exclues. */
+  /** Visits from the administration key are shown, not excluded. */
   admin: boolean;
-  /** Classes d'appareil vues sur les sessions ouvertes de cette clé. */
+  /** Device classes seen across sessions opened with this key. */
   devices: DeviceKind[];
-  /** Dernière ouverture d'album, `null` si la clé s'est connectée sans rien ouvrir. */
+  /** Latest album opening, `null` if the key signed in without opening anything. */
   lastAt: string | null;
-  /** Dernière requête reçue de cette clé, à l'heure près. */
+  /** Latest request received from this key, to the nearest hour. */
   lastSeenAt: string | null;
-  /** Jours distincts où quelque chose a été ouvert. */
+  /** Distinct days on which something was opened. */
   days: number;
-  /** Sessions distinctes, c'est-à-dire navigateurs distincts. */
+  /** Distinct sessions, meaning distinct browsers. */
   sessions: number;
   albums: number;
   visits: number;
   photos: number;
 }
 
-/** Ce qu'un album a reçu sur la fenêtre demandée. */
+/** What an album received during the requested window. */
 export interface AlbumVisitRow {
   albumId: string;
-  /** `null` si l'album a été supprimé depuis : sa fréquentation passée reste vraie. */
+  /** `null` if the album was since deleted: its past visits remain real. */
   title: string | null;
-  /** Sessions distinctes — la meilleure approximation d'un visiteur. */
+  /** Distinct sessions — the best approximation of a visitor. */
   visitors: number;
-  /** Clés d'accès distinctes. Toujours ≤ `visitors`, une clé étant partageable. */
+  /** Distinct access keys. Always ≤ `visitors`, since a key may be shared. */
   keys: number;
   visits: number;
   photos: number;
@@ -864,26 +820,26 @@ export interface AlbumVisitRow {
 }
 
 export interface VisitsOverview {
-  /** Largeur de la fenêtre, telle que le serveur l'a retenue. */
+  /** Window width as retained by the server. */
   days: number;
-  /** Premier jour compté, `YYYY-MM-DD` en UTC. */
+  /** First counted day, `YYYY-MM-DD` in UTC. */
   since: string;
   visitors: VisitorRow[];
   albums: AlbumVisitRow[];
 }
 
-/** Fenêtres proposées par l'onglet « Visites ». */
+/** Windows offered by the "Visits" tab. */
 export const VISIT_WINDOWS = [7, 30, 90] as const;
 
-/** Défaut de `GET /api/admin/visits`, et borne haute de ce qu'il accepte. */
+/** Default for `GET /api/admin/visits` and its accepted upper bound. */
 export const VISIT_WINDOW_DEFAULT = 30;
 export const VISIT_WINDOW_MAX = 365;
 
-/** Contraintes de saisie, partagées pour valider des deux côtés à l'identique. */
+/** Input constraints shared for identical validation on both sides. */
 export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
 export const USERNAME_MAX_LENGTH = 64;
 export const ALBUM_ID_PATTERN = USERNAME_PATTERN;
 export const PASSWORD_MIN_LENGTH = 8;
 export const DISPLAY_NAME_MAX_LENGTH = 64;
-/** Longueur maximale d'une adresse, telle que la fixe la RFC 5321. */
+/** Maximum address length as specified by RFC 5321. */
 export const EMAIL_MAX_LENGTH = 254;

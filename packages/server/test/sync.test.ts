@@ -10,10 +10,9 @@ import { Syncer } from '../src/drive/sync.js';
 import { MediaRepo, SyncStateRepo } from '../src/repo.js';
 
 /**
- * Déduplication des synchronisations. Deux appels sur le même album partagent
- * le même travail — sauf s'ils ne visent pas le même dossier Drive, auquel cas
- * partager reviendrait à indexer le dossier que le propriétaire vient de
- * quitter.
+ * Synchronisation deduplication. Two calls for the same album share the same
+ * work — unless they target different Drive folders, in which case sharing
+ * would index the folder the owner has just left.
  */
 
 const dir = mkdtempSync(join(tmpdir(), 'nonni-sync-'));
@@ -35,7 +34,7 @@ function fichier(id: string): drive_v3.Schema$File {
   };
 }
 
-/** Drive de complaisance : un dossier, sa liste, et une barrière optionnelle. */
+/** Fixture Drive: a folder, its listing and an optional barrier. */
 function fauxDrive(
   contenu: Record<string, string[]>,
   barrieres: Record<string, Promise<void>> = {},
@@ -61,19 +60,19 @@ function contenuIndexe(albumId: string): string[] {
     .sort();
 }
 
-describe('déduplication des synchronisations', () => {
-  it('partage le travail entre deux demandes identiques', async () => {
+describe('synchronisation deduplication', () => {
+  it('shares work between two identical requests', async () => {
     const syncer = new Syncer(fauxDrive({ 'dossier-a': ['a1'] }), media, syncState, silencieux);
     const album = { id: 'stable', folderId: 'dossier-a', recursive: true };
 
     const premiere = syncer.sync(album);
     const seconde = syncer.sync(album);
 
-    assert.equal(premiere, seconde, 'une resync manuelle ne doit pas doubler le travail');
+    assert.equal(premiere, seconde, 'a manual resynchronisation must not duplicate the work');
     await premiere;
   });
 
-  it("relance le travail quand le dossier de l'album a changé entre-temps", async () => {
+  it('restarts the work when the album folder changes in the meantime', async () => {
     let ouvrir = (): void => {};
     const barriere = new Promise<void>((resolve) => {
       ouvrir = resolve;
@@ -87,28 +86,24 @@ describe('déduplication des synchronisations', () => {
     );
 
     const premiere = syncer.sync({ id: 'demenage', folderId: 'dossier-a', recursive: true });
-    // Le propriétaire corrige le dossier pendant que la première tourne.
+    // The owner corrects the folder while the first run is in progress.
     const seconde = syncer.sync({ id: 'demenage', folderId: 'dossier-b', recursive: true });
 
-    assert.notEqual(
-      premiere,
-      seconde,
-      "la sync du nouveau dossier ne peut pas être celle de l'ancien",
-    );
+    assert.notEqual(premiere, seconde, 'the new folder synchronisation cannot be the old one');
 
-    // La première sync met un temps mesurable à revenir, comme un vrai parcours
-    // Drive : les deux passages portent ainsi des estampilles distinctes.
+    // The first synchronisation takes a measurable time to return, like a real
+    // Drive traversal, so the two runs carry distinct timestamps.
     await new Promise((resolve) => setTimeout(resolve, 10));
     ouvrir();
     await premiere;
     await seconde;
 
-    // Sans distinction de configuration, l'appelant recevait la promesse de
-    // l'ancienne sync et l'album se retrouvait rempli du dossier abandonné.
+    // Without distinguishing configurations, the caller would receive the old
+    // synchronisation promise and the album would be filled from the abandoned folder.
     assert.deepEqual(contenuIndexe('demenage'), ['b1']);
   });
 
-  it('distingue aussi un changement de profondeur', async () => {
+  it('also distinguishes a change in traversal depth', async () => {
     const syncer = new Syncer(fauxDrive({ 'dossier-c': ['c1'] }), media, syncState, silencieux);
 
     const recursive = syncer.sync({ id: 'profondeur', folderId: 'dossier-c', recursive: true });
@@ -119,7 +114,7 @@ describe('déduplication des synchronisations', () => {
     await plat;
   });
 
-  it("n'écrit plus rien une fois l'album reconfiguré sous ses pieds", async () => {
+  it('stops writing once the album is reconfigured underneath it', async () => {
     let ouvrirD = (): void => {};
     let ouvrirE = (): void => {};
     const barriereD = new Promise<void>((resolve) => {
@@ -142,18 +137,18 @@ describe('déduplication des synchronisations', () => {
     const premiere = syncer.sync({ id: 'perime', folderId: 'dossier-d', recursive: true });
     const seconde = syncer.sync({ id: 'perime', folderId: 'dossier-e', recursive: true });
 
-    // Ce que fait la route PATCH quand le dossier change : purger l'index sans
-    // attendre, pour que l'album cesse tout de suite de montrer l'ancien
-    // contenu. C'est cette purge que le passage périmé ne doit pas défaire.
+    // This is what the PATCH route does when the folder changes: it clears the
+    // index immediately so the album stops showing old content. The stale run
+    // must not undo that purge.
     media.clearAlbum('perime');
 
     ouvrirD();
     const resultat = await premiere;
-    assert.equal(resultat.superseded, true, 'le passage périmé doit se déclarer abandonné');
+    assert.equal(resultat.superseded, true, 'the stale run must report itself as superseded');
     assert.deepEqual(
       contenuIndexe('perime'),
       [],
-      'un passage périmé qui réinsère rend visibles les photos que le propriétaire vient de retirer',
+      'a stale run that reinserts data exposes photos the owner has just removed',
     );
 
     ouvrirE();

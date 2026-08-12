@@ -1,53 +1,49 @@
-# D76 — La sauvegarde emporte `config/`, parce que la clé du compte de service ne se retéléchargesse pas
+# D76 — The backup includes `config/` because a service account key cannot be downloaded again
 
-**Contexte.** `deploy/backup.sh` prenait le volume `nonni-data` et le `.env`. Les
-deux vont ensemble, D14 l'explique : le refresh token est chiffré, `TOKEN_KEY`
-seul le déchiffre, une archive sans son `.env` impose un nouveau consentement.
+**Context.** `deploy/backup.sh` backed up the `nonni-data` volume and `.env`. The
+two belong together, as D14 explains: the refresh token is encrypted and only
+`TOKEN_KEY` decrypts it, so an archive without its `.env` requires new consent.
 
-Ce raisonnement était complet tant que Drive passait uniquement par OAuth, le
-jeton vivant dans la base. L'authentification par compte de service (D50) a
-déplacé l'accès à Drive dans un fichier monté depuis l'hôte,
-`config/service-account.json` — ni dans le volume, ni dans le `.env`. Le script a
-pourtant été écrit trois jours après elle, et ne l'a pas pris.
+That reasoning was complete while Drive only used OAuth, with the token stored in
+the database. Service account authentication (D50) moved Drive access to a file
+mounted from the host, `config/service-account.json` — neither in the volume nor
+in `.env`. Yet the script was written three days later and omitted it.
 
-La spec, elle, l'avait vu : le tableau des montages de `06` porte déjà
-« **Oui, si la clé y est** » sur `./config`. Ce n'est donc pas un arbitrage qu'on
-révise, c'est un écart entre un script et sa propre spec.
+The spec had noticed: the mount table in `06` already says "**Yes, if the key is
+there**" for `./config`. This is therefore not a choice being revised, but a gap
+between a script and its own spec.
 
-**Ce que ça coûtait.** Une restauration rendait la base, les comptes, les albums
-et les réglages — et aucun accès à Drive. Google ne délivre le JSON d'une clé
-qu'à sa création. La panne n'apparaît pas à la restauration : l'application
-démarre, `/admin` répond, les albums sont là. Elle apparaît à la première
-synchronisation, quand plus rien ne remonte.
+**What it cost.** A restoration returned the database, accounts, albums, and
+settings — but no Drive access. Google only provides a key's JSON when it is
+created. The failure does not appear during restoration: the application starts,
+`/admin` responds, and the albums are present. It appears at the first
+synchronisation, when nothing is retrieved.
 
-**Décision.** `backup.sh` archive `config/` en troisième pièce, à côté du `.env`,
-sous `nonni-<horodatage>.config.tgz`.
+**Decision.** `backup.sh` archives `config/` as a third piece beside `.env`, under
+`nonni-<timestamp>.config.tgz`.
 
-Le répertoire entier plutôt qu'une liste de fichiers : filtrer supposerait de
-tenir un motif en phase avec `.gitignore`, et l'exemple d'albums suivi par git
-qui voyage avec pèse deux kilo-octets.
+The entire directory rather than a list of files: filtering would require keeping
+a pattern aligned with `.gitignore`, and the version-controlled album example
+that travels with it weighs two kilobytes.
 
-L'extension `.tgz` n'est pas une coquetterie. L'élagage distingue les archives
-par motif, et `nonni-*.tar.gz` engloberait celle-ci : la rétention tomberait de
-sept sauvegardes réelles à trois, sans un message. Un troisième `elaguer` lui est
-consacré.
+The `.tgz` extension is not cosmetic. Pruning distinguishes archives by pattern,
+and `nonni-*.tar.gz` would include this one: retention would fall from seven real
+backups to three without a message. A third `prune` call handles it.
 
-**Écarté.** Fondre `config/` dans l'archive du volume. Il aurait fallu préfixer
-les deux arborescences pour qu'elles ne se recouvrent pas, donc changer la
-disposition interne de l'archive — et la commande de restauration documentée
-(`tar xzf … -C /data`) aurait cessé de convenir aux archives déjà produites. Une
-sauvegarde qu'on ne sait plus restaurer avec la procédure publiée est le défaut
-que ce travail corrige, pas celui qu'il introduit.
+**Rejected.** Merging `config/` into the volume archive. Both trees would have
+needed prefixes to prevent overlap, changing the archive's internal layout — and
+the documented restoration command (`tar xzf … -C /data`) would no longer work
+for existing archives. A backup that can no longer be restored using the
+published procedure is the defect this work fixes, not one it introduces.
 
-**Conséquences.** Une instance en OAuth n'a pas de `config/` à sauvegarder ; le
-script le constate et n'échoue pas. Les archives antérieures à cette entrée se
-restaurent inchangées, sans la clé : la reconstituer coûte trois clics dans la
-console Google, et ne demande de repartager aucun album — les dossiers sont
-partagés avec le compte, jamais avec l'une de ses clés.
+**Consequences.** An OAuth instance has no `config/` to back up; the script
+detects this and does not fail. Archives predating this entry restore unchanged,
+without the key: recreating it costs three clicks in the Google console and does
+not require sharing any album again — folders are shared with the account, never
+with one of its keys.
 
-L'archive contient désormais, pour une instance en compte de service, de quoi
-lire les dossiers Drive partagés. C'était déjà le cas d'une instance en OAuth,
-dont l'archive porte le jeton chiffré **et** sa clé. La différence est qu'une clé
-de compte de service n'expire pas : la destination de sauvegarde doit être
-traitée comme un dépôt de secrets, ce que `deploy/README.md` recommande déjà en
-la chiffrant.
+For a service account instance, the archive now contains what is needed to read
+shared Drive folders. This was already true for an OAuth instance, whose archive
+carries the encrypted token **and** its key. The difference is that a service
+account key does not expire: the backup destination must be treated as a secret
+store, as `deploy/README.md` already recommends by encrypting it.

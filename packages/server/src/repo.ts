@@ -12,7 +12,7 @@ import {
 } from '@nonni/shared';
 import type { Db } from './db.js';
 
-/** Ligne brute de `media`, augmentée de la description jointe. */
+/** Raw `media` row with its joined description. */
 interface MediaRow {
   album_id: string;
   id: string;
@@ -65,14 +65,14 @@ export interface MediaUpsert {
   lng: number | null;
   md5: string | null;
   /**
-   * `hasThumbnail` de Drive : l'aperçu de la première seconde existe-t-il ?
-   * Toujours vrai sur une photo, pas toujours sur une vidéo.
+   * Drive's `hasThumbnail`: does a preview of the first second exist?
+   * Always true for a photo, not always for a video.
    */
   hasThumbnail: boolean;
   /**
-   * Codec de la piste image, lu dans l'en-tête du fichier. `null` sur une photo
-   * comme sur une vidéo dont l'en-tête n'a pas pu être atteint — voir la
-   * migration 14 pour les trois états de la colonne.
+   * Video-track codec read from the file header. `null` for a photo as well as a
+   * video whose header could not be reached — see migration 14 for the column's
+   * three states.
    */
   videoCodec: string | null;
 }
@@ -90,12 +90,12 @@ function toItem(row: MediaRow): MediaItem {
     takenAt: row.taken_at,
     takenAtFromExif: row.taken_at_from_exif === 1,
     durationMs: row.duration_ms,
-    // Une photo a toujours un rendu — le pipeline la décode, et retombe sur
-    // l'aperçu Drive quand libvips ne la lit pas. Une vidéo n'en a un que si
-    // Drive a produit le sien : rien n'est décodé localement (D92).
+    // A photo always has a render — the pipeline decodes it and falls back to the
+    // Drive preview when libvips cannot read it. A video has one only if Drive
+    // produced it: nothing is decoded locally (D92).
     hasPreview: row.kind === 'photo' || row.has_thumbnail === 1,
-    // Huit caractères de l'empreinte suffisent à distinguer deux versions
-    // successives d'un même fichier ; l'URL reste lisible.
+    // Eight fingerprint characters distinguish successive versions of the same file
+    // while keeping the URL readable.
     version: row.md5 ? row.md5.slice(0, 8) : null,
     videoCodec: row.video_codec,
     description: row.description,
@@ -103,16 +103,15 @@ function toItem(row: MediaRow): MediaItem {
 }
 
 /**
- * Les colonnes de `media`, augmentées de la description saisie sur ce couple
- * (album, média).
+ * The `media` columns with the description entered for this (album, media) pair.
  *
- * `media.*` et non `*` : les deux tables portent une colonne `album_id`, et une
- * étoile nue rendrait la ligne ambiguë à la lecture — SQLite l'accepterait, le
- * lecteur suivant devrait deviner laquelle des deux il tient.
+ * `media.*` rather than `*`: both tables have an `album_id` column, and a bare star
+ * would make the row ambiguous to readers — SQLite would accept it, but the next
+ * reader would have to guess which one they hold.
  *
- * La jointure est **1-pour-1** sur la clé primaire de `media_notes` : elle ne
- * duplique ni ne perd de ligne, donc elle ne touche pas à la pagination par
- * curseur, qui compte les lignes rendues pour savoir s'il reste une page.
+ * The join is **one-to-one** on the `media_notes` primary key: it neither duplicates
+ * nor loses rows, so it does not affect cursor pagination, which counts returned rows
+ * to determine whether another page remains.
  */
 const SELECT_ITEMS = `SELECT media.*, media_notes.description AS description
        FROM media
@@ -120,10 +119,9 @@ const SELECT_ITEMS = `SELECT media.*, media_notes.description AS description
          ON media_notes.album_id = media.album_id AND media_notes.media_id = media.id`;
 
 /**
- * Détail tel que l'index le connaît. Le nombre de commentaires vient d'ailleurs
- * et se compose au niveau de la route : `MediaRepo` n'a pas à savoir que les
- * commentaires existent, sans quoi la moindre requête média deviendrait une
- * jointure de plus.
+ * Details as known by the index. The comment count comes from elsewhere and is
+ * composed at route level: `MediaRepo` need not know that comments exist, otherwise
+ * every media query would gain another join.
  */
 export type IndexedDetail = Omit<MediaDetail, 'commentCount'>;
 
@@ -145,21 +143,19 @@ function toDetail(row: MediaRow): IndexedDetail {
 }
 
 /**
- * Curseur de pagination. Le tri est `(taken_at, id)`, dans le sens demandé ; le
- * curseur encode la dernière ligne rendue pour reprendre strictement après
- * elle. Un simple OFFSET sauterait ou dupliquerait des lignes si une sync
- * insère des médias pendant que l'utilisateur défile.
+ * Pagination cursor. Sorting is `(taken_at, id)` in the requested direction; the
+ * cursor encodes the last returned row to resume strictly after it. A simple OFFSET
+ * would skip or duplicate rows if a sync inserts media while the user scrolls.
  *
- * Le format ne dépend pas du sens : seule la comparaison appliquée à la
- * reprise s'inverse. Un curseur reste donc lisible même si le sens change,
- * il désigne simplement l'autre moitié de l'album.
+ * The format does not depend on direction: only the comparison applied on resumption
+ * is reversed. A cursor therefore remains readable if direction changes; it simply
+ * identifies the other half of the album.
  *
- * Le séparateur est l'octet nul, écrit `\u0000` et **jamais littéralement** :
- * un octet nul dans un fichier source le fait classer comme binaire par git,
- * qui cesse alors d'en afficher les diffs — donc de permettre toute revue. Il
- * reste le bon séparateur pour autant : ni une date ISO ni un identifiant Drive
- * ne peuvent en contenir, là où l'espace resterait un pari sur la forme des
- * identifiants.
+ * The separator is the null byte, written as `\u0000` and **never literally**: a
+ * null byte in a source file makes git classify it as binary and stop displaying
+ * diffs, preventing review. It remains the right separator because neither an ISO
+ * date nor a Drive identifier can contain one, whereas a space would be a gamble on
+ * identifier shape.
  */
 export function encodeCursor(takenAt: string, id: string): string {
   return Buffer.from(`${takenAt}\u0000${id}`, 'utf8').toString('base64url');
@@ -179,10 +175,9 @@ export class MediaRepo {
   constructor(private readonly db: Db) {}
 
   /**
-   * Page de médias triée chronologiquement, du plus récent au plus ancien par
-   * défaut, du plus ancien au plus récent en `asc`.
-   * `limit` lignes sont rendues ; on en lit une de plus pour savoir s'il reste
-   * une page suivante sans faire de COUNT.
+   * Chronologically sorted media page, newest to oldest by default and oldest to
+   * newest with `asc`. Returns `limit` rows and reads one more to determine whether
+   * a next page remains without running COUNT.
    */
   listItems(
     albumId: string,
@@ -195,10 +190,9 @@ export class MediaRepo {
   } {
     const position = cursor ? decodeCursor(cursor) : null;
 
-    // `order` est une union fermée, jamais une chaîne venue de la requête :
-    // ces deux fragments ne peuvent pas injecter de SQL. La colonne de tri et
-    // la comparaison du curseur doivent basculer ensemble, sans quoi la reprise
-    // relirait la page déjà servie.
+    // `order` is a closed union, never a string from the request, so these two
+    // fragments cannot inject SQL. The sort column and cursor comparison must switch
+    // together, otherwise resumption would reread the page already served.
     const direction = order === 'asc' ? 'ASC' : 'DESC';
     const after = order === 'asc' ? '>' : '<';
 
@@ -238,14 +232,14 @@ export class MediaRepo {
   }
 
   /**
-   * Écrit la description d'une photo **dans cet album**, et rend l'item à jour.
+   * Writes a photo's description **in this album** and returns the updated item.
    *
-   * Champ absent : rien n'est touché. `null` — comme une chaîne vide ou blanche
-   * — efface la ligne : une description vide ne dit rien de plus qu'une
-   * description absente, et la garder ferait grossir la table pour rien.
+   * Absent field: nothing is touched. `null` — like an empty or whitespace-only
+   * string — deletes the row: an empty description says no more than an absent one,
+   * and retaining it would grow the table for no reason.
    *
-   * `null` en retour si le média n'est pas indexé dans cet album. C'est la
-   * route qui en fait un 404 : le dépôt ne décide pas des codes HTTP.
+   * Returns `null` if the media is not indexed in this album. The route turns that
+   * into a 404; the repository does not decide HTTP status codes.
    */
   setDescription(albumId: string, mediaId: string, patch: UpdateMediaRequest): MediaItem | null {
     const row = this.mediaRow(albumId, mediaId);
@@ -281,9 +275,9 @@ export class MediaRepo {
   }
 
   /**
-   * Albums contenant ce média. Un même fichier Drive apparaît dans plusieurs
-   * albums si leurs dossiers sont imbriqués — l'autorisation doit donc regarder
-   * l'ensemble, pas un album unique.
+   * Albums containing this media item. The same Drive file appears in several albums
+   * when their folders are nested, so authorisation must consider the whole set, not
+   * one album.
    */
   albumsContaining(id: string): string[] {
     const rows = this.db.prepare('SELECT album_id FROM media WHERE id = ?').all(id) as {
@@ -293,19 +287,18 @@ export class MediaRepo {
   }
 
   /**
-   * Métadonnées minimales nécessaires pour servir le fichier, sans le reste.
+   * Minimal metadata required to serve the file, without the rest.
    *
-   * `md5` identifie le contenu : Drive conserve l'identifiant d'un fichier
-   * lorsqu'on en remplace le contenu (« Gérer les versions »), si bien que
-   * l'identifiant seul ne suffit pas à distinguer deux versions successives.
+   * `md5` identifies content: Drive retains a file's identifier when its content is
+   * replaced ("Manage versions"), so the identifier alone cannot distinguish two
+   * successive versions.
    *
-   * Un même fichier indexé sous deux albums a deux lignes, qui peuvent diverger
-   * entre deux synchronisations. Le tri les départage sur `seen_at` : c'est la
-   * ligne revue le plus récemment qui porte le `md5` et la taille du fichier
-   * tel qu'il est aujourd'hui dans Drive. Sans ce tri, SQLite pourrait rendre
-   * l'ancienne, et le cache servirait alors un dérivé périmé sous un ETag qui
-   * le déclare immuable. `album_id` départage les ex æquo, pour que deux appels
-   * consécutifs répondent la même chose.
+   * The same file indexed under two albums has two rows, which may diverge between
+   * synchronisations. Sorting resolves them by `seen_at`: the most recently observed
+   * row carries the `md5` and current Drive file size. Without this sort, SQLite could
+   * return the old row and the cache would serve a stale derivative under an ETag
+   * declaring it immutable. `album_id` breaks ties so consecutive calls return the
+   * same result.
    */
   getFileMeta(id: string): {
     name: string;
@@ -344,14 +337,13 @@ export class MediaRepo {
   }
 
   /**
-   * Ce qu'une synchronisation précédente a daté sur ce fichier, et sur quel
-   * contenu. Sert le court-circuit de la vidéo (D97) : tant que le `md5` n'a pas
-   * bougé, relire l'en-tête du fichier rendrait exactement la même date, au prix
-   * de quelques requêtes `Range` par vidéo à chaque resync d'album.
+   * What a previous synchronisation dated for this file, and for which content.
+   * Supports the video shortcut (D97): while `md5` is unchanged, rereading the file
+   * header would return exactly the same date at the cost of several `Range` requests
+   * per video on every album resync.
    *
-   * Lu sur le couple `(album_id, id)`, la clé primaire : le même fichier indexé
-   * sous deux albums porte deux lignes, qui peuvent avoir été datées à des
-   * moments différents.
+   * Read using the `(album_id, id)` pair, the primary key: the same file indexed under
+   * two albums carries two rows that may have been dated at different times.
    */
   fileTakenAt(
     albumId: string,
@@ -360,8 +352,8 @@ export class MediaRepo {
     md5: string | null;
     takenAt: string;
     takenAtFromExif: boolean;
-    /** `null` tant que l'en-tête n'a pas livré de codec : le court-circuit ne
-     *  s'applique alors pas, et le fichier est rouvert une fois de plus. */
+    /** `null` until the header provides a codec: the shortcut then does not apply,
+     *  and the file is opened once more. */
     videoCodec: string | null;
   } | null {
     const row = this.db
@@ -387,13 +379,13 @@ export class MediaRepo {
   }
 
   /**
-   * Compteur, bornes chronologiques et couverture effective de l'album.
+   * Count, chronological bounds and effective album cover.
    *
-   * `chosenId` est le choix d'un administrateur, et il ne vaut que tant que la
-   * photo est dans l'index : un fichier passé à la corbeille Drive le temps
-   * d'un retour en arrière laisserait sinon l'album sans vignette sur la page
-   * d'accueil, sans que rien ne dise pourquoi. Le repli est donc permanent, et
-   * le choix reste stocké — la photo revenue redevient la couverture.
+   * `chosenId` is an administrator's choice and only applies while the photo is in
+   * the index: a file temporarily moved to Drive's bin would otherwise leave the
+   * album without a thumbnail on the home page, with no explanation. The fallback
+   * is therefore permanent while the choice remains stored — when the photo returns,
+   * it becomes the cover again.
    */
   stats(
     albumId: string,
@@ -412,17 +404,16 @@ export class MediaRepo {
       )
       .get(albumId) as { count: number; newest: string | null; oldest: string | null };
 
-    // `kind = 'photo'` des deux côtés : jamais une vidéo. Elle a bien une
-    // vignette depuis D92, mais celle-ci appartient à Drive et peut manquer —
-    // or la couverture est la seule image dont l'absence se voit depuis la page
-    // d'accueil, sans repli.
+    // `kind = 'photo'` on both sides: never a video. Videos have thumbnails since
+    // D92, but those belong to Drive and may be missing — while the cover is the one
+    // image whose absence is visible from the home page with no fallback.
     const chosen = chosenId
       ? (this.db
           .prepare(`SELECT id, md5 FROM media WHERE album_id = ? AND id = ? AND kind = 'photo'`)
           .get(albumId, chosenId) as { id: string; md5: string | null } | undefined)
       : undefined;
 
-    // À défaut de choix utilisable, la photo la plus récente.
+    // Without a usable choice, use the most recent photo.
     const cover =
       chosen ??
       (this.db
@@ -443,16 +434,16 @@ export class MediaRepo {
   }
 
   /**
-   * Nombre de médias entrés dans l'index depuis `since`, et date d'entrée du
-   * plus récent d'entre eux.
+   * Number of media items added to the index since `since`, and insertion date of
+   * the most recent one.
    *
-   * `added_at` et non `seen_at` : ce dernier est réécrit sur tous les médias à
-   * chaque synchronisation, y compris ceux déjà connus, et compterait donc
-   * l'album entier comme nouveau à chaque passage.
+   * `added_at` rather than `seen_at`: the latter is rewritten for every media item on
+   * every synchronisation, including known ones, and would therefore count the whole
+   * album as new on each pass.
    *
-   * La date rendue sert de nouvelle borne : la prendre plutôt que « maintenant »
-   * garantit qu'un média inséré entre le comptage et l'écriture de la borne
-   * reste annoncé au passage suivant au lieu d'être sauté.
+   * The returned date becomes the new boundary: using it rather than "now" ensures
+   * that media inserted between counting and writing the boundary is announced on
+   * the next pass rather than skipped.
    */
   countAddedSince(albumId: string, since: string): { count: number; latest: string | null } {
     const row = this.db
@@ -465,17 +456,17 @@ export class MediaRepo {
   }
 
   /**
-   * Toutes les positions connues d'un album, par ordre chronologique croissant,
-   * avec le jour UTC qui les porte. C'est la seule lecture du passage de
-   * `places.ts`, qui en déduit les lieux d'une journée.
+   * All known positions in an album in ascending chronological order, with their UTC
+   * day. This is the only read used by the pass in `places.ts`, which infers a day's
+   * places from it.
    *
-   * `substr(taken_at, 1, 10)` et non un `Date` : `taken_at` est l'heure de
-   * l'appareil, et la découper sur la chaîne donne exactement la clé que
-   * `dayKey()` calcule côté front. Passer par un fuseau ferait basculer de jour
-   * une photo de 23 h 30, et la journée annotée ne serait plus la bonne.
+   * `substr(taken_at, 1, 10)` rather than a `Date`: `taken_at` is the device time,
+   * and slicing the string produces exactly the key calculated by `dayKey()` in the
+   * front end. Applying a time zone would move a 23:30 photo to another day, and the
+   * annotated day would no longer be correct.
    *
-   * Le tri croissant n'est pas cosmétique : l'ordre des grappes rendues est
-   * celui de leur première photo, donc celui du déroulé de la journée.
+   * Ascending order is not cosmetic: returned clusters follow their first photo and
+   * therefore the sequence of the day.
    */
   geolocatedPoints(albumId: string): { day: string; lat: number; lng: number }[] {
     return this.db
@@ -526,10 +517,9 @@ export class MediaRepo {
          has_thumbnail = excluded.has_thumbnail,
          video_codec = excluded.video_codec,
          seen_at = excluded.seen_at
-         -- added_at est délibérément absent de ce DO UPDATE : c'est la date
-         -- d'entrée dans l'index, elle ne bouge plus. La réécrire ferait
-         -- réapparaître comme nouvelle, à chaque synchronisation, une photo
-         -- indexée depuis des mois.`,
+         -- added_at is deliberately absent from this DO UPDATE: it is the index
+         -- insertion date and never changes. Rewriting it would make a photo indexed
+         -- for months appear new on every synchronisation.`,
     );
 
     const run = this.db.transaction((batch: MediaUpsert[]) => {
@@ -547,14 +537,13 @@ export class MediaRepo {
   }
 
   /**
-   * Supprime de l'index les médias que la sync n'a pas revus : ils ont été
-   * retirés du dossier Drive, déplacés, ou mis à la corbeille.
+   * Removes media the sync did not see again from the index: they were removed from
+   * the Drive folder, moved or put in the bin.
    *
-   * `media_notes` n'est **pas** touchée, ni ici ni par `clearAlbum` et
-   * `pruneAlbums` : la description est écrite à la main et rien ne la
-   * régénère, alors qu'une photo quitte l'index sur un simple contretemps
-   * d'indexation. Le seul ménage vient de la cascade sur `albums`, c'est-à-dire
-   * de la suppression de l'album lui-même (D83).
+   * `media_notes` is **not** touched here or by `clearAlbum` and `pruneAlbums`: the
+   * description is written manually and nothing regenerates it, while a photo may
+   * leave the index because of a temporary indexing issue. Cleanup only comes from
+   * the cascade on `albums`, meaning deletion of the album itself (D83).
    */
   deleteStale(albumId: string, seenAt: string): number {
     return this.db
@@ -562,12 +551,12 @@ export class MediaRepo {
       .run(albumId, seenAt).changes;
   }
 
-  /** Vide un album (changement de `folderId` dans la config, par exemple). */
+  /** Clears an album (after changing `folderId` in configuration, for example). */
   clearAlbum(albumId: string): number {
     return this.db.prepare('DELETE FROM media WHERE album_id = ?').run(albumId).changes;
   }
 
-  /** Retire les albums qui ne sont plus déclarés dans la config. */
+  /** Removes albums no longer declared in configuration. */
   pruneAlbums(knownIds: string[]): number {
     if (knownIds.length === 0) {
       const removed = this.db.prepare('DELETE FROM media').run().changes;
@@ -617,9 +606,9 @@ export class SyncStateRepo {
   }
 
   /**
-   * Date des dernières nouveautés annoncées, `null` tant qu'aucune annonce n'a
-   * eu lieu. `set()` ne la touche jamais : elle survit donc aux synchronisations
-   * comme aux erreurs, sans quoi un échec de sync ferait tout réannoncer.
+   * Date of the latest announced new items, `null` until an announcement has occurred.
+   * `set()` never touches it, so it survives synchronisations and errors; otherwise
+   * a sync failure would cause everything to be announced again.
    */
   notifiedAt(albumId: string): string | null {
     const row = this.db
@@ -633,7 +622,7 @@ export class SyncStateRepo {
   }
 }
 
-/** Assemble la vue album exposée par l'API à partir de la config et de l'index. */
+/** Assembles the API album view from configuration and the index. */
 export function buildAlbum(
   config: {
     id: string;

@@ -1,41 +1,38 @@
-# D48 — Le géocodage tourne en fond, et son cache est une cellule d'un kilomètre
+# D48 — Geocoding runs in the background, and its cache is a one-kilometre cell
 
-**Contexte.** Les photos portent leur position dans leur EXIF, déjà indexée
-(`media.lat/lng`). Personne n'en voyait rien : une grille datée ne dit ni ce
-qu'on a fait ni où. Transformer un couple de coordonnées en « Bonifacio,
-Corse » demande un service tiers.
+**Context.** Photos carry their position in their EXIF data, which is already
+indexed (`media.lat/lng`). Nobody could see it: a dated grid says neither what
+was done nor where. Turning a coordinate pair into "Bonifacio, Corse" requires
+a third-party service.
 
-**Choix.** Nominatim/OSM, appelé par un **passage de fond** branché sur le
-ménage horaire et sur le démarrage, avec un cache par **cellule** `lat,lng`
-arrondie à deux décimales (~1,1 km).
+**Choice.** Nominatim/OSM, called by a **background pass** connected to hourly
+housekeeping and startup, with a cache per **cell** of `lat,lng` rounded to two
+decimal places (~1.1 km).
 
-Le passage est coupé en deux moitiés qui n'ont pas les mêmes propriétés, et
-c'est là que se joue la décision. L'**agrégation** des positions en grappes est
-déterministe, instantanée et hors réseau ; le **géocodage** est lent, plafonné
-par la politique d'usage à une requête par seconde, et faillible. Les mélanger
-— écrire un libellé figé dans `album_days` — obligerait à choisir entre ne
-jamais recalculer les journées et rappeler Nominatim à chaque passage. Séparées
-(`album_days.cells` d'un côté, `geo_places` de l'autre), le recalcul est gratuit
-et les libellés s'allument tout seuls quand ils arrivent.
+The pass is split into two halves with different properties, and that is where
+the decision lies. **Aggregating** positions into clusters is deterministic,
+instantaneous, and offline; **geocoding** is slow, capped by the usage policy at
+one request per second, and fallible. Combining them — writing a frozen label to
+`album_days` — would force a choice between never recomputing days and calling
+Nominatim again on every pass. Kept separate (`album_days.cells` on one side,
+`geo_places` on the other), recomputation is free and labels appear on their own
+when they arrive.
 
-La cellule d'un kilomètre est la maille en deçà de laquelle deux photos portent
-de toute façon le même nom de lieu. Un cache par photo ferait mille appels pour
-une journée, un cache par journée n'en réutiliserait rien d'un séjour à l'autre.
-Il est partagé entre albums : deux séjours au même endroit ne comptent qu'un
-appel.
+A one-kilometre cell is the granularity below which two photos carry the same
+place name anyway. A per-photo cache would make a thousand calls for one day; a
+per-day cache would reuse nothing from one stay to another. It is shared across
+albums: two stays in the same place count as one call.
 
-**Écarté.** _Le géocodage au fil de la requête_ : `better-sqlite3` est
-synchrone et une grille demande des dizaines de journées ; à une requête par
-seconde, la page attendrait une minute. _Google Geocoding_ : une clé et une
-facturation de plus, là où rien d'autre dans cette application n'en demande —
-c'est précisément ce que le compte de service et Nominatim évitent.
-_Réessayer indéfiniment un lieu sans résultat_ : d'où la distinction entre
-« abouti sans résultat » (ligne écrite à `label = NULL`, plus jamais demandée)
-et « échec réseau » (aucune ligne, retenté au passage suivant).
+**Rejected.** _Geocoding during the request_: `better-sqlite3` is synchronous
+and a grid requests dozens of days; at one request per second, the page would wait
+a minute. _Google Geocoding_: another key and another bill, where nothing else in
+this application requires either — this is precisely what the service account
+and Nominatim avoid. _Retrying a place with no result indefinitely_: hence the
+distinction between "completed with no result" (a row written with `label = NULL`,
+never requested again) and "network failure" (no row, retried on the next pass).
 
-**Conséquences.** `GEOCODING_URL` peut être vidée : les journées gardent leurs
-grappes, sans libellé. Le premier passage sur une grosse bibliothèque s'étale
-sur plusieurs heures — 200 appels par passage horaire —, et l'interface doit
-donc tenir sans `autoPlaces`, ce qu'elle fait : un lieu absent ne laisse pas de
-trou, il ne s'affiche pas. Le `User-Agent` dérive de `PUBLIC_URL`, comme
-l'exige l'instance publique.
+**Consequences.** `GEOCODING_URL` can be left empty: days keep their clusters,
+without labels. The first pass over a large library takes several hours — 200
+calls per hourly pass — so the interface must work without `autoPlaces`, which it
+does: a missing place leaves no gap; it is simply not displayed. The `User-Agent`
+is derived from `PUBLIC_URL`, as required by the public instance.

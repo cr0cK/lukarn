@@ -8,15 +8,14 @@ const ETAPES = [
 ] as const;
 
 /**
- * Le mode d'emploi iOS, calqué sur `ShortcutsOverlay` — même surcouche, même
- * carte : inventer un second style de dialogue pour trois lignes n'aurait
- * apporté qu'une divergence à maintenir.
+ * iOS instructions modelled on `ShortcutsOverlay` — same overlay, same card:
+ * inventing another dialog style for three lines would only add divergence to
+ * maintain.
  *
- * Rendu dans `document.body`, et c'est indispensable : il s'ouvre depuis la
- * `TopBar`, dont l'en-tête porte un `backdrop-blur`. Un filtre fait de
- * l'élément le bloc conteneur de ses descendants `fixed` — l'`inset-0` de la
- * surcouche se rapporterait alors à la barre, haute d'une cinquantaine de
- * pixels, et le dialogue s'y trouverait centré puis rogné par le haut.
+ * Rendered in `document.body`, necessarily: it opens from `TopBar`, whose header
+ * has a `backdrop-blur`. A filter makes the element the containing block of its
+ * `fixed` descendants — the overlay's `inset-0` would then relate to the roughly
+ * fifty-pixel-high bar, centring the dialog there and clipping its top.
  */
 export function InstallInstructions({ onClose }: { onClose: () => void }): ReactElement {
   useEffect(() => {

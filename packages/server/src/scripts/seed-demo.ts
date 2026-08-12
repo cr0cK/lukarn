@@ -9,25 +9,24 @@ import { AlbumDayRepo, PlacesPass } from '../places.js';
 import { MediaRepo, SyncStateRepo, type MediaUpsert } from '../repo.js';
 
 /**
- * Jeu de données de démonstration, pour développer et vérifier l'interface
- * sans compte Google Drive.
+ * Demonstration dataset for developing and checking the interface without a Google
+ * Drive account.
  *
- *   pnpm --filter @nonni/server seed-demo [nombre]
+ *   pnpm --filter @nonni/server seed-demo [count]
  *
- * Insère des médias dans l'index **et** pré-remplit le cache avec des images
- * générées localement : le pipeline de rendu trouve tout en cache et ne
- * cherche jamais à joindre Drive.
+ * Inserts media into the index **and** pre-fills the cache with locally generated
+ * images: the rendering pipeline finds everything cached and never contacts Drive.
  *
- * À ne pas lancer sur une instance réelle — la prochaine synchronisation
- * supprimerait ces entrées, mais elles pollueraient les albums entre-temps.
+ * Do not run on a real instance — the next synchronisation would delete these entries,
+ * but they would pollute albums meanwhile.
  */
 
 const SHAPES = [
-  { width: 4032, height: 3024 }, // 4:3 paysage
+  { width: 4032, height: 3024 }, // 4:3 landscape
   { width: 3024, height: 4032 }, // 4:3 portrait
   { width: 5472, height: 3078 }, // 16:9
-  { width: 2048, height: 2048 }, // carré
-  { width: 6000, height: 2000 }, // panoramique
+  { width: 2048, height: 2048 }, // square
+  { width: 6000, height: 2000 }, // panoramic
 ];
 
 const CAMERAS = [
@@ -38,17 +37,16 @@ const CAMERAS = [
 ];
 
 /**
- * Deux lieux distants d'une vingtaine de kilomètres, donc au-delà du rayon
- * d'agglomération : une journée qui porte les deux produit deux grappes, ce qui
- * est le cas intéressant à regarder. Les libellés sont posés directement dans
- * `geo_places`, pour que la démo montre des noms de lieu sans appeler Nominatim.
+ * Two places around twenty kilometres apart, beyond the clustering radius: a day
+ * carrying both produces two clusters, the interesting case to inspect. Labels are
+ * written directly to `geo_places` so the demo shows names without calling Nominatim.
  */
 const DEMO_PLACES = [
   { lat: 41.3878, lng: 9.1597, label: 'Bonifacio, Corse-du-Sud' },
   { lat: 41.5911, lng: 9.2795, label: 'Porto-Vecchio, Corse-du-Sud' },
 ];
 
-/** Teinte dérivée de l'index : la grille reste lisible et reproductible. */
+/** Hue derived from the index so the grid remains readable and reproducible. */
 function colorFor(index: number): { r: number; g: number; b: number } {
   const hue = (index * 47) % 360;
   const c = 0.55;
@@ -87,9 +85,9 @@ async function renderPlaceholder(
   const label = `#${index + 1}`;
   const fontSize = Math.round(Math.min(outWidth, outHeight) * 0.22);
 
-  // Mire fine : à la taille d'écran ces traits se confondent, au zoom ils se
-  // séparent. C'est ce qui permet de vérifier que la variante haute résolution
-  // apporte réellement du détail, au lieu d'agrandir des pixels existants.
+  // Fine test pattern: at screen size these lines merge, while zoom separates them.
+  // This verifies that the high-resolution variant adds detail rather than enlarging
+  // existing pixels.
   const step = Math.max(4, Math.round(Math.max(outWidth, outHeight) / 160));
   const gridStroke = Math.max(0.5, step / 24);
 
@@ -120,20 +118,20 @@ async function renderPlaceholder(
   return sharp(Buffer.from(svg)).webp({ quality: 80 }).toBuffer();
 }
 
-/** Position d'une photo de démonstration : deux sur trois n'en ont pas. */
+/** Position of a demo photo: two out of three have none. */
 function position(index: number): { lat: number | null; lng: number | null } {
   if (index % 3 !== 0) return { lat: null, lng: null };
   const place = DEMO_PLACES[(index / 3) % DEMO_PLACES.length]!;
-  // Une dispersion de quelques centaines de mètres autour du lieu : de quoi
-  // faire travailler l'agglomération sans franchir son rayon.
+  // A spread of a few hundred metres around the place exercises clustering without
+  // crossing its radius.
   const jitter = ((index % 7) - 3) * 0.004;
   return { lat: place.lat + jitter, lng: place.lng + jitter };
 }
 
 /**
- * Nomme les cellules produites par le passage des lieux, en les rattachant au
- * lieu de démonstration le plus proche. Sans ça, la démo n'aurait de libellés
- * qu'après un appel réseau à Nominatim, plafonné à une requête par seconde.
+ * Names cells produced by the places pass by associating them with the nearest demo
+ * place. Otherwise the demo would gain labels only after network calls to Nominatim,
+ * capped at one per second.
  */
 function labelDemoCells(db: ReturnType<typeof openDb>): number {
   const cells = (
@@ -177,8 +175,8 @@ async function main(): Promise<void> {
   const cache = new MediaCache(env.cacheDir, config.settings().cacheMaxSizeGB * 1024 ** 3);
   await cache.load();
 
-  // Les albums viennent de la base, seule source de vérité depuis que la
-  // configuration s'administre depuis l'application.
+  // Albums come from the database, the sole source of truth since configuration moved
+  // into the application.
   const albums = config.albums();
   if (albums.length === 0) {
     throw new Error(
@@ -192,8 +190,7 @@ async function main(): Promise<void> {
 
   for (const [albumIndex, album] of albums.entries()) {
     const items: MediaUpsert[] = [];
-    // Chaque album couvre une période distincte, pour que le regroupement par
-    // mois de la grille soit visible.
+    // Each album covers a distinct period so monthly grid grouping is visible.
     const baseMonth = albumIndex * 5;
 
     for (let index = 0; index < count; index++) {
@@ -201,11 +198,11 @@ async function main(): Promise<void> {
       const camera = CAMERAS[index % CAMERAS.length]!;
       const id = `demo-${album.id}-${String(index).padStart(4, '0')}`;
 
-      // Réparti sur environ six mois, du plus récent au plus ancien.
+      // Spread over around six months, newest to oldest.
       const daysAgo = baseMonth * 30 + Math.floor((index / count) * 180);
       const takenAt = new Date(Date.now() - daysAgo * 24 * 3600 * 1000).toISOString();
 
-      // Une vidéo tous les 25 médias, pour vérifier le rendu des tuiles vidéo.
+      // One video per 25 media items to check video-tile rendering.
       const isVideo = index % 25 === 24;
 
       items.push({
@@ -228,28 +225,25 @@ async function main(): Promise<void> {
         exposureTime: isVideo ? null : [1 / 60, 1 / 125, 1 / 250, 1 / 500][index % 4]!,
         aperture: isVideo ? null : [1.8, 2.8, 4, 5.6][index % 4]!,
         focalLength: isVideo ? null : [24, 35, 50, 85][index % 4]!,
-        // Une photo sur trois est géolocalisée, alternativement sur l'un des
-        // deux lieux : les journées qui en portent deux montrent l'ordre
-        // chronologique des grappes dans leur en-tête.
+        // One photo in three is geolocated, alternating between the two places: days
+        // carrying both show chronological cluster order in their heading.
         ...position(index),
         md5: null,
-        // Les vidéos de démonstration ont un aperçu, comme celles d'un vrai
-        // Drive : sans lui, la grille montrerait une tuile sobre et le chemin
-        // du poster ne serait pas vérifiable hors compte Google.
+        // Demo videos have a preview like those in a real Drive; without it the grid
+        // would show a plain tile and the poster path could not be checked offline.
         hasThumbnail: true,
         videoCodec: null,
       });
 
-      // Pré-remplit toutes les variantes que l'interface peut demander.
-      // Les clés doivent suivre exactement `variantKey()` du renderer,
-      // sinon le serveur ne trouvera rien et ira interroger Drive.
+      // Pre-fills every variant the interface may request. Keys must exactly follow
+      // renderer `variantKey()`, otherwise the server misses them and queries Drive.
       const variantes: [string, number][] = [
         [`${id}:t320`, 320],
         [`${id}:t640`, 640],
         [`${id}:t1280`, 1280],
       ];
-      // Ni `full` ni `hd` sur une vidéo : la route les refuse en 415, l'aperçu
-      // d'une vidéo n'étant qu'une vignette.
+      // Neither `full` nor `hd` for video: the route rejects them with 415 because a
+      // video preview is only a thumbnail.
       if (!isVideo) {
         variantes.push([`${id}:full`, 2560], [`${id}:hd`, 4096]);
       }
@@ -267,8 +261,8 @@ async function main(): Promise<void> {
     console.log(`Album "${album.id}": ${items.length} demo media`);
   }
 
-  // Les journées, comme le serveur les calculerait — mais sans géocodeur : les
-  // libellés sont posés juste après, pour ne pas dépendre du réseau.
+  // Days as the server would calculate them, but without a geocoder: labels are written
+  // immediately afterwards to avoid a network dependency.
   const days = new AlbumDayRepo(db);
   await new PlacesPass({
     albums: () => albums,
@@ -279,8 +273,8 @@ async function main(): Promise<void> {
   }).run();
   const named = labelDemoCells(db);
 
-  // Deux notes, sur les deux journées les plus récentes du premier album : de
-  // quoi voir la hauteur d'en-tête varier, et le crayon d'édition.
+  // Two notes on the first album's two latest days expose varying heading height and
+  // the editing pencil.
   const firstAlbum = albums[0]!;
   const recent = (
     db
@@ -296,10 +290,9 @@ async function main(): Promise<void> {
     days.upsertNote(firstAlbum.id, day, { description: notes[index]! }),
   );
 
-  // Trois photos décrites, sur les plus récentes du premier album : sans elles,
-  // le bandeau de légende de la visionneuse ne se voit pas hors compte Drive.
-  // La troisième est longue exprès — c'est le cas qui montre le clampage et le
-  // dépliement au clic.
+  // Three described photos among the first album's latest make the viewer caption
+  // visible without Drive. The third is deliberately long to show clamping and
+  // click-to-expand behaviour.
   const captions = [
     'Léa jumping off the pier, third try — the only one where she doesn’t hold her nose.',
     'The seven o’clock light on the cliffs, ten minutes before it goes.',
@@ -328,8 +321,8 @@ async function main(): Promise<void> {
       `Cache: ${cache.stats().entryCount} entries.`,
   );
   console.log('Look at an album set to "by day": places and notes only show up there.');
-  // Le serveur inventorie le cache au démarrage : sans redémarrage, il ne verra
-  // pas les fichiers écrits ici et tentera d'aller les chercher sur Drive.
+  // The server inventories the cache at startup; without a restart it will not see
+  // files written here and will try to fetch them from Drive.
   console.log('Restart the server so it picks up the generated cache.');
 }
 

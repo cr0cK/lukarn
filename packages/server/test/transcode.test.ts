@@ -17,13 +17,13 @@ import {
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
 /**
- * Préparation des vidéos illisibles.
+ * Preparing unplayable videos.
  *
- * **ffmpeg n'est jamais appelé ici** : la CI n'a pas à en dépendre, et un test
- * qui encode dure plus longtemps que tous les autres réunis. Le lanceur est une
- * couture prévue pour ça. Ce qui est vérifié, c'est la discipline du passage —
- * ne prendre que ce qui est illisible, une vidéo à la fois, s'arrêter quand on
- * le lui demande — et la ligne de commande, qui est pure.
+ * **ffmpeg is never called here**: CI need not depend on it, and an encoding
+ * test takes longer than all the others combined. The runner is a seam designed
+ * for this. What is verified is the discipline of the run — taking only what
+ * is unplayable, one video at a time, and stopping when asked — plus the pure
+ * command line construction.
  */
 
 const dir = mkdtempSync(join(tmpdir(), 'nonni-transcode-'));
@@ -75,11 +75,11 @@ function photo(albumId: string, id: string, jour: number): MediaUpsert {
 }
 
 interface FauxTranscodeur extends Transcoder {
-  /** Identifiants réellement transcodés, dans l'ordre. */
+  /** Identifiers actually transcoded, in order. */
   faits: string[];
-  /** Durées reçues, dans le même ordre : le plafond de débit en dépend. */
+  /** Received durations in the same order, because the bitrate cap depends on them. */
   durees: (number | null)[];
-  /** Nombre de transcodages en cours à cet instant : jamais plus d'un. */
+  /** Number of transcodes currently running: never more than one. */
   simultanes: number;
   maxSimultanes: number;
 }
@@ -96,11 +96,11 @@ function fauxTranscodeur(
       faux.durees.push(durationMs);
       faux.simultanes++;
       faux.maxSimultanes = Math.max(faux.maxSimultanes, faux.simultanes);
-      // Un tour de boucle d'événements : deux passages concurrents se
-      // chevaucheraient ici, ce que le compteur ci-dessus constaterait.
+      // One event-loop turn: two concurrent runs would overlap here, which the
+      // counter above would detect.
       await Promise.resolve();
       faux.simultanes--;
-      if (options.echoue?.has(fileId)) throw new Error('ffmpeg a rendu 1');
+      if (options.echoue?.has(fileId)) throw new Error('ffmpeg exited with 1');
       faux.faits.push(fileId);
       await options.store?.put(playableKey(fileId, md5), Buffer.alloc(16, 7));
     },
@@ -124,108 +124,107 @@ function deps(
   };
 }
 
-describe('ligne de commande ffmpeg', () => {
+describe('ffmpeg command line', () => {
   const args = ffmpegArgs({ source: '/tmp/a.mov', cible: '/tmp/b.mp4' });
 
-  it('place le `moov` en tête du fichier produit', () => {
-    // Sans `+faststart`, le navigateur ne peut ni démarrer avant la fin du
-    // téléchargement ni chercher dans le film : la vidéo « marche » en local et
-    // devient inutilisable dès qu'elle transite par le réseau.
+  it('places `moov` at the start of the output file', () => {
+    // Without `+faststart`, the browser can neither start before the download
+    // finishes nor seek through the film: the video "works" locally but becomes
+    // unusable as soon as it travels over the network.
     assert.ok(args.includes('+faststart'));
     assert.equal(args[args.indexOf('+faststart') - 1], '-movflags');
   });
 
-  it('encode en H.264 8 bits, au débit constant visé', () => {
+  it('encodes as 8-bit H.264 at the target constant rate', () => {
     assert.equal(args[args.indexOf('-c:v') + 1], 'libx264');
     assert.equal(args[args.indexOf('-crf') + 1], '23');
-    // Un HEVC de téléphone est souvent en 10 bits, que le profil H.264 des
-    // navigateurs ne couvre pas : sans conversion, on produirait un fichier tout
-    // aussi illisible que l'original.
+    // Phone HEVC is often 10-bit, which the browser H.264 profile does not
+    // support: without conversion, the output would be just as unplayable as
+    // the original.
     assert.equal(args[args.indexOf('-pix_fmt') + 1], 'yuv420p');
   });
 
-  it('n’occupe qu’un seul fil', () => {
-    // C'est la contrepartie assumée de la lenteur : le serveur doit rester servi
-    // pendant les minutes que dure un encodage.
+  it('uses only one thread', () => {
+    // This is the accepted cost of slowness: the server must remain responsive
+    // during the minutes an encoding takes.
     assert.equal(args[args.indexOf('-threads') + 1], '1');
   });
 
-  it('dit le conteneur au lieu de le laisser deviner', () => {
-    // La sortie s'appelle `*.sortie.tmp` le temps de l'encodage, et ffmpeg
-    // déduit son muxeur de l'extension : sans `-f mp4`, il s'arrête sur
-    // « Error opening output files: Invalid argument » et le magasin reste vide
-    // sans que rien d'autre ne le signale.
+  it('specifies the container instead of leaving it to inference', () => {
+    // The output is named `*.sortie.tmp` while encoding, and ffmpeg infers its
+    // muxer from the extension: without `-f mp4`, it stops with "Error opening
+    // output files: Invalid argument" and the store remains empty without any
+    // other indication.
     assert.equal(args[args.indexOf('-f') + 1], 'mp4');
     assert.ok(
       args.indexOf('-f') > args.indexOf('-i'),
-      'après l’entrée : c’est le format de sortie',
+      'after the input: this is the output format',
     );
   });
 
-  it('accepte une vidéo muette', () => {
-    // `0:a?` et non `0:a` : sans le point d'interrogation, ffmpeg échoue sur une
-    // vidéo sans piste son, qui est le cas de toute vidéo prise en mode silence.
+  it('accepts a silent video', () => {
+    // `0:a?` rather than `0:a`: without the question mark, ffmpeg fails on a
+    // video without an audio track, as with every video recorded in silent mode.
     assert.ok(args.includes('0:a?'));
     assert.equal(args.at(-1), '/tmp/b.mp4');
   });
 
-  it('ne borne pas le débit quand aucun plafond n’est connu', () => {
-    // CRF seul, comme avant : c'est le cas d'une vidéo dont l'index n'a pas la
-    // durée, et il vaut mieux un dérivé lourd qu'un dérivé bridé au hasard.
+  it('does not cap the bitrate when no limit is known', () => {
+    // CRF alone, as before: this covers a video whose duration is absent from
+    // the index, and a large derivative is better than one capped arbitrarily.
     assert.equal(args.includes('-maxrate'), false);
     assert.equal(args.includes('-bufsize'), false);
   });
 
-  it('borne le débit sans lâcher le CRF quand un plafond est connu', () => {
+  it('caps the bitrate without dropping CRF when a limit is known', () => {
     const bornes = ffmpegArgs({ source: '/tmp/a.mov', cible: '/tmp/b.mp4', plafondKbps: 4000 });
 
-    // Les deux ensemble : x264 vise la qualité et n'écrête que si elle coûte
-    // plus que le plafond. Le CRF seul est un débit variable sans borne haute,
-    // c'est-à-dire exactement ce qui produisait un dérivé plus lourd que sa
-    // source (D260809g).
+    // Together, x264 targets quality and clips only when it exceeds the cap.
+    // CRF alone has a variable bitrate with no upper limit, which is exactly
+    // what produced a derivative larger than its source (D260809g).
     assert.equal(bornes[bornes.indexOf('-crf') + 1], '23');
     assert.equal(bornes[bornes.indexOf('-maxrate') + 1], '4000k');
-    // Deux secondes de débit : plus court, on écrête des scènes chargées sans
-    // nécessité ; plus long, le fichier dépasse sur sa durée totale.
+    // Two seconds of bitrate: shorter needlessly clips complex scenes, while
+    // longer lets the file exceed the limit over its full duration.
     assert.equal(bornes[bornes.indexOf('-bufsize') + 1], '8000k');
   });
 });
 
-describe('plafond de débit', () => {
-  it('tient sous la source une fois le débordement de x264 payé', () => {
-    // 50 Mo pour 20 s, le cas mesuré en production qui produisait 66,8 Mo :
-    // 20 000 kbit/s de source, moins 5 % de conteneur, divisés par les 15 % que
-    // `-maxrate` déborde, moins les 128 du son.
+describe('bitrate cap', () => {
+  it('stays below the source after allowing for x264 overshoot', () => {
+    // 50 MB for 20 s, the production case measured at 66.8 MB: 20,000 kbit/s
+    // from the source, minus 5% container overhead, divided by the 15%
+    // `-maxrate` overshoot, minus 128 for audio.
     const plafond = plafondDebit(50_000_000, 20_000);
     assert.equal(plafond, 16_393);
 
-    // C'est la promesse entière du plafond, et elle doit se vérifier sur le pire
-    // cas et non sur le nominal : le dérivé pèse moins que sa source **même**
-    // quand x264 déborde de 15 % et que le son prend ses 128 kbit/s. Une marge
-    // qui ne compterait que le conteneur laisserait passer 52,3 Mo pour 50, ce
-    // qui est exactement le défaut qu'on corrige.
+    // This is the cap's entire promise, and it must hold in the worst case, not
+    // only nominally: the derivative is smaller than its source **even** when
+    // x264 overshoots by 15% and audio takes 128 kbit/s. A margin accounting
+    // only for the container would allow 52.3 MB for a 50 MB source, exactly
+    // the defect being corrected.
     const pireCas = ((plafond! + 128) * 1.15 * 20_000) / 8;
-    assert.ok(pireCas < 50_000_000, `${pireCas} octets doit rester sous la source`);
+    assert.ok(pireCas < 50_000_000, `${pireCas} bytes must remain below the source`);
   });
 
-  it('renonce plutôt que de rendre une vidéo inregardable', () => {
-    // Une source déjà très légère donnerait un plafond sous lequel un 1080p
-    // n'est plus regardable — or c'est la lisibilité qu'on cherche, le poids
-    // n'est qu'un effet secondaire (D260809g).
+  it('gives up rather than making a video unwatchable', () => {
+    // An already lightweight source would produce a cap below which 1080p is no
+    // longer watchable — playability is the goal and size is only a side effect
+    // (D260809g).
     assert.equal(plafondDebit(500_000, 20_000), null);
   });
 
-  it('renonce quand la durée manque ou est absurde', () => {
-    // Diviser par une durée nulle donnerait `Infinity`, et une durée absente
-    // est le cas d'une vidéo que l'index n'a pas encore sondée.
+  it('gives up when duration is missing or nonsensical', () => {
+    // Dividing by zero duration would produce `Infinity`, while a missing
+    // duration means the index has not probed the video yet.
     assert.equal(plafondDebit(50_000_000, null), null);
     assert.equal(plafondDebit(50_000_000, 0), null);
     assert.equal(plafondDebit(0, 20_000), null);
   });
 });
 
-describe('passage de transcodage', () => {
-  it('ne prend que les codecs illisibles, du plus récent au plus ancien', async () => {
+describe('transcoding pass', () => {
+  it('takes only unplayable codecs from newest to oldest', async () => {
     media.upsertMany(
       [
         photo('tri', 'image', 4),
@@ -239,16 +238,16 @@ describe('passage de transcodage', () => {
 
     const resultat = await new TranscodePass(deps('tri', faux)).run();
 
-    // L'`avc1` que tout le monde lit déjà ne doit jamais être transcodé : ce
-    // serait des minutes de processeur dépensées à dégrader l'image.
+    // The `avc1` that everyone can already play must never be transcoded: that
+    // would spend minutes of CPU time degrading the image.
     assert.deepEqual(faux.faits, ['recente', 'ancienne']);
     assert.equal(resultat.transcoded, 2);
-    // La durée est transmise au producteur : sans elle il ne peut pas borner le
-    // débit, et le dérivé redeviendrait parfois plus lourd que sa source.
+    // Duration is passed to the producer: without it, the bitrate cannot be
+    // capped and the derivative would sometimes become larger than its source.
     assert.deepEqual(faux.durees, [60_000, 60_000]);
   });
 
-  it('saute une vidéo déjà au magasin', async () => {
+  it('skips a video already in the store', async () => {
     media.upsertMany(
       [video('deja', 'faite', 2, 'hvc1'), video('deja', 'afaire', 1, 'hvc1')],
       '2026-07-02T12:00:00.000Z',
@@ -263,10 +262,10 @@ describe('passage de transcodage', () => {
     assert.equal(resultat.skipped, 1);
   });
 
-  it('refait la vidéo dont le contenu a changé', async () => {
-    // La clé porte l'empreinte du contenu : Drive garde l'identifiant d'un
-    // fichier remplacé par une nouvelle version, et sans elle on relirait
-    // éternellement l'ancien film à travers le nouveau.
+  it('rebuilds a video whose content has changed', async () => {
+    // The key carries the content fingerprint: Drive retains the identifier of
+    // a file replaced with a new version, and without it the old film would be
+    // read forever through the new one.
     media.upsertMany([video('version', 'clip', 1, 'hvc1')], '2026-07-01T12:00:00.000Z');
     const store = new MediaCache(join(dir, 'magasin-version'), 10_000_000, silencieux);
     await store.put(playableKey('clip', 'empreinte-dhier'), Buffer.alloc(16, 1));
@@ -277,7 +276,7 @@ describe('passage de transcodage', () => {
     assert.deepEqual(faux.faits, ['clip']);
   });
 
-  it('n’en transcode qu’une à la fois, même sur deux passages', async () => {
+  it('transcodes only one at a time even across two runs', async () => {
     media.upsertMany(
       [video('double', 'd1', 2, 'hvc1'), video('double', 'd2', 1, 'hvc1')],
       '2026-07-02T12:00:00.000Z',
@@ -285,15 +284,15 @@ describe('passage de transcodage', () => {
     const faux = fauxTranscodeur();
     const passage = new TranscodePass(deps('double', faux));
 
-    // Deux passages concurrents, c'est deux ffmpeg : exactement ce qu'« une
-    // seule tâche à la fois » cherche à éviter sur un petit serveur.
+    // Two concurrent runs mean two ffmpeg processes, exactly what "one task at
+    // a time" is meant to prevent on a small server.
     await Promise.all([passage.run(), passage.run()]);
 
     assert.equal(faux.maxSimultanes, 1);
     assert.deepEqual(faux.faits, ['d1', 'd2']);
   });
 
-  it('ne fait rien quand le réglage est décoché', async () => {
+  it('does nothing when the setting is disabled', async () => {
     media.upsertMany([video('coupe', 'c1', 1, 'hvc1')], '2026-07-01T12:00:00.000Z');
     const faux = fauxTranscodeur();
 
@@ -303,7 +302,7 @@ describe('passage de transcodage', () => {
     assert.equal(resultat.transcoded, 0);
   });
 
-  it('s’arrête en cours de route si le réglage est décoché', async () => {
+  it('stops midway if the setting is disabled', async () => {
     media.upsertMany(
       [
         video('bascule', 'b1', 3, 'hvc1'),
@@ -314,25 +313,23 @@ describe('passage de transcodage', () => {
     );
     const faux = fauxTranscodeur();
 
-    // Décocher pendant un passage doit l'arrêter, pas seulement empêcher le
-    // suivant : on décoche précisément parce qu'on constate que ça pénalise le
-    // serveur.
+    // Disabling during a run must stop it, not merely prevent the next one: the
+    // setting is disabled precisely because the server is being affected.
     let restant = 2;
     const resultat = await new TranscodePass(
       deps('bascule', faux, { enabled: () => restant-- > 0 }),
     ).run();
 
     assert.deepEqual(faux.faits, ['b1']);
-    assert.equal(resultat.stopped, 'arret');
+    assert.equal(resultat.stopped, 'stopped');
   });
 
-  it('s’arrête quand le magasin atteint son budget', async () => {
+  it('stops when the store reaches its budget', async () => {
     media.upsertMany([video('budget', 'p1', 1, 'hvc1')], '2026-07-01T12:00:00.000Z');
     const faux = fauxTranscodeur();
 
-    // À la limite, chaque nouvelle vidéo évincerait la plus ancienne : le
-    // passage suivant referait en dix minutes de processeur ce que celui-ci
-    // vient de jeter.
+    // At the limit, every new video would evict the oldest: the next run would
+    // spend ten minutes of CPU recreating what this one just discarded.
     const plein = {
       stats: () => ({ entryCount: 0, bytes: 9_500_000, maxBytes: 10_000_000 }),
       has: () => false,
@@ -344,7 +341,7 @@ describe('passage de transcodage', () => {
     assert.equal(resultat.stopped, 'budget');
   });
 
-  it('poursuit après une vidéo que ffmpeg refuse', async () => {
+  it('continues after a video ffmpeg rejects', async () => {
     media.upsertMany(
       [
         video('casse', 'bonne1', 3, 'hvc1'),
@@ -362,8 +359,8 @@ describe('passage de transcodage', () => {
   });
 });
 
-describe('production d’un dérivé', () => {
-  /** Drive bouchonné : le corps de la réponse est le « fichier » téléchargé. */
+describe('derivative production', () => {
+  /** Stubbed Drive: the response body is the downloaded "file". */
   function drive(contenu: string): { fetchFile: unknown; guard: unknown } {
     return {
       fetchFile: () => Promise.resolve(new Response(contenu)),
@@ -371,7 +368,7 @@ describe('production d’un dérivé', () => {
     };
   }
 
-  it('range la sortie dans le magasin et efface ses temporaires', async () => {
+  it('stores the output and removes its temporary files', async () => {
     const root = join(dir, 'production');
     const store = new MediaCache(root, 10_000_000, silencieux);
     await store.load();
@@ -380,8 +377,8 @@ describe('production d’un dérivé', () => {
       drive: drive('des octets de film') as never,
       store,
       root,
-      // Le lanceur écrit la cible à la place de ffmpeg : c'est exactement ce que
-      // fait le vrai, en dix minutes de plus.
+      // The runner writes the target in place of ffmpeg, exactly what the real
+      // one does with an additional ten minutes.
       run: (args) => {
         writeFileSync(args.at(-1)!, Buffer.alloc(512, 3));
         return Promise.resolve();
@@ -391,7 +388,7 @@ describe('production d’un dérivé', () => {
     await transcodeur.transcode('clip', 'empreinte', 60_000, AbortSignal.timeout(5_000));
 
     const range = store.hit(playableKey('clip', 'empreinte'));
-    assert.ok(range, 'la version lisible doit être au magasin');
+    assert.ok(range, 'the playable version must be in the store');
     assert.equal(store.stats().bytes, 512);
     assert.deepEqual(
       readdirSync(root).filter((nom) => nom.endsWith('.tmp')),
@@ -399,7 +396,7 @@ describe('production d’un dérivé', () => {
     );
   });
 
-  it('efface ses temporaires même quand ffmpeg échoue', async () => {
+  it('removes its temporary files even when ffmpeg fails', async () => {
     const root = join(dir, 'echec');
     const store = new MediaCache(root, 10_000_000, silencieux);
     await store.load();
@@ -408,15 +405,15 @@ describe('production d’un dérivé', () => {
       drive: drive('des octets de film') as never,
       store,
       root,
-      run: () => Promise.reject(new Error('ffmpeg a rendu 1')),
+      run: () => Promise.reject(new Error('ffmpeg exited with 1')),
     });
 
     await assert.rejects(() =>
       transcodeur.transcode('casse', null, 60_000, AbortSignal.timeout(5_000)),
     );
 
-    // Un original de 150 Mo laissé derrière chaque tentative ratée remplirait
-    // le disque sans que l'inventaire du magasin en sache rien.
+    // A 150 MB original left behind after every failed attempt would fill the
+    // disk without the store inventory knowing anything about it.
     assert.deepEqual(
       readdirSync(root).filter((nom) => nom.endsWith('.tmp')),
       [],
@@ -424,15 +421,15 @@ describe('production d’un dérivé', () => {
     assert.equal(store.hit(playableKey('casse', null)), null);
   });
 
-  it('efface au démarrage un temporaire laissé par un arrêt brutal', async () => {
+  it('removes on start-up a temporary file left by an abrupt stop', async () => {
     const root = join(dir, 'orphelin');
     const orphelin = join(root, '1234-1.source.tmp');
     const premier = new MediaCache(root, 10_000_000, silencieux);
     await premier.load();
     writeFileSync(orphelin, Buffer.alloc(4096, 9));
 
-    // C'est l'inventaire du magasin qui fait ce ménage — le transcodage écrit
-    // ses temporaires sous sa racine exactement pour ça.
+    // The store inventory performs this clean-up — transcoding writes temporary
+    // files under its root specifically for this reason.
     const second = new MediaCache(root, 10_000_000, silencieux);
     await second.load();
 

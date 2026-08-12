@@ -1,26 +1,26 @@
-# D19 — Trois variantes d'image, chacune pour un usage
+# D19 — Three image variants, each for one use
 
-| Variante | Côté max         | Qualité WebP | Usage                        |
-| -------- | ---------------- | ------------ | ---------------------------- |
-| `thumb`  | 320 / 640 / 1280 | 78           | Grille, couvertures d'albums |
-| `full`   | 2560             | 82           | Visionneuse plein écran      |
-| `hd`     | 4096             | 88           | Zoom                         |
+| Variant | Maximum side     | WebP quality | Use                |
+| ------- | ---------------- | ------------ | ------------------ |
+| `thumb` | 320 / 640 / 1280 | 78           | Grid, album covers |
+| `full`  | 2560             | 82           | Full-screen viewer |
+| `hd`    | 4096             | 88           | Zoom               |
 
-**Contexte.** `full` à 2560 px remplit un écran mais ne permet pas d'examiner une
-photo à sa résolution native ; servir l'original de 9 Mo pour zoomer est
-disproportionné.
+**Context.** `full` at 2560 px fills a screen but does not allow a photo to be
+examined at its native resolution; serving the 9 MB original for zooming is
+disproportionate.
 
-**Choix.** Une variante `hd` plafonnée à 4096 px, qualité plus généreuse, pesant
-quelques centaines de kilo-octets. `withoutEnlargement` empêche d'inventer des
-pixels : une photo de 3000 px reste à 3000 px.
+**Decision.** An `hd` variant capped at 4096 px, with more generous quality and a
+size of a few hundred kilobytes. `withoutEnlargement` prevents pixels from being
+invented: a 3000 px photo remains at 3000 px.
 
-**Écarté.** Servir `/original` au zoom : plusieurs mégaoctets par photo, décodés
-par le navigateur, sans passer par le cache disque. Écarté aussi : `effort`
-WebP plus élevé, qui coûte des centaines de millisecondes par image à la première
-ouverture pour quelques pourcents de poids — d'où `effort: 4`.
+**Rejected.** Serving `/original` when zooming: several megabytes per photo,
+decoded by the browser, without going through the disk cache. Also rejected: a
+higher WebP `effort`, which costs hundreds of milliseconds per image when first
+opened for a few percent reduction in size — hence `effort: 4`.
 
-**Conséquences.** L'`ETag` doit distinguer les variantes (`"<id>-full"` vs
-`"<id>-hd"`), sans quoi elles partageraient la même entrée de cache navigateur et
-le zoom resservirait l'image basse résolution. Côté front, `hd` n'est demandée
-qu'au premier agrandissement et chargée hors écran avant d'être substituée
-(`components/ZoomableImage.tsx`, voir [07](../07-frontend.md)).
+**Consequences.** The `ETag` must distinguish the variants (`"<id>-full"` vs
+`"<id>-hd"`), otherwise they would share the same browser cache entry and zoom
+would serve the low-resolution image again. On the frontend, `hd` is requested
+only on the first zoom and loaded off-screen before being substituted
+(`components/ZoomableImage.tsx`, see [07](../07-frontend.md)).

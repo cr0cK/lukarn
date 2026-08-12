@@ -1,69 +1,68 @@
-# D260809 — Une décision se numérote par sa date, et vit dans son propre fichier
+# D260809 — A decision is numbered by its date and lives in its own file
 
-**Contexte.** Le journal des décisions était un fichier unique de près de quatre
-mille lignes, dont chaque entrée s'ajoutait à la fin en prenant le rang suivant.
-Deux branches parallèles s'y heurtaient deux fois, et le travail se mène en
-worktrees, donc plusieurs branches vivent en permanence :
+**Context.** The decision log was a single file nearly four thousand lines long,
+with each new entry appended using the next sequential number. Two parallel
+branches collided in it in two ways, and work is done in worktrees, so several
+branches are permanently active:
 
-- **le même identifiant**, parce qu'une branche ne peut connaître que le dernier
-  rang de `main` — deux branches ouvertes le même jour choisissent le même ;
-- **le même point d'insertion**, en fin de fichier. Celui-là est le plus coûteux,
-  parce qu'il tombe **même quand les identifiants diffèrent** : git voit deux
-  ajouts à la même ligne et rend la main. La résolution porte alors sur quatre-
-  vingt-dix lignes de prose, à un moment — la fusion — où l'on pensait avoir fini.
+- **the same identifier**, because a branch can only know the last number on
+  `main` — two branches opened on the same day choose the same one;
+- **the same insertion point**, at the end of the file. This is the costlier one,
+  because it occurs **even when the identifiers differ**: git sees two additions
+  at the same line and hands control back. The resolution then involves ninety
+  lines of prose, at a point — the merge — when the work was thought to be done.
 
-Un contrôle avait déjà été posé sur la collision d'identifiant (D75). Il la
-signale, il ne l'évite pas, et il ne dit rien du second défaut.
+A check for identifier collisions had already been introduced (D75). It reports
+them, but does not prevent them, and says nothing about the second flaw.
 
-**Choix.** L'identifiant d'une décision est **la date où elle est prise**, au
-format `D<AAMMJJ>` — `D260809` pour celle-ci — suivie d'un `b`, puis d'un `c`,
-si le jour en porte déjà une. Une décision est **un fichier**,
-`specs/08-decisions/D<AAMMJJ>-<slug>.md`.
+**Decision.** A decision's identifier is **the date on which it is made**, in
+`D<YYMMDD>` format — `D260809` for this one — followed by `b`, then `c`, if the
+day already has one. A decision is **one file**,
+`specs/08-decisions/D<YYMMDD>-<slug>.md`.
 
-Une date se connaît sans regarder les autres branches, ce qu'un rang ne permet
-pas. Un fichier par décision fait disparaître le point d'insertion commun : deux
-branches créent deux fichiers, et la fusion n'a rien à arbitrer.
+A date can be known without looking at other branches, which a sequential number
+does not allow. One file per decision removes the shared insertion point: two
+branches create two files, and there is nothing for the merge to arbitrate.
 
-Le journal séquentiel, lui, garde D1 à D99 et n'accepte plus d'entrée : le
-découper aurait mis en conflit les deux branches ouvertes au moment de ce choix.
-Il l'a été dès qu'elles ont été fusionnées, et le répertoire porte depuis le
-numéro du document ([D260809d](./D260809d-le-journal-devient-un-repertoire.md)).
+The sequential log keeps D1 to D99 and accepts no new entry: splitting it would
+have conflicted with the two branches open when this decision was made. It was
+split as soon as they had been merged, and the directory has since carried the
+document number ([D260809d](./D260809d-le-journal-devient-un-repertoire.md)).
 
-`check:specs` contrôle que l'identifiant respecte le format, que le nom du
-fichier reprend le titre, qu'aucun identifiant n'est pris deux fois, et que
-chaque renvoi `(Dxx)` — dans les specs comme dans le code — mène à une décision
-qui existe.
+`check:specs` checks that the identifier follows the format, that the filename
+reflects the title, that no identifier is used twice, and that every reference
+`(Dxx)` — in the specs as well as the code — leads to an existing decision.
 
-**Écarté.** _Renuméroter à la fusion_, une branche posant un rang provisoire :
-c'est un renommage, et un renommage traverse les trois cents renvois `(Dxx)` que
-porte le code. Une décision citée dans un commentaire changerait de nom après
-coup, ce qui est exactement ce qu'un identifiant ne doit jamais faire.
+**Rejected.** _Renumbering on merge_, with a branch using a provisional number:
+this is a rename, and a rename crosses the three hundred `(Dxx)` references in
+the code. A decision cited in a comment would change name after the fact, which
+is exactly what an identifier must never do.
 
-_Garder le rang séquentiel_ en se contentant de contrôler l'unicité : cela traite
-la collision d'identifiant, jamais le conflit d'insertion, qui est le coût réel.
+_Keeping sequential numbers_ and merely checking uniqueness: this addresses the
+identifier collision, never the insertion conflict, which is the real cost.
 
-_Découper aussi les quatre-vingt-dix-neuf entrées existantes_ : déplacer quatre
-mille lignes ferait entrer en conflit toutes les branches ouvertes, pour une
-homogénéité que personne ne lit — un journal ne se parcourt pas d'un bout à
-l'autre, on y cherche une entrée. La coupure est nette et se documente ; c'est le
-même arbitrage que la divergence assumée entre les titres de PR et les messages
-de commit des onze premières PR.
+_Also splitting the ninety-nine existing entries_: moving four thousand lines
+would make every open branch conflict, for consistency that nobody reads — a log
+is not read from end to end; an entry is looked up. The cut-off is clear and can
+be documented; it is the same trade-off as the accepted difference between PR
+titles and commit messages in the first eleven PRs.
 
-_Le numéro de la pull request comme identifiant_ : unique par construction, mais
-connu seulement une fois la PR ouverte, donc renommage systématique après coup.
+_Using the pull request number as the identifier_: unique by construction, but
+known only once the PR is open, and therefore requiring a systematic rename
+afterwards.
 
-_Un index généré listant le dossier_ : ce fichier redeviendrait le point
-d'insertion commun qu'on vient de supprimer. Le dossier trié par nom donne déjà
-l'ordre chronologique des décisions datées.
+_A generated index listing the directory_: that file would become the shared
+insertion point that has just been removed. The directory sorted by name already
+gives the chronological order of dated decisions.
 
-**Conséquences.** Deux formats d'identifiant coexistent — trois chiffres au plus
-pour l'ancien journal, six pour la suite — et c'est sans ambiguïté à la lecture
-comme au contrôle. Aucun renvoi existant ne change.
+**Consequences.** Two identifier formats coexist — at most three digits for the
+old log, six for what follows — and this is unambiguous both to readers and to
+the check. No existing reference changes.
 
-Deux décisions prises le même jour sur deux branches qui ne se voient pas
-prendront le même identifiant, sans lettre ni l'une ni l'autre. `check:specs` le
-signale à la fusion et la correction est un `git mv` sur une décision qui n'a
-jamais été publiée : aucun renvoi extérieur à réécrire. Le cas est rare là où la
-collision de rang était certaine.
+Two decisions made on the same day on two branches unaware of each other will
+use the same identifier, neither with a letter. `check:specs` reports this at
+merge time, and the correction is a `git mv` on a decision that has never been
+published: there is no external reference to rewrite. This case is rare, whereas
+a sequential-number collision was certain.
 
-Il n'y a pas d'index à tenir, donc pas d'index à oublier.
+There is no index to maintain, and therefore no index to forget.

@@ -1,21 +1,19 @@
-# D28 — Trois colonnes écrites sans être relues sont conservées
+# D28 — Three columns written but never read are retained
 
-**Contexte.** `media.modified_time`, `oauth_token.scope` et
-`sessions.created_at` sont renseignées à l'écriture et n'apparaissent dans
-aucune requête de lecture.
+**Context.** `media.modified_time`, `oauth_token.scope` and
+`sessions.created_at` are populated on write and do not appear in any read query.
 
-**Choix.** Les garder, et documenter leur raison d'être dans `db.ts` pour qu'on
-ne les prenne pas pour un oubli. `modified_time` est le repère chronologique dont
-`taken_at` dérive quand l'EXIF manque, donc de quoi recalculer sans réindexer ;
-`scope` dira, le jour où `SCOPES` évoluera, si le jeton stocké couvre encore ce
-que l'application demande ; `created_at` est la seule trace de l'ancienneté d'une
-session, la première chose qu'on regarde après un accès suspect.
+**Decision.** Keep them, and document their purpose in `db.ts` so that they are not
+mistaken for an oversight. `modified_time` is the chronological reference from
+which `taken_at` is derived when EXIF is missing, allowing recalculation without
+reindexing; `scope` will show, when `SCOPES` changes, whether the stored token
+still covers what the application requests; `created_at` is the only record of a
+session's age, the first thing to check after suspicious access.
 
-**Écarté.** Les supprimer. SQLite ne retire une colonne qu'en recréant la table
-et en recopiant les lignes — une migration destructive sur une base en service,
-pour économiser quelques octets par ligne et perdre trois informations qu'on ne
-saurait pas reconstituer. Le rapport bénéfice/risque est franchement mauvais.
+**Rejected.** Removing them. SQLite only removes a column by recreating the table
+and copying the rows — a destructive migration on a live database, to save a few
+bytes per row and lose three pieces of information that could not be
+reconstructed. The benefit-to-risk ratio is plainly poor.
 
-**Conséquences.** Un audit « colonnes mortes » les retrouvera. Le commentaire de
-`db.ts` et le tableau de [03](../03-modele-de-donnees.md) sont là pour lui
-répondre.
+**Consequences.** A "dead columns" audit will find them. The comment in `db.ts`
+and the table in [03](../03-modele-de-donnees.md) are there to answer it.

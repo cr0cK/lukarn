@@ -34,37 +34,36 @@ export const queryKeys = {
   me: ['me'] as const,
   albums: ['albums'] as const,
   album: (id: string) => ['album', id] as const,
-  // Le sens de tri fait partie de la clé : sans lui, TanStack Query resservirait
-  // les pages déjà chargées dans l'autre sens, et les curseurs accumulés
-  // continueraient de paginer à l'envers.
+  // Sort order is part of the key: without it, TanStack Query would reuse pages
+  // already loaded in the other direction, and accumulated cursors would keep
+  // paginating backwards.
   items: (id: string, order: SortOrder) => ['items', id, order] as const,
-  // Pas de `order` ici, contrairement aux médias : les journées annotées d'un
-  // album sont les mêmes quel que soit le sens de lecture.
+  // Unlike media, no `order` is needed here: an album has the same annotated
+  // days regardless of reading direction.
   days: (id: string) => ['days', id] as const,
   detail: (albumId: string, mediaId: string) => ['detail', albumId, mediaId] as const,
   comments: (albumId: string, mediaId: string) => ['comments', albumId, mediaId] as const,
-  // Sous le même préfixe `comments` que les fils : une invalidation large
-  // (changement d'identité, modération) doit emporter les compteurs avec eux.
-  // Le littéral est placé **après** l'album et non avant : devant, il entrerait
-  // en collision avec le fil d'un album qui s'appellerait « counts », un
-  // identifiant que rien n'interdit.
+  // Use the same `comments` prefix as threads: a broad invalidation (identity
+  // change, moderation) must include their counts. Put the literal **after** the
+  // album rather than before it: in front, it would collide with the thread for
+  // an album named "counts", an identifier that nothing forbids.
   commentCounts: (albumId: string) => ['comments', albumId, 'counts'] as const,
-  // Même construction que les compteurs, et pour la même raison : le littéral
-  // en dernier. `''` porte la portée globale — un identifiant d'album ne peut
-  // pas être vide, donc rien ne s'y confond.
+  // Use the same construction as counts for the same reason: literal last. `''`
+  // carries the global scope — an album identifier cannot be empty, so nothing
+  // can be confused with it.
   commentsFeed: (albumId: string | null) => ['comments', albumId ?? '', 'feed'] as const,
-  // Tout ce qui restreint la file entre dans la clé, curseur compris : deux
-  // pages voisines sont deux entrées de cache distinctes, ce qui rend le retour
-  // à la page précédente immédiat. L'invalidation reste large — le préfixe
-  // `['admin','comments']` les emporte toutes.
+  // Everything that restricts the queue belongs in the key, including the
+  // cursor: adjacent pages are separate cache entries, making the return to the
+  // previous page immediate. Invalidation remains broad — the
+  // `['admin','comments']` prefix includes them all.
   adminComments: (query: AdminCommentsQuery) =>
     ['admin', 'comments', query.filter, query.albumId, query.q, query.cursor] as const,
-  // La saisie entre dans la clé : deux frappes voisines sont deux entrées de
-  // cache, et revenir en arrière d'un caractère réaffiche sa liste sans requête.
+  // The input belongs in the key: adjacent keystrokes are separate cache
+  // entries, and deleting one character restores its list without a request.
   search: (q: string) => ['search', q] as const,
   adminStatus: ['admin', 'status'] as const,
-  // La fenêtre entre dans la clé : revenir à « 7 jours » après « 90 » réaffiche
-  // sa page sans requête, et les trois cohabitent en cache.
+  // The window belongs in the key: returning to "7 days" after "90" restores
+  // its page without a request, and all three coexist in the cache.
   visits: (days: number) => ['admin', 'visits', days] as const,
   adminUsers: ['admin', 'users'] as const,
   adminAlbums: ['admin', 'albums'] as const,
@@ -75,17 +74,17 @@ export function useMe() {
   return useQuery({
     queryKey: queryKeys.me,
     queryFn: api.me,
-    // Un 401 est la réponse normale d'un visiteur non connecté, pas un incident :
-    // réessayer ne ferait que retarder l'affichage du formulaire.
+    // A 401 is the normal response for a signed-out visitor, not an incident:
+    // retrying would only delay the form.
     retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
     staleTime: 5 * 60 * 1000,
   });
 }
 
 /**
- * Signale une installation sans aucun compte. Sans ça, l'écran de connexion
- * refuserait toutes les tentatives sans jamais dire qu'il n'y a simplement
- * personne à qui se connecter.
+ * Reports an installation without any account. Without this, the sign-in screen
+ * would reject every attempt without ever saying there is simply nobody to sign
+ * in as.
  */
 export function useSetupState() {
   return useQuery({
@@ -108,20 +107,20 @@ export function useLogin() {
 }
 
 /* --------------------------------------------------------------------------
- * Appairage d'un écran sans clavier (D260809c)
+ * Pairing a screen without a keyboard (D260809c)
  * ------------------------------------------------------------------------ */
 
-/** Ouvre une demande. Appelée au clic, jamais à l'affichage de la page. */
+/** Opens a request. Called on click, never when the page is displayed. */
 export function useStartPairing() {
   return useMutation({ mutationFn: api.startPairing });
 }
 
 /**
- * Le sondage de l'écran demandeur, jusqu'à ce que la session arrive.
+ * Polls the requesting screen until the session arrives.
  *
- * Il s'arrête de lui-même sur l'approbation comme sur l'erreur : une demande
- * expirée répond 404, et continuer à sonder un code mort tiendrait un écran
- * allumé à interroger le serveur toute la nuit.
+ * It stops on approval as well as error: an expired request responds with 404,
+ * and continuing to poll a dead code would keep a screen awake querying the
+ * server all night.
  */
 export function usePairingPoll(deviceCode: string | null, intervalMs: number) {
   const queryClient = useQueryClient();
@@ -140,13 +139,13 @@ export function usePairingPoll(deviceCode: string | null, intervalMs: number) {
       query.state.status === 'error' || query.state.data?.status === 'approved'
         ? false
         : intervalMs,
-    // Un 404 dit que la demande est morte : la réessayer ne la ressuscite pas.
+    // A 404 means the request is dead: retrying does not revive it.
     retry: false,
     gcTime: 0,
   });
 }
 
-/** Ce que le téléphone lit avant d'approuver : le code existe-t-il encore ? */
+/** What the phone reads before approval: does the code still exist? */
 export function usePairingState(userCode: string) {
   return useQuery({
     queryKey: ['pairing', 'state', userCode],
@@ -170,8 +169,8 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: api.logout,
-    // Purge complète : le cache contient les albums et les médias de l'ancienne
-    // session, qui ne regardent pas la suivante.
+    // Purge everything: the cache contains albums and media from the old
+    // session, which do not belong to the next one.
     onSuccess: () => queryClient.clear(),
   });
 }
@@ -185,15 +184,14 @@ export function useAlbum(albumId: string) {
 }
 
 /**
- * Charge l'album page par page, dans le sens chronologique demandé, et rend la
- * liste aplatie. Le curseur du serveur est stable même si une synchronisation
- * insère des médias pendant le défilement, donc aucune photo n'est sautée ni
- * dupliquée.
+ * Loads the album page by page in the requested chronological order and returns
+ * the flattened list. The server cursor remains stable even if a sync inserts
+ * media while scrolling, so no photo is skipped or duplicated.
  *
- * `enabled` couvre le cas où le sens n'est pas encore connu — album pas chargé
- * et rien en mémoire locale. Sans lui, la première ouverture chargerait deux
- * cents éléments dans un sens rejeté à la réponse suivante ; la requête reste
- * `pending`, donc le Spinner de la grille couvre l'attente.
+ * `enabled` covers the case where the direction is not known yet — the album is
+ * not loaded and local storage has no value. Without it, the first opening would
+ * load two hundred items in a direction discarded by the next response; the
+ * query stays `pending`, so the grid Spinner covers the wait.
  */
 export function useAlbumItems(
   albumId: string,
@@ -217,8 +215,8 @@ export function useAlbumItems(
 }
 
 /**
- * Journées annotées de l'album. Chargées seulement en découpage par jour : en
- * découpage par mois, les notes sont masquées et la requête ne servirait à rien.
+ * Annotated days in the album. Loaded only when grouping by day: when grouping
+ * by month, notes are hidden and the request would serve no purpose.
  */
 export function useAlbumDays(albumId: string, enabled: boolean) {
   const query = useQuery({
@@ -227,9 +225,9 @@ export function useAlbumDays(albumId: string, enabled: boolean) {
     enabled,
   });
 
-  // Indexé par clé de jour : c'est ainsi que le layout et les en-têtes s'en
-  // servent, et refaire la Map à chaque rendu invaliderait la mémoïsation du
-  // calcul de hauteur, donc du layout entier.
+  // Index by day key because that is how the layout and headers consume it.
+  // Rebuilding the Map on every render would invalidate memoisation of the
+  // height calculation, and therefore the entire layout.
   const byDay = useMemo(
     () => new Map((query.data ?? []).map((day) => [day.day, day])),
     [query.data],
@@ -239,9 +237,9 @@ export function useAlbumDays(albumId: string, enabled: boolean) {
 }
 
 /**
- * Annote une journée. La réponse remplace la ligne dans le cache plutôt que
- * d'invalider la liste : la hauteur de l'en-tête en dépend, et un aller-retour
- * réseau de plus ferait sauter la grille une seconde fois.
+ * Annotates a day. The response replaces the row in the cache instead of
+ * invalidating the list: header height depends on it, and another network round
+ * trip would make the grid jump a second time.
  */
 export function useUpdateAlbumDay(albumId: string) {
   const queryClient = useQueryClient();
@@ -251,9 +249,9 @@ export function useUpdateAlbumDay(albumId: string) {
     onSuccess: (saved) => {
       queryClient.setQueryData<AlbumDay[]>(queryKeys.days(albumId), (current) => {
         const others = (current ?? []).filter((day) => day.day !== saved.day);
-        // Une journée vidée de sa note et de son lieu ne garde sa place que si
-        // l'EXIF lui en donne un — c'est la règle du serveur, rejouée ici pour
-        // que l'en-tête retombe tout de suite à sa hauteur d'origine.
+        // A day cleared of its note and place keeps its slot only if EXIF provides
+        // one — mirror the server rule here so the header immediately returns to
+        // its original height.
         const keep =
           saved.description !== null || saved.place !== null || saved.autoPlaces.length > 0;
         const next = keep ? [...others, saved] : others;
@@ -264,24 +262,24 @@ export function useUpdateAlbumDay(albumId: string) {
 }
 
 /**
- * Suggestions de recherche. `q` est déjà retardé par `useDebounced` : ce hook
- * ne connaît que la valeur qu'on lui donne.
+ * Search suggestions. `q` has already been delayed by `useDebounced`: this hook
+ * only knows the value it receives.
  *
- * `placeholderData` garde la liste précédente affichée le temps de la requête
- * suivante. Sans lui, chaque frappe la viderait puis la remplirait, et une
- * liste qui clignote sous le doigt est illisible — c'est le seul endroit de
- * l'application où une réponse arrive à la cadence du clavier.
+ * `placeholderData` keeps the previous list visible during the next request.
+ * Without it, every keystroke would empty then refill the list, and a list
+ * flashing beneath a finger is unreadable — this is the only place where
+ * responses arrive at keyboard pace.
  */
 export function useSearch(q: string) {
   return useQuery({
     queryKey: queryKeys.search(q),
     queryFn: () => api.search(q),
-    // Le serveur répond 400 en deçà, et il a raison : mieux vaut ne pas
-    // demander que d'afficher une erreur pour une saisie en cours.
+    // The server responds with 400 below this threshold, rightly so: issuing no
+    // request is better than showing an error for unfinished input.
     enabled: q.length >= SEARCH_MIN_LENGTH,
     placeholderData: keepPreviousData,
-    // Les textes cherchés changent rarement — un titre d'album, une note
-    // écrite une fois. Rouvrir le champ dans la minute ne relance rien.
+    // Searched text rarely changes — an album title or a note written once.
+    // Reopening the field within a minute triggers nothing.
     staleTime: 60 * 1000,
   });
 }
@@ -296,16 +294,15 @@ export function useMediaDetail(albumId: string, mediaId: string | null) {
 }
 
 /**
- * Décrit une photo. La réponse **corrige le cache** au lieu de l'invalider, et
- * c'est indispensable ici : la liste des items est une requête infinie, dont
- * une invalidation relance **toutes** les pages accumulées — après cinq pages
- * de défilement, écrire une légende redemanderait mille lignes (la leçon de
- * D67).
+ * Describes a photo. The response **updates the cache** instead of invalidating
+ * it, which is essential here: the item list is an infinite query, and
+ * invalidation refetches **all** accumulated pages — after scrolling through
+ * five pages, writing a caption would request a thousand rows again (the lesson
+ * from D67).
  *
- * `setQueriesData` sur le préfixe `['items', albumId]` et non sur une clé
- * exacte : les deux sens de tri sont deux entrées de cache distinctes, et celui
- * qu'on ne regarde pas porte la même photo — inverser le tri après coup
- * montrerait sinon l'ancienne légende.
+ * Use `setQueriesData` on the `['items', albumId]` prefix rather than an exact
+ * key: the two sort orders are separate cache entries, and the unseen one holds
+ * the same photo — reversing the sort later would otherwise show the old caption.
  */
 export function useUpdateMedia(albumId: string) {
   const queryClient = useQueryClient();
@@ -325,10 +322,9 @@ export function useUpdateMedia(albumId: string) {
           },
       );
 
-      // Le détail porte la même description, et le panneau `i` peut être ouvert
-      // à l'instant où l'on enregistre. `MediaDetail` étant un `MediaItem`
-      // augmenté, seule la partie item est remplacée : l'EXIF et le compteur de
-      // commentaires ne viennent pas de cette réponse.
+      // Detail carries the same description, and the `i` panel may be open when
+      // saving. Because `MediaDetail` extends `MediaItem`, replace only the item
+      // portion: EXIF and the comment count do not come from this response.
       queryClient.setQueryData<MediaDetail>(queryKeys.detail(albumId, saved.id), (current) =>
         current ? { ...current, ...saved } : current,
       );
@@ -337,18 +333,18 @@ export function useUpdateMedia(albumId: string) {
 }
 
 /* --------------------------------------------------------------------------
- * Identité de commentateur
+ * Commenter identity
  * ------------------------------------------------------------------------ */
 
-/** Demande l'envoi du code. Ne change rien tant qu'il n'est pas saisi. */
+/** Requests the code. Changes nothing until it is entered. */
 export function useRequestIdentityCode() {
   return useMutation({ mutationFn: (body: IdentityRequest) => api.requestIdentityCode(body) });
 }
 
 /**
- * Valide le code et rattache l'identité à la session. La session rendue par le
- * serveur remplace celle du cache : c'est elle qui porte `identity`, donc le
- * droit de commenter.
+ * Validates the code and attaches the identity to the session. The session
+ * returned by the server replaces the cached one: it carries `identity`, and
+ * therefore the right to comment.
  */
 export function useVerifyIdentity() {
   const queryClient = useQueryClient();
@@ -356,8 +352,8 @@ export function useVerifyIdentity() {
     mutationFn: (body: VerifyIdentityRequest) => api.verifyIdentity(body),
     onSuccess: (user) => {
       queryClient.setQueryData(queryKeys.me, user);
-      // Les fils déjà chargés portent `canDelete` calculé pour un anonyme :
-      // s'identifier rend la main sur ses propres messages.
+      // Already loaded threads carry `canDelete` computed for an anonymous user:
+      // identifying restores control over one's own messages.
       void queryClient.invalidateQueries({ queryKey: ['comments'] });
     },
   });
@@ -375,13 +371,13 @@ export function useForgetIdentity() {
 }
 
 /* --------------------------------------------------------------------------
- * Commentaires
+ * Comments
  * ------------------------------------------------------------------------ */
 
 /**
- * Fil d'une photo. Chargé seulement quand le panneau est ouvert : la plupart
- * des photos sont regardées sans qu'on lise les commentaires, et le compteur
- * affiché sur l'onglet vient déjà du détail du média.
+ * A photo's thread. Loaded only while the panel is open: most photos are viewed
+ * without reading comments, and the count shown on the tab already comes from
+ * media detail.
  */
 export function useComments(albumId: string, mediaId: string | null, enabled: boolean) {
   return useQuery({
@@ -392,38 +388,37 @@ export function useComments(albumId: string, mediaId: string | null, enabled: bo
 }
 
 /**
- * Compteurs de commentaires de l'album, photo par photo.
+ * Album comment counts, photo by photo.
  *
- * Chargé une fois pour l'album entier plutôt qu'à chaque photo atteinte : la
- * pastille de la visionneuse doit être là avant qu'on ouvre quoi que ce soit, et
- * parcourir un album à la flèche déclencherait sinon une requête par photo.
+ * Loaded once for the whole album instead of for each photo reached: the viewer
+ * badge must be present before anything is opened, and moving through an album
+ * with the arrow keys would otherwise trigger one request per photo.
  */
 export function useCommentCounts(albumId: string) {
   return useQuery({
     queryKey: queryKeys.commentCounts(albumId),
     queryFn: () => api.commentCounts(albumId),
-    // Plus court que les 60 s par défaut : une conversation qui démarre pendant
-    // qu'on regarde l'album est le cas même que la pastille sert à signaler.
+    // Shorter than the default 60 seconds: a conversation starting while the
+    // album is being viewed is precisely what the badge is meant to signal.
     //
-    // Ne borne pas pour autant le retard à 30 s : `refetchOnWindowFocus` est à
-    // `false`, aucun `refetchInterval` n'est posé, et ce hook ne vit que dans la
-    // visionneuse — tant qu'elle reste ouverte, rien ne repart. Ce réglage n'agit
-    // donc qu'au remontage, c'est-à-dire à la réouverture de la visionneuse.
+    // This does not bound the delay to 30 seconds: `refetchOnWindowFocus` is
+    // `false`, no `refetchInterval` is set, and this hook lives only in the
+    // viewer — while it remains open, nothing restarts. This setting therefore
+    // acts only on remount, when the viewer is reopened.
     staleTime: 30 * 1000,
   });
 }
 
 /**
- * Fil d'activité, page par page.
+ * Activity feed, page by page.
  *
- * Chargé dès l'affichage d'une page de la galerie et pas seulement à
- * l'ouverture du tiroir : c'est lui qui porte la pastille de non-lus, et une
- * pastille qui n'apparaîtrait qu'après avoir ouvert le tiroir ne servirait à
- * rien — on ne l'ouvre que si quelque chose signale qu'il y a à lire.
+ * Loaded as soon as a gallery page is shown, not only when the drawer opens: it
+ * supplies the unread badge, and a badge appearing only after opening the
+ * drawer would be useless — the drawer is opened only when something signals
+ * that there is something to read.
  *
- * Même `staleTime` que les compteurs de l'album, et pour le même motif : une
- * conversation qui démarre pendant qu'on regarde ses photos est exactement ce
- * que la pastille sert à annoncer.
+ * The same `staleTime` as album counts, for the same reason: a conversation
+ * starting while its photos are being viewed is exactly what the badge announces.
  */
 export function useCommentsFeed(albumId: string | null, enabled = true) {
   const query = useInfiniteQuery({
@@ -444,9 +439,9 @@ export function useCommentsFeed(albumId: string | null, enabled = true) {
 }
 
 /**
- * Poste un commentaire. Le fil **et** le détail du média sont invalidés :
- * le second porte le compteur affiché sur l'onglet, qui resterait sinon en
- * retard d'une unité jusqu'à la réouverture de la photo.
+ * Posts a comment. Both the thread **and** media detail are invalidated: the
+ * latter carries the count shown on the tab, which would otherwise remain one
+ * behind until the photo is reopened.
  */
 export function useCreateComment(albumId: string, mediaId: string) {
   const queryClient = useQueryClient();
@@ -457,8 +452,8 @@ export function useCreateComment(albumId: string, mediaId: string) {
 }
 
 /**
- * Corrige un commentaire. Seul le fil est invalidé, pas les compteurs : une
- * correction ne change ni le nombre de messages ni ce qui reste à lire.
+ * Corrects a comment. Only the thread is invalidated, not the counts: a
+ * correction changes neither the number of messages nor what remains unread.
  */
 export function useUpdateComment(albumId: string, mediaId: string) {
   const queryClient = useQueryClient();
@@ -482,29 +477,28 @@ export function useDeleteComment(albumId: string, mediaId: string) {
 function invalidateThread(queryClient: QueryClient, albumId: string, mediaId: string): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.comments(albumId, mediaId) });
   void queryClient.invalidateQueries({ queryKey: queryKeys.detail(albumId, mediaId) });
-  // Les compteurs de l'album portent la pastille de la visionneuse : sans cette
-  // invalidation, publier depuis le panneau laisserait la pastille annoncer
-  // l'état d'avant, y compris sur la photo qu'on a sous les yeux.
+  // Album counts supply the viewer badge: without this invalidation, posting
+  // from the panel would leave the badge showing the previous state, even on
+  // the photo currently displayed.
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentCounts(albumId) });
-  // Les deux portées du fil d'activité, la globale comme celle de l'album : le
-  // message qu'on vient d'écrire doit y figurer, et les deux peuvent être en
-  // cache en même temps. Le coût est celui d'un rechargement des pages déjà
-  // parcourues du tiroir — borné par ce qu'on a fait défiler, et le tiroir est
-  // presque toujours fermé au moment où l'on écrit.
+  // Invalidate both activity-feed scopes, global and album: the newly
+  // written message must appear in them, and both may be cached at once. The
+  // cost is refetching drawer pages already visited — bounded by how far it
+  // was scrolled, and the drawer is almost always closed while writing.
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(albumId) });
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(null) });
 }
 
 /**
- * Une page de la file de modération.
+ * One page of the moderation queue.
  *
- * Une page à la fois, et non un `useInfiniteQuery` : chaque masquage invalide la
- * file, et une requête infinie recharge alors **toutes** les pages accumulées —
- * après quatre « Charger plus », un seul clic redemandait 200 lignes (D67).
+ * One page at a time, not a `useInfiniteQuery`: every hide invalidates the queue,
+ * and an infinite query then refetches **all** accumulated pages — after four
+ * "Load more" actions, one click requested 200 rows again (D67).
  *
- * `keepPreviousData` garde la page précédente affichée le temps de la suivante :
- * sans lui, la liste disparaît à chaque changement de page et la section se
- * replie sous le curseur.
+ * `keepPreviousData` keeps the previous page visible while loading the next:
+ * without it, the list disappears on every page change and the section
+ * collapses beneath the pointer.
  */
 export function useAdminComments(query: AdminCommentsQuery) {
   return useQuery({
@@ -515,9 +509,8 @@ export function useAdminComments(query: AdminCommentsQuery) {
 }
 
 /**
- * Masque ou démasque. Toute la file est invalidée, puisque le commentaire traité
- * change de filtre ; le tableau de bord l'est aussi, pour sa pastille de
- * commentaires masqués.
+ * Hides or restores. The whole queue is invalidated because the processed
+ * comment changes filter; so is the dashboard, for its hidden-comments badge.
  */
 export function useModerateComment() {
   const queryClient = useQueryClient();
@@ -528,7 +521,7 @@ export function useModerateComment() {
   });
 }
 
-/** Masque ou démasque tous les messages d'une identité, d'un coup. */
+/** Hides or restores every message from one identity at once. */
 export function useModerateCommenter() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -541,7 +534,7 @@ export function useModerateCommenter() {
 function invalidateModeration(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: ['admin', 'comments'] });
   void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
-  // Le fil vu côté galerie change aussi : un commentaire masqué en disparaît.
+  // The gallery thread changes too: a hidden comment disappears from it.
   void queryClient.invalidateQueries({ queryKey: ['comments'] });
 }
 
@@ -549,36 +542,36 @@ export function useAdminStatus() {
   return useQuery({
     queryKey: queryKeys.adminStatus,
     queryFn: api.adminStatus,
-    // Une synchronisation en cours change l'état sans action de l'utilisateur.
+    // A running sync changes the status without user action.
     refetchInterval: (query) =>
       query.state.data?.albums.some((album) => album.syncStatus === 'running') ? 2000 : false,
   });
 }
 
 /**
- * Télémétrie de visite. `placeholderData` garde le tableau affiché le temps de
- * la fenêtre suivante : sans lui, changer de période viderait la page et la
- * section se replierait sous le curseur — même motif que la file de modération.
+ * Visit telemetry. `placeholderData` keeps the table visible while loading the
+ * next window: without it, changing periods would empty the page and collapse
+ * the section beneath the pointer — the same reason as the moderation queue.
  */
 export function useVisits(days: number) {
   return useQuery({
     queryKey: queryKeys.visits(days),
     queryFn: () => api.visits(days),
     placeholderData: keepPreviousData,
-    // Les compteurs bougent au rythme des visites, pas des secondes : rouvrir
-    // l'onglet dans la minute ne redemande rien.
+    // Counts change at the pace of visits, not seconds: reopening the tab within
+    // a minute requests nothing.
     staleTime: 60 * 1000,
   });
 }
 
 /* --------------------------------------------------------------------------
- * Administration des comptes, des albums et des réglages
+ * Account, album and settings administration
  * ------------------------------------------------------------------------ */
 
 /**
- * Un compte porte ses albums et un album porte ses membres : les deux listes
- * décrivent la même attribution des deux côtés, donc écrire l'une périme
- * l'autre.
+ * An account carries its albums and an album carries its members: both lists
+ * describe the same assignment from opposite sides, so writing one makes the
+ * other stale.
  */
 function invalidateAccess(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers });
@@ -586,8 +579,8 @@ function invalidateAccess(queryClient: QueryClient): void {
 }
 
 /**
- * Une écriture sur les albums change en plus ce que la session courante peut
- * consulter, et le tableau de bord qui les récapitule.
+ * An album write also changes what the current session may view and the
+ * dashboard that summarises it.
  */
 function invalidateAlbums(queryClient: QueryClient): void {
   invalidateAccess(queryClient);
@@ -595,7 +588,7 @@ function invalidateAlbums(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
 }
 
-/** Lance une synchronisation : un album donné, ou tous si l'argument est omis. */
+/** Starts a sync: one given album, or all of them when the argument is omitted. */
 export function useResync() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -615,7 +608,7 @@ export function useAdminAlbums() {
   return useQuery({
     queryKey: queryKeys.adminAlbums,
     queryFn: api.adminAlbums,
-    // Même raison que `useAdminStatus` : une synchronisation avance toute seule.
+    // Same reason as `useAdminStatus`: a sync progresses by itself.
     refetchInterval: (query) =>
       query.state.data?.some((album) => album.syncStatus === 'running') ? 2000 : false,
   });
@@ -676,7 +669,7 @@ export function useDeleteAlbum() {
     mutationFn: (albumId: string) => api.deleteAlbum(albumId),
     onSuccess: (_result, albumId) => {
       invalidateAlbums(queryClient);
-      // Les médias de l'album viennent de disparaître de l'index.
+      // The album's media have just disappeared from the index.
       queryClient.removeQueries({ queryKey: queryKeys.album(albumId) });
       queryClient.removeQueries({ queryKey: ['items', albumId] });
     },
@@ -689,7 +682,7 @@ export function useUpdateSettings() {
     mutationFn: (body: UpdateSettingsRequest) => api.updateSettings(body),
     onSuccess: (settings) => {
       queryClient.setQueryData(queryKeys.settings, settings);
-      // La taille maximale du cache est aussi rapportée par le tableau de bord.
+      // The dashboard also reports the maximum cache size.
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
   });

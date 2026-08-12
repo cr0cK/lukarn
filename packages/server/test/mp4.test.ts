@@ -3,12 +3,11 @@ import { describe, it } from 'node:test';
 import { findMoovOffset, readCreationTime, readVideoCodec } from '../src/drive/mp4.js';
 
 /**
- * Lecture de l'en-tête d'un conteneur MP4 par fenêtres.
+ * Reading an MP4 container header in windows.
  *
- * Les tampons sont construits à la main : ce sont les formes rencontrées sur un
- * import réel de 40 vidéos — `moov` en tête ou après un `mdat` de plusieurs Mo,
- * tailles 64 bits, `mvhd` version 0 et 1, et l'ancien `moov` neutralisé en
- * `free` qui piège tout balayage par signature.
+ * Buffers are built by hand from forms found in a real 40-video import — `moov`
+ * first or after a multi-MB `mdat`, 64-bit sizes, `mvhd` versions 0 and 1, and
+ * an old `moov` neutralised as `free` that traps signature scans.
  */
 
 const EPOCH_1904_OFFSET_S = 2_082_844_800;
@@ -17,7 +16,7 @@ function secondes1904(iso: string): number {
   return Math.floor(Date.parse(iso) / 1000) + EPOCH_1904_OFFSET_S;
 }
 
-/** Boîte ordinaire : taille sur 32 bits, puis les quatre lettres du type. */
+/** Ordinary box: 32-bit size followed by the four-letter type. */
 function boite(type: string, contenu: Buffer = Buffer.alloc(0)): Buffer {
   const entete = Buffer.alloc(8);
   entete.writeUInt32BE(8 + contenu.length, 0);
@@ -25,7 +24,7 @@ function boite(type: string, contenu: Buffer = Buffer.alloc(0)): Buffer {
   return Buffer.concat([entete, contenu]);
 }
 
-/** Boîte à taille 64 bits : `size == 1`, la vraie taille suit le type. */
+/** 64-bit size box: `size == 1`, with the real size after the type. */
 function boite64(type: string, contenu: Buffer): Buffer {
   const entete = Buffer.alloc(16);
   entete.writeUInt32BE(1, 0);
@@ -34,7 +33,7 @@ function boite64(type: string, contenu: Buffer): Buffer {
   return Buffer.concat([entete, contenu]);
 }
 
-/** `mvhd` version 0 : dates sur 32 bits. Le reste du corps ne sert pas ici. */
+/** `mvhd` version 0: 32-bit dates. The rest of the body is irrelevant here. */
 function mvhd0(iso: string): Buffer {
   const corps = Buffer.alloc(100);
   corps.writeUInt8(0, 0);
@@ -42,7 +41,7 @@ function mvhd0(iso: string): Buffer {
   return boite('mvhd', corps);
 }
 
-/** `mvhd` version 1 : dates sur 64 bits, ce qu'écrivent les appareils récents. */
+/** `mvhd` version 1: 64-bit dates as written by recent devices. */
 function mvhd1(iso: string): Buffer {
   const corps = Buffer.alloc(112);
   corps.writeUInt8(1, 0);
@@ -55,8 +54,8 @@ function ftyp(): Buffer {
 }
 
 /**
- * `hdlr` : version et drapeaux, `pre_defined`, puis le type de gestionnaire.
- * C'est lui qui dit si la piste porte l'image (`vide`) ou le son (`soun`).
+ * `hdlr`: version and flags, `pre_defined`, then handler type. It says whether
+ * the track carries video (`vide`) or sound (`soun`).
  */
 function hdlr(type: string): Buffer {
   const corps = Buffer.alloc(32);
@@ -65,8 +64,8 @@ function hdlr(type: string): Buffer {
 }
 
 /**
- * `stsd` : version et drapeaux, nombre d'entrées, puis la première entrée —
- * sa taille, et le code à quatre lettres du format.
+ * `stsd`: version and flags, entry count, then the first entry — its size and
+ * the format's four-letter code.
  */
 function stsd(format: string): Buffer {
   const corps = Buffer.alloc(24);
@@ -76,7 +75,7 @@ function stsd(format: string): Buffer {
   return boite('stsd', corps);
 }
 
-/** Une piste complète, telle qu'un encodeur l'écrit : `trak/mdia/minf/stbl/stsd`. */
+/** A complete track as an encoder writes it: `trak/mdia/minf/stbl/stsd`. */
 function trak(handler: string, format: string): Buffer {
   const stbl = boite('stbl', stsd(format));
   const minf = boite('minf', Buffer.concat([boite('dinf'), stbl]));
@@ -85,9 +84,9 @@ function trak(handler: string, format: string): Buffer {
 }
 
 /**
- * Le parcours tel que la synchronisation le mène : une fenêtre, puis la
- * suivante à la frontière rendue. Renvoie la date lue et le nombre de fenêtres
- * ouvertes — c'est ce compte qui décide du coût de la sync.
+ * The traversal used by synchronisation: one window, then the next at the
+ * returned boundary. Returns the read date and number of opened windows — this
+ * count determines sync cost.
  */
 function lireEnTete(
   fichier: Buffer,
@@ -115,7 +114,7 @@ function lireEnTete(
 }
 
 describe('findMoovOffset', () => {
-  it('trouve un `moov` placé en tête', () => {
+  it('finds a leading `moov`', () => {
     const fichier = Buffer.concat([ftyp(), boite('moov', mvhd0('2026-07-29T14:30:12Z'))]);
 
     const scan = findMoovOffset(fichier, 0, fichier.length);
@@ -124,9 +123,8 @@ describe('findMoovOffset', () => {
     assert.equal(scan.nextOffset, null);
   });
 
-  it('rend la frontière suivante quand la fenêtre finit avant le `moov`', () => {
-    // Le cas ordinaire d'un enregistrement de téléphone : le `moov` est derrière
-    // un `mdat` de plusieurs Mo, hors de la première fenêtre.
+  it('returns the next boundary when the window ends before `moov`', () => {
+    // Common phone recording: `moov` follows a multi-MB `mdat`, outside the first window.
     const mdat = boite('mdat', Buffer.alloc(4096));
     const fichier = Buffer.concat([ftyp(), mdat, boite('moov', mvhd0('2026-07-29T14:30:12Z'))]);
     const fenetre = fichier.subarray(0, 64);
@@ -134,12 +132,12 @@ describe('findMoovOffset', () => {
     const scan = findMoovOffset(fenetre, 0, fichier.length);
 
     assert.equal(scan.moovOffset, null);
-    assert.equal(scan.nextOffset, 16 + mdat.length, 'la frontière est la fin du `mdat`');
+    assert.equal(scan.nextOffset, 16 + mdat.length, 'the boundary is the end of `mdat`');
   });
 
-  it('suit une taille écrite sur 64 bits', () => {
-    // Au-delà de 4 Go, mais aussi par habitude de certains encodeurs : la vraie
-    // taille est derrière le type, et l'en-tête fait 16 octets.
+  it('follows a 64-bit size', () => {
+    // Above 4 GB, and by convention in some encoders: the real size follows the
+    // type and the header is 16 bytes.
     const mdat = boite64('mdat', Buffer.alloc(64));
     const fichier = Buffer.concat([ftyp(), mdat, boite('moov', mvhd0('2026-08-05T09:00:00Z'))]);
 
@@ -148,9 +146,9 @@ describe('findMoovOffset', () => {
     assert.equal(scan.moovOffset, 16 + mdat.length);
   });
 
-  it("n'annonce plus de frontière après une boîte qui court jusqu'à la fin", () => {
-    // `size == 0` : la boîte prend tout le reste du fichier. Insister ferait
-    // relire indéfiniment le même offset.
+  it('reports no boundary after a box that runs to the end', () => {
+    // `size == 0`: the box takes the rest of the file. Continuing would reread
+    // the same offset indefinitely.
     const entete = Buffer.alloc(8);
     entete.writeUInt32BE(0, 0);
     entete.write('mdat', 4, 'latin1');
@@ -161,9 +159,9 @@ describe('findMoovOffset', () => {
     assert.deepEqual(scan, { moovOffset: null, nextOffset: null });
   });
 
-  it('abandonne sur des octets qui ne sont pas des boîtes', () => {
-    // Un conteneur qu'on ne sait pas ouvrir ne doit pas produire de date : la
-    // suite du parcours retombera sur le nom du fichier.
+  it('gives up on bytes that are not boxes', () => {
+    // A container that cannot be opened must not produce a date: traversal will
+    // fall back to the filename.
     const bruit = Buffer.alloc(256);
     for (let i = 0; i < bruit.length; i++) bruit[i] = (i * 37 + 11) % 256;
 
@@ -175,22 +173,21 @@ describe('findMoovOffset', () => {
 });
 
 describe('readCreationTime', () => {
-  it('lit un `mvhd` version 0', () => {
+  it('reads a version 0 `mvhd`', () => {
     const fichier = Buffer.concat([ftyp(), boite('moov', mvhd0('2026-07-29T14:30:12Z'))]);
 
     assert.equal(readCreationTime(fichier, 16), '2026-07-29T14:30:12.000Z');
   });
 
-  it('lit un `mvhd` version 1, dont les dates sont sur 64 bits', () => {
+  it('reads a version 1 `mvhd` with 64-bit dates', () => {
     const fichier = Buffer.concat([ftyp(), boite('moov', mvhd1('2026-08-05T09:15:44Z'))]);
 
     assert.equal(readCreationTime(fichier, 16), '2026-08-05T09:15:44.000Z');
   });
 
-  it('ignore un `mvhd` orphelin resté dans une boîte `free`', () => {
-    // Treize fichiers de l'import portaient ce défaut : un ancien `moov`
-    // neutralisé en `free`, dont le `mvhd` garde une date périmée. Un balayage
-    // par signature aurait daté la vidéo de celle-là.
+  it('ignores an orphaned `mvhd` left in a `free` box', () => {
+    // Thirteen imported files had this defect: an old `moov` neutralised as
+    // `free`, whose `mvhd` retains a stale date. A signature scan would use it.
     const perime = Buffer.concat([mvhd0('2019-01-01T00:00:00Z'), boite('trak', Buffer.alloc(32))]);
     const fichier = Buffer.concat([
       ftyp(),
@@ -203,24 +200,24 @@ describe('readCreationTime', () => {
     assert.equal(readCreationTime(fichier, scan.moovOffset!), '2026-07-29T14:30:12.000Z');
   });
 
-  it('ne devine rien sur un `moov` coupé par la fenêtre', () => {
+  it('infers nothing from a `moov` cut by the window', () => {
     const fichier = Buffer.concat([ftyp(), boite('moov', mvhd0('2026-07-29T14:30:12Z'))]);
-    // La fenêtre s'arrête au milieu du `mvhd` : la date n'y est pas entière.
+    // The window stops midway through `mvhd`: the date is incomplete.
     const tronque = fichier.subarray(0, 30);
 
     assert.equal(readCreationTime(tronque, 16), null);
   });
 
-  it('traite une horloge jamais renseignée comme une absence', () => {
+  it('treats an unset clock as absent', () => {
     const corps = Buffer.alloc(100);
     const fichier = Buffer.concat([ftyp(), boite('moov', boite('mvhd', corps))]);
 
     assert.equal(readCreationTime(fichier, 16), null);
   });
 
-  it('écarte une date que rien ne peut avoir enregistrée', () => {
-    // Des muxeurs écrivent dans ce champ des secondes comptées depuis 1970, ce
-    // qui donne une date des années 1950 : mieux vaut ne rien rendre.
+  it('discards a date nothing could have recorded', () => {
+    // Some muxers write seconds since 1970 here, producing a 1950s date: better
+    // to return nothing.
     const corps = Buffer.alloc(100);
     corps.writeUInt32BE(Math.floor(Date.parse('2026-07-29T14:30:12Z') / 1000), 4);
     const fichier = Buffer.concat([ftyp(), boite('moov', boite('mvhd', corps))]);
@@ -230,10 +227,9 @@ describe('readCreationTime', () => {
 });
 
 describe('readVideoCodec', () => {
-  it('lit le codec de la piste image, placée après la piste son', () => {
-    // L'ordre courant sur un enregistrement de téléphone. Prendre le premier
-    // `stsd` venu rendrait `mp4a` — un codec audio — et ferait transcoder toutes
-    // les vidéos, y compris celles que le navigateur lit déjà.
+  it('reads the video-track codec after the audio track', () => {
+    // Common phone recording order. Taking the first `stsd` would return `mp4a`
+    // — an audio codec — and transcode every video, including playable ones.
     const fichier = Buffer.concat([
       ftyp(),
       boite(
@@ -245,9 +241,9 @@ describe('readVideoCodec', () => {
     assert.equal(readVideoCodec(fichier, 16), 'hvc1');
   });
 
-  it('reconnaît les deux écritures de l’HEVC et celle de l’H.264', () => {
-    // `hvc1` et `hev1` désignent le même codec, à la façon de ranger les
-    // paramètres près : les deux sont illisibles là où l'un l'est.
+  it('recognises both HEVC spellings and H.264', () => {
+    // `hvc1` and `hev1` denote the same codec with different parameter storage:
+    // both are unreadable wherever either is.
     for (const format of ['hvc1', 'hev1', 'avc1']) {
       const fichier = Buffer.concat([
         ftyp(),
@@ -258,21 +254,21 @@ describe('readVideoCodec', () => {
     }
   });
 
-  it('ne devine rien quand le `stsd` déborde de la fenêtre', () => {
+  it('infers nothing when `stsd` extends beyond the window', () => {
     const fichier = Buffer.concat([
       ftyp(),
       boite('moov', Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('vide', 'hvc1')])),
     ]);
-    // La fenêtre s'arrête dix octets avant la fin : le `stsd` n'y est pas
-    // entier, et il vaut mieux ne rien rendre que lire des octets absents.
+    // The window stops ten bytes before the end: `stsd` is incomplete, and
+    // returning nothing is better than reading absent bytes.
     const tronque = fichier.subarray(0, fichier.length - 10);
 
     assert.equal(readVideoCodec(tronque, 16), null);
   });
 
-  it('rend `null` sur un `moov` sans piste image', () => {
-    // Un enregistrement sonore mal classé, ou un conteneur dont la piste image
-    // se décrit autrement : la colonne retient « examiné, rien trouvé ».
+  it('returns `null` for a `moov` without a video track', () => {
+    // A misclassified audio recording or differently described video track:
+    // the column records "examined, nothing found".
     const fichier = Buffer.concat([
       ftyp(),
       boite('moov', Buffer.concat([mvhd0('2026-07-29T14:30:12Z'), trak('soun', 'mp4a')])),
@@ -281,9 +277,9 @@ describe('readVideoCodec', () => {
     assert.equal(readVideoCodec(fichier, 16), null);
   });
 
-  it('ne lit pas un `trak` resté dans une boîte `free`', () => {
-    // Le piège de `readCreationTime`, à l'identique : un ancien `moov` neutralisé
-    // porte encore ses pistes, et son codec peut ne plus être celui du fichier.
+  it('does not read a `trak` left in a `free` box', () => {
+    // The same trap as `readCreationTime`: a neutralised old `moov` still holds
+    // its tracks, whose codec may no longer match the file.
     const perime = boite('free', trak('vide', 'avc1'));
     const fichier = Buffer.concat([
       ftyp(),
@@ -296,8 +292,8 @@ describe('readVideoCodec', () => {
   });
 });
 
-describe('parcours par fenêtres', () => {
-  it('atteint un `moov` lointain en deux fenêtres', () => {
+describe('windowed traversal', () => {
+  it('reaches a distant `moov` in two windows', () => {
     const fichier = Buffer.concat([
       ftyp(),
       boite('mdat', Buffer.alloc(200_000)),
@@ -310,9 +306,9 @@ describe('parcours par fenêtres', () => {
     });
   });
 
-  it('rouvre une fenêtre sur un `moov` que la précédente ne contenait pas entier', () => {
-    // Le `moov` commence vingt octets avant la fin de la fenêtre : son en-tête
-    // y est, son `mvhd` non. La date ne doit pas être devinée sur ce qui reste.
+  it('reopens a window on a `moov` not fully contained in the previous one', () => {
+    // `moov` starts twenty bytes before the window ends: its header fits but
+    // `mvhd` does not. The date must not be inferred from the remainder.
     const fichier = Buffer.concat([
       ftyp(),
       boite('mdat', Buffer.alloc(1000)),
@@ -325,7 +321,7 @@ describe('parcours par fenêtres', () => {
     });
   });
 
-  it('rend `null` sur un fichier sans `moov`', () => {
+  it('returns `null` for a file without `moov`', () => {
     const fichier = Buffer.concat([ftyp(), boite('mdat', Buffer.alloc(512)), boite('free')]);
 
     assert.equal(lireEnTete(fichier, 64).time, null);

@@ -8,7 +8,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { UserForm } from './UserForm';
 import { Button, FormError, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
-/** Rubrique « Comptes » : liste des comptes, création, modification, suppression. */
+/** "Accounts" section: list, create, edit and delete accounts. */
 export function UsersSection({
   albums,
   notify,
@@ -33,7 +33,7 @@ export function UsersSection({
         setConfirming(null);
       },
       onError: (deleteError) => {
-        notify({ tone: 'error', text: errorText(deleteError, 'Suppression impossible.') });
+        notify({ tone: 'error', text: errorText(deleteError, 'Cannot delete.') });
         setConfirming(null);
       },
     });
@@ -92,20 +92,19 @@ export function UsersSection({
             className={`${ROW_CLASS} border-b border-ink-850 px-4 py-3 last:border-b-0 xl:items-center`}
           >
             <div className="min-w-0 flex-1">
-              {/* `truncate` sur le seul identifiant, et les mentions qui le
-                  suivent en `shrink-0` : posé sur la ligne entière, il laissait
-                  le badge se rétracter avec le reste et « administrateur »
-                  s'affichait « administ ». Un rôle à moitié écrit se lit comme
-                  un autre rôle. */}
+              {/* Apply `truncate` only to the identifier and `shrink-0` to the
+                  labels after it: on the whole row, the badge shrank with the
+                  rest and "administrator" appeared as "administ". Half a role
+                  reads like another role. */}
               <p className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink-100">
                 <span className="truncate">{user.username}</span>
                 {user.admin && (
                   <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-normal text-accent">
-                    administrateur
+                    administrator
                   </span>
                 )}
                 {user.username === me?.username && (
-                  <span className="shrink-0 text-xs font-normal text-ink-400">(toi)</span>
+                  <span className="shrink-0 text-xs font-normal text-ink-400">(you)</span>
                 )}
               </p>
               <p className="truncate text-xs text-ink-400">
@@ -130,9 +129,7 @@ export function UsersSection({
                 disabled={user.username === me?.username}
                 ariaLabel={`Delete account ${user.username}`}
                 title={
-                  user.username === me?.username
-                    ? 'Tu ne peux pas supprimer ton propre compte.'
-                    : undefined
+                  user.username === me?.username ? "You can't delete your own account." : undefined
                 }
               >
                 Delete
@@ -150,7 +147,7 @@ export function UsersSection({
           onConfirm={() => confirmDelete(confirming)}
           onCancel={() => setConfirming(null)}
         >
-          <p>Ce compte ne pourra plus se connecter.</p>
+          <p>This account will no longer be able to sign in.</p>
           <p>The albums and the indexed media are untouched.</p>
         </ConfirmDialog>
       )}

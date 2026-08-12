@@ -9,11 +9,11 @@ import { formatLocalDateTime, formatRelative } from '../lib/format';
 import { unreadFeedCount, useSeenFeed } from '../lib/seenComments';
 import { Spinner } from './Spinner';
 
-/** Portée du tiroir : tout ce qu'on a le droit de voir, ou le seul album ouvert. */
+/** Drawer scope: everything visible to the user, or only the open album. */
 type Scope = 'all' | 'album';
 
 export interface ActivityFeed {
-  /** Messages arrivés depuis le dernier passage, plafonnage d'affichage exclu. */
+  /** Messages received since the last visit, excluding the display cap. */
   unread: number;
   isOpen: boolean;
   open: () => void;
@@ -21,13 +21,11 @@ export interface ActivityFeed {
 }
 
 /**
- * Ce que les pages de la galerie branchent sur leur barre supérieure : la
- * pastille, et l'ouverture du tiroir.
+ * What gallery pages connect to their top bar: the badge and drawer opening.
  *
- * La portée du décompte est **toujours** la globale, y compris depuis un album.
- * La pastille répond à « y a-t-il du nouveau quelque part » — la restreindre à
- * l'album ouvert la ferait s'éteindre en changeant de page, sans que rien n'ait
- * été lu.
+ * The count scope is **always** global, including from an album. The badge
+ * answers "is there anything new anywhere?" — restricting it to the open album
+ * would make it disappear when changing pages even though nothing was read.
  */
 export function useActivityFeed(): ActivityFeed {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,14 +39,14 @@ export function useActivityFeed(): ActivityFeed {
   );
 
   useEffect(() => {
-    // Rien tant que la première page n'est pas là : le fil vaut alors zéro, et
-    // marquer ici effacerait le repère pour le reconstituer faux à l'arrivée
-    // des vrais identifiants. Même piège que la pastille de la visionneuse.
+    // Do nothing until the first page arrives: the feed is still empty, and
+    // marking here would clear the marker before reconstructing it incorrectly
+    // when real identifiers arrive. This is the same trap as the viewer badge.
     if (!isSuccess) return;
 
-    // Le tiroir ouvert vaut lecture. Et un fil dont la tête est passée **sous**
-    // le repère — suppression, masquage — doit le faire redescendre, sinon le
-    // message suivant resterait invisible jusqu'à combler l'écart.
+    // An open drawer counts as read. A feed whose head has fallen **below** the
+    // marker — through deletion or hiding — must lower it too, or the next message
+    // would remain invisible until the gap was filled.
     if (isOpen || newest < seenId) markFeedSeen(newest);
   }, [isOpen, isSuccess, newest, seenId, markFeedSeen]);
 
@@ -59,33 +57,30 @@ export function useActivityFeed(): ActivityFeed {
 }
 
 /**
- * Tiroir d'activité : les derniers commentaires, toutes photos et tous albums
- * confondus.
+ * Activity drawer: the latest comments across all photos and albums.
  *
- * **Il existe parce qu'une conversation ne se découvre pas.** La pastille d'une
- * photo suppose qu'on ait déjà ouvert la bonne, et sur un album de milliers de
- * vues dont dix portent un message, personne ne tombe dessus. Un message écrit
- * sans lecteur est un message perdu — le tiroir est le seul endroit d'où l'on
- * voit qu'il a été écrit.
+ * **It exists because a conversation cannot be discovered otherwise.** A
+ * photo's badge assumes the right photo has already been opened, and nobody
+ * stumbles across ten messages among thousands of views. A message without a
+ * reader is lost — the drawer is the only place that reveals it was written.
  *
- * Le rangement — journée, puis photo — est celui de la file de modération,
- * `lib/commentGroups.ts`, et pour les mêmes raisons : la date n'a pas à figurer
- * sur chaque ligne, ni le couple album / photo sous chaque message d'un même
- * fil.
+ * Grouping — day, then photo — matches the moderation queue in
+ * `lib/commentGroups.ts`, for the same reasons: the date need not appear on
+ * every row, nor the album/photo pair beneath every message in one thread.
  */
 export function CommentsFeed({
   albumId,
   albumTitle,
   onClose,
 }: {
-  /** Album ouvert, `null` depuis la liste des albums : la bascule n'a alors pas lieu d'être. */
+  /** Open album, `null` from the album list where the toggle has no purpose. */
   albumId: string | null;
   albumTitle: string | null;
   onClose: () => void;
 }): ReactElement {
-  // La portée globale par défaut, y compris dans un album. C'est ce que la
-  // pastille compte, et ouvrir sur une liste plus étroite que ce qu'elle
-  // annonce ferait chercher des messages qui ne s'y trouvent pas.
+  // Default to global scope, even in an album. That is what the badge counts,
+  // and opening a narrower list than it announces would make people look for
+  // messages that are not there.
   const [scope, setScope] = useState<Scope>('all');
   const active = scope === 'album' ? albumId : null;
 
@@ -111,18 +106,16 @@ export function CommentsFeed({
       onClick={onClose}
     >
       <aside
-        // Pleine largeur sur téléphone, colonne à partir de `sm` : 384 px
-        // prélevés sur un écran de 393 ne laisseraient rien de la grille
-        // derrière, et le tiroir vaudrait alors une page.
+        // Full width on phones, a column from `sm` upwards: taking 384 px from a
+        // 393 px screen would leave none of the grid behind, turning the drawer
+        // into a page.
         className="flex h-full w-full flex-col border-l border-ink-700 bg-ink-850 sm:w-96"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
           <div className="min-w-0">
             <h2 className="text-sm font-medium text-ink-100">Recent activity</h2>
-            <p className="mt-0.5 text-xs text-ink-400">
-              Les derniers messages, toutes photos confondues.
-            </p>
+            <p className="mt-0.5 text-xs text-ink-400">The latest messages, across all photos.</p>
           </div>
           <button
             type="button"
@@ -142,15 +135,15 @@ export function CommentsFeed({
           </button>
         </header>
 
-        {/* La bascule n'apparaît que dans un album : ailleurs, « cet album » ne
-            désigne rien. */}
+        {/* Show the toggle only in an album: elsewhere, "this album" does
+                  not refer to anything. */}
         {albumId && (
           <div className="flex gap-1 border-b border-ink-800 px-5 py-2.5">
             <ScopeTab active={scope === 'all'} onSelect={() => setScope('all')}>
               Every album
             </ScopeTab>
             <ScopeTab active={scope === 'album'} onSelect={() => setScope('album')}>
-              {albumTitle ?? 'Cet album'}
+              {albumTitle ?? 'This album'}
             </ScopeTab>
           </div>
         )}
@@ -183,8 +176,8 @@ export function CommentsFeed({
                 <PhotoBlock
                   key={photo.key}
                   photo={photo}
-                  // Filtré sur un album, le rappeler sous chaque photo répète ce
-                  // que la bascule affiche déjà en haut du tiroir.
+                  // When filtered to one album, repeating it beneath each photo
+                  // duplicates what the toggle already shows atop the drawer.
                   showAlbum={scope === 'all'}
                   onNavigate={onClose}
                 />
@@ -194,10 +187,9 @@ export function CommentsFeed({
 
           {hasNextPage && (
             <div className="px-5 py-4">
-              {/* Un bouton et non un défilement infini : le tiroir sert à voir
-                  ce qui vient d'arriver, pas à remonter une archive, et un
-                  observateur de défilement chargerait des pages entières sous
-                  un pouce qui ne fait que parcourir. */}
+              {/* Use a button rather than infinite scrolling: the drawer shows
+                  what just arrived, not an archive, and a scroll observer would
+                  load whole pages beneath a thumb that is merely browsing. */}
               <button
                 type="button"
                 onClick={() => void fetchNextPage()}
@@ -238,11 +230,11 @@ function ScopeTab({
 }
 
 /**
- * Une photo et les messages écrits dessous.
+ * A photo and the messages written beneath it.
  *
- * Le bloc entier est un lien vers la photo, **panneau des commentaires ouvert** :
- * arriver sur l'image sans la conversation obligerait à la rouvrir à la main, et
- * c'est précisément ce détour que ce tiroir existe pour supprimer.
+ * The entire block links to the photo **with the comments panel open**: arriving
+ * at the image without the conversation would require reopening it manually,
+ * precisely the detour this drawer exists to remove.
  */
 function PhotoBlock({
   photo,
@@ -253,18 +245,18 @@ function PhotoBlock({
   showAlbum: boolean;
   onNavigate: () => void;
 }): ReactElement {
-  // La version vient du premier message : tous ceux d'un même groupe désignent
-  // la même photo, donc la même empreinte.
+  // Take the version from the first message: every message in a group refers to
+  // the same photo, and therefore the same fingerprint.
   const version = photo.comments[0]?.mediaVersion ?? null;
   const target = `/album/${encodeURIComponent(photo.albumId)}?photo=${encodeURIComponent(photo.mediaId)}&panel=comments`;
 
   return (
     <article className="border-b border-ink-800 px-5 py-3 last:border-b-0">
       <div className="flex items-start gap-3">
-        {/* La vignette d'abord : c'est elle qui fait reconnaître la
-            conversation, bien avant le nom du fichier. Une photo retirée de
-            l'index n'en a plus, et le bloc n'est alors plus cliquable — le lien
-            mènerait à une visionneuse qui se refermerait aussitôt. */}
+        {/* Put the thumbnail first: it identifies the conversation long before
+            the filename does. A photo removed from the index no longer has one,
+            so the block is no longer clickable — its link would open a viewer
+            that immediately closed again. */}
         {photo.mediaName ? (
           <Link
             to={target}
@@ -300,12 +292,11 @@ function PhotoBlock({
             {showAlbum && <span> · {photo.albumTitle}</span>}
           </p>
 
-          {/* Chronologique **à l'intérieur** du bloc, alors que la liste des
-              blocs reste antéchronologique — c'est là que le tiroir s'écarte de
-              la file de modération, qui triage du plus récent au plus ancien de
-              bout en bout. Ici on lit une conversation : la réponse au-dessus
-              de la question se lit à l'envers. La place du bloc dans la
-              journée, elle, se décide toujours sur son message le plus récent. */}
+          {/* Chronological **inside** the block while the block list remains in
+              reverse chronological order — this is where the drawer differs
+              from the moderation queue, which sorts newest to oldest throughout.
+              This is a conversation: an answer above its question reads backwards.
+              The block's place within the day still depends on its newest message. */}
           <ul className="mt-1.5 space-y-1.5">
             {[...photo.comments].reverse().map((comment) => (
               <li key={comment.id}>
@@ -318,10 +309,9 @@ function PhotoBlock({
                   </time>
                   {comment.parentId !== null && <span>· in reply</span>}
                 </p>
-                {/* Trois lignes au plus : le tiroir est un survol de ce qui a
-                    été dit, pas la conversation — celle-ci s'ouvre sous la
-                    photo, avec de quoi y répondre. `emojify` rend du texte pur,
-                    jamais une balise. */}
+                {/* At most three lines: the drawer is an overview of what was
+                    said, not the conversation — that opens beneath the photo
+                    with a way to reply. `emojify` returns plain text, never markup. */}
                 <p className="mt-0.5 line-clamp-3 text-sm break-words whitespace-pre-wrap text-ink-200">
                   {emojify(comment.body)}
                 </p>

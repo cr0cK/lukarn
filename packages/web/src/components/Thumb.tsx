@@ -5,17 +5,15 @@ import { formatDuration } from '../lib/format';
 import { releaseIfDetached } from '../lib/imageRelease';
 
 /**
- * Plus petite variante qui couvre la taille d'affichage réelle, densité de
- * l'écran comprise. Demander systématiquement du 1280 saturerait la bande
- * passante sur une grille de 200 vignettes.
+ * Smallest variant covering the actual display size, including screen density.
+ * Always requesting 1280 would saturate bandwidth on a grid of 200 thumbnails.
  */
 /**
- * Réessais d'une vignette en échec, et leur cadence.
+ * Retry count and timing for a failed thumbnail.
  *
- * Deux suffisent : ils couvrent la saturation passagère d'une grille froide,
- * sans transformer une vraie panne en boucle. Le délai double, et une part
- * aléatoire le disperse — trente vignettes qui échouent ensemble ne doivent pas
- * repartir ensemble.
+ * Two are enough: they cover temporary saturation on a cold grid without turning
+ * a real failure into a loop. The delay doubles and a random component spreads
+ * it — thirty thumbnails failing together must not restart together.
  */
 const THUMB_RETRY_ATTEMPTS = 2;
 const THUMB_RETRY_BASE_MS = 800;
@@ -30,10 +28,10 @@ interface ThumbProps {
   item: MediaItem;
   width: number;
   height: number;
-  /** `true` pour la vignette sous le curseur clavier. */
+  /** `true` for the thumbnail beneath the keyboard cursor. */
   selected?: boolean;
   onOpen: () => void;
-  /** Chargement immédiat pour les premières lignes, différé pour le reste. */
+  /** Immediate loading for the first rows, deferred for the rest. */
   eager?: boolean;
 }
 
@@ -47,15 +45,15 @@ export function Thumb({
 }: ThumbProps): ReactElement {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
-  /** Incrémenté à chaque réessai ; sert de `key` pour remonter le `<img>`. */
+  /** Incremented on every retry; used as `key` to remount the `<img>`. */
   const [attempt, setAttempt] = useState(0);
   const image = useRef<HTMLImageElement>(null);
   const retry = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Le nœud est capté à l'exécution de l'effet : au moment du nettoyage, React a
-  // déjà remis la ref à `null`. `attempt` est en dépendance parce qu'un réessai
-  // remonte l'`<img>` : sans lui, on libérerait l'ancien nœud, déjà détaché,
-  // en laissant le nouveau poursuivre sa requête.
+  // Capture the node when the effect runs: by cleanup, React has already reset
+  // the ref to `null`. `attempt` is a dependency because a retry remounts the
+  // `<img>`: without it, the old detached node would be released while the new
+  // one continued its request.
   useEffect(() => {
     const node = image.current;
     return () => releaseIfDetached(node);
@@ -64,15 +62,15 @@ export function Thumb({
   useEffect(() => () => clearTimeout(retry.current), []);
 
   /**
-   * Un échec de vignette est le plus souvent **transitoire** : Drive limite le
-   * débit, la ligne sature, le serveur rend 503. Renoncer au premier refus
-   * laisserait une tuile vide jusqu'au prochain rechargement de page, alors que
-   * la seconde d'après serait passée.
+   * A thumbnail failure is usually **temporary**: Drive rate-limits, the line
+   * saturates and the server returns 503. Giving up after the first refusal would
+   * leave an empty tile until the next page load even though the following
+   * second would have succeeded.
    *
-   * Le délai est **dispersé** : une grille froide échoue par paquets, et des
-   * réessais synchrones repartiraient tous ensemble saturer les six mêmes
-   * connexions. Passé le dernier essai, la tuile sobre reste — c'est alors une
-   * vraie panne, et l'annoncer vaut mieux que boucler.
+   * The delay is **jittered**: a cold grid fails in batches, and synchronised
+   * retries would all saturate the same six connections again. After the final
+   * attempt, the plain tile remains — this is then a real failure, better shown
+   * than looped.
    */
   const onError = (): void => {
     if (attempt >= THUMB_RETRY_ATTEMPTS) {
@@ -86,10 +84,9 @@ export function Thumb({
   const isVideo = item.kind === 'video';
   const duration = formatDuration(item.durationMs);
   /**
-   * Une vidéo a un aperçu quand Drive en produit un (D92) — c'est ce que dit
-   * `hasPreview`, et c'est la seule question que la tuile a à poser : la règle
-   * photo/vidéo se décide côté serveur. Sans aperçu, ou après trois échecs, la
-   * tuile sobre reste.
+   * A video has a preview when Drive produces one (D92) — `hasPreview` says so,
+   * and that is the only question the tile asks: the photo/video rule is decided
+   * server-side. Without a preview, or after three failures, the plain tile remains.
    */
   const showImage = item.hasPreview && !failed;
 
@@ -97,8 +94,8 @@ export function Thumb({
     <button
       type="button"
       onClick={onOpen}
-      // La navigation se fait aux flèches sur le conteneur : les vignettes
-      // sortent de l'ordre de tabulation pour ne pas doubler le parcours clavier.
+      // Arrow keys navigate on the container: remove thumbnails from tab order
+      // to avoid duplicating the keyboard path.
       tabIndex={-1}
       aria-label={item.name}
       className={`group absolute overflow-hidden bg-ink-850 transition-[outline-color] ${
@@ -108,9 +105,8 @@ export function Thumb({
     >
       {showImage && (
         <img
-          // Remonter l'élément est ce qui relance la requête : l'URL ne change
-          // pas, et un 503 n'ayant pas d'en-tête de cache, le navigateur repart
-          // bien vers le serveur.
+          // Remounting the element restarts the request: the URL does not change,
+          // and because a 503 has no cache header the browser returns to the server.
           key={attempt}
           ref={image}
           src={mediaUrl.thumb(item.id, pickThumbSize(width), item.version)}
@@ -119,16 +115,16 @@ export function Thumb({
           height={height}
           loading={eager ? 'eager' : 'lazy'}
           decoding="async"
-          // La taille est déjà réservée par le layout : la vignette se contente
-          // de remplir sa case, sans jamais déplacer ses voisines.
+          // The layout has already reserved the size: the thumbnail merely fills
+          // its slot without ever moving neighbours.
           className={`size-full object-cover ${loaded ? 'fade-in' : 'opacity-0'}`}
           onLoad={() => setLoaded(true)}
           onError={onError}
         />
       )}
 
-      {/* Vidéo sans aperçu Drive, ou dont la vignette a échoué : le fond sobre
-          d'avant, sur lequel le badge de lecture reste la seule marque. */}
+      {/* Video without a Drive preview, or whose thumbnail failed: retain the
+          previous plain background, with the play badge as the only mark. */}
       {isVideo && !showImage && <div className="size-full bg-ink-800" />}
 
       {failed && !isVideo && (
@@ -137,10 +133,10 @@ export function Thumb({
         </div>
       )}
 
-      {/* Le badge se pose **par-dessus** l'aperçu : c'est lui qui distingue une
-          vidéo d'une photo au premier coup d'œil, et le disque sombre est ce
-          qui le garde lisible sur une image claire. Le triangle est décalé
-          d'un pixel : centré géométriquement, il paraît penché à gauche. */}
+      {/* Place the badge **over** the preview: it distinguishes video from photo
+          at a glance, and the dark disc keeps it readable on a light image. The
+          triangle is offset by one pixel because geometric centring makes it
+          appear to lean left. */}
       {isVideo && (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <span className="flex size-10 items-center justify-center rounded-full bg-black/45">

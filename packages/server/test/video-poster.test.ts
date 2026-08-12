@@ -13,11 +13,10 @@ import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Vignette d'une vidéo. L'image ne vient pas d'un décodage local — aucun octet
- * de vidéo n'est lu ici (D92) — mais de l'aperçu que Drive produit de la
- * première seconde. Ce qui est vérifié : la route sert cet aperçu comme une
- * vignette ordinaire, et refuse précisément les deux cas où il n'y a rien à
- * servir.
+ * Video thumbnail. The image does not come from local decoding — no video byte
+ * is read here (D92) — but from the preview Drive produces for the first
+ * second. This verifies that the route serves the preview like an ordinary
+ * thumbnail and rejects precisely the two cases where there is nothing to serve.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -96,11 +95,11 @@ before(async () => {
     .jpeg()
     .toBuffer();
 
-  // Drive tel qu'il répond sur une vidéo : pas d'original téléchargeable ici,
-  // seulement le `thumbnailLink` de `files.get`. Tirer l'original serait
-  // l'anomalie que ce montage rend visible.
+  // Drive as it responds for a video: no downloadable original here, only the
+  // `thumbnailLink` from `files.get`. Fetching the original is the anomaly this
+  // arrangement would expose.
   context.drive.fetchFile = () => {
-    throw new Error('un original de vidéo ne doit jamais être téléchargé pour une vignette');
+    throw new Error('a video original must never be downloaded for a thumbnail');
   };
   context.drive.api = () =>
     ({
@@ -126,8 +125,8 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('vignette d’une vidéo', () => {
-  it('sert l’aperçu Drive comme une vignette ordinaire', async () => {
+describe('video thumbnail', () => {
+  it('serves the Drive preview as an ordinary thumbnail', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/media/avec-apercu/thumb?s=320',
@@ -135,27 +134,27 @@ describe('vignette d’une vidéo', () => {
     });
 
     assert.equal(response.statusCode, 200);
-    // Le même WebP que pour une photo : la grille n'a pas à distinguer les
-    // deux, et le dérivé est mis en cache disque de la même façon.
+    // The same WebP as for a photo means the grid need not distinguish them,
+    // and the derivative is cached on disk in the same way.
     assert.equal(response.headers['content-type'], 'image/webp');
     assert.match(String(response.headers['cache-control']), /immutable/);
   });
 
-  it('refuse la vidéo dont Drive n’a pas d’aperçu', async () => {
+  it('rejects video for which Drive has no preview', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/media/sans-apercu/thumb?s=320',
       headers: { cookie },
     });
 
-    // Codec qu'aucun aperçu ne couvre, ou fichier déposé trop récemment : la
-    // colonne dit ce que la sync a vu, et le refus évite un appel à Drive dont
-    // on connaît déjà l'issue.
+    // A codec no preview supports, or a file uploaded too recently: the column
+    // says what synchronisation saw, and rejecting avoids a Drive call whose
+    // outcome is already known.
     assert.equal(response.statusCode, 415);
     assert.equal(response.json().error, 'unsupported');
   });
 
-  it('refuse le plein écran et le zoom, avec ou sans aperçu', async () => {
+  it('rejects full screen and zoom with or without a preview', async () => {
     for (const id of ['avec-apercu', 'sans-apercu']) {
       for (const variante of ['full', 'hd']) {
         const response = await server.inject({
@@ -164,9 +163,9 @@ describe('vignette d’une vidéo', () => {
           headers: { cookie },
         });
 
-        // L'aperçu Drive fait quelques centaines de pixels : l'agrandir à
-        // 2560 ou 4096 ne montrerait rien de plus qu'une image floue, servie
-        // sous un ETag qui la déclare immuable pour un an.
+        // The Drive preview is a few hundred pixels wide: enlarging it to 2560
+        // or 4096 would show nothing beyond a blurred image, served under an
+        // ETag that declares it immutable for a year.
         assert.equal(response.statusCode, 415, `${id}/${variante}`);
       }
     }

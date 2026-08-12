@@ -1,31 +1,31 @@
-# D30 — Un 401 de Drive renouvelle le jeton et retente une fois
+# D30 — A 401 from Drive refreshes the token and retries once
 
-**Contexte.** Le téléchargement d'un fichier passe par `fetch` avec un access
-token porté en en-tête. Quand le propriétaire retire l'accès, Google cesse
-d'accepter cet access token **avant** son expiration : Drive répond 401, mais
-rien ne remonte comme `invalid_grant`, donc `guard()` ne voyait rien. Le jeton en
-cache restait utilisé jusqu'à une heure, /admin affichait « connecté », et chaque
-vignette échouait sur un message technique.
+**Context.** A file is downloaded through `fetch` with an access token in the
+header. When the owner revokes access, Google stops accepting that access token
+**before** it expires: Drive responds with 401, but nothing surfaces as
+`invalid_grant`, so `guard()` saw nothing. The cached token continued to be used
+for up to an hour, /admin displayed "connected", and every thumbnail failed with
+a technical message.
 
-**Choix.** `DriveService.fetchAuthorized()` traite le 401 : il jette le client
-OAuth en cache pour forcer un nouvel échange du refresh token, puis retente
-**une seule fois**. L'échange passe par `guard()`, donc un refresh token refusé
-est reconnu et la révocation enregistrée. Un second 401 reste une erreur — ce
-n'est plus une question de jeton.
+**Decision.** `DriveService.fetchAuthorized()` handles the 401: it discards the
+cached OAuth client to force a new refresh token exchange, then retries **only
+once**. The exchange goes through `guard()`, so a rejected refresh token is
+recognised and the revocation recorded. A second 401 remains an error — it is no
+longer a token issue.
 
-**Choix lié.** `guard()` photographie le chiffré du jeton en place au lancement
-de l'appel, et `markRevoked()` n'écrit que si c'est toujours celui qui est
-stocké. Une requête partie avant une reconnexion OAuth, qui échoue après
-l'enregistrement du nouveau jeton, marquait sinon ce jeton tout neuf comme
-révoqué — et /admin réclamait une reconnexion qui venait d'être faite. Chaque
-`completeAuth` produisant un chiffré différent (sel et IV tirés à chaque fois),
-la comparaison suffit à reconnaître qu'une reconnexion est passée entre-temps.
+**Related decision.** `guard()` snapshots the encrypted token in place when the
+call starts, and `markRevoked()` writes only if it is still the one stored. A
+request started before an OAuth reconnection but failing after the new token was
+stored would otherwise mark that brand-new token as revoked — and /admin would
+request a reconnection that had just been completed. Since every `completeAuth`
+produces different ciphertext (salt and IV generated each time), the comparison
+is enough to recognise that a reconnection has occurred in the meantime.
 
-**Écarté.** Retenter en boucle : sur une grille de 200 vignettes, un 401
-persistant ferait tourner le serveur à vide. Écarté aussi : marquer la révocation
-dès le premier 401 — un 401 peut venir d'une permission propre au fichier, et
-imposer un nouveau consentement pour cela serait disproportionné.
+**Rejected.** Retrying in a loop: on a grid of 200 thumbnails, a persistent 401
+would keep the server spinning pointlessly. Also rejected: marking the token as
+revoked on the first 401 — a 401 can result from a file-specific permission, and
+requiring new consent for that would be disproportionate.
 
-**Conséquences.** `accessToken()` est `protected` et non `private` : c'est le
-seul point de contact réseau du service, et les tests s'en servent comme couture
-pour ne pas appeler Google (`packages/server/test/revocation.test.ts`).
+**Consequences.** `accessToken()` is `protected`, not `private`: it is the
+service's only network contact point, and tests use it as a seam to avoid calling
+Google (`packages/server/test/revocation.test.ts`).

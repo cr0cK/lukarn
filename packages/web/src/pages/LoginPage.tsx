@@ -16,14 +16,14 @@ export default function LoginPage(): ReactElement {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  // La demande d'appairage naît ici, du clic, et non d'un effet de montage dans
-  // `DeviceLogin` : ce dernier perdrait son résultat sous `StrictMode` (voir le
-  // commentaire du composant). `isIdle` dit simplement si le panneau est ouvert.
+  // Pairing starts here from the click, not from a mount effect in `DeviceLogin`:
+  // the latter would lose its result under `StrictMode` (see the component
+  // comment). `isIdle` simply says whether the panel is open.
   const pairing = useStartPairing();
 
   const origin = (location.state as { from?: { pathname: string; search?: string } } | null)?.from;
-  // La recherche fait partie de la destination : `/pair?code=…` sans son code
-  // ramènerait sur une page qui ne sait plus quoi approuver.
+  // Search is part of the destination: `/pair?code=…` without its code would
+  // return to a page that no longer knows what to approve.
   const from = origin ? `${origin.pathname}${origin.search ?? ''}` : '/';
 
   if (isPending) {
@@ -37,10 +37,10 @@ export default function LoginPage(): ReactElement {
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    // Un identifiant ne contient jamais d'espace (`USERNAME_PATTERN`), mais un
-    // clavier mobile en colle une après l'autocomplétion, et le copier-coller
-    // en rapporte des deux côtés. Sans ce repli, la saisie est juste à l'écran
-    // et la connexion refusée sans rien dire de plus.
+    // An identifier never contains spaces (`USERNAME_PATTERN`), but a mobile
+    // keyboard adds one after autocomplete and pasted text brings them on both
+    // sides. Without trimming, input looks correct while sign-in is refused
+    // without further explanation.
     login.mutate(
       { username: username.trim(), password },
       { onSuccess: () => void navigate(from, { replace: true }) },
@@ -69,9 +69,9 @@ export default function LoginPage(): ReactElement {
           />
         ) : (
           <>
-            {/* Installation neuve : aucune saisie ne peut aboutir tant qu'aucun
-            compte n'existe. Le dire ici évite de chercher une panne là où il
-            n'y a qu'une étape d'installation qui reste à faire. */}
+            {/* On a fresh installation no input can succeed until an account exists.
+            Saying so avoids looking for a failure when one installation step
+            merely remains. */}
             {setup?.needsSetup && (
               <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                 <p className="font-medium">No account is configured yet.</p>
@@ -132,9 +132,9 @@ export default function LoginPage(): ReactElement {
               </button>
             </form>
 
-            {/* Le second chemin, pour l'écran qui n'a pas de clavier : un
-                téléviseur, où chaque caractère se compose à la télécommande
-                (D260809c). Il n'ouvre aucune demande tant qu'on ne clique pas. */}
+            {/* The second path is for a screen without a keyboard: a television
+                where every character is entered by remote (D260809c). It opens
+                no request until clicked. */}
             <button
               type="button"
               onClick={() => pairing.mutate()}

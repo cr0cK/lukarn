@@ -9,19 +9,19 @@ import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui
 
 const SYNC_LABELS: Record<SyncStatus, { text: string; className: string }> = {
   never: { text: 'never synced', className: 'text-ink-400' },
-  running: { text: 'synchronisation en cours', className: 'text-accent' },
+  running: { text: 'sync in progress', className: 'text-accent' },
   ok: { text: 'up to date', className: 'text-emerald-400' },
-  error: { text: 'en erreur', className: 'text-red-400' },
+  error: { text: 'failed', className: 'text-red-400' },
 };
 
 interface AlbumsSectionProps {
   albums: AdminAlbum[];
-  /** Sans compte Drive connecté, aucune synchronisation ne peut partir. */
+  /** No sync can start without a connected Drive account. */
   driveConnected: boolean;
   notify: Notify;
 }
 
-/** Section « Albums » : liste, création, modification, suppression, resynchronisation. */
+/** "Albums" section: list, create, edit, delete and resynchronise. */
 export function AlbumsSection({
   albums,
   driveConnected,
@@ -42,16 +42,14 @@ export function AlbumsSection({
           tone: 'ok',
           text: started.length ? `Sync started: ${started.join(', ')}` : 'No album to sync.',
         }),
-      onError: (error) =>
-        notify({ tone: 'error', text: errorText(error, 'Synchronisation impossible.') }),
+      onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot sync.') }),
     });
   };
 
   /**
-   * Rend la couverture au choix automatique. Le geste inverse — désigner une
-   * photo — se fait dans l'album, sur la photo elle-même : un sélecteur ici
-   * rejouerait la grille sans rien apporter, et on choisit une couverture en la
-   * regardant en grand.
+   * Returns cover selection to automatic. The reverse action — choosing a photo
+   * — happens in the album on the photo itself: a picker here would reproduce the
+   * grid without adding anything, and a cover is chosen while viewing it large.
    */
   const clearCover = (album: AdminAlbum): void => {
     update.mutate(
@@ -62,8 +60,7 @@ export function AlbumsSection({
             tone: 'ok',
             text: `Album "${album.title}" takes its most recent photo as cover again.`,
           }),
-        onError: (error) =>
-          notify({ tone: 'error', text: errorText(error, 'Modification impossible.') }),
+        onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot update.') }),
       },
     );
   };
@@ -75,7 +72,7 @@ export function AlbumsSection({
         setConfirming(null);
       },
       onError: (error) => {
-        notify({ tone: 'error', text: errorText(error, 'Suppression impossible.') });
+        notify({ tone: 'error', text: errorText(error, 'Cannot delete.') });
         setConfirming(null);
       },
     });
@@ -147,10 +144,9 @@ export function AlbumsSection({
               )}
             </div>
 
-            {/* L'état de synchronisation ouvre le groupe d'actions au lieu de
-                fermer les métadonnées : c'est lui qu'on lit avant de décider de
-                resynchroniser, et il reste ainsi contre le bouton qu'il appelle
-                une fois la ligne empilée. */}
+            {/* Sync status opens the action group rather than closing metadata:
+                it is read before deciding to resynchronise, and thus stays next
+                to the button it prompts once the row stacks. */}
             <div className={ROW_ACTIONS_CLASS}>
               <span className={`mr-1 text-xs ${SYNC_LABELS[album.syncStatus].className}`}>
                 {SYNC_LABELS[album.syncStatus].text}
@@ -164,17 +160,17 @@ export function AlbumsSection({
                 Resync
               </Button>
 
-              {/* Sa seule présence dit qu'une couverture a été choisie : la ligne
-                  de métadonnées au-dessus est tronquée dès que la fenêtre se
-                  resserre, et un indicateur qu'on ne voit pas n'en est pas un. */}
+              {/* Its presence alone says a cover was selected: the metadata row
+                  above is truncated as the window narrows, and an unseen
+                  indicator is no indicator. */}
               {album.coverId && (
                 <Button
                   onClick={() => clearCover(album)}
                   disabled={update.isPending}
                   title="A photo was chosen as cover. Give the album its most recent photo back."
-                  ariaLabel={`Rendre automatique la couverture de l'album ${album.title}`}
+                  ariaLabel={`Make the cover of album ${album.title} automatic again`}
                 >
-                  Couverture automatique
+                  Automatic cover
                 </Button>
               )}
 

@@ -1,39 +1,36 @@
-# D66 — L'administration se navigue par rubriques, une par URL
+# D66 — Administration is navigated by sections, one per URL
 
-**Contexte.** `/admin` empilait six sections dans une seule colonne. Tant que la
-file de modération tenait dans un écran, la page se parcourait ; depuis qu'elle
-est paginée, la page n'a plus de fin, et « Réglages » comme « Maintenance » se
-retrouvent derrière des dizaines de commentaires. Le bandeau de message était
-déjà collé sous la barre supérieure précisément parce qu'on ne l'aurait plus vu
-autrement — un symptôme traité, pas la cause.
+**Context.** `/admin` stacked six sections in a single column. While the
+moderation queue fitted on one screen, the page was navigable; since it became
+paginated, the page has no end, and "Settings" and "Maintenance" sit behind
+dozens of comments. The message banner was already stuck below the top bar
+precisely because it would otherwise no longer be seen — a treated symptom, not
+the cause.
 
-**Choix.** Quatre rubriques, chacune à son URL : `/admin/albums`,
-`/admin/comptes`, `/admin/commentaires`, `/admin/serveur`. Une colonne de
-navigation à gauche à partir de `md`, collante pour rester sous les yeux pendant
-qu'on modère ; en dessous, une rangée qui défile horizontalement. `AdminNav`
-expose `ADMIN_TABS`, que `AdminPage` réutilise pour valider le paramètre `:tab`,
-et chaque rubrique ne monte que les attentes qui la concernent — la file de
-modération n'affiche plus le chargement des albums.
+**Choice.** Four sections, each with its own URL: `/admin/albums`,
+`/admin/accounts`, `/admin/comments`, and `/admin/server`. From `md` upwards,
+a left navigation column remains sticky so it stays visible during moderation;
+below that, a horizontally scrolling row. `AdminNav` exposes `ADMIN_TABS`, which
+`AdminPage` reuses to validate the `:tab` parameter, and each section only mounts
+the queries it needs — the moderation queue no longer displays album loading.
 
-Les trois sections du serveur — connexion Drive, réglages, maintenance —
-restent groupées : elles répondent toutes à « comment tourne cette instance »,
-et les séparer aurait donné trois pages d'une section chacune.
+The three server sections — Drive connection, settings, and maintenance — remain
+grouped: they all answer "how does this instance run?", and separating them would
+produce three pages with one section each.
 
-**Écarté.** Des onglets en état local, sans toucher aux URL : un rechargement
-perd la rubrique, le retour du navigateur quitte l'administration au lieu de
-revenir à la rubrique précédente, et surtout le retour de consentement Google
-n'a plus de destination à nommer — il revient sur la page, pas sur la rubrique
-d'où l'on est parti. Écarté aussi un accordéon, qui garde une page unique et
-n'enlève rien au défilement dès qu'une section est ouverte. Écartée enfin une
-entrée de navigation par section, six pour six : cela reproduit dans la marge la
-liste qu'on cherche justement à raccourcir.
+**Rejected.** Tabs in local state, without changing URLs: a reload loses the
+section, the browser's Back button leaves administration instead of returning to
+the previous section, and above all the return from Google consent no longer has
+a destination to name — it returns to the page, not the section it came from.
+Also rejected: an accordion, which keeps a single page and does nothing to reduce
+scrolling once a section opens. Finally rejected: one navigation entry per
+section, six for six, which reproduces in the margin the list being shortened.
 
-**Conséquences.** `/admin` redirige vers `/admin/albums` : les signets et le
-bouton de la barre supérieure restent valides. Le callback OAuth redirige
-désormais vers `/admin/serveur?oauth=<raison>`, la rubrique qui porte le bouton
-de connexion. La section « Utilisateurs » devient « Comptes », pour s'aligner
-sur « Nouveau compte » et sur le libellé de la rubrique. Une rubrique ajoutée
-plus tard s'écrit dans `ADMIN_TABS` et nulle part ailleurs ; en revanche, une
-section déplacée d'une rubrique à l'autre change une URL que quelqu'un a pu
-mettre en signet — c'est le prix de la rubrique dans l'URL, et il est faible
-devant ce qu'elle rend possible.
+**Consequences.** `/admin` redirects to `/admin/albums`: bookmarks and the top
+bar button remain valid. The OAuth callback now redirects to
+`/admin/server?oauth=<reason>`, the section containing the connection button.
+The "Users" section becomes "Accounts", aligning with "New account" and the
+section label. A section added later is written in `ADMIN_TABS` and nowhere else;
+however, moving a section from one group to another changes a URL someone may
+have bookmarked — the price of putting the section in the URL, and a small one
+compared with what it enables.

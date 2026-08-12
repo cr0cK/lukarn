@@ -1,407 +1,394 @@
 # 02 — Architecture
 
-## Vue d'ensemble
+## Overview
 
-Monorepo pnpm, trois packages, un seul conteneur en production. Le serveur
-Fastify sert à la fois l'API sous `/api` et le front buildé sur tout le reste.
+A pnpm monorepo, three packages, and a single container in production. The
+Fastify server serves both the API under `/api` and the built frontend for
+everything else.
 
 ```mermaid
 flowchart LR
-  N[Navigateur] -->|cookie de session| F[Fastify]
+  N[Browser] -->|session cookie| F[Fastify]
   F --> S[(SQLite<br/>index + sessions + token)]
-  F --> C[/Cache disque<br/>dérivés WebP/]
-  F -->|OAuth propriétaire| G[(Google Drive)]
+  F --> C[/Disk cache<br/>WebP derivatives/]
+  F -->|Owner OAuth| G[(Google Drive)]
   F -->|index.html + assets| N
 ```
 
-| Package           | Rôle                                                                                                                                                                                                                                |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/shared` | Types du contrat d'API (`MediaItem`, `Album`, `ItemsPage`, `AdminStatus`…) et les quelques constantes partagées (`THUMB_SIZES`, `SortOrder`). Aucune dépendance, aucune logique. Le front ne redéclare jamais une forme de réponse. |
-| `packages/server` | Fastify 5, better-sqlite3, sharp, `@googleapis/drive`. Détient l'index, la connexion Drive, le pipeline média, les sessions.                                                                                                        |
-| `packages/web`    | React 19, Vite, Tailwind 4, TanStack Query, React Router. Aucun accès direct à Google.                                                                                                                                              |
+| Package           | Role                                                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `packages/shared` | API contract types (`MediaItem`, `Album`, `ItemsPage`, `AdminStatus`…) and the few shared constants (`THUMB_SIZES`, `SortOrder`). No dependencies, no logic. The frontend never redeclares a response shape. |
+| `packages/server` | Fastify 5, better-sqlite3, sharp, `@googleapis/drive`. Owns the index, Drive connection, media pipeline, and sessions.                                                                                       |
+| `packages/web`    | React 19, Vite, Tailwind 4, TanStack Query, React Router. No direct access to Google.                                                                                                                        |
 
-### Le serveur, fichier par fichier
+### The server, file by file
 
-| Fichier                  | Responsabilité                                                                                                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`            | Point d'entrée : `.env`, env, `buildApp`, minuteurs reprogrammables, arrêt gracieux.                                                                                            |
-| `src/app.ts`             | Assemblage Fastify : plugins, préfixes de routes, service du front, gestionnaire d'erreurs.                                                                                     |
-| `src/env.ts`             | Schéma zod des variables d'environnement, résolution des chemins.                                                                                                               |
-| `src/config.ts`          | Schéma zod d'`albums.yaml`, lu au seul amorçage d'une base vide.                                                                                                                |
-| `src/bootstrap.ts`       | Import unique d'`albums.yaml` en base, tant qu'aucun compte n'existe.                                                                                                           |
-| `src/config-repo.ts`     | `ConfigRepo` : comptes, albums, droits, réglages. Seul écrivain, instantané mémoire.                                                                                            |
-| `src/context.ts`         | `AppContext` : objet unique qui porte config, base et services. Les routes n'instancient rien.                                                                                  |
-| `src/db.ts`              | Ouverture SQLite, pragmas, tableau `MIGRATIONS`.                                                                                                                                |
-| `src/repo.ts`            | Accès aux tables `media` et `sync_state`, curseurs de pagination.                                                                                                               |
-| `src/comments.ts`        | `CommentRepo` : fils, profondeur limitée à un niveau, modération.                                                                                                               |
-| `src/places.ts`          | `AlbumDayRepo` et `PlacesPass` : journées annotées, agglomération des positions EXIF en grappes.                                                                                |
-| `src/geocoder.ts`        | Géocodage inverse Nominatim, cadencé et mis en cache par cellule d'environ un kilomètre.                                                                                        |
-| `src/commenters.ts`      | `CommenterRepo` : identités de commentateur, vérification de l'adresse par code, destinataires.                                                                                 |
-| `src/mail.ts`            | Transport SMTP, file d'envoi hors requête, composition des emails de notification.                                                                                              |
-| `src/sessions.ts`        | Création, lecture, destruction et purge des sessions.                                                                                                                           |
-| `src/crypto.ts`          | AES-256-GCM pour le refresh token, comparaison en temps constant.                                                                                                               |
-| `src/throttle.ts`        | Backoff progressif des tentatives de connexion, en mémoire.                                                                                                                     |
-| `src/drive/service.ts`   | Unique connexion OAuth : consentement, refresh, `files.list`, `fetchFile`, détection de révocation.                                                                             |
-| `src/drive/sync.ts`      | Parcours des dossiers et remplissage de l'index.                                                                                                                                |
-| `src/drive/metadata.ts`  | Normalisation des champs Drive (types MIME, date EXIF, nombres, coordonnées), et date de prise de vue d'une vidéo.                                                              |
-| `src/drive/mp4.ts`       | Lecture de l'en-tête d'un conteneur MP4 par fenêtres : où est le `moov`, quelle date porte son `mvhd`, quel codec porte sa piste image.                                         |
-| `src/media/renderer.ts`  | Rendu WebP par sharp, déduplication des rendus concurrents, repli sur la vignette Drive. `prepare` prépare plusieurs variantes en un seul téléchargement, pour le préchauffage. |
-| `src/media/cache.ts`     | Cache disque avec inventaire en mémoire et éviction LRU. Deux instances : les dérivés d'images, et le magasin des vidéos préparées.                                             |
-| `src/media/transcode.ts` | `VideoTranscoder` et `TranscodePass` : version H.264 des vidéos dont le codec n'est décodé par aucun navigateur courant, une à la fois et en fond.                              |
-| `src/media/range.ts`     | Validation du header `Range` avant relais.                                                                                                                                      |
-| `src/plugins/auth.ts`    | Résolution de la session à chaque requête, gardes `requireAuth` / `requireAdmin`.                                                                                               |
-| `src/plugins/headers.ts` | En-têtes de sécurité posés sur toutes les réponses — voir [04](./04-securite-et-acces.md).                                                                                      |
-| `src/routes/*.ts`        | Les quatre familles de routes — voir [05](./05-api.md).                                                                                                                         |
+| File                     | Responsibility                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main.ts`            | Entry point: `.env`, env, `buildApp`, reschedulable timers, graceful shutdown.                                                                                     |
+| `src/app.ts`             | Fastify assembly: plugins, route prefixes, frontend serving, error handler.                                                                                        |
+| `src/env.ts`             | zod schema for environment variables, path resolution.                                                                                                             |
+| `src/config.ts`          | zod schema for `albums.yaml`, read only when bootstrapping an empty database.                                                                                      |
+| `src/bootstrap.ts`       | One-time import of `albums.yaml` into the database, while no account exists.                                                                                       |
+| `src/config-repo.ts`     | `ConfigRepo`: accounts, albums, permissions, settings. Sole writer, in-memory snapshot.                                                                            |
+| `src/context.ts`         | `AppContext`: single object carrying config, database, and services. Routes instantiate nothing.                                                                   |
+| `src/db.ts`              | Opens SQLite, sets pragmas, holds the `MIGRATIONS` array.                                                                                                          |
+| `src/repo.ts`            | Access to the `media` and `sync_state` tables, pagination cursors.                                                                                                 |
+| `src/comments.ts`        | `CommentRepo`: threads limited to one level of depth, moderation.                                                                                                  |
+| `src/places.ts`          | `AlbumDayRepo` and `PlacesPass`: annotated days, clustering of EXIF positions.                                                                                     |
+| `src/geocoder.ts`        | Rate-limited Nominatim reverse geocoding, cached by cells of roughly one kilometre.                                                                                |
+| `src/commenters.ts`      | `CommenterRepo`: commenter identities, code-based address verification, recipients.                                                                                |
+| `src/mail.ts`            | SMTP transport, out-of-request sending queue, notification email composition.                                                                                      |
+| `src/sessions.ts`        | Session creation, reading, destruction, and purging.                                                                                                               |
+| `src/crypto.ts`          | AES-256-GCM for the refresh token, constant-time comparison.                                                                                                       |
+| `src/throttle.ts`        | Progressive in-memory backoff for login attempts.                                                                                                                  |
+| `src/drive/service.ts`   | Single OAuth connection: consent, refresh, `files.list`, `fetchFile`, revocation detection.                                                                        |
+| `src/drive/sync.ts`      | Folder traversal and index population.                                                                                                                             |
+| `src/drive/metadata.ts`  | Normalisation of Drive fields (MIME types, EXIF date, numbers, coordinates), and video capture date.                                                               |
+| `src/drive/mp4.ts`       | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                               |
+| `src/media/renderer.ts`  | WebP rendering with sharp, concurrent-render deduplication, fallback to the Drive thumbnail. `prepare` prepares several variants from one download for prewarming. |
+| `src/media/cache.ts`     | Disk cache with an in-memory inventory and LRU eviction. Two instances: image derivatives and prepared video storage.                                              |
+| `src/media/transcode.ts` | `VideoTranscoder` and `TranscodePass`: background H.264 versions of videos whose codec no common browser decodes, one at a time.                                   |
+| `src/media/range.ts`     | Validation of the `Range` header before relaying it.                                                                                                               |
+| `src/plugins/auth.ts`    | Session resolution on every request, `requireAuth` / `requireAdmin` guards.                                                                                        |
+| `src/plugins/headers.ts` | Security headers applied to every response — see [04](./04-securite-et-acces.md).                                                                                  |
+| `src/routes/*.ts`        | The four route families — see [05](./05-api.md).                                                                                                                   |
 
-## Cheminement d'une vignette
+## Thumbnail flow
 
-Du clic sur un album jusqu'à l'octet rendu.
+From clicking an album to the rendered byte.
 
 ```mermaid
 sequenceDiagram
-  participant N as Navigateur
+  participant N as Browser
   participant F as Fastify
   participant D as SQLite
-  participant C as Cache disque
+  participant C as Disk cache
   participant G as Drive
 
   N->>F: GET /api/albums/vacances/items?limit=250&order=desc
   F->>D: SELECT … ORDER BY taken_at DESC LIMIT 251
-  D-->>F: 250 lignes + curseur
-  F-->>N: ItemsPage (dimensions comprises)
-  Note over N: computeLayout() positionne toute la grille<br/>avant le moindre chargement d'image
+  D-->>F: 250 rows + cursor
+  F-->>N: ItemsPage (including dimensions)
+  Note over N: computeLayout() positions the entire grid<br/>before any image loads
   N->>F: GET /api/media/<id>/thumb?s=640
-  F->>F: requireAuth puis authorize (albumsContaining)
+  F->>F: requireAuth then authorize (albumsContaining)
   F->>C: hit("<id>:t640")
-  alt en cache
-    C-->>F: chemin du fichier
-  else absent
+  alt cached
+    C-->>F: file path
+  else missing
     F->>G: GET files/<id>?alt=media
-    G-->>F: octets de l'original
+    G-->>F: original bytes
     F->>F: sharp().rotate().resize(640).webp()
     F->>C: put("<id>:t640")
   end
   F-->>N: image/webp, Cache-Control immutable, ETag
 ```
 
-Points qui comptent :
+Key points:
 
-- Le contrôle d'accès est un `preHandler` global sur le préfixe `/media`
-  (`routes/media.ts`) : aucune route média ne peut l'oublier.
-- La déduplication vit dans `MediaRenderer.inFlight`, indexée par **clé de
-  variante** et non par fichier : dix requêtes sur la même vignette ne
-  déclenchent qu'un téléchargement, mais dix requêtes réparties sur `s=320` et
-  `s=640` du même fichier en déclenchent **deux**. C'est le prix assumé d'un
-  chemin de rendu qui ne connaît qu'une variante à la fois.
-  `MediaRenderer.prepare` — le chemin du préchauffage — **ne passe pas par
-  `inFlight`** : il garantit le téléchargement unique autrement, par une seule
-  descente pour toutes les variantes sous une seule place du limiteur.
-- **Les rendus de fichiers _différents_ sont bridés** par un limiteur
-  (`media/semaphore.ts`), dimensionné à `cpus - 2` et borné entre 2 et 4. La
-  place est prise avant le téléchargement, parce que c'est l'original chargé en
-  mémoire qui pèse : sans cette limite, vingt-quatre rendus simultanés font
-  grimper le processus de plus de 300 Mo. Le débit total est inchangé, c'est la
-  mémoire qui est divisée par trois (D32).
-- Le décodage se fait **hors du fil principal**, mais sur le pool de fils de
-  libuv, partagé avec les lectures de fichiers. D'où `threadpool.ts`, importé en
-  premier par `main.ts` : à la taille par défaut de quatre, servir une vignette
-  déjà en cache attend deux secondes derrière les rendus en cours.
-- L'`ETag` vaut `"<mediaId>-<version>-<variante>"`, la variante étant
-  `320`/`640`/`1280`, `full` ou `hd`. Un `If-None-Match` correspondant répond 304
-  sans toucher au disque. **Le segment `version` n'est pas décoratif** : c'est
-  l'empreinte du contenu, et le dérivé étant servi en `immutable` pendant un an,
-  c'est la seule chose qui invalide le cache navigateur quand on remplace un
-  fichier Drive sous le même identifiant.
-- **Une vidéo a une vignette, jamais de plein écran.** `serveRendered` la rend
-  depuis l'aperçu Drive (`render(..., 'poster')`), qui court-circuite le
-  téléchargement de l'original : aucun octet de vidéo n'est décodé ici (D92).
-  Deux 415 subsistent, précis : `full` ou `hd` sur une vidéo — il n'y a rien à
-  agrandir —, et `thumb` sur une vidéo dont `has_thumbnail` vaut 0, Drive n'ayant
-  pas d'image à donner. La grille garde alors la tuile sobre, et le badge de
-  lecture avec la durée dans tous les cas.
+- Access control is a global `preHandler` on the `/media` prefix
+  (`routes/media.ts`): no media route can forget it.
+- Deduplication lives in `MediaRenderer.inFlight`, indexed by **variant key**
+  rather than by file: ten requests for the same thumbnail trigger only one
+  download, but ten requests split between `s=320` and `s=640` for the same file
+  trigger **two**. This is the accepted cost of a rendering path that knows only
+  one variant at a time. `MediaRenderer.prepare` — the prewarming path — **does
+  not go through `inFlight`**: it guarantees a single download in a different
+  way, through one fetch for all variants under one limiter slot.
+- **Renders of _different_ files are throttled** by a limiter
+  (`media/semaphore.ts`), sized to `cpus - 2` and bounded between 2 and 4. The
+  slot is acquired before the download because the original loaded into memory
+  is the expensive part: without this limit, twenty-four simultaneous renders
+  increase the process by more than 300 MB. Total throughput is unchanged, while
+  memory use is divided by three (D32).
+- Decoding happens **off the main thread**, but on libuv's thread pool, shared
+  with file reads. This is why `threadpool.ts` is imported first by `main.ts`:
+  with the default size of four, serving an already cached thumbnail waits two
+  seconds behind in-progress renders.
+- The `ETag` is `"<mediaId>-<version>-<variant>"`, where the variant is
+  `320`/`640`/`1280`, `full`, or `hd`. A matching `If-None-Match` returns 304
+  without touching the disk. **The `version` segment is not decorative**: it is
+  the content fingerprint, and because the derivative is served as `immutable`
+  for a year, it is the only thing that invalidates the browser cache when a
+  Drive file is replaced under the same identifier.
+- **A video has a thumbnail, never a full-screen render.** `serveRendered`
+  renders it from the Drive preview (`render(..., 'poster')`), bypassing the
+  original download: no video bytes are decoded here (D92). Exactly two cases
+  still return 415: `full` or `hd` for a video — there is nothing to enlarge —, and `thumb`
+  for a video whose `has_thumbnail` is 0, because Drive has no image to provide.
+  The grid then retains the understated tile, and the play badge with its duration
+  in every case.
 
-## Cheminement d'une synchronisation
+## Synchronisation flow
 
-Déclenchée au démarrage (`sync.onStartup`), périodiquement
-(`sync.intervalMinutes`), après un consentement OAuth réussi, depuis
-`POST /api/admin/resync`, **à la création d'un album**, et **quand son périmètre
-Drive change** (`folderId` ou `recursive` modifié : l'index de l'album est alors
-purgé puis reconstruit). Les deux derniers passent par `startSync`
-(`routes/admin.ts`) — c'est le chemin de « je crée un album et je l'ouvre dans la
-foulée », le plus courant à l'installation.
+Triggered at startup (`sync.onStartup`), periodically (`sync.intervalMinutes`),
+after successful OAuth consent, from `POST /api/admin/resync`, **when an album is
+created**, and **when its Drive scope changes** (`folderId` or `recursive` is
+changed: the album index is then purged and rebuilt). The last two go through
+`startSync` (`routes/admin.ts`) — this is the "I create an album and open it
+straight away" path, the most common one during installation.
 
-Tous ces déclencheurs passent par `AppContext.syncThenPrewarm` : l'indexation est
-suivie du préchauffage des vignettes (D58), puis de la préparation des vidéos
-illisibles (D260809b). L'ordre n'est pas neutre — les vignettes font attendre
-quelqu'un devant sa grille, un transcodage prépare une vidéo que personne ne
-regarde encore.
+All these triggers go through `AppContext.syncThenPrewarm`: indexing is followed
+by thumbnail prewarming (D58), then preparation of unplayable videos (D260809b).
+The order matters — thumbnails keep someone waiting in front of the grid, while
+transcoding prepares a video that nobody is watching yet.
 
-1. `Syncer.sync(album)` — si une sync du même album tourne déjà **avec la même
-   configuration effective** (`folderId` et `recursive`), la promesse en cours
-   est renvoyée telle quelle : une resync manuelle ne double jamais le travail.
-   Si la configuration a changé entre-temps, une nouvelle sync est enchaînée
-   derrière la précédente. Partager la promesse de l'ancienne rendrait à
-   l'appelant un travail qui repeuple l'album avec le dossier qu'il vient de
-   quitter ; les lancer en parallèle laisserait l'ordre d'arrivée des
-   `deleteStale` décider du contenu final.
-2. `sync_state` passe à `running`, erreur remise à `null`.
-3. Un `seenAt` ISO est figé : c'est l'estampille du passage.
-4. Parcours en profondeur depuis `folderId`, avec `visited` contre les cycles et
-   un plafond `MAX_FOLDERS = 5000`. `recursive: false` n'empile pas les
-   sous-dossiers. Les **raccourcis Drive ne sont pas suivis** : `files.list` ne
-   demande pas `shortcutDetails`, si bien qu'un dossier atteignable seulement
-   par un raccourci n'est jamais indexé. `visited` sert donc au cas où le même
-   dossier est atteint par deux chemins, pas à casser un cycle de raccourcis.
-5. `files.list` par pages de 1000, en ne demandant que
+1. `Syncer.sync(album)` — if a sync of the same album is already running **with
+   the same effective configuration** (`folderId` and `recursive`), its pending
+   promise is returned unchanged: a manual resync never duplicates the work. If
+   the configuration has changed in the meantime, a new sync is queued after the
+   previous one. Sharing the old promise would return work to the caller that
+   repopulates the album from the folder it has just left; running them in
+   parallel would let the arrival order of `deleteStale` calls determine the final
+   content.
+2. `sync_state` changes to `running`, and the error is reset to `null`.
+3. An ISO `seenAt` is fixed: this is the pass timestamp.
+4. Depth-first traversal from `folderId`, with `visited` guarding against cycles
+   and a `MAX_FOLDERS = 5000` limit. `recursive: false` does not enqueue
+   subfolders. **Drive shortcuts are not followed**: `files.list` does not request
+   `shortcutDetails`, so a folder reachable only through a shortcut is never
+   indexed. `visited` therefore handles cases where two paths reach the same
+   folder, rather than breaking shortcut cycles.
+5. `files.list` in pages of 1000, requesting only
    `id, name, mimeType, size, modifiedTime, md5Checksum, hasThumbnail,
-imageMediaMetadata, videoMediaMetadata`. **Aucun contenu n'est téléchargé.**
-   `hasThumbnail` dit si Drive a produit un aperçu du fichier : c'est ce qui
-   permet à une vidéo d'avoir une vignette de grille (D92), et le stocker évite
-   d'en redemander une à chaque chargement de page quand il n'y en a pas.
-6. `toUpsert` normalise : `classify` écarte tout ce qui n'est ni image ni vidéo,
-   `parseExifTime` lit `YYYY:MM:DD HH:MM:SS`, et les dimensions sont inversées
-   quand `imageMediaMetadata.rotation` est impair — sinon les portraits
-   casseraient la mise en page.
-7. **Une vidéo est la seule exception au « aucun contenu n'est téléchargé »** :
-   Drive n'expose aucune date de prise de vue pour elle, alors le début de son
-   fichier est lu par requêtes `Range` (D97). `drive/mp4.ts` suit la chaîne des
-   boîtes de premier niveau depuis l'offset 0 pour atteindre le `moov`, dont le
-   `mvhd` porte la date d'enregistrement ; `resolveVideoTakenAt` la confronte à
-   l'horodatage du nom du fichier. **La même fenêtre livre le codec de la piste
-   image** — `readVideoCodec` descend `moov → trak → mdia → minf → stbl → stsd`
-   et retient la première piste dont le `hdlr` vaut `vide` (D260809b) : les deux
-   lectures partagent la boîte, donc les séparer doublerait le nombre de
-   requêtes pour relire les mêmes octets. Au plus **quatre fenêtres de 64 Ko**
-   par vidéo, 2,3 en moyenne sur un import réel, et **aucune** pour une vidéo
-   déjà datée dont le `md5` n'a pas bougé **et dont le codec est renseigné** —
-   c'est ce que `MediaRepo.fileTakenAt` vérifie avant de lire quoi que ce soit.
-   Cette dernière condition est ce qui peuple `video_codec` sans reprise de
-   données : les lignes d'avant la migration 14 sont relues une fois, puis
-   court-circuitées comme les autres. Un échec de lecture ne fait pas échouer la
-   sync : la date retombe sur le nom, puis sur `modifiedTime`, et le codec reste
-   `NULL`, donc réessayé.
-8. Écriture par lots de 500 dans une transaction. L'album devient consultable
-   pendant la sync.
-9. `deleteStale(albumId, seenAt)` retire ce qui n'a pas été revu — fichier
-   déplacé, supprimé ou mis à la corbeille.
-10. `sync_state` passe à `ok`. En cas d'échec, le statut passe à `error` avec le
-    message, **mais `lastSyncAt` garde la valeur de la dernière sync réussie** :
-    /admin annonce ainsi le dernier passage vraiment complet. Attention à ce que
-    cela ne dit **pas** : l'index n'est pas revenu en arrière. Les lots déjà
-    écrits sont validés, `deleteStale` n'a pas eu lieu, donc l'index mélange
-    l'ancien et le nouveau contenu. Il reste cohérent — tout ce qui a été écrit
-    existe bien dans Drive — simplement incomplet (voir [D27](./08-decisions/D27-une-sync-interrompue-laisse-un-index-melange-et-c-est-assume.md)
-    ).
-11. `syncAll` enchaîne les albums **séquentiellement** pour ménager le quota, et
-    s'arrête net sur `DriveRevokedError` — les suivants échoueraient de la même
-    façon.
+imageMediaMetadata, videoMediaMetadata`. **No content is downloaded.**
+   `hasThumbnail` indicates whether Drive has produced a preview of the file: this
+   is what allows a video to have a grid thumbnail (D92), and storing it avoids
+   asking again on every page load when none exists.
+6. `toUpsert` normalises: `classify` excludes anything that is neither an image
+   nor a video, `parseExifTime` reads `YYYY:MM:DD HH:MM:SS`, and dimensions are
+   swapped when `imageMediaMetadata.rotation` is odd — otherwise portraits would
+   break the layout.
+7. **A video is the only exception to "no content is downloaded"**: Drive exposes
+   no capture date for it, so the beginning of its file is read through `Range`
+   requests (D97). `drive/mp4.ts` follows the chain of top-level boxes from offset
+   0 to reach the `moov`, whose `mvhd` contains the recording date;
+   `resolveVideoTakenAt` compares it with the timestamp in the file name. **The
+   same window provides the video-track codec** — `readVideoCodec` descends
+   `moov → trak → mdia → minf → stbl → stsd` and retains the first track whose
+   `hdlr` is `vide` (D260809b): both reads share the box, so separating them would
+   double the number of requests needed to reread the same bytes. At most **four
+   64 KB windows** per video, 2.3 on average in a real import, and **none** for an
+   already dated video whose `md5` has not changed **and whose codec is set** —
+   this is what `MediaRepo.fileTakenAt` checks before reading anything. This last
+   condition populates `video_codec` without a backfill: rows predating migration
+   14 are reread once, then bypassed like the others. A read failure does not fail
+   the sync: the date falls back to the file name, then to `modifiedTime`, and the
+   codec remains `NULL`, so it is retried.
+8. Rows are written in batches of 500 within a transaction. The album becomes
+   available during the sync.
+9. `deleteStale(albumId, seenAt)` removes anything not seen again — a file that
+   was moved, deleted, or moved to the bin.
+10. `sync_state` changes to `ok`. On failure, the status changes to `error` with
+    the message, **but `lastSyncAt` retains the value of the last successful
+    sync**: /admin therefore reports the last genuinely complete pass. Note what
+    this does **not** mean: the index has not been rolled back. Batches already
+    written are committed and `deleteStale` has not run, so the index contains a
+    mixture of old and new content. It remains consistent — everything written
+    does exist in Drive — but is simply incomplete (see
+    [D27](./08-decisions/D27-une-sync-interrompue-laisse-un-index-melange-et-c-est-assume.md)).
+11. `syncAll` processes albums **sequentially** to preserve the quota, and stops
+    immediately on `DriveRevokedError` — subsequent albums would fail in the same
+    way.
 
-## Cheminement d'une vidéo illisible
+## Unplayable video flow
 
-Une vidéo HEVC ne se lit ni dans Chrome ni dans Firefox. D79 et D98 lui ont donné
-un message honnête et un bouton **Télécharger** ; D260809b la rend lisible, sans lui
-retirer sa qualité là où elle se lisait déjà.
+An HEVC video plays in neither Chrome nor Firefox. D79 and D98 gave it an honest
+message and a **Download** button; D260809b makes it playable without reducing its
+quality where it could already be played.
 
-**Côté serveur, en fond.** `TranscodePass` est branché au même endroit que le
-préchauffage — fin de `syncThenPrewarm`, et ménage horaire de `main.ts` — et
-reprend ses gardes : un seul passage à la fois, réglage relu à chaque vidéo,
-plafond par passage, arrêt à l'extinction du serveur. Pour chaque vidéo, du plus
-récent album au plus ancien :
+**Server-side, in the background.** `TranscodePass` is connected at the same
+points as prewarming — the end of `syncThenPrewarm` and the hourly housekeeping in
+`main.ts` — and uses the same guards: only one pass at a time, setting reread for
+every video, per-pass limit, and shutdown when the server stops. For each video,
+from the newest album to the oldest:
 
-1. `needsTranscoding(item.videoCodec)` — seuls `hvc1` et `hev1` passent. La règle
-   porte sur le codec, jamais sur un poids ou un nombre de fichiers : transcoder
-   un `avc1` dépenserait des minutes de processeur à dégrader l'image.
-2. Le magasin est consulté sur `playableKey(id, md5)`, qui porte l'empreinte du
-   contenu — une vidéo remplacée dans Drive sous le même identifiant est refaite.
-3. `VideoTranscoder` télécharge l'original **sur disque** (jamais en mémoire :
-   `MediaRenderer` refuse au-delà de 80 Mo, une vidéo en fait couramment 150),
-   lance `ffmpeg` reniçé à 15 et sur un seul fil, puis range le résultat par
-   `MediaCache.putFile` — un `rename`, pas trente méga-octets chargés pour être
-   réécrits. Les temporaires sont effacés même en cas d'échec.
-4. `plafondDebit` borne le débit image sur celui de la source — poids mesuré sur
-   le fichier reçu, durée lue dans l'index — et `ffmpegArgs` le pose en
-   `-maxrate`/`-bufsize` à côté du CRF. Sans cette borne, `-crf` est un débit
-   variable sans limite haute, et trois dérivés sur vingt sortaient plus lourds
-   que leur original (D260809g). Le plafond vaut 0,95 / 1,15 du débit source :
-   5 % pour le conteneur, et 15 % parce que `-maxrate` contraint une fenêtre VBV
-   et non une moyenne — mesuré, x264 le déborde de 9 à 14 %. Sous 500 kbit/s, ou
-   faute de durée, aucun plafond n'est posé : un 1080p bridé si bas serait
-   inregardable, et c'est la lisibilité qu'on achète.
-5. Le passage s'arrête quand le magasin atteint 90 % de son budget : à la limite,
-   chaque nouvelle vidéo évincerait la plus ancienne, et le passage suivant
-   referait ce que celui-ci vient de jeter.
+1. `needsTranscoding(item.videoCodec)` — only `hvc1` and `hev1` pass. The rule is
+   based on the codec, never on a file size or count: transcoding an `avc1` would
+   spend minutes of processor time degrading the image.
+2. The store is queried with `playableKey(id, md5)`, which includes the content
+   fingerprint — a video replaced in Drive under the same identifier is rebuilt.
+3. `VideoTranscoder` downloads the original **to disk** (never to memory:
+   `MediaRenderer` refuses anything over 80 MB, while a video commonly reaches
+   150), starts `ffmpeg` reniced to 15 and limited to one thread, then stores the
+   result through `MediaCache.putFile` — a `rename`, rather than loading thirty
+   megabytes only to write them back. Temporary files are removed even on failure.
+4. `plafondDebit` caps the video bitrate at that of the source — size measured
+   from the received file, duration read from the index — and `ffmpegArgs` sets it
+   as `-maxrate`/`-bufsize` alongside the CRF. Without this cap, `-crf` is a
+   variable bitrate with no upper bound, and three derivatives out of twenty were
+   larger than their original (D260809g). The cap is 0.95 / 1.15 of the source
+   bitrate: 5% for the container, and 15% because `-maxrate` constrains a VBV
+   window rather than an average — measurements show x264 exceeds it by 9 to 14%.
+   Below 500 kbit/s, or without a duration, no cap is applied: 1080p restricted
+   that low would be unwatchable, and playability is what this process provides.
+5. The pass stops when the store reaches 90% of its budget: at the limit, every
+   new video would evict the oldest one, and the next pass would recreate what
+   this one has just discarded.
 
-Une vidéo que `ffmpeg` refuse est journalisée en **`warn`**, pas en `debug` : une
-instance tourne en `LOG_LEVEL=info` et le résumé de fin ne donne qu'un compteur.
-Sans cette ligne, le fichier échouerait à chaque passage horaire sans qu'on
-puisse jamais savoir pourquoi.
+A video rejected by `ffmpeg` is logged at **`warn`**, not `debug`: an instance
+runs with `LOG_LEVEL=info`, and the final summary gives only a count. Without this
+line, the file would fail on every hourly pass with no way to find out why.
 
-**Côté client, à l'ouverture.** `chooseVideoSource` interroge le navigateur sur
-le codec réel — `canPlayType('video/mp4; codecs="hvc1"')` — et non sur le type
-nu, auquel tout le monde répond `maybe` (D98). Chrome demande donc
-`GET /api/media/:id/playable`, Safari et un iPhone gardent `/original` en pleine
-qualité. Tant que la version n'existe pas, `/playable` répond **404**, que la
-visionneuse affiche comme « en préparation » avec le bouton Télécharger.
+**Client-side, when opening.** `chooseVideoSource` asks the browser about the
+actual codec — `canPlayType('video/mp4; codecs="hvc1"')` — rather than the bare
+type, to which every browser responds `maybe` (D98). Chrome therefore requests
+`GET /api/media/:id/playable`, while Safari and an iPhone keep `/original` at full
+quality. Until the version exists, `/playable` returns **404**, which the viewer
+displays as "being prepared" alongside the Download button.
 
-## Les choix structurants, et leur raison
+## Structural choices and their rationale
 
-**Index SQLite plutôt qu'appels Drive à la volée.** Une grille de 200 vignettes
-qui interrogerait Drive à chaque défilement consommerait le quota et
-ajouterait 200 à 400 ms de latence à chaque page. L'index local rend la
-pagination instantanée, permet de trier sur la date EXIF (que Drive ne sait pas
-trier) et laisse l'application fonctionner en lecture même quand Drive est
-injoignable ou l'autorisation révoquée — seuls les rendus non encore en cache
-échouent alors.
+**SQLite index rather than on-demand Drive calls.** A grid of 200 thumbnails that
+queried Drive on every scroll would consume the quota and add 200 to 400 ms of
+latency to every page. The local index makes pagination immediate, allows sorting
+by EXIF date (which Drive cannot sort by), and lets the application continue
+serving reads even when Drive is unreachable or authorisation has been revoked —
+only renders that are not yet cached then fail.
 
-**Proxy média plutôt que redirection vers Google.** Servir des liens Google
-signés serait moins coûteux en bande passante, mais : un lien signé fuit hors du
-contrôle d'accès dès qu'il est copié, il expire et casse le cache navigateur, et
-il exposerait l'arborescence Drive au visiteur. Tout passe donc par
-`/api/media/...`, où chaque requête revérifie l'autorisation.
+**Media proxy rather than redirects to Google.** Serving signed Google links would
+use less bandwidth, but a signed link escapes access control as soon as it is
+copied, expires and breaks the browser cache, and would expose the Drive tree to
+the visitor. Everything therefore goes through `/api/media/...`, where every
+request rechecks authorisation.
 
-**Cache disque des dérivés.** Régénérer une vignette coûte un téléchargement
-Drive plus un décodage sharp. Le cache est un simple fichier par entrée, clé
-`sha256(<fileId>:<md5>:<variante>)` — sans le `<md5>` pour les rares fichiers
-que Drive n'empreinte pas — répartie sur 256 sous-dossiers, inventaire des
-tailles en mémoire pour décider des évictions sans re-parcourir l'arborescence.
-L'inventaire est **reconstruit au démarrage** par `MediaCache.load()` : un
-fichier déposé pendant que le serveur tourne est ignoré jusqu'au redémarrage
-(c'est le piège du script `seed-demo`).
+**Disk cache for derivatives.** Regenerating a thumbnail costs one Drive download
+plus sharp decoding. The cache is one plain file per entry, with the key
+`sha256(<fileId>:<md5>:<variant>)` — without `<md5>` for the rare files Drive does
+not fingerprint — spread across 256 subfolders, with an in-memory size inventory
+used to decide evictions without traversing the tree again. The inventory is
+**rebuilt at startup** by `MediaCache.load()`: a file added while the server is
+running is ignored until restart (this is the trap in the `seed-demo` script).
 
-L'éviction tourne en tâche de fond, sans que l'écriture qui l'a déclenchée
-l'attende. Deux précautions y sont indispensables :
+Eviction runs in the background without making the write that triggered it wait.
+Two precautions are essential:
 
-- **Chaque candidat est revérifié juste avant sa suppression.** L'ordre est figé
-  au début de la passe, mais `rm` rend la main à la boucle d'événements : une
-  requête peut servir une entrée entre le tri et sa suppression. Une estampille
-  d'accès strictement croissante, portée par chaque entrée, révèle ce cas ;
-  l'entrée touchée est épargnée. Sans cela, `createReadStream` recevrait un
-  `ENOENT` sur une entrée que `hit()` venait de valider.
-- **Un `rm` en échec est journalisé, pas propagé.** Un rejet non géré en tâche de
-  fond termine le process Node : toute la galerie tomberait parce qu'un fichier
-  de cache n'a pas pu être supprimé (volume en lecture seule, erreur d'E/S).
-  L'entrée reste inventoriée, puisque son fichier est toujours là, et la passe
-  continue avec les suivantes.
+- **Every candidate is checked again immediately before deletion.** The order is
+  fixed at the start of the pass, but `rm` yields to the event loop: a request may
+  serve an entry between sorting and deletion. A strictly increasing access stamp
+  on every entry reveals this case; the touched entry is spared. Without this,
+  `createReadStream` would receive an `ENOENT` for an entry that `hit()` had just
+  validated.
+- **A failed `rm` is logged, not propagated.** An unhandled rejection in a
+  background task terminates the Node process: the whole gallery would go down
+  because a cache file could not be deleted (read-only volume, I/O error). The
+  entry remains in the inventory because its file is still there, and the pass
+  continues with the remaining entries.
 
-Côté lecture, `MediaRenderer.render()` vérifie que le fichier désigné par
-l'inventaire existe encore avant de le rendre ; sinon il refabrique le dérivé.
-C'est ce qui couvre « vider le cache » depuis /admin pendant qu'une grille se
-charge, et tout ménage manuel sur le volume.
+On reads, `MediaRenderer.render()` checks that the file named by the inventory
+still exists before returning it; otherwise it rebuilds the derivative. This
+covers "clear cache" from /admin while a grid is loading, as well as any manual
+clean-up on the volume.
 
-Limite connue, assumée : la revérification a lieu **avant** le `rm`, pas après.
-Une requête peut donc valider une entrée pendant qu'une suppression est déjà en
-vol et recevoir un `ENOENT` à l'ouverture — de même qu'un `clear()` déclenché
-depuis /admin pendant une écriture. Fermer complètement la fenêtre demanderait
-des baux ou un compteur de références sur chaque entrée, ce qui coûte plus cher
-en complexité permanente qu'une vignette manquante ne coûte à qui la recharge.
+Known and accepted limitation: the second check happens **before** `rm`, not
+afterwards. A request may therefore validate an entry while deletion is already
+in flight and receive an `ENOENT` when opening it — just as with a `clear()`
+triggered from /admin during a write. Closing the window entirely would require
+leases or a reference count on every entry, adding more permanent complexity than
+a missing thumbnail costs the person who reloads it.
 
-**Pas de transcodage vidéo.** `GET /api/media/:id/original` relaie le header
-`Range` tel quel vers Drive et recopie `Content-Length` / `Content-Range` de la
-réponse. Le seek natif marche, le CPU du VPS ne fait rien, et il n'y a aucun
-format intermédiaire à stocker. Les statuts `206` **et `416`** sont relayés :
-une plage insatisfaisable fait partie du protocole `Range` normal (offset au-delà
-de la fin, courant quand on change de vidéo), et son `Content-Range` dit au
-lecteur où s'arrête le fichier. La contrepartie assumée : un format que le
-navigateur ne lit pas n'est pas lisible du tout.
+**No video transcoding.** `GET /api/media/:id/original` relays the `Range` header
+unchanged to Drive and copies `Content-Length` / `Content-Range` from the response.
+Native seeking works, the VPS CPU does nothing, and there is no intermediate
+format to store. Both `206` **and `416`** statuses are relayed: an unsatisfiable
+range is part of the normal `Range` protocol (offset beyond the end, common when
+switching videos), and its `Content-Range` tells the player where the file ends.
+The accepted tradeoff is that a format the browser cannot read cannot be played at
+all.
 
-**Les lieux d'une journée se déduisent en deux temps.** Une grille datée ne dit
-pas ce qu'on a fait ; les photos, elles, portent souvent leur position. Le
-passage `places.ts` est branché sur le ménage horaire de `main.ts`, sur le
-démarrage **et sur la fin de chaque synchronisation** (`AppContext.syncThenPrewarm`),
-exactement comme le préchauffage et pour les mêmes raisons : la synchronisation
-peut être désactivée et les lieux attendraient alors indéfiniment (D45), mais
-une sync qui vient de verser des photos géolocalisées sait déjà nommer leur
-journée, et la laisser muette une heure de plus n'apporte rien (D91). Comme pour
-le préchauffage, le démarrage et la sync de démarrage **s'excluent** : lancés
-ensemble, celui qui doit suivre la sync se ferait refuser comme passage
-concurrent. Le passage tourne en deux moitiés délibérément séparées :
+**A day's locations are derived in two stages.** A dated grid does not say what
+happened, while photos often contain their position. The `places.ts` pass is
+connected to the hourly housekeeping in `main.ts`, to startup, **and to the end of
+every synchronisation** (`AppContext.syncThenPrewarm`), just like prewarming and
+for the same reasons: synchronisation may be disabled, in which case locations
+would wait indefinitely (D45), but a sync that has just added geolocated photos
+already knows how to name their day, and leaving it blank for another hour adds
+nothing (D91). As with prewarming, the startup pass and startup sync are **mutually
+exclusive**: if launched together, the one meant to follow the sync would be
+rejected as a concurrent pass. The pass runs in two deliberately separate halves:
 
-1. **L'agrégation**, déterministe et hors réseau. Pour chaque album,
-   `MediaRepo.geolocatedPoints` rend les positions par ordre chronologique ;
-   elles sont regroupées par jour UTC, puis agglomérées gloutonnement à ~15 km,
-   trois grappes au plus — celles où le plus de photos ont été prises, dans
-   l'ordre de leur première photo. Chaque grappe donne une **cellule**
-   `lat,lng` arrondie à deux décimales, soit ~1,1 km. Le résultat s'écrit dans
-   `album_days.cells`.
-2. **Le géocodage**, lent et faillible. `geocoder.ts` ne demande à Nominatim que
-   les cellules absentes de `geo_places`, à raison d'une requête toutes les
-   1,1 s (politique d'usage) et 200 par passage au plus, le reste attendant
-   l'heure suivante. Le cache est partagé entre albums.
+1. **Aggregation**, deterministic and offline. For each album,
+   `MediaRepo.geolocatedPoints` returns positions in chronological order; they are
+   grouped by UTC day, then greedily clustered at ~15 km into at most three
+   clusters — those containing the most photos, ordered by their first photo.
+   Each cluster produces a **cell**, `lat,lng` rounded to two decimal places, or
+   ~1.1 km. The result is written to `album_days.cells`.
+2. **Geocoding**, slow and fallible. `geocoder.ts` asks Nominatim only for cells
+   missing from `geo_places`, at one request every 1.1 s (usage policy) and at
+   most 200 per pass, with the remainder waiting until the next hour. The cache is
+   shared across albums.
 
-Les séparer est ce qui rend le recalcul gratuit : les journées se réécrivent à
-chaque passage sans rappeler personne, et les libellés s'allument tout seuls
-quand ils arrivent (D48). L'invariant qui compte : le recalcul réécrit `cells`
-et **rien d'autre** — `description` et `place` appartiennent à l'administrateur.
+Separating them makes recalculation free: days are rewritten on every pass without
+calling anyone again, and labels appear by themselves when they arrive (D48). The
+important invariant is that recalculation rewrites `cells` and **nothing else** —
+`description` and `place` belong to the administrator.
 
-Rien de tout cela ne touche au chemin d'une requête : `better-sqlite3` est
-synchrone, et géocoder à la volée ferait attendre le lecteur une seconde par
-lieu. Le déclenchement par `/admin/resync` n'y déroge pas — la route répond 202
-et le passage part détaché, comme le préchauffage. Aucun minuteur n'est armé par
-`buildApp`, seulement par `main.ts` ; un test qui appelle `syncThenPrewarm`
-remplace en revanche `places` par un espion, sinon il joindrait Nominatim dès
-que l'album de test porte une position.
+None of this affects a request path: `better-sqlite3` is synchronous, and
+geocoding on demand would make the reader wait one second per location. Triggering
+it through `/admin/resync` is no exception — the route returns 202 and the pass
+runs detached, like prewarming. `buildApp` starts no timers; only `main.ts` does. A
+test that calls `syncThenPrewarm`, however, replaces `places` with a spy, otherwise
+it would contact Nominatim as soon as the test album contains a position.
 
-**Le cache se remplit sans attendre qu'on clique.** `media/prewarm.ts` prépare
-les **trois tailles de vignette** des photos en fond, des plus récentes aux plus
-anciennes. C'est la grille qui fait attendre, et elle ne demande que celles-ci —
-laquelle dépend de la largeur de la case et de la densité de l'écran, donc les
-trois doivent être prêtes. Le rendu `full` ne vient jamais ici : il pèse une
-dizaine de fois une vignette, et le préchargement des voisines dans la
-visionneuse couvre déjà le feuilletage (voir D58, qui restreint la portée que
-D45 donnait au passage).
+**The cache fills without waiting for a click.** `media/prewarm.ts` prepares all
+**three thumbnail sizes** for photos in the background, from newest to oldest.
+The grid is where people wait, and it requests only these sizes — which one
+depends on the tile width and screen density, so all three must be ready. The
+`full` render never comes through here: it is roughly ten times the size of a
+thumbnail, and preloading neighbouring images in the viewer already covers
+browsing (see D58, which narrows the scope D45 gave the pass).
 
-Les trois variantes sortent d'**un seul téléchargement** (`MediaRenderer.prepare`),
-pour une raison mesurée : produire un dérivé coûte ~2 s de téléchargement Drive
-pour ~50 ms de rendu. Trois `render()` enchaînés téléchargeraient trois fois le
-même original. Une seule place du limiteur est prise pour l'ensemble — c'est
-l'original en mémoire qui pèse, et il est le même pour toutes les variantes.
+All three variants come from **one download** (`MediaRenderer.prepare`) for a
+measured reason: producing a derivative costs ~2 s of Drive download for ~50 ms
+of rendering. Three sequential `render()` calls would download the same original
+three times. Only one limiter slot is acquired for the whole set — the original
+in memory is the expensive part, and it is the same for every variant.
 
-Le passage est branché sur le ménage horaire, sur le démarrage, **et sur la fin
-de chaque synchronisation** (`AppContext.syncThenPrewarm`, par où passent la
-sync périodique, celle du démarrage, celle de `/admin` et celle du retour OAuth).
-Les deux derniers déclencheurs s'excluent au démarrage : lancés ensemble, le
-préchauffage partirait sur l'index d'avant pendant que la sync le remplit, et
-celui qui doit suivre la sync se ferait refuser comme passage concurrent — les
-photos qui viennent d'arriver, précisément celles qu'on va ouvrir, attendraient
-le ménage horaire. Le ménage et le démarrage restent branchés séparément parce
-que la synchronisation automatique peut être désactivée. Réglage `prewarmCache`,
-relu à chaque photo — **et conditionné à la connexion Drive** : sans elle, le
-passage échouerait photo par photo en gardant sa pause d'une seconde, soit un
-quart d'heure de boucle stérile par heure sur un album de mille photos (D61). Sa
-lenteur est volontaire — voir D45.
+The pass is connected to hourly housekeeping, startup, **and the end of every
+synchronisation** (`AppContext.syncThenPrewarm`, which handles periodic sync,
+startup sync, `/admin` sync, and post-OAuth sync). The last two triggers are
+mutually exclusive at startup: if launched together, prewarming would run against
+the old index while the sync fills it, and the pass meant to follow the sync would
+be rejected as concurrent — newly arrived photos, precisely the ones about to be
+opened, would wait for hourly housekeeping. Housekeeping and startup remain wired
+separately because automatic synchronisation may be disabled. The `prewarmCache`
+setting is reread for every photo — **and conditional on a Drive connection**:
+without it, the pass would fail photo by photo while retaining its one-second
+pause, wasting fifteen minutes of every hour on an album of a thousand photos
+(D61). Its slowness is deliberate — see D45.
 
-**Un téléchargement de contenu a une échéance de 120 s, un relais vidéo non.**
-La place du limiteur étant prise **avant** le téléchargement, un `fetch` figé
-gèlerait tous les rendus le temps du défaut d'undici — cinq minutes. Les requêtes
-porteuses d'un `Range` en sont exclues : c'est une vidéo que le navigateur
-consomme à son rythme, et une échéance _totale_ couperait la lecture. Un
-dépassement, comme un débit limité au-delà des réessais, lève
-`DriveUnavailableError` → **503 + `Retry-After`**, jamais 500 : l'échec est
-transitoire, et la vignette le retente d'elle-même (D60).
+**A content download has a 120 s deadline; relaying a video does not.** Because a
+limiter slot is acquired **before** downloading, a frozen `fetch` would freeze all
+renders for undici's default timeout — five minutes. Requests carrying a `Range`
+are excluded: the browser consumes that video at its own pace, and a _total_
+deadline would interrupt playback. A timeout, like rate limiting beyond the
+retries, raises `DriveUnavailableError` → **503 + `Retry-After`**, never 500: the
+failure is transient, and the thumbnail retries by itself (D60).
 
-**Un original de plus de 80 Mo n'est pas décodé sur place.** Le limiteur borne
-le nombre de rendus simultanés, pas leur taille, et chaque rendu charge son
-original entier en mémoire pour le donner à sharp : ses quatre places au maximum,
-prises par des fichiers de 300 Mo, suffisent à emporter le processus, donc la
-galerie — et deux suffisent déjà sur un VPS bicœur. La taille
-annoncée par Drive est donc contrôlée **avant** de lire le corps, et le corps
-mesuré à son tour — un en-tête absent ou menteur ne doit pas suffire. Au-delà,
-la photo n'est pas refusée : elle emprunte le repli ci-dessous.
+**An original larger than 80 MB is not decoded locally.** The limiter bounds the
+number of simultaneous renders, not their size, and each render loads its entire
+original into memory for sharp: its maximum of four slots, occupied by 300 MB
+files, is enough to take down the process and therefore the gallery — and two are
+already enough on a dual-core VPS. The size reported by Drive is therefore checked
+**before** reading the body, and the body is measured in turn — a missing or false
+header must not be enough. Above the limit, the photo is not rejected: it uses the
+fallback below.
 
-**Le repli Drive est authentifié.** Quand libvips ne décode pas un HEIC ou un
-RAW, ou quand l'original est trop lourd, le rendu repart du `thumbnailLink`
-produit par Google. Ce lien porte le même
-contrôle d'accès que le fichier : demandé sans en-tête `Authorization`, il répond
-401/403 pour tout fichier non public — c'est-à-dire dans le cas normal. Il passe
-donc par `DriveService.fetchAuthorized()`, comme les téléchargements d'originaux,
-avec le même renouvellement de jeton sur 401.
+**The Drive fallback is authenticated.** When libvips cannot decode a HEIC or RAW,
+or when the original is too large, rendering starts again from the `thumbnailLink`
+produced by Google. This link carries the same access control as the file: when
+requested without an `Authorization` header, it returns 401/403 for every
+non-public file — the normal case. It therefore goes through
+`DriveService.fetchAuthorized()`, like original downloads, with the same token
+refresh on 401.
 
-**Un seul conteneur.** Le front buildé est servi par `@fastify/static` depuis le
-même process. Une seule origine, donc des cookies de session simples, aucun CORS,
-aucun reverse-proxy interne à configurer.
+**A single container.** The built frontend is served by `@fastify/static` from the
+same process. There is one origin, so session cookies are simple, there is no CORS,
+and no internal reverse proxy needs configuring.
 
-En production, un second conteneur l'accompagne : **Caddy**, qui termine le TLS
-et relaie vers `app:8080`. L'application ne publie aucun port sur l'hôte. Ce
-n'est pas une exception au paragraphe précédent — Caddy ne connaît rien de
-l'application, il n'y a toujours qu'une origine et qu'un process applicatif —
-c'est le TLS et le renouvellement de certificat sortis du code (D47).
+In production, a second container accompanies it: **Caddy**, which terminates TLS
+and proxies to `app:8080`. The application publishes no port on the host. This is
+not an exception to the previous paragraph — Caddy knows nothing about the
+application, and there is still only one origin and one application process — it
+simply moves TLS and certificate renewal out of the code (D47).

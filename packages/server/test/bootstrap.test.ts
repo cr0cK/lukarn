@@ -13,14 +13,13 @@ import { MIGRATIONS, openDb } from '../src/db.js';
 import { loadEnv } from '../src/env.js';
 
 /**
- * Amorçage depuis `config/albums.yaml`.
+ * Bootstrapping from `config/albums.yaml`.
  *
- * Le cas qui compte est celui d'une instance **déjà en service** : elle tourne
- * sur un YAML réel, avec un index de médias, un jeton OAuth et des sessions
- * ouvertes. La mise à jour doit reprendre sa configuration telle quelle, sans
- * perte d'accès ni réindexation — puis ne plus jamais relire le fichier, sans
- * quoi toute modification faite depuis l'application serait écrasée au
- * redémarrage suivant.
+ * The case that matters is an instance **already in service**: it runs from a
+ * real YAML file, with a media index, an OAuth token and open sessions. The
+ * update must preserve its configuration as-is, without losing access or
+ * reindexing — then never read the file again, otherwise every change made in
+ * the application would be overwritten on the next restart.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -42,7 +41,7 @@ function env(dir: string, configPath: string): ReturnType<typeof loadEnv> {
   } as NodeJS.ProcessEnv);
 }
 
-/** Le YAML de l'instance en service : un admin, un compte restreint, un album. */
+/** The live instance YAML: one admin, one restricted account, one album. */
 function yamlInUse(): string {
   return `
 users:
@@ -70,8 +69,8 @@ cache:
 }
 
 /**
- * Base d'une instance en service **avant** la migration : schéma en version 2,
- * un index de 471 médias et un refresh token autorisé.
+ * Database of a live instance **before** migration: schema version 2, an index
+ * of 471 media items and an authorised refresh token.
  */
 function databaseInUse(dataDir: string): void {
   mkdirSync(dataDir, { recursive: true });
@@ -109,11 +108,11 @@ after(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('mise à jour d’une instance en service', () => {
+describe('updating a live instance', () => {
   const dir = join(root, 'en-service');
   const configPath = join(dir, 'albums.yaml');
 
-  it("reprend le YAML sans perdre l'accès ni l'index", async () => {
+  it('imports the YAML without losing access or the index', async () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(configPath, yamlInUse(), 'utf8');
     databaseInUse(join(dir, 'data'));
@@ -121,14 +120,14 @@ describe('mise à jour d’une instance en service', () => {
     const { server, context } = await buildApp(env(dir, configPath));
 
     try {
-      // L'index n'a pas bougé : aucune réindexation n'est nécessaire.
+      // The index has not changed: no reindexing is needed.
       assert.equal(context.media.stats('2026-07-Allemagne').itemCount, INDEXED);
       assert.equal(
         context.syncState.get('2026-07-Allemagne').lastSyncAt,
         '2026-07-20T08:00:00.000Z',
       );
 
-      // Le jeton OAuth est intact : pas de nouveau consentement à demander.
+      // The OAuth token is intact: no new consent is needed.
       const token = context.db.prepare('SELECT account, revoked_at FROM oauth_token').get() as {
         account: string;
         revoked_at: string | null;
@@ -136,8 +135,8 @@ describe('mise à jour d’une instance en service', () => {
       assert.equal(token.account, 'photos@exemple.fr');
       assert.equal(token.revoked_at, null);
 
-      // Les deux comptes se connectent avec leur mot de passe d'avant, et la
-      // casse du login reste indifférente.
+      // Both accounts log in with their previous password, and username case
+      // remains irrelevant.
       for (const username of ['alexis', 'ALEXIS', 'famille']) {
         const response = await server.inject({
           method: 'POST',
@@ -147,11 +146,11 @@ describe('mise à jour d’une instance en service', () => {
         assert.equal(response.statusCode, 200, username);
       }
 
-      // La casse saisie dans le fichier est conservée telle quelle.
+      // The case entered in the file is preserved as-is.
       assert.equal(context.config.user('alexis')!.username, 'Alexis');
 
-      // Les droits sont repris : joker pour l'administrateur, album unique
-      // pour l'autre.
+      // Access is preserved: wildcard for the administrator, one album for the
+      // other account.
       assert.deepEqual(
         context.albumsFor('Alexis').map((album) => album.id),
         ['2026-07-Allemagne'],
@@ -159,12 +158,12 @@ describe('mise à jour d’une instance en service', () => {
       assert.equal(context.canSee('famille', '2026-07-Allemagne'), true);
       assert.equal(context.canSee('famille', 'inexistant'), false);
 
-      // Les réglages du fichier s'appliquent, y compris la limite de cache.
+      // Settings from the file apply, including the cache limit.
       assert.deepEqual(context.settings, {
         syncIntervalMinutes: 0,
         syncOnStartup: false,
         cacheMaxSizeGB: 5,
-        // Le YAML d'amorçage n'en connaît aucun : ils restent au défaut.
+        // The bootstrap YAML knows neither setting: they retain their defaults.
         prewarmCache: true,
         transcodeVideos: true,
         videoCacheMaxSizeGB: 5,
@@ -172,14 +171,14 @@ describe('mise à jour d’une instance en service', () => {
       });
       assert.equal(context.cache.stats().maxBytes, 5 * 1024 ** 3);
 
-      // L'album garde son titre, sa description et son dossier Drive.
+      // The album keeps its title, description and Drive folder.
       const album = context.findAlbum('2026-07-Allemagne')!;
       assert.equal(album.title, '2026-07 - Allemagne / Forêt Noire');
       assert.equal(album.folderId, '1DVlkhk2mynYOiLdSOHgYPivnyn68DBwr');
       assert.equal(album.recursive, true);
-      // Les préférences d'affichage déclarées dans le fichier atteignent la
-      // colonne : sans ce passage, l'amorçage les perdrait en silence, et le
-      // seul moyen de les retrouver serait de rouvrir /admin.
+      // Display preferences declared in the file reach the column: without
+      // this step, bootstrapping would silently lose them, and the only way to
+      // restore them would be to reopen /admin.
       assert.equal(album.groupBy, 'month');
       assert.equal(album.sortOrder, 'desc');
     } finally {
@@ -188,9 +187,9 @@ describe('mise à jour d’une instance en service', () => {
     }
   });
 
-  it('ne relit plus le fichier une fois la base peuplée', async () => {
-    // Le YAML est modifié après coup, comme le ferait quelqu'un qui aurait
-    // gardé l'habitude d'éditer le fichier : il ne doit plus rien changer.
+  it('stops reading the file once the database is populated', async () => {
+    // The YAML is changed afterwards, as someone used to editing the file might
+    // do: it must no longer change anything.
     writeFileSync(
       configPath,
       `
@@ -223,7 +222,7 @@ albums:
     }
   });
 
-  it('conserve les modifications faites dans l’application', async () => {
+  it('preserves changes made in the application', async () => {
     const first = await buildApp(env(dir, configPath));
     const cookie = await login(first.server, 'Alexis');
     const created = await first.server.inject({
@@ -236,8 +235,8 @@ albums:
     await first.server.close();
     first.context.close();
 
-    // Redémarrage : le compte créé dans l'application survit, le fichier ne le
-    // remplace pas.
+    // Restart: the account created in the application survives; the file does
+    // not replace it.
     const second = await buildApp(env(dir, configPath));
     try {
       assert.ok(second.context.config.user('invite'));
@@ -248,11 +247,11 @@ albums:
   });
 });
 
-describe('installation neuve sans fichier', () => {
+describe('fresh installation without a file', () => {
   const dir = join(root, 'neuve');
   const configPath = join(dir, 'albums-absent.yaml');
 
-  it('démarre sans compte et refuse toute administration', async () => {
+  it('starts without an account and rejects all administration', async () => {
     mkdirSync(dir, { recursive: true });
     const { server, context } = await buildApp(env(dir, configPath));
 
@@ -269,8 +268,8 @@ describe('installation neuve sans fichier', () => {
     }
   });
 
-  it('laisse créer le premier administrateur en base, comme le fait la commande', async () => {
-    // Ce que fait `pnpm create-admin` : ouvrir la base et y écrire un compte.
+  it('allows the first administrator to be created in the database like the command does', async () => {
+    // `pnpm create-admin` does exactly this: open the database and write an account.
     const db = openDb(join(dir, 'data'));
     new ConfigRepo(db).createUser({
       username: 'proprietaire',
@@ -294,7 +293,7 @@ describe('installation neuve sans fichier', () => {
         ['proprietaire'],
       );
 
-      // Les réglages retombent sur leurs défauts, faute de fichier.
+      // Without a file, settings fall back to their defaults.
       const status = await server.inject({
         method: 'GET',
         url: '/api/admin/status',
@@ -308,8 +307,8 @@ describe('installation neuve sans fichier', () => {
   });
 });
 
-describe('fichier invalide', () => {
-  it('refuse de démarrer sur une base vide plutôt que sans aucun compte', async () => {
+describe('invalid file', () => {
+  it('refuses to start with an empty database rather than running without an account', async () => {
     const dir = join(root, 'invalide');
     mkdirSync(dir, { recursive: true });
     const configPath = join(dir, 'albums.yaml');
@@ -333,8 +332,8 @@ async function login(
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
   const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
-  assert.ok(cookie, 'cookie de session absent');
+  assert.ok(cookie, 'session cookie missing');
   return `nonni_session=${cookie.value}`;
 }

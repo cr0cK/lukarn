@@ -1,18 +1,15 @@
-# D3 — Indexation sans téléchargement
+# D3 — Indexing without downloading
 
-**Contexte.** Indexer des milliers de photos ne doit ni prendre des heures ni
-saturer le quota.
+**Context.** Indexing thousands of photos must neither take hours nor exhaust the quota.
 
-**Choix.** `files.list` avec
+**Decision.** `files.list` with
 `fields: id, name, mimeType, size, modifiedTime, md5Checksum, imageMediaMetadata,
-videoMediaMetadata` — dimensions, date EXIF et données d'appareil arrivent dans
-la réponse de listage. Aucun octet de photo n'est téléchargé pendant une
-synchronisation.
+videoMediaMetadata` — dimensions, EXIF date and camera data arrive in the listing
+response. No photo data is downloaded during a synchronisation.
 
-**Écarté.** Télécharger chaque fichier pour en extraire l'EXIF avec `exifr` ou
-sharp : des gigaoctets de transfert pour des métadonnées que Drive fournit déjà.
+**Rejected.** Downloading each file to extract its EXIF data with `exifr` or sharp:
+gigabytes of data transfer for metadata that Drive already provides.
 
-**Conséquences.** On dépend de la qualité de l'EXIF vu par Drive. Quand il
-manque, `takenAt` retombe sur `modifiedTime` et `takenAtFromExif` vaut `false`,
-ce que le panneau d'informations affiche honnêtement (« Modifié le » plutôt que
-« Prise de vue »).
+**Consequences.** This depends on the quality of the EXIF data seen by Drive. When it is
+missing, `takenAt` falls back to `modifiedTime` and `takenAtFromExif` is `false`, which
+the information panel reports honestly ("Modified on" rather than "Taken on").

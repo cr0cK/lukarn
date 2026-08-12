@@ -1,47 +1,43 @@
-# D72 — Le nom de l'instance vit dans le `.env`, et le serveur le pose dans la coquille
+# D72 — The instance name lives in `.env`, and the server puts it in the shell
 
-**Contexte.** Une fois installée, l'application s'appelait « Photos » sous
-l'icône, quelle que soit l'instance. C'est le nom qui compte le plus dans tout
-le projet : il est le seul que voie quelqu'un qui ne l'a pas installée
-lui-même, et deux galeries posées sur le même téléphone porteraient le même.
-Le nom apparaît à quatre endroits — le `<title>`, `apple-mobile-web-app-title`,
-`application-name`, et `name`/`short_name` du manifeste.
+**Context.** Once installed, the application was named "Photos" under its icon,
+whatever the instance. This is the most important name in the entire project: it
+is the only one seen by someone who did not install it themselves, and two
+galleries on the same phone would have the same one. The name appears in four
+places — `<title>`, `apple-mobile-web-app-title`, `application-name`, and the
+manifest's `name`/`short_name`.
 
-**Choix.** `APP_NAME`, avec `Photos` pour défaut. `index.html` et
-`manifest.webmanifest` gardent ce défaut en dur, et le serveur y substitue la
-valeur configurée **au démarrage**, une fois, en mémoire (`shell.ts`). Les deux
-fichiers deviennent des routes exactes, prioritaires sur `@fastify/static`. Le
-front relit le nom dans la balise `application-name` du DOM.
+**Choice.** `APP_NAME`, defaulting to `Photos`. `index.html` and
+`manifest.webmanifest` keep that default hard-coded, and the server substitutes
+the configured value **at startup**, once, in memory (`shell.ts`). Both files
+become exact routes with priority over `@fastify/static`. The frontend reads the
+name back from the DOM's `application-name` meta tag.
 
-**Écarté.** Une constante de build (`import.meta.env`) : une seule image sert
-toutes les installations, et reconstruire un conteneur pour renommer sa galerie
-est hors de proportion. Écarté aussi : un réglage en base, à côté des comptes et
-des albums — il faudrait qu'il vaille avant qu'aucun compte n'existe, puisque la
-première page servie est justement l'écran de connexion, et `ConfigRepo` ne
-répond pas à cette question-là. Écarté enfin : exposer le nom dans une réponse
-d'API que le front lirait au démarrage. Cela ajoutait un champ au contrat, un
-état de chargement, et surtout un instant où la page s'affiche sans son nom —
-alors que le serveur peut simplement l'avoir déjà écrit dans l'HTML qu'il rend.
+**Rejected.** A build constant (`import.meta.env`): one image serves all
+installations, and rebuilding a container to rename a gallery is out of
+proportion. Also rejected: a database setting alongside accounts and albums — it
+would have to apply before any account exists, since the first page served is the
+login screen, and `ConfigRepo` does not answer that question. Finally rejected:
+exposing the name in an API response read by the frontend at startup. This would
+add a contract field, a loading state, and above all a moment when the page appears
+without its name — while the server can simply write it into the returned HTML.
 
-Écarté également : remplacer la chaîne « Photos » partout dans le fichier. La
-substitution vise trois emplacements nommés, parce qu'un remplacement global
-renommerait aussi un commentaire ou un futur texte d'interface qui contiendrait
-le mot.
+Also rejected: replacing the string "Photos" everywhere in the file. Substitution
+targets three named locations because a global replacement would also rename a
+comment or future interface text containing the word.
 
-**Conséquences.** Substituer dans du HTML par expression régulière n'est
-défendable que parce que le gabarit appartient au dépôt : ce n'est pas de
-l'analyse de HTML, c'est un gabarit dont on connaît les trous. Le risque réel
-est silencieux — ajouter un attribut à la balise `<title>`, intervertir `name`
-et `content` dans une `<meta>`, et le motif ne correspond plus sans que rien ne
-casse : le serveur démarre, la page s'affiche, elle porte le mauvais nom.
-`test/shell.test.ts` fait donc tourner la substitution sur le **vrai**
-`index.html`, pas sur une chaîne d'exemple.
+**Consequences.** Substituting into HTML with a regular expression is defensible
+only because the repository owns the template: this is not HTML parsing but a
+template whose holes are known. The real risk is silent — add an attribute to the
+`<title>` tag or reverse `name` and `content` in a `<meta>`, and the pattern no
+longer matches without anything breaking: the server starts, the page displays,
+and it carries the wrong name. `test/shell.test.ts` therefore runs substitution
+against the **real** `index.html`, not an example string.
 
-Le nom est échappé avant d'entrer dans l'HTML. Il vient du `.env` de
-l'exploitant et non d'un visiteur, mais un `"` suffit à sortir d'un attribut, et
-personne ne relit son `.env` en se demandant s'il est du HTML valide.
+The name is escaped before entering HTML. It comes from the operator's `.env`,
+not a visitor, but a `"` is enough to escape an attribute, and nobody rereads
+their `.env` wondering whether it is valid HTML.
 
-L'icône, elle, **n'est pas** configurable : ce serait un fichier à monter dans
-le conteneur, donc un volume de plus dans le compose et une procédure dans
-`deploy/README.md`, pour un besoin que personne n'a encore exprimé. Le jour où
-il se pose, `WEB_DIR` est déjà surchargeable.
+The icon is **not** configurable: that would be a file mounted in the container,
+therefore another Compose volume and a procedure in `deploy/README.md`, for a
+need nobody has expressed. If it arises, `WEB_DIR` can already be overridden.

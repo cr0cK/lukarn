@@ -13,14 +13,14 @@ import { loadEnv } from '../env.js';
 import { promptPassword } from './prompt.js';
 
 /**
- * Crée le premier administrateur d'une installation neuve, quand il n'y a ni
- * compte en base ni `config/albums.yaml` pour l'amorcer.
+ * Creates the first administrator of a new installation when neither a database
+ * account nor `config/albums.yaml` exists to bootstrap it.
  *
- *   pnpm create-admin alexis              → demande le mot de passe sans l'afficher
- *   pnpm create-admin alexis monSecret    → laisse une trace dans l'historique du shell
+ *   pnpm create-admin alexis              → prompts for the password without displaying it
+ *   pnpm create-admin alexis monSecret    → leaves a trace in shell history
  *
- * C'est la seule porte d'entrée hors application : tout le reste s'administre
- * depuis `/admin`.
+ * This is the only entry point outside the application; everything else is administered
+ * from `/admin`.
  */
 async function main(): Promise<void> {
   const username = process.argv[2];
@@ -51,9 +51,9 @@ async function main(): Promise<void> {
     );
   }
 
-  // Le joker : cet administrateur voit les albums qu'il va créer, y compris
-  // ceux d'après. Sans lui, il administrerait des albums qu'il ne peut pas
-  // ouvrir — `admin` n'accorde aucun album par lui-même.
+  // The wildcard lets this administrator see albums they create now and later.
+  // Without it, they would administer albums they cannot open — `admin` grants no
+  // album by itself.
   config.createUser({
     username,
     passwordHash: await argon2.hash(password, { type: argon2.argon2id }),

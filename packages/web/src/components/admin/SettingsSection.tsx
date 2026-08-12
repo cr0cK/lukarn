@@ -6,7 +6,7 @@ import { parseNumber, validateCacheSizeGB, validateIntervalMinutes } from '../..
 import { Spinner } from '../Spinner';
 import { Button, Checkbox, FormError, Section, TextField, type Notify } from './ui';
 
-/** Section « Réglages » : rythme des synchronisations et taille du cache. */
+/** "Settings" section: sync frequency and cache size. */
 export function SettingsSection({ notify }: { notify: Notify }): ReactElement {
   const { data: settings, isPending, error } = useSettings();
 
@@ -30,8 +30,8 @@ export function SettingsSection({ notify }: { notify: Notify }): ReactElement {
 }
 
 /**
- * Monté seulement une fois les réglages chargés : l'état du formulaire est
- * initialisé depuis le serveur, il ne peut donc pas partir de valeurs inventées.
+ * Mounted only after settings load: form state is initialised from the server
+ * and therefore cannot start from invented values.
  */
 function SettingsForm({
   settings,
@@ -41,9 +41,9 @@ function SettingsForm({
   notify: Notify;
 }): ReactElement {
   const save = useUpdateSettings();
-  // Déjà chargé par le tableau de bord : cette lecture sert le cache. Sans SMTP,
-  // aucun code de vérification ne part, donc personne ne peut commenter — le
-  // réglage doit le dire au lieu de laisser espérer des emails.
+  // Already loaded by the dashboard, so this read uses the cache. Without SMTP,
+  // no verification code is sent and nobody can comment — the setting must say
+  // so rather than promising emails.
   const { data: status } = useAdminStatus();
   const mailConfigured = status?.mailConfigured !== false;
 
@@ -78,7 +78,7 @@ function SettingsForm({
     if (intervalError || cacheError || videoCacheError) return;
     if (parsedInterval === null || parsedCache === null || parsedVideoCache === null) return;
 
-    // Seuls les réglages modifiés partent, pour ne pas réécrire les autres.
+    // Send only changed settings to avoid rewriting the others.
     const body: UpdateSettingsRequest = {};
     if (parsedInterval !== settings.syncIntervalMinutes) body.syncIntervalMinutes = parsedInterval;
     if (onStartup !== settings.syncOnStartup) body.syncOnStartup = onStartup;

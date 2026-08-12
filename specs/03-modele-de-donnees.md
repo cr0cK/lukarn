@@ -1,696 +1,667 @@
-# 03 — Modèle de données
+# 03 — Data model
 
-Base unique : `${DATA_DIR}/nonni.db`, ouverte par `packages/server/src/db.ts`.
+Single database: `${DATA_DIR}/nonni.db`, opened by `packages/server/src/db.ts`.
 
 ## Pragmas
 
-| Pragma                 | Raison                                                                                                   |
-| ---------------------- | -------------------------------------------------------------------------------------------------------- |
-| `journal_mode = WAL`   | Les lectures de la grille ne bloquent pas la sync qui écrit en fond.                                     |
-| `synchronous = NORMAL` | Compromis durabilité/débit acceptable : l'index est reconstructible.                                     |
-| `foreign_keys = ON`    | Indispensable depuis la migration 3 : c'est lui qui fait jouer les `ON DELETE CASCADE` de `user_albums`. |
-| `busy_timeout = 5000`  | Une écriture concurrente attend au lieu de renvoyer `SQLITE_BUSY`.                                       |
+| Pragma                 | Rationale                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------ |
+| `journal_mode = WAL`   | Grid reads do not block the sync writing in the background.                                |
+| `synchronous = NORMAL` | Acceptable durability/throughput tradeoff: the index can be rebuilt.                       |
+| `foreign_keys = ON`    | Essential since migration 3: this enforces the `ON DELETE CASCADE` rules on `user_albums`. |
+| `busy_timeout = 5000`  | A concurrent write waits instead of returning `SQLITE_BUSY`.                               |
 
 ## Tables
 
 ### `media`
 
-L'index. Une ligne = un fichier Drive **dans un album**.
+The index. One row = one Drive file **in one album**.
 
-| Colonne                                                                                                       | Type    | Note                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `album_id`                                                                                                    | TEXT    | Id de l'album, tel qu'il figure dans la table `albums`. Pas de clé étrangère : l'index est nettoyé explicitement (voir plus bas).     |
-| `id`                                                                                                          | TEXT    | Id du fichier Drive.                                                                                                                  |
-| `name`                                                                                                        | TEXT    | Nom du fichier ; sert au `Content-Disposition` du téléchargement.                                                                     |
-| `mime_type`                                                                                                   | TEXT    | Renvoyé tel quel sur `/original`.                                                                                                     |
-| `kind`                                                                                                        | TEXT    | `CHECK (kind IN ('photo','video'))`.                                                                                                  |
-| `size`                                                                                                        | INTEGER | Nullable : Drive ne déclare pas toujours une taille.                                                                                  |
-| `width` / `height`                                                                                            | INTEGER | **Déjà corrigées de la rotation EXIF** par `toUpsert`. C'est ce qui permet au front de calculer la mise en page sans charger d'image. |
-| `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Photo : date EXIF si connue, sinon `modifiedTime`. Vidéo : reconstruite depuis le fichier — voir ci-dessous.            |
-| `taken_at_from_exif`                                                                                          | INTEGER | 0/1. Le front écrit « Prise de vue » ou « Modifié le » selon la valeur. À 1 dès que la date vient du fichier, EXIF ou conteneur.      |
-| `modified_time`                                                                                               | TEXT    | ISO 8601. Écrit à chaque sync, jamais relu — conservé, voir « Colonnes écrites et jamais relues » plus bas.                           |
-| `duration_ms`                                                                                                 | INTEGER | Vidéos seulement.                                                                                                                     |
-| `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, tous nullables. Servis par `/items/:mediaId`.                                                                                   |
-| `md5`                                                                                                         | TEXT    | Empreinte du contenu Drive. Porte la version des URL et des ETag, et entre dans la clé du cache disque.                               |
-| `has_thumbnail`                                                                                               | INTEGER | 0/1, le `hasThumbnail` de Drive. Décide si une **vidéo** a une vignette — voir ci-dessous.                                            |
-| `video_codec`                                                                                                 | TEXT    | Codec de la piste image d'une vidéo, lu dans son `moov`. Trois états, voir ci-dessous.                                                |
-| `seen_at`                                                                                                     | TEXT    | Estampille de la sync qui a vu cette ligne. Base de `deleteStale`.                                                                    |
-| `added_at`                                                                                                    | TEXT    | Date d'entrée dans l'index, écrite à l'INSERT et **jamais** par le `ON CONFLICT DO UPDATE`. Nullable — voir ci-dessous.               |
-| **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                      |
+| Column                                                                                                        | Type    | Note                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `album_id`                                                                                                    | TEXT    | Album ID as stored in the `albums` table. No foreign key: the index is cleaned explicitly (see below).                                    |
+| `id`                                                                                                          | TEXT    | Drive file ID.                                                                                                                            |
+| `name`                                                                                                        | TEXT    | File name; used for the download `Content-Disposition`.                                                                                   |
+| `mime_type`                                                                                                   | TEXT    | Returned unchanged on `/original`.                                                                                                        |
+| `kind`                                                                                                        | TEXT    | `CHECK (kind IN ('photo','video'))`.                                                                                                      |
+| `size`                                                                                                        | INTEGER | Nullable: Drive does not always report a size.                                                                                            |
+| `width` / `height`                                                                                            | INTEGER | **Already corrected for EXIF rotation** by `toUpsert`. This lets the frontend calculate the layout without loading an image.              |
+| `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Photo: EXIF date when known, otherwise `modifiedTime`. Video: reconstructed from the file — see below.                      |
+| `taken_at_from_exif`                                                                                          | INTEGER | 0/1. The frontend writes "Taken" or "Modified" according to the value. Set to 1 whenever the date comes from the file, EXIF or container. |
+| `modified_time`                                                                                               | TEXT    | ISO 8601. Written on every sync, never read — retained; see "Columns written and never read" below.                                       |
+| `duration_ms`                                                                                                 | INTEGER | Videos only.                                                                                                                              |
+| `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, all nullable. Served by `/items/:mediaId`.                                                                                          |
+| `md5`                                                                                                         | TEXT    | Drive content fingerprint. Carries the URL and ETag version and forms part of the disk-cache key.                                         |
+| `has_thumbnail`                                                                                               | INTEGER | 0/1, Drive's `hasThumbnail`. Determines whether a **video** has a thumbnail — see below.                                                  |
+| `video_codec`                                                                                                 | TEXT    | Codec of a video's video track, read from its `moov`. Three states; see below.                                                            |
+| `seen_at`                                                                                                     | TEXT    | Timestamp of the sync that saw this row. Basis for `deleteStale`.                                                                         |
+| `added_at`                                                                                                    | TEXT    | Date added to the index, written on INSERT and **never** by `ON CONFLICT DO UPDATE`. Nullable — see below.                                |
+| **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                          |
 
-**`has_thumbnail` ne concerne en pratique que les vidéos.** Une photo a toujours
-un rendu — le pipeline la décode, et retombe sur l'aperçu Drive quand libvips ne
-la lit pas —, alors qu'une vidéo n'a d'image que si Drive en a produit une de sa
-première seconde ([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). L'API n'expose donc pas la
-colonne mais la question qu'on lui pose : `MediaItem.hasPreview`, calculé par
-`toItem()` comme `kind === 'photo' || has_thumbnail === 1`. Le front demande une
-vignette « quand il y en a une », sans rejouer la règle photo/vidéo de son côté.
+**In practice, `has_thumbnail` applies only to videos.** A photo always has a
+render — the pipeline decodes it and falls back to the Drive preview when libvips
+cannot read it —, while a video has an image only if Drive produced one from its
+first second
+([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)).
+The API therefore exposes not the column but the question being asked:
+`MediaItem.hasPreview`, calculated by `toItem()` as
+`kind === 'photo' || has_thumbnail === 1`. The frontend requests a thumbnail
+"when one exists", without reproducing the photo/video rule itself.
 
-**`taken_at` d'une vidéo ne vient pas de Drive.** `videoMediaMetadata` se limite
-à `{width, height, durationMillis}` : aucune date de prise de vue. La sync lit
-donc le `creation_time` du conteneur par quelques requêtes `Range`, et le
-confronte à l'horodatage du nom du fichier — `resolveVideoTakenAt`, quatre
-règles décrites en [D97](./08-decisions/D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md). `taken_at_from_exif` vaut 1
-dans les trois premières et 0 dans la dernière, celle où seule la date de
-téléversement restait : le panneau écrit alors « Modifié le », qui est
-exactement ce qu'on sait. Aucune migration n'accompagne ce changement — la sync
-ré-upserte chaque fichier, et une vidéo déjà datée depuis son fichier n'est
-relue que si son `md5` a bougé.
+**A video's `taken_at` does not come from Drive.** `videoMediaMetadata` is limited
+to `{width, height, durationMillis}`: there is no capture date. The sync therefore
+reads the container's `creation_time` through a few `Range` requests and compares
+it with the timestamp in the file name — `resolveVideoTakenAt`, with four rules
+described in
+[D97](./08-decisions/D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md).
+`taken_at_from_exif` is 1 for the first three and 0 for the last, where only the
+upload date remained: the panel then writes "Modified", which is exactly what is
+known. No migration accompanies this change — the sync upserts every file again,
+and a video already dated from its file is reread only when its `md5` changes.
 
-**`video_codec` a trois états, et la distinction n'est pas cosmétique.** Il porte
-le code à quatre lettres écrit dans le `stsd` de la piste image — `avc1`, `hvc1`,
-`hev1` — et c'est lui qui décide de ce que le serveur prépare et de la source que
-le client demande ([D260809b](./08-decisions/D260809b-transcodage-video.md)) :
+**`video_codec` has three states, and the distinction is not cosmetic.** It holds
+the four-letter code written in the video track's `stsd` — `avc1`, `hvc1`, `hev1`
+— and determines what the server prepares and which source the client requests
+([D260809b](./08-decisions/D260809b-transcodage-video.md)):
 
-| Valeur      | Sens                                                                                       | Conséquence                                                  |
-| ----------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
-| `NULL`      | Jamais examiné : photo, ligne d'avant la migration 14, ou en-tête que Drive n'a pas rendu. | La sync rouvrira le fichier.                                 |
-| `''`        | En-tête lu, aucune piste image reconnue.                                                   | Plus jamais relu — insister relirait pour rien.              |
-| `'hvc1'`, … | Le codec tel qu'il est écrit dans le fichier.                                              | `hvc1` et `hev1` sont préparés, le reste est servi tel quel. |
+| Value       | Meaning                                                                            | Consequence                                                   |
+| ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `NULL`      | Never examined: photo, row predating migration 14, or header Drive did not return. | The sync will reopen the file.                                |
+| `''`        | Header read, no recognised video track.                                            | Never reread — persisting would reread it for nothing.        |
+| `'hvc1'`, … | The codec as written in the file.                                                  | `hvc1` and `hev1` are prepared; the rest is served unchanged. |
 
-Sans le deuxième état, un conteneur exotique serait rouvert à chaque
-synchronisation, indéfiniment. Le premier est ce qui peuple la colonne sans
-reprise de données : le court-circuit sur le `md5` exige que `video_codec` soit
-renseigné, donc les vidéos indexées par la PR précédente sont relues **une fois**,
-puis court-circuitées comme les autres.
+Without the second state, an exotic container would be reopened on every
+synchronisation indefinitely. The first state populates the column without a
+backfill: the `md5` shortcut requires `video_codec` to be set, so videos indexed
+by the previous PR are reread **once**, then bypassed like the others.
 
-**`added_at` n'est pas un doublon de `seen_at`, et c'est le piège de la
-migration 5.** `seen_at` est réécrit sur _tous_ les médias à chaque passage de
-la synchronisation, y compris ceux déjà connus : compter les nouveautés dessus
-compterait l'album entier, toutes les demi-heures. `added_at`, lui, ne bouge
-plus une fois posé — ce qui rend `WHERE added_at > ?` fiable, et c'est ce que
-lit `MediaRepo.countAddedSince`.
+**`added_at` is not a duplicate of `seen_at`, and this is the trap in migration 5.** `seen_at` is rewritten for _all_ media on every synchronisation pass,
+including known media: using it to count new items would count the entire album
+every half hour. Once set, `added_at` never changes — making
+`WHERE added_at > ?` reliable, which is what `MediaRepo.countAddedSince` reads.
 
-Corollaire assumé : les lignes indexées **avant** la migration 5 restent à
-`NULL`, donc exclues de toute comparaison. C'est voulu — sans quoi la première
-annonce de nouveautés parlerait de l'historique entier de la galerie.
+Accepted corollary: rows indexed **before** migration 5 remain `NULL` and are
+therefore excluded from every comparison. This is intentional — otherwise the
+first new-content announcement would include the gallery's entire history.
 
 ### `sync_state`
 
-Une ligne par album : `album_id` (PK), `last_sync_at`, `status`
+One row per album: `album_id` (PK), `last_sync_at`, `status`
 (`never` \| `running` \| `ok` \| `error`), `error`, `notified_at`.
 
-`status` et `error` sont écrasés à chaque tentative, mais `last_sync_at` n'est
-mis à jour qu'en cas de succès (`drive/sync.ts`) : `/admin` peut donc afficher
-« en erreur, dernière synchro réussie il y a 3 h ».
+`status` and `error` are overwritten on every attempt, but `last_sync_at` is
+updated only on success (`drive/sync.ts`): `/admin` can therefore display "error,
+last successful sync 3 hours ago".
 
-`notified_at` porte la date des dernières nouveautés annoncées par email
-(`notifier.ts`). `SyncStateRepo.set()` ne la touche jamais : elle survit donc
-aux synchronisations comme à leurs échecs, faute de quoi une sync ratée ferait
-tout réannoncer. `NULL` signifie « jamais annoncé », et la première exécution du
-notifieur pose la borne **sans rien envoyer**.
+`notified_at` holds the date of the latest new-content announcement sent by email
+(`notifier.ts`). `SyncStateRepo.set()` never touches it, so it survives both
+synchronisations and their failures; otherwise a failed sync would announce
+everything again. `NULL` means "never announced", and the notifier's first run
+sets the boundary **without sending anything**.
 
 ### `oauth_token`
 
-Une seule ligne, garantie par `CHECK (id = 1)`. Colonnes : `ciphertext` (le
-refresh token chiffré, voir [04](./04-securite-et-acces.md)), `account` (courriel
-affiché dans `/admin`), `scope`, `granted_at`, `revoked_at`.
+A single row, guaranteed by `CHECK (id = 1)`. Columns: `ciphertext` (the encrypted
+refresh token; see [04](./04-securite-et-acces.md)), `account` (email displayed in
+`/admin`), `scope`, `granted_at`, `revoked_at`.
 
-`revoked_at` non nul signifie « Google a refusé le jeton ». La ligne est
-**conservée** plutôt que supprimée : une table vide se lirait comme une
-installation neuve, alors qu'ici il faut dire à l'administrateur _quel_ compte a
-perdu son autorisation.
+A non-null `revoked_at` means "Google rejected the token". The row is **retained**
+rather than deleted: an empty table would look like a fresh installation, whereas
+the administrator needs to know _which_ account lost its authorisation.
 
 ### `sessions`
 
-`id` (PK, 32 octets aléatoires en base64url), `username`, `created_at`,
-`expires_at`, `commenter_id`, `last_seen_at`, `device`. TTL d'un an
-(`sessions.ts`), repoussé d'autant dès qu'une session passe sa mi-vie — le cookie
-est réémis en même temps, sans quoi le navigateur jetterait le sien à la date
-d'origine et la prolongation ne servirait à rien.
+`id` (PK, 32 random bytes in base64url), `username`, `created_at`, `expires_at`,
+`commenter_id`, `last_seen_at`, `device`. One-year TTL (`sessions.ts`), extended
+by the same amount once a session passes its half-life — the cookie is reissued at
+the same time, otherwise the browser would discard its copy on the original date
+and the extension would achieve nothing.
 
-Les deux dernières colonnes portent la télémétrie de visite (D260809h) :
+The last two columns hold visit telemetry (D260809h):
 
-- **`last_seen_at`** — dernière requête reçue de cette session. Elle ne coûte
-  aucune lecture supplémentaire : `SessionStore.get()` relit déjà la ligne à
-  chaque requête, on ajoute une colonne au SELECT. Sa réécriture est plafonnée à
-  **une par heure et par session**, sur le raisonnement tenu pour la
-  prolongation d'échéance — sans ce seuil, chaque vignette d'une grille
-  déclencherait un UPDATE. `NULL` sur une session ouverte avant la migration 15,
-  jusqu'à sa requête suivante.
-- **`device`** — `'mobile'`, `'tablette'`, `'ordinateur'` ou `'tv'`, déduit du
-  user-agent par `device.ts` **à la création de la session, puis jeté**. Le
-  user-agent complet n'est stocké nulle part : c'est une empreinte, quand une
-  classe parmi quatre ne ré-identifie personne. `NULL` quand la requête de
-  connexion n'a pas d'en-tête, et sur les sessions antérieures à la migration.
+- **`last_seen_at`** — latest request received from this session. It requires no
+  extra read: `SessionStore.get()` already reads the row again on every request,
+  so one column is added to the SELECT. Rewriting it is limited to **once per hour
+  per session**, following the same reasoning as expiry extension — without this
+  threshold, every thumbnail in a grid would trigger an UPDATE. `NULL` for a
+  session opened before migration 15, until its next request.
+- **`device`** — `'mobile'`, `'tablette'`, `'ordinateur'`, or `'tv'`, inferred
+  from the user-agent by `device.ts` **when the session is created, then
+  discarded**. The full user-agent is stored nowhere: it is a fingerprint, while
+  one of four classes cannot re-identify anyone. `NULL` when the login request has
+  no header, and for sessions predating the migration.
 
 ### `device_pairings`
 
-Une demande d'appairage en cours, le temps qu'un écran sans clavier obtienne une
-session (D260809c). Table de passage : une ligne y vit cinq minutes au plus, et
-disparaît dès que l'appareil demandeur a relevé sa session.
+A pending pairing request while a screen without a keyboard obtains a session
+(D260809c). This is a transient table: a row lives there for at most five minutes
+and disappears as soon as the requesting device collects its session.
 
-| Colonne                     | Rôle                                                                                                                                                                                                             |
+| Column                      | Role                                                                                                                                                                                                             |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_code` (PK)            | Les huit caractères affichés sur l'écran demandeur, repris dans le QR. Stockés **en clair** : ils s'affichent sur un téléviseur, les hacher ne protégerait rien de ce que la pièce voit déjà.                    |
-| `device_hash` (UNIQUE)      | HMAC du `deviceCode` de 32 octets rendu au seul demandeur. C'est lui qui autorise à relever la session, jamais le code affiché. Haché pour la raison de `commenters.code_hash` : un dump ne doit rien livrer.    |
-| `username`                  | Le compte de celui qui a approuvé, `NULL` tant que personne ne l'a fait. `COLLATE NOCASE` et `ON DELETE CASCADE`, comme partout où un compte est référencé : une demande approuvée par un compte supprimé meurt. |
-| `approved_at`, `created_at` | Dates ISO 8601 UTC. `approved_at` à `NULL` vaut « en attente ».                                                                                                                                                  |
-| `expires_at`                | Cinq minutes après la création. Une demande plus longue laisserait un code approuvable traîner sur un écran allumé.                                                                                              |
+| `user_code` (PK)            | The eight characters displayed on the requesting screen and included in the QR code. Stored **in plain text**: they appear on a television, so hashing would protect nothing the room cannot already see.        |
+| `device_hash` (UNIQUE)      | HMAC of the 32-byte `deviceCode` returned only to the requester. This authorises session collection, never the displayed code. Hashed for the same reason as `commenters.code_hash`: a dump must reveal nothing. |
+| `username`                  | The approving person's account, `NULL` until someone approves. `COLLATE NOCASE` and `ON DELETE CASCADE`, as wherever an account is referenced: a request approved by a deleted account dies.                     |
+| `approved_at`, `created_at` | ISO 8601 UTC dates. A `NULL` `approved_at` means "pending".                                                                                                                                                      |
+| `expires_at`                | Five minutes after creation. A longer request would leave an approvable code lingering on a powered-on screen.                                                                                                   |
 
-Trois points tiennent le cloisonnement :
+Three points maintain the isolation:
 
-- **La ligne est supprimée à la relève, pas marquée.** Un `deviceCode` ne vaut
-  donc qu'une seule session : rejoué, il tombe sur la même réponse qu'un code
-  inconnu.
-- **L'approbation ne crée aucune session** — elle ne fait qu'inscrire qui a
-  approuvé. Sans quoi une session d'un an naîtrait pour un écran éteint
-  entre-temps (D260809c).
-- **La purge horaire de `main.ts`** efface les demandes expirées, à côté des
-  sessions et des compteurs du throttle. Sans elle, les demandes jamais
-  approuvées s'accumuleraient jusqu'au redémarrage.
+- **The row is deleted when collected, not marked.** A `deviceCode` therefore
+  yields only one session: replaying it produces the same response as an unknown
+  code.
+- **Approval creates no session** — it only records who approved. Otherwise a
+  one-year session would be created for a screen that may have been turned off in
+  the meantime (D260809c).
+- **The hourly purge in `main.ts`** deletes expired requests alongside sessions
+  and throttle counters. Without it, requests that are never approved would
+  accumulate until restart.
 
 ### `users`, `albums`, `user_albums`, `settings`
 
-La configuration : qui se connecte, quels dossiers Drive sont exposés, et les
-réglages. Écrites **uniquement** par `ConfigRepo` (`config-repo.ts`).
+The configuration: who can sign in, which Drive folders are exposed, and the
+settings. Written **only** by `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Colonnes                                                                                                                                        |
+| Table         | Columns                                                                                                                                         |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                           |
 | `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at` |
-| `user_albums` | `username`, `album_id`, PK composite, deux clés étrangères `ON DELETE CASCADE`                                                                  |
-| `settings`    | `key` (PK), `value` — JSON. Clés : `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`                  |
+| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                      |
+| `settings`    | `key` (PK), `value` — JSON. Keys: `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`                   |
 
-Quatre choix à connaître :
+Key choices:
 
-- **`COLLATE NOCASE` sur `users.username`.** Le login est insensible à la casse
-  depuis toujours ; l'unicité devait l'être aussi, sinon « Alexis » et « alexis »
-  coexisteraient et la connexion en désignerait un au hasard. La collation donne
-  les deux à la fois : la casse saisie est stockée et affichée telle quelle,
-  l'index qui porte la clé primaire compare sans la casse. Une seconde colonne en
-  minuscules aurait fait le même travail au prix d'un risque de désynchronisation
-  entre les deux. NOCASE ne replie que l'ASCII — ce que `USERNAME_PATTERN` est le
-  seul à accepter.
-- **Le joker `*` est un booléen `all_albums`, pas une ligne de liaison.** Une
-  ligne `album_id = '*'` demanderait un album fictif pour satisfaire la clé
-  étrangère, ou d'y renoncer. Surtout, le joker doit couvrir les albums **créés
-  plus tard** : une liste de liaisons figée ne le ferait pas.
-- **`position`** porte l'ordre d'affichage. `created_at` ne le restituerait pas :
-  l'amorçage crée tous les albums dans la même milliseconde.
-- **`group_by`** (`CHECK (group_by IN ('month', 'day'))`, défaut `month`) est le
-  découpage appliqué à l'ouverture de l'album. Il vivait uniquement dans l'URL,
-  c'est-à-dire nulle part : un séjour se lit par jour, dix ans de photos
-  d'enfants par mois, et rouvrir l'album redonnait le défaut global à chaque
-  fois. Le paramètre `?group=` continue de primer — c'est une préférence, pas
-  une contrainte.
-- **`sort_order`** (`CHECK (sort_order IN ('desc', 'asc'))`, défaut `asc`) est le
-  sens de lecture appliqué à l'ouverture, pour la même raison que `group_by` : un
-  séjour se raconte du premier jour au dernier, une bibliothèque qu'on alimente
-  au fil de l'eau se lit par la fin. Le paramètre `?order=` prime, et le
-  navigateur retient par album ce que son lecteur a choisi — la colonne n'est que
-  le troisième recours (voir [07](./07-frontend.md) et D99).
-- **`cover_media_id`** est la photo choisie comme couverture, `NULL` pour la plus
-  récente automatiquement. Aucune clé étrangère vers `media`, pour la même raison
-  que `comments.media_id` : `deleteStale` retire une ligne dès qu'une
-  synchronisation ne la revoit pas, et une cascade effacerait le choix sur un
-  contretemps d'indexation. Le repli est donc calculé à la lecture, par
-  `MediaRepo.stats(albumId, chosenId)` : la photo absente de l'index — ou qui est
-  une vidéo — rend la main à la plus récente sans que le choix soit effacé. Une
-  vidéo a bien une vignette depuis D92, mais celle-ci appartient à Drive et peut
-  manquer, or la couverture est la seule image dont l'absence se voit depuis la
-  page d'accueil, sans repli. L'identifiant Drive étant stable, la
-  photo revenue redevient la couverture.
-- **`created_at` / `updated_at` sont écrits par l'application**, en ISO 8601 UTC,
-  pas par `CURRENT_TIMESTAMP` qui produirait un format différent du reste de la
-  base.
-  **Aucune adresse email sur `users`, et c'est délibéré.** Un compte est une clé
-  d'accès, pas quelqu'un de joignable : le même identifiant peut être partagé par
-  tout un foyer. Les adresses appartiennent à `commenters` ci-dessous, et
-  l'adresse prévenue des nouveaux commentaires est un réglage d'instance
-  (`settings.moderationEmail`).
+- **`COLLATE NOCASE` on `users.username`.** Login has always been case
+  insensitive; uniqueness had to be as well, otherwise "Alexis" and "alexis"
+  could coexist and login would select one arbitrarily. The collation provides
+  both: the entered case is stored and displayed unchanged, while the primary-key
+  index compares without case. A second lowercase column would do the same job at
+  the cost of a risk that the two become unsynchronised. NOCASE folds only ASCII —
+  the only characters `USERNAME_PATTERN` accepts.
+- **The `*` wildcard is an `all_albums` boolean, not a relationship row.** An
+  `album_id = '*'` row would require a fictitious album to satisfy the foreign
+  key, or abandoning that key. More importantly, the wildcard must cover albums
+  **created later**: a fixed list of relationships would not.
+- **`position`** holds display order. `created_at` could not reproduce it because
+  bootstrapping creates every album in the same millisecond.
+- **`group_by`** (`CHECK (group_by IN ('month', 'day'))`, default `month`) is the
+  grouping applied when opening an album. It used to live only in the URL, meaning
+  nowhere: a trip is read by day, ten years of children's photos by month, and
+  reopening the album restored the global default every time. The `?group=`
+  parameter still takes precedence — this is a preference, not a constraint.
+- **`sort_order`** (`CHECK (sort_order IN ('desc', 'asc'))`, default `asc`) is the
+  reading order applied when opening an album, for the same reason as `group_by`:
+  a trip is told from its first day to its last, while an evolving library is read
+  from the end. The `?order=` parameter takes precedence, and the browser remembers
+  per album what its reader chose — the column is only the third fallback (see
+  [07](./07-frontend.md) and D99).
+- **`cover_media_id`** is the photo chosen as the cover, or `NULL` to use the
+  newest automatically. There is no foreign key to `media`, for the same reason as
+  `comments.media_id`: `deleteStale` removes a row as soon as a synchronisation
+  does not see it again, and a cascade would erase the choice after an indexing
+  mishap. The fallback is therefore calculated on reads by
+  `MediaRepo.stats(albumId, chosenId)`: a photo missing from the index — or one
+  that is a video — yields to the newest without erasing the choice. Videos have
+  had thumbnails since D92, but those belong to Drive and may be missing, while
+  the cover is the only image whose absence is visible from the home page with no
+  fallback. Because the Drive identifier is stable, a returning photo becomes the
+  cover again.
+- **`created_at` / `updated_at` are written by the application**, in ISO 8601 UTC,
+  rather than by `CURRENT_TIMESTAMP`, which would produce a different format from
+  the rest of the database.
+  **There is deliberately no email address on `users`.** An account is an access
+  key, not a contactable person: the same username may be shared by an entire
+  household. Addresses belong to `commenters` below, while the address notified
+  of new comments is an instance setting (`settings.moderationEmail`).
 
 ### `commenters`
 
-Une **personne**, par opposition à la clé d'accès de `users`.
+A **person**, as opposed to the access key in `users`.
 
-| Colonne                                                         | Rôle                                          |
-| --------------------------------------------------------------- | --------------------------------------------- |
-| `id`                                                            | PK, `AUTOINCREMENT`                           |
-| `email`                                                         | `NOT NULL UNIQUE COLLATE NOCASE` — l'identité |
-| `display_name`                                                  | Nom qui signe les commentaires                |
-| `notify`                                                        | Désabonnement                                 |
-| `verified_at`                                                   | `NULL` tant que le code n'a pas été saisi     |
-| `code_hash`, `code_expires_at`, `code_sent_at`, `code_attempts` | La vérification en cours                      |
-| `pending_display_name`                                          | Renommage demandé, en attente du code         |
+| Column                                                          | Role                                            |
+| --------------------------------------------------------------- | ----------------------------------------------- |
+| `id`                                                            | PK, `AUTOINCREMENT`                             |
+| `email`                                                         | `NOT NULL UNIQUE COLLATE NOCASE` — the identity |
+| `display_name`                                                  | Name used to sign comments                      |
+| `notify`                                                        | Unsubscription                                  |
+| `verified_at`                                                   | `NULL` until the code has been entered          |
+| `code_hash`, `code_expires_at`, `code_sent_at`, `code_attempts` | Verification in progress                        |
+| `pending_display_name`                                          | Requested rename, pending the code              |
 
-Cinq choix à connaître :
+Key choices:
 
-- **L'adresse EST l'identité.** Se ré-identifier avec la même, depuis un autre
-  appareil ou après avoir vidé ses cookies, retrouve ses commentaires — et le
-  droit de les supprimer. Sans cette clé stable, chaque navigateur créerait une
-  personne de plus, et plus personne ne pourrait effacer ses propres messages.
-- **`verified_at` n'est pas décoratif.** L'identité est déclarative : n'importe
-  qui derrière la clé d'accès partagée pourrait signer du nom d'un autre, ou
-  faire arriver les notifications dans la boîte d'un tiers. Le code envoyé par
-  email est ce qui l'empêche.
-- **`code_hash` et jamais le code en clair.** Un HMAC coûte moins qu'une requête
-  SQL, et un dump de la base ne doit pas livrer de quoi valider une adresse.
-- **`code_sent_at` et `code_attempts` sont des garde-fous, pas des traces.** Le
-  premier interdit de renvoyer un code dans la minute — sinon le formulaire
-  devient une machine à expédier des emails vers une adresse qu'on ne possède
-  pas ; le second plafonne à cinq essais, six chiffres se parcourant en un
-  million de tentatives.
-- **`pending_display_name` retient un renommage jusqu'à la preuve.** Le nom
-  d'une identité **déjà vérifiée** ne change qu'à la validation du code, jamais
-  à la demande : sinon, connaître l'adresse de quelqu'un suffisait à le
-  renommer, et comme la signature d'un commentaire est relue à chaque requête,
-  tout son historique changeait de nom sans qu'un seul code ait été saisi. Une
-  identité pas encore vérifiée s'écrit directement — rien n'est signé d'elle.
+- **The address IS the identity.** Identifying oneself again with the same
+  address, from another device or after clearing cookies, recovers one's comments
+  — and the right to delete them. Without this stable key, every browser would
+  create another person, and nobody could delete their own messages any more.
+- **`verified_at` is not decorative.** Identity is declarative: anyone behind the
+  shared access key could sign another person's name or send notifications to a
+  third party's inbox. The code sent by email prevents this.
+- **`code_hash`, never the plain-text code.** An HMAC costs less than a SQL query,
+  and a database dump must not provide what is needed to validate an address.
+- **`code_sent_at` and `code_attempts` are safeguards, not traces.** The first
+  prevents sending another code within a minute — otherwise the form becomes a
+  machine for sending emails to an address one does not own. The second limits
+  attempts to five, because six digits can be exhausted in a million attempts.
+- **`pending_display_name` holds a rename until proof is supplied.** The name of
+  an **already verified** identity changes only when the code is validated, never
+  on request: otherwise knowing someone's address would be enough to rename them,
+  and because a comment signature is reread on every request, their entire history
+  would change name without a single code being entered. An identity not yet
+  verified is written directly — nothing is signed by it.
 
-`sessions` porte un `commenter_id` (`ON DELETE SET NULL`) : la session
-**mémorise** l'identité, elle ne la définit pas. Perdre son identité ne coupe
-donc jamais l'accès aux albums, qui ne vient que de la clé d'accès.
+`sessions` holds a `commenter_id` (`ON DELETE SET NULL`): the session
+**remembers** the identity; it does not define it. Losing one's identity therefore
+never removes album access, which comes only from the access key.
 
 ### `comments`
 
-Un fil de discussion par média **et par album**.
+A discussion thread per media item **and per album**.
 
-| Colonne                  | Rôle                                                                                                                                          |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                     | PK, `AUTOINCREMENT`                                                                                                                           |
-| `album_id`, `media_id`   | Le couple auquel le fil appartient                                                                                                            |
-| `parent_id`              | `NULL` pour une racine, sinon l'id de la racine — jamais plus profond                                                                         |
-| `commenter_id`           | L'**auteur**, FK vers `commenters` `ON DELETE CASCADE` — une personne, pas une clé d'accès                                                    |
-| `account`                | La clé d'accès utilisée pour écrire, `COLLATE NOCASE`, FK vers `users` `ON DELETE SET NULL` — gardée pour la modération                       |
-| `body`                   | Le message. **Seule colonne réécrite après coup**, et seulement par son auteur dans les 30 s (D57)                                            |
-| `created_at`             | Date de publication. Ne bouge **jamais**, y compris après correction : le message doit garder sa place dans un fil que d'autres lisaient déjà |
-| `hidden_at`, `hidden_by` | Modération a posteriori                                                                                                                       |
+| Column                   | Role                                                                                                                                    |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                     | PK, `AUTOINCREMENT`                                                                                                                     |
+| `album_id`, `media_id`   | The pair to which the thread belongs                                                                                                    |
+| `parent_id`              | `NULL` for a root, otherwise the root ID — never any deeper                                                                             |
+| `commenter_id`           | The **author**, FK to `commenters` `ON DELETE CASCADE` — a person, not an access key                                                    |
+| `account`                | The access key used to write, `COLLATE NOCASE`, FK to `users` `ON DELETE SET NULL` — retained for moderation                            |
+| `body`                   | The message. **The only column rewritten afterwards**, and only by its author within 30 s (D57)                                         |
+| `created_at`             | Publication date. **Never** changes, even after a correction: the message must retain its place in a thread others were already reading |
+| `hidden_at`, `hidden_by` | Moderation after publication                                                                                                            |
 
-Les choix structurants :
+Structural choices:
 
-- **`AUTOINCREMENT` plutôt que le rowid ordinaire.** SQLite réattribue sinon
-  l'identifiant d'une ligne supprimée. Les emails de notification portent un lien
-  vers un commentaire et survivent des mois dans une boîte aux lettres : un id
-  recyclé ferait pointer un vieux message vers la conversation de quelqu'un
-  d'autre. C'est aussi ce qui rend l'ordre des id égal à l'ordre d'écriture, donc
-  le tri et la pagination possibles sur un simple entier.
-- **Le fil appartient au couple `(album_id, media_id)`.** Un même fichier Drive
-  indexé sous deux albums porte deux conversations. Les réunir montrerait à un
-  visiteur les propos tenus dans un album qu'il n'a pas le droit de voir, ce qui
-  contredirait le cloisonnement de [04](./04-securite-et-acces.md).
-- **Aucune clé étrangère vers `media`.** `deleteStale` retire une photo dès
-  qu'une synchronisation ne la revoit pas — dossier renommé, sync interrompue,
-  passage par la corbeille Drive. Une cascade détruirait des commentaires sur un
-  simple contretemps d'indexation, alors que l'identifiant Drive est stable : la
-  photo revenue retrouve son fil. Le prix est un commentaire orphelin possible,
-  que la modération affiche sans nom de fichier.
-- **`parent_id` en `ON DELETE SET NULL`, pas `CASCADE`.** Supprimer une identité
-  emporte ses messages (cascade sur `commenter_id`), mais les réponses que
-  d'autres y ont écrites leur appartiennent : elles remontent en tête de fil
-  plutôt que de disparaître avec lui.
-- **`account` en `ON DELETE SET NULL`.** C'est la clé d'accès utilisée au moment
-  d'écrire, gardée pour la modération : elle dit par quel mot de passe partagé un
-  message gênant est arrivé, donc lequel changer. Supprimer un compte ne doit pas
-  emporter des commentaires qui ne lui appartiennent pas — ils appartiennent à
-  leur auteur.
-- **`album_id` en `ON DELETE CASCADE`.** Supprimer un album emporte ses
-  commentaires : ils désignaient un contenu qui n'est plus exposé.
+- **`AUTOINCREMENT` rather than the ordinary rowid.** Otherwise SQLite reassigns
+  the identifier of a deleted row. Notification emails contain a link to a
+  comment and remain in an inbox for months: a recycled ID would make an old
+  message point to someone else's conversation. This also makes ID order match
+  write order, allowing sorting and pagination on a simple integer.
+- **The thread belongs to the `(album_id, media_id)` pair.** The same Drive file
+  indexed under two albums has two conversations. Combining them would show a
+  visitor remarks made in an album they are not authorised to view, contradicting
+  the isolation in [04](./04-securite-et-acces.md).
+- **No foreign key to `media`.** `deleteStale` removes a photo as soon as a
+  synchronisation does not see it again — renamed folder, interrupted sync, trip
+  through the Drive bin. A cascade would destroy comments after a simple indexing
+  mishap, even though the Drive identifier is stable: a returning photo recovers
+  its thread. The cost is a possible orphan comment, which moderation displays
+  without a file name.
+- **`parent_id` uses `ON DELETE SET NULL`, not `CASCADE`.** Deleting an identity
+  removes its messages (cascade on `commenter_id`), but replies written by others
+  belong to them: they move to the top level rather than disappearing with it.
+- **`account` uses `ON DELETE SET NULL`.** This is the access key used when
+  writing, retained for moderation: it identifies which shared password a
+  problematic message came through, and therefore which one to change. Deleting
+  an account must not remove comments that do not belong to it — they belong to
+  their author.
+- **`album_id` uses `ON DELETE CASCADE`.** Deleting an album removes its comments:
+  they referred to content that is no longer exposed.
 
 ### `album_subscriptions`
 
-Qui veut être prévenu des nouvelles photos d'un album. Écrite par
-`subscriptions.ts`, lue par `notifier.ts`.
+Who wants to be notified about new photos in an album. Written by
+`subscriptions.ts`, read by `notifier.ts`.
 
-| Colonne        | Rôle                                     |
+| Column         | Role                                     |
 | -------------- | ---------------------------------------- |
-| `commenter_id` | La personne. FK `ON DELETE CASCADE`      |
-| `album_id`     | L'album. FK `ON DELETE CASCADE`          |
+| `commenter_id` | The person. FK `ON DELETE CASCADE`       |
+| `album_id`     | The album. FK `ON DELETE CASCADE`        |
 | `state`        | `CHECK (state IN ('auto', 'opted_out'))` |
-| `created_at`   | Date de la première ouverture de l'album |
+| `created_at`   | Date the album was first opened          |
 | **PK**         | `(commenter_id, album_id)`               |
 
-Deux choix à connaître :
+Two key choices:
 
-- **Un état, et non la simple présence d'une ligne.** L'abonnement étant
-  automatique (D41), effacer la ligne au désabonnement la ferait recréer à la
-  réouverture de l'album le lendemain — précisément ce qui fait détester un
-  service. L'inscription s'écrit `INSERT OR IGNORE`, qui laisse intacte une
-  ligne déjà `opted_out`.
-- **La vérification est portée par le SQL.** L'inscription est un
-  `INSERT … SELECT … WHERE verified_at IS NOT NULL` : une adresse seulement
-  déclarée peut être celle d'un tiers, et cette galerie n'a rien à lui écrire.
+- **A state, rather than the mere presence of a row.** Because subscription is
+  automatic (D41), deleting the row when unsubscribing would recreate it when the
+  album is reopened the next day — exactly what makes people hate a service.
+  Subscription uses `INSERT OR IGNORE`, which leaves an existing `opted_out` row
+  unchanged.
+- **Verification is enforced by SQL.** Subscription uses
+  `INSERT … SELECT … WHERE verified_at IS NOT NULL`: a merely declared address
+  may belong to a third party, and this gallery has no reason to write to them.
 
 ### `album_visits`
 
-Qui a ouvert quel album, et quand. Écrite par `telemetry.ts` depuis
-`routes/albums.ts`, lue par l'onglet « Visites » de `/admin` (D260809h).
+Who opened which album and when. Written by `telemetry.ts` from
+`routes/albums.ts`, read by the "Visits" tab in `/admin` (D260809h).
 
-| Colonne      | Rôle                                                                         |
+| Column       | Role                                                                         |
 | ------------ | ---------------------------------------------------------------------------- |
-| `album_id`   | L'album ouvert. **Aucune clé étrangère** — voir plus bas                     |
-| `username`   | La clé d'accès, `COLLATE NOCASE` comme `users.username`                      |
-| `session_id` | Le navigateur. Un seau pour compter des visiteurs distincts, **pas un lien** |
-| `day`        | `YYYY-MM-DD` en UTC                                                          |
-| `visits`     | Ouvertures de l'album — la première page de la grille, jamais les suivantes  |
-| `photos`     | Photos ouvertes en visionneuse                                               |
-| `last_at`    | Date ISO du dernier geste compté sur cette ligne                             |
-| **PK**       | `(album_id, username, session_id, day)`, table déclarée `WITHOUT ROWID`      |
+| `album_id`   | The album opened. **No foreign key** — see below                             |
+| `username`   | The access key, `COLLATE NOCASE` like `users.username`                       |
+| `session_id` | The browser. A bucket for counting distinct visitors, **not a relationship** |
+| `day`        | `YYYY-MM-DD` in UTC                                                          |
+| `visits`     | Album openings — the first grid page, never subsequent ones                  |
+| `photos`     | Photos opened in the viewer                                                  |
+| `last_at`    | ISO date of the last action counted on this row                              |
+| **PK**       | `(album_id, username, session_id, day)`, table declared `WITHOUT ROWID`      |
 
-Trois choix à connaître :
+Three key choices:
 
-- **Agrégée à l'écriture**, par un `INSERT … ON CONFLICT DO UPDATE` qui
-  incrémente le compteur visé. Une ligne par requête produirait la dizaine de
-  milliers de lignes par jour qu'il faudrait indexer, agréger et purger ; il en
-  reste une dizaine. Ce qu'on perd est l'heure exacte de chaque geste, donc
-  toute courbe intra-journalière — assumé.
-- **Aucune clé étrangère**, ni vers `sessions` ni vers `albums`. Une déconnexion
-  détruit la session et une cascade emporterait avec elle l'historique de ce qui
-  a été regardé ; un album supprimé effacerait sa propre fréquentation passée,
-  qui reste vraie. Le titre de l'album vient donc d'une jointure externe et vaut
-  `null` dans ce cas, l'écran affichant l'identifiant.
-- **`WITHOUT ROWID`** : la table est entièrement définie par sa clé primaire
-  composite, l'index secondaire implicite ne servirait à rien.
+- **Aggregated on write**, through an `INSERT … ON CONFLICT DO UPDATE` that
+  increments the relevant counter. One row per request would produce tens of
+  thousands of rows per day that would need indexing, aggregating, and purging;
+  only around ten remain. What is lost is the exact time of every action, and
+  therefore every intraday chart — an accepted tradeoff.
+- **No foreign keys**, to either `sessions` or `albums`. Signing out destroys the
+  session, and a cascade would take the viewing history with it; a deleted album
+  would erase its own past traffic, which remains true. The album title therefore
+  comes from an outer join and is `null` in this case, with the screen displaying
+  the identifier.
+- **`WITHOUT ROWID`**: the table is entirely defined by its composite primary key,
+  so the implicit secondary index would serve no purpose.
 
-Ce qui n'y est **pas** : aucune adresse IP, aucun user-agent brut, et jamais le
-média ouvert — ce serait l'historique de lecture de quelqu'un, dans une
-application où une clé d'accès se partage.
+What is **not** stored: no IP address, no raw user-agent, and never the opened
+media item — that would be someone's viewing history in an application where an
+access key is shared.
 
-### `album_days` et `geo_places`
+### `album_days` and `geo_places`
 
-Ce qu'on a fait un jour donné, et où. Écrites par `places.ts` (les lieux
-déduits) et par l'API d'administration (la saisie) ; `geo_places` est le cache
-du géocodeur (`geocoder.ts`).
+What happened on a given day, and where. Written by `places.ts` (derived
+locations) and the administration API (manual input); `geo_places` is the
+geocoder cache (`geocoder.ts`).
 
-| Table        | Colonnes                                                                                                        |
+| Table        | Columns                                                                                                         |
 | ------------ | --------------------------------------------------------------------------------------------------------------- |
 | `album_days` | `album_id` (FK `ON DELETE CASCADE`), `day`, `description`, `place`, `cells`, `updated_at`, PK `(album_id, day)` |
 | `geo_places` | `cell` (PK), `label`, `fetched_at`                                                                              |
 
-Quatre choix à connaître :
+Key choices:
 
-- **`day` est un jour UTC `YYYY-MM-DD`**, exactement la clé que `dayKey()`
-  calcule côté front. Un jour local ferait basculer de section une photo de
-  23 h 30, et la note se retrouverait sur la mauvaise journée.
-- **`place` et `cells` sont deux colonnes, pas une.** `cells` est déduit de
-  l'EXIF et réécrit à chaque passage ; `place` est saisi à la main et **prime**.
-  Un libellé figé une fois pour toutes obligerait à choisir entre ne jamais
-  recalculer les journées et rappeler Nominatim à chaque passage — séparées, le
-  recalcul est gratuit et les libellés s'allument tout seuls quand ils arrivent
-  (voir [D48](./08-decisions/D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)).
-- **Le recalcul n'écrase jamais une saisie.** `replaceCells` fait un
-  `DO UPDATE SET cells = excluded.cells` **et rien d'autre** : un
-  `excluded.description` glissé là effacerait, à chaque ménage horaire, tout ce
-  que l'administrateur a écrit. Une journée dont les photos positionnées
-  disparaissent de l'index perd ses `cells` ; sa note, elle, survit — la journée
-  a bien eu lieu.
-- **`geo_places.label = NULL` n'est pas un échec.** C'est un géocodage abouti
-  sans résultat exploitable — pleine mer, désert — et la ligne existe
-  précisément pour ne plus redemander. Un échec réseau, lui, n'écrit **aucune
-  ligne** et sera retenté au passage suivant. Le cache est partagé entre albums :
-  deux séjours au même endroit ne comptent qu'un appel.
+- **`day` is a UTC day in `YYYY-MM-DD` form**, exactly the key that `dayKey()`
+  calculates in the frontend. A local day would move a 23:30 photo into another
+  section, and the note would end up on the wrong day.
+- **`place` and `cells` are two columns, not one.** `cells` is derived from EXIF
+  and rewritten on every pass; `place` is entered manually and **takes
+  precedence**. A label fixed once and for all would force a choice between never
+  recalculating days and calling Nominatim again on every pass — when separated,
+  recalculation is free and labels appear by themselves when they arrive (see
+  [D48](./08-decisions/D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)).
+- **Recalculation never overwrites manual input.** `replaceCells` performs
+  `DO UPDATE SET cells = excluded.cells` **and nothing else**: slipping an
+  `excluded.description` in there would erase everything the administrator wrote
+  during every hourly clean-up. A day whose positioned photos disappear from the
+  index loses its `cells`; its note survives — the day still happened.
+- **`geo_places.label = NULL` is not a failure.** It is a completed geocoding with
+  no usable result — open sea, desert — and the row exists specifically to avoid
+  asking again. A network failure writes **no row** and will be retried on the next
+  pass. The cache is shared between albums: two trips to the same place count as
+  one call.
 
-`settings` porte des valeurs JSON et les défauts vivent dans le code
-(`DEFAULT_SETTINGS`) : une clé absente n'est pas une anomalie, et ajouter un
-réglage ne demande pas de migration.
+`settings` holds JSON values and defaults live in the code (`DEFAULT_SETTINGS`):
+a missing key is not an anomaly, and adding a setting requires no migration.
 
-**Cache mémoire.** `canSee()` est appelé à chaque requête média, donc sur chaque
-vignette d'une grille. `ConfigRepo` tient un instantané en mémoire (albums,
-comptes, droits, réglages), reconstruit à la première lecture qui suit une
-écriture. Étant le seul écrivain de ces quatre tables, il ne peut pas servir un
-instantané périmé.
+**Memory cache.** `canSee()` is called on every media request, and therefore for
+every thumbnail in a grid. `ConfigRepo` keeps an in-memory snapshot (albums,
+accounts, permissions, settings), rebuilt on the first read after a write. As the
+sole writer of these four tables, it cannot serve a stale snapshot.
 
 ### `media_notes`
 
-Ce qui se passe sur **une** photo. L'album dit où l'on était, la journée ce
-qu'on y a fait ; « Léa saute du ponton, troisième essai » ne se déduit ni du nom
-de fichier, ni de l'EXIF, ni de la note du jour. Écrite par `MediaRepo`, la
-seule classe qui possède cette table.
+What happens in **one** photo. The album says where people were and the day says
+what they did there; "Léa jumps off the pontoon, third attempt" cannot be derived
+from the file name, EXIF, or the day's note. Written by `MediaRepo`, the only class
+that owns this table.
 
-| Table         | Colonnes                                                                                                              |
-| ------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `media_notes` | `album_id` (FK `ON DELETE CASCADE`), `media_id` (**sans FK**), `description`, `updated_at`, PK `(album_id, media_id)` |
+| Table         | Columns                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `media_notes` | `album_id` (FK `ON DELETE CASCADE`), `media_id` (**no FK**), `description`, `updated_at`, PK `(album_id, media_id)` |
 
-Quatre choix à connaître :
+Key choices:
 
-- **La portée est l'album, pas le fichier Drive.** Le même fichier indexé sous
-  deux albums porte deux descriptions, exactement comme il porte deux fils de
-  commentaires. Les confondre montrerait à un visiteur ce qui a été écrit dans
-  un album qu'il ne peut pas ouvrir (D12).
-- **Aucune clé étrangère vers `media`**, pour la raison de `comments.media_id` et
-  d'`albums.cover_media_id` : `deleteStale` retire une photo dès qu'une
-  synchronisation ne la revoit pas — corbeille Drive le temps d'un retour en
-  arrière, dossier renommé, sync interrompue. Une cascade détruirait sur un
-  contretemps d'indexation un texte écrit à la main, que rien ne régénère.
-  L'identifiant Drive est stable : la photo revenue retrouve sa description
-  (voir [D83](./08-decisions/D83-une-description-par-photo-portee-par-l-album.md)).
-- **Aucun ménage n'y touche.** Ni `deleteStale`, ni `clearAlbum`, ni
-  `pruneAlbums`, ni le `ON CONFLICT DO UPDATE` d'`upsertMany` — même invariant
-  que `AlbumDayRepo` : le passage de fond n'écrase jamais une saisie. La seule
-  suppression vient de la cascade sur `albums`, c'est-à-dire de la suppression
-  de l'album lui-même.
-- **Une ligne vide n'existe pas.** `setDescription` fait un `DELETE` quand la
-  valeur reçue est `null`, vide ou blanche : la garder ferait grossir la table
-  sans rien dire de plus qu'une ligne absente.
+- **The scope is the album, not the Drive file.** The same file indexed under two
+  albums has two descriptions, just as it has two comment threads. Combining them
+  would show a visitor what was written in an album they cannot open (D12).
+- **No foreign key to `media`**, for the same reason as `comments.media_id` and
+  `albums.cover_media_id`: `deleteStale` removes a photo as soon as a
+  synchronisation does not see it again — temporarily in the Drive bin during a
+  rollback, renamed folder, interrupted sync. A cascade would destroy manually
+  written text that nothing can regenerate after an indexing mishap. The Drive
+  identifier is stable, so a returning photo recovers its description (see
+  [D83](./08-decisions/D83-une-description-par-photo-portee-par-l-album.md)).
+- **No clean-up touches it.** Neither `deleteStale`, `clearAlbum`, `pruneAlbums`,
+  nor the `ON CONFLICT DO UPDATE` in `upsertMany` — the same invariant as
+  `AlbumDayRepo`: a background pass never overwrites manual input. The only
+  deletion comes from the cascade on `albums`, meaning deletion of the album
+  itself.
+- **An empty row does not exist.** `setDescription` performs a `DELETE` when the
+  received value is `null`, empty, or blank: retaining it would grow the table
+  without expressing anything beyond an absent row.
 
-`listItems` et `getDetail` lisent la description par un
-`LEFT JOIN media_notes ON (album_id, media_id)`. Le `SELECT` devient `media.*` :
-les deux tables portent une colonne `album_id`, et une étoile nue rendrait la
-ligne ambiguë à la lecture. La jointure est **1-pour-1** sur la clé primaire de
-`media_notes` — elle ne duplique ni ne perd de ligne, donc la pagination par
-curseur est inchangée, ce que `packages/server/test/media-notes.test.ts`
-verrouille en paginant un album dont deux photos sur cinq sont décrites.
+`listItems` and `getDetail` read the description through a
+`LEFT JOIN media_notes ON (album_id, media_id)`. The `SELECT` becomes `media.*`:
+both tables have an `album_id` column, and a bare star would make the row ambiguous
+when read. The join is **one-to-one** on the `media_notes` primary key — it neither
+duplicates nor loses rows, so cursor pagination is unchanged. This is enforced by
+`packages/server/test/media-notes.test.ts`, which paginates an album where two out
+of five photos have descriptions.
 
-Vidéos comprises, contrairement à la couverture : une vidéo mérite une légende,
-et rien dans le pipeline ne s'y oppose.
+Videos are included, unlike for the cover: a video deserves a caption, and
+nothing in the pipeline prevents it.
 
-### Les quatre tables FTS5 de recherche
+### The four FTS5 search tables
 
-Ce qui rend « où sont les photos de Marseille » interrogeable. Elles sont créées
-par la **migration 11** et lues par `SearchRepo` (`search.ts`) ; personne ne les
-écrit depuis le code.
+These make "where are the Marseille photos" searchable. They are created by
+**migration 11** and read by `SearchRepo` (`search.ts`); no application code writes
+to them.
 
-| Table             | Colonnes indexées      | Contenu externe |
-| ----------------- | ---------------------- | --------------- |
-| `albums_fts`      | `title`, `description` | `albums`        |
-| `album_days_fts`  | `description`, `place` | `album_days`    |
-| `media_notes_fts` | `description`          | `media_notes`   |
-| `geo_places_fts`  | `label`                | `geo_places`    |
+| Table             | Indexed columns        | External content |
+| ----------------- | ---------------------- | ---------------- |
+| `albums_fts`      | `title`, `description` | `albums`         |
+| `album_days_fts`  | `description`, `place` | `album_days`     |
+| `media_notes_fts` | `description`          | `media_notes`    |
+| `geo_places_fts`  | `label`                | `geo_places`     |
 
-Toutes en `content='<table>', content_rowid='rowid'` — **contenu externe** : la
-table FTS ne stocke que l'index, jamais une copie du texte, et se joint à sa
-table d'origine par `rowid`.
+All use `content='<table>', content_rowid='rowid'` — **external content**: the FTS
+table stores only the index, never a copy of the text, and joins its source table
+by `rowid`.
 
-Quatre choix à connaître :
+Key choices:
 
-- **Ce sont des déclencheurs SQL qui les tiennent, pas du code applicatif.**
-  Trois par table (`_ai`, `_ad`, `_au`), forme documentée de FTS5 : la
-  suppression passe par `INSERT INTO x_fts(x_fts, rowid, …) VALUES('delete', …)`
-  avec les **anciennes** valeurs, seule façon pour FTS5 de retrouver les termes à
-  retirer d'une ligne qui n'existe plus. Ces textes s'écrivent depuis six
-  endroits — `ConfigRepo.saveAlbum`, `AlbumDayRepo.upsertNote` et
-  `.replaceCells`, `Geocoder`, `MediaRepo.setDescription`, et les cascades sur
-  `albums`. Réindexer depuis le code demanderait de n'en oublier aucun,
-  aujourd'hui et dans tout chemin d'écriture écrit plus tard ; un index périmé ne
-  se voit pas, il rend simplement moins de résultats
+- **SQL triggers maintain them, not application code.** Three per table (`_ai`,
+  `_ad`, `_au`), in the documented FTS5 form: deletion uses
+  `INSERT INTO x_fts(x_fts, rowid, …) VALUES('delete', …)` with the **old** values,
+  the only way for FTS5 to find the terms to remove from a row that no longer
+  exists. These texts are written from six places — `ConfigRepo.saveAlbum`,
+  `AlbumDayRepo.upsertNote` and `.replaceCells`, `Geocoder`,
+  `MediaRepo.setDescription`, and cascades on `albums`. Reindexing from code would
+  require forgetting none of them, now or in any future write path; a stale index
+  is invisible and merely returns fewer results
   ([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
-- **Les déclencheurs `AFTER DELETE` couvrent les suppressions en cascade.**
-  Supprimer un album emporte ses journées et ses descriptions de photo par
-  `ON DELETE CASCADE`, et l'index suit sans qu'aucun `DELETE` n'ait été écrit —
-  vérifié sur `better-sqlite3@12.11.1` (SQLite 3.53.2), `integrity-check`
-  compris.
-- **Tokenizer `unicode61 remove_diacritics 2`** : « ete » trouve « été »,
-  « nim » trouve « Nîmes », sans colonne normalisée à tenir à la main.
-- **`geo_places` n'a pas d'`album_id`** — c'est un cache partagé entre albums.
-  Le rattachement d'un libellé à une journée passe par
-  `json_each(album_days.cells)`, ce qui laisse le cloisonnement à `album_days`,
-  seule table à savoir de quel album il s'agit.
+- **The `AFTER DELETE` triggers cover cascading deletes.** Deleting an album
+  removes its days and photo descriptions through `ON DELETE CASCADE`, and the
+  index follows without any explicit `DELETE` — verified on
+  `better-sqlite3@12.11.1` (SQLite 3.53.2), including `integrity-check`.
+- **Tokenizer `unicode61 remove_diacritics 2`**: "ete" finds "été", and "nim"
+  finds "Nîmes", without a manually maintained normalised column.
+- **`geo_places` has no `album_id`** — it is a cache shared between albums. A
+  label is attached to a day through `json_each(album_days.cells)`, leaving
+  isolation to `album_days`, the only table that knows which album is involved.
 
 ## Index
 
-| Index                                                      | Ce qu'il sert                                                                                                                                                                                                                                                                                      |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `idx_media_album_taken (album_id, taken_at DESC, id DESC)` | Le tri chronologique de la grille et la reprise par curseur. SQLite parcourt le même index à l'envers pour `order=asc`, donc un seul index couvre les deux sens.                                                                                                                                   |
-| `idx_media_id (id)`                                        | `albumsContaining(mediaId)`, appelé à **chaque** requête média pour le contrôle d'accès. Sans lui, chaque vignette provoquerait un scan complet.                                                                                                                                                   |
-| `idx_sessions_expires (expires_at)`                        | La purge horaire des sessions expirées.                                                                                                                                                                                                                                                            |
-| `idx_user_albums_album (album_id)`                         | « Qui a accès à cet album », affiché par `GET /api/admin/albums`. Le sens inverse est déjà couvert par la clé primaire `(username, album_id)`.                                                                                                                                                     |
-| `idx_comments_thread (album_id, media_id, id)`             | La lecture d'un fil, le compteur servi avec le détail d'un média, et le `GROUP BY media_id` qui rend les compteurs de tout un album (D54) — SQLite y lit la tranche de l'album déjà ordonnée par média. Trier sur `id` suffit — il croît avec le temps —, d'où l'absence d'index sur `created_at`. |
-| `idx_comments_parent (parent_id)`                          | Le rattachement des réponses à leur racine, et leur remontée en tête de fil quand le parent disparaît.                                                                                                                                                                                             |
-| `idx_comments_commenter (commenter_id)`                    | « Mes commentaires » : ceux que le lecteur courant peut supprimer.                                                                                                                                                                                                                                 |
-| `idx_album_subscriptions_album (album_id)`                 | « Qui est abonné à cet album », seule lecture du notifieur. Le sens inverse est déjà couvert par la clé primaire `(commenter_id, album_id)`.                                                                                                                                                       |
-| `idx_album_visits_day (day)`                               | Les deux agrégations de l'onglet « Visites », toutes deux bornées par `day >= ?`, et la purge annuelle. La clé primaire commence par `album_id` et ne sert donc pas ce filtre.                                                                                                                     |
+| Index                                                      | Purpose                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idx_media_album_taken (album_id, taken_at DESC, id DESC)` | Chronological grid sorting and cursor resumption. SQLite traverses the same index backwards for `order=asc`, so one index covers both directions.                                                                                                                                 |
+| `idx_media_id (id)`                                        | `albumsContaining(mediaId)`, called on **every** media request for access control. Without it, every thumbnail would trigger a full scan.                                                                                                                                         |
+| `idx_sessions_expires (expires_at)`                        | Hourly purge of expired sessions.                                                                                                                                                                                                                                                 |
+| `idx_user_albums_album (album_id)`                         | "Who has access to this album", displayed by `GET /api/admin/albums`. The reverse direction is already covered by the `(username, album_id)` primary key.                                                                                                                         |
+| `idx_comments_thread (album_id, media_id, id)`             | Thread reads, the count served with media details, and the `GROUP BY media_id` returning counts for a whole album (D54) — SQLite reads the album slice already ordered by media. Sorting by `id` is sufficient because it increases over time, so there is no `created_at` index. |
+| `idx_comments_parent (parent_id)`                          | Attaching replies to their root and moving them to the top level when the parent disappears.                                                                                                                                                                                      |
+| `idx_comments_commenter (commenter_id)`                    | "My comments": those the current reader may delete.                                                                                                                                                                                                                               |
+| `idx_album_subscriptions_album (album_id)`                 | "Who is subscribed to this album", the notifier's only read. The reverse direction is already covered by the `(commenter_id, album_id)` primary key.                                                                                                                              |
+| `idx_album_visits_day (day)`                               | Both aggregations in the "Visits" tab, each bounded by `day >= ?`, and the annual purge. The primary key starts with `album_id`, so it does not serve this filter.                                                                                                                |
 
-Pas d'index sur `(album_id, added_at)` : le comptage des nouveautés a lieu une
-fois par heure et par album, et la clé primaire `(album_id, id)` borne déjà le
-parcours à l'album concerné. Un index de plus se paierait à chaque
-synchronisation, pour une lecture horaire.
+There is no index on `(album_id, added_at)`: new items are counted once per hour
+per album, and the `(album_id, id)` primary key already bounds the scan to the
+relevant album. An additional index would impose a cost on every synchronisation
+for an hourly read.
 
-Pas d'index non plus pour `MediaRepo.geolocatedPoints`, la lecture du passage des
-lieux : `idx_media_album_taken` borne déjà le parcours à l'album et rend les
-lignes dans l'ordre chronologique, ce dont l'agglomération a besoin. Un index
-sur `(album_id, lat)` n'éviterait que le filtre `lat IS NOT NULL`, pour une
-lecture horaire — même arbitrage. `album_days` et `geo_places` se lisent par
-leur clé primaire.
+There is no index for `MediaRepo.geolocatedPoints`, the locations-pass read,
+either: `idx_media_album_taken` already bounds the scan to the album and returns
+rows in chronological order, which clustering requires. An index on
+`(album_id, lat)` would avoid only the `lat IS NOT NULL` filter for an hourly read
+— the same tradeoff. `album_days` and `geo_places` are read by primary key.
 
-## La clé primaire composite `(album_id, id)`
+## The composite primary key `(album_id, id)`
 
-Un fichier Drive présent dans deux albums (typiquement des dossiers imbriqués,
-tous deux déclarés) produit **deux lignes**. Conséquences à connaître :
+A Drive file present in two albums (typically nested folders that are both
+declared) produces **two rows**. Consequences to understand:
 
-- Les métadonnées sont dupliquées. C'est assumé : le coût est quelques centaines
-  d'octets par doublon, contre une jointure sur chaque lecture de grille.
-- `getDetail(albumId, id)` est scopé à un album ; `getFileMeta(id)` ne l'est pas.
-  Les colonnes qu'il lit (`name`, `mime_type`, `kind`, `size`, `md5`,
-  `has_thumbnail`) décrivent
-  le fichier et non son appartenance — mais les deux lignes peuvent **diverger**
-  entre deux synchronisations, l'une ayant déjà vu une nouvelle version du
-  fichier que l'autre ignore encore. La sélection est donc
-  `ORDER BY seen_at DESC, album_id ASC LIMIT 1` : la ligne revue le plus
-  récemment décrit le fichier tel qu'il est aujourd'hui dans Drive. Un `LIMIT 1`
-  sans tri laisserait SQLite rendre l'ancienne, et le cache produirait un dérivé
-  à partir d'une empreinte périmée, servi sous un ETag qui le déclare immuable.
-  `album_id` départage les ex æquo, pour que deux appels consécutifs répondent
-  la même chose.
-- `albumsContaining(id)` rend **tous** les albums porteurs. L'autorisation
-  accorde l'accès dès qu'un seul est visible par l'utilisateur — c'est la règle
-  correcte : le fichier est déjà légitimement accessible par ce chemin-là.
-- `deleteStale` d'un album ne touche pas les lignes du même fichier dans les
-  autres albums. Le cache disque, lui, est indexé par id de fichier seul : les
-  albums partagent donc leurs vignettes, ce qui est voulu.
+- Metadata is duplicated. This is accepted: the cost is a few hundred bytes per
+  duplicate, compared with a join on every grid read.
+- `getDetail(albumId, id)` is scoped to an album; `getFileMeta(id)` is not. The
+  columns it reads (`name`, `mime_type`, `kind`, `size`, `md5`, `has_thumbnail`)
+  describe the file rather than its membership — but the two rows can **diverge**
+  between synchronisations, when one has already seen a new version of the file
+  that the other does not yet know. The selection is therefore
+  `ORDER BY seen_at DESC, album_id ASC LIMIT 1`: the most recently seen row
+  describes the file as it exists in Drive today. A `LIMIT 1` without sorting
+  would let SQLite return the old one, and the cache would produce a derivative
+  from a stale fingerprint, served under an ETag that declares it immutable.
+  `album_id` breaks ties so that two consecutive calls return the same result.
+- `albumsContaining(id)` returns **all** containing albums. Authorisation grants
+  access as soon as one is visible to the user — this is the correct rule: the
+  file is already legitimately accessible through that path.
+- `deleteStale` for one album does not affect rows for the same file in other
+  albums. The disk cache is indexed by file ID alone, so albums share their
+  thumbnails, as intended.
 
 ## Migrations
 
-`MIGRATIONS` est un tableau de chaînes SQL dans `db.ts`. `migrate(db)` lit
-`PRAGMA user_version` et applique tout ce qui suit, chaque migration dans sa
-propre transaction, avec `ROLLBACK` et message explicite en cas d'échec.
-`user_version` vaut donc « nombre de migrations appliquées ».
+`MIGRATIONS` is an array of SQL strings in `db.ts`. `migrate(db)` reads
+`PRAGMA user_version` and applies everything that follows, each migration in its
+own transaction, with a `ROLLBACK` and explicit message on failure.
+`user_version` therefore means "number of applied migrations".
 
-**Règle absolue : ne jamais modifier une migration déjà publiée.** Les instances
-en service ont déjà exécuté ce SQL ; le retoucher ne le rejouerait nulle part et
-ferait diverger le schéma réel du schéma supposé. Toute évolution ajoute une
-entrée à la fin du tableau.
+**Absolute rule: never modify a published migration.** Running instances have
+already executed that SQL; editing it would rerun it nowhere and cause the actual
+schema to diverge from the assumed schema. Every change adds an entry at the end
+of the array.
 
-`packages/server/test/migrate.test.ts` verrouille les invariants : une base
-neuve arrive à la dernière version, une base en version 1 gagne `revoked_at`
-sans perdre son jeton ni son index, une base en version 3 gagne les commentaires
-**sans que `users` change d'une colonne** — les clés d'accès existantes gardent
-leur empreinte, et les sessions ouvertes ne sont pas invalidées —, `migrate` est
-idempotente, et un échec laisse `user_version` inchangé pour que la reprise
-reparte de la même étape.
+`packages/server/test/migrate.test.ts` enforces the invariants: a fresh database
+reaches the latest version, a version 1 database gains `revoked_at` without losing
+its token or index, a version 3 database gains comments **without `users` changing
+by a single column** — existing access keys retain their hashes, and open sessions
+are not invalidated —, `migrate` is idempotent, and a failure leaves `user_version`
+unchanged so that recovery restarts from the same step.
 
-État actuel :
+Current state:
 
-| Version | Contenu                                                                                  |
-| ------- | ---------------------------------------------------------------------------------------- |
-| 1       | Schéma initial : `media`, `sync_state`, `oauth_token`, `sessions` et leurs index.        |
-| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                    |
-| 3       | `users`, `albums`, `user_albums`, `settings` : la configuration entre dans la base.      |
-| 4       | `commenters`, `comments` et leurs index ; `sessions.commenter_id`.                       |
-| 5       | `album_subscriptions` et son index ; `sync_state.notified_at` ; `media.added_at`.        |
-| 6       | `commenters.pending_display_name`.                                                       |
-| 7       | `album_days`, `geo_places` ; `albums.group_by`.                                          |
-| 8       | `albums.cover_media_id`.                                                                 |
-| 9       | `media_notes` : une description par photo, portée par l'album.                           |
-| 10      | `media.has_thumbnail` : Drive a-t-il un aperçu de ce fichier ?                           |
-| 11      | Les quatre tables FTS5 de recherche, leurs déclencheurs, et leur `rebuild`.              |
-| 12      | `albums.sort_order` : le sens de lecture par défaut de l'album.                          |
-| 13      | `device_pairings` : appairer un écran sans clavier plutôt que d'y taper un mot de passe. |
-| 14      | `media.video_codec` : quel codec porte la piste image d'une vidéo ?                      |
-| 15      | `album_visits` et son index ; `sessions.last_seen_at` et `sessions.device`.              |
+| Version | Contents                                                                             |
+| ------- | ------------------------------------------------------------------------------------ |
+| 1       | Initial schema: `media`, `sync_state`, `oauth_token`, `sessions`, and their indexes. |
+| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                |
+| 3       | `users`, `albums`, `user_albums`, `settings`: configuration moves into the database. |
+| 4       | `commenters`, `comments`, and their indexes; `sessions.commenter_id`.                |
+| 5       | `album_subscriptions` and its index; `sync_state.notified_at`; `media.added_at`.     |
+| 6       | `commenters.pending_display_name`.                                                   |
+| 7       | `album_days`, `geo_places`; `albums.group_by`.                                       |
+| 8       | `albums.cover_media_id`.                                                             |
+| 9       | `media_notes`: one description per photo, scoped to the album.                       |
+| 10      | `media.has_thumbnail`: does Drive have a preview of this file?                       |
+| 11      | The four FTS5 search tables, their triggers, and their `rebuild`.                    |
+| 12      | `albums.sort_order`: the album's default reading order.                              |
+| 13      | `device_pairings`: pair a screen without a keyboard instead of typing a password.    |
+| 14      | `media.video_codec`: which codec does a video's video track use?                     |
+| 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.         |
 
-La migration 15 est additive et ne touche à aucune ligne : la table arrive vide —
-rien ne reconstitue une fréquentation passée — et les deux colonnes de `sessions`
-arrivent à `NULL`. Une instance en service la traverse sans qu'une session soit
-fermée ni qu'une échéance bouge : l'appareil des sessions déjà ouvertes reste
-inconnu, et leur `last_seen_at` est renseigné à leur requête suivante.
-`packages/server/test/migrate.test.ts` le vérifie sur une base en version 14
-portant un compte, une session ouverte et un média — et vérifie aussi que
-`album_visits` ne référence **rien**, l'absence de clé étrangère étant tout
-l'intérêt de sa forme (D260809h).
+Migration 15 is additive and touches no rows: the table arrives empty — nothing
+reconstructs past traffic — and both `sessions` columns arrive as `NULL`. A
+running instance applies it without closing a session or changing an expiry: the
+device of existing sessions remains unknown, and their `last_seen_at` is populated
+on their next request. `packages/server/test/migrate.test.ts` verifies this on a
+version 14 database containing an account, an open session, and a media item — and
+also verifies that `album_visits` references **nothing**, because the absence of a
+foreign key is the entire point of its shape (D260809h).
 
-La migration 13 crée une table vide, et rien d'autre : une instance en service
-la traverse sans qu'aucune ligne ne bouge et sans qu'aucune session ouverte n'en
-pâtisse. Elle n'ouvre pas non plus de chemin d'accès nouveau — l'appairage
-délègue une clé existante, et l'écran qui approuve doit déjà être connecté
-(D260809c). `packages/server/test/migrate.test.ts` le vérifie sur une base en
-version 12 portant un compte et une session.
+Migration 13 creates an empty table and nothing else: a running instance applies
+it without changing a row or affecting any open session. It also opens no new
+access path — pairing delegates an existing key, and the approving screen must
+already be signed in (D260809c). `packages/server/test/migrate.test.ts` verifies
+this on a version 12 database containing an account and a session.
 
-La migration 14 est additive et sans reprise de données : la colonne reste à
-`NULL` sur toutes les lignes existantes, et c'est la synchronisation suivante qui
-la remplit, une vidéo à la fois. Voir les trois états de `video_codec` plus haut —
-c'est le `NULL` qui déclenche la relecture, et la chaîne vide qui l'arrête.
+Migration 14 is additive and has no backfill: the column remains `NULL` on all
+existing rows, and the next synchronisation fills it one video at a time. See the
+three `video_codec` states above — `NULL` triggers rereading, and the empty string
+stops it.
 
-La migration 12 ajoute le sens de lecture, et c'est la seule à ce jour qui
-**change le comportement des albums en service** : la colonne arrive à `'asc'`,
-alors qu'ils s'ouvraient jusque-là du plus récent au plus ancien. Le contraire
-aurait figé un sens que personne n'a choisi — c'était la seule valeur possible
-tant qu'elle vivait dans une constante globale, et elle faisait découvrir un
-séjour par sa dernière journée (D99). Le propriétaire rebascule album par album
-depuis /admin, et chaque visiteur pour lui-même depuis la grille.
-`packages/server/test/migrate.test.ts` le vérifie sur une base en version 11
-portant un album : la ligne survit, la colonne arrive à `asc`.
+Migration 12 adds the reading order, and is the only one so far that **changes the
+behaviour of existing albums**: the column arrives as `'asc'`, whereas they
+previously opened from newest to oldest. The opposite would have preserved an
+order nobody chose — it was the only possible value while it lived in a global
+constant, and it introduced a trip through its final day (D99). The owner switches
+it back album by album from /admin, and each visitor does so for themselves from
+the grid. `packages/server/test/migrate.test.ts` verifies this on a version 11
+database containing an album: the row survives and the column arrives as `asc`.
 
-La migration 11 rend la bibliothèque interrogeable. Elle crée les quatre tables
-FTS5 à contenu externe décrites plus haut, leurs douze déclencheurs, puis lance
-un `INSERT INTO x_fts(x_fts) VALUES('rebuild')` par table. **Ce `rebuild` est
-tout l'intérêt de la migration** : sans lui, les déclencheurs n'indexeraient que
-les écritures suivantes, et une instance en service resterait muette sur tout ce
-qu'elle contient déjà — c'est-à-dire sur tout, pour un album qu'on ne retouche
-plus. `packages/server/test/migrate.test.ts` le vérifie sur une base en
-version 10 portant un album, une journée annotée, une description de photo et un
-lieu géocodé : les quatre sont trouvables après la mise à jour.
+Migration 11 makes the library searchable. It creates the four external-content
+FTS5 tables described above, their twelve triggers, then runs one
+`INSERT INTO x_fts(x_fts) VALUES('rebuild')` per table. **This `rebuild` is the
+point of the migration**: without it, the triggers would index only subsequent
+writes, and a running instance would remain silent about everything it already
+contains — meaning everything for an album that is no longer edited.
+`packages/server/test/migrate.test.ts` verifies this on a version 10 database
+containing an album, an annotated day, a photo description, and a geocoded
+location: all four are searchable after the update.
 
-La migration 10 ajoute l'aperçu Drive, à `0` sur toutes les lignes existantes.
-Le défaut est délibéré : une vidéo déjà indexée n'affiche pas d'aperçu tant que
-la synchronisation suivante n'a pas rempli la colonne — seule la sync sait ce
-que Drive possède. Un manque passager vaut mieux qu'une rafale de requêtes
-vouées au 415, une par vidéo et par chargement de grille.
-`packages/server/test/migrate.test.ts` le vérifie sur une base en version 9
-portant une vidéo : la ligne survit, la colonne arrive à 0.
+Migration 10 adds the Drive preview, set to `0` on every existing row. The default
+is deliberate: an already indexed video displays no preview until the next
+synchronisation fills the column — only the sync knows what Drive has. A temporary
+absence is better than a burst of requests destined for a 415, one per video per
+grid load. `packages/server/test/migrate.test.ts` verifies this on a version 9
+database containing a video: the row survives and the column arrives as 0.
 
-La migration 9 ajoute la table des descriptions de photo. Elle arrive vide et ne
-touche à aucune ligne existante : une instance en service la traverse sans rien
-voir changer, jusqu'à ce que quelqu'un décrive une photo.
-`packages/server/test/migrate.test.ts` le vérifie sur une base en version 8
-portant un album et un média — et vérifie aussi que la table ne référence
-**qu'**`albums`, l'absence de clé étrangère vers `media` étant tout l'intérêt de
-sa forme.
+Migration 9 adds the photo descriptions table. It arrives empty and touches no
+existing row: a running instance applies it without any visible change until
+someone describes a photo. `packages/server/test/migrate.test.ts` verifies this on
+a version 8 database containing an album and a media item — and also verifies that
+the table references **only** `albums`, because the absence of a foreign key to
+`media` is the entire point of its shape.
 
-La migration 8 ajoute la couverture choisie. Elle arrive à `NULL` sur toutes les
-lignes, c'est-à-dire au comportement d'avant : chaque album continue d'afficher
-sa photo la plus récente jusqu'à ce qu'un administrateur en désigne une autre.
+Migration 8 adds the chosen cover. It arrives as `NULL` on every row, preserving
+the previous behaviour: every album continues to display its newest photo until
+an administrator selects another one.
 
-La migration 7 ajoute de quoi annoter une journée et nommer le lieu que ses
-photos portent déjà. Elle ne touche à aucune donnée existante : les deux tables
-arrivent vides — `places.ts` les remplit au premier passage — et
-`albums.group_by` arrive à `'month'`, c'est-à-dire au découpage que l'URL
-appliquait déjà faute de préférence. Une instance en service la traverse sans
-rien voir changer, jusqu'à ce que son propriétaire règle un album sur « jour ».
+Migration 7 adds support for annotating a day and naming the location already
+carried by its photos. It touches no existing data: both tables arrive empty —
+`places.ts` fills them on the first pass — and `albums.group_by` arrives as
+`'month'`, the grouping the URL already applied when there was no preference. A
+running instance applies it without any visible change until its owner sets an
+album to "day".
 
-La migration 6 ajoute `commenters.pending_display_name`, vide sur l'existant :
-`COALESCE(pending_display_name, display_name)` au premier code validé rend donc
-le nom déjà en place, et personne n'est renommé par la mise à jour.
+Migration 6 adds `commenters.pending_display_name`, empty on existing rows:
+`COALESCE(pending_display_name, display_name)` therefore returns the name already
+in place when the first code is validated, and nobody is renamed by the update.
 
-La migration 5 ajoute deux colonnes qui arrivent à `NULL` sur une base en
-service, et c'est tout l'intérêt : `media.added_at` vide exclut l'historique du
-comptage des nouveautés, `sync_state.notified_at` vide fait poser la borne sans
-envoyer. Une instance qui se met à jour n'annonce donc **rien** rétroactivement.
-`packages/server/test/migrate.test.ts` le vérifie sur une base en version 4
-portant un album, une identité vérifiée, un média et un état de sync.
+Migration 5 adds two columns that arrive as `NULL` on a running database, which is
+the whole point: an empty `media.added_at` excludes history from new-content
+counts, while an empty `sync_state.notified_at` sets the boundary without sending.
+An updated instance therefore announces **nothing** retroactively.
+`packages/server/test/migrate.test.ts` verifies this on a version 4 database
+containing an album, a verified identity, a media item, and a sync state.
 
-La migration 4 sépare ce que l'application confondait : elle crée `commenters`
-et `comments` sans toucher à une seule colonne de `users`. Une instance en
-service la traverse sans que ses clés d'accès ni ses sessions ouvertes en
-pâtissent.
+Migration 4 separates what the application previously conflated: it creates
+`commenters` and `comments` without touching a single `users` column. A running
+instance applies it without affecting its access keys or open sessions.
 
-La migration 3 crée des tables vides. Ce sont `bootstrap.ts` et `ConfigRepo` qui
-les remplissent au démarrage, à partir de `config/albums.yaml` si l'installation
-en avait un (voir [06](./06-configuration-et-deploiement.md)) —
-`packages/server/test/bootstrap.test.ts` vérifie qu'une instance en service
-retrouve ses comptes, ses droits, ses réglages, son index et son jeton OAuth
-après la mise à jour.
+Migration 3 creates empty tables. `bootstrap.ts` and `ConfigRepo` fill them at
+startup from `config/albums.yaml` if the installation had one (see
+[06](./06-configuration-et-deploiement.md)) —
+`packages/server/test/bootstrap.test.ts` verifies that after the update, a running
+instance recovers its accounts, permissions, settings, index, and OAuth token.
 
-## Pagination par curseur
+## Cursor-based pagination
 
-`MediaRepo.listItems(albumId, limit, cursor, order)` rend `limit` lignes et lit
-`limit + 1` pour savoir s'il y a une suite, sans `COUNT`.
+`MediaRepo.listItems(albumId, limit, cursor, order)` returns `limit` rows and reads
+`limit + 1` to determine whether more exist, without a `COUNT`.
 
-Le curseur est `base64url("<taken_at>\u0000<id>")` — un simple encodage, pas un
-secret. Le séparateur est l'octet nul : ni une date ISO ni un identifiant Drive
-ne peuvent en contenir, là où l'espace resterait un pari sur la forme des
-identifiants. Il s'écrit `\u0000` dans la source et **jamais littéralement** —
-un octet nul fait classer le fichier comme binaire par git, qui cesse alors
-d'en afficher les diffs. La reprise est :
+The cursor is `base64url("<taken_at>\u0000<id>")` — simple encoding, not a
+secret. The separator is the null byte: neither an ISO date nor a Drive identifier
+can contain one, whereas a space would remain a gamble on identifier shape. It is
+written as `\u0000` in the source and **never literally** — a null byte makes git
+classify the file as binary and stop displaying its diffs. Resumption uses:
 
 ```sql
 WHERE album_id = ?
@@ -698,96 +669,95 @@ WHERE album_id = ?
 ORDER BY taken_at <dir>, id <dir>
 ```
 
-où `<op>` vaut `<` et `<dir>` `DESC` en `order=desc`, `>` et `ASC` en `asc`. Les
-deux basculent ensemble : les désaccorder ferait relire la page déjà servie.
-`order` vient d'une union fermée validée par zod, jamais d'une chaîne brute —
-c'est ce qui rend l'interpolation acceptable ici.
+where `<op>` is `<` and `<dir>` is `DESC` for `order=desc`, or `>` and `ASC` for
+`asc`. Both switch together: allowing them to differ would reread the page already
+served. `order` comes from a closed union validated by zod, never from a raw string
+— this makes interpolation acceptable here.
 
-**Pourquoi pas `OFFSET`.** Une synchronisation peut insérer ou supprimer des
-médias pendant que l'utilisateur défile. Avec `OFFSET`, chaque insertion en
-amont décale la fenêtre : le lecteur reverrait une photo déjà vue, ou en
-sauterait une. Le curseur désigne une **position dans l'ordre de tri**, pas un
-rang : quoi qu'il arrive en amont, la page suivante reprend strictement après la
-dernière ligne rendue. `packages/server/test/repo.test.ts` vérifie qu'un
-parcours complet ne produit ni doublon ni oubli, et qu'un curseur illisible
-repart du début plutôt que d'échouer.
+**Why not `OFFSET`.** A synchronisation may insert or delete media while the user
+scrolls. With `OFFSET`, each insertion before the window shifts it: the reader
+would see a photo again or skip one. The cursor identifies a **position in sort
+order**, not a rank: regardless of what happens before it, the next page resumes
+strictly after the last row returned. `packages/server/test/repo.test.ts` verifies
+that a complete traversal produces neither duplicates nor omissions, and that an
+unreadable cursor restarts from the beginning rather than failing.
 
-Le tri secondaire sur `id` n'est pas décoratif : sans lui, deux photos de même
-`taken_at` (rafale, import en masse) auraient un ordre indéterminé, et le
-curseur ne saurait pas laquelle a déjà été servie.
+The secondary sort on `id` is not decorative: without it, two photos with the same
+`taken_at` (burst, bulk import) would have an indeterminate order, and the cursor
+would not know which one had already been served.
 
-### La file de modération
+### Moderation queue
 
-`CommentRepo.listForModeration(query)` pagine sur le même principe, avec un
-curseur réduit à l'identifiant : `AUTOINCREMENT` fait de l'ordre des id l'ordre
-d'écriture, il n'y a pas de second champ à départager.
+`CommentRepo.listForModeration(query)` paginates on the same principle, with a
+cursor reduced to the identifier: `AUTOINCREMENT` makes ID order match write
+order, so there is no second field for breaking ties.
 
-`query` porte un filtre (`all`, `visible`, `hidden`), un album, une recherche et
-les bornes. Les conditions sont construites **une fois** et servies à deux
-requêtes : la page, et un `COUNT(*)` qui rend `total`. Les écrire deux fois les
-ferait diverger, et le total annoncerait un corpus qui n'est pas celui qu'on
-liste. Le comptage omet le curseur — c'est la taille du corpus filtré, pas celle
-du reste — et se passe des `LEFT JOIN` d'album et de média, qui ne changent pas
-le nombre de lignes.
+`query` carries a filter (`all`, `visible`, `hidden`), an album, a search, and the
+bounds. Conditions are built **once** and used by two queries: the page and a
+`COUNT(*)` returning `total`. Writing them twice would let them diverge, and the
+total would report a corpus different from the one being listed. The count omits
+the cursor — it is the size of the filtered corpus, not the remainder — and does
+not need the album and media `LEFT JOIN` clauses, which do not change the row
+count.
 
-La recherche est un `LIKE '%…%'` sur le corps, le nom déclaré et l'adresse, avec
-`ESCAPE`. **L'échappement n'est pas décoratif** : `%` et `_` sont les jokers de
-`LIKE`, et sans lui une recherche contenant un `%` ramènerait tout le corpus
-pendant qu'un `_` remplacerait n'importe quel caractère — on chercherait autre
-chose que ce qu'on a tapé, sans que rien ne le signale.
+Search uses `LIKE '%…%'` on the body, declared name, and address, with `ESCAPE`.
+**Escaping is not decorative**: `%` and `_` are `LIKE` wildcards, and without it a
+search containing `%` would return the entire corpus, while `_` would replace any
+character — it would search for something other than what was entered without any
+indication.
 
-`hideAllFrom(commenterId, by)` et `showAllFrom(commenterId)` traitent tous les
-messages d'une identité d'un coup et rendent le nombre de lignes touchées. La
-clause `AND hidden_at IS NULL` (respectivement `IS NOT NULL`) préserve la date
-d'un message déjà masqué : c'est celle de la décision d'origine qui compte, même
-règle qu'à l'unité.
+`hideAllFrom(commenterId, by)` and `showAllFrom(commenterId)` process all messages
+from an identity at once and return the number of affected rows. The
+`AND hidden_at IS NULL` clause (or `IS NOT NULL`, respectively) preserves the date
+of an already hidden message: the date of the original decision matters, following
+the same rule as an individual action.
 
-**Aucun index n'a été ajouté pour ces requêtes** (D67). Une recherche
-`LIKE '%…%'` est un parcours qu'aucun index ne sert, le corpus est borné par ce
-que des humains écrivent, et `idx_comments_thread` continue de couvrir le chemin
-chaud de la galerie. À revoir au-delà de la dizaine de milliers de commentaires.
+**No index was added for these queries** (D67). A `LIKE '%…%'` search is a scan no
+index can serve, the corpus is bounded by what humans write, and
+`idx_comments_thread` continues to cover the gallery's hot path. Revisit beyond
+tens of thousands of comments.
 
-### Le fil d'activité
+### Activity feed
 
-`CommentRepo.listFeed(query)` sert le tiroir d'activité du visiteur : le même
-curseur par identifiant, la même page antéchronologique, mais restreinte aux
-albums qu'on a le droit de voir.
+`CommentRepo.listFeed(query)` serves the visitor's activity drawer: the same
+identifier cursor and reverse-chronological page, but restricted to albums the
+visitor is authorised to view.
 
-**`albumIds` est la seule barrière de cloisonnement**, et elle vient de
-`albumsFor()` — jamais de la requête. Une liste vide rend une page vide, et non
-tout le corpus : c'est ce que produirait un `IN ()` oublié, et c'est le cas que
-le test couvre en premier.
+**`albumIds` is the only isolation barrier**, and it comes from `albumsFor()` —
+never from the request. An empty list returns an empty page, not the whole corpus:
+the latter is what a forgotten `IN ()` would produce, and this is the first case
+covered by the test.
 
-Là non plus, **aucun index nouveau** (D82). `ORDER BY c.id DESC` est l'ordre de
-la clé primaire : SQLite parcourt la table à rebours et s'arrête au `LIMIT`. Un
-index `(album_id, id DESC)` ne ferait pas mieux — SQLite ne sait pas fusionner
-l'ordre de plusieurs tranches d'un `IN`, et il faudrait alors trier. Le cas
-défavorable est connu et assumé : un compte qui ne voit qu'un album sur cinquante
-fait traverser les commentaires des quarante-neuf autres avant de réunir sa page.
+Again, **no new index** (D82). `ORDER BY c.id DESC` follows primary-key order:
+SQLite traverses the table backwards and stops at the `LIMIT`. An
+`(album_id, id DESC)` index would do no better — SQLite cannot merge the order of
+several `IN` slices, so it would then have to sort. The unfavourable case is known
+and accepted: an account that sees only one album out of fifty must traverse the
+comments from the other forty-nine before collecting its page.
 
-## Ce qui n'est pas dans la base
+## What is not in the database
 
-- Les dérivés d'images : fichiers sur disque sous `CACHE_DIR`, inventoriés en
-  mémoire au démarrage.
-- Les compteurs du throttle de connexion : en mémoire, perdus au redémarrage —
-  volontairement (voir [08](./08-decisions/)). Bornés en nombre et purgés à
-  l'heure, faute de quoi une rafale d'identifiants inventés les ferait croître
-  sans limite.
+- Image derivatives: files on disk under `CACHE_DIR`, inventoried in memory at
+  startup.
+- Login throttle counters: in memory, lost on restart — deliberately (see
+  [08](./08-decisions/)). Bounded in number and purged hourly; otherwise a burst of
+  invented usernames would make them grow without limit.
 
-## Colonnes écrites et jamais relues
+## Columns written and never read
 
-Trois colonnes n'apparaissent dans aucune requête de lecture. Elles sont
-**conservées** — SQLite ne retire une colonne qu'en recréant la table, ce qui ne
-vaut pas le gain sur une base en service (voir [D28](./08-decisions/D28-trois-colonnes-ecrites-sans-etre-relues-sont-conservees.md)) —
-et `db.ts` dit à quoi elles servent :
+Three columns appear in no read query. They are **retained** — SQLite removes a
+column only by recreating the table, which is not worth the benefit on a running
+database (see
+[D28](./08-decisions/D28-trois-colonnes-ecrites-sans-etre-relues-sont-conservees.md))
+— and `db.ts` explains their purpose:
 
-| Colonne               | Pourquoi elle reste                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------------------ |
-| `media.modified_time` | Repère chronologique dont `taken_at` dérive en dernier recours ; permet de recalculer sans réindexer.  |
-| `oauth_token.scope`   | Portée consentie : dira, quand `SCOPES` évoluera, si le jeton stocké couvre encore ce qui est demandé. |
-| `sessions.created_at` | Seule trace de l'ancienneté d'une session — la première question posée après un accès suspect.         |
+| Column                | Why it remains                                                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `media.modified_time` | Chronological marker from which `taken_at` is derived as a last resort; allows recalculation without reindexing. |
+| `oauth_token.scope`   | Consented scope: when `SCOPES` changes, it will show whether the stored token still covers what is requested.    |
+| `sessions.created_at` | Only trace of a session's age — the first question asked after suspicious access.                                |
 
-En revanche, les comptes, les albums et les réglages **y sont** depuis la
-migration 3. `config/albums.yaml` ne sert plus qu'à amorcer une installation
-neuve. Conséquence d'exploitation : le volume `nonni-data` contient désormais les
-comptes, c'est la seule chose à sauvegarder.
+Accounts, albums, and settings, however, **have been in the database** since
+migration 3. `config/albums.yaml` now serves only to bootstrap a fresh
+installation. Operational consequence: the `nonni-data` volume now contains the
+accounts, and is the only thing that needs backing up.

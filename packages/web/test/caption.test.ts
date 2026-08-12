@@ -3,15 +3,15 @@ import { describe, it } from 'node:test';
 import { captionEntries } from '../src/lib/caption';
 
 /**
- * Les lignes du bandeau de légende.
+ * Caption banner rows.
  *
- * Deux textes de portée décroissante, dont chacun peut manquer : c'est le seul
- * endroit du bandeau qui ait des cas, et le seul qui se teste sans DOM. Une
- * ligne vide y ouvrirait un bandeau sur une photo qui n'a rien à dire.
+ * Two pieces of text with decreasing scope, either of which may be absent: this
+ * is the only part of the banner with branches and the only part testable
+ * without a DOM. An empty row would open a banner on a photo with nothing to say.
  */
 
-describe('lignes de légende', () => {
-  it('rend les deux portées dans l’ordre, du plus précis au plus général', () => {
+describe('caption rows', () => {
+  it('returns both scopes in order from most specific to most general', () => {
     const entries = captionEntries({
       description: 'Léa saute du ponton',
       day: 'Bonifacio, then the beach',
@@ -21,8 +21,8 @@ describe('lignes de légende', () => {
       entries.map((entry) => entry.scope),
       ['photo', 'day'],
     );
-    // La ligne de la photo est la seule sans préfixe : celle du dessous parle
-    // d'autre chose que de l'image qu'on regarde.
+    // The photo row is the only one without a prefix: the one below concerns
+    // something other than the image being viewed.
     assert.deepEqual(
       entries.map((entry) => entry.label),
       [null, 'That day'],
@@ -30,24 +30,24 @@ describe('lignes de légende', () => {
     assert.equal(entries[0]?.text, 'Léa saute du ponton');
   });
 
-  it('écarte les lignes absentes sans décaler les autres', () => {
+  it('removes absent rows without shifting the others', () => {
     const entries = captionEntries({ description: null, day: 'Bonifacio, then the beach' });
     assert.deepEqual(entries, [
       { scope: 'day', label: 'That day', text: 'Bonifacio, then the beach' },
     ]);
   });
 
-  it('traite un texte réduit à des espaces comme absent', () => {
-    // Le serveur ramène déjà « vide » à `null`, mais une note a pu être écrite
-    // avant cette règle : une ligne blanche ouvrirait un bandeau sur rien.
+  it('treats whitespace-only text as absent', () => {
+    // The server already normalises "empty" to `null`, but a note may predate
+    // this rule: a blank row would open a banner for nothing.
     assert.deepEqual(captionEntries({ description: '   ', day: '\n' }), []);
   });
 
-  it('rend une liste vide quand rien n’est renseigné', () => {
+  it('returns an empty list when nothing is provided', () => {
     assert.deepEqual(captionEntries({}), []);
   });
 
-  it('rogne les blancs de bord du texte rendu', () => {
+  it('trims surrounding whitespace from rendered text', () => {
     const entries = captionEntries({ description: '  Léa saute du ponton  ' });
     assert.equal(entries[0]?.text, 'Léa saute du ponton');
   });

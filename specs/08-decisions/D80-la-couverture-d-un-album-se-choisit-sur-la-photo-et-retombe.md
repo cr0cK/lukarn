@@ -1,60 +1,56 @@
-# D80 — La couverture d'un album se choisit sur la photo, et retombe toute seule
+# D80 — An album cover is chosen on the photo and falls back automatically
 
-**Contexte.** La couverture affichée sur la page d'accueil était toujours la
-photo la plus récente de l'album. Sur un album de vacances, c'est le trajet du
-retour ; sur un album « les enfants » couvrant dix ans, c'est ce qu'on a
-téléversé hier. La vignette qui représente l'album ne représentait rien, et
-rien ne permettait de la changer.
+**Context.** The cover displayed on the home page was always the album's most
+recent photo. For a holiday album, that is the journey home; for a ten-year
+"children" album, it is whatever was uploaded yesterday. The thumbnail
+representing the album represented nothing, and there was no way to change it.
 
-**Choix.** Une colonne `albums.cover_media_id` porte le choix, `NULL` valant
-« automatique ». Le geste vit dans la visionneuse, réservé à l'administrateur :
-on choisit une photo en la regardant en grand, pas dans une liste de noms de
-fichiers.
+**Choice.** An `albums.cover_media_id` column carries the choice, with `NULL`
+meaning "automatic". The action lives in the viewer and is restricted to the
+administrator: a photo is chosen while viewing it at full size, not from a list
+of filenames.
 
-C'est la même règle que la description d'album et la note de journée — **la
-saisie est dans l'album, la mutation reste sous `/api/admin`**, seul préfixe
-qui réponde 403 (D50). Le retour à l'automatique, lui, est un bouton de
-`/admin` : c'est le seul écran qui sache dire si une couverture a été choisie
-ou si elle est celle du défaut, et cette distinction est précisément ce que le
-bouton propose de défaire.
+This is the same rule as the album description and day note — **input is in the
+album; the mutation remains under `/api/admin`**, the only prefix responding with
+403 (D50). Returning to automatic is a button in `/admin`: this is the only screen
+that can say whether a cover was chosen or is the default, exactly the distinction
+the button offers to undo.
 
-**Le repli est permanent, et c'est le cœur de l'entrée.** La colonne ne porte
-aucune clé étrangère vers `media` : `deleteStale` retire une photo dès qu'une
-synchronisation ne la revoit pas — corbeille Drive le temps d'un retour en
-arrière, dossier renommé, sync interrompue. Une cascade effacerait le choix sur
-un contretemps d'indexation. `MediaRepo.stats(albumId, chosenId)` calcule donc
-la couverture à la lecture : la photo choisie si elle est là, la plus récente
-sinon, sans que le choix soit touché. L'identifiant Drive étant stable, la photo
-revenue redevient la couverture d'elle-même. Le même raisonnement avait déjà
-écarté la clé étrangère sur `comments.media_id`.
+**Fallback is permanent, and it is the heart of this entry.** The column has no
+foreign key to `media`: `deleteStale` removes a photo as soon as a synchronisation
+does not see it again — in the Drive bin before a rollback, a renamed folder, or
+an interrupted sync. A cascade would erase the choice after a temporary indexing
+problem. `MediaRepo.stats(albumId, chosenId)` therefore computes the cover on
+read: the chosen photo when present, otherwise the most recent, without touching
+the choice. Since the Drive identifier is stable, a returning photo automatically
+becomes the cover again. The same reasoning had already rejected a foreign key on
+`comments.media_id`.
 
-Deux champs homonymes en découlent, et il faut les distinguer : `Album.coverId`
-est la couverture **servie**, `AdminAlbum.coverId` le **choix** — `null` pour
-automatique. Les confondre ferait afficher « couverture choisie » à côté de tous
-les albums.
+Two homonymous fields follow and must be distinguished: `Album.coverId` is the
+**served** cover, while `AdminAlbum.coverId` is the **choice** — `null` for
+automatic. Confusing them would display "chosen cover" beside every album.
 
-**Écarté.** Un sélecteur en grille dans `/admin`. C'était la demande littérale,
-mais il rejouerait la grille de l'album pour rien, et surtout il ne marche que
-si le compte administrateur a accès à l'album : les vignettes passent par
-`/api/media`, où `canSee` répond 404 à qui n'a pas l'album. Le premier
-administrateur détient le joker `*`, mais rien ne l'impose, et ouvrir l'accès
-média aux administrateurs pour un confort de sélection déplacerait une règle de
-cloisonnement pour une raison cosmétique.
+**Rejected.** A grid picker in `/admin`. This was the literal request, but it
+would reproduce the album grid for no reason, and above all only works if the
+administrator account can access the album: thumbnails go through `/api/media`,
+where `canSee` responds with 404 for someone without the album. The first
+administrator has the `*` wildcard, but nothing requires this, and opening media
+access to administrators for selection convenience would move a partitioning
+rule for cosmetic reasons.
 
-Écarté aussi : laisser la couverture vide quand la photo choisie disparaît.
-Explicite, mais une case blanche sur la page d'accueil que rien n'explique est
-un défaut, pas un signal.
+Also rejected: leaving the cover empty when the chosen photo disappears.
+Explicit, but a blank tile on the home page with no explanation is a defect, not
+a signal.
 
-**Conséquences.** Une vidéo ne peut pas être couverture, ni par choix ni par
-repli : le pipeline n'en rend pas de vignette, et l'album resterait sans image.
-La route refuse `400 unknown_cover` sur une photo hors de l'album ou sur une
-vidéo, plutôt que de l'accepter et de replier en silence — le silence ferait
-découvrir le problème depuis la page d'accueil, loin du geste.
+**Consequences.** A video cannot be a cover, by choice or fallback: the pipeline
+does not render a thumbnail for it, and the album would have no image. The route
+rejects `400 unknown_cover` for a photo outside the album or a video, rather than
+accepting it and silently falling back — silence would reveal the problem on the
+home page, far from the action.
 
-L'action de la visionneuse est la seule sans raccourci clavier. On désigne une
-couverture une fois par album, et l'aide-mémoire `?` s'adresse à tous les
-visiteurs, pas au seul administrateur.
+The viewer action is the only one without a keyboard shortcut. A cover is chosen
+once per album, and the `?` help is for every visitor, not only the administrator.
 
-Changer le périmètre Drive d'un album vide son index (D50) et donc sa
-couverture, le temps de la resynchronisation. Le choix survit : si la photo
-est encore dans le nouveau dossier, elle redevient la couverture sans geste.
+Changing an album's Drive scope empties its index (D50), and therefore its cover,
+until resynchronisation. The choice survives: if the photo is still in the new
+folder, it becomes the cover again without any action.

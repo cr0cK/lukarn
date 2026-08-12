@@ -1,29 +1,28 @@
-# D55 — Le repère de lecture vit dans le navigateur, pas en base
+# D55 — The read marker lives in the browser, not the database
 
-**Contexte.** Afficher « 3 nouveaux commentaires » demande de savoir où en était
-le lecteur. Une table côté serveur serait la réponse réflexe.
+**Context.** Displaying "3 new comments" requires knowing where the reader had
+reached. A server-side table would be the instinctive answer.
 
-**Choix.** `localStorage`, sous `nonni:comments-seen:<albumId>`, un **nombre de
-commentaires vus** par photo. Le total vient du serveur, l'écart se calcule à
-l'affichage (`unreadCount`).
+**Choice.** `localStorage`, under `nonni:comments-seen:<albumId>`, storing a
+**number of comments seen** per photo. The total comes from the server, and the
+difference is calculated for display (`unreadCount`).
 
-Deux raisons, dans cet ordre. D'abord une clé d'accès n'est pas une personne
-(D38) : indexer un repère de lecture par compte ferait qu'au sein d'un foyer, le
-premier à ouvrir une photo effacerait la pastille de tous les autres — l'inverse
-exact de ce que la fonctionnalité promet. Le navigateur, lui, est bien celui
-d'une personne. Ensuite un entier suffit là où une date obligerait le serveur à
-transporter l'horodatage de chaque fil pour qu'on puisse le comparer.
+Two reasons, in this order. First, an access key is not a person (D38): indexing
+a read marker by account would mean that within a household, the first person to
+open a photo would clear the badge for everyone else — the exact opposite of what
+the feature promises. The browser does correspond to one person. Second, an
+integer is enough where a date would require the server to carry every thread's
+timestamp so it could be compared.
 
-**Écarté.** _Une table `comment_reads(account, album_id, media_id, seen_at)`_ :
-une migration, une écriture à chaque ouverture de panneau, une jointure dans les
-compteurs, et le défaut de cloisonnement ci-dessus. _Un repère par identité de
-commentateur_ plutôt que par compte : il aurait le bon grain, mais la plupart des
-lecteurs n'ont jamais vérifié d'adresse — la pastille ne marcherait que pour ceux
-qui écrivent.
+**Rejected.** _A `comment_reads(account, album_id, media_id, seen_at)` table_: a
+migration, a write whenever a panel opens, a join in the counts, and the partition
+failure above. _A marker per commenter identity_ instead of per account: it would
+have the right granularity, but most readers have never verified an address — the
+badge would only work for those who write.
 
-**Conséquences.** Un changement d'appareil, un nettoyage du navigateur ou une
-navigation privée repartent de zéro : on revoit ses propres commentaires comme
-non lus **une fois**, jamais l'inverse. C'est le sens de l'erreur acceptable — la
-pastille peut être bavarde, elle ne doit pas être muette. Le stockage est borné
-par le nombre de photos commentées de l'album, pas par le nombre de photos
-regardées, et une photo redescendue à zéro commentaire quitte la table.
+**Consequences.** Changing device, clearing the browser, or private browsing
+starts from zero: one's own comments appear unread **once**, never the reverse.
+This is the acceptable direction of error — the badge may be noisy, but it must
+not be silent. Storage is bounded by the number of commented photos in the album,
+not the number viewed, and a photo whose comment count falls back to zero leaves
+the table.

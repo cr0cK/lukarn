@@ -1,20 +1,19 @@
 /**
- * Limiteur de tâches simultanées.
+ * Concurrent task limiter.
  *
- * Produire un dérivé demande de charger l'original entier en mémoire — neuf
- * mégaoctets pour une photo d'appareil courante — puis de le décoder et de le
- * ré-encoder. Ces deux étapes se font hors du fil principal, donc elles ne
- * bloquent pas les autres requêtes ; ce qui les gêne, c'est la mémoire.
+ * Producing a derivative requires loading the entire original into memory — nine
+ * megabytes for a typical camera photo — then decoding and re-encoding it. Both
+ * steps run off the main thread, so they do not block other requests; memory is
+ * the limiting factor.
  *
- * Sans limite, ouvrir une grille dont les vignettes ne sont pas encore en cache
- * lance autant de rendus que de photos visibles : une mesure sur vingt-quatre
- * rendus simultanés fait grimper la mémoire du processus de plus de 300 Mo, de
- * quoi faire tomber un VPS modeste pour tout le monde — y compris ceux qui ne
- * regardaient qu'une photo déjà en cache.
+ * Without a limit, opening a grid whose thumbnails are not yet cached starts as
+ * many renders as there are visible photos: twenty-four simultaneous renders
+ * increase process memory by more than 300 MB, enough to bring down a modest VPS
+ * for everyone — including those only viewing a cached photo.
  *
- * La file est en mémoire et strictement locale au processus : l'application est
- * mono-instance, et une file partagée demanderait un service de plus pour un
- * problème qui n'existe pas encore.
+ * The queue is held in memory and strictly local to the process: the application
+ * runs as a single instance, and a shared queue would require another service
+ * for a problem that does not yet exist.
  */
 export class Semaphore {
   private disponibles: number;
@@ -26,10 +25,10 @@ export class Semaphore {
   }
 
   /**
-   * Exécute la tâche dès qu'une place se libère.
+   * Runs the task as soon as a slot becomes available.
    *
-   * La place est rendue même si la tâche échoue — sans quoi une suite d'erreurs
-   * réduirait la limite jusqu'à bloquer définitivement tous les rendus.
+   * The slot is released even if the task fails — otherwise, a series of errors
+   * would reduce the limit until all renders were permanently blocked.
    */
   async run<T>(tache: () => Promise<T>): Promise<T> {
     await this.acquerir();
@@ -40,12 +39,12 @@ export class Semaphore {
     }
   }
 
-  /** Tâches en attente d'une place. Sert au diagnostic et aux tests. */
+  /** Tasks waiting for a slot. Used for diagnostics and tests. */
   get enAttente(): number {
     return this.attente.length;
   }
 
-  /** Places occupées à cet instant. */
+  /** Slots currently in use. */
   get enCours(): number {
     return this.limite - this.disponibles;
   }
@@ -59,8 +58,8 @@ export class Semaphore {
   }
 
   private liberer(): void {
-    // Le premier arrivé passe : une pile ferait attendre indéfiniment les
-    // premières vignettes d'une grille pendant que les dernières défilent.
+    // First come, first served: a stack would leave the first thumbnails in a
+    // grid waiting indefinitely while later ones keep coming.
     const suivant = this.attente.shift();
     if (suivant) suivant();
     else this.disponibles++;
@@ -68,13 +67,12 @@ export class Semaphore {
 }
 
 /**
- * Nombre de rendus simultanés autorisés.
+ * Number of simultaneous renders allowed.
  *
- * Deux au minimum : à un seul, une photo lente retarderait toutes les vignettes
- * derrière elle. Plafonné à quatre parce que le gain s'arrête là — le décodage
- * occupe déjà plusieurs cœurs par image — alors que la mémoire, elle, continue
- * de croître. Deux cœurs sont laissés à tout le reste : servir les fichiers en
- * cache, les requêtes d'API, la synchronisation.
+ * At least two: with only one, a slow photo would delay every thumbnail behind
+ * it. Capped at four because the benefit ends there — decoding already uses
+ * several cores per image — while memory usage keeps growing. Two cores are left
+ * for everything else: serving cached files, API requests and synchronisation.
  */
 export function renderConcurrencyFor(cpuCount: number): number {
   return Math.max(2, Math.min(4, cpuCount - 2));

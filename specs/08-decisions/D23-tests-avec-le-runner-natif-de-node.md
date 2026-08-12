@@ -1,15 +1,14 @@
-# D23 — Tests avec le runner natif de Node
+# D23 — Tests with Node's native test runner
 
-**Contexte.** Il faut des tests, sans alourdir l'outillage.
+**Context.** Tests are needed, without adding tooling overhead.
 
-**Choix.** `node --import tsx --test`, `node:assert/strict`, tests rédigés en
-français.
+**Decision.** `node --import tsx --test`, `node:assert/strict`, tests written in
+French.
 
-**Écarté.** Vitest ou Jest : une dépendance de plus, une configuration de plus,
-pour des tests qui n'ont besoin ni de mocking avancé, ni de DOM, ni de snapshots.
+**Rejected.** Vitest or Jest: one more dependency, one more configuration, for
+tests that need neither advanced mocking, nor a DOM, nor snapshots.
 
-**Conséquences.** Les tests portent sur les invariants plutôt que sur les
-implémentations : cloisonnement des albums, réversibilité des migrations,
-absence de doublon en pagination, ordre LRU, tolérance du parseur de `Range`,
-service du front. Ils documentent le comportement attendu autant qu'ils le
-vérifient.
+**Consequences.** Tests cover invariants rather than implementations: album
+isolation, migration reversibility, no duplicates in pagination, LRU order,
+`Range` parser tolerance, frontend serving. They document the expected behaviour
+as much as they verify it.

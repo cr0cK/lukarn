@@ -1,19 +1,18 @@
-# D11 — Sessions en base plutôt que JWT
+# D11 — Database sessions rather than JWT
 
-**Contexte.** Il faut authentifier les visiteurs entre deux requêtes.
+**Context.** Visitors must remain authenticated between requests.
 
-**Choix.** Un identifiant opaque de 32 octets aléatoires, une ligne dans
-`sessions`, un cookie `httpOnly` signé.
+**Decision.** An opaque identifier of 32 random bytes, a row in `sessions`, a
+signed `httpOnly` cookie.
 
-**Écarté.** Un JWT stateless. Il reste valide jusqu'à son expiration où qu'il se
-trouve : couper l'accès à quelqu'un — déconnexion, retrait de la config —
-suppose une liste de révocation, c'est-à-dire une table en base, donc exactement
-ce que le JWT prétendait éviter. Ici la session **est** la ligne, et la supprimer
-suffit.
+**Rejected.** A stateless JWT. It remains valid until it expires wherever it may
+be: revoking someone's access — logout, removal from the configuration —
+requires a revocation list, that is, a database table, which is exactly what the
+JWT claimed to avoid. Here the session **is** the row, and deleting it is enough.
 
-**Conséquences.** Une lecture SQLite par requête, négligeable en process. En
-prime, le hook `onRequest` revérifie à chaque fois que le compte existe encore
-et relit son rôle : la configuration fait autorité, pas le cookie. C'est ce qui
-permet à un retrait de droits de prendre effet sans attendre l'expiration de la
-session — la configuration vivait alors dans `albums.yaml`, elle est depuis
-passée en base (voir D24), mais le raisonnement est inchangé.
+**Consequences.** One SQLite read per request, negligible in-process. In
+addition, the `onRequest` hook checks each time that the account still exists
+and reads its role again: the configuration is authoritative, not the cookie.
+This allows permissions to be withdrawn without waiting for the
+session to expire — the configuration then lived in `albums.yaml`; it has since
+moved to the database (see D24), but the reasoning is unchanged.

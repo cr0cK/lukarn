@@ -3,8 +3,8 @@ import type { MediaKind } from '@nonni/shared';
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 /**
- * Seuls les types que le navigateur ou sharp savent afficher entrent dans
- * l'index — le reste du dossier Drive (PDF, docs, archives) est ignoré.
+ * Only types the browser or sharp can display enter the index — the rest of the Drive
+ * folder (PDFs, documents, archives) is ignored.
  */
 export function classify(mimeType: string | null | undefined): MediaKind | null {
   if (!mimeType) return null;
@@ -14,13 +14,12 @@ export function classify(mimeType: string | null | undefined): MediaKind | null 
 }
 
 /**
- * Assemble une date à partir de composantes lues telles quelles, sans fuseau :
- * c'est l'heure qu'affichait l'appareil, interprétée en UTC pour que le tri et
- * l'affichage la restituent exactement, quel que soit le fuseau du serveur ou
- * du navigateur.
+ * Assembles a date from components read as-is, without a time zone: this is the time
+ * displayed by the device, interpreted as UTC so sorting and display reproduce it
+ * exactly regardless of the server or browser time zone.
  *
- * Rend `null` sur tout ce qui ne décrit pas un instant réel : une date nulle ou
- * absurde vaut moins que le repli de l'appelant.
+ * Returns `null` for anything that does not describe a real instant: a zero or absurd
+ * date is less useful than the caller's fallback.
  */
 function utcFromParts(
   year: number,
@@ -37,19 +36,19 @@ function utcFromParts(
   const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
   if (Number.isNaN(date.getTime())) return null;
 
-  // Date.UTC est laxiste (`2023:02:31` devient le 3 mars) : on rejette les
-  // dates qui ne se relisent pas à l'identique.
+  // Date.UTC is permissive (`2023:02:31` becomes 3 March), so reject dates that do not
+  // read back identically.
   if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
 
   return date.toISOString();
 }
 
 /**
- * Drive expose la date EXIF au format `YYYY:MM:DD HH:MM:SS`, sans fuseau —
- * c'est l'heure qu'affichait l'appareil au déclenchement.
+ * Drive exposes the EXIF date as `YYYY:MM:DD HH:MM:SS` without a time zone — the time
+ * displayed by the device when the photo was taken.
  *
- * Renvoie `null` si la chaîne est absente ou ne correspond pas au format
- * (Drive renvoie parfois `0000:00:00 00:00:00` pour un EXIF vide).
+ * Returns `null` if the string is absent or does not match the format (Drive sometimes
+ * returns `0000:00:00 00:00:00` for empty EXIF data).
  */
 export function parseExifTime(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -69,15 +68,14 @@ export function parseExifTime(value: string | null | undefined): string | null {
 }
 
 /**
- * Horodatage porté par le nom du fichier — `PXL_20260729_143012.mp4`,
- * `VID_20260729_143012.mp4`, `20260729_143012.mov`. C'est l'heure locale de
- * l'appareil au **début** de l'enregistrement : exactement la convention de
- * l'EXIF d'une photo, donc lue de la même façon.
+ * Timestamp carried by the file name — `PXL_20260729_143012.mp4`,
+ * `VID_20260729_143012.mp4`, `20260729_143012.mov`. This is the device's local time
+ * at the **start** of recording: exactly the convention used by photo EXIF data, so
+ * it is read the same way.
  *
- * Les chiffres qui suivent les secondes sont ignorés — un Pixel y ajoute les
- * millièmes. Un chiffre **avant** la date, en revanche, disqualifie la
- * correspondance : sans cela, un long nombre quelconque dans le nom se
- * découperait en une date qui n'en est pas une.
+ * Digits after the seconds are ignored — a Pixel adds milliseconds there. A digit
+ * **before** the date, however, disqualifies the match: otherwise any long number in
+ * a name could be sliced into something that is not really a date.
  */
 export function parseNameTime(name: string | null | undefined): string | null {
   if (!name) return null;
@@ -97,52 +95,50 @@ export function parseNameTime(name: string | null | undefined): string | null {
 }
 
 /**
- * Écart au-delà duquel un nom horodaté est tenu pour étranger au fichier.
+ * Difference beyond which a timestamped name is treated as unrelated to the file.
  *
- * Ce n'est pas une constante horaire : elle dépasse le plus grand décalage réel
- * sur Terre (±14 h) augmenté d'un enregistrement, de sorte que le nom et le
- * conteneur d'une même vidéo tombent toujours dedans, quelle que soit l'horloge
- * dans laquelle chacun est écrit. Elle ne sert qu'à écarter un nom sans rapport
- * — un fichier renommé, un horodatage qui désigne autre chose.
+ * This is not a time-zone constant: it exceeds the largest real offset on Earth
+ * (±14 h) plus one recording, ensuring that the name and container of the same video
+ * always fall within it regardless of the clock used by each. It only rejects an
+ * unrelated name — a renamed file or timestamp referring to something else.
  */
 const NAME_TOLERANCE_MS = 26 * 60 * 60 * 1000;
 
-/** Ce dont la date d'une vidéo se déduit, par ordre de confiance décroissant. */
+/** Inputs used to infer a video's date, in descending order of confidence. */
 export interface VideoTimeSources {
-  /** Nom du fichier dans Drive. */
+  /** File name in Drive. */
   name: string | null | undefined;
-  /** `creation_time` lu dans le conteneur (ISO), ou `null` s'il est illisible. */
+  /** `creation_time` read from the container (ISO), or `null` if unreadable. */
   containerTime: string | null;
-  /** Durée annoncée par Drive, qui remonte de la fin de l'enregistrement à son début. */
+  /** Duration reported by Drive, used to move from recording end back to its start. */
   durationMs: number | null;
-  /** Date de modification Drive : la date de téléversement, dernier repli. */
+  /** Drive modification date: upload date, the final fallback. */
   modifiedTime: string;
 }
 
 export interface VideoTakenAt {
   takenAt: string;
-  /** Faux quand seule la date de modification Drive restait — voir `taken_at_from_exif`. */
+  /** False when only the Drive modification date remained — see `taken_at_from_exif`. */
   fromFile: boolean;
 }
 
 /**
- * Date de prise de vue d'une vidéo (D97). Drive n'en connaît aucune :
- * `videoMediaMetadata` se limite aux dimensions et à la durée, si bien que
- * toutes les vidéos d'un import atterrissaient le jour du téléversement.
+ * Video capture date (D97). Drive knows none: `videoMediaMetadata` is limited to
+ * dimensions and duration, so every video in an import previously landed on its
+ * upload day.
  *
- * L'ordre est celui de la confiance :
+ * The order reflects confidence:
  *
- * 1. **Le nom, corroboré par le conteneur.** Il porte l'heure locale de
- *    l'appareil au début de l'enregistrement, comme l'EXIF d'une photo.
- * 2. **Le conteneur seul**, moins la durée : son en-tête est écrit à l'arrêt de
- *    l'enregistrement, pas à son déclenchement.
- * 3. **Le nom seul**, pour un conteneur qu'on ne sait pas ouvrir.
- * 4. **`modifiedTime`**, et c'est le seul cas qui ne prétend pas dater le
- *    tournage.
+ * 1. **The name, corroborated by the container.** It carries the device's local time
+ *    at recording start, like photo EXIF data.
+ * 2. **The container alone**, minus duration: its header is written when recording
+ *    stops, not when it starts.
+ * 3. **The name alone**, for a container that cannot be opened.
+ * 4. **`modifiedTime`**, the only case that does not claim to date filming.
  *
- * Rien ici n'est propre à un fuseau ni à un format : aucun décalage n'est
- * supposé ni corrigé, la règle choisit entre deux sources écrites telles
- * quelles. Un conteneur non reconnu tombe en 3 ou en 4 sans traitement à part.
+ * Nothing here depends on a time zone or format: no offset is assumed or corrected;
+ * the rule chooses between two sources written as-is. An unrecognised container falls
+ * into case 3 or 4 without special handling.
  */
 export function resolveVideoTakenAt({
   name,
@@ -167,7 +163,7 @@ export function resolveVideoTakenAt({
   return { takenAt: new Date(modifiedTime).toISOString(), fromFile: false };
 }
 
-/** Convertit en nombre fini, ou `null`. Drive renvoie parfois des chaînes. */
+/** Converts to a finite number, or `null`. Drive sometimes returns strings. */
 export function toNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   const parsed = typeof value === 'number' ? value : Number(value);
@@ -181,16 +177,15 @@ export function toText(value: unknown): string | null {
 }
 
 /**
- * Position d'une photo, latitude et longitude traitées **ensemble**.
+ * Photo position, with latitude and longitude handled **together**.
  *
- * Drive renvoie le couple `(0, 0)` quand la photo n'est pas géolocalisée. Ce
- * point est au milieu de l'Atlantique : l'écarter est le compromis retenu.
- * Écarter chaque zéro séparément serait tout autre chose — une photo prise sur
- * l'équateur ou sur le méridien de Greenwich perdrait sa position alors qu'elle
- * en a bien une.
+ * Drive returns `(0, 0)` when a photo is not geolocated. That point lies in the
+ * Atlantic, so excluding it is the chosen compromise. Excluding each zero separately
+ * would be entirely different — a photo taken on the equator or Greenwich meridian
+ * would lose a real position.
  *
- * Une coordonnée seule ne situe rien : si l'une des deux manque, les deux sont
- * rendues nulles plutôt que d'afficher une demi-position.
+ * One coordinate alone locates nothing: if either is missing, both are returned as
+ * null rather than exposing half a position.
  */
 export function toCoordinates(
   latitude: unknown,

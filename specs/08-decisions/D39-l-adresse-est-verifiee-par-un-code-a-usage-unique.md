@@ -1,23 +1,25 @@
-# D39 — L'adresse est vérifiée par un code à usage unique
+# D39 — The address is verified by a one-time code
 
-**Contexte.** L'identité de D38 est déclarative : derrière un mot de passe
-partagé, n'importe qui peut se dire « Mamie ». Et déclarer l'adresse d'un tiers
-lui ferait recevoir les notifications d'une galerie où il n'a rien demandé.
+**Context.** The identity in D38 is declarative: behind a shared password,
+anyone can claim to be "Mamie". And declaring a third party's address would
+make them receive notifications from a gallery where they had requested
+nothing.
 
-**Choix.** Un code à six chiffres envoyé à l'adresse, à saisir pour que
-l'identité soit rattachée à la session. Quinze minutes de validité, cinq essais,
-un envoi par minute au plus. Seul un HMAC du code est stocké.
+**Decision.** A six-digit code sent to the address and entered to attach the
+identity to the session. Valid for fifteen minutes, five attempts, and at most
+one send per minute. Only an HMAC of the code is stored.
 
-**Écarté.** Faire confiance à la déclaration, au motif que le cercle est déjà
-protégé par un mot de passe. Un mot de passe partagé circule justement plus
-largement que prévu, et c'est bon marché de s'en prémunir. Écarté aussi : un lien
-de confirmation cliquable plutôt qu'un code — il ouvre une seconde session dans
-le navigateur par défaut, alors qu'un code se recopie dans l'onglet resté ouvert.
-Écarté enfin : hacher le code en argon2, disproportionné pour un secret qui vit
-quinze minutes, là où un HMAC coûte moins qu'une requête SQL.
+**Rejected.** Trusting the declaration on the grounds that the circle is
+already protected by a password. A shared password is precisely what circulates
+more widely than intended, and guarding against this is cheap. Also rejected: a
+clickable confirmation link rather than a code — it opens a second session in
+the default browser, whereas a code can be copied into the tab left open.
+Finally, hashing the code with argon2 was rejected as disproportionate for a
+secret that lives for fifteen minutes, where an HMAC costs less than an SQL
+query.
 
-**Conséquences.** **Sans SMTP configuré, personne ne peut commenter** : aucun
-code ne peut partir. C'est cohérent — sans serveur d'envoi, les notifications ne
-partiraient pas davantage —, et l'interface l'annonce au lieu d'offrir un
-formulaire condamné à échouer. Le plafond de cinq essais est ce qui rend six
-chiffres suffisants ; sans lui, un million de tentatives en viendraient à bout.
+**Consequences.** **Without SMTP configured, nobody can comment**: no code can
+be sent. This is consistent — without a sending server, notifications would not
+be sent either — and the interface says so instead of offering a form destined
+to fail. The five-attempt ceiling is what makes six digits sufficient; without
+it, a million attempts would eventually succeed.

@@ -6,31 +6,28 @@ import { verifyAlbumUnsubscribeToken } from '../crypto.js';
 import { escapeHtml } from '../mail.js';
 
 const unsubscribeSchema = z.object({
-  // L'adresse : c'est elle qui identifie une personne, la clé d'accès pouvant
-  // être partagée par plusieurs.
+  // The address identifies a person, while the access key may be shared.
   u: z.string().min(1).max(EMAIL_MAX_LENGTH),
-  // Même contrainte qu'à la création d'un album (`routes/admin.ts`) : un id
-  // hors motif ne peut désigner aucun album de cette instance.
+  // Same constraint as album creation (`routes/admin.ts`): an ID outside the pattern
+  // cannot identify any album in this instance.
   a: z.string().min(1).max(USERNAME_MAX_LENGTH).regex(ALBUM_ID_PATTERN),
   t: z.string().min(1).max(256),
 });
 
 /**
- * Abonnements aux nouveautés d'un album.
+ * Subscriptions to an album's new items.
  *
- * On ne s'abonne pas ici : l'abonnement est un effet de bord de l'ouverture de
- * l'album, sur la première page de `GET /api/albums/:albumId/items` (D41). Ce
- * préfixe ne porte donc que le désabonnement, qui a besoin d'exister sans
- * session — et c'est aussi la raison de ne pas le monter sous `/api/albums`,
- * dont tout le préfixe exige `requireAuth`.
+ * Subscription does not happen here: it is a side effect of opening the album on the
+ * first page of `GET /api/albums/:albumId/items` (D41). This prefix therefore only
+ * carries unsubscribing, which must work without a session — also why it is not mounted
+ * under `/api/albums`, whose entire prefix requires `requireAuth`.
  */
 export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
     /**
-     * Sans session, comme le désabonnement des commentaires : on clique ce lien
-     * depuis sa boîte aux lettres, souvent sur un autre appareil, et exiger une
-     * connexion pour cesser d'être dérangé serait une façon de ne pas répondre
-     * à la demande.
+     * No session, as with comment unsubscribing: the link is clicked from an inbox,
+     * often on another device, and requiring sign-in to stop being disturbed would
+     * fail to honour the request.
      */
     app.get('/unsubscribe', async (request, reply) => {
       const parsed = unsubscribeSchema.safeParse(request.query);
@@ -39,16 +36,16 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
       }
 
       const { u: email, a: albumId, t: token } = parsed.data;
-      // Le jeton couvre le couple : celui d'un album ne vaut pas pour un autre,
-      // sinon un lien recopié couperait un abonnement qu'on n'a pas visé.
+      // The token covers the pair: one album's token is not valid for another,
+      // otherwise a copied link could disable an unintended subscription.
       if (!verifyAlbumUnsubscribeToken(email, albumId, token, context.env.sessionSecret)) {
         return reply.code(400).send({ error: 'bad_request', message: 'Invalid link' });
       }
 
       const commenter = context.commenters.byEmail(email);
       const album = context.findAlbum(albumId);
-      // Identité ou album disparus depuis l'envoi : le désabonnement est sans
-      // objet, et le dire évite de laisser croire à un échec.
+      // The identity or album has disappeared since delivery: unsubscribing is moot,
+      // and saying so avoids suggesting a failure.
       if (commenter && album) context.subscriptions.unsubscribe(commenter.id, albumId);
 
       return reply
@@ -59,9 +56,9 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
 }
 
 /**
- * Page de confirmation, rendue par le serveur plutôt que par le front : on
- * arrive ici sans session, et charger l'application React pour afficher une
- * phrase renverrait vers l'écran de connexion.
+ * Confirmation page rendered by the server rather than the front end: users arrive
+ * without a session, and loading the React application to display one sentence would
+ * redirect to the sign-in screen.
  */
 function unsubscribePage(publicUrl: string, albumTitle: string | null): string {
   const message = albumTitle
@@ -89,7 +86,7 @@ function unsubscribePage(publicUrl: string, albumTitle: string | null): string {
 }
 
 /**
- * Le titre d'un album est saisi depuis /admin : il traverse cette fonction
- * avant d'entrer dans la page, sinon un titre contenant une balise
- * s'exécuterait dans le navigateur de celui qui se désabonne.
+ * An album title is entered from /admin: it passes through this function before
+ * entering the page, otherwise a title containing a tag would execute in the browser
+ * of the person unsubscribing.
  */

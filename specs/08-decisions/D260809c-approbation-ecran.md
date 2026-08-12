@@ -1,88 +1,89 @@
-# D260809c — Un téléviseur ne tape pas un mot de passe : il l'affiche et le fait approuver
+# D260809c — A television does not type a password: it displays one and has it approved
 
-**Contexte.** Le seul chemin d'entrée était `POST /api/auth/login`, deux champs
-à saisir. Sur un ordinateur ou un téléphone, un gestionnaire de mots de passe
-les remplit ; sur un téléviseur il n'y a ni gestionnaire, ni clavier — chaque
-caractère se compose à la télécommande sur un clavier virtuel, et le champ est
-masqué. L'écran du salon, c'est-à-dire celui où une galerie familiale a le plus
-de sens, est donc celui où elle est la plus pénible à ouvrir.
+**Context.** The only way in was `POST /api/auth/login`, with two fields to
+enter. On a computer or phone, a password manager fills them in; on a television
+there is neither a manager nor a keyboard — each character is entered with the
+remote on a virtual keyboard, and the field is masked. The living-room screen,
+which is where a family gallery makes the most sense, is therefore the screen on
+which it is most cumbersome to open.
 
-**Ce qu'un QR code ne peut pas être ici.** Un téléviseur n'a pas de caméra.
-« Se connecter en scannant un QR code » n'existe donc pas dans ce sens : c'est
-l'écran qui affiche et le téléphone qui scanne. Le QR ne transporte par
-conséquent aucun identifiant — il ne fait qu'ouvrir une URL sur le téléphone.
-Toute conception qui y mettrait un secret le mettrait, par construction, à
-l'écran du salon, lisible par quiconque passe devant.
+**What a QR code cannot be here.** A television has no camera. "Log in by
+scanning a QR code" therefore does not work in that direction: the screen
+displays it and the phone scans it. Consequently, the QR code carries no
+credentials — it only opens a URL on the phone. Any design that placed a secret
+in it would, by construction, put that secret on the living-room screen, where
+anyone passing by could read it.
 
-**Choix.** Un appairage à deux appareils, dans l'esprit du flux « device » de
-RFC 8628 — celui qu'emploient les applications de télévision :
+**Decision.** Pair two devices, in the spirit of RFC 8628's "device" flow — the
+one used by television applications:
 
-1. L'écran demande un appairage. Le serveur tire deux valeurs de natures
-   opposées : un `userCode` de huit caractères, **fait pour être vu** — affiché
-   en clair et repris dans le QR —, et un `deviceCode` de 32 octets, **fait pour
-   ne l'être jamais**, rendu au seul demandeur.
-2. Un téléphone **déjà connecté** ouvre `/pair?code=…` et approuve.
-3. L'écran, qui interroge le serveur toutes les deux secondes, relève la session.
+1. The screen requests pairing. The server generates two values of opposite
+   kinds: an eight-character `userCode`, **intended to be seen** — displayed in
+   plain text and included in the QR code — and a 32-byte `deviceCode`, **never
+   intended to be seen**, returned only to the requester.
+2. A phone that is **already logged in** opens `/pair?code=…` and approves it.
+3. The screen, which polls the server every two seconds, collects the session.
 
-Rien de neuf du côté des droits : la session porte le compte de celui qui
-approuve, donc ses albums, et `plugins/auth.ts` continue de les réévaluer à
-chaque requête. Un compte étant une clé d'accès partagée et non une personne
-([D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)),
-déléguer cette clé à l'écran du salon ne transmet rien de nominatif.
+There is nothing new about permissions: the session belongs to the account of
+the person who approves, and therefore carries its albums, while
+`plugins/auth.ts` continues to reassess them on every request. Since an account
+is a shared access key and not a person
+([D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)), delegating that key to
+the living-room screen passes on no personal information.
 
-**Ce que chaque valeur protège :**
+**What each value protects:**
 
-| Valeur               | Où elle passe                           | Ce qu'elle empêche                                                                            |
-| -------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `userCode` (8 car.)  | Écran, QR, URL ouverte sur le téléphone | Rien à elle seule — elle ne fait que désigner une demande en attente.                         |
-| `deviceCode` (32 o.) | Réponse au demandeur, corps du sondage  | Qu'un tiers ayant lu le code à l'écran relève la session à la place de l'appareil qui attend. |
+| Value                   | Where it travels                         | What it prevents                                                                                        |
+| ----------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `userCode` (8 chars)    | Screen, QR code, URL opened on the phone | Nothing on its own — it only identifies a pending request.                                              |
+| `deviceCode` (32 bytes) | Response to requester, polling body      | Someone who read the code on screen from collecting the session in place of the device that is waiting. |
 
-**L'identité de commentateur ne suit pas la session.** L'appareil appairé arrive
-sans identité, comme après une connexion au mot de passe : elle vaut pour la
-personne, pas pour la clé. Sans cette règle, approuver depuis son téléphone
-laisserait le téléviseur du salon signer « Mamie » à tout le foyer — soit
-exactement l'usurpation que la vérification par code de
-[D39](./D39-l-adresse-est-verifiee-par-un-code-a-usage-unique.md) écarte.
+**The commenter's identity does not follow the session.** The paired device
+arrives without an identity, as it does after a password login: the identity
+belongs to the person, not the key. Without this rule, approving from a phone
+would leave the living-room television signing "Mamie" on behalf of the entire
+household — exactly the impersonation that code verification in
+[D39](./D39-l-adresse-est-verifiee-par-un-code-a-usage-unique.md) prevents.
 
-**Le risque assumé, et pourquoi il l'est.** Le défaut connu de ce flux est
-social : faire scanner à quelqu'un un QR qui n'est pas le sien, et obtenir de
-lui l'accès qu'il croyait donner à son propre écran. Aucune valeur secrète n'y
-change quoi que ce soit — la victime approuve volontairement. Trois choses
-bornent la portée : la page d'approbation affiche le code, qui doit
-correspondre à celui de l'écran qu'on regarde ; la demande expire en cinq
-minutes ; et ce qui se donne est une clé d'accès déjà partagée, révocable en
-changeant son mot de passe, ce qui ferme toutes ses sessions. Une instance
-familiale n'a pas de quoi justifier davantage.
+**The accepted risk, and why it is accepted.** The known weakness of this flow
+is social: persuading someone to scan a QR code that is not theirs and gaining
+the access they thought they were granting to their own screen. No secret value
+changes this — the victim willingly approves it. Three things limit the scope:
+the approval page displays the code, which must match the one on the screen being
+viewed; the request expires in five minutes; and what is granted is an already
+shared access key, revocable by changing its password, which closes all its
+sessions. A family instance does not justify more.
 
-Écarté au passage : afficher sur le téléphone le `User-Agent` de l'appareil
-demandeur pour aider à reconnaître le sien. Il est écrit par le demandeur,
-donc choisi par un attaquant — un libellé rassurant qui ne garantit rien vaut
-moins que pas de libellé du tout.
+Also rejected: showing the requesting device's `User-Agent` on the phone to help
+people recognise their own. It is written by the requester and therefore chosen
+by an attacker — a reassuring label that guarantees nothing is worse than no
+label at all.
 
-**Écarté.**
+**Rejected.**
 
-- **Un lien de connexion signé, généré depuis `/admin`.** Il faut le saisir sur
-  le téléviseur : c'est le problème qu'on cherchait à résoudre.
-- **Un code envoyé par email.** Une adresse appartient à `commenters`, jamais à
-  `users` (voir [03](../03-modele-de-donnees.md)) : en donner une à une clé
-  d'accès reviendrait à confondre la clé et la personne, que D38 vient de
-  séparer. Et sans SMTP, l'instance perdrait sa seule entrée confortable.
-- **Les passkeys (WebAuthn), dont le flux hybride affiche justement un QR.**
-  Aucun navigateur de téléviseur ne l'implémente, et l'appareil qui l'implémente
-  le mieux est celui qui n'en a pas besoin.
-- **Créer la session à l'approbation, l'écran n'ayant plus qu'à la relever.**
-  Une session d'un an naîtrait alors même pour un écran éteint entre-temps, et
-  `sessions` se remplirait de lignes que personne n'a ouvertes. Elle naît donc à
-  la relève, et la demande non relevée expire sans laisser de trace.
+- **A signed login link generated from `/admin`.** It would have to be entered
+  on the television: that is the problem being solved.
+- **A code sent by email.** An address belongs to `commenters`, never to `users`
+  (see [03](../03-modele-de-donnees.md)): assigning one to an access key would
+  conflate the key with the person, which D38 has just separated. And without
+  SMTP, the instance would lose its only convenient way in.
+- **Passkeys (WebAuthn), whose hybrid flow displays a QR code.** No television
+  browser implements it, and the device that implements it best is the one that
+  does not need it.
+- **Creating the session on approval, leaving the screen only to collect it.**
+  A one-year session would then be created even for a screen switched off in the
+  meantime, and `sessions` would fill with rows nobody had opened. It is
+  therefore created on collection, and an uncollected request expires without a
+  trace.
 
-**Conséquences.** Le mot de passe reste le seul chemin d'entrée d'un **premier**
-appareil : l'appairage délègue un accès existant, il n'en crée pas. Sur une
-instance dont aucun appareil n'est encore connecté, on saisit encore
-l'identifiant — et c'est cohérent avec l'absence de formulaire d'inscription
-comme de « mot de passe oublié » ([01](../01-vision-et-perimetre.md)).
+**Consequences.** The password remains the only way in for a **first** device:
+pairing delegates existing access; it does not create any. On an instance where
+no device is logged in yet, the username must still be entered — consistently
+with the absence of both a registration form and a "forgotten password" flow
+([01](../01-vision-et-perimetre.md)).
 
-Le QR est encodé dans le navigateur (`lib/qr.ts`, au-dessus de
-`qrcode-generator` — une dépendance sans dépendance). Le faire produire par un
-service tiers aurait ajouté une quatrième destination de sortie à celles que
-[04](../04-securite-et-acces.md) énumère, pour lui confier l'URL de l'instance :
-sans commune mesure avec les quelques kilo-octets qu'économise l'appel.
+The QR code is encoded in the browser (`lib/qr.ts`, built on
+`qrcode-generator` — a dependency with no dependencies). Having a third-party
+service generate it would have added a fourth outbound destination to those
+listed in [04](../04-securite-et-acces.md), entrusting it with the instance URL:
+out of all proportion to the few kilobytes saved by the call.

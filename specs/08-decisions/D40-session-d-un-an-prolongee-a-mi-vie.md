@@ -1,21 +1,23 @@
-# D40 — Session d'un an, prolongée à mi-vie
+# D40 — One-year session, extended at half-life
 
-**Contexte.** Le TTL de 30 jours obligeait à ressaisir un mot de passe partagé
-plusieurs fois par an, pour une galerie familiale consultée irrégulièrement. La
-demande était « une session qui ne se termine jamais ».
+**Context.** The 30-day TTL required a shared password to be re-entered several
+times a year for a family gallery visited irregularly. The request was "a
+session that never ends".
 
-**Choix.** Un an, repoussé d'un an dès que la session a passé sa mi-vie. En
-pratique on ne se déconnecte jamais tant qu'on utilise la galerie.
+**Decision.** One year, extended by a year once the session has passed its
+half-life. In practice, users never get signed out as long as they use the
+gallery.
 
-**Écarté.** Une session sans expiration. C'est un jeton de connexion permanent —
-volé une fois, valable à vie — et la table `sessions` grossirait sans que rien ne
-la nettoie, la purge horaire n'ayant plus rien à purger. Écarté aussi : le
-« cookie de session » au sens HTTP, sans `maxAge`, qui fait exactement l'inverse
-de ce qui était demandé puisqu'il meurt à la fermeture du navigateur. Écarté
-enfin : repousser l'échéance à chaque requête, soit une écriture SQLite par
-vignette ; à mi-vie, c'est une écriture par visiteur et par semestre.
+**Rejected.** A session with no expiry. It is a permanent sign-in token — stolen
+once, valid for life — and the `sessions` table would grow without anything
+cleaning it up, as the hourly purge would have nothing left to purge. Also
+rejected: the HTTP "session cookie", without `maxAge`, which does exactly the
+opposite of what was requested because it dies when the browser closes.
+Finally, pushing back the deadline on every request was rejected, as that would
+mean one SQLite write per thumbnail; at half-life, it is one write per visitor
+per six months.
 
-**Conséquences.** Une session abandonnée met jusqu'à un an à disparaître, contre
-un mois auparavant. Les leviers de coupure immédiate restent les mêmes et
-comptent d'autant plus : suppression du compte et changement de mot de passe
-ferment les sessions, et `plugins/auth.ts` relit les droits à chaque requête.
+**Consequences.** An abandoned session takes up to a year to disappear,
+compared with one month previously. The immediate cut-off mechanisms remain the
+same and matter all the more: deleting the account and changing the password
+close sessions, and `plugins/auth.ts` rereads permissions on every request.

@@ -1,64 +1,58 @@
-# D84 — Le contexte descend en bas de la visionneuse, à toutes les largeurs
+# D84 — Context moves to the bottom of the viewer at every width
 
-**Contexte.** Trois textes décrivent une photo ouverte, et aucun n'était là quand
-on la regardait. La description de l'album ne vit qu'en tête de grille. La note
-du jour n'apparaissait dans la visionneuse qu'à partir de `md` (D70), donc jamais
-sur téléphone. Et la description de la photo elle-même venait d'exister (D83)
-sans avoir nulle part où s'afficher. Ouvrir une image faisait donc perdre
-l'essentiel de ce qui l'explique — exactement le défaut que D68 puis D74 avaient
-attaqué par petites touches, en portant un fragment de contexte dans l'en-tête.
+**Context.** Three texts describe an open photo, and none was present while it
+was viewed. The album description only lives at the top of the grid. The day note
+only appeared in the viewer from `md` upwards (D70), never on a phone. And the
+photo description had just begun to exist (D83) with nowhere to display it.
+Opening an image therefore lost the essence of its explanation — exactly the
+defect D68 and then D74 addressed incrementally by moving a fragment of context
+into the header.
 
-**Choix.** Un bandeau bas dans la colonne photo (`MediaCaption`), qui empile les
-trois textes par portée décroissante — la photo, la journée, l'album —, à
-**toutes** les largeurs. La hiérarchie est portée par la couleur et le nombre de
-lignes visibles (`ink-100`/3, `ink-300`/2, `ink-500`/1), sans aucun titre : plus
-la portée est large, plus la ligne s'efface.
+**Choice.** A bottom strip in the photo column (`MediaCaption`) stacks the three
+texts from narrowest to broadest scope — photo, day, album — at **every** width.
+Hierarchy is conveyed by colour and visible line count
+(`ink-100`/3, `ink-300`/2, `ink-500`/1), with no headings: the broader the scope,
+the more the line recedes.
 
-**Cela renverse le seuil de D70, et il faut dire pourquoi ce n'est pas se
-dédire.** L'arbitrage de D70 portait sur **deux lignes empilées au-dessus de
-l'image**, sur un téléphone où la photo est déjà à l'étroit : le contexte y
-mangeait le cadrage par le haut, sans recours. La question posée ici n'est pas
-la même. Une légende posée sous la photo, sur un dégradé, ne rogne rien du même
-ordre ; elle est repliée par défaut ; et elle se masque d'un geste, ce que la
-note de l'en-tête ne proposait pas. D70 écartait d'ailleurs explicitement « un
-dépliement au toucher » — un geste de plus pour un texte que la grille montrait
-déjà. C'est vrai de la note du jour, faux de la description d'une photo, que la
-grille ne montre nulle part.
+**This reverses D70's threshold, and the reason it is not backtracking must be
+stated.** D70's tradeoff concerned **two lines stacked above the image** on a
+phone where the photo was already cramped: context ate into framing from above,
+with no remedy. The question here is different. A caption under the photo on a
+gradient does not crop it in the same way; it is collapsed by default; and one
+gesture hides it, which the header note did not offer. D70 explicitly rejected
+"touch expansion" — another gesture for text already visible in the grid. That
+is true of a day note, not a photo description shown nowhere in the grid.
 
-**Le masquage est persisté, le dépliement ne l'est pas.** La différence n'est pas
-un oubli : masquer est un choix sur la façon de regarder ses photos — on le fait
-une fois, et le redemander à chaque ouverture serait le meilleur moyen de ne
-jamais l'utiliser. Déplier est une réponse à un texte précis, qui n'a aucun sens
-sur la photo suivante. Le premier vit donc dans `localStorage`
-(`useCaptionHidden`), le second dans l'état d'un composant remonté à chaque
-photo.
+**Hiding is persisted; expansion is not.** The distinction is intentional:
+hiding is a choice about how to view photos — made once, and asking again on
+every opening would ensure it is never used. Expansion responds to one specific
+text and has no meaning on the next photo. The former lives in `localStorage`
+(`useCaptionHidden`); the latter in component state remounted for every photo.
 
-Masqué, un bouton fantôme « Afficher la légende (l) » reste en bas à droite. Un
-état caché sans porte de sortie est un piège : le bandeau parti, plus rien ne
-dirait qu'il a existé.
+When hidden, a ghost "Show caption (l)" button remains at bottom right. A hidden
+state with no way out is a trap: once the strip is gone, nothing else would say
+that it had existed.
 
-**Écarté.** Laisser la description de photo dans le seul panneau `i`. Il est
-fermé par défaut, et une légende qu'il faut aller chercher n'est pas une légende.
+**Rejected.** Leaving the photo description only in the `i` panel. It is closed
+by default, and a caption that must be sought out is not a caption.
 
-Écarté aussi : un bandeau permanent non masquable. Une galerie se regarde aussi
-pour les images seules, et un texte posé sur chaque photo, sans moyen de
-l'écarter, finirait par être ce qu'on reproche à l'application.
+Also rejected: a permanent strip that cannot be hidden. A gallery is also viewed
+for images alone, and text on every photo with no way to dismiss it would
+eventually become the application's main annoyance.
 
-**Conséquences.** La note du jour quitte l'en-tête, qui ne garde que ce qui
-identifie le fichier et situe la journée. Les lignes « Lieu » et « Ce jour-là »
-d'`ExifPanel` deviennent une redite du bandeau : elles restent, parce qu'elles
-sont le seul endroit qui donne le texte **entier** sans dépliement, et que les
-retirer ferait perdre l'accès à la note depuis un panneau déjà ouvert. Leur
-statut change, pas leur code — elles étaient le recours de D70 sous `md`, elles
-sont désormais un confort.
+**Consequences.** The day note leaves the header, which keeps only what
+identifies the file and locates the day. The "Place" and "That day" rows in
+`ExifPanel` now repeat the strip: they remain because they are the only place
+showing the **entire** text without expansion, and removing them would lose
+access to the note from an already open panel. Their status changes, not their
+code — they were D70's remedy below `md`; they are now a convenience.
 
-`Échap` gagne une couche — éditeur, zoom, panneau, fermeture. La saisie de la
-légende vit dans la visionneuse, et le gestionnaire de touches laisse passer
-`Échap` depuis un champ de saisie (c'est la sortie de secours) : sans cette
-couche, corriger une légende et appuyer sur `Échap` fermerait la visionneuse
-par-dessus un texte non enregistré.
+`Escape` gains a layer — editor, zoom, panel, close. Caption input lives in the
+viewer, and the key handler lets `Escape` from an input through (it is the escape
+hatch): without this layer, correcting a caption and pressing `Escape` would
+close the viewer over unsaved text.
 
-Sur une vidéo, et là seulement, le bandeau **pousse** au lieu de recouvrir. Les
-contrôles natifs de lecture vivent au bas de la balise ; sur une vidéo portrait
-qui remplit l'écran, un bandeau posé dessus rendrait play/pause et la barre de
-progression intouchables — un défaut bien pire que la place perdue.
+On video, and only there, the strip **pushes** rather than overlays. Native
+playback controls live at the bottom of the element; on a portrait video filling
+the screen, a strip laid over them would make play/pause and the progress bar
+untouchable — a far worse defect than the lost space.

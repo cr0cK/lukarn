@@ -13,12 +13,12 @@ import { Mailer, type MailMessage } from '../src/mail.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * File de modération : pagination, filtres, recherche et action groupée.
+ * Moderation queue: pagination, filters, search and bulk action.
  *
- * Les invariants visés sont ceux qui font qu'on peut s'y fier pour travailler :
- * deux pages voisines ne se recouvrent ni ne sautent une ligne, le total dit la
- * taille du corpus et non celle du reste, les filtres partitionnent, et une
- * recherche cherche ce qu'on a tapé — un `%` compris.
+ * These invariants make the queue reliable for work: adjacent pages neither
+ * overlap nor skip a row, the total describes the corpus rather than the
+ * remainder, filters partition it, and search finds exactly what was typed —
+ * including `%`.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -31,7 +31,7 @@ let adminCookie: string;
 let familleCookie: string;
 const envoyes: MailMessage[] = [];
 
-/** Les identités créées par le montage, pour cibler l'action groupée. */
+/** Identities created by setup, used to target the bulk action. */
 const identites = new Map<string, number>();
 
 function media(albumId: string, id: string): MediaUpsert {
@@ -69,9 +69,9 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
   const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
-  assert.ok(cookie, 'cookie de session absent');
+  assert.ok(cookie, 'session cookie missing');
   return `nonni_session=${cookie.value}`;
 }
 
@@ -87,9 +87,9 @@ async function identify(cookie: string, email: string, displayName: string): Pro
   await context.mailer.drain();
 
   const message = envoyes.at(-1);
-  assert.ok(message, 'aucun code envoyé');
+  assert.ok(message, 'no code sent');
   const code = /\b(\d{6})\b/.exec(message.text)?.[1];
-  assert.ok(code, 'code introuvable');
+  assert.ok(code, 'code not found');
 
   const verified = await server.inject({
     method: 'POST',
@@ -100,7 +100,7 @@ async function identify(cookie: string, email: string, displayName: string): Pro
   assert.equal(verified.statusCode, 200, verified.body);
 
   const commenter = context.commenters.byEmail(email);
-  assert.ok(commenter, `identité ${email} absente après vérification`);
+  assert.ok(commenter, `identity ${email} missing after verification`);
   identites.set(email, commenter.id);
 }
 
@@ -120,7 +120,7 @@ async function post(
   return response.json<Comment>();
 }
 
-/** Interroge la file de modération, comme le fait l'administration. */
+/** Queries the moderation queue as the administration interface does. */
 async function file(query: Record<string, string | number> = {}): Promise<AdminCommentsPage> {
   const params = new URLSearchParams(
     Object.entries(query).map(([key, value]) => [key, String(value)]),
@@ -201,8 +201,8 @@ before(async () => {
   await identify(adminCookie, 'chef@exemple.fr', 'Alexis');
   await identify(familleCookie, 'mamie@exemple.fr', 'Mamie');
 
-  // Six messages, deux albums, deux identités. Le dernier porte un `%` : c'est
-  // lui qui démasque une recherche qui n'échapperait pas les jokers de LIKE.
+  // Six messages, two albums, two identities. The last contains `%`, exposing
+  // any search that fails to escape LIKE wildcards.
   await post(adminCookie, 'vacances', 'plage', 'La lumière du soir sur la plage');
   await post(familleCookie, 'vacances', 'plage', 'Celle-là mérite un tirage');
   await post(adminCookie, 'vacances', 'phare', 'Le phare au petit matin');
@@ -217,43 +217,43 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('pagination de la file de modération', () => {
-  it('ne recouvre ni ne saute une ligne entre deux pages consécutives', async () => {
+describe('moderation queue pagination', () => {
+  it('neither overlaps nor skips a row between consecutive pages', async () => {
     const premiere = await file({ limit: 4 });
     assert.equal(premiere.comments.length, 4);
-    assert.ok(premiere.nextCursor, 'la première page annonce la fin alors qu’il reste des lignes');
+    assert.ok(premiere.nextCursor, 'the first page marks the end while rows remain');
 
     const seconde = await file({ limit: 4, cursor: premiere.nextCursor });
 
     const ids = [...premiere.comments, ...seconde.comments].map((comment) => comment.id);
-    assert.equal(new Set(ids).size, ids.length, 'un commentaire apparaît sur les deux pages');
-    assert.equal(ids.length, premiere.total, 'des commentaires manquent entre les deux pages');
-    // Antéchronologique d'un bout à l'autre, curseur compris.
+    assert.equal(new Set(ids).size, ids.length, 'a comment appears on both pages');
+    assert.equal(ids.length, premiere.total, 'comments are missing between the two pages');
+    // Reverse chronological throughout, including across the cursor.
     assert.deepEqual(
       ids,
       [...ids].sort((a, b) => b - a),
     );
   });
 
-  it('annonce la taille du corpus, pas celle du reste à parcourir', async () => {
+  it('reports corpus size rather than the remaining rows', async () => {
     const entiere = await file({ limit: 100 });
     const premiere = await file({ limit: 2 });
     const suivante = await file({ limit: 2, cursor: premiere.nextCursor! });
 
-    // Le total ignore le curseur : sinon « 3 sur 6 » deviendrait « 3 sur 4 » en
-    // tournant la page, et le compte afficherait n'importe quoi.
+    // Total ignores the cursor: otherwise "3 of 6" would become "3 of 4" on the
+    // next page and the count would be meaningless.
     assert.equal(premiere.total, entiere.total);
     assert.equal(suivante.total, entiere.total);
   });
 
-  it('rend un curseur nul sur la dernière page', async () => {
+  it('returns a null cursor on the last page', async () => {
     const entiere = await file({ limit: 100 });
     assert.equal(entiere.nextCursor, null);
   });
 });
 
-describe('filtres de la file de modération', () => {
-  it('partitionne : visibles et masqués font le total', async () => {
+describe('moderation queue filters', () => {
+  it('partitions the total into visible and hidden', async () => {
     const cible = (await file({ limit: 1 })).comments[0]!;
     await moderate(cible.id, 'hide');
 
@@ -268,14 +268,14 @@ describe('filtres de la file de modération', () => {
     await moderate(cible.id, 'show');
   });
 
-  it('restreint à un album sans emporter les autres', async () => {
+  it('restricts to one album without including others', async () => {
     const corse = await file({ limit: 100, albumId: 'corse' });
 
     assert.equal(corse.total, 2);
     assert.ok(corse.comments.every((comment) => comment.albumId === 'corse'));
   });
 
-  it('refuse un album au format impossible plutôt que de l’ignorer', async () => {
+  it('rejects an impossibly formatted album rather than ignoring it', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/admin/comments?albumId=..%2Fetc',
@@ -285,8 +285,8 @@ describe('filtres de la file de modération', () => {
   });
 });
 
-describe('recherche dans la file de modération', () => {
-  it('cherche dans le corps, le nom déclaré et l’adresse', async () => {
+describe('moderation queue search', () => {
+  it('searches the body, declared name and address', async () => {
     const corps = await file({ limit: 100, q: 'phare' });
     assert.equal(corps.total, 1);
     assert.match(corps.comments[0]!.body, /phare/i);
@@ -300,30 +300,30 @@ describe('recherche dans la file de modération', () => {
     assert.ok(adresse.comments.every((comment) => comment.authorEmail === 'chef@exemple.fr'));
   });
 
-  it('cherche un pourcent quand on tape un pourcent', async () => {
+  it('searches for a percent sign when one is entered', async () => {
     const tous = await file({ limit: 100 });
     const pourcent = await file({ limit: 100, q: '%' });
 
-    // Sans `ESCAPE`, `%` est le joker de LIKE et ramènerait tout le corpus.
+    // Without `ESCAPE`, `%` is LIKE's wildcard and would return the whole corpus.
     assert.notEqual(pourcent.total, tous.total);
     assert.equal(pourcent.total, 1);
     assert.match(pourcent.comments[0]!.body, /%/);
   });
 
-  it('le souligné ne remplace pas n’importe quel caractère', async () => {
-    // `_` est l'autre joker de LIKE : « l_ » ramènerait « la », « le », « lu ».
+  it('does not let underscore replace any character', async () => {
+    // `_` is LIKE's other wildcard: "l_" would return "la", "le" and "lu".
     const souligne = await file({ limit: 100, q: 'l_' });
     assert.equal(souligne.total, 0);
   });
 
-  it('compte ce qu’elle rend', async () => {
+  it('counts what it returns', async () => {
     const trouve = await file({ limit: 100, q: 'Bonifacio' });
     assert.equal(trouve.total, trouve.comments.length);
   });
 });
 
-describe('modération groupée par identité', () => {
-  it('ne touche que les messages de l’identité visée, et reste réversible', async () => {
+describe('moderation grouped by identity', () => {
+  it('touches only messages from the targeted identity and remains reversible', async () => {
     const mamie = identites.get('mamie@exemple.fr')!;
     const avant = await file({ limit: 100 });
     const siens = avant.comments.filter((comment) => comment.commenterId === mamie);
@@ -341,7 +341,7 @@ describe('modération groupée par identité', () => {
       assert.equal(
         comment.hiddenAt !== null,
         comment.commenterId === mamie,
-        `le message ${comment.id} n’a pas suivi son identité`,
+        `message ${comment.id} did not follow its identity`,
       );
     }
 
@@ -355,7 +355,7 @@ describe('modération groupée par identité', () => {
     assert.equal(retabli.total, 0);
   });
 
-  it('ne réécrit pas la date d’un message déjà masqué', async () => {
+  it('does not rewrite the date of an already hidden message', async () => {
     const chef = identites.get('chef@exemple.fr')!;
     const sien = (await file({ limit: 100 })).comments.find(
       (comment) => comment.commenterId === chef,
@@ -371,14 +371,14 @@ describe('modération groupée par identité', () => {
       url: `/api/admin/commenters/${chef}/hide`,
       headers: { cookie: adminCookie },
     });
-    // Le message déjà masqué ne compte pas : c'est la date de la décision
-    // d'origine qui intéresse, pas celle du geste groupé.
+    // The already hidden message does not count: the original decision date
+    // matters, not the bulk action date.
     const touches = groupe.json<{ affected: number }>().affected;
     const inchange = (await file({ limit: 100, filter: 'hidden' })).comments.find(
       (comment) => comment.id === sien.id,
     )!;
     assert.equal(inchange.hiddenAt, date);
-    assert.ok(touches >= 1, 'les autres messages de cette identité n’ont pas été masqués');
+    assert.ok(touches >= 1, 'other messages from this identity were not hidden');
 
     await server.inject({
       method: 'POST',
@@ -387,7 +387,7 @@ describe('modération groupée par identité', () => {
     });
   });
 
-  it('répond 404 sur une identité inconnue, et non « 0 message touché »', async () => {
+  it('returns 404 for an unknown identity rather than "0 messages affected"', async () => {
     const response = await server.inject({
       method: 'POST',
       url: '/api/admin/commenters/999999/hide',
@@ -396,14 +396,14 @@ describe('modération groupée par identité', () => {
     assert.equal(response.statusCode, 404);
   });
 
-  it('refuse l’action groupée à un visiteur, en 403 et non en 404', async () => {
+  it('rejects a visitor bulk action with 403 rather than 404', async () => {
     const mamie = identites.get('mamie@exemple.fr')!;
     const response = await server.inject({
       method: 'POST',
       url: `/api/admin/commenters/${mamie}/hide`,
       headers: { cookie: familleCookie },
     });
-    // L'espace d'administration est la seule exception assumée au 404 (D12).
+    // The administration area is the only deliberate exception to 404 (D12).
     assert.equal(response.statusCode, 403);
   });
 });

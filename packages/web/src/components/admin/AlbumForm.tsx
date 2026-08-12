@@ -12,13 +12,13 @@ import {
 import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
 
 interface AlbumFormProps {
-  /** Absent = création d'un album. */
+  /** Absent means creating an album. */
   album?: AdminAlbum;
   onClose: () => void;
   notify: Notify;
 }
 
-/** Formulaire de création et de modification d'un album. */
+/** Form for creating and editing an album. */
 export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElement {
   const fieldId = useId();
   const create = useCreateAlbum();
@@ -26,8 +26,8 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
   const editing = album !== undefined;
 
   const [albumId, setAlbumId] = useState(album?.id ?? '');
-  // Tant que l'identifiant n'a pas été touché, il suit le titre : c'est la
-  // valeur qu'on retrouve dans l'URL de l'album, autant qu'elle soit lisible.
+  // Until the identifier is touched, follow the title: this value appears in the
+  // album URL, so keep it readable.
   const [idTouchedByUser, setIdTouchedByUser] = useState(editing);
   const [title, setTitle] = useState(album?.title ?? '');
   const [description, setDescription] = useState(album?.description ?? '');
@@ -80,8 +80,8 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
       return;
     }
 
-    // Seuls les champs modifiés partent : un champ absent reste inchangé côté
-    // serveur, et `description: null` est le seul moyen de l'effacer.
+    // Send only changed fields: an absent field remains unchanged server-side,
+    // and `description: null` is the only way to clear it.
     const body: UpdateAlbumRequest = {};
     if (title.trim() !== album.title) body.title = title.trim();
     if ((description.trim() || null) !== album.description) {
@@ -158,8 +158,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         value={folder}
         onChange={setFolder}
         onBlur={() => {
-          // Normaliser à la sortie du champ : ce qui reste affiché est
-          // exactement ce qui sera envoyé.
+          // Normalise on blur so the displayed value is exactly what is sent.
           if (folderId !== null) setFolder(folderId);
         }}
         autoComplete="off"
@@ -169,7 +168,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         hint={
           extracted ? (
             <>
-              Identifiant retenu : <code className="text-ink-300">{folderId}</code>
+              Identifier used: <code className="text-ink-300">{folderId}</code>
             </>
           ) : (
             'Paste the folder URL: the identifier is the segment after /folders/.'

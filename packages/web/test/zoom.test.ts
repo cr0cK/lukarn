@@ -13,7 +13,7 @@ import {
 
 const MAX_SCALE = 8;
 
-/** Cadre de 1200 px de large, le cas courant d'une visionneuse sur portable. */
+/** A 1200 px-wide frame, typical for a viewer on a laptop. */
 function scaleFor(overrides: Partial<Parameters<typeof computeZoomScale>[0]> = {}) {
   return computeZoomScale({
     sourceWidth: 6000,
@@ -27,24 +27,24 @@ function scaleFor(overrides: Partial<Parameters<typeof computeZoomScale>[0]> = {
 }
 
 describe('computeZoomScale', () => {
-  it('plafonne la résolution disponible à celle du rendu hd, pas à celle du fichier', () => {
-    // Le défaut corrigé : 6000 / 1200 donnerait 5, une échelle à laquelle il
-    // faudrait peindre 6000 pixels avec les 4096 que le serveur a produits.
+  it('caps available resolution at the hd render rather than the file', () => {
+    // The corrected defect: 6000 / 1200 would produce 5, a scale at which 6000
+    // pixels would have to be painted using the 4096 produced by the server.
     const { availableWidth, pixelScale, limited } = scaleFor();
     assert.equal(availableWidth, HD_MAX_EDGE);
     assert.equal(pixelScale, HD_MAX_EDGE / 1200);
     assert.equal(limited, true);
   });
 
-  it('applique le plafond au plus grand côté, pas à la largeur', () => {
-    // Portrait 4000 × 6000 : c'est la hauteur qui touche le plafond, la largeur
-    // disponible tombe donc à 2731 et non à 4000.
+  it('applies the cap to the longest edge rather than the width', () => {
+    // For a 4000 × 6000 portrait, the height reaches the cap, so available
+    // width falls to 2731 rather than 4000.
     const { availableWidth, limited } = scaleFor({ sourceWidth: 4000, sourceHeight: 6000 });
     assert.equal(availableWidth, Math.round((4000 * HD_MAX_EDGE) / 6000));
     assert.equal(limited, true);
   });
 
-  it("n'annonce aucune limite quand le fichier tient sous le plafond", () => {
+  it('reports no limit when the file fits below the cap', () => {
     const { availableWidth, pixelScale, limited } = scaleFor({
       sourceWidth: 3000,
       sourceHeight: 2000,
@@ -54,15 +54,15 @@ describe('computeZoomScale', () => {
     assert.equal(limited, false);
   });
 
-  it('préfère la mesure du rendu hd à toute estimation', () => {
-    // Si le serveur changeait son plafond, la mesure reprend la main : c'est ce
-    // qui empêche la constante mirroir de mentir durablement.
+  it('prefers the measured hd render over any estimate', () => {
+    // If the server changes its cap, the measurement takes precedence, keeping
+    // the mirrored constant from remaining wrong.
     const { availableWidth, pixelScale } = scaleFor({ hdLoaded: true, renderedWidth: 3000 });
     assert.equal(availableWidth, 3000);
     assert.equal(pixelScale, 3000 / 1200);
   });
 
-  it("retombe sur le rendu reçu quand l'index ignore les dimensions", () => {
+  it('falls back to the received render when the index lacks dimensions', () => {
     const { availableWidth, pixelScale, limited } = scaleFor({
       sourceWidth: 0,
       sourceHeight: 0,
@@ -70,66 +70,66 @@ describe('computeZoomScale', () => {
     });
     assert.equal(availableWidth, 2560);
     assert.equal(pixelScale, 2560 / 1200);
-    // Rien n'est connu du fichier : on ne prétend pas qu'il est plus grand.
+    // Nothing is known about the file, so it is not claimed to be larger.
     assert.equal(limited, false);
   });
 
-  it("ne propose aucun zoom tant que rien n'est mesuré ni connu", () => {
+  it('offers no zoom until something is measured or known', () => {
     const { availableWidth, pixelScale } = scaleFor({ sourceWidth: 0, sourceHeight: 0 });
     assert.equal(availableWidth, 0);
     assert.equal(pixelScale, 1);
   });
 
-  it('ne descend jamais sous 1 ni au-dessus du plafond de zoom', () => {
-    // Cadre plus large que le rendu : l'agrandir n'ajouterait aucun détail.
+  it('never falls below 1 or exceeds the zoom cap', () => {
+    // A frame wider than the render would gain no detail from enlargement.
     assert.equal(scaleFor({ displayedWidth: 5000 }).pixelScale, 1);
     assert.equal(scaleFor({ displayedWidth: 200 }).pixelScale, MAX_SCALE);
   });
 });
 
 describe('zoomPercent', () => {
-  it("affiche 100 % exactement à un pixel de rendu par pixel d'écran", () => {
+  it('shows 100% at exactly one rendered pixel per screen pixel', () => {
     const { pixelScale, availableWidth } = scaleFor();
     assert.equal(zoomPercent(1200, pixelScale, availableWidth), 100);
   });
 
-  it('affiche moins de 100 % quand le plafond de zoom empêche de tout montrer', () => {
-    // 4096 pixels disponibles, cadre de 200 px : il faudrait une échelle de
-    // 20,5 pour les peindre tous, or le zoom s'arrête à 8.
+  it('shows less than 100% when the zoom cap prevents showing every pixel', () => {
+    // With 4096 available pixels in a 200 px frame, a scale of 20.5 would be
+    // needed to paint them all, but zoom stops at 8.
     const { pixelScale, availableWidth } = scaleFor({ displayedWidth: 200 });
     assert.equal(pixelScale, MAX_SCALE);
     assert.equal(zoomPercent(200, pixelScale, availableWidth), 39);
   });
 
-  it('dépasse 100 % dès que le navigateur interpole', () => {
+  it('exceeds 100% as soon as the browser interpolates', () => {
     const { availableWidth } = scaleFor();
     assert.equal(zoomPercent(1200, MAX_SCALE, availableWidth), 234);
   });
 });
 
-describe('repère de position', () => {
+describe('position indicator', () => {
   const displayed = { width: 1000, height: 800 };
   const container = { width: 500, height: 400 };
 
-  it('rapporte la part visible de la photo', () => {
-    // Échelle 2 : la fenêtre couvre la moitié de chaque côté.
+  it('reports the visible fraction of the photo', () => {
+    // At scale 2, the window covers half of each side.
     assert.equal(visibleFraction(displayed.width, container.width, 2), 0.25);
     assert.equal(visibleFraction(displayed.height, container.height, 2), 0.25);
   });
 
-  it('ne dépasse jamais la photo entière', () => {
-    // Image plus petite que la fenêtre : le cadre couvre tout le repère, il ne
-    // déborde pas — sinon il désignerait une zone qui n'existe pas.
+  it('never exceeds the whole photo', () => {
+    // When the image is smaller than the window, the frame covers the whole
+    // indicator without overflowing, otherwise it would point to a nonexistent area.
     assert.equal(visibleFraction(200, 500, 1), 1);
   });
 
-  it('situe la vue au centre quand rien n’est déplacé', () => {
+  it('places the view at the centre when nothing is offset', () => {
     assert.deepEqual(viewCenter({ x: 0, y: 0 }, displayed, 2), { x: 0.5, y: 0.5 });
   });
 
-  it('fait un aller-retour fidèle entre déplacement et point visé', () => {
-    // C'est l'invariant qui rend le repère manipulable : ce qu'il affiche et ce
-    // qu'il commande doivent parler de la même chose.
+  it('round-trips faithfully between offset and target point', () => {
+    // This invariant makes the indicator interactive: what it displays and
+    // what it controls must describe the same thing.
     for (const scale of [1.5, 2, 4]) {
       for (const offset of [
         { x: 0, y: 0 },
@@ -138,57 +138,57 @@ describe('repère de position', () => {
       ]) {
         const center = viewCenter(offset, displayed, scale);
         const retour = offsetForCenter(center, displayed, scale);
-        assert.ok(Math.abs(retour.x - offset.x) < 1e-9, `x à l'échelle ${scale}`);
-        assert.ok(Math.abs(retour.y - offset.y) < 1e-9, `y à l'échelle ${scale}`);
+        assert.ok(Math.abs(retour.x - offset.x) < 1e-9, `x at scale ${scale}`);
+        assert.ok(Math.abs(retour.y - offset.y) < 1e-9, `y at scale ${scale}`);
       }
     }
   });
 
-  it('déplace vers la gauche quand on vise la droite de la photo', () => {
-    // L'image glisse sous une fenêtre fixe : viser la droite la fait reculer.
+  it('moves left when targeting the right side of the photo', () => {
+    // The image slides under a fixed window, so targeting the right moves it back.
     const { x } = offsetForCenter({ x: 1, y: 0.5 }, displayed, 2);
-    assert.ok(x < 0, 'le déplacement doit être négatif');
+    assert.ok(x < 0, 'the offset must be negative');
     assert.equal(x, -1000);
   });
 
-  it('ne bouge pas pour un clic au centre', () => {
+  it('does not move for a click in the centre', () => {
     assert.deepEqual(offsetForCenter({ x: 0.5, y: 0.5 }, displayed, 3), { x: 0, y: 0 });
   });
 });
 
-describe('clic ou glisser', () => {
+describe('tap or drag', () => {
   const origin = { x: 400, y: 300 };
 
-  it('reconnaît un pointeur strictement immobile', () => {
+  it('recognises a completely still pointer', () => {
     assert.equal(isTap(origin, { x: 400, y: 300 }), true);
   });
 
-  it('tolère le tremblement de la main sous le seuil', () => {
-    // Le défaut à corriger : sans cette tolérance, aucun clic ne serait jamais
-    // reconnu au doigt ni au stylet, qui bougent toujours d'un pixel ou deux.
+  it('tolerates hand tremor below the threshold', () => {
+    // Without this tolerance, no tap would ever be recognised from a finger or
+    // stylus, which always moves by a pixel or two.
     assert.equal(isTap(origin, { x: 402, y: 299 }), true);
   });
 
-  it('mesure la distance parcourue, pas chaque axe séparément', () => {
-    // 3 et 4 pixels font 5 en diagonale : pile le seuil, donc encore un clic.
-    // Pris axe par axe, un déplacement de 4 sur chaque axe passerait aussi,
-    // alors qu'il fait 5,66 — un glisser.
+  it('measures distance travelled rather than each axis separately', () => {
+    // 3 and 4 pixels make 5 diagonally, exactly the threshold and still a tap.
+    // Checked axis by axis, a movement of 4 on each would also pass even though
+    // its distance is 5.66, making it a drag.
     assert.equal(isTap(origin, { x: origin.x + 3, y: origin.y + 4 }), true);
     assert.equal(isTap(origin, { x: origin.x + 4, y: origin.y + 4 }), false);
   });
 
-  it('tient un glisser court et lent pour un glisser', () => {
-    // La durée n'entre pas en compte : seul le déplacement décide, sinon un
-    // déplacement posément amorcé finirait par dézoomer.
+  it('treats a short slow drag as a drag', () => {
+    // Duration does not matter because only displacement decides; otherwise a
+    // deliberately started movement would eventually zoom out.
     assert.equal(isTap(origin, { x: origin.x + TAP_SLOP_PX + 1, y: origin.y }), false);
   });
 
-  it('accepte un seuil imposé par l’appelant', () => {
+  it('accepts a threshold supplied by the caller', () => {
     assert.equal(isTap(origin, { x: origin.x + 10, y: origin.y }, 12), true);
     assert.equal(isTap(origin, { x: origin.x + 10, y: origin.y }, 8), false);
   });
 
-  it('ignore le sens du déplacement', () => {
+  it('ignores movement direction', () => {
     for (const [dx, dy] of [
       [TAP_SLOP_PX + 1, 0],
       [-TAP_SLOP_PX - 1, 0],

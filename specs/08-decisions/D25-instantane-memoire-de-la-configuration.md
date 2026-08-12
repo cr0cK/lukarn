@@ -1,19 +1,19 @@
-# D25 — Instantané mémoire de la configuration
+# D25 — In-memory configuration snapshot
 
-**Contexte.** `canSee()` est appelé sur chaque requête média, donc sur chaque
-vignette d'une grille de plusieurs centaines de tuiles. La config en mémoire
-qu'on remplaçait ne coûtait rien.
+**Context.** `canSee()` is called on every media request, and therefore for every
+thumbnail in a grid of several hundred tiles. Replacing the in-memory config was
+cost-free.
 
-**Choix.** `ConfigRepo` tient un instantané (albums, comptes, droits, réglages),
-reconstruit à la première lecture qui suit une écriture. Étant le seul écrivain
-de ces tables, il ne peut pas servir un état périmé.
+**Decision.** `ConfigRepo` maintains a snapshot (albums, accounts, access rights,
+settings), rebuilt on the first read after a write. As the sole writer to these
+tables, it cannot serve stale state.
 
-**Écarté.** Une requête SQL par appel : indexée et en process, elle serait
-tenable, mais c'est plusieurs centaines de requêtes par ouverture d'album pour
-une donnée qui change quelques fois par mois. Écarté aussi : un cache à
-expiration temporelle, qui ferait survivre un accès retiré quelques secondes —
-inacceptable pour une décision d'autorisation.
+**Rejected.** One SQL query per call: indexed and in-process, it would be
+manageable, but that means several hundred queries each time an album is opened
+for data that changes a few times a month. Also rejected: a time-expiring cache,
+which would preserve revoked access for a few seconds — unacceptable for an
+authorisation decision.
 
-**Conséquences.** Toute écriture doit passer par `ConfigRepo`. Un `UPDATE` direct
-sur `users` ou `albums` depuis un autre module servirait un instantané périmé
-jusqu'à la prochaine écriture légitime.
+**Consequences.** Every write must go through `ConfigRepo`. A direct `UPDATE` on
+`users` or `albums` from another module would serve a stale snapshot until the
+next legitimate write.

@@ -1,48 +1,47 @@
 import { useEffect, useState } from 'react';
 
 /**
- * L'événement que Chrome émet quand l'application remplit les critères
- * d'installation. Absent des types du DOM, qui ne décrivent que le standard.
+ * Event Chrome emits when the application meets installation criteria. Absent
+ * from DOM types, which describe only the standard.
  */
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
 }
 
-/** L'application tourne-t-elle déjà hors du navigateur ? */
+/** Whether the application already runs outside the browser. */
 function estInstallee(): boolean {
   if (window.matchMedia('(display-mode: standalone)').matches) return true;
-  // Safari iOS n'implémente pas `display-mode` et expose ce drapeau à la place.
+  // iOS Safari does not implement `display-mode` and exposes this flag instead.
   return 'standalone' in navigator && navigator.standalone === true;
 }
 
 /**
- * iOS n'a pas d'API d'installation : rien ne se déclenche, rien ne se demande.
- * Le seul chemin est un geste manuel dans le menu de partage, et c'est
- * précisément parce qu'il ne se devine pas qu'il faut l'écrire.
+ * iOS has no installation API: nothing triggers or prompts. The only path is a
+ * manual action in the share menu, and its invisibility is precisely why it must
+ * be explained.
  */
 function estIOS(): boolean {
   const ua = navigator.userAgent;
-  // Un iPad récent se présente comme un Mac ; l'écran tactile le trahit.
+  // A recent iPad presents itself as a Mac; its touchscreen reveals it.
   return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 }
 
-/** Ce que l'interface a besoin de savoir pour proposer l'installation. */
+/** What the interface needs to offer installation. */
 export interface InstallPrompt {
-  /** Proposer l'installation mène-t-il quelque part ? Sinon, ne rien afficher. */
+  /** Whether offering installation leads anywhere. Otherwise show nothing. */
   disponible: boolean;
-  /** Vrai sur iOS : aucune API, le seul chemin passe par un mode d'emploi. */
+  /** True on iOS: no API, so instructions are the only path. */
   manuel: boolean;
-  /** Déclenche l'invite native du navigateur. Sans effet si `manuel`. */
+  /** Triggers the browser's native prompt. No effect when `manuel`. */
   installer: () => void;
 }
 
 /**
- * L'état de l'installation, séparé de ce qui l'affiche.
+ * Installation state, separate from its presentation.
  *
- * La proposition apparaît à deux endroits selon la largeur — un bouton dans la
- * barre, une ligne dans le menu — et un état dupliqué entre les deux finirait
- * par diverger : le bouton disparaîtrait après `appinstalled`, la ligne de menu
- * non.
+ * The offer appears in two places depending on width — a bar button and a menu
+ * row — and duplicated state would eventually diverge: the button might
+ * disappear after `appinstalled` while the menu row remained.
  */
 export function useInstallPrompt(): InstallPrompt {
   const [invite, setInvite] = useState<BeforeInstallPromptEvent | null>(null);
@@ -50,9 +49,8 @@ export function useInstallPrompt(): InstallPrompt {
 
   useEffect(() => {
     const onInvite = (event: Event): void => {
-      // Sans ce `preventDefault`, Chrome affiche sa propre bannière et
-      // l'événement n'est plus rejouable : le bouton n'aurait plus rien à
-      // déclencher.
+      // Without `preventDefault`, Chrome shows its own banner and the event cannot
+      // be replayed: the button would have nothing left to trigger.
       event.preventDefault();
       setInvite(event as BeforeInstallPromptEvent);
     };
@@ -77,8 +75,8 @@ export function useInstallPrompt(): InstallPrompt {
     installer: () => {
       if (!invite) return;
       void invite.prompt();
-      // L'invite ne se rejoue pas : Chrome en émettra une neuve si
-      // l'installation est refusée puis redevient possible.
+      // The prompt cannot be replayed: Chrome emits a new one if installation is
+      // declined and later becomes available again.
       setInvite(null);
     },
   };

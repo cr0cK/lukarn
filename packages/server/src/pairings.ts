@@ -4,52 +4,51 @@ import { hashDeviceCode } from './crypto.js';
 import type { Db } from './db.js';
 
 /**
- * Durée de vie d'une demande. Assez pour aller chercher son téléphone, pas
- * assez pour qu'un code approuvable traîne sur un écran resté allumé.
+ * Request lifetime. Long enough to fetch a phone, not long enough for an
+ * approvable code to linger on a screen left on.
  */
 const TTL_MS = 5 * 60 * 1000;
 
-/** Cadence de sondage annoncée au demandeur. */
+/** Polling interval advertised to the requester. */
 export const POLL_INTERVAL_MS = 2_000;
 
 /**
- * Borne du nombre de demandes en attente. La table est en base : une rafale de
- * demandes ne doit pas la faire grossir sans fin. Personne n'y gagne un accès —
- * au pire l'appairage devient indisponible le temps de la rafale, ce qu'une
- * rafale obtiendrait de toute façon.
+ * Limit on pending requests. The table lives in the database, so a burst of requests
+ * must not make it grow without bound. Nobody gains access from this — at worst,
+ * pairing becomes unavailable during the burst, which the burst would achieve anyway.
  */
 export const MAX_PENDING = 200;
 
 /**
- * Tirages avant d'abandonner sur collision de code. Huit caractères sur un
- * alphabet de 32 font 40 bits : avec 200 demandes vivantes au plus, une
- * collision est déjà improbable, deux d'affilée relèvent de la panne.
+ * Draws before giving up after a code collision. Eight characters from an alphabet
+ * of 32 provide 40 bits: with at most 200 live requests, one collision is already
+ * unlikely and two in a row indicate a failure.
  */
 const CODE_ATTEMPTS = 5;
 
-/** Une demande d'appairage vivante, telle que la page d'approbation la lit. */
+/** A live pairing request as read by the approval page. */
 export interface PairingRecord {
   userCode: string;
-  /** Compte de celui qui a approuvé, `null` tant que personne ne l'a fait. */
+  /** Account of the approver, `null` until someone approves. */
   username: string | null;
   approvedAt: string | null;
   expiresAt: string;
 }
 
-/** Ce que rend une approbation : rejouer la sienne ne change rien, celle d'un autre est refusée. */
+/** Approval result: repeating one's own changes nothing, while another's is refused. */
 export type ApprovalResult = 'ok' | 'unknown' | 'taken';
 
-/** Ce que rend un sondage. `unknown` couvre inconnu, expiré et déjà relevé. */
+/** Poll result. `unknown` covers unknown, expired and already claimed requests. */
 export type ClaimResult =
   { status: 'unknown' } | { status: 'pending' } | { status: 'approved'; username: string };
 
 /**
- * Demandes d'appairage d'un écran sans clavier (D260809c).
+ * Pairing requests from a keyboardless screen (D260809c).
  *
- * Deux valeurs de natures opposées circulent, et tout le mécanisme tient à leur
- * séparation : le `userCode` s'affiche à l'écran — donc devant toute la pièce —
- * et ne fait que désigner la demande ; le `deviceCode` n'est rendu qu'une fois,
- * au demandeur, et c'est lui seul qui relève la session.
+ * Two values of opposite natures circulate, and the whole mechanism depends on
+ * keeping them separate: the `userCode` is displayed on screen — in front of the
+ * whole room — and only identifies the request; the `deviceCode` is returned once
+ * to the requester and is the only value that claims the session.
  */
 export class PairingStore {
   constructor(
@@ -58,9 +57,9 @@ export class PairingStore {
   ) {}
 
   /**
-   * Ouvre une demande, ou rend `null` si trop de demandes attendent déjà. Purge
-   * les expirées avant de compter : sans ça, une rafale d'il y a une heure
-   * fermerait l'appairage jusqu'au ménage horaire.
+   * Opens a request, or returns `null` if too many requests are already pending.
+   * Purges expired requests before counting: otherwise a burst from an hour ago
+   * would disable pairing until hourly housekeeping.
    */
   start(now = new Date()): DevicePairingStart | null {
     this.purgeExpired(now);
@@ -83,15 +82,15 @@ export class PairingStore {
         insert.run(userCode, hashDeviceCode(deviceCode, this.secret), now.toISOString(), expiresAt);
         return { userCode, deviceCode, expiresAt, intervalMs: POLL_INTERVAL_MS };
       } catch {
-        // Collision sur la clé primaire : on retire un autre code. Toute autre
-        // erreur d'écriture se reproduira à l'identique et finira en `null`,
-        // c'est-à-dire en refus d'ouvrir une demande — jamais en accès accordé.
+        // Primary-key collision: draw another code. Any other write error will recur
+        // unchanged and end as `null`, meaning refusal to open a request — never
+        // granted access.
       }
     }
     return null;
   }
 
-  /** La demande vivante portant ce code, `null` si inconnue ou expirée. */
+  /** The live request carrying this code, `null` if unknown or expired. */
   find(userCode: string, now = new Date()): PairingRecord | null {
     const row = this.db
       .prepare(
@@ -104,17 +103,17 @@ export class PairingStore {
   }
 
   /**
-   * Inscrit qui approuve — et rien de plus. Aucune session n'est créée ici :
-   * sinon un écran éteint entre-temps laisserait derrière lui une session d'un
-   * an que personne n'a ouverte (D260809c).
+   * Records who approves — and nothing more. No session is created here: otherwise
+   * a screen switched off in the meantime would leave behind a year-long session
+   * that nobody opened (D260809c).
    */
   approve(userCode: string, username: string, now = new Date()): ApprovalResult {
     const pairing = this.find(userCode, now);
     if (!pairing) return 'unknown';
 
     if (pairing.username !== null) {
-      // Rejouer sa propre approbation n'est pas une erreur : c'est un double
-      // clic, ou une page rouverte. Celle d'un autre compte, si.
+      // Repeating one's own approval is not an error: it is a double click or a
+      // reopened page. Repeating another account's approval is.
       return pairing.username.toLowerCase() === username.toLowerCase() ? 'ok' : 'taken';
     }
 
@@ -125,9 +124,9 @@ export class PairingStore {
   }
 
   /**
-   * Relève une demande approuvée : rend le compte à ouvrir et **supprime** la
-   * ligne. Un `deviceCode` ne vaut donc qu'une seule session ; rejoué, il tombe
-   * sur la même réponse qu'un code inconnu.
+   * Claims an approved request: returns the account to open and **deletes** the row.
+   * A `deviceCode` therefore grants only one session; replayed, it receives the same
+   * response as an unknown code.
    */
   claim(deviceCode: string, now = new Date()): ClaimResult {
     const row = this.db
@@ -145,7 +144,7 @@ export class PairingStore {
     return { status: 'approved', username: row.username };
   }
 
-  /** Retire une demande — relevée, refusée, ou dont le compte a disparu. */
+  /** Removes a request — claimed, refused, or belonging to a missing account. */
   forget(userCode: string): void {
     this.db.prepare('DELETE FROM device_pairings WHERE user_code = ?').run(userCode);
   }
@@ -158,8 +157,8 @@ export class PairingStore {
 }
 
 /**
- * Huit caractères tirés au sort, sans biais : `randomInt` rejette les tirages
- * qui déséquilibreraient l'alphabet, ce qu'un modulo sur un octet ferait.
+ * Eight randomly drawn characters without bias: `randomInt` rejects draws that
+ * would skew the alphabet, unlike taking a byte modulo its length.
  */
 function generateUserCode(): string {
   let code = '';

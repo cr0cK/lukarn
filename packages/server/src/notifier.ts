@@ -4,19 +4,18 @@ import type { MediaRepo, SyncStateRepo } from './repo.js';
 import type { SubscriptionRepo } from './subscriptions.js';
 
 /**
- * Annonce des nouvelles photos d'un album à ceux qui l'ont ouvert.
+ * Announces an album's new photos to those who have opened it.
  *
- * **Pourquoi ici et pas à la fin d'une synchronisation.** Une sync tourne toutes
- * les demi-heures et écrit par lots de 500 : verser deux cents photos un
- * dimanche soir enverrait une dizaine d'emails dans la journée. L'annonce est
- * donc branchée sur le ménage horaire de `main.ts` et ne parle que des albums
- * dont la dernière synchronisation réussie est **calme** depuis une heure. La
- * cadence reste réactive — quelques heures, pas un récapitulatif quotidien —,
- * ce qui garde le lien entre « on vient de rentrer de vacances » et « il y a
- * des photos » (D41).
+ * **Why here instead of at the end of a synchronisation.** A sync runs every half
+ * hour and writes in batches of 500: adding two hundred photos on a Sunday evening
+ * would send around ten emails during the day. Announcements therefore run with
+ * the hourly housekeeping in `main.ts` and only cover albums whose last successful
+ * synchronisation has been **quiet** for an hour. The cadence remains responsive —
+ * a few hours, not a daily digest — preserving the link between "we have just
+ * returned from holiday" and "there are photos" (D41).
  */
 
-/** Silence exigé après la dernière sync réussie avant d'annoncer quoi que ce soit. */
+/** Quiet period required after the last successful sync before announcing anything. */
 const QUIET_PERIOD_MS = 60 * 60 * 1000;
 
 interface Logger {
@@ -24,24 +23,24 @@ interface Logger {
   debug: (msg: string) => void;
 }
 
-/** Le minimum dont l'annonce a besoin d'un album : son id et son titre. */
+/** The minimum album data an announcement needs: its ID and title. */
 export interface NotifiableAlbum {
   id: string;
   title: string;
 }
 
 export interface AlbumNotifierDeps {
-  /** Relu à chaque passage : un album créé depuis le démarrage compte aussi. */
+  /** Read again on every pass so an album created since startup is included too. */
   albums: () => NotifiableAlbum[];
   media: MediaRepo;
   syncState: SyncStateRepo;
   subscriptions: SubscriptionRepo;
   /**
-   * Une fonction et non l'instance, pour la même raison qu'`albums` : capturer
-   * le `Mailer` à la construction fige ce que le notifieur voit. Un test qui
-   * remplace `context.mailer` — ce que fait déjà `comments.test.ts` — piloterait
-   * alors les commentaires sans piloter les annonces, et le décalage ne se
-   * manifesterait que par une attente qui n'arrive jamais.
+   * A function rather than the instance, for the same reason as `albums`: capturing
+   * the `Mailer` during construction freezes what the notifier sees. A test that
+   * replaces `context.mailer` — as `comments.test.ts` already does — would then
+   * control comments but not announcements, and the mismatch would only surface
+   * as a wait that never completes.
    */
   mailer: () => Mailer;
   env: Env;
@@ -52,33 +51,32 @@ export class AlbumNotifier {
   constructor(private readonly deps: AlbumNotifierDeps) {}
 
   /**
-   * Un passage sur tous les albums. Rend le nombre d'albums annoncés.
+   * One pass over all albums. Returns the number of albums announced.
    *
-   * `now` est injectable : sans lui, vérifier qu'un album fraîchement
-   * synchronisé n'est pas annoncé demanderait d'attendre une heure.
+   * `now` is injectable: without it, checking that a freshly synchronised album
+   * is not announced would require waiting an hour.
    */
   run(now = Date.now()): number {
-    // Sans transport, on ne touche à rien — surtout pas à `notified_at`.
-    // L'avancer sans envoyer ferait manquer définitivement les photos arrivées
-    // avant la configuration de SMTP ; le laisser à NULL fait que la première
-    // exécution avec un transport initialise la borne sans rien annoncer, ce
-    // qui est exactement le comportement voulu.
+    // Without a transport, nothing is touched — especially not `notified_at`.
+    // Advancing it without sending would permanently miss photos added before SMTP
+    // was configured; leaving it NULL means the first run with a transport sets
+    // the boundary without announcing anything, which is exactly the intended behaviour.
     if (!this.deps.mailer().enabled) return 0;
 
     let announced = 0;
 
     for (const album of this.deps.albums()) {
       const state = this.deps.syncState.get(album.id);
-      // `lastSyncAt` n'avance qu'en cas de succès : un album en erreur porte
-      // donc un index partiel, dont on n'a pas à tirer un compte de nouveautés.
+      // `lastSyncAt` only advances on success: an album in error therefore has a
+      // partial index, which must not be used to calculate a count of new items.
       if (state.status !== 'ok' || !state.lastSyncAt) continue;
       if (now - Date.parse(state.lastSyncAt) < QUIET_PERIOD_MS) continue;
 
       const notifiedAt = this.deps.syncState.notifiedAt(album.id);
       if (notifiedAt === null) {
-        // Première rencontre avec cet album — installation neuve, ou base mise
-        // à jour. On pose la borne sans envoyer : annoncer ici, ce serait
-        // annoncer tout l'historique de la galerie d'un coup.
+        // First encounter with this album — either a new installation or an upgraded
+        // database. Set the boundary without sending: announcing here would announce
+        // the gallery's entire history at once.
         this.deps.syncState.markNotified(album.id, new Date(now).toISOString());
         continue;
       }
@@ -86,10 +84,10 @@ export class AlbumNotifier {
       const { count, latest } = this.deps.media.countAddedSince(album.id, notifiedAt);
       if (count === 0 || latest === null) continue;
 
-      // La borne avance avant l'envoi, et même sans destinataire. Sans cela,
-      // un album que personne n'a encore ouvert accumulerait ses nouveautés, et
-      // le premier abonné recevrait « 3 000 nouvelles photos » pour son premier
-      // email — pour des photos arrivées avant qu'il ne s'abonne.
+      // The boundary advances before delivery, even with no recipient. Otherwise,
+      // an album that nobody has opened yet would accumulate new items, and its first
+      // subscriber would receive "3,000 new photos" in their first email — for photos
+      // that arrived before they subscribed.
       this.deps.syncState.markNotified(album.id, latest);
 
       const subscribers = this.deps.subscriptions.subscribers(album.id);

@@ -12,13 +12,13 @@ import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Description d'une photo, vue de l'API.
+ * Photo description as exposed by the API.
  *
- * Quatre invariants, et ce sont ceux qui coûteraient cher à casser : le texte
- * est **cloisonné par album**, il **survit à une désindexation** (une photo
- * quitte l'index sur un simple contretemps Drive, un texte écrit à la main ne se
- * régénère pas), la **jointure ne dérange pas la pagination**, et l'écriture
- * reste sous `/api/admin`, seul préfixe qui réponde 403 (D50, D83).
+ * Four invariants would be costly to break: text is **isolated by album**, it
+ * **survives deindexing** (a photo can leave the index after a transient Drive
+ * problem, while manually written text cannot be regenerated), the **join does
+ * not disrupt pagination**, and writes remain under `/api/admin`, the only
+ * prefix that returns 403 (D50, D83).
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -65,7 +65,7 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
   return `nonni_session=${response.cookies.find((c) => c.name === 'nonni_session')!.value}`;
 }
 
@@ -122,11 +122,11 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('description de photo — cloisonnement', () => {
-  it('le même fichier indexé sous deux albums porte deux textes', () => {
-    // Le dossier imbriqué est le cas courant : un fichier légitimement présent
-    // dans deux albums. Confondre les deux textes montrerait à un visiteur ce
-    // qui a été écrit dans un album qu'il ne peut pas ouvrir (D12).
+describe('photo description — isolation', () => {
+  it('stores two texts for the same file indexed under two albums', () => {
+    // A nested folder is the common case: one file legitimately present in two
+    // albums. Mixing the texts would show a visitor what was written in an
+    // album they cannot open (D12).
     const takenAt = '2026-07-14T10:00:00.000Z';
     context.media.upsertMany(
       [photo('corse', 'partagee', takenAt), photo('prive', 'partagee', takenAt)],
@@ -140,7 +140,7 @@ describe('description de photo — cloisonnement', () => {
     assert.equal(context.media.getDetail('prive', 'partagee')?.description, 'À ne pas montrer');
   });
 
-  it('la description voyage avec l’item et avec le détail', async () => {
+  it('carries the description with both the item and the detail', async () => {
     const takenAt = '2026-07-14T10:00:00.000Z';
     context.media.upsertMany([photo('corse', 'p1', takenAt)], takenAt);
     context.media.setDescription('corse', 'p1', { description: 'Léa saute du ponton' });
@@ -153,12 +153,11 @@ describe('description de photo — cloisonnement', () => {
   });
 });
 
-describe('description de photo — survie à la désindexation', () => {
-  it('survit à deleteStale, et revient avec la photo réindexée', () => {
-    // Corbeille Drive le temps d'un retour en arrière, dossier renommé, sync
-    // interrompue : la photo quitte l'index sans que personne n'ait décidé de
-    // perdre ce qui était écrit dessus. L'identifiant Drive étant stable, elle
-    // doit retrouver son texte (D83).
+describe('photo description — survival after deindexing', () => {
+  it('survives deleteStale and returns with the reindexed photo', () => {
+    // A temporary move to the Drive bin, a renamed folder or an interrupted sync
+    // removes the photo from the index without anybody deciding to lose its
+    // text. Since the Drive identifier is stable, the text must return (D83).
     context.media.upsertMany([photo('corse', 'p1', '2026-07-14T10:00:00.000Z')], 'passage-1');
     context.media.setDescription('corse', 'p1', { description: 'Léa saute du ponton' });
 
@@ -171,20 +170,20 @@ describe('description de photo — survie à la désindexation', () => {
           .get('corse') as { n: number }
       ).n,
       1,
-      'la description ne part pas avec la photo',
+      'the description must not leave with the photo',
     );
 
     context.media.upsertMany([photo('corse', 'p1', '2026-07-14T10:00:00.000Z')], 'passage-3');
     assert.equal(context.media.getDetail('corse', 'p1')?.description, 'Léa saute du ponton');
   });
 
-  it('part avec l’album, seul ménage prévu', () => {
+  it('leaves with the album, the only intended cleanup', () => {
     context.media.upsertMany([photo('corse', 'p1', '2026-07-14T10:00:00.000Z')], 'passage-1');
     context.media.setDescription('corse', 'p1', { description: 'Léa saute du ponton' });
 
     context.config.deleteAlbum('corse');
 
-    // La cascade sur `albums` : c'est elle, et elle seule, qui nettoie.
+    // The cascade on `albums`, and only it, performs cleanup.
     assert.equal(
       (context.db.prepare('SELECT COUNT(*) AS n FROM media_notes').get() as { n: number }).n,
       0,
@@ -192,14 +191,14 @@ describe('description de photo — survie à la désindexation', () => {
   });
 });
 
-describe('description de photo — pagination', () => {
-  it('la jointure ne duplique ni ne perd de ligne', async () => {
+describe('photo description — pagination', () => {
+  it('makes the join neither duplicate nor lose rows', async () => {
     const items = ['p1', 'p2', 'p3', 'p4', 'p5'].map((id, index) =>
       photo('corse', id, `2026-07-1${index}T10:00:00.000Z`),
     );
     context.media.upsertMany(items, 'passage-1');
-    // Deux photos décrites sur cinq : la jointure rend donc des lignes des deux
-    // sortes dans la même page.
+    // Two described photos out of five: the join therefore returns both kinds
+    // of row on the same page.
     context.media.setDescription('corse', 'p2', { description: 'Décrite' });
     context.media.setDescription('corse', 'p4', { description: 'Décrite aussi' });
 
@@ -213,7 +212,7 @@ describe('description de photo — pagination', () => {
     } while (cursor);
 
     assert.deepEqual(seen, ['p1', 'p2', 'p3', 'p4', 'p5']);
-    assert.equal(new Set(seen).size, seen.length, 'aucun doublon');
+    assert.equal(new Set(seen).size, seen.length, 'no duplicates');
   });
 });
 
@@ -224,9 +223,9 @@ describe('PATCH /api/admin/albums/:id/items/:mediaId', () => {
     context.media.upsertMany([photo('corse', 'p1', '2026-07-14T10:00:00.000Z')], 'passage-1');
   });
 
-  it('refuse un visiteur avec 403, et un anonyme avec 401', async () => {
-    // 403 ici et nulle part ailleurs : c'est la contrepartie de la saisie
-    // depuis la galerie, et cette route ne déplace pas l'invariant (D50).
+  it('rejects a visitor with 403 and an anonymous user with 401', async () => {
+    // 403 here and nowhere else: this is the counterpart to editing from the
+    // gallery, and this route does not shift the invariant (D50).
     assert.equal((await patch(url, visitorCookie, { description: 'Non' })).statusCode, 403);
     assert.equal(
       (await server.inject({ method: 'PATCH', url, payload: { description: 'Non' } })).statusCode,
@@ -235,7 +234,7 @@ describe('PATCH /api/admin/albums/:id/items/:mediaId', () => {
     assert.equal(context.media.getDetail('corse', 'p1')?.description, null);
   });
 
-  it('écrit, relit, et rend l’item à jour', async () => {
+  it('writes, reads back and returns the updated item', async () => {
     const saved = await patch(url, adminCookie, { description: 'Léa saute du ponton' });
     assert.equal(saved.statusCode, 200);
     assert.equal((saved.json() as MediaItem).id, 'p1');
@@ -245,30 +244,30 @@ describe('PATCH /api/admin/albums/:id/items/:mediaId', () => {
     assert.equal((relu.json() as MediaItem).description, 'Troisième essai');
   });
 
-  it('efface avec null comme avec une chaîne vide', async () => {
+  it('clears with null or an empty string', async () => {
     await patch(url, adminCookie, { description: 'Une légende' });
     assert.equal((await patch(url, adminCookie, { description: null })).statusCode, 200);
     assert.equal(context.media.getDetail('corse', 'p1')?.description, null);
 
     await patch(url, adminCookie, { description: 'Une légende' });
-    // La chaîne vide est ce qu'envoie un champ qu'on vient de vider : la
-    // refuser obligerait le front à traduire « vide » en `null`.
+    // An empty string is what a field sends after being cleared: rejecting it
+    // would force the front end to translate "empty" into `null`.
     assert.equal((await patch(url, adminCookie, { description: '   ' })).statusCode, 200);
     assert.equal(context.media.getDetail('corse', 'p1')?.description, null);
     assert.equal(
       (context.db.prepare('SELECT COUNT(*) AS n FROM media_notes').get() as { n: number }).n,
       0,
-      'une ligne vide ne dit rien de plus qu’une ligne absente',
+      'an empty line says no more than an absent line',
     );
   });
 
-  it('laisse le texte en place quand le champ est absent', async () => {
+  it('leaves the text in place when the field is absent', async () => {
     await patch(url, adminCookie, { description: 'Une légende' });
     const inchange = await patch(url, adminCookie, {});
     assert.equal((inchange.json() as MediaItem).description, 'Une légende');
   });
 
-  it('refuse au-delà de mille caractères', async () => {
+  it('rejects more than one thousand characters', async () => {
     assert.equal(
       (await patch(url, adminCookie, { description: 'x'.repeat(1001) })).statusCode,
       400,
@@ -279,13 +278,13 @@ describe('PATCH /api/admin/albums/:id/items/:mediaId', () => {
     );
   });
 
-  it('répond 404 sur un album inconnu et sur un média non indexé', async () => {
+  it('returns 404 for an unknown album and unindexed media', async () => {
     assert.equal(
       (await patch('/api/admin/albums/fantome/items/p1', adminCookie, { description: 'X' }))
         .statusCode,
       404,
     );
-    // Non indexé dans **cet** album : le texte n'aurait jamais été affiché.
+    // Not indexed in **this** album: the text could never have been displayed.
     assert.equal(
       (await patch('/api/admin/albums/prive/items/p1', adminCookie, { description: 'X' }))
         .statusCode,

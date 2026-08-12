@@ -1,17 +1,16 @@
-# D22 — Un objet `AppContext` traversant
+# D22 — A shared `AppContext` object
 
-**Contexte.** Routes, synchronisation et pipeline média ont besoin des mêmes
+**Context.** Routes, synchronisation and the media pipeline need the same
 services.
 
-**Choix.** Une classe `AppContext` construite une fois dans `buildApp`, portant
-config, base, repos, sessions, Drive, cache, renderer et syncer. Les fabriques de
-routes la reçoivent en paramètre et n'instancient rien.
+**Decision.** An `AppContext` class built once in `buildApp`, holding config,
+database, repos, sessions, Drive, cache, renderer and syncer. Route factories
+receive it as a parameter and instantiate nothing.
 
-**Écarté.** Un conteneur d'injection de dépendances (surdimensionné pour huit
-services), et les décorateurs Fastify (qui perdent le typage précis et
-disséminent l'assemblage).
+**Rejected.** A dependency injection container (oversized for eight services),
+and Fastify decorators (which lose precise typing and scatter the assembly).
 
-**Conséquences.** Les tests construisent un contexte réel sur un répertoire
-temporaire et interrogent l'application par `server.inject()`, sans mock — voir
-`packages/server/test/access.test.ts`. La config vit derrière un getter, ce qui
-permet le rechargement à chaud sans reconstruire quoi que ce soit.
+**Consequences.** Tests build a real context in a temporary directory and query
+the application through `server.inject()`, without mocks — see
+`packages/server/test/access.test.ts`. The config sits behind a getter, allowing
+hot reload without rebuilding anything.

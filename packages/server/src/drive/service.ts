@@ -1,5 +1,5 @@
-// Paquets d'API ciblés plutôt que `googleapis` entier : ce dernier embarque
-// toutes les API Google (~110 Mo) alors que seules Drive et OAuth2 servent ici.
+// Targeted API packages rather than all of `googleapis`: the latter bundles every
+// Google API (~110 MB), while only Drive and OAuth2 are used here.
 import { auth, drive, type drive_v3 } from '@googleapis/drive';
 import { oauth2 } from '@googleapis/oauth2';
 import type { Db } from '../db.js';
@@ -7,9 +7,9 @@ import { decryptSecret, encryptSecret } from '../crypto.js';
 import type { Env } from '../env.js';
 
 /**
- * `drive.readonly` donne la lecture de tout le Drive : c'est nécessaire pour
- * pointer n'importe quel dossier depuis la config sans avoir à le partager.
- * `userinfo.email` sert uniquement à afficher quel compte est connecté dans /admin.
+ * `drive.readonly` grants read access to all of Drive: this is required to select any
+ * folder from configuration without sharing it. `userinfo.email` is used only to show
+ * which account is connected in /admin.
  */
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
@@ -18,14 +18,13 @@ const SCOPES = [
 
 const DRIVE_FILES_ENDPOINT = 'https://www.googleapis.com/drive/v3/files';
 
-/** google-auth-library n'est pas une dépendance directe : le type vient d'ici. */
+/** google-auth-library is not a direct dependency, so its type comes from here. */
 type OAuth2Client = InstanceType<typeof auth.OAuth2>;
 type JwtClient = InstanceType<typeof auth.JWT>;
 
 /**
- * Ce qui sert à signer les appels à Drive. Les deux exposent `getAccessToken()`
- * et se donnent tels quels à `drive({ auth })` : tout le reste du service les
- * traite indifféremment.
+ * What signs calls to Drive. Both expose `getAccessToken()` and are passed as-is to
+ * `drive({ auth })`; the rest of the service treats them identically.
  */
 type AuthorizedClient = OAuth2Client | JwtClient;
 
@@ -37,11 +36,11 @@ export class DriveNotConnectedError extends Error {
 }
 
 /**
- * `TOKEN_KEY` ne déchiffre pas le jeton stocké. Sous-classe de
- * `DriveNotConnectedError` pour hériter de son traitement — l'instance ne peut
- * effectivement rien lire de Drive — tout en disant la seule chose qui compte :
- * le jeton est là, c'est la clé qui ne va pas. Le supprimer ferait perdre une
- * autorisation valide pour une variable d'environnement mal recopiée.
+ * `TOKEN_KEY` cannot decrypt the stored token. A subclass of
+ * `DriveNotConnectedError` to inherit its handling — the instance truly cannot read
+ * Drive — while stating the one fact that matters: the token exists, but the key is
+ * wrong. Deleting it would lose valid authorisation because of a mistyped environment
+ * variable.
  */
 export class DriveKeyMismatchError extends DriveNotConnectedError {
   constructor() {
@@ -70,12 +69,12 @@ export class DriveRevokedError extends Error {
 }
 
 /**
- * Drive n'a pas répondu à temps, ou limite le débit au-delà de nos réessais.
+ * Drive did not respond in time or continued rate-limiting beyond our retries.
  *
- * **Transitoire, et c'est tout l'intérêt de la distinguer** : un fichier au
- * format illisible échouera pareil dans une heure, celui-ci non. Le client doit
- * pouvoir revenir, d'où le 503 et l'en-tête `Retry-After` que la route en tire —
- * un 500 lui dirait « cassé », ce qui est faux et le ferait renoncer.
+ * **Transient, which is why the distinction matters**: a file in an unreadable format
+ * will fail the same way in an hour; this will not. The client must be able to retry,
+ * hence the 503 and `Retry-After` header produced by the route — a 500 would falsely
+ * say "broken" and make it give up.
  */
 export class DriveUnavailableError extends Error {
   constructor(
@@ -89,13 +88,12 @@ export class DriveUnavailableError extends Error {
 }
 
 /**
- * Google répond `invalid_grant` quand le refresh token n'est plus échangeable :
- * accès retiré depuis myaccount.google.com, six mois sans utilisation, ou
- * application repassée en statut « Test » (les jetons y expirent à 7 jours).
+ * Google returns `invalid_grant` when the refresh token can no longer be exchanged:
+ * access removed through myaccount.google.com, six months without use, or an
+ * application returned to "Testing" status, where tokens expire after seven days.
  *
- * L'erreur remonte tantôt de `getAccessToken()`, tantôt d'un appel à l'API
- * Drive, avec une forme qui varie selon le chemin parcouru — d'où la
- * reconnaissance sur plusieurs emplacements plutôt que sur un seul champ.
+ * The error may come from `getAccessToken()` or from a Drive API call, with a shape
+ * that varies by path — hence detection in several locations rather than one field.
  */
 function isRevocation(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
@@ -110,40 +108,37 @@ function isRevocation(error: unknown): boolean {
 }
 
 /**
- * Échéance d'un téléchargement de contenu, en millisecondes.
+ * Content-download timeout in milliseconds.
  *
- * Le chiffre importe moins que son existence : sans elle, `fetch` hérite du
- * défaut d'undici — **cinq minutes** —, et une place du limiteur de rendu est
- * prise *avant* le téléchargement. Deux téléchargements figés sur un VPS bicœur
- * gèlent donc tous les rendus pendant tout ce temps, ce qui, vu du navigateur,
- * ne se distingue pas d'un blocage définitif.
+ * Its existence matters more than its value: without it, `fetch` inherits undici's
+ * **five-minute** default, and a render-limiter slot is taken *before* downloading.
+ * Two stalled downloads on a dual-core VPS therefore freeze all renders for that
+ * duration, indistinguishable from a permanent stall in the browser.
  *
- * 120 s est dimensionné sur `MAX_DECODE_BYTES` (80 Mo) tiré sur une ligne lente,
- * et laisse une marge considérable au cas courant — un original d'appareil pèse
- * une dizaine de mégaoctets. Le pire cas devient 240 s quand le repli sur
- * l'aperçu Drive se fige à son tour, contre 600 s auparavant.
+ * 120 s accommodates `MAX_DECODE_BYTES` (80 MB) over a slow connection and leaves
+ * ample margin for the common case — a camera original weighs around ten megabytes.
+ * The worst case becomes 240 s when the Drive-preview fallback also stalls, rather
+ * than 600 s previously.
  */
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 
-/** Ce qu'on demande au client d'attendre avant de revenir, sur un échec transitoire. */
+/** How long the client is asked to wait before returning after a transient failure. */
 const RETRY_AFTER_SECONDS = 5;
 
-/** Réessais avant d'abandonner sur une limite de débit. */
+/** Retries before giving up on a rate limit. */
 const RATE_LIMIT_ATTEMPTS = 4;
 
-/** Premier délai d'attente. Doublé à chaque tentative, plafonné à 30 s. */
+/** Initial delay. Doubled on every attempt and capped at 30 s. */
 const RATE_LIMIT_BASE_MS = 1000;
 const RATE_LIMIT_MAX_MS = 30_000;
 
 /**
- * Google exprime ses limites de débit de deux façons : un `429`, ou un `403`
- * dont le corps porte le motif. Le statut seul ne suffit donc pas — un `403`
- * est aussi ce que répond un fichier auquel le compte n'a pas accès, et
- * réessayer celui-là quatre fois ne ferait que retarder l'échec.
+ * Google expresses rate limits in two ways: a `429`, or a `403` whose body carries
+ * the reason. Status alone is insufficient — `403` also applies to a file the account
+ * cannot access, and retrying that four times would only delay failure.
  *
- * `downloadQuotaExceeded` est délibérément exclu : c'est le quota de
- * téléchargement d'un fichier trop sollicité, qui se compte en heures. Attendre
- * trente secondes n'y change rien.
+ * `downloadQuotaExceeded` is deliberately excluded: it is the per-file download
+ * quota for an overused file and lasts hours. Waiting thirty seconds changes nothing.
  */
 function isRateLimited(status: number, body: string): boolean {
   if (status === 429) return true;
@@ -153,8 +148,8 @@ function isRateLimited(status: number, body: string): boolean {
 }
 
 /**
- * Délai avant la prochaine tentative. `Retry-After` de Google fait autorité
- * quand il est là ; sinon, doublement à chaque essai.
+ * Delay before the next attempt. Google's `Retry-After` is authoritative when
+ * present; otherwise the delay doubles on each attempt.
  */
 function retryDelayMs(retryAfter: string | null, attempt: number): number {
   const annonce = Number(retryAfter);
@@ -173,25 +168,24 @@ interface TokenRow {
 
 export interface DriveConnection {
   account: string | null;
-  /** `null` pour un compte de service : il n'y a pas eu de consentement à dater. */
+  /** `null` for a service account: there was no consent to date. */
   grantedAt: string | null;
-  /** Non `null` si Google a cessé d'accepter le refresh token. */
+  /** Non-`null` if Google has stopped accepting the refresh token. */
   revokedAt: string | null;
 }
 
 /**
- * Détient l'unique connexion OAuth de l'application et sert de porte d'entrée
- * vers Drive : l'API métadonnées (`api()`) pour l'indexation, et un accès HTTP
- * direct (`fetchFile()`) pour le contenu, qui permet de relayer les requêtes
- * `Range` telles quelles vers le navigateur.
+ * Holds the application's sole OAuth connection and serves as its gateway to Drive:
+ * the metadata API (`api()`) for indexing, and direct HTTP access (`fetchFile()`)
+ * for content, allowing `Range` requests to be relayed unchanged to the browser.
  */
 export class DriveService {
   private cachedClient: AuthorizedClient | null = null;
 
   /**
-   * Vrai depuis qu'une tentative de déchiffrement a échoué. Retenu ici plutôt
-   * que recalculé : `connected` est lu à chaque page de /admin, et déchiffrer
-   * coûte un `scrypt` — un prix qu'on ne paie pas pour afficher un état.
+   * True after a decryption attempt fails. Retained here rather than recalculated:
+   * `connected` is read on every /admin page, and decryption costs one `scrypt` —
+   * not a price worth paying to display state.
    */
   private unreadableToken = false;
 
@@ -206,20 +200,19 @@ export class DriveService {
   }
 
   /**
-   * Comment l'instance s'authentifie auprès de Drive. Le compte de service
-   * prend le pas quand sa clé est fournie : c'est le seul moyen d'éviter
-   * l'écran « Google n'a pas validé cette application », que la vérification
-   * d'un scope restreint ne lèverait qu'au prix d'un audit tiers (D46).
+   * How the instance authenticates with Drive. The service account takes precedence
+   * when its key is supplied: this is the only way to avoid the "Google hasn't verified
+   * this app" screen, which verifying a restricted scope would remove only after a
+   * third-party audit (D46).
    */
   get mode(): 'service_account' | 'oauth' {
     return this.env.serviceAccount ? 'service_account' : 'oauth';
   }
 
   get connection(): DriveConnection | null {
-    // Un compte de service n'a ni consentement ni révocation : il est autorisé
-    // par le partage du dossier côté Drive, que l'API ne sait pas interroger.
-    // /admin affiche donc son adresse, la seule chose utile — c'est elle qu'on
-    // recopie dans le partage.
+    // A service account has neither consent nor revocation: folder sharing in Drive
+    // authorises it, and the API cannot query that. /admin therefore shows its address,
+    // the only useful detail — this is what gets copied into sharing settings.
     if (this.env.serviceAccount) {
       return { account: this.env.serviceAccount.email, grantedAt: null, revokedAt: null };
     }
@@ -231,9 +224,8 @@ export class DriveService {
   }
 
   /**
-   * Un jeton révoqué — ou qui ne se déchiffre pas — est encore stocké, mais ne
-   * permet plus rien. /admin doit donc proposer de reconnecter, sans que le
-   * jeton en place soit effacé pour autant.
+   * A revoked or undecryptable token remains stored but enables nothing. /admin must
+   * therefore offer reconnection without deleting the existing token.
    */
   get connected(): boolean {
     if (this.env.serviceAccount) return true;
@@ -242,13 +234,13 @@ export class DriveService {
     return row !== null && row.revoked_at === null;
   }
 
-  /** URL de consentement Google. `state` protège le callback contre le CSRF. */
+  /** Google consent URL. `state` protects the callback against CSRF. */
   authUrl(state: string): string {
     return this.newClient().generateAuthUrl({
       access_type: 'offline',
-      // `consent` force Google à réémettre un refresh_token même si l'app a
-      // déjà été autorisée : sans ça, une seconde autorisation ne renvoie rien
-      // et la connexion échouerait silencieusement.
+      // `consent` forces Google to reissue a refresh_token even if the application was
+      // already authorised: without it, a second authorisation returns nothing and
+      // connection would fail silently.
       prompt: 'consent',
       scope: SCOPES,
       include_granted_scopes: true,
@@ -256,7 +248,7 @@ export class DriveService {
     });
   }
 
-  /** Échange le code du callback et persiste le refresh token chiffré. */
+  /** Exchanges the callback code and persists the encrypted refresh token. */
   async completeAuth(code: string): Promise<void> {
     const client = this.newClient();
     const { tokens } = await client.getToken(code);
@@ -280,7 +272,7 @@ export class DriveService {
            account = excluded.account,
            scope = excluded.scope,
            granted_at = excluded.granted_at,
-           -- Un nouveau consentement lève la révocation précédente.
+           -- New consent clears the previous revocation.
            revoked_at = NULL`,
       )
       .run(
@@ -302,22 +294,20 @@ export class DriveService {
     this.log.info('Google Drive disconnected');
   }
 
-  /** Client Drive authentifié pour les appels de métadonnées (files.list, ...). */
+  /** Authenticated Drive client for metadata calls (files.list, ...). */
   api(): drive_v3.Drive {
     return drive({ version: 'v3', auth: this.authorizedClient() });
   }
 
   /**
-   * Exécute un appel à Drive en surveillant la révocation du refresh token.
-   * À utiliser autour de tout ce qui passe par `api()` — le client renvoyé
-   * échange le refresh token de lui-même, donc l'erreur naît dans l'appel de
-   * l'appelant, pas ici.
+   * Runs a Drive call while monitoring refresh-token revocation. Use around everything
+   * that passes through `api()` — the returned client exchanges the refresh token
+   * itself, so the error arises in the caller's call, not here.
    */
   async guard<T>(operation: () => Promise<T>): Promise<T> {
-    // Le jeton en place au lancement de l'appel. Une requête peut être encore
-    // en vol quand un nouveau consentement enregistre un autre jeton : sans
-    // cette photographie, son échec marquerait révoqué un jeton tout neuf, et
-    // /admin réclamerait une reconnexion qui vient d'être faite.
+    // The token in place when the call starts. A request may still be in flight when
+    // new consent records another token: without this snapshot, its failure would mark
+    // a brand-new token as revoked and /admin would request a reconnection just made.
     const used = this.readToken()?.ciphertext ?? null;
 
     try {
@@ -332,15 +322,13 @@ export class DriveService {
   }
 
   /**
-   * Enregistre que Google refuse désormais le refresh token. Le jeton est
-   * conservé plutôt que supprimé : /admin peut ainsi dire « l'autorisation a
-   * été révoquée » et pour quel compte, là où une base vide se lirait comme
-   * une installation neuve.
+   * Records that Google now refuses the refresh token. The token is retained rather
+   * than deleted so /admin can say "authorisation was revoked" and identify the
+   * account, whereas an empty database would look like a new installation.
    *
-   * `used` est le chiffré du jeton dont le refus est constaté. L'écriture n'a
-   * lieu que s'il est toujours celui qui est stocké — chaque `completeAuth`
-   * produit un chiffré différent (sel et IV tirés à chaque fois), ce qui suffit
-   * à reconnaître qu'une reconnexion est passée entre-temps.
+   * `used` is the encrypted token whose refusal was observed. The write occurs only
+   * if it is still the stored value — every `completeAuth` produces different encrypted
+   * text with a new salt and IV, enough to detect an intervening reconnection.
    */
   private markRevoked(used: string | null): void {
     const row = this.readToken();
@@ -364,10 +352,9 @@ export class DriveService {
   }
 
   /**
-   * Télécharge le contenu d'un fichier. Passe par `fetch` plutôt que par
-   * googleapis pour garder la main sur les en-têtes : un `Range` fourni est
-   * transmis à Google, et la réponse 206 est renvoyée au navigateur sans
-   * retraitement, ce qui donne le seek vidéo natif sans transcodage.
+   * Downloads file content. Uses `fetch` rather than googleapis to retain control of
+   * headers: a supplied `Range` is forwarded to Google and the 206 response returned
+   * to the browser without processing, enabling native video seeking without transcoding.
    */
   async fetchFile(fileId: string, range?: string, signal?: AbortSignal): Promise<Response> {
     const url = `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
@@ -375,10 +362,10 @@ export class DriveService {
   }
 
   /**
-   * `fetch` porteur du jeton OAuth courant, pour les URL Google servies hors de
-   * `api()` — le `thumbnailLink` d'un fichier non public répond 401/403 sans
-   * en-tête `Authorization`, ce qui ferait échouer le repli au moment précis où
-   * il sert. `label` n'apparaît que dans les messages d'erreur.
+   * `fetch` carrying the current OAuth token for Google URLs served outside `api()` —
+   * the `thumbnailLink` of a non-public file returns 401/403 without an `Authorization`
+   * header, making the fallback fail precisely when needed. `label` appears only in
+   * error messages.
    */
   async fetchAuthorized(
     url: string,
@@ -393,10 +380,9 @@ export class DriveService {
 
       const body = await response.text().catch(() => '');
 
-      // Une limite de débit n'est pas une erreur : Google demande d'attendre.
-      // Sans ce réessai, un préchauffage ou une grande grille à froid laisse
-      // des trous — chaque refus devient une vignette cassée qu'aucun mécanisme
-      // ne rattrape, alors que la seconde d'après serait passée.
+      // A rate limit is not an error: Google asks the client to wait. Without this retry,
+      // prewarming or a large cold grid leaves gaps — every refusal becomes a broken
+      // thumbnail no mechanism repairs, although it would succeed a second later.
       if (attempt < RATE_LIMIT_ATTEMPTS && isRateLimited(response.status, body)) {
         const wait = retryDelayMs(response.headers.get('retry-after'), attempt);
         this.log.warn(
@@ -406,9 +392,9 @@ export class DriveService {
         continue;
       }
 
-      // Réessais épuisés sur une limite de débit : l'échec reste **transitoire**,
-      // et le dire vaut mieux qu'un 500 qui ferait renoncer le client. C'est le
-      // cas d'une grande grille froide qui sature le quota Drive.
+      // Retries exhausted on a rate limit: failure remains **transient**, and saying so
+      // is better than a 500 that makes the client give up. A large cold grid saturating
+      // Drive quota is the typical case.
       if (isRateLimited(response.status, body)) {
         throw new DriveUnavailableError(label, RETRY_AFTER_SECONDS, `Drive ${response.status}`);
       }
@@ -417,7 +403,7 @@ export class DriveService {
     }
   }
 
-  /** Un envoi, avec renouvellement du jeton si Google le refuse en cours de vie. */
+  /** One request, renewing the token if Google refuses it before expiry. */
   private async sendWithRefresh(
     url: string,
     range?: string,
@@ -426,12 +412,11 @@ export class DriveService {
     let response = await this.send(url, await this.accessToken(false), range, signal);
 
     if (response.status === 401) {
-      // Google a cessé d'accepter cet access token avant son expiration :
-      // accès retiré, mot de passe changé, application révoquée. Sans ce
-      // renouvellement forcé, le jeton en cache resterait utilisé jusqu'à une
-      // heure et le propriétaire ne verrait que des erreurs opaques pendant ce
-      // temps-là. Le nouvel échange passe par `guard` : si Google refuse aussi
-      // le refresh token, la révocation est enregistrée et /admin le dit.
+      // Google stopped accepting this access token before expiry: access removed,
+      // password changed or application revoked. Without forced renewal, the cached
+      // token would remain in use for up to an hour and the owner would see only opaque
+      // errors. The new exchange passes through `guard`: if Google also refuses the
+      // refresh token, revocation is recorded and /admin reports it.
       if (response.body) await response.body.cancel();
       response = await this.send(url, await this.accessToken(true), range, signal);
     }
@@ -440,9 +425,8 @@ export class DriveService {
   }
 
   /**
-   * Attente entre deux tentatives. `protected` pour la même raison
-   * qu'`accessToken` : c'est la couture qui permet aux tests de vérifier le
-   * réessai sans attendre réellement des secondes.
+   * Wait between attempts. `protected` for the same reason as `accessToken`: this seam
+   * lets tests verify retries without actually waiting seconds.
    */
   protected delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -457,18 +441,17 @@ export class DriveService {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (range) headers.Range = range;
 
-    // **Aucune échéance par défaut sur une requête `Range`.** C'est le relais
-    // d'une vidéo vers le navigateur, qui la consomme à son rythme : une
-    // échéance *totale* couperait la lecture en cours de visionnage, pas une
-    // panne. Un appelant qui n'est pas ce relais — la lecture de l'en-tête d'une
-    // vidéo à la synchronisation, qui tient en 64 Ko — fournit la sienne.
+    // **No default timeout on a `Range` request.** This relays video to the browser,
+    // which consumes it at its own pace: a *total* timeout would interrupt playback,
+    // not a failure. A caller other than this relay — reading a 64 KB video header
+    // during synchronisation — supplies its own timeout.
     if (range) return fetch(url, { headers, signal });
 
     try {
       return await fetch(url, { headers, signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
     } catch (error) {
-      // `AbortSignal.timeout` rejette avec un `TimeoutError` ; tout le reste est
-      // une panne réseau ordinaire, qui a déjà ses propres chemins.
+      // `AbortSignal.timeout` rejects with `TimeoutError`; everything else is an
+      // ordinary network failure with its own paths.
       if (error instanceof Error && error.name === 'TimeoutError') {
         throw new DriveUnavailableError(url, RETRY_AFTER_SECONDS, 'timed out');
       }
@@ -477,19 +460,19 @@ export class DriveService {
   }
 
   /**
-   * Jeton d'accès courant. `force` jette le client en cache pour repartir du
-   * refresh token, seul moyen d'obtenir un access token neuf avant l'expiration
-   * de celui qui vient d'être refusé.
+   * Current access token. `force` discards the cached client to start again from the
+   * refresh token, the only way to obtain a new access token before the refused one
+   * expires.
    *
-   * `protected` et non `private` : c'est le seul point de contact réseau du
-   * service, et les tests s'en servent comme couture pour ne pas appeler Google.
+   * `protected` rather than `private`: this is the service's only network contact
+   * point, and tests use it as a seam to avoid calling Google.
    */
   protected async accessToken(force: boolean): Promise<string> {
     if (force) this.cachedClient = null;
 
     const client = this.authorizedClient();
-    // C'est ici que le refresh token est échangé quand l'access token approche
-    // de son expiration — donc ici que la révocation se manifeste en premier.
+    // The refresh token is exchanged here as the access token nears expiry, so this
+    // is where revocation first appears.
     const { token } = await this.guard(() => client.getAccessToken());
     if (!token) throw new DriveNotConnectedError();
     return token;
@@ -498,9 +481,9 @@ export class DriveService {
   private authorizedClient(): AuthorizedClient {
     if (this.cachedClient) return this.cachedClient;
 
-    // Le compte de service court-circuite tout le reste : pas de jeton en base,
-    // rien à déchiffrer, rien qui expire. La bibliothèque échange elle-même la
-    // clé contre un access token et le renouvelle.
+    // The service account bypasses everything else: no database token, nothing to
+    // decrypt and nothing that expires. The library exchanges the key for an access
+    // token and renews it itself.
     if (this.env.serviceAccount) {
       const client = new auth.JWT({
         email: this.env.serviceAccount.email,
@@ -513,8 +496,8 @@ export class DriveService {
 
     const row = this.readToken();
     if (!row) throw new DriveNotConnectedError();
-    // Inutile de retenter un jeton que Google a déjà refusé : autant échouer
-    // tout de suite avec le message qui dit quoi faire.
+    // There is no point retrying a token Google already refused; fail immediately
+    // with the message explaining what to do.
     if (row.revoked_at !== null) throw new DriveRevokedError();
 
     let refreshToken: string;
@@ -522,12 +505,10 @@ export class DriveService {
       refreshToken = decryptSecret(row.ciphertext, this.env.tokenKey);
     } catch {
       /**
-       * La ligne est **conservée**. Un jeton illisible n'est pas un jeton
-       * invalide : une `TOKEN_KEY` mal recopiée dans un déploiement, ou une
-       * variable oubliée, suffit à produire cette erreur — et la supprimer
-       * détruirait une autorisation encore valable, que seul un nouveau
-       * consentement Google permettrait de retrouver. Rétablir la bonne clé
-       * doit suffire.
+       * The row is **retained**. An unreadable token is not an invalid token: a
+       * mistyped `TOKEN_KEY` in a deployment or a missing variable is enough to cause
+       * this error, and deleting it would destroy still-valid authorisation recoverable
+       * only through new Google consent. Restoring the correct key must be sufficient.
        */
       this.unreadableToken = true;
       this.log.warn(
@@ -562,8 +543,7 @@ export class DriveService {
   }
 
   private async fetchAccountEmail(client: OAuth2Client): Promise<string | null> {
-    // Purement informatif : un échec ici ne doit pas faire capoter une
-    // connexion Drive par ailleurs valide.
+    // Informational only: failure here must not break an otherwise valid Drive connection.
     try {
       const { data } = await oauth2({ version: 'v2', auth: client }).userinfo.get();
       return data.email ?? null;

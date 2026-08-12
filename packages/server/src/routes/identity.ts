@@ -7,8 +7,8 @@ import { buildVerificationMail } from '../mail.js';
 import { requireAuth } from '../plugins/auth.js';
 
 const requestSchema = z.object({
-  email: z.string().trim().email('adresse invalide').max(EMAIL_MAX_LENGTH),
-  displayName: z.string().trim().min(1, 'nom requis').max(64),
+  email: z.string().trim().email('invalid address').max(EMAIL_MAX_LENGTH),
+  displayName: z.string().trim().min(1, 'name required').max(64),
 });
 
 const verifySchema = z.object({
@@ -17,20 +17,19 @@ const verifySchema = z.object({
 });
 
 /**
- * Identité de commentateur : la déclarer, la vérifier, l'oublier.
+ * Commenter identity: declaring, verifying and forgetting it.
  *
- * Ces routes séparent ce que l'application confondait : `users` est une clé
- * d'accès, potentiellement partagée par toute une famille, tandis qu'un
- * commentaire doit être signé par quelqu'un. L'adresse email joue ce rôle
- * d'identité, et elle est vérifiée par un code — sans quoi n'importe qui
- * derrière la clé partagée pourrait signer du nom d'un autre, ou faire arriver
- * les notifications dans la boîte d'un tiers.
+ * These routes separate what the application once conflated: `users` is an access
+ * key potentially shared by a whole family, while a comment must be signed by a
+ * person. The email address provides that identity and is verified by a code —
+ * otherwise anyone behind the shared key could sign using another person's name or
+ * send notifications to a third party's inbox.
  */
 export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
     app.addHook('preHandler', requireAuth);
 
-    /** Recompose la session telle que `/auth/me` la rend, après changement. */
+    /** Rebuilds the session as returned by `/auth/me` after a change. */
     const sessionUser = (
       username: string,
       admin: boolean,
@@ -46,9 +45,9 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
     };
 
     /**
-     * Déclare une adresse et envoie le code. Répond toujours `202`, que
-     * l'adresse soit déjà connue ou non : distinguer les deux dirait à qui veut
-     * l'essayer quelles adresses ont déjà commenté sur cette instance.
+     * Declares an address and sends the code. Always responds with `202`, whether the
+     * address is already known or not: distinguishing the two would tell an attacker
+     * which addresses have already commented on this instance.
      */
     app.post('/request-code', async (request, reply) => {
       if (!context.mailer.enabled) {
@@ -62,7 +61,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply.code(400).send({
           error: 'bad_request',
-          message: parsed.error.issues[0]?.message ?? 'Adresse ou nom invalide',
+          message: parsed.error.issues[0]?.message ?? 'Invalid address or name',
         });
       }
 
@@ -87,8 +86,8 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Valide le code et rattache l'identité à la session. C'est le seul endroit
-     * qui lie les deux : une identité non vérifiée n'est rattachée à rien.
+     * Validates the code and attaches the identity to the session. This is the only
+     * place linking the two: an unverified identity is attached to nothing.
      */
     app.post('/verify', async (request, reply) => {
       const parsed = verifySchema.safeParse(request.body);
@@ -100,11 +99,11 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
 
       const result = context.commenters.verify(parsed.data.email, parsed.data.code);
       if ('failure' in result) {
-        // Un code faux, expiré ou épuisé rendent le même message : détailler
-        // lequel aide surtout celui qui essaie des codes au hasard.
+        // Incorrect, expired and exhausted codes return the same message: identifying
+        // which case occurred mainly helps someone trying random codes.
         const message =
           result.failure === 'too_many_attempts'
-            ? 'Trop de tentatives. Demande un nouveau code.'
+            ? 'Too many attempts. Ask for a new code.'
             : 'Wrong or expired code. Ask for a new one if needed.';
         return reply.code(400).send({ error: result.failure, message });
       }
@@ -116,10 +115,10 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Oublie l'identité sur cette session. Les commentaires déjà écrits restent
-     * en place, signés du nom sous lequel ils l'ont été : ils appartiennent à la
-     * conversation, pas à l'appareil. Se ré-identifier avec la même adresse les
-     * retrouve — et le droit de les supprimer avec.
+     * Forgets the identity in this session. Existing comments remain, signed with the
+     * name used at publication: they belong to the conversation, not the device.
+     * Identifying oneself again with the same address finds them again, together with
+     * the right to delete them.
      */
     app.post('/forget', async (request, reply) => {
       context.sessions.attachCommenter(request.sessionId!, null);

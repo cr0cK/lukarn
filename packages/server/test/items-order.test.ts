@@ -11,10 +11,9 @@ import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Sens du tri exposé par `GET /api/albums/:albumId/items`. Le dépôt est déjà
- * couvert unitairement ; ce qui se joue ici est le passage du paramètre de la
- * requête HTTP jusqu'à la requête SQL, et le sort réservé à une valeur que
- * personne n'a prévue.
+ * Sort order exposed by `GET /api/albums/:albumId/items`. The repository already
+ * has unit coverage; what matters here is carrying the parameter from the HTTP
+ * request to the SQL query, and handling a value nobody anticipated.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -115,7 +114,7 @@ sync:
     payload: { username: 'famille', password: PASSWORD },
   });
   const session = response.cookies.find((entry) => entry.name === 'nonni_session');
-  assert.ok(session, 'cookie de session absent');
+  assert.ok(session, 'session cookie missing');
   cookie = `nonni_session=${session.value}`;
 });
 
@@ -125,16 +124,16 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('sens du tri des médias', () => {
-  it('rend le plus ancien en premier sans paramètre', async () => {
-    // Le défaut est un contrat, et c'est celui de `DEFAULT_SORT_ORDER` : un
-    // album se lit dans le sens où il a été vécu tant que rien n'en demande un
-    // autre (D99). Le sens choisi par un album vit dans sa colonne, pas ici :
-    // cette route ne connaît que ce que le client lui passe.
+describe('media sort order', () => {
+  it('returns the oldest first without a parameter', async () => {
+    // The default is a contract, namely `DEFAULT_SORT_ORDER`: an album is read
+    // in the order it was lived unless something requests otherwise (D99). An
+    // album's chosen order lives in its column, not here: this route knows only
+    // what the client passes.
     assert.deepEqual(await ids(''), ['mars', 'juin', 'septembre']);
   });
 
-  it('inverse la liste en ascendant', async () => {
+  it('reverses the list in ascending order', async () => {
     const desc = await ids('?order=desc');
     const asc = await ids('?order=asc');
 
@@ -142,10 +141,10 @@ describe('sens du tri des médias', () => {
     assert.deepEqual(asc, [...desc].reverse());
   });
 
-  it('pagine dans le sens demandé', async () => {
-    // Une page suivante prise sur un curseur ascendant doit continuer vers le
-    // futur : c'est là qu'une comparaison de curseur restée en `<` renverrait
-    // la page déjà lue, ou rien du tout.
+  it('paginates in the requested direction', async () => {
+    // A next page from an ascending cursor must continue towards the future:
+    // this is where a cursor comparison left as `<` would return the page
+    // already read, or nothing at all.
     const first = await server.inject({
       method: 'GET',
       url: '/api/albums/vacances/items?order=asc&limit=2',
@@ -157,15 +156,15 @@ describe('sens du tri des médias', () => {
       page.items.map((item) => item.id),
       ['mars', 'juin'],
     );
-    assert.ok(page.nextCursor, 'curseur attendu après une page partielle');
+    assert.ok(page.nextCursor, 'cursor expected after a partial page');
     assert.deepEqual(await ids(`?order=asc&cursor=${encodeURIComponent(page.nextCursor)}`), [
       'septembre',
     ]);
   });
 
-  it('refuse une valeur de tri inconnue sans planter', async () => {
-    // Un 500 signalerait une erreur non rattrapée, et un repli silencieux sur
-    // le défaut ferait afficher au client l'inverse de ce qu'il croit demander.
+  it('rejects an unknown sort value without crashing', async () => {
+    // A 500 would signal an uncaught error, while silently falling back to the
+    // default would show the client the opposite of what it thinks it requested.
     for (const value of ['zigzag', 'ASC', '', 'asc,desc']) {
       const response = await server.inject({
         method: 'GET',
@@ -177,7 +176,7 @@ describe('sens du tri des médias', () => {
     }
   });
 
-  it("ne révèle pas un album interdit, quel que soit l'ordre", async () => {
+  it('does not reveal a forbidden album regardless of order', async () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/albums/inconnu/items?order=asc',

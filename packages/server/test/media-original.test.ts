@@ -12,9 +12,8 @@ import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Relais du fichier d'origine. La route ne transforme rien : elle recopie le
- * statut et les en-têtes de plage venus de Drive, parce que c'est le lecteur du
- * navigateur qui sait quoi en faire.
+ * Original file relay. The route transforms nothing: it copies the status and
+ * range headers from Drive because the browser player knows how to use them.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -97,8 +96,8 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('relais du fichier d’origine', () => {
-  it('recopie un fragment 206 et ses en-têtes', async () => {
+describe('original file relay', () => {
+  it('copies a 206 fragment and its headers', async () => {
     context.drive.fetchFile = () =>
       Promise.resolve(
         new Response('abc', {
@@ -118,15 +117,15 @@ describe('relais du fichier d’origine', () => {
     assert.equal(response.headers['accept-ranges'], 'bytes');
   });
 
-  it('relaie un 416 plutôt que de le transformer en erreur serveur', async () => {
+  it('relays a 416 rather than turning it into a server error', async () => {
     context.drive.fetchFile = () =>
       Promise.resolve(
         new Response(null, { status: 416, headers: { 'content-range': 'bytes */4096' } }),
       );
 
-    // Changer de vidéo pendant qu'une requête est en vol produit couramment
-    // une demande d'offset au-delà de la fin : c'est du protocole `Range`
-    // normal, que le lecteur sait interpréter — un 500 ne lui apprend rien.
+    // Changing video while a request is in flight commonly produces an offset
+    // request beyond the end: this is normal `Range` protocol that the player
+    // understands — a 500 tells it nothing.
     const response = await server.inject({
       method: 'GET',
       url: '/api/media/clip/original',
@@ -138,8 +137,8 @@ describe('relais du fichier d’origine', () => {
   });
 });
 
-describe('cache navigateur d’un média protégé', () => {
-  it('indexe l’entrée sur la session qui l’a obtenue', async () => {
+describe('browser cache for protected media', () => {
+  it('keys the entry by the session that obtained it', async () => {
     context.drive.fetchFile = () => Promise.resolve(new Response('des octets'));
 
     const response = await server.inject({
@@ -149,10 +148,9 @@ describe('cache navigateur d’un média protégé', () => {
     });
 
     assert.equal(response.statusCode, 200);
-    // Sans `Vary`, deux comptes qui se succèdent dans le même profil de
-    // navigateur — l'ordinateur du salon — partagent les entrées : le second
-    // rouvre depuis l'historique un média qu'il n'a jamais eu le droit de voir,
-    // sans qu'aucune requête n'atteigne le contrôle d'accès.
+    // Without `Vary`, two accounts used successively in the same browser profile
+    // — the living-room computer — share entries: the second reopens from history
+    // media it was never allowed to see, without any request reaching access control.
     assert.equal(response.headers.vary, 'Cookie');
     assert.match(String(response.headers['cache-control']), /private/);
   });

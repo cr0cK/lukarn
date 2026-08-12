@@ -1,10 +1,10 @@
 /**
- * Normalisations et validations des formulaires d'administration.
+ * Administration form normalisation and validation.
  *
- * Fonctions pures, sans React ni réseau. Elles ne remplacent pas le contrôle du
- * serveur — qui reste seul juge — elles évitent un aller-retour pour dire ce qui
- * cloche. Les règles viennent de `@nonni/shared`, pour que les deux côtés refusent
- * exactement les mêmes valeurs.
+ * Pure functions without React or network access. They do not replace server
+ * validation — the server remains authoritative — but avoid a round trip to
+ * report what is wrong. Rules come from `@nonni/shared` so both sides reject
+ * exactly the same values.
  */
 
 import {
@@ -16,12 +16,12 @@ import {
 } from '@nonni/shared';
 
 /**
- * Extrait l'identifiant d'un dossier Drive de ce qui a été collé : URL complète,
- * lien de partage, ou identifiant seul.
+ * Extracts a Drive folder identifier from pasted input: full URL, sharing link
+ * or identifier alone.
  *
- * Drive n'expose que cet identifiant opaque ; un chemin lisible
- * (« Mon Drive/Photos ») n'en est pas un et est rejeté plutôt qu'envoyé au
- * serveur, qui répondrait par une erreur beaucoup moins parlante.
+ * Drive exposes only this opaque identifier; a readable path ("My Drive/Photos")
+ * is not one and is rejected rather than sent to the server, whose error would
+ * be far less helpful.
  */
 export function extractFolderId(input: string): string | null {
   const value = input.trim();
@@ -30,16 +30,16 @@ export function extractFolderId(input: string): string | null {
   const fromPath = /\/folders\/([^/?#]+)/.exec(value);
   if (fromPath) return decodeURIComponent(fromPath[1]!);
 
-  // Les vieux liens `open?id=` et `folderview?id=` circulent encore.
+  // Old `open?id=` and `folderview?id=` links still circulate.
   const fromQuery = /[?&]id=([^&#]+)/.exec(value);
   if (fromQuery) return decodeURIComponent(fromQuery[1]!);
 
-  // Reste soit un identifiant nu, soit un chemin ou une URL qu'on ne sait pas lire.
+  // What remains is either a bare identifier or an unreadable path or URL.
   if (/[/\\\s]/.test(value)) return null;
   return value;
 }
 
-/** Message d'erreur, ou `null` si la valeur est acceptable. */
+/** Error message, or `null` when the value is acceptable. */
 export function validateUsername(value: string): string | null {
   const username = value.trim();
   if (!username) return 'Enter a username.';
@@ -52,7 +52,7 @@ export function validateUsername(value: string): string | null {
   return null;
 }
 
-/** Message d'erreur, ou `null`. Un identifiant d'album sert aussi d'URL. */
+/** Error message, or `null`. An album identifier is also used in a URL. */
 export function validateAlbumId(value: string): string | null {
   const id = value.trim();
   if (!id) return 'Enter an identifier.';
@@ -63,8 +63,8 @@ export function validateAlbumId(value: string): string | null {
 }
 
 /**
- * Message d'erreur, ou `null`. En modification, un champ vide signifie
- * « ne pas changer le mot de passe » : c'est le seul cas où le vide est valide.
+ * Error message, or `null`. While editing, an empty field means "do not change
+ * the password": this is the only case where empty is valid.
  */
 export function validatePassword(value: string, required = true): string | null {
   if (!value) return required ? 'Enter a password.' : null;
@@ -74,12 +74,12 @@ export function validatePassword(value: string, required = true): string | null 
   return null;
 }
 
-/** Message d'erreur, ou `null`. */
+/** Error message, or `null`. */
 export function validateTitle(value: string): string | null {
   return value.trim() ? null : 'Enter a title.';
 }
 
-/** Message d'erreur pour le champ « dossier Drive », ou `null`. */
+/** Error message for the "Drive folder" field, or `null`. */
 export function validateFolderInput(value: string): string | null {
   if (!value.trim()) return 'Enter the Drive folder.';
   if (extractFolderId(value) === null) {
@@ -89,8 +89,8 @@ export function validateFolderInput(value: string): string | null {
 }
 
 /**
- * Propose un identifiant d'album à partir du titre saisi. Sans accents ni
- * espaces : l'identifiant se retrouve dans l'URL de l'album.
+ * Suggests an album identifier from the entered title. No accents or spaces:
+ * the identifier appears in the album URL.
  */
 export function slugifyAlbumId(title: string): string {
   const slug = title
@@ -99,18 +99,18 @@ export function slugifyAlbumId(title: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  // Le motif partagé impose de commencer par une lettre ou un chiffre.
+  // The shared pattern requires starting with a letter or number.
   return slug.slice(0, USERNAME_MAX_LENGTH);
 }
 
-/** Nombre saisi en français : la virgule décimale est acceptée. `null` si illisible. */
+/** Number entered in French: accepts a decimal comma. `null` when unreadable. */
 export function parseNumber(value: string): number | null {
   const normalized = value.trim().replace(',', '.');
   if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
   return Number(normalized);
 }
 
-/** Message d'erreur pour l'intervalle de synchronisation, ou `null`. */
+/** Error message for the sync interval, or `null`. */
 export function validateIntervalMinutes(value: string): string | null {
   const minutes = parseNumber(value);
   if (minutes === null || !Number.isInteger(minutes)) {
@@ -119,7 +119,7 @@ export function validateIntervalMinutes(value: string): string | null {
   return null;
 }
 
-/** Message d'erreur pour la taille maximale du cache, ou `null`. */
+/** Error message for the maximum cache size, or `null`. */
 export function validateCacheSizeGB(value: string): string | null {
   const size = parseNumber(value);
   if (size === null) return 'Give a size in gigabytes.';
@@ -127,21 +127,23 @@ export function validateCacheSizeGB(value: string): string | null {
   return null;
 }
 
-/** Nombre d'albums cités en clair avant de basculer sur « et N autres ». */
+/** Number of albums named before switching to "and N others". */
 const NAMED_ALBUMS = 3;
 
 /**
- * Résume en une ligne les albums accessibles à un compte. Le joker est nommé
- * comme tel : « tous les albums » et « les 12 albums cochés » ne veulent pas
- * dire la même chose une fois le treizième créé.
+ * Summarises an account's accessible albums in one line. Name the wildcard as
+ * such: "all albums" and "the 12 selected albums" stop meaning the same thing
+ * once the thirteenth is created.
  */
 export function formatAlbumAccess(albums: string[], titles: ReadonlyMap<string, string>): string {
   if (albums.includes(ALL_ALBUMS)) return 'Every album, present and future';
   if (albums.length === 0) return 'No album';
 
-  // Un album supprimé peut subsister dans la liste d'un compte : on affiche
-  // alors son identifiant brut plutôt que de le passer sous silence.
+  // A deleted album may remain in an account's list: show its raw identifier
+  // rather than silently omitting it.
   const named = albums.slice(0, NAMED_ALBUMS).map((id) => titles.get(id) ?? id);
   const rest = albums.length - named.length;
-  return rest > 0 ? `${named.join(', ')} et ${rest} autre${rest > 1 ? 's' : ''}` : named.join(', ');
+  return rest > 0
+    ? `${named.join(', ')} and ${rest} other${rest > 1 ? 's' : ''}`
+    : named.join(', ');
 }

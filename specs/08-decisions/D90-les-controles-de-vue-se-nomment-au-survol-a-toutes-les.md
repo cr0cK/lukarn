@@ -1,36 +1,32 @@
-# D90 — Les contrôles de vue se nomment au survol, à toutes les largeurs
+# D90 — View controls identify themselves on hover at every width
 
-**Contexte.** [D73](./D73-la-barre-superieure-tient-sur-une-rangee-et-declare-ses-au.md)
-a mesuré ce que coûtaient les libellés des contrôles de vue et les a repoussés
-au-delà de `lg` : à 768 px, les afficher ramenait le titre d'album de 456 à
-144 px. Au-delà de ce seuil, la place ne manquant plus, ils revenaient.
+**Context.** [D73](./D73-la-barre-superieure-tient-sur-une-rangee-et-declare-ses-au.md)
+measured the cost of view-control labels and postponed them beyond `lg`: at
+768 px, displaying them reduced the album title from 456 to 144 px. Beyond that
+threshold, with space available, they returned.
 
-Ce que la mesure ne disait pas, c'est qu'ils ne servaient pas davantage sur un
-écran large. « Plus récentes d'abord » y occupait à lui seul plus de largeur que
-le sous-titre de l'album — 900 éléments, la période couverte —, pour un réglage
-qu'on touche une fois par visite, dans une application dont tout le propos est
-que ce qui ressorte soit les photos.
+What the measurement did not say is that they were no more useful on a wide
+screen. "Newest first" alone occupied more width than the album subtitle — 900
+items and the covered period — for a setting touched once per visit, in an
+application whose entire purpose is making photos stand out.
 
-**Décision.** Les libellés ne reviennent à aucune largeur. Les deux contrôles se
-nomment **au survol** : l'infobulle et le nom accessible portent la même phrase,
-l'état courant puis l'effet du clic — « Plus récentes d'abord — Afficher les
-plus anciennes d'abord ». N'annoncer que l'effet, comme le faisait l'infobulle,
-laissait deviner d'où l'on part.
+**Decision.** Labels do not return at any width. Both controls identify
+themselves **on hover**: the tooltip and accessible name carry the same phrase,
+current state followed by click effect — "Newest first — Show oldest first".
+Announcing only the effect, as the tooltip did, left the starting point implicit.
 
-L'état reste par ailleurs lisible dans le tracé, qui en dépend déjà : le sens de
-la flèche pour le tri, un trait ou deux dans le calendrier pour le découpage.
-Et sous `sm`, c'est le menu **Affichage** qui nomme tout en clair — là où la
-place manque le moins, une liste déroulée n'ayant pas de largeur à défendre.
+State remains readable in the icon, which already depends on it: arrow direction
+for sorting, and one or two lines in the calendar for grouping. Below `sm`, the
+**View** menu spells everything out — where space is least constrained, since an
+open list has no width to defend.
 
-**Conséquences.** `TopBarAction.icon` porte désormais le **tracé** et non la
-balise `<svg>`, comme les actions de la visionneuse : c'est la barre qui
-l'enveloppe, à 20 px en ligne et 16 px dans le menu. Sans cela, un tracé livré
-tout fait imposait la même taille aux deux, et les 16 px des contrôles de vue
-juraient avec les 20 du bouton d'activité — un écart que le libellé masquait, et
-que son retrait a mis au premier plan. Les boutons de la rangée sont du même
-coup tous carrés de 36 px.
+**Consequences.** `TopBarAction.icon` now carries the **path**, not the `<svg>`
+element, like viewer actions: the bar wraps it at 20 px inline and 16 px in the
+menu. Otherwise, a ready-made path imposed one size in both places, and the 16 px
+view controls clashed with the activity button's 20 px — a difference hidden by
+the label and revealed when it was removed. Row buttons all become 36 px squares.
 
-**Écarté.** Raccourcir les libellés plutôt que les retirer — « Récentes », « Par
-jour ». La barre y gagnait la moitié, mais deux mots posés en permanence pour un
-réglage rarement touché restaient deux mots de trop, et il aurait fallu inventer
-un vocabulaire court là où le vocabulaire long existe déjà dans le menu.
+**Rejected.** Shortening labels instead of removing them — "Recent", "By day".
+This halved their width, but two permanent words for a rarely touched setting
+remained two words too many, and short vocabulary would have to be invented where
+the full vocabulary already exists in the menu.

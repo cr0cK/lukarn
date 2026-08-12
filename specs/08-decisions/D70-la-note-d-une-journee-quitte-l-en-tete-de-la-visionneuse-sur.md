@@ -1,40 +1,37 @@
-# D70 — La note d'une journée quitte l'en-tête de la visionneuse sur mobile
+# D70 — A day's note leaves the viewer header on mobile
 
-**Contexte.** La note d'une journée s'affiche à deux endroits : l'en-tête de sa
-section dans la grille, et l'en-tête de la visionneuse, pour qu'ouvrir une photo
-ne fasse pas perdre ce qui lui donne son sens (D68 en décrit le voisin, le
-repli). Sur un téléphone, ce second emplacement empile au-dessus de l'image le
-nom du fichier, la journée, son lieu, puis jusqu'à deux lignes de note — sur un
-écran où la photo est déjà à l'étroit.
+**Context.** A day's note appears in two places: its section header in the grid,
+and the viewer header, so opening a photo does not lose what gives it meaning
+(D68 describes the adjacent feature, collapsing). On a phone, this second
+location stacks the filename, day, place, and up to two lines of note above the
+image — on a screen where the photo is already cramped.
 
-Deux réglages pris par ailleurs changent l'arbitrage : la grille affiche
-désormais la note à **toutes** les largeurs, et le panneau « Infos » est fermé
-par défaut. La note n'est donc plus une information qu'on risque de ne jamais
-voir si la visionneuse ne la porte pas.
+Two settings decided elsewhere change the tradeoff: the grid now displays the
+note at **all** widths, and the "Info" panel is closed by default. The note is
+therefore no longer information that might never be seen if the viewer does not
+carry it.
 
-**Choix.** La note reste dans l'en-tête de la visionneuse à partir de `md`, et
-en disparaît en dessous. Le seuil n'est pas choisi au jugé : `md` est la largeur
-où `SidePanel` cesse d'être un tiroir en surimpression pour se docker dans le
-flux — la frontière déjà établie entre « mise en page de téléphone » et le
-reste.
+**Choice.** The note remains in the viewer header from `md` upwards and disappears
+below it. The threshold is not arbitrary: `md` is the width where `SidePanel`
+ceases to be an overlay drawer and docks in the flow — the established boundary
+between "phone layout" and everything else.
 
-**Écarté.** Masquer toute la ligne de contexte, lieu et date compris. Elle tient
-sur une ligne courte, là où la note en prend deux, et c'est précisément ce qu'on
-perd en ouvrant une photo depuis la grille : la masquer annulerait la raison
-d'avoir porté ce contexte jusqu'ici. Le gain de place aurait été marginal, la
-perte entière.
+**Rejected.** Hiding the entire context line, including place and date. It fits
+on one short line where the note takes two, and it is precisely what is lost when
+opening a photo from the grid: hiding it would cancel the reason for carrying
+that context here. The space gained would be marginal and the loss complete.
 
-Écarté aussi un dépliement au toucher — un geste de plus sur l'appareil où les
-gestes sont les plus rares, pour un texte que la grille montre déjà.
+Also rejected: touch expansion — one more gesture on the device where gestures
+are scarcest, for text the grid already displays.
 
-**Conséquences.** Sur mobile, la note n'était plus atteignable que depuis la
-grille : `ExifPanel` ne listait alors que l'EXIF. Le recours annoncé ici comme
-« un ajout à faire » a été fait dans la foulée — [D74](./D74-la-visionneuse-range-ses-actions-et-rend-a-la-photo-la-note.md) lui
-donne ses lignes « Lieu » et « Ce jour-là », sans condition de largeur. Le choix
-ci-dessus est inchangé : l'en-tête reste réservé à `md` et au-delà, seul le
-constat de la conséquence a cessé d'être vrai.
+**Consequences.** On mobile, the note was then only reachable from the grid:
+`ExifPanel` only listed EXIF data. The remedy announced here as "an addition to
+make" was implemented immediately afterwards —
+[D74](./D74-la-visionneuse-range-ses-actions-et-rend-a-la-photo-la-note.md)
+gives it "Place" and "That day" rows at every width. The choice above is
+unchanged: the header remains reserved for `md` and above; only the consequence
+described has ceased to be true.
 
-L'enveloppe du paragraphe porte le `hidden md:block`, et non le paragraphe
-lui-même : `line-clamp-2` pose `display: -webkit-box`, et deux utilitaires de
-`display` sur un même élément se départagent par l'ordre de la feuille de style,
-pas par celui des classes de l'attribut.
+The paragraph wrapper carries `hidden md:block`, not the paragraph itself:
+`line-clamp-2` sets `display: -webkit-box`, and two `display` utilities on the
+same element are resolved by stylesheet order, not class order in the attribute.

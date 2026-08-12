@@ -1,43 +1,39 @@
-# D85 — Une ligne par texte dans l'en-tête de section, parce qu'une hauteur réservée doit être exacte
+# D85 — One line per text in the section header, because reserved height must be exact
 
-**Contexte.** Le layout de la grille est calculé sans DOM : `useGridLayout`
-déclare la hauteur de chaque en-tête, et `SectionHeader` doit tenir dedans
-(D49). La note d'une journée s'y réservait **deux** lignes — 40 px — alors
-qu'une note de journée est le plus souvent courte et n'en occupe qu'une. Les
-20 px de trop tombaient sous le texte, et l'écart avant les vignettes passait de
-12 px à 32 px d'une section à l'autre, selon la longueur d'une note. Le défaut
-se voit sur deux sections voisines, et n'a aucune explication visible.
+**Context.** Grid layout is calculated without the DOM: `useGridLayout` declares
+each header's height, and `SectionHeader` must fit within it (D49). A day note
+reserved **two** lines there — 40 px — although most day notes are short and use
+only one. The extra 20 px fell below the text, changing the gap before thumbnails
+from 12 px to 32 px between sections depending on note length. The defect is
+visible in two adjacent sections and has no visible explanation.
 
-**Choix.** Une seule ligne, tronquée, pour le lieu **comme** pour la note, et
-une seule constante — `GRID_HEADER_LINE_HEIGHT` — pour les deux. La réservation
-devient exacte par construction : ce que le layout compte est exactement ce que
-le composant rend, quelle que soit la longueur du texte.
+**Choice.** One truncated line for the place **and** the note, and one constant —
+`GRID_HEADER_LINE_HEIGHT` — for both. Reservation is exact by construction: what
+layout counts is exactly what the component renders, whatever the text length.
 
-**Ce que la note perd, et où elle le retrouve.** Une note de 300 caractères se
-lisait sur deux lignes dans la grille ; elle s'y lit maintenant sur une, avec
-une ellipse. Son texte entier reste dans l'attribut `title`, dans le panneau
-`i`, et surtout dans le **bandeau de la visionneuse** (D84), qui la montre à
-toutes les largeurs et la déplie au clic. C'est cette dernière porte qui rend
-l'arbitrage tenable : quand D49 fixait deux lignes, la grille était le seul
-endroit qui montrât la note.
+**What the note loses and where it recovers it.** A 300-character note occupied
+two lines in the grid; it now appears on one with an ellipsis. Its full text
+remains in the `title` attribute, the `i` panel, and above all the **viewer strip**
+(D84), which shows it at every width and expands it on click. This last doorway
+makes the tradeoff tenable: when D49 set two lines, the grid was the only place
+showing the note.
 
-**Écarté.** Estimer le nombre de lignes à partir de la longueur du texte et de
-la largeur disponible, en majorant la largeur d'un glyphe pour ne jamais
-sous-réserver. Cela marche, et cela gardait deux lignes aux notes longues. Mais
-c'est une constante de plus à faire suivre la taille de police, et une
-estimation juste « presque toujours » : le jour où elle se trompe vers le bas,
-les vignettes passent sous le texte, sans rien pour le rattraper. Un contrat
-exact vaut mieux qu'une estimation prudente.
+**Rejected.** Estimating line count from text length and available width, using
+an upper bound on glyph width to avoid under-reserving. It works and preserved
+two lines for long notes. But it is another constant to keep aligned with font
+size, and an estimate correct "almost always": the day it underestimates,
+thumbnails pass beneath the text with nothing to correct them. An exact contract
+is better than a cautious estimate.
 
-Écarté aussi : réserver 40 px et forcer la boîte à deux lignes même vide. La
-hauteur redevenait cohérente, mais l'espace blanc restait — c'est lui qu'on
-voulait supprimer, pas son irrégularité.
+Also rejected: reserving 40 px and forcing the box to two lines even when empty.
+Height would become consistent again, but white space would remain — that was
+what needed removing, not merely its irregularity.
 
-**Conséquences.** `GRID_PLACE_HEIGHT` et `GRID_DESCRIPTION_HEIGHT` fusionnent en
-`GRID_HEADER_LINE_HEIGHT`. L'écart entre un en-tête et ses vignettes vaut
-désormais `GRID_HEADER_PAD_BOTTOM` (12 px) dans **tous** les cas : sans note,
-avec un lieu seul, avec une note courte, avec une note longue.
+**Consequences.** `GRID_PLACE_HEIGHT` and `GRID_DESCRIPTION_HEIGHT` merge into
+`GRID_HEADER_LINE_HEIGHT`. The gap between a header and its thumbnails is now
+`GRID_HEADER_PAD_BOTTOM` (12 px) in **every** case: no note, place only, short
+note, or long note.
 
-`ALBUM_DAY_DESCRIPTION_MAX_LENGTH` reste à 300. La borne ne servait pas à tenir
-dans deux lignes — elle dit qu'une note de journée est un repère, pas un récit,
-et cela n'a pas changé.
+`ALBUM_DAY_DESCRIPTION_MAX_LENGTH` remains 300. The limit did not exist to fit
+two lines — it says that a day note is a marker, not a narrative, and that has
+not changed.

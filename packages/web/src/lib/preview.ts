@@ -1,43 +1,42 @@
 /**
- * Ce qu'on montre pendant qu'une **photo** se prépare : aperçu flou, indicateur
- * d'activité, message d'échec.
+ * What to show while a **photo** is prepared: blurred preview, activity indicator
+ * and failure message.
  *
- * Isolé ici parce que la règle est facile à casser sans que rien n'échoue : une
- * combinaison fausse ne produit pas d'erreur, seulement un écran trompeur. Le
- * cas manqué est l'aperçu flou affiché **sans** indicateur — on ne voit alors
- * pas une photo qui charge, mais une photo floue, et on conclut que
- * l'application est cassée.
+ * Isolated here because the rule is easy to break without a failure: an incorrect
+ * combination produces no error, only a misleading screen. The missed case is a
+ * blurred preview shown **without** an indicator — it looks like a blurred photo,
+ * not a loading one, suggesting the application is broken.
  *
- * La vidéo n'y passe plus : elle n'a que deux états, lue ou illisible. Son
- * attente est couverte par le `poster` de la balise et par les contrôles natifs
- * du navigateur, qui portent déjà leur propre indicateur — en superposer un
- * second en faisait tourner deux, l'un sur l'autre (D98).
+ * Video no longer goes through this: it has only two states, playing or
+ * unplayable. Its wait is covered by the element's `poster` and native browser
+ * controls, which already carry an indicator — overlaying another produced two
+ * spinning over one another (D98).
  */
 
 export interface PreviewInput {
-  /** Le rendu demandé est arrivé et décodé. */
+  /** The requested render arrived and decoded. */
   loaded: boolean;
-  /** Le rendu n'a pas pu être obtenu. */
+  /** The render could not be obtained. */
   failed: boolean;
-  /** Faux tant que les dimensions ne sont pas connues : rien à positionner. */
+  /** False while dimensions are unknown: there is nothing to position. */
   measured: boolean;
 }
 
 export interface PreviewOverlay {
-  /** Vignette agrandie et floutée, en attendant le rendu définitif. */
+  /** Enlarged, blurred thumbnail while awaiting the final render. */
   placeholder: boolean;
-  /** Indicateur d'activité : dit que le flou est une attente, pas un résultat. */
+  /** Activity indicator: says the blur is waiting, not a result. */
   spinner: boolean;
-  /** Message d'échec, à la place de tout le reste. */
+  /** Failure message replacing everything else. */
   error: boolean;
 }
 
 /**
- * Un aperçu flou n'est jamais montré seul : il est toujours accompagné de
- * l'indicateur, et les deux disparaissent ensemble.
+ * Never show a blurred preview alone: the indicator always accompanies it, and
+ * both disappear together.
  *
- * L'indicateur apparaît même sans aperçu — dimensions inconnues, donc rien à
- * afficher en attendant : un écran noir muet serait pire encore.
+ * Show the indicator even without a preview — dimensions unknown, so nothing to
+ * display while waiting: a silent black screen would be worse.
  */
 export function previewOverlay({ loaded, failed, measured }: PreviewInput): PreviewOverlay {
   if (failed) return { placeholder: false, spinner: false, error: true };

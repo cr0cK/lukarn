@@ -1,6 +1,6 @@
 import { Fragment, type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react';
 
-/** Ce qu'une entrée de menu affiche : un libellé, une icône, un geste. */
+/** What a menu entry displays: a label, an icon and an action. */
 export interface MenuEntry {
   label: string;
   icon: ReactNode;
@@ -8,18 +8,18 @@ export interface MenuEntry {
 }
 
 interface ActionMenuProps {
-  /** Groupes séparés par un filet. Les groupes vides sont ignorés. */
+  /** Groups separated by a rule. Empty groups are ignored. */
   groupes: MenuEntry[][];
   /**
-   * Lignes de contexte en tête du menu, non cliquables. La première ressort,
-   * les suivantes la précisent — un identifiant, puis l'adresse qui le signe.
+   * Non-clickable context lines at the top of the menu. The first stands out;
+   * the following ones clarify it — an identifier, then its signing address.
    */
   entete?: string[];
-  /** Nom accessible du bouton, s'il y a plusieurs menus sur la même page. */
+  /** Accessible button name when several menus share a page. */
   label?: string;
-  /** Contenu du bouton. Les trois points par défaut, une pastille pour le compte. */
+  /** Button content. Three dots by default, an account badge when needed. */
   trigger?: ReactNode;
-  /** Habillage du bouton : la barre et la visionneuse n'ont pas le même fond. */
+  /** Button styling: the bar and viewer have different backgrounds. */
   triggerClassName?: string;
 }
 
@@ -27,16 +27,15 @@ const TRIGGER_PAR_DEFAUT =
   'rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100';
 
 /**
- * Le menu kebab des petits écrans, partagé par la barre supérieure et la
- * visionneuse.
+ * Small-screen kebab menu shared by the top bar and viewer.
  *
- * Un seul composant plutôt qu'un par emplacement : ce qui compte ici — fermer
- * au clic dehors, fermer à `Échap` en rendant le focus, fermer **avant**
- * d'exécuter l'action choisie — se réécrirait de travers la deuxième fois.
+ * One component rather than one per location: the important behaviour — close
+ * on an outside click, close on `Escape` while restoring focus, close **before**
+ * running the selected action — would be rewritten incorrectly the second time.
  *
- * Positionné en `absolute`, jamais en `fixed` : ses deux hôtes portent un
- * `backdrop-blur` ou vivent dans une pile de contextes, et `fixed` s'y
- * rapporterait à l'ancêtre filtré plutôt qu'à l'écran.
+ * Positioned as `absolute`, never `fixed`: both hosts have a `backdrop-blur` or
+ * live in a stack of contexts, where `fixed` would relate to the filtered
+ * ancestor rather than the viewport.
  */
 export function ActionMenu({
   groupes,
@@ -58,17 +57,17 @@ export function ActionMenu({
     };
     const surTouche = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return;
-      // Arrêter la propagation : dans la visionneuse, `Échap` ferme aussi la
-      // photo, et un seul appui ne doit pas faire les deux.
+      // Stop propagation: in the viewer, `Escape` also closes the photo, and one
+      // keypress must not do both.
       event.stopPropagation();
       setOuvert(false);
-      // Rendre le focus au bouton : refermer au clavier ne doit pas renvoyer la
-      // navigation en tête de page.
+      // Restore focus to the button: closing from the keyboard must not send
+      // navigation back to the top of the page.
       bouton.current?.focus();
     };
 
     document.addEventListener('pointerdown', surPointeur);
-    // En capture, pour passer avant les raccourcis de la visionneuse.
+    // Capture so this runs before viewer shortcuts.
     document.addEventListener('keydown', surTouche, true);
     return () => {
       document.removeEventListener('pointerdown', surPointeur);
@@ -98,9 +97,9 @@ export function ActionMenu({
 
       {ouvert && (
         <div className="absolute top-full right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl">
-          {/* Hors du `role="menu"`, qui n'admet que des `menuitem` : ces lignes
-              ne se choisissent pas. `title` parce qu'une adresse un peu longue
-              est tronquée plutôt que de faire grandir le menu. */}
+          {/* Outside `role="menu"`, which accepts only `menuitem`: these lines
+              cannot be selected. `title` is present because a slightly long
+              address is truncated rather than widening the menu. */}
           {entete && entete.length > 0 && (
             <>
               <div className="px-4 py-2">
@@ -130,9 +129,8 @@ export function ActionMenu({
                     type="button"
                     role="menuitem"
                     onClick={() => {
-                      // Fermer d'abord : `onSelect` peut naviguer ou ouvrir un
-                      // panneau, et un menu laissé ouvert se retrouverait
-                      // par-dessus ce qu'il vient de déclencher.
+                      // Close first: `onSelect` may navigate or open a panel, and
+                      // a menu left open would sit above what it just triggered.
                       setOuvert(false);
                       entree.onSelect();
                     }}

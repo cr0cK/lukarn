@@ -1,14 +1,13 @@
-# D5 — `@googleapis/drive` plutôt que `googleapis`
+# D5 — `@googleapis/drive` rather than `googleapis`
 
-**Contexte.** Il faut un client Drive v3 et un client OAuth2.
+**Context.** A Drive v3 client and an OAuth2 client are needed.
 
-**Choix.** Les paquets ciblés `@googleapis/drive` et `@googleapis/oauth2`.
+**Decision.** The targeted `@googleapis/drive` and `@googleapis/oauth2` packages.
 
-**Écarté.** Le méta-paquet `googleapis`, qui embarque toutes les API Google —
-environ **114 Mo** installés, contre **2,5 Mo** pour les deux paquets ciblés.
-Sur une image Docker reconstruite à chaque déploiement, la différence se paie en
-temps de build, en taille d'image et en surface de dépendances.
+**Rejected.** The `googleapis` meta-package, which includes every Google API — around
+**114 MB** installed, compared with **2.5 MB** for the two targeted packages. With a
+Docker image rebuilt on every deployment, the difference comes at a cost in build time,
+image size and dependency surface.
 
-**Conséquences.** `google-auth-library` n'est pas une dépendance directe : le
-type `OAuth2Client` est dérivé de `InstanceType<typeof auth.OAuth2>`
-(`drive/service.ts`).
+**Consequences.** `google-auth-library` is not a direct dependency: the `OAuth2Client`
+type is derived from `InstanceType<typeof auth.OAuth2>` (`drive/service.ts`).

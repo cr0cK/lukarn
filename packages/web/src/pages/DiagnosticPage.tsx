@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactElement } from 'react';
 
 /**
- * Une ligne du rapport : un intitulé, une valeur, et le jugement qui décide de
- * sa couleur. `null` vaut « information », ni bon ni mauvais.
+ * One report row: a label, a value and the judgement deciding its colour. `null`
+ * means information, neither good nor bad.
  */
 interface Ligne {
   cle: string;
@@ -11,12 +11,12 @@ interface Ligne {
 }
 
 /**
- * Rend une propriété sur un élément détaché et rapporte si le navigateur l'a
- * réellement **appliquée**, pas seulement acceptée à l'analyse.
+ * Renders a property on a detached element and reports whether the browser
+ * actually **applied** it, not merely accepted it while parsing.
  *
- * `CSS.supports` ne suffit pas : un moteur peut reconnaître la syntaxe d'une
- * propriété et n'en tirer aucun effet, et c'est précisément ce genre d'écart
- * qu'on cherche ici. On mesure donc la géométrie obtenue.
+ * `CSS.supports` is insufficient: an engine may recognise property syntax but
+ * produce no effect, precisely the discrepancy sought here. Measure the resulting
+ * geometry instead.
  */
 function mesurer(preparer: (parent: HTMLElement) => HTMLElement, attendu: number): boolean {
   const parent = document.createElement('div');
@@ -29,10 +29,10 @@ function mesurer(preparer: (parent: HTMLElement) => HTMLElement, attendu: number
 }
 
 /**
- * Injecte une règle et rapporte si le navigateur en a tiré l'effet attendu.
+ * Injects a rule and reports whether the browser produced the expected effect.
  *
- * C'est la seule façon d'éprouver une **règle at** — `@layer`, `@property` —
- * que `CSS.supports`, qui ne juge que des déclarations, ne sait pas interroger.
+ * This is the only way to test an **at-rule** — `@layer`, `@property` — which
+ * `CSS.supports`, limited to declarations, cannot query.
  */
 function regleAppliquee(css: string, verifier: (sonde: HTMLElement) => boolean): boolean {
   const style = document.createElement('style');
@@ -56,8 +56,8 @@ function supporte(propriete: string, valeur: string): boolean {
 }
 
 /**
- * `CSS.supports` à un seul argument, la seule forme qui accepte `selector(…)`.
- * Passer une condition à la forme à deux arguments répond toujours faux.
+ * One-argument `CSS.supports`, the only form accepting `selector(…)`. Passing a
+ * condition to the two-argument form always returns false.
  */
 function supporteCondition(condition: string): boolean {
   try {
@@ -67,7 +67,7 @@ function supporteCondition(condition: string): boolean {
   }
 }
 
-/** Valeurs effectives des encoches — sur un téléviseur, elles disent l'overscan. */
+/** Effective inset values — on a television they reveal overscan. */
 function encoches(): string {
   const sonde = document.createElement('div');
   sonde.style.cssText =
@@ -85,9 +85,9 @@ function releve(): Ligne[] {
   const info = (cle: string, valeur: string): Ligne => ({ cle, valeur, bon: null });
   const test = (cle: string, ok: boolean): Ligne => ({ cle, valeur: ok ? 'OUI' : 'NON', bon: ok });
 
-  // Mesures de géométrie : ce sont les seules qui distinguent « reconnu » de
-  // « appliqué », et les propriétés logiques sont justement celles que Tailwind
-  // v4 émet partout à la place de leurs équivalents physiques.
+  // Geometry measurements alone distinguish "recognised" from "applied", and
+  // logical properties are precisely what Tailwind v4 emits everywhere instead
+  // of physical equivalents.
   const insetInline = mesurer((parent) => {
     const enfant = document.createElement('div');
     enfant.style.cssText = 'position:absolute;inset-inline:0';
@@ -122,13 +122,13 @@ function releve(): Ligne[] {
     info('Viewport CSS', `${window.innerWidth} × ${window.innerHeight}`),
     info('Screen', `${window.screen.width} × ${window.screen.height}`),
     info('devicePixelRatio', String(window.devicePixelRatio)),
-    info('Encoches h/d/b/g', encoches()),
-    info('Pointeur fin', window.matchMedia('(pointer: fine)').matches ? 'oui' : 'non'),
-    info('Survol possible', window.matchMedia('(hover: hover)').matches ? 'oui' : 'non'),
+    info('Safe-area insets t/r/b/l', encoches()),
+    info('Fine pointer', window.matchMedia('(pointer: fine)').matches ? 'yes' : 'no'),
+    info('Hover available', window.matchMedia('(hover: hover)').matches ? 'yes' : 'no'),
 
     test(
-      // Un NON ne condamne plus l'application : la feuille produite est dépliée
-      // à la construction (D260809h). Reste un bon marqueur de génération.
+      // NO no longer condemns the application: the produced stylesheet is flattened
+      // during the build (D260809h). It remains a useful generation marker.
       '@layer — no longer required, unwrapped at build time',
       regleAppliquee(
         '@layer diagnostic { #sonde-diagnostic { color: rgb(1, 2, 3) } }',
@@ -139,8 +139,8 @@ function releve(): Ligne[] {
       '@property',
       regleAppliquee(
         '@property --sonde-teinte { syntax: "<color>"; inherits: false; initial-value: rgb(4, 5, 6) }',
-        // Une propriété enregistrée porte sa valeur initiale sans qu'on la
-        // déclare ; ignorée, elle ne calcule rien.
+        // A registered property carries its initial value without a declaration;
+        // ignored, it computes nothing.
         (sonde) => getComputedStyle(sonde).getPropertyValue('--sonde-teinte').trim() !== '',
       ),
     ),
@@ -163,21 +163,19 @@ function releve(): Ligne[] {
 }
 
 /**
- * Page de relevé des capacités du navigateur, à ouvrir sur l'appareil qui
- * affiche mal.
+ * Browser capability report page to open on the device rendering incorrectly.
  *
- * Elle est **écrite en styles en ligne, sans une seule classe Tailwind**, et
- * c'est sa raison d'être : elle rend compte de navigateurs où la feuille de
- * styles de l'application est justement en défaut. Habillée comme le reste, elle
- * mentirait sur l'état qu'elle est censée mesurer — ou ne s'afficherait pas.
+ * It uses **inline styles without a single Tailwind class** by design: it reports
+ * browsers where the application stylesheet itself fails. Styled like the rest,
+ * it would misrepresent the state it measures — or fail to appear.
  *
- * Elle est publique, comme l'écran de connexion : un navigateur trop ancien pour
- * afficher le formulaire doit quand même pouvoir se décrire.
+ * It is public like the sign-in screen: a browser too old to display the form
+ * must still be able to describe itself.
  */
 export default function DiagnosticPage(): ReactElement {
   const [lignes, setLignes] = useState<Ligne[]>([]);
 
-  // Après le montage seulement : tout le relevé mesure le DOM réel.
+  // After mounting only: the entire report measures the real DOM.
   useEffect(() => setLignes(releve()), []);
 
   const version = /Chr[o0]me\/(\d+)/.exec(navigator.userAgent)?.[1];
@@ -188,18 +186,18 @@ export default function DiagnosticPage(): ReactElement {
         minHeight: '100%',
         background: '#0b0b0d',
         color: '#e8e8ee',
-        // Corps volontairement gros : cette page se lit depuis un canapé, à
-        // trois mètres d'un téléviseur, et se photographie.
+        // Deliberately large body: this page is read from a sofa three metres from
+        // a television and photographed.
         font: '22px/1.3 system-ui, Arial, sans-serif',
         padding: '16px 28px',
       }}
     >
       <h1 style={{ font: '700 30px/1.2 system-ui, Arial, sans-serif', margin: '0 0 8px' }}>
-        Diagnostic du navigateur
+        Browser diagnostics
       </h1>
 
       <p style={{ font: '700 34px/1.2 system-ui, Arial, sans-serif', color: '#7aa2ff', margin: 0 }}>
-        Chromium {version ?? 'inconnu'} · {window.innerWidth} × {window.innerHeight}
+        Chromium {version ?? 'unknown'} · {window.innerWidth} × {window.innerHeight}
       </p>
 
       <p
@@ -208,10 +206,10 @@ export default function DiagnosticPage(): ReactElement {
         {navigator.userAgent}
       </p>
 
-      {/* Deux colonnes dès qu'il y a la place : le relevé se transmet en
-          photographiant l'écran, et ce qui dépasse du premier écran ne sera pas
-          photographié. Sur un téléviseur, faire défiler à la télécommande pour
-          prendre un second cliché, c'est le cliché qu'on n'aura pas. */}
+      {/* Use two columns as soon as space allows: the report is shared by
+          photographing the screen, and anything below the first screen will not
+          be photographed. On a television, scrolling by remote for a second shot
+          means that shot will never be taken. */}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 40px' }}>
         {[lignes.slice(0, Math.ceil(lignes.length / 2)), lignes.slice(Math.ceil(lignes.length / 2))]
           .filter((moitie) => moitie.length > 0)

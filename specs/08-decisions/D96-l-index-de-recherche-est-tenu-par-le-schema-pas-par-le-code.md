@@ -1,68 +1,61 @@
-# D96 — L'index de recherche est tenu par le schéma, pas par le code
+# D96 — The search index is maintained by the schema, not the code
 
-**Contexte.** Passé une vingtaine d'albums, la page d'accueil ne répond plus à
-« où sont les photos de Marseille ». L'information existe pourtant déjà en base :
-les albums portent un titre et une description, les journées une note et un lieu
-— saisi ou géocodé par la passe `places` (D48) —, les photos une description
-depuis D83. Rien ne la rend interrogeable : il faut ouvrir les albums un par un.
+**Context.** Beyond around twenty albums, the home page cannot answer "where are
+the Marseille photos?". Yet the information already exists in the database:
+albums have titles and descriptions, days have notes and places — entered or
+geocoded by the `places` pass (D48) — and photos have descriptions since D83.
+Nothing makes it searchable; albums must be opened one by one.
 
-Le coût d'une recherche ici n'est pas la requête. Quelques milliers de lignes se
-parcourent en moins d'une milliseconde, et un `LIKE '%…%'` suffirait longtemps.
-Le coût est de **tenir l'index à jour**. Ces textes s'écrivent depuis six
-endroits : `ConfigRepo.saveAlbum`, `AlbumDayRepo.upsertNote`,
-`AlbumDayRepo.replaceCells`, `Geocoder`, `MediaRepo.setDescription`, et les
-suppressions en cascade d'un album. Une réindexation appelée depuis le code
-demanderait de n'en oublier aucun — aujourd'hui, et dans tout chemin d'écriture
-écrit plus tard. Or un index périmé ne se voit pas : il ne casse rien, il rend
-simplement moins de résultats, et le manque ne se remarque que le jour où l'on
-cherche précisément ce qui n'y est pas.
+The cost of search here is not the query. A few thousand rows scan in under a
+millisecond, and `LIKE '%…%'` would suffice for a long time. The cost is **keeping
+the index current**. These texts are written from six places:
+`ConfigRepo.saveAlbum`, `AlbumDayRepo.upsertNote`, `AlbumDayRepo.replaceCells`,
+`Geocoder`, `MediaRepo.setDescription`, and cascading album deletion. Code-driven
+reindexing would require remembering every one — today and in every future write
+path. A stale index is invisible: nothing breaks; it merely returns fewer
+results, and the absence is only noticed when searching for exactly what is
+missing.
 
-**Choix.** Quatre tables FTS5 **à contenu externe** (`content='<table>'`,
-`content_rowid='rowid'`), tenues par **des déclencheurs SQL** — trois par table,
-la forme documentée de FTS5. La cohérence devient une propriété du schéma et non
-une discipline d'appel : tout chemin d'écriture met l'index à jour, y compris
-ceux que personne n'a encore écrits, y compris ceux qui ne passent pas par le
-code — une cascade `ON DELETE`, une correction en `sqlite3`.
+**Choice.** Four FTS5 tables **with external content** (`content='<table>'`,
+`content_rowid='rowid'`), maintained by **SQL triggers** — three per table, the
+documented FTS5 form. Consistency becomes a schema property, not a calling
+discipline: every write path updates the index, including paths not yet written
+and those outside the code — an `ON DELETE` cascade or a correction in `sqlite3`.
 
-Le contenu externe évite la duplication du texte : la table FTS ne stocke que
-l'index et se joint à sa table d'origine par `rowid`. Le tokenizer est
-`unicode61 remove_diacritics 2` — « ete » trouve « été », « nim » trouve
-« Nîmes », sans colonne normalisée à tenir à la main, c'est-à-dire sans un
-second endroit où l'oubli est possible.
+External content avoids duplicating text: the FTS table only stores the index and
+joins its source by `rowid`. The tokenizer is `unicode61 remove_diacritics 2` —
+"ete" finds "été" and "nim" finds "Nîmes", without a manually maintained
+normalised column and therefore without another place to forget.
 
-Vérifié sur `better-sqlite3@12.11.1` (SQLite 3.53.2) avant de s'y engager : les
-déclencheurs `AFTER DELETE` se déclenchent bien sur les suppressions en cascade,
-et l'`integrity-check` de FTS5 reste vert ensuite. Ces deux points-là sont
-exactement ce qui rendrait la décision fausse s'ils ne tenaient pas.
+Verified on `better-sqlite3@12.11.1` (SQLite 3.53.2) before committing:
+`AFTER DELETE` triggers do fire on cascading deletions, and FTS5 `integrity-check`
+remains green afterwards. Those two points are exactly what would make the
+decision false if they did not hold.
 
-**Ce qui n'est pas indexé, et pourquoi.** `media.name` : `IMG_1234.jpg` est du
-bruit, et l'indexer noierait les vrais libellés sous des noms que personne n'a
-choisis. `camera_make` et `camera_model` : chercher « iPhone » rendrait la
-moitié de la bibliothèque, c'est-à-dire rien. Les **commentaires** : chercher
-dans ce que d'autres ont écrit est une autre fonctionnalité — la modération
-masque des messages, le fil appartient au couple (album, média), et une
-recherche devrait rejouer ces règles-là plutôt que les emprunter.
+**What is not indexed, and why.** `media.name`: `IMG_1234.jpg` is noise, and
+indexing it would drown real labels beneath names nobody chose. `camera_make` and
+`camera_model`: searching "iPhone" would return half the library, meaning
+nothing. **Comments**: searching what others wrote is another feature —
+moderation hides messages, a thread belongs to the (album, media) pair, and
+search would need to replay those rules rather than borrow them.
 
-**Ce qui est rendu est une entité navigable, pas un extrait.** « Marseille »
-ouvre la journée à Marseille ; il n'affiche pas la ligne où le mot apparaît. Ce
-choix décide de tout l'affichage : trois groupes courts — Albums, Journées et
-lieux, Photos —, cinq entrées chacun, et aucun score comparé d'un type à
-l'autre. Le `bm25` d'un titre de trois mots et celui d'une note de trois lignes
-ne veulent pas dire la même chose ; l'affichage étant groupé, la question ne se
-pose pas et aucune normalisation n'est nécessaire.
+**What is returned is a navigable entity, not an excerpt.** "Marseille" opens
+the day in Marseille; it does not show the line containing the word. This choice
+determines the whole display: three short groups — Albums, Days and places,
+Photos — with five entries each and no score compared across types. The `bm25` of
+a three-word title and that of a three-line note are not comparable; grouped
+display removes the question and needs no normalisation.
 
-**Écarté.** Une colonne `search_text` dénormalisée par table, remplie par le
-code : c'est précisément la discipline qu'on cherche à ne pas devoir tenir.
-Un moteur externe (SQLite reste le seul état de l'instance, D9). Et le `LIKE
-'%…%'` : il ignore les accents, ne sait pas chercher par préfixe de mot, et
-scanne — il aurait tenu, puis cessé de tenir sans qu'on sache dire quand.
+**Rejected.** A denormalised `search_text` column per table, filled by code:
+exactly the discipline being avoided. An external engine (SQLite remains the
+instance's only state, D9). And `LIKE '%…%'`: it ignores accents, cannot search
+by word prefix, and scans — it would work until it stopped, with no clear point
+when.
 
-**Conséquences.** Migration 11, non rejouable comme toutes les autres. Elle se
-termine par un `rebuild` par table, sans lequel une instance en service
-resterait muette sur tout ce qu'elle contient déjà : les déclencheurs
-n'indexeraient que les écritures suivantes, c'est-à-dire jamais pour un album
-qu'on ne retouche plus. `SearchRepo` (`search.ts`) filtre en plus sur deux
-points qui ne sont pas décoratifs — une description dont le média a quitté
-l'index (D83) ne rend rien, sans quoi le résultat ouvrirait une visionneuse
-vide, et une journée qui correspond à la fois par sa note et par son lieu
-n'apparaît qu'une fois.
+**Consequences.** Migration 11, not replayable like all others. It ends with one
+`rebuild` per table; without it, an existing instance would remain silent about
+everything already present because triggers would only index later writes —
+never, for an untouched album. `SearchRepo` (`search.ts`) also filters two
+non-decorative cases: a description whose media left the index (D83) returns
+nothing, otherwise the result opens an empty viewer; and a day matching both its
+note and place appears only once.

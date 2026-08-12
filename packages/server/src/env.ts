@@ -4,16 +4,16 @@ import { resolve } from 'node:path';
 import { z } from 'zod';
 
 /**
- * Front buildé, à côté du serveur dans le monorepo. Le chemin est calculé
- * depuis ce module, donc il tombe juste aussi bien depuis `src/` (tsx) que
- * depuis `dist/` (production). Surchargeable par WEB_DIR pour le conteneur.
+ * Built front end, next to the server in the monorepo. The path is calculated
+ * from this module, so it is correct from both `src/` (tsx) and `dist/`
+ * (production). WEB_DIR can override it for the container.
  */
 const DEFAULT_WEB_DIR = fileURLToPath(new URL('../../web/dist', import.meta.url));
 
 /**
- * Les secrets doivent faire au moins 32 caractères — c'est la longueur produite
- * par `openssl rand -hex 32` divisée par deux, donc largement atteignable, et
- * ça écarte les valeurs de test laissées par erreur en production.
+ * Secrets must be at least 32 characters long — half the length produced by
+ * `openssl rand -hex 32`, so it is easily achievable and rules out test values
+ * accidentally left in production.
  */
 const secret = z.string().min(32, 'must be at least 32 characters (openssl rand -hex 32)');
 
@@ -24,10 +24,10 @@ const schema = z.object({
   PUBLIC_URL: z.string().url().default('http://localhost:8080'),
 
   /**
-   * Nom de l'instance : onglet, écran de connexion, et surtout l'icône posée
-   * sur un écran d'accueil. Une variable d'environnement plutôt qu'un réglage
-   * en base, parce qu'elle doit valoir avant qu'un compte existe — la première
-   * page servie est l'écran de connexion, et elle porte déjà ce nom.
+   * Instance name: browser tab, sign-in screen, and especially the icon added
+   * to a home screen. An environment variable rather than a database setting,
+   * because it must have a value before an account exists — the first page served
+   * is the sign-in screen, and it already carries this name.
    */
   APP_NAME: z.string().trim().min(1).default('Photos'),
 
@@ -38,32 +38,31 @@ const schema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 
   /**
-   * Clé JSON d'un compte de service, en alternative au consentement OAuth.
-   * Renseignée, elle prend le pas : plus d'écran « Google n'a pas validé cette
-   * application », plus de refresh token à renouveler. Le compte de service ne
-   * voit que les dossiers explicitement partagés avec son adresse.
+   * JSON key for a service account, as an alternative to OAuth consent.
+   * When set, it takes precedence: no more "Google hasn't verified this app"
+   * screen and no refresh token to renew. The service account only sees folders
+   * explicitly shared with its address.
    */
   GOOGLE_SERVICE_ACCOUNT_FILE: z.string().optional(),
 
-  // Notifications de commentaires. Une URL plutôt qu'un quatuor hôte/port/
-  // utilisateur/mot de passe : c'est la forme que tous les fournisseurs
-  // documentent, et elle porte le chiffrement dans son schéma (`smtps://`).
+  // Comment notifications. A URL rather than a host/port/username/password
+  // quartet: every provider documents this form, and its scheme carries the
+  // encryption setting (`smtps://`).
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().optional(),
 
   /**
-   * Adresse à qui répondre, quand celle de `MAIL_FROM` ne reçoit rien. Un relais
-   * transactionnel n'a pas de boîte de réception, et le domaine d'envoi n'en a
-   * pas forcément une : sans cette variable, répondre à une notification part
-   * dans le vide, ou rebondit. Absente, aucun `Reply-To` n'est posé — le
-   * comportement d'avant, correct pour un domaine qui reçoit son courrier.
+   * Reply address for when `MAIL_FROM` cannot receive mail. A transactional relay
+   * has no inbox, and its sending domain may not have one: without this variable,
+   * replying to a notification goes nowhere or bounces. When absent, no `Reply-To`
+   * is set — the previous behaviour, suitable for a domain that receives mail.
    */
   MAIL_REPLY_TO: z.string().optional(),
 
   /**
-   * Racine du service de géocodage inverse, qui donne un nom aux coordonnées
-   * EXIF. Une chaîne vide le désactive : les journées gardent leurs grappes,
-   * simplement sans libellé. Une instance Nominatim privée se met ici.
+   * Root of the reverse-geocoding service that gives EXIF coordinates a name.
+   * An empty string disables it: days keep their clusters, simply without labels.
+   * A private Nominatim instance goes here.
    */
   GEOCODING_URL: z.string().default('https://nominatim.openstreetmap.org'),
 
@@ -80,28 +79,28 @@ export interface Env {
   port: number;
   host: string;
   publicUrl: string;
-  /** Nom affiché de l'instance, et nom de l'application une fois installée. */
+  /** Displayed instance name, and application name once installed. */
   appName: string;
   sessionSecret: string;
   tokenKey: string;
   google: { clientId: string; clientSecret: string } | null;
   /**
-   * Compte de service, `null` si l'instance passe par OAuth. Les deux peuvent
-   * être configurés — c'est alors le compte de service qui sert, l'autre
-   * restant utilisable après avoir retiré la clé.
+   * Service account, `null` when the instance uses OAuth. Both may be configured —
+   * the service account is then used, while the other remains available after
+   * removing the key.
    */
   serviceAccount: { email: string; privateKey: string; file: string } | null;
-  /** `null` si l'instance n'envoie pas d'email : les notifications s'éteignent. */
+  /** `null` when the instance sends no email: notifications are disabled. */
   mail: { smtpUrl: string; from: string } | null;
   /**
-   * Hors de `mail` à dessein : la variable est indépendante de la paire
-   * `SMTP_URL`/`MAIL_FROM`, et le rester ici permet de signaler celle qui est
-   * renseignée sans relais pour l'utiliser.
+   * Deliberately outside `mail`: the variable is independent of the
+   * `SMTP_URL`/`MAIL_FROM` pair, and keeping it here makes it possible to flag
+   * one that is set without a relay to use it.
    */
   mailReplyTo: string | null;
   /**
-   * `null` si `GEOCODING_URL` est vide : les lieux déduits de l'EXIF ne sont
-   * plus nommés, le reste de l'application est inchangé.
+   * `null` when `GEOCODING_URL` is empty: places inferred from EXIF data are no
+   * longer named, while the rest of the application is unchanged.
    */
   geocoding: { baseUrl: string; userAgent: string } | null;
   configPath: string;
@@ -109,18 +108,18 @@ export interface Env {
   cacheDir: string;
   webDir: string;
   logLevel: string;
-  /** Callback OAuth, dérivé de PUBLIC_URL — doit être déclaré tel quel dans la console GCP. */
+  /** OAuth callback derived from PUBLIC_URL — must be declared verbatim in the GCP console. */
   oauthRedirectUri: string;
 }
 
 /**
- * Lit la clé JSON d'un compte de service.
+ * Reads a service account JSON key.
  *
- * Échoue franchement plutôt que de retomber sur OAuth : une clé désignée mais
- * illisible est une erreur de déploiement — chemin non monté dans le
- * conteneur, droits trop stricts, fichier tronqué. Basculer silencieusement
- * sur l'autre chemin d'authentification ferait réapparaître l'écran de
- * consentement là où on venait précisément de le supprimer, sans dire pourquoi.
+ * Fails explicitly instead of falling back to OAuth: a specified but unreadable
+ * key is a deployment error — an unmounted path, overly restrictive permissions,
+ * or a truncated file. Silently switching to the other authentication path would
+ * bring back the consent screen where it had just been deliberately removed,
+ * without explaining why.
  */
 function readServiceAccount(file: string): { email: string; privateKey: string; file: string } {
   let parsed: unknown;
@@ -128,7 +127,7 @@ function readServiceAccount(file: string): { email: string; privateKey: string; 
     parsed = JSON.parse(readFileSync(file, 'utf8'));
   } catch (error) {
     throw new Error(
-      `GOOGLE_SERVICE_ACCOUNT_FILE : « ${file} » est illisible ou n'est pas du JSON ` +
+      `GOOGLE_SERVICE_ACCOUNT_FILE: "${file}" is unreadable or is not JSON ` +
         `(${(error as Error).message})`,
     );
   }
@@ -146,17 +145,18 @@ function readServiceAccount(file: string): { email: string; privateKey: string; 
 }
 
 /**
- * Contrôle la forme de `SMTP_URL`.
+ * Validates the shape of `SMTP_URL`.
  *
- * Le cas visé est silencieux, et c'est ce qui le rend coûteux : un mot de passe
- * contenant `/`, `?` ou `#` non encodé **termine l'adresse** au milieu des
- * identifiants. Nodemailer ne s'en plaint pas — il construit un transport vers
- * un hôte qui est en fait le nom d'utilisateur, sans authentification — et
- * l'instance démarre normalement. La panne ne se voit qu'au premier envoi, des
- * semaines plus tard, sous la forme d'un échec réseau incompréhensible.
+ * The targeted case is silent, which is what makes it costly: a password containing
+ * an unencoded `/`, `?` or `#` **ends the address** in the middle of the credentials.
+ * Nodemailer does not complain — it creates a transport to a host that is actually
+ * the username, without authentication — and the instance starts normally. The
+ * failure only appears on the first delivery, weeks later, as an inexplicable
+ * network error.
  *
- * `new URL` refuse exactement ces cas. `+`, `:` et l'espace passent très bien,
- * et ne sont donc pas signalés : un contrôle qui crie à tort finit contourné.
+ * `new URL` rejects exactly these cases. `+`, `:` and spaces work correctly and
+ * are therefore not reported: a check that raises false alarms is eventually
+ * bypassed.
  */
 function validateSmtpUrl(url: string): void {
   let parsed: URL;
@@ -172,7 +172,7 @@ function validateSmtpUrl(url: string): void {
 
   if (parsed.protocol !== 'smtp:' && parsed.protocol !== 'smtps:') {
     throw new Error(
-      `SMTP_URL doit commencer par « smtp:// » ou « smtps:// », pas « ${parsed.protocol}// ».`,
+      `SMTP_URL must start with "smtp://" or "smtps://", not "${parsed.protocol}//".`,
     );
   }
 
@@ -181,16 +181,16 @@ function validateSmtpUrl(url: string): void {
   }
 }
 
-/** Une adresse : rien d'espace ni de chevron autour d'un seul `@`. */
+/** One address: no spaces or angle brackets around a single `@`. */
 const ADRESSE = /^[^\s<>@]+@[^\s<>@]+$/;
 
 /**
- * Extrait l'adresse d'un en-tête « Nom <adresse> » ou « adresse », en minuscules
- * pour être comparable. Rend `null` si rien ne ressemble à une adresse.
+ * Extracts the address from a "Name <address>" or "address" header, lower-cased
+ * for comparison. Returns `null` if nothing resembles an address.
  *
- * Volontairement permissif sur le domaine — pas de point exigé, `@localhost`
- * sert aux essais avec un relais local — et strict sur ce qui trahit une faute
- * de frappe : chevron non refermé, `@` absent ou en double, espace au milieu.
+ * Deliberately permissive about the domain — no dot required, as `@localhost` is
+ * useful for tests with a local relay — and strict about signs of a typo: an
+ * unclosed angle bracket, a missing or duplicate `@`, or a space in the middle.
  */
 export function parseMailAddress(valeur: string): string | null {
   const brut = valeur.trim();
@@ -201,18 +201,18 @@ export function parseMailAddress(valeur: string): string | null {
     return ADRESSE.test(adresse) ? adresse.toLowerCase() : null;
   }
 
-  // Un chevron sans sa paire : « Galerie <galerie@exemple.fr » part tel quel
-  // dans l'en-tête, et le relais le rejette ou le réécrit.
+  // An angle bracket without its pair: "Galerie <galerie@exemple.fr" is sent
+  // verbatim in the header, and the relay rejects or rewrites it.
   if (brut.includes('<') || brut.includes('>')) return null;
 
   return ADRESSE.test(brut) ? brut.toLowerCase() : null;
 }
 
 /**
- * Contrôle qu'une variable d'adresse est exploitable, et arrête le démarrage
- * sinon. Même raison que pour `SMTP_URL` : un en-tête `From` mal formé ne se
- * voit qu'au premier envoi, sous la forme d'un rejet du relais que rien ne
- * rattache à une faute de frappe dans le `.env`.
+ * Checks that an address variable is usable and prevents startup otherwise.
+ * The reason is the same as for `SMTP_URL`: a malformed `From` header only
+ * becomes visible on the first delivery, as a relay rejection with no obvious
+ * connection to a typo in `.env`.
  */
 function validateMailAddress(variable: string, valeur: string): void {
   if (parseMailAddress(valeur)) return;
@@ -223,10 +223,9 @@ function validateMailAddress(variable: string, valeur: string): void {
 }
 
 /**
- * `baseDir` sert de racine aux chemins relatifs (CONFIG_PATH, DATA_DIR…).
- * C'est le répertoire du `.env` quand il y en a un, si bien qu'un script lancé
- * depuis `packages/server` vise les mêmes fichiers que le serveur lancé depuis
- * la racine.
+ * `baseDir` is the root for relative paths (CONFIG_PATH, DATA_DIR…). It is the
+ * `.env` directory when one exists, so a script launched from `packages/server`
+ * targets the same files as the server launched from the root.
  */
 export function loadEnv(
   source: NodeJS.ProcessEnv = process.env,
@@ -237,23 +236,22 @@ export function loadEnv(
     const details = parsed.error.issues
       .map((issue) => `  ${issue.path.join('.')}: ${issue.message}`)
       .join('\n');
-    throw new Error(`Variables d'environnement invalides :\n${details}`);
+    throw new Error(`Invalid environment variables:\n${details}`);
   }
 
   const env = parsed.data;
   const publicUrl = env.PUBLIC_URL.replace(/\/+$/, '');
 
-  // Les deux identifiants OAuth vont par paire : n'en avoir qu'un est une erreur
-  // de configuration silencieuse qui ne se manifesterait qu'au moment du consentement.
+  // The two OAuth credentials form a pair: having only one is a silent configuration
+  // error that would only appear during consent.
   const hasId = Boolean(env.GOOGLE_CLIENT_ID);
   const hasSecret = Boolean(env.GOOGLE_CLIENT_SECRET);
   if (hasId !== hasSecret) {
     throw new Error('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together (or neither).');
   }
 
-  // Même raison que ci-dessus : une instance configurée avec un serveur SMTP
-  // mais sans expéditeur n'échouerait qu'au premier commentaire posté, des
-  // semaines après la mise en service.
+  // Same reason as above: an instance configured with an SMTP server but no sender
+  // would only fail on the first posted comment, weeks after being put into service.
   const hasSmtp = Boolean(env.SMTP_URL);
   const hasFrom = Boolean(env.MAIL_FROM);
   if (hasSmtp !== hasFrom) {
@@ -290,9 +288,9 @@ export function loadEnv(
       : null,
     mail: hasSmtp && hasFrom ? { smtpUrl: env.SMTP_URL!, from: env.MAIL_FROM! } : null,
     mailReplyTo: replyTo,
-    // La politique d'usage de Nominatim exige un `User-Agent` qui identifie
-    // l'appelant : l'instance publique bloque les agents anonymes, et un
-    // `node-fetch` générique se ferait couper sans qu'on sache pourquoi.
+    // Nominatim's usage policy requires a `User-Agent` that identifies the caller:
+    // the public instance blocks anonymous agents, and a generic `node-fetch` would
+    // be cut off without making the reason clear.
     geocoding: geocodingUrl ? { baseUrl: geocodingUrl, userAgent: `nonni (+${publicUrl})` } : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),

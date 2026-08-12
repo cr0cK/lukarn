@@ -1,70 +1,64 @@
-# D93 — La note d'une journée s'affiche en entier, sur un nombre de lignes mesuré et non estimé
+# D93 — A day's note is shown in full using a measured, not estimated, line count
 
-**Contexte.** D85 avait réduit la note d'une journée à **une ligne tronquée**
-dans l'en-tête de section, pour que la hauteur réservée par `useGridLayout` vaille
-exactement la hauteur rendue par `SectionHeader` (D49 : le layout est calculé
-sans DOM). Le contrat était exact, mais le prix se voyait : une note de deux
-phrases — le cas courant, un itinéraire de journée — s'arrêtait sur une ellipse
-au tiers du premier point d'intérêt. Le texte entier restait accessible, mais
-dans trois endroits qu'il faut ouvrir : l'infobulle, le panneau `i`, le bandeau
-de la visionneuse. Une note qu'on écrit pour être lue en parcourant la grille
-n'était plus lue.
+**Context.** D85 reduced a day's note to **one truncated line** in the section
+header so the height reserved by `useGridLayout` exactly matched that rendered by
+`SectionHeader` (D49: layout is calculated without the DOM). The contract was
+exact, but the cost was visible: a two-sentence note — the common case, a day's
+itinerary — stopped at an ellipsis a third of the way through the first point of
+interest. Full text remained available, but in three places that must be opened:
+the tooltip, the `i` panel, and the viewer strip. A note written to be read while
+browsing the grid was no longer read.
 
-**Choix.** La note s'affiche sur autant de lignes qu'il lui en faut, et le
-nombre de lignes est **mesuré par le moteur de rendu** avant que le layout ne
-soit calculé. `lib/measureLines.ts` tient une sonde `<p>` hors écran, lui pose
-les mêmes classes que le paragraphe réel (`GRID_HEADER_NOTE_CLASS`) et la même
-largeur de conteneur, puis divise la hauteur obtenue par `GRID_HEADER_LINE_HEIGHT`.
+**Choice.** The note is displayed on as many lines as it needs, and the line count
+is **measured by the rendering engine** before layout is calculated.
+`lib/measureLines.ts` keeps an off-screen `<p>` probe, applies the same classes as
+the real paragraph (`GRID_HEADER_NOTE_CLASS`) and the same container width, then
+divides its measured height by `GRID_HEADER_LINE_HEIGHT`.
 
-Ce nombre sert ensuite **deux fois, depuis la même source** : `useGridLayout` le
-met dans `descriptionLines`, s'en sert pour réserver la hauteur, et le passe au
-composant, qui le pose en `line-clamp` sur le paragraphe. La réservation et la
-boîte rendue ne peuvent donc pas diverger — pas parce qu'on a recalculé pareil
-des deux côtés, mais parce qu'il n'y a qu'un calcul.
+This count is then used **twice from the same source**: `useGridLayout` puts it in
+`descriptionLines`, uses it to reserve height, and passes it to the component,
+which applies it as the paragraph's `line-clamp`. Reservation and rendered box
+therefore cannot diverge — not because both sides recalculate identically, but
+because there is only one calculation.
 
-**Pourquoi une sonde DOM et pas `canvas.measureText`.** Le canvas mesure des
-glyphes, pas une mise en page : il ignore la règle de césure appliquée, le
-`text-rendering: optimizeLegibility` posé sur le corps de page, et l'interligne
-réel. Ses métriques sont _presque_ les bonnes, et « presque » est exactement ce
-que D85 refusait. La sonde, elle, est mesurée par le même moteur, avec les mêmes
-classes, à la même largeur : elle est juste par construction. Le coût est un
-calcul de style forcé, payé une fois par largeur et par note — le résultat est
-mémorisé, et le cache vidé au changement de largeur, ce qui le borne au nombre de
-journées annotées.
+**Why a DOM probe rather than `canvas.measureText`.** Canvas measures glyphs, not
+layout: it ignores the wrapping rule, `text-rendering: optimizeLegibility` on the
+page body, and actual line height. Its metrics are _almost_ right, and "almost"
+is exactly what D85 rejected. The probe is measured by the same engine with the
+same classes at the same width: it is correct by construction. The cost is one
+forced style calculation per width and note — the result is memoised and the
+cache cleared on width changes, bounding it to the number of annotated days.
 
-**Ce qui rend l'arbitrage de D85 caduc.** D85 écartait « estimer le nombre de
-lignes d'après la longueur du texte et une largeur de glyphe moyenne », et cet
-écart-là reste valable : une estimation se trompe, et se tromper vers le bas fait
-passer les vignettes sous le texte. Mesurer n'est pas estimer. La conclusion de
-D85 — _une hauteur réservée doit être exacte_ — est conservée telle quelle ; ce
-qui change, c'est qu'on sait maintenant l'obtenir exacte sans se limiter à une
-ligne.
+**What makes D85's tradeoff obsolete.** D85 rejected "estimating line count from
+text length and average glyph width", and that rejection remains valid: estimates
+fail, and underestimation puts thumbnails beneath text. Measuring is not
+estimating. D85's conclusion — _reserved height must be exact_ — is preserved;
+what changes is that it can now be exact without being limited to one line.
 
-**Écarté.** Borner l'affichage à trois ou quatre lignes, au-delà desquelles
-l'ellipse reviendrait. Cela garderait les en-têtes compacts sur mobile, où une
-note de 300 caractères occupe cinq à sept lignes. Mais `ALBUM_DAY_DESCRIPTION_MAX_LENGTH`
-borne déjà la note à 300 caractères précisément pour qu'elle reste un repère et
-non un récit : poser une seconde borne, dépendant cette fois de la largeur de
-l'écran, ferait réapparaître la troncature là où elle gêne le plus.
+**Rejected.** Limiting display to three or four lines, after which the ellipsis
+would return. This would keep headers compact on mobile, where a 300-character
+note occupies five to seven lines. But `ALBUM_DAY_DESCRIPTION_MAX_LENGTH` already
+limits the note to 300 characters precisely so it remains a marker rather than a
+narrative: a second, screen-width-dependent limit would restore truncation where
+it is most troublesome.
 
-Écarté aussi : mesurer les en-têtes montés et réinjecter leur hauteur dans le
-layout. C'est la solution évidente, et elle est incompatible avec la
-virtualisation — un en-tête hors viewport n'est pas monté, donc pas mesurable,
-et la barre de défilement serait fausse tant qu'on n'a pas tout parcouru.
+Also rejected: measuring mounted headers and feeding their height back into
+layout. This obvious solution is incompatible with virtualisation — a header
+outside the viewport is not mounted and cannot be measured, leaving the scroll
+bar wrong until everything has been traversed.
 
-**Les retours à la ligne saisis sont conservés** (`whitespace-pre-line`), ce qui
-n'était vrai nulle part dans la grille : une note écrite en trois lignes s'y
-affichait en une seule phrase, alors que le bandeau de la visionneuse
-(`MediaCaption`) et la description d'album gardaient déjà les siens. Le même
-texte se lisait donc autrement selon l'endroit où on l'ouvrait. Comme la sonde
-porte la même classe que le paragraphe, ces retours entrent d'eux-mêmes dans la
-hauteur réservée — c'est le bénéfice d'avoir fait de `GRID_HEADER_NOTE_CLASS` la
-définition unique de la géométrie plutôt qu'une liste de classes recopiée.
+**Entered line breaks are preserved** (`whitespace-pre-line`), which was not true
+anywhere in the grid: a note written on three lines appeared as one sentence,
+while the viewer strip (`MediaCaption`) and album description already preserved
+their breaks. The same text therefore read differently depending on where it was
+opened. Since the probe carries the same class as the paragraph, these breaks
+automatically contribute to reserved height — the benefit of making
+`GRID_HEADER_NOTE_CLASS` the single geometry definition rather than copying a
+class list.
 
-**Conséquences.** Le lieu, lui, reste sur une ligne tronquée : il est court par
-nature, et le déplier multiplierait les cas sans rien montrer de plus. L'écart
-entre un en-tête et ses vignettes vaut toujours `GRID_HEADER_PAD_BOTTOM` (12 px)
-dans tous les cas, ce que D85 avait obtenu et qu'il fallait garder.
-`GridLayout` porte un champ de plus, `descriptionLines`, et `SectionHeader` une
-propriété de plus. L'attribut `title` disparaît de la note — il ne redit plus
-rien que le texte visible ne dise déjà.
+**Consequences.** The place remains on one truncated line: it is naturally short,
+and expanding it would multiply cases without showing more. The gap between a
+header and its thumbnails remains `GRID_HEADER_PAD_BOTTOM` (12 px) in every case,
+which D85 achieved and needed to preserve. `GridLayout` gains `descriptionLines`,
+and `SectionHeader` gains a property. The `title` attribute disappears from the
+note — it no longer repeats anything not already visible.

@@ -1,16 +1,16 @@
-# D9 — `wildcard: true` sur `@fastify/static`
+# D9 — `wildcard: true` on `@fastify/static`
 
-**Contexte.** Servir les bundles Vite dont les noms portent un hash qui change à
-chaque build.
+**Context.** Serving Vite bundles whose names contain a hash that changes with every
+build.
 
-**Choix.** Une route générique.
+**Decision.** A wildcard route.
 
-**Écarté.** Le comportement par défaut de `@fastify/static`, qui **énumère les
-fichiers au démarrage et déclare une route par fichier**. La liste est figée à
-l'instant du démarrage : après un redéploiement à chaud, un bundle au nom inconnu
-retomberait sur le gestionnaire 404, donc sur `index.html`, et le navigateur
-recevrait du HTML là où il attend du JavaScript — erreur de type MIME opaque.
+**Rejected.** The default behaviour of `@fastify/static`, which **enumerates files on
+startup and declares one route per file**. The list is fixed at startup: after a live
+redeployment, a bundle with an unknown name would fall through to the 404 handler, then
+to `index.html`, and the browser would receive HTML where it expects JavaScript — an
+opaque MIME type error.
 
-**Conséquences.** La route générique fait aussi correspondre `/` au répertoire
-racine et refuse de le servir (403). Une route exacte `GET /`, prioritaire sur la
-générique, rend `index.html` (`app.ts`).
+**Consequences.** The wildcard route also matches `/` to the root directory and refuses
+to serve it (403). An exact `GET /` route, which takes precedence over the wildcard,
+serves `index.html` (`app.ts`).

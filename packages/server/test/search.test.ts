@@ -5,13 +5,13 @@ import { migrate, type Db } from '../src/db.js';
 import { SearchRepo, toMatchExpression } from '../src/search.js';
 
 /**
- * Recherche d'entités dans les textes de la bibliothèque.
+ * Entity search across the library's text.
  *
- * Ce qui est vérifié, ce sont les invariants — pas le SQL. Deux comptent plus
- * que les autres : **le cloisonnement**, parce qu'un résultat de trop montre le
- * texte d'un album qu'on n'a pas le droit d'ouvrir, et **la fraîcheur de
- * l'index**, parce qu'elle repose entièrement sur des déclencheurs SQL. Un
- * index périmé ne se voit pas : il rend simplement moins de résultats.
+ * This verifies the invariants, not the SQL. Two matter more than the others:
+ * **isolation**, because one result too many exposes text from an album the
+ * visitor is not allowed to open, and **index freshness**, because it relies
+ * entirely on SQL triggers. A stale index is invisible: it simply returns
+ * fewer results.
  */
 
 const DATE = '2026-01-01T00:00:00.000Z';
@@ -70,26 +70,26 @@ function place(db: Db, cell: string, label: string | null): void {
   );
 }
 
-describe('expression de recherche', () => {
-  it('met chaque mot en préfixe, et neutralise la syntaxe de FTS5', () => {
+describe('search expression', () => {
+  it('turns each word into a prefix and neutralises FTS5 syntax', () => {
     assert.equal(toMatchExpression('mar pla'), '"mar"* "pla"*');
-    // `AND`, `NEAR`, `-` et les guillemets seraient interprétés hors des
-    // guillemets : une frappe légitime ferait alors répondre 500.
+    // `AND`, `NEAR`, `-` and quotes would be interpreted outside the quotes:
+    // legitimate input would then produce a 500 response.
     assert.equal(toMatchExpression('a"b'), '"a""b"*');
     assert.equal(toMatchExpression('NEAR(x y)'), '"NEAR(x"* "y)"*');
   });
 
-  it('rend null quand il ne reste rien à chercher', () => {
-    // Le tokenizer ne tirerait aucun terme de ces saisies, et `""*` est une
-    // expression que FTS5 accepte sans rien rendre : la liste se viderait sans
-    // que rien ne dise pourquoi.
+  it('returns null when nothing remains to search for', () => {
+    // The tokenizer would extract no term from these inputs, and `""*` is an
+    // expression FTS5 accepts while returning nothing: the list would become
+    // empty without explaining why.
     assert.equal(toMatchExpression('   '), null);
     assert.equal(toMatchExpression('-- ??'), null);
   });
 });
 
-describe('recherche', () => {
-  it('cloisonne : rien ne remonte d’un album non attribué', () => {
+describe('search', () => {
+  it('isolates results: nothing surfaces from an unassigned album', () => {
     const db = openDb();
     album(db, 'prive', 'Album privé', 'Séjour à Marseille');
     day(db, 'prive', '2026-07-15', {
@@ -102,29 +102,28 @@ describe('recherche', () => {
     note(db, 'prive', 'm1', 'Le Vieux-Port de Marseille');
 
     const repo = new SearchRepo(db);
-    // Ni par le titre, ni par la note, ni par le lieu saisi, ni par le lieu
-    // géocodé — c'est ce dernier qui n'a pas d'album_id à lui, donc le plus
-    // facile à laisser fuir.
+    // Neither through the title, the note, the entered place nor the geocoded
+    // place — the latter has no album_id of its own, so is the easiest to leak.
     assert.deepEqual(repo.search([], 'marseille'), []);
     assert.deepEqual(repo.search(['autre'], 'marseille'), []);
 
     db.close();
   });
 
-  it('ignore les accents et cherche par préfixe', () => {
+  it('ignores accents and searches by prefix', () => {
     const db = openDb();
     album(db, 'corse', 'Été en Corse');
     day(db, 'corse', '2026-07-14', { place: 'Marseille' });
 
     const repo = new SearchRepo(db);
-    // « ete » trouve « été » : c'est le tokenizer qui replie les diacritiques,
-    // aucune colonne normalisée n'est tenue à la main.
+    // "ete" finds "été": the tokenizer folds diacritics, so no normalised
+    // column needs to be maintained by hand.
     assert.deepEqual(
       repo.search(['corse'], 'ete').map((hit) => hit.label),
       ['Été en Corse'],
     );
-    // « mar » trouve « Marseille » avant que le mot soit tapé en entier : sans
-    // le préfixe, une suggestion au fil de la frappe n'aurait rien à suggérer.
+    // "mar" finds "Marseille" before the whole word is typed: without the
+    // prefix, an incremental suggestion would have nothing to suggest.
     assert.deepEqual(
       repo.search(['corse'], 'mar').map((hit) => hit.label),
       ['Marseille'],
@@ -133,7 +132,7 @@ describe('recherche', () => {
     db.close();
   });
 
-  it('rend la journée que porte un libellé géocodé, dans son album', () => {
+  it('returns the day associated with a geocoded label in its album', () => {
     const db = openDb();
     album(db, 'corse', 'Corse');
     day(db, 'corse', '2026-07-14', { cells: ['41.39,9.16'] });
@@ -149,11 +148,11 @@ describe('recherche', () => {
     db.close();
   });
 
-  it('ne rend qu’une fois une journée qui correspond deux fois', () => {
+  it('returns a day only once when it matches twice', () => {
     const db = openDb();
     album(db, 'corse', 'Corse');
-    // La note **et** le lieu géocodé portent le même mot : deux requêtes
-    // trouvent la même journée, et deux lignes mèneraient au même endroit.
+    // The note **and** the geocoded place contain the same word: two queries
+    // find the same day, and two rows would lead to the same place.
     day(db, 'corse', '2026-07-14', {
       description: 'Marché de Bonifacio',
       place: 'Bonifacio',
@@ -163,21 +162,21 @@ describe('recherche', () => {
 
     const hits = new SearchRepo(db).search(['corse'], 'bonifacio');
     assert.equal(hits.length, 1);
-    // La saisie l'emporte : elle est plus précise que le nom de la commune.
+    // The entered place takes precedence: it is more precise than the town name.
     assert.equal(hits[0]!.label, 'Bonifacio');
     assert.equal(hits[0]!.context, 'Marché de Bonifacio');
 
     db.close();
   });
 
-  it('n’ouvre pas une visionneuse vide : la description d’un média disparu ne rend rien', () => {
+  it('does not open an empty viewer: the description of missing media returns nothing', () => {
     const db = openDb();
     album(db, 'corse', 'Corse');
     media(db, 'corse', 'present');
     note(db, 'corse', 'present', 'Le ponton au petit matin');
-    // `deleteStale` retire une photo de l'index sans retirer sa description
-    // (D83) : la note survit à un dossier Drive réorganisé, mais elle ne doit
-    // pas rester cliquable.
+    // `deleteStale` removes a photo from the index without removing its
+    // description (D83): the note survives a reorganised Drive folder, but it
+    // must not remain clickable.
     note(db, 'corse', 'disparu', 'Le ponton au coucher du soleil');
 
     const hits = new SearchRepo(db).search(['corse'], 'ponton');
@@ -189,7 +188,7 @@ describe('recherche', () => {
     db.close();
   });
 
-  it('suit les écritures sans qu’aucun code applicatif ne réindexe', () => {
+  it('tracks writes without application code rebuilding the index', () => {
     const db = openDb();
     album(db, 'corse', 'Été en Corse');
     day(db, 'corse', '2026-07-14', { description: 'Marché de Bonifacio' });
@@ -197,27 +196,26 @@ describe('recherche', () => {
     note(db, 'corse', 'm1', 'Léa saute du ponton');
     const repo = new SearchRepo(db);
 
-    // Renommer : l'ancien titre s'efface, le nouveau se trouve.
+    // Renaming removes the old title and makes the new one searchable.
     db.prepare('UPDATE albums SET title = ? WHERE id = ?').run('Hiver en Corse', 'corse');
     assert.deepEqual(repo.search(['corse'], 'ete'), []);
     assert.equal(repo.search(['corse'], 'hiver').length, 1);
 
-    // Effacer une note : `AlbumDayRepo.upsertNote` écrit NULL plutôt que de
-    // supprimer la ligne, et l'index doit suivre cet UPDATE-là aussi.
+    // Clearing a note makes `AlbumDayRepo.upsertNote` write NULL instead of
+    // deleting the row, and the index must track that UPDATE as well.
     db.prepare('UPDATE album_days SET description = NULL WHERE album_id = ? AND day = ?').run(
       'corse',
       '2026-07-14',
     );
     assert.deepEqual(repo.search(['corse'], 'bonifacio'), []);
 
-    // Supprimer l'album : la cascade emporte journées et descriptions, et les
-    // déclencheurs `AFTER DELETE` se déclenchent bien sur une suppression que
-    // personne n'a écrite en SQL.
+    // Deleting the album cascades to days and descriptions, and the `AFTER
+    // DELETE` triggers must run even when no caller issued their own SQL.
     db.prepare('DELETE FROM albums WHERE id = ?').run('corse');
     assert.deepEqual(repo.search(['corse'], 'ponton'), []);
     assert.deepEqual(repo.search(['corse'], 'hiver'), []);
 
-    // Et l'index n'est pas seulement vide de résultats : il est sain.
+    // The index must be healthy, not merely empty of results.
     for (const table of ['albums_fts', 'album_days_fts', 'media_notes_fts', 'geo_places_fts']) {
       db.exec(`INSERT INTO ${table}(${table}) VALUES ('integrity-check')`);
     }
@@ -225,7 +223,7 @@ describe('recherche', () => {
     db.close();
   });
 
-  it('groupe les résultats par type et borne chaque groupe', () => {
+  it('groups results by type and limits each group', () => {
     const db = openDb();
     album(db, 'corse', 'Plage', 'La plage tous les jours');
     for (let index = 0; index < 7; index++) {
@@ -235,27 +233,27 @@ describe('recherche', () => {
     }
 
     const hits = new SearchRepo(db).search(['corse'], 'plage');
-    // L'ordre des groupes est celui de l'affichage : albums, journées, photos.
+    // Group order matches display order: albums, days, photos.
     assert.deepEqual(
       hits.map((hit) => hit.kind),
       ['album', ...Array<string>(5).fill('day'), ...Array<string>(5).fill('media')],
     );
-    // Chaque résultat porte le titre de son album : la liste couvre plusieurs
-    // albums, et un libellé seul ne dirait pas d'où il vient.
+    // Each result carries its album title: the list spans several albums, and
+    // a label alone would not show where it came from.
     assert.ok(hits.every((hit) => hit.albumTitle === 'Plage'));
 
     db.close();
   });
 
-  it('exige que tous les mots correspondent', () => {
+  it('requires every word to match', () => {
     const db = openDb();
     album(db, 'corse', 'Corse');
     day(db, 'corse', '2026-07-14', { description: 'Marché de Bonifacio', place: 'Bonifacio' });
     day(db, 'corse', '2026-07-15', { description: 'Plage de Palombaggia' });
 
     const repo = new SearchRepo(db);
-    // ET implicite entre les mots : deux mots réduisent la liste, ils ne
-    // l'élargissent pas.
+    // An implicit AND between words means two words narrow the list rather
+    // than widening it.
     assert.equal(repo.search(['corse'], 'marche bonif').length, 1);
     assert.deepEqual(repo.search(['corse'], 'marche palombaggia'), []);
 

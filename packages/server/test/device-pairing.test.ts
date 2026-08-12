@@ -12,12 +12,12 @@ import { loadEnv } from '../src/env.js';
 import { MAX_PENDING, PairingStore } from '../src/pairings.js';
 
 /**
- * Appairage d'un écran sans clavier (D260809c).
+ * Pairing a screen without a keyboard (D260809c).
  *
- * Ce qui est vérifié ici est la séparation des deux valeurs : le code affiché
- * désigne la demande et ne relève rien, le `deviceCode` relève la session et ne
- * s'affiche jamais. Le reste en découle — usage unique, expiration,
- * indistinguabilité des refus, et l'identité de commentateur qui ne suit pas.
+ * This verifies the separation between two values: the displayed code identifies
+ * the request and retrieves nothing, while `deviceCode` retrieves the session
+ * and is never displayed. Everything else follows — single use, expiry,
+ * indistinguishable refusals, and a commenter identity that does not follow.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -26,7 +26,7 @@ const root = mkdtempSync(join(tmpdir(), 'nonni-pairing-'));
 let server: FastifyInstance;
 let context: AppContext;
 
-/** Ouvre une demande, comme le ferait le téléviseur. */
+/** Opens a request as the television would. */
 async function start(): Promise<DevicePairingStart> {
   const response = await server.inject({ method: 'POST', url: '/api/auth/device/start' });
   assert.equal(response.statusCode, 200, response.body);
@@ -39,9 +39,9 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  assert.equal(response.statusCode, 200, `connexion de ${username} refusée`);
+  assert.equal(response.statusCode, 200, `login rejected for ${username}`);
   const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
-  assert.ok(cookie, 'cookie de session absent');
+  assert.ok(cookie, 'session cookie missing');
   return `nonni_session=${cookie.value}`;
 }
 
@@ -61,7 +61,7 @@ function poll(deviceCode: string) {
   });
 }
 
-/** Fait expirer une demande sans attendre cinq minutes. */
+/** Expires a request without waiting five minutes. */
 function expire(userCode: string): void {
   context.db
     .prepare('UPDATE device_pairings SET expires_at = ? WHERE user_code = ?')
@@ -118,8 +118,8 @@ after(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('ouverture d’une demande', () => {
-  it('n’exige aucune session : c’est le premier geste d’un écran qui n’en a pas', async () => {
+describe('opening a request', () => {
+  it('requires no session because it is the first action of a screen without one', async () => {
     const pairing = await start();
 
     assert.match(pairing.userCode, /^[A-HJ-NP-Z2-9]{8}$/);
@@ -127,16 +127,16 @@ describe('ouverture d’une demande', () => {
     assert.ok(new Date(pairing.expiresAt).getTime() > Date.now());
   });
 
-  it('rend un secret distinct du code affiché', async () => {
+  it('returns a secret distinct from the displayed code', async () => {
     const pairing = await start();
 
-    // Toute la sécurité du flux tient là : ce qui s'affiche dans le salon n'est
-    // pas ce qui relève la session.
+    // The entire flow's security rests here: what appears in the living room is
+    // not what retrieves the session.
     assert.notEqual(pairing.deviceCode, pairing.userCode);
     assert.ok(pairing.deviceCode.length >= 32);
   });
 
-  it('ne garde jamais le secret en clair en base', async () => {
+  it('never stores the secret in plaintext in the database', async () => {
     const pairing = await start();
 
     const row = context.db
@@ -146,8 +146,8 @@ describe('ouverture d’une demande', () => {
   });
 });
 
-describe('sondage', () => {
-  it('attend tant que personne n’a approuvé', async () => {
+describe('polling', () => {
+  it('waits until somebody approves', async () => {
     const pairing = await start();
 
     const response = await poll(pairing.deviceCode);
@@ -155,22 +155,22 @@ describe('sondage', () => {
     assert.deepEqual(response.json(), { status: 'pending' });
   });
 
-  it('ne relève rien avec le seul code affiché', async () => {
+  it('retrieves nothing with only the displayed code', async () => {
     const pairing = await start();
     const cookie = await login('famille');
     assert.equal((await approve(pairing.userCode, cookie)).statusCode, 200);
 
-    // Quelqu'un qui a lu l'écran — ou pris une photo — connaît le code, et il
-    // ne doit pas suffire à prendre la place de l'écran qui attend.
+    // Somebody who read the screen — or took a photo — knows the code, and it
+    // must not be enough to take the place of the waiting screen.
     const stolen = await poll(pairing.userCode);
     assert.equal(stolen.statusCode, 404);
     assert.equal(stolen.json<{ error: string }>().error, 'unknown_code');
 
-    // Et la demande reste relevable par son destinataire légitime.
+    // The request remains retrievable by its legitimate recipient.
     assert.equal((await poll(pairing.deviceCode)).statusCode, 200);
   });
 
-  it('ouvre une session portant le compte de celui qui a approuvé', async () => {
+  it('opens a session for the account that approved', async () => {
     const pairing = await start();
     const cookie = await login('famille');
     await approve(pairing.userCode, cookie);
@@ -185,7 +185,7 @@ describe('sondage', () => {
     assert.ok(response.cookies.some((entry) => entry.name === 'nonni_session'));
   });
 
-  it('n’ouvre que les albums de ce compte', async () => {
+  it("opens only that account's albums", async () => {
     const pairing = await start();
     const cookie = await login('famille');
     await approve(pairing.userCode, cookie);
@@ -205,23 +205,23 @@ describe('sondage', () => {
     );
   });
 
-  it('ne vaut qu’une seule session', async () => {
+  it('is valid for only one session', async () => {
     const pairing = await start();
     const cookie = await login('famille');
     await approve(pairing.userCode, cookie);
 
     assert.equal((await poll(pairing.deviceCode)).statusCode, 200);
-    // Rejoué, le secret tombe sur la même réponse qu'un code inconnu : la
-    // demande a été supprimée à la relève.
+    // When replayed, the secret gets the same response as an unknown code: the
+    // request was deleted on retrieval.
     assert.equal((await poll(pairing.deviceCode)).statusCode, 404);
   });
 });
 
-describe('identité de commentateur', () => {
-  it('ne suit pas l’écran appairé', async () => {
+describe('commenter identity', () => {
+  it('does not follow the paired screen', async () => {
     const cookie = await login('alexis');
 
-    // Une identité vérifiée, rattachée à la session de celui qui approuvera.
+    // A verified identity attached to the session of whoever will approve.
     const asked = context.commenters.requestCode('mamie@exemple.fr', 'Mamie');
     assert.ok('code' in asked);
     const verified = context.commenters.verify('mamie@exemple.fr', asked.code);
@@ -242,33 +242,33 @@ describe('identité de commentateur', () => {
     await approve(pairing.userCode, cookie);
     const claimed = await poll(pairing.deviceCode);
 
-    // Sans cette règle, le téléviseur du salon signerait « Mamie » à tout le
-    // foyer : l'identité vaut pour la personne, la clé d'accès pour l'appareil.
+    // Without this rule, the living-room television would sign "Mamie" for the
+    // whole household: identity belongs to the person, the access key to the device.
     assert.equal(claimed.json<{ user: { identity: unknown } }>().user.identity, null);
   });
 });
 
-describe('approbation', () => {
-  it('exige une session', async () => {
+describe('approval', () => {
+  it('requires a session', async () => {
     const pairing = await start();
 
     const response = await approve(pairing.userCode);
     assert.equal(response.statusCode, 401);
 
-    // Et la demande reste en attente : un refus ne la consomme pas.
+    // The request remains pending: a refusal does not consume it.
     assert.equal((await poll(pairing.deviceCode)).statusCode, 202);
   });
 
-  it('se rejoue sans conséquence pour le même compte', async () => {
+  it('can be replayed harmlessly for the same account', async () => {
     const pairing = await start();
     const cookie = await login('famille');
 
     assert.equal((await approve(pairing.userCode, cookie)).statusCode, 200);
-    // Un double clic, ou une page rouverte : ce n'est pas une erreur.
+    // A double-click or a reopened page is not an error.
     assert.equal((await approve(pairing.userCode, cookie)).statusCode, 200);
   });
 
-  it('refuse celle d’un autre compte', async () => {
+  it('rejects approval from another account', async () => {
     const pairing = await start();
     assert.equal((await approve(pairing.userCode, await login('famille'))).statusCode, 200);
 
@@ -276,12 +276,12 @@ describe('approbation', () => {
     assert.equal(response.statusCode, 409);
     assert.equal(response.json<{ error: string }>().error, 'already_paired');
 
-    // Le premier approbateur reste celui dont la session est servie.
+    // The first approver remains the account whose session is served.
     const claimed = await poll(pairing.deviceCode);
     assert.equal(claimed.json<{ user: { username: string } }>().user.username, 'famille');
   });
 
-  it('accepte le code recopié à la main, tiret et minuscules compris', async () => {
+  it('accepts a manually copied code including hyphen and lowercase', async () => {
     const pairing = await start();
     const cookie = await login('famille');
     const typed = `${pairing.userCode.slice(0, 4)}-${pairing.userCode.slice(4)}`.toLowerCase();
@@ -290,8 +290,8 @@ describe('approbation', () => {
   });
 });
 
-describe('expiration', () => {
-  it('ferme une demande que personne n’a relevée', async () => {
+describe('expiry', () => {
+  it('closes a request nobody retrieved', async () => {
     const pairing = await start();
     const cookie = await login('famille');
     await approve(pairing.userCode, cookie);
@@ -300,7 +300,7 @@ describe('expiration', () => {
     assert.equal((await poll(pairing.deviceCode)).statusCode, 404);
   });
 
-  it('répond à un code expiré comme à un code inconnu', async () => {
+  it('responds to an expired code like an unknown code', async () => {
     const pairing = await start();
     expire(pairing.userCode);
     const cookie = await login('famille');
@@ -308,13 +308,12 @@ describe('expiration', () => {
     const expired = await approve(pairing.userCode, cookie);
     const unknown = await approve('ZZZZ2222', cookie);
 
-    // Distinguer les deux dirait à qui essaie des codes au hasard lesquels ont
-    // existé.
+    // Distinguishing them would tell somebody trying random codes which ones existed.
     assert.equal(expired.statusCode, unknown.statusCode);
     assert.deepEqual(expired.json(), unknown.json());
   });
 
-  it('est purgée par le ménage', () => {
+  it('is purged by cleanup', () => {
     const store = new PairingStore(context.db, 'secret-de-test');
     const pairing = store.start();
     assert.ok(pairing);
@@ -325,18 +324,18 @@ describe('expiration', () => {
   });
 });
 
-describe('borne des demandes en attente', () => {
-  it('refuse d’ouvrir au-delà de MAX_PENDING, sans jamais accorder d’accès', () => {
-    // Base à part : la borne est globale, et la remplir gênerait les autres cas.
+describe('pending request limit', () => {
+  it('refuses to open beyond MAX_PENDING without ever granting access', () => {
+    // Separate database: the limit is global, and filling it would disrupt other cases.
     const store = new PairingStore(context.db, 'secret-de-test');
     context.db.prepare('DELETE FROM device_pairings').run();
 
     for (let index = 0; index < MAX_PENDING; index++) {
-      assert.ok(store.start(), `demande ${index} refusée avant la borne`);
+      assert.ok(store.start(), `request ${index} rejected before the limit`);
     }
     assert.equal(store.start(), null);
 
-    // La borne se rouvre dès que les demandes en cours expirent.
+    // Capacity becomes available again as soon as pending requests expire.
     context.db.prepare('DELETE FROM device_pairings').run();
     assert.ok(store.start());
   });

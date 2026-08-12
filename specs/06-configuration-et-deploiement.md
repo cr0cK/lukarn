@@ -1,512 +1,513 @@
-# 06 — Configuration et déploiement
+# 06 — Configuration and deployment
 
-Deux sources de configuration, deux natures :
+Two configuration sources, two natures:
 
-- **`.env`** — secrets et chemins, lus au démarrage, jamais rechargés à chaud.
-- **La base** — comptes, albums, droits et réglages, administrés depuis
-  `/admin`, appliqués sans redémarrage. `config/albums.yaml` ne sert plus qu'à
-  **amorcer** une installation neuve.
+- **`.env`** — secrets and paths, read at startup, never hot-reloaded.
+- **The database** — accounts, albums, permissions and settings, administered from
+  `/admin`, applied without a restart. `config/albums.yaml` is only used to
+  **bootstrap** a new installation.
 
-## Variables d'environnement — `packages/server/src/env.ts`
+## Environment variables — `packages/server/src/env.ts`
 
-Schéma zod ; une valeur invalide empêche le démarrage avec un message qui nomme
-la variable et le problème.
+Zod schema; an invalid value prevents startup with a message that names
+the variable and the problem.
 
-Déclarer une variable ici ne la rend pas réglable pour autant : sous Docker, elle
-n'atteint le processus que si le bloc `environment:` de `docker-compose.yml` la
-transmet ou si le `Dockerfile` la fixe. Compose ne propage pas l'environnement de
-l'hôte, et le `.env` ne sert qu'à l'interpolation. `check:specs` compare donc le
-schéma à ces deux fichiers et échoue sur l'oubli, parce qu'il s'est déjà produit
-sans que rien ne le signale (D78).
+Declaring a variable here does not make it configurable for that matter: under Docker, it
+only reaches the process if the `environment:` block of `docker-compose.yml` passes it
+through, or if the `Dockerfile` sets it. Compose does not propagate the host's
+environment, and `.env` is only used for interpolation. `check:specs` therefore compares the
+schema against these two files and fails on an omission, because it has already happened
+without anything reporting it (D78).
 
-| Variable                      | Défaut                                        | Rôle et conséquence d'une erreur                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| ----------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                    | `development`                                 | `development` active `pino-pretty`. Valeurs admises : `development`, `production`, `test`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| `PORT`                        | `8080`                                        | Entier positif.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `HOST`                        | `0.0.0.0`                                     | En conteneur, `127.0.0.1` rendrait l'app injoignable depuis l'hôte.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `PUBLIC_URL`                  | `http://localhost:8080`                       | URL valide obligatoire. Les `/` finaux sont retirés. **Sert à quatre choses : construire l'URI de redirection OAuth, décider si les cookies sont `secure`, décider si `Strict-Transport-Security` est posé, et — en production — donner à Caddy le domaine dont il obtient le certificat.** Une valeur fausse casse le consentement (`redirect_uri_mismatch`) ou, en HTTPS mal déclaré, empêche le cookie de revenir. Le `Caddyfile` la lit directement (`{$PUBLIC_URL}`) : le domaine servi et le domaine déclaré ne peuvent donc pas diverger.                                                                                                                                                                                                                                                                                                                                                         |
-| `APP_NAME`                    | `Photos`                                      | Nom de l'instance. Il apparaît dans le titre de l'onglet, sur l'écran de connexion, et surtout **sous l'icône une fois l'application posée sur un écran d'accueil**. Le serveur le substitue au démarrage dans `index.html` et dans le manifeste (`shell.ts`), donc un redémarrage suffit à le changer — pas un rebuild, ce qui compte quand une seule image sert toutes les installations. Court de préférence : Android tronque au-delà d'une douzaine de caractères sous l'icône. Vide ⇒ refus de démarrer, pour ne pas afficher une application sans nom.                                                                                                                                                                                                                                                                                                                                            |
-| `SESSION_SECRET`              | —                                             | **Obligatoire**, ≥ 32 caractères. Signe les cookies. Le changer déconnecte tout le monde.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `TOKEN_KEY`                   | —                                             | **Obligatoire**, ≥ 32 caractères. Chiffre le refresh token. Le changer rend le jeton stocké illisible : il est supprimé et il faut refaire le consentement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `GOOGLE_CLIENT_ID`            | absent                                        | Optionnel, mais **indissociable** de `GOOGLE_CLIENT_SECRET` : n'en renseigner qu'un fait échouer le démarrage. Sans les deux, l'app tourne et sert l'index existant, `/admin` affiche « non configuré ».                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `GOOGLE_CLIENT_SECRET`        | absent                                        | Idem.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | absent                                        | Optionnel. Chemin de la clé JSON d'un compte de service. Renseignée, elle **prend le pas** sur `GOOGLE_CLIENT_*` : plus de consentement, plus de refresh token, plus d'écran « Google n'a pas validé cette application ». Chaque dossier d'album doit alors être partagé en lecture avec l'adresse du compte de service. Un fichier absent ou mal formé **arrête le démarrage** plutôt que de retomber sur OAuth. Voir [04](./04-securite-et-acces.md) et D46.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `SMTP_URL`                    | absent                                        | Optionnel, **indissociable** de `MAIL_FROM`. URL du relais : `smtp://utilisateur:motdepasse@hote:587` ou `smtps://…` pour du TLS implicite. Contrôlée au démarrage (`new URL`, schéma `smtp`/`smtps`, hôte présent) : un mot de passe contenant `/`, `?` ou `#` non encodé coupe l'adresse au milieu des identifiants, et nodemailer construirait alors sans broncher un transport vers un hôte qui est en fait le nom d'utilisateur — l'instance démarre, et n'échoue qu'au premier envoi. Absent ⇒ **les commentaires sont indisponibles** : le code de vérification d'adresse ne peut pas partir, donc personne ne peut s'identifier. L'interface le dit au lieu d'offrir un formulaire condamné. **L'annonce des nouvelles photos ne part pas non plus**, et le notifieur ne touche alors à rien — le jour où un relais est configuré, son premier passage pose la borne sans annoncer l'historique. |
-| `MAIL_FROM`                   | absent                                        | Expéditeur des notifications, par exemple `Galerie <galerie@exemple.fr>`. Beaucoup de relais imposent une adresse qu'ils autorisent — c'est celle que SPF et DKIM signent, et en changer pour récupérer les réponses envoie les messages en indésirable. La forme est contrôlée au démarrage (`Nom <adresse>` ou `adresse` nue) : un chevron non refermé partirait tel quel dans l'en-tête.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `MAIL_REPLY_TO`               | absent                                        | Optionnel, et indépendant des deux précédentes : adresse portée par l'en-tête `Reply-To`. Un relais transactionnel n'a **pas** de boîte de réception, et le domaine d'envoi n'en a pas forcément une — répondre à une notification part alors dans le vide ou rebondit, sans que l'instance en sache rien. Même contrôle de forme que `MAIL_FROM`. Absente, aucun `Reply-To` n'est posé et une réponse suit `MAIL_FROM` : c'est le bon réglage quand cette adresse reçoit son courrier. Renseignée sans relais, ou désignant la même adresse que `MAIL_FROM`, elle est inopérante : le démarrage l'**avertit** sans échouer. Voir D81.                                                                                                                                                                                                                                                                   |
-| `GEOCODING_URL`               | `https://nominatim.openstreetmap.org`         | Racine du service de géocodage inverse, qui donne un nom aux coordonnées EXIF des photos. **Une chaîne vide le désactive** : les journées gardent leurs grappes de positions, simplement sans libellé, et le reste de l'application est inchangé. Une instance Nominatim privée se met ici. Le `User-Agent` envoyé est dérivé de `PUBLIC_URL`, comme l'exige la politique d'usage de l'instance publique — elle plafonne aussi à **une requête par seconde**, ce que le passage de fond respecte (voir [02](./02-architecture.md) et D48). Une URL invalide arrête le démarrage plutôt que de laisser un géocodage échouer silencieusement pendant des mois.                                                                                                                                                                                                                                             |
-| `CONFIG_PATH`                 | `./config/albums.yaml`                        | Fichier d'**amorçage**, résolu depuis le répertoire du `.env`, pas depuis le cwd (voir plus bas). Absent ⇒ le serveur démarre quand même ; s'il n'y a aucun compte en base, il dit comment créer le premier administrateur.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `DATA_DIR`                    | `./data`                                      | Contient `nonni.db`. Créé s'il manque. **La seule donnée irremplaçable.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `CACHE_DIR`                   | `./cache`                                     | Dérivés WebP à la racine, vidéos préparées sous `CACHE_DIR/video` — deux magasins, deux budgets, deux LRU indépendants (D260809b). Régénérable, mais pas au même prix : quelques secondes de CPU par vignette, plusieurs minutes par vidéo.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `WEB_DIR`                     | `packages/web/dist`, calculé depuis le module | Front buildé. Absent ⇒ seule l'API est servie, avec un avertissement.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `LOG_LEVEL`                   | `info`                                        | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `UV_THREADPOOL_SIZE`          | `16`, posé par le serveur s'il manque         | Taille du pool de fils de libuv, partagé entre le décodage d'images, les lectures de fichiers et argon2. Le défaut de Node (4) fait attendre une vignette déjà en cache derrière quelques rendus — mesuré à 2 s au 95e centile (D32). Une valeur présente dans l'environnement fait autorité.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Variable                      | Default                                       | Role and consequence of an error                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ----------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                    | `development`                                 | `development` enables `pino-pretty`. Accepted values: `development`, `production`, `test`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `PORT`                        | `8080`                                        | Positive integer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `HOST`                        | `0.0.0.0`                                     | In a container, `127.0.0.1` would make the app unreachable from the host.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `PUBLIC_URL`                  | `http://localhost:8080`                       | Valid URL required. Trailing `/` are stripped. **Used for four things: building the OAuth redirect URI, deciding whether cookies are `secure`, deciding whether `Strict-Transport-Security` is set, and — in production — giving Caddy the domain it obtains a certificate for.** A wrong value breaks consent (`redirect_uri_mismatch`) or, with HTTPS misdeclared, prevents the cookie from coming back. The `Caddyfile` reads it directly (`{$PUBLIC_URL}`): the served domain and the declared domain therefore cannot diverge.                                                                                                                                                                                                                                                                                                                               |
+| `APP_NAME`                    | `Photos`                                      | Instance name. It appears in the tab title, on the login screen, and above all **under the icon once the application is added to a home screen**. The server substitutes it at startup into `index.html` and into the manifest (`shell.ts`), so a restart is enough to change it — not a rebuild, which matters when a single image serves every installation. Preferably short: Android truncates beyond a dozen characters under the icon. Empty ⇒ refuses to start, so as not to display a nameless application.                                                                                                                                                                                                                                                                                                                                               |
+| `SESSION_SECRET`              | —                                             | **Required**, ≥ 32 characters. Signs the cookies. Changing it logs everyone out.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `TOKEN_KEY`                   | —                                             | **Required**, ≥ 32 characters. Encrypts the refresh token. Changing it makes the stored token unreadable: it is deleted and consent must be redone.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `GOOGLE_CLIENT_ID`            | absent                                        | Optional, but **inseparable** from `GOOGLE_CLIENT_SECRET`: setting only one causes startup to fail. Without both, the app runs and serves the existing index, and `/admin` shows "not configured".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GOOGLE_CLIENT_SECRET`        | absent                                        | Same.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | absent                                        | Optional. Path to a service account's JSON key. When set, it **takes precedence** over `GOOGLE_CLIENT_*`: no more consent, no more refresh token, no more "Google hasn't verified this app" screen. Each album folder must then be shared for reading with the service account's address. A missing or malformed file **stops startup** rather than falling back to OAuth. See [04](./04-securite-et-acces.md) and D46.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `SMTP_URL`                    | absent                                        | Optional, **inseparable** from `MAIL_FROM`. Relay URL: `smtp://user:password@host:587` or `smtps://…` for implicit TLS. Checked at startup (`new URL`, `smtp`/`smtps` scheme, host present): a password containing an unencoded `/`, `?` or `#` cuts the address off in the middle of the credentials, and nodemailer would then build, without complaint, a transport to a host that is actually the username — the instance starts, and only fails on the first send. Absent ⇒ **comments are unavailable**: the address verification code cannot be sent, so no one can identify themselves. The interface says so instead of offering a doomed form. **The new-photos announcement doesn't go out either**, and the notifier then leaves everything untouched — the day a relay is configured, its first pass sets the marker without announcing the backlog. |
+| `MAIL_FROM`                   | absent                                        | Sender of notifications, for example `Gallery <gallery@example.com>`. Many relays enforce an address they authorise — the one SPF and DKIM sign — and changing it to collect replies sends the messages to spam. The form is checked at startup (`Name <address>` or a bare `address`): an unclosed angle bracket would go straight into the header as is.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `MAIL_REPLY_TO`               | absent                                        | Optional, and independent of the previous two: address carried by the `Reply-To` header. A transactional relay has **no** inbox, and the sending domain doesn't necessarily have one either — replying to a notification then goes nowhere or bounces, without the instance knowing anything about it. Same form check as `MAIL_FROM`. If absent, no `Reply-To` is set and a reply follows `MAIL_FROM`: that's the right setting when that address receives its mail. If set without a relay, or naming the same address as `MAIL_FROM`, it is inoperative: startup **warns** without failing. See D81.                                                                                                                                                                                                                                                           |
+| `GEOCODING_URL`               | `https://nominatim.openstreetmap.org`         | Root of the reverse-geocoding service, which gives a name to the photos' EXIF coordinates. **An empty string disables it**: days keep their clusters of positions, simply without a label, and the rest of the application is unchanged. A private Nominatim instance goes here. The `User-Agent` sent is derived from `PUBLIC_URL`, as required by the public instance's usage policy — which also caps requests at **one per second**, which the background pass respects (see [02](./02-architecture.md) and D48). An invalid URL stops startup rather than letting geocoding fail silently for months.                                                                                                                                                                                                                                                        |
+| `CONFIG_PATH`                 | `./config/albums.yaml`                        | **Bootstrap** file, resolved from the `.env`'s directory, not from the cwd (see below). Absent ⇒ the server starts anyway; if there is no account in the database, it says how to create the first administrator.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `DATA_DIR`                    | `./data`                                      | Contains `nonni.db`. Created if missing. **The only irreplaceable data.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `CACHE_DIR`                   | `./cache`                                     | WebP derivatives at the root, prepared videos under `CACHE_DIR/video` — two stores, two budgets, two independent LRUs (D260809b). Regenerable, but not at the same cost: a few seconds of CPU per thumbnail, several minutes per video.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `WEB_DIR`                     | `packages/web/dist`, computed from the module | Built front end. Absent ⇒ only the API is served, with a warning.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `LOG_LEVEL`                   | `info`                                        | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `UV_THREADPOOL_SIZE`          | `16`, set by the server if missing            | Size of libuv's thread pool, shared between image decoding, file reads and argon2. Node's default (4) makes an already-cached thumbnail wait behind a few renders — measured at 2 s at the 95th percentile (D32). A value present in the environment takes precedence.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
-Dérivé, non configurable : `oauthRedirectUri = PUBLIC_URL + '/api/oauth/callback'`.
+Derived, not configurable: `oauthRedirectUri = PUBLIC_URL + '/api/oauth/callback'`.
 
-**Les variables qui vont par paire échouent au démarrage si une seule est
-donnée** — `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` comme `SMTP_URL`/`MAIL_FROM`.
-Une instance configurée avec un relais mais sans expéditeur ne se manifesterait
-qu'au premier commentaire posté, des semaines après la mise en service.
+**Variables that come in pairs fail at startup if only one is
+given** — `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` just like `SMTP_URL`/`MAIL_FROM`.
+An instance configured with a relay but no sender would only show up
+at the first comment posted, weeks after going live.
 
-**Les notifications ne bloquent jamais une requête.** Poster un commentaire
-répond dès que la ligne est écrite ; les emails partent ensuite, sur une file
-sérialisée (`mail.ts`). Un échec d'envoi est **journalisé et abandonné**, sans
-réessai : une notification manquée est un désagrément, un rejet non géré en tâche
-de fond terminerait le process — même précaution que pour l'éviction du cache
-disque. `PUBLIC_URL` sert à construire les liens des emails : mal renseignée,
-elle produit des notifications qui ne mènent nulle part.
+**Notifications never block a request.** Posting a comment
+responds as soon as the row is written; emails then go out on a
+serialised queue (`mail.ts`). A send failure is **logged and dropped**, with no
+retry: a missed notification is a nuisance, whereas an unhandled rejection in a
+background task would terminate the process — the same caution as for disk cache
+eviction. `PUBLIC_URL` is used to build the emails' links: if misconfigured,
+it produces notifications that lead nowhere.
 
-**Trois sortes d'emails partent d'une instance** : le code de vérification
-d'adresse, la notification d'un nouveau commentaire, et l'annonce des nouvelles
-photos d'un album. Cette dernière est déclenchée par le **ménage horaire** de
-`main.ts` (`notifier.ts`), pas par la fin d'une synchronisation : avec une sync
-toutes les demi-heures écrivant par lots, verser deux cents photos enverrait une
-dizaine d'emails dans la journée. Un album n'est annonçable que si sa dernière
-synchronisation **réussie** est calme depuis une heure ; le délai entre l'arrivée
-des photos et l'email est donc de une à deux heures.
+**Three kinds of email leave an instance**: the address verification code,
+the notification of a new comment, and the announcement of an album's new
+photos. The latter is triggered by `main.ts`'s **hourly sweep**
+(`notifier.ts`), not by the end of a sync: with a sync every
+half hour writing in batches, adding two hundred photos would send about
+ten emails in a day. An album is only announceable once its last
+**successful** sync has been quiet for an hour; the delay between photos
+arriving and the email is therefore one to two hours.
 
-**Le mail de code fait exception aux deux autres.** Son sujet nomme l'hôte de
-`PUBLIC_URL` et **jamais le code** ([D65](./08-decisions/D65-le-sujet-du-mail-de-code-nomme-l-instance-pas-le-code.md)), et il ne porte
-aucun lien cliquable : l'hôte y figure en texte seulement, parce qu'un lien
-ouvrirait une seconde session dans un autre navigateur alors que le code est
-attendu dans l'onglet resté ouvert. Le corps rappelle le geste qui a déclenché
-l'envoi — renseigner cette adresse sur cet hôte — pour que la destinataire
-sache d'où vient ce message sans avoir à le deviner.
+**The code email is the exception to the other two.** Its subject names the
+host from `PUBLIC_URL` and **never the code** ([D65](./08-decisions/D65-le-sujet-du-mail-de-code-nomme-l-instance-pas-le-code.md)), and it carries
+no clickable link: the host appears there as plain text only, because a link
+would open a second session in another browser while the code is
+expected in the tab that stayed open. The body recalls the action that triggered
+the send — entering this address on this host — so the recipient
+knows where the message came from without having to guess.
 
-**Résolution des chemins relatifs.** `loadDotEnv()` (`src/dotenv.ts`) remonte
-l'arborescence depuis le cwd **puis** depuis le module pour trouver un `.env`, et
-`loadEnv` prend le répertoire de ce fichier comme racine des chemins relatifs.
-Conséquence utile : un script lancé depuis `packages/server` vise les mêmes
-fichiers que le serveur lancé depuis la racine. L'absence de `.env` n'est pas une
-erreur — en conteneur, tout vient de l'environnement.
+**Resolving relative paths.** `loadDotEnv()` (`src/dotenv.ts`) walks
+up the tree from the cwd **then** from the module to find a `.env`, and
+`loadEnv` takes that file's directory as the root for relative paths.
+Useful consequence: a script launched from `packages/server` targets the same
+files as the server launched from the root. A missing `.env` is not an
+error — in a container, everything comes from the environment.
 
-## `config/albums.yaml` — amorçage seulement
+## `config/albums.yaml` — bootstrap only
 
-Modèle commenté dans `config/albums.example.yaml`. Le fichier n'est pas suivi par
-git. Il est lu par `packages/server/src/config.ts`, mais **uniquement tant
-qu'aucun compte n'existe en base** (`bootstrap.ts`) :
+Commented template in `config/albums.example.yaml`. The file is not tracked by
+git. It is read by `packages/server/src/config.ts`, but **only as long
+as no account exists in the database** (`bootstrap.ts`):
 
-| Base    | Fichier    | Ce qui se passe                                                                                      |
-| ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| vide    | présent    | Comptes, albums, droits et réglages sont importés en une transaction, puis le fichier n'est plus lu. |
-| vide    | absent     | Le serveur démarre, journalise `pnpm create-admin <identifiant>`, et l'écran de connexion l'affiche. |
-| vide    | invalide   | **Refus de démarrer**, avec l'erreur de validation : démarrer sans aucun compte serait inutilisable. |
-| peuplée | quelconque | Le fichier est ignoré. Le modifier ne fait plus rien — c'est `/admin` qui administre.                |
+| Database  | File    | What happens                                                                                                      |
+| --------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| empty     | present | Accounts, albums, permissions and settings are imported in a single transaction, then the file is no longer read. |
+| empty     | absent  | The server starts, logs `pnpm create-admin <identifier>`, and the login screen displays it.                       |
+| empty     | invalid | **Refuses to start**, with the validation error: starting without any account would be unusable.                  |
+| populated | any     | The file is ignored. Editing it no longer does anything — `/admin` administers from here on.                      |
 
-C'est aussi le chemin de mise à jour d'une instance en service : au premier
-démarrage après la migration, sa configuration est reprise telle quelle. Ni
-réindexation, ni nouveau consentement Google, ni perte d'accès —
-`packages/server/test/bootstrap.test.ts` le verrouille.
+This is also the upgrade path for a running instance: on the first
+startup after migrating, its configuration is picked up as is. No
+reindexing, no new Google consent, no loss of access —
+`packages/server/test/bootstrap.test.ts` locks this down.
 
-Le cas « base vide, pas de fichier » demande un signal visible : le serveur
-répond normalement mais refuse toute connexion, ce qui se lit comme une panne
-alors qu'il ne manque qu'une commande. `GET /api/auth/setup-state` — publique,
-puisque interrogée avant toute connexion — répond `{ needsSetup }`, et l'écran
-de connexion affiche alors la commande à lancer. Elle ne divulgue rien : sur une
-instance sans compte il n'y a rien à protéger, et elle ne dit jamais **qui**
-existe (`packages/server/test/setup-state.test.ts`).
+The "empty database, no file" case needs a visible signal: the server
+responds normally but refuses every login, which reads like an outage
+when only a command is missing. `GET /api/auth/setup-state` — public,
+since it's queried before any login — responds `{ needsSetup }`, and the
+login screen then displays the command to run. It discloses nothing: on an
+instance with no account there is nothing to protect, and it never says **who**
+exists (`packages/server/test/setup-state.test.ts`).
 
-Le schéma ci-dessous est donc figé sur ce que les installations existantes ont pu
-écrire ; les évolutions de la configuration se font dans `ConfigRepo` et
-l'API d'administration, pas ici.
+The schema below is therefore frozen on whatever existing installations may have
+written; changes to the configuration happen in `ConfigRepo` and
+the administration API, not here.
 
 ### `users[]`
 
-| Champ          | Type    | Défaut  | Contrainte                                                                                        |
-| -------------- | ------- | ------- | ------------------------------------------------------------------------------------------------- |
-| `username`     | chaîne  | —       | 1–64 caractères, `^[a-z0-9][a-z0-9._-]*$` (casse indifférente). Doublons refusés, casse comprise. |
-| `passwordHash` | chaîne  | —       | Doit commencer par `$argon2`. Produit par `pnpm hash-password`.                                   |
-| `admin`        | booléen | `false` | Ouvre `/api/admin/*` et le callback OAuth. N'accorde **aucun** album au passage.                  |
-| `albums`       | tableau | `[]`    | Ids d'albums, ou `["*"]` pour tous. Un id inconnu fait échouer le chargement.                     |
+| Field          | Type    | Default | Constraint                                                                                         |
+| -------------- | ------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `username`     | string  | —       | 1–64 characters, `^[a-z0-9][a-z0-9._-]*$` (case-insensitive). Duplicates rejected, including case. |
+| `passwordHash` | string  | —       | Must start with `$argon2`. Produced by `pnpm hash-password`.                                       |
+| `admin`        | boolean | `false` | Opens `/api/admin/*` and the OAuth callback. Grants **no** album in the process.                   |
+| `albums`       | array   | `[]`    | Album ids, or `["*"]` for all. An unknown id fails loading.                                        |
 
 ### `albums[]`
 
-| Champ         | Type    | Défaut  | Contrainte                                                                                                                                                                               |
-| ------------- | ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`          | chaîne  | —       | Même format que `username`. Doublons refusés. Sert dans les URL et comme `album_id` en base.                                                                                             |
-| `title`       | chaîne  | —       | Non vide. Affiché.                                                                                                                                                                       |
-| `description` | chaîne  | absent  | Optionnelle.                                                                                                                                                                             |
-| `folderId`    | chaîne  | —       | Non vide. Le segment après `/folders/` dans l'URL Drive — **pas un chemin**, l'API Drive ne connaît que des identifiants. Survit aux renommages et déplacements.                         |
-| `recursive`   | booléen | `true`  | Descendre dans les sous-dossiers. `false` n'indexe que la racine du dossier.                                                                                                             |
-| `groupBy`     | chaîne  | `month` | `month` ou `day` : découpage de la grille à l'ouverture. `day` convient à un séjour, et c'est le seul découpage où les notes de journée s'affichent. Modifiable ensuite depuis `/admin`. |
+| Field         | Type    | Default | Constraint                                                                                                                                                        |
+| ------------- | ------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | string  | —       | Same format as `username`. Duplicates rejected. Used in URLs and as `album_id` in the database.                                                                   |
+| `title`       | string  | —       | Non-empty. Displayed.                                                                                                                                             |
+| `description` | string  | absent  | Optional.                                                                                                                                                         |
+| `folderId`    | string  | —       | Non-empty. The segment after `/folders/` in the Drive URL — **not a path**, the Drive API only knows identifiers. Survives renames and moves.                     |
+| `recursive`   | boolean | `true`  | Descend into subfolders. `false` indexes only the folder's root.                                                                                                  |
+| `groupBy`     | string  | `month` | `month` or `day`: how the grid is split on opening. `day` suits a trip, and it's the only split where day notes are displayed. Editable afterwards from `/admin`. |
 
-### `sync` et `cache`
+### `sync` and `cache`
 
-| Champ                  | Défaut | Effet                                                                                  |
-| ---------------------- | ------ | -------------------------------------------------------------------------------------- |
-| `sync.intervalMinutes` | `30`   | Entier ≥ 0. `0` désactive la resynchronisation périodique ; `/admin` reste disponible. |
-| `sync.onStartup`       | `true` | Synchroniser tous les albums au démarrage, sans bloquer l'écoute HTTP.                 |
-| `cache.maxSizeGB`      | `20`   | Nombre > 0. Au-delà, éviction LRU jusqu'à 90 % de la limite.                           |
+| Field                  | Default | Effect                                                                    |
+| ---------------------- | ------- | ------------------------------------------------------------------------- |
+| `sync.intervalMinutes` | `30`    | Integer ≥ 0. `0` disables periodic resyncing; `/admin` remains available. |
+| `sync.onStartup`       | `true`  | Sync every album at startup, without blocking HTTP listening.             |
+| `cache.maxSizeGB`      | `20`    | Number > 0. Beyond it, LRU eviction down to 90% of the limit.             |
 
-### Erreurs de validation
+### Validation errors
 
-Le chargement rassemble toutes les erreurs zod en un message multiligne préfixé
-du chemin (`users.1.albums.0: album inconnu : "fantome"`). Trois vérifications
-custom vont au-delà du schéma : ids d'albums en double, identifiants en double
-(insensibles à la casse), et référence à un album inexistant — presque toujours
-une faute de frappe qui priverait silencieusement quelqu'un de son accès.
+Loading collects every zod error into a multi-line message prefixed
+with the path (`users.1.albums.0: unknown album: "fantome"`). Three custom
+checks go beyond the schema: duplicate album ids, duplicate identifiers
+(case-insensitive), and reference to a non-existent album — almost always
+a typo that would silently deprive someone of their access.
 
-## Administration à chaud
+## Live administration
 
-Tout se fait par `/api/admin/*` (voir [05](./05-api.md)), sans redémarrage et
-sans fichier. `POST /api/admin/reload` et `AppContext.reloadConfig()` ont disparu
-avec le fichier qu'ils relisaient.
+Everything happens through `/api/admin/*` (see [05](./05-api.md)), without a restart and
+without a file. `POST /api/admin/reload` and `AppContext.reloadConfig()` disappeared
+along with the file they used to reread.
 
-| Changement            | Effet immédiat                                                                                              |
-| --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Compte, droits, rôle  | Relus à chaque requête par `plugins/auth.ts` et `canSee()`.                                                 |
-| Album créé/supprimé   | Suppression : ses médias et son `sync_state` partent avec lui.                                              |
-| `folderId` modifié    | L'index de l'album est vidé et une resynchronisation démarre si Drive est connecté.                         |
-| `cacheMaxSizeGB`      | `MediaCache.setMaxBytes()`, avec éviction immédiate si la limite baisse.                                    |
-| `videoCacheMaxSizeGB` | Idem sur le magasin des vidéos préparées, qui a son propre budget.                                          |
-| `syncIntervalMinutes` | `startScheduler` réarme son minuteur ; réarmer à valeur égale est évité, ça repousserait la synchro.        |
-| `syncOnStartup`       | N'a de sens qu'au démarrage — mais il est lu en base, donc pris en compte au suivant.                       |
-| `prewarmCache`        | Relu à chaque photo par `media/prewarm.ts` : décocher arrête le passage en cours, pas seulement le suivant. |
-| `transcodeVideos`     | Relu à chaque vidéo par `media/transcode.ts`, de la même façon. Sans effet si `ffmpeg` manque.              |
+| Change                     | Immediate effect                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Account, permissions, role | Reread on every request by `plugins/auth.ts` and `canSee()`.                                                       |
+| Album created/deleted      | Deletion: its media and its `sync_state` go with it.                                                               |
+| `folderId` changed         | The album's index is cleared and a resync starts if Drive is connected.                                            |
+| `cacheMaxSizeGB`           | `MediaCache.setMaxBytes()`, with immediate eviction if the limit drops.                                            |
+| `videoCacheMaxSizeGB`      | Same on the prepared-videos store, which has its own budget.                                                       |
+| `syncIntervalMinutes`      | `startScheduler` rearms its timer; rearming at an unchanged value is avoided, since that would push the sync back. |
+| `syncOnStartup`            | Only meaningful at startup — but it's read from the database, so it's picked up at the next one.                   |
+| `prewarmCache`             | Reread for every photo by `media/prewarm.ts`: unchecking it stops the pass in progress, not just the next one.     |
+| `transcodeVideos`          | Reread for every video by `media/transcode.ts`, the same way. No effect if `ffmpeg` is missing.                    |
 
-## Dockerfile — trois étapes
+## Dockerfile — three stages
 
-`Dockerfile`, base `node:24-slim`, pnpm par corepack.
+`Dockerfile`, based on `node:24-slim`, pnpm via corepack.
 
-1. **`builder`** — installe `python3 make g++` (nécessaires si `better-sqlite3`,
-   `argon2` ou `sharp` n'ont pas de binaire prébuilt pour la plateforme), copie
-   **d'abord les manifestes seuls** pour que Docker réutilise le cache de
-   `pnpm install` tant qu'ils ne bougent pas, puis les sources, puis `pnpm build`.
-2. **`deps`** — même installation en `--prod`, sans les sources : c'est
-   l'arborescence `node_modules` que l'image finale embarquera.
-3. **`runtime`** — pas de compilateur, mais `ffmpeg`. Copie `node_modules` et
-   `packages/` depuis `deps`, puis les trois `dist/` depuis `builder`. Crée
-   `/app/{data,cache,config}` et les donne à `node` **avant** le montage des
-   volumes, sinon ils appartiendraient à root. Tourne en `USER node`.
+1. **`builder`** — installs `python3 make g++` (needed if `better-sqlite3`,
+   `argon2` or `sharp` have no prebuilt binary for the platform), copies
+   **the manifests alone first** so Docker reuses the `pnpm install` cache
+   as long as they don't change, then the sources, then `pnpm build`.
+2. **`deps`** — the same install in `--prod`, without the sources: this is
+   the `node_modules` tree the final image will embed.
+3. **`runtime`** — no compiler, but `ffmpeg`. Copies `node_modules` and
+   `packages/` from `deps`, then the three `dist/` from `builder`. Creates
+   `/app/{data,cache,config}` and hands them to `node` **before** the
+   volumes are mounted, otherwise they would belong to root. Runs as `USER node`.
 
-**`ffmpeg` fait grossir l'image d'environ 250 Mo**, et c'est de loin la plus
-grosse dépendance système de l'application. C'est le prix d'entrée du
-transcodage des vidéos HEVC (D260809b), et il est dit tel quel plutôt que découvert
-au premier `docker pull`. L'alternative — une image sans lui, et un paquet à
-installer à la main — remettrait à chaque exploitant une étape que rien ne
-signale tant qu'on n'a pas de vidéo HEVC dans sa bibliothèque.
+**`ffmpeg` adds about 250 MB to the image**, and it's by far the
+application's largest system dependency. It's the entry price for
+HEVC video transcoding (D260809b), and it's stated outright rather than discovered
+on the first `docker pull`. The alternative — an image without it, and a package to
+install by hand — would hand every operator a step that nothing
+flags until they have an HEVC video in their library.
 
-Sans `ffmpeg`, le serveur démarre normalement : il l'annonce dans son journal,
-la préparation reste inerte, et les vidéos concernées gardent le message et le
-bouton **Télécharger** de D79.
+Without `ffmpeg`, the server starts normally: it announces this in its log,
+preparation stays inert, and the affected videos keep the message and the
+**Download** button from D79.
 
-`tini` en `ENTRYPOINT` : relaie `SIGTERM` pour que l'arrêt gracieux de `main.ts`
-(fermeture des minuteurs, du serveur et de la base) se déclenche réellement, et
-récolte les zombies. Le `HEALTHCHECK` interroge `/api/health` toutes les 30 s.
+`tini` as `ENTRYPOINT`: relays `SIGTERM` so that `main.ts`'s graceful shutdown
+(closing the timers, the server and the database) actually triggers, and
+reaps zombies. The `HEALTHCHECK` polls `/api/health` every 30 s.
 
-Le cache pnpm est monté en `--mount=type=cache`, donc il n'entre pas dans les
-couches de l'image.
+The pnpm cache is mounted with `--mount=type=cache`, so it doesn't end up in the
+image's layers.
 
-L'étape `runtime` porte les **métadonnées OCI**, dont `image.source` : c'est ce
-label qui rattache l'image publiée à son dépôt sur GHCR, sans quoi la page du
-paquet n'affiche ni README ni licence, et rien ne relie un conteneur qui tourne
-au code qu'il exécute. `version` et `revision` sont passées en `ARG` par le
-workflow de publication ; une construction locale les laisse à `dev` et
-`unknown`, ce qui distingue au passage une image bricolée d'une image publiée.
+The `runtime` stage carries the **OCI metadata**, including `image.source`: this
+label is what links the published image to its repository on GHCR, without which the
+package page shows neither README nor licence, and nothing connects a running container
+to the code it runs. `version` and `revision` are passed as `ARG` by the
+publishing workflow; a local build leaves them at `dev` and
+`unknown`, which incidentally distinguishes a hand-built image from a published one.
 
-## Deux chemins d'installation, une image publiée (D260811c)
+## Two installation paths, one published image (D260811c)
 
-`docker-compose.yml` référence **`ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}`**,
-publiée par `.github/workflows/release.yml` à chaque tag `v*` pour `linux/amd64`
-seulement. Mettre à jour ne compile donc rien sur la machine, et le
-dimensionnement tombe de 2 vCPU / 4 Go à 1 vCPU / 1 Go — les 4 Go n'étaient là
-que pour que la compilation de `sharp`, `argon2` et `better-sqlite3` ne finisse
-pas tuée par l'OOM killer.
+`docker-compose.yml` references **`ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}`**,
+published by `.github/workflows/release.yml` on every `v*` tag, for `linux/amd64`
+only. Updating therefore compiles nothing on the machine, and the
+sizing drops from 2 vCPU / 4 GB to 1 vCPU / 1 GB — the 4 GB were only there
+so the compilation of `sharp`, `argon2` and `better-sqlite3` wouldn't end up
+killed by the OOM killer.
 
-`docker-compose.build.yml` est la **surcharge** qui rend le `build:` :
+`docker-compose.build.yml` is the **override** that brings back `build:`:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-./deploy/deploy.sh --build      # identique, sauvegarde comprise
+./deploy/deploy.sh --build      # identical, backup included
 ```
 
-Elle est nécessaire hors `linux/amd64`, utile pour essayer une modification
-locale, et elle est la réponse à qui ne veut pas dépendre d'un registre tiers. Le
-dépôt reste la source ; l'image n'est qu'une commodité. Cette surcharge réécrit
-`image:` en `nonni:local` : sans quoi compose marquerait la construction locale du
-nom du registre, et un `docker compose pull` la remplacerait en silence.
+It's necessary outside `linux/amd64`, useful for trying out a local
+change, and it's the answer for anyone who doesn't want to depend on a third-party
+registry. The repository remains the source; the image is only a convenience. This
+override rewrites `image:` to `nonni:local`: without it, compose would tag the local
+build with the registry's name, and a `docker compose pull` would silently replace it.
 
-`NONNI_VERSION` n'est pas lue par `env.ts` — c'est une interpolation de compose,
-donc `check:specs` ne la surveille pas. Elle épingle une version quand une mise à
-jour doit rester une décision plutôt qu'une surprise.
+`NONNI_VERSION` is not read by `env.ts` — it's a compose interpolation,
+so `check:specs` doesn't watch it. It pins a version when an
+update needs to stay a decision rather than a surprise.
 
-## docker-compose et volumes
+## docker-compose and volumes
 
-`docker-compose.yml` déclare **deux services** :
+`docker-compose.yml` declares **two services**:
 
-- **`app`** — l'application. Elle ne publie **aucun port sur l'hôte** (`expose`
-  et non `ports`) : elle n'est joignable que par le réseau interne du compose.
-  Rien de l'application n'écoute sur une interface publique.
-- **`caddy`** — `caddy:2-alpine`, seul à publier 80, 443 et 443/udp. Il termine
-  le TLS, obtient et renouvelle le certificat Let's Encrypt sans tâche
-  planifiée, et relaie vers `app:8080`.
+- **`app`** — the application. It publishes **no port on the host** (`expose`
+  rather than `ports`): it's only reachable through compose's internal network.
+  Nothing in the application listens on a public interface.
+- **`caddy`** — `caddy:2-alpine`, the only one publishing 80, 443 and 443/udp. It terminates
+  TLS, obtains and renews the Let's Encrypt certificate with no scheduled
+  task, and relays to `app:8080`.
 
-Le `Caddyfile` est monté en lecture seule et tient en une dizaine de lignes.
-Son adresse de site est `{$PUBLIC_URL}` : la variable qui construit l'URI de
-redirection OAuth est aussi celle qui décide du domaine servi, ce qui supprime
-la divergence la plus fréquente de cette application. Elle doit donc valoir
-exactement `https://photos.exemple.fr`, sans `/` final ni port.
+The `Caddyfile` is mounted read-only and fits in about ten lines.
+Its site address is `{$PUBLIC_URL}`: the variable that builds the OAuth
+redirect URI is also the one that decides the served domain, which removes
+this application's most frequent source of divergence. It must therefore be
+exactly `https://photos.example.com`, with no trailing `/` or port.
 
-Le `Caddyfile` ne pose **aucun en-tête de sécurité** : ils viennent de
-`plugins/headers.ts` (voir [04](./04-securite-et-acces.md)), pour qu'ils valent
-aussi en développement et derrière un frontal remplacé.
+The `Caddyfile` sets **no security header**: they come from
+`plugins/headers.ts` (see [04](./04-securite-et-acces.md)), so they also apply
+in development and behind a replaced front end.
 
-Deux autres réglages y vivent, et ce sont les seuls : `request_body max_size
-1MB`, qui refuse au frontal un corps que `bodyLimit` rejetterait de toute façon,
-et `flush_interval -1`, sans lequel une vidéo relayée en `Range` serait
-accumulée avant d'être envoyée.
+Two other settings live there, and they are the only ones: `request_body max_size
+1MB`, which refuses the front end a body that `bodyLimit` would reject anyway,
+and `flush_interval -1`, without which a video relayed with `Range` would be
+buffered before being sent.
 
-Un proxy déjà présent sur l'hôte se substitue à `caddy` : supprimer le service
-et rendre à `app` un `ports: ['127.0.0.1:8080:8080']`.
+A proxy already present on the host can stand in for `caddy`: remove the service
+and give `app` back a `ports: ['127.0.0.1:8080:8080']`.
 
-`PUBLIC_URL`, `SESSION_SECRET` et `TOKEN_KEY` sont déclarés avec la syntaxe
-`${VAR:?message}` : compose refuse de démarrer s'ils manquent, avec le message
-qui dit quoi faire. Les variables optionnelles — `GOOGLE_SERVICE_ACCOUNT_FILE`,
-`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SMTP_URL`, `MAIL_FROM` — sont
-transmises en `${VAR:-}`. **Elles doivent l'être explicitement** : une variable
-présente dans le `.env` mais absente du bloc `environment` n'atteint jamais le
-conteneur, et l'instance démarre en annonçant simplement que les commentaires
-sont indisponibles ou que Drive n'est pas configuré — sans que rien ne désigne
-la vraie cause.
+`PUBLIC_URL`, `SESSION_SECRET` and `TOKEN_KEY` are declared with the
+`${VAR:?message}` syntax: compose refuses to start if they're missing, with the message
+saying what to do. The optional variables — `GOOGLE_SERVICE_ACCOUNT_FILE`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `SMTP_URL`, `MAIL_FROM` — are
+passed as `${VAR:-}`. **They must be, explicitly**: a variable
+present in `.env` but absent from the `environment` block never reaches the
+container, and the instance starts up simply announcing that comments
+are unavailable or that Drive isn't configured — with nothing pointing to
+the real cause.
 
-`GOOGLE_SERVICE_ACCOUNT_FILE` désigne un chemin **vu par le serveur** :
-`/app/config/…` sous Docker, `./config/…` en développement.
+`GOOGLE_SERVICE_ACCOUNT_FILE` designates a path **as seen by the server**:
+`/app/config/…` under Docker, `./config/…` in development.
 
-**Les quatre volumes portent un `name:` explicite**, et c'est une correction, pas
-un détail de présentation. Sans lui, compose préfixe chaque volume du nom du
-projet — celui du répertoire de travail : `nonni-data` s'appelle en réalité
-`nonni_nonni-data`, ou autre chose si on a cloné sous un autre nom.
-Or docker **crée en silence** un volume nommé qui n'existe pas : la commande de
-sauvegarde du `README.md`, `docker run -v nonni-data:/data … tar czf`, montait donc
-un volume neuf et vide et écrivait une archive vide, sans un mot. Une sauvegarde
-qui ne sauvegarde rien et ne le dit pas ne se découvre qu'à la restauration
-(D53). Le nom explicite rend ces commandes justes quel que soit le répertoire de
-clonage ; la migration d'une instance déjà en service — recopier
-`<projet>_nonni-data` vers `nonni-data` **avant** le premier `up` — est décrite dans
+**All four volumes carry an explicit `name:`**, and this is a fix, not
+a presentation detail. Without it, compose prefixes each volume with the
+project's name — that of the working directory: `nonni-data` is actually called
+`nonni_nonni-data`, or something else if it was cloned under another name.
+And docker **silently creates** a named volume that doesn't exist: the backup
+command in `README.md`, `docker run -v nonni-data:/data … tar czf`, would therefore mount
+a fresh, empty volume and write an empty archive, without a word. A backup
+that backs up nothing and doesn't say so is only discovered on
+restore (D53). The explicit name makes these commands correct regardless of the
+clone directory; migrating an already-running instance — copying
+`<project>_nonni-data` to `nonni-data` **before** the first `up` — is described in
 `deploy/README.md`.
 
-| Montage                   | Contenu                                                                                                                          | Sauvegarde                                                                                                  |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `./config:/app/config:ro` | `albums.yaml` d'amorçage, et la clé du compte de service si l'instance en utilise une. Lecture seule : l'app n'écrit jamais ici. | **Oui, si la clé y est** — sinon inutile après l'amorçage                                                   |
-| `./Caddyfile:ro`          | Configuration du frontal                                                                                                         | Non — versionné dans le dépôt                                                                               |
-| `nonni-data`              | `nonni.db` — **comptes, albums, réglages**, index, sessions, refresh token chiffré                                               | **Oui. C'est la seule donnée irremplaçable.**                                                               |
-| `nonni-cache`             | Dérivés WebP                                                                                                                     | Non — régénérable à la demande                                                                              |
-| `caddy-data`              | Certificats et clé de compte ACME                                                                                                | Souhaitable — sinon réémission à chaque redéploiement, et Let's Encrypt plafonne par domaine et par semaine |
-| `caddy-config`            | État interne de Caddy                                                                                                            | Non                                                                                                         |
+| Mount                     | Contents                                                                                                             | Backup                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `./config:/app/config:ro` | Bootstrap `albums.yaml`, and the service account key if the instance uses one. Read-only: the app never writes here. | **Yes, if the key is there** — otherwise pointless after bootstrap                               |
+| `./Caddyfile:ro`          | Front-end configuration                                                                                              | No — versioned in the repository                                                                 |
+| `nonni-data`              | `nonni.db` — **accounts, albums, settings**, index, sessions, encrypted refresh token                                | **Yes. It's the only irreplaceable data.**                                                       |
+| `nonni-cache`             | WebP derivatives                                                                                                     | No — regenerable on demand                                                                       |
+| `caddy-data`              | Certificates and ACME account key                                                                                    | Desirable — otherwise reissued on every redeploy, and Let's Encrypt caps per domain and per week |
+| `caddy-config`            | Caddy's internal state                                                                                               | No                                                                                               |
 
-Sauvegarder `nonni-data` ne suffit pas seul, et pour deux raisons distinctes. Sans
-`TOKEN_KEY`, le refresh token qu'il contient est indéchiffrable : le `.env` part
-donc avec. Et sur une instance en compte de service, l'accès à Drive ne vit ni
-dans le volume ni dans le `.env` mais dans `config/`, que Google ne redélivre
-pas : il part avec aussi. `backup.sh` prend les trois. La procédure complète —
-arrêt de `app` pour que SQLite soit au repos, `tar` du volume, copie hors du
-VPS — est dans `deploy/README.md`, qui s'adresse à l'installateur.
+Backing up `nonni-data` alone isn't enough, for two distinct reasons. Without
+`TOKEN_KEY`, the refresh token it contains is undecryptable: `.env` goes
+along with it, then. And on an instance using a service account, Drive access lives
+neither in the volume nor in `.env` but in `config/`, which Google doesn't reissue:
+it goes along too. `backup.sh` takes all three. The full procedure —
+stopping `app` so SQLite is at rest, `tar` of the volume, copying it off the
+VPS — is in `deploy/README.md`, which addresses the installer.
 
-Les logs des deux services sont plafonnés (`json-file`, 10 Mo × 3).
+Both services' logs are capped (`json-file`, 10 MB × 3).
 
-## Durcissement de la machine
+## Hardening the machine
 
-Le dépôt en porte l'amorçage : `deploy/cloud-init.yaml`, passé en « user data »
-à la création de la machine, monte un système Debian/Ubuntu avec un compte
-`deploy` sudo par clé seule, `PasswordAuthentication no`, `unattended-upgrades`
-activé sans son `dpkg-reconfigure` interactif, Docker, `rclone`, Tailscale, et
-`ufw` ouvert sur 22, 80, 443/tcp et 443/udp. Le compose en tire parti :
-l'application ne publie aucun port sur l'hôte, il n'y a donc rien d'autre à
-ouvrir.
+The repository carries the bootstrap for it: `deploy/cloud-init.yaml`, passed as "user data"
+when the machine is created, sets up a Debian/Ubuntu system with a
+key-only sudo `deploy` account, `PasswordAuthentication no`, `unattended-upgrades`
+enabled without its interactive `dpkg-reconfigure`, Docker, `rclone`, Tailscale, and
+`ufw` open on 22, 80, 443/tcp and 443/udp. Compose takes advantage of this:
+the application publishes no port on the host, so there's nothing else to
+open.
 
-**Le fichier ne suppose aucun hébergeur** (D63). Cloud-init est un standard _de
-facto_ — une implémentation open source unique, que la quasi-totalité des images
-cloud Linux embarquent et que tous les grands fournisseurs alimentent sous le nom
-de « user data ». Pas une norme publiée : il n'y a ni RFC ni comité, et les
-exceptions existent (Fedora CoreOS et Flatcar utilisent **Ignition**, Windows
-**cloudbase-init**, et une image minimale peut ne pas embarquer le paquet). Le
-`deploy/README.md` les nomme et renvoie à la procédure manuelle, plutôt que de laisser
-quelqu'un chercher pourquoi rien ne se passe.
+**The file assumes no hosting provider** (D63). Cloud-init is a _de
+facto_ standard — a single open source implementation, which almost every
+Linux cloud image ships, and which every major provider feeds under the name
+"user data". Not a published standard: there is no RFC and no committee, and
+exceptions exist (Fedora CoreOS and Flatcar use **Ignition**, Windows uses
+**cloudbase-init**, and a minimal image may not ship the package). The
+`deploy/README.md` names them and points to the manual procedure, rather than leaving
+someone to wonder why nothing is happening.
 
-`deploy/README.md` illustre l'opération avec trois CLI différents, dans un bloc
-replié et à égalité, précisément pour qu'aucun ne se lise comme le chemin
-recommandé. Le compte s'appelle `deploy` et non du prénom de quelqu'un : c'est
-un rôle, et un dépôt public ne crée pas un compte système au nom de son auteur.
+`deploy/README.md` illustrates the operation with three different CLIs, in a
+collapsed block presented on equal footing, precisely so that none reads as the
+recommended path. The account is called `deploy`, not someone's first name: it's
+a role, and a public repository doesn't create a system account under its author's name.
 
-**L'accès d'administration passe par Tailscale, et le séquencement est la seule
-difficulté.** Le fichier installe Tailscale mais ne l'authentifie pas :
-`tailscale up` ouvre une URL à valider dans un navigateur, c'est une action
-humaine. Tant qu'elle n'a pas eu lieu, SSH sur l'IP publique est l'unique chemin
-vers la machine — le fermer depuis le cloud-init la rendrait inatteignable. Le
-port 22 reste donc ouvert à l'amorçage, et se ferme à la main **après** avoir
-vérifié `ssh deploy@<nom-tailnet>` depuis un second terminal (`ufw delete allow
-OpenSSH`, `PermitRootLogin no`, retrait de la règle 22 du pare-feu amont, quand
-l'hébergeur en propose un).
-`disable_root: false` et `PermitRootLogin prohibit-password` gardent le compte
-root par clé accessible pendant cet intervalle ; la console série de
-l'hébergeur, hors réseau de l'instance, est le filet de dernier recours. Tout
-cela est répété en tête de `deploy/cloud-init.yaml` et dans `deploy/README.md` :
-c'est le seul endroit de l'installation où une erreur coûte une réinstallation.
+**Administrative access goes through Tailscale, and sequencing is the only
+difficulty.** The file installs Tailscale but doesn't authenticate it:
+`tailscale up` opens a URL to confirm in a browser, which is a human
+action. Until that happens, SSH on the public IP is the only path
+to the machine — closing it from the cloud-init would make it unreachable. So
+port 22 stays open at bootstrap, and is closed by hand **after**
+verifying `ssh deploy@<tailnet-name>` from a second terminal (`ufw delete allow
+OpenSSH`, `PermitRootLogin no`, removing rule 22 from the upstream firewall, when
+the provider offers one).
+`disable_root: false` and `PermitRootLogin prohibit-password` keep the
+key-only root account accessible during this interval; the provider's
+serial console, outside the instance's network, is the last-resort safety net. All
+of this is repeated at the top of `deploy/cloud-init.yaml` and in `deploy/README.md`:
+it's the one place in the setup where a mistake costs a reinstall.
 
-Tailscale ne demande aucune ouverture entrante — il sort en UDP 41641 et se
-rabat sur un relais DERP.
+Tailscale requires no inbound opening — it goes out on UDP 41641 and
+falls back to a DERP relay.
 
-**Le poste d'administration doit être sur le tailnet, lui aussi.** Un tailnet
-n'a d'intérêt qu'à deux nœuds au moins : `ssh deploy@<nom-tailnet>`, qui devient
-l'unique porte une fois le 22 fermé, ne résout que depuis une machine qui a
-elle-même rejoint le réseau. Le cloud-init ne peut rien pour ce côté-là, et
-c'est le genre d'omission qu'on ne constate qu'au pire moment — juste après
-avoir fermé le port 22. `deploy/README.md` en fait donc son § 0, avant même la
-création de la machine.
+**The administration workstation must also be on the tailnet.** A tailnet
+is only useful with at least two nodes: `ssh deploy@<tailnet-name>`, which becomes
+the only door once 22 is closed, only resolves from a machine that has
+itself joined the network. Cloud-init can do nothing about that side, and
+it's the kind of omission that only shows up at the worst moment — right after
+closing port 22. `deploy/README.md` therefore makes it § 0, before even
+creating the machine.
 
-**La machine n'a ni Node ni pnpm**, et c'est délibéré : tout vit dans l'image,
-tirée ou construite, il n'y a pas de second runtime à tenir à jour sur l'hôte. Conséquence à ne pas oublier en documentant : les commandes
-d'administration hors application — `create-admin`, `reset-password` — n'ont pas
-d'invocation `pnpm` sur un serveur. Elles se lancent dans le conteneur, sur leur
-forme compilée (voir « Scripts » plus bas).
+**The machine has neither Node nor pnpm**, and this is deliberate: everything lives in
+the image, pulled or built — there's no second runtime to keep up to date on the host. A
+consequence worth remembering when documenting: the out-of-application
+administration commands — `create-admin`, `reset-password` — have no
+`pnpm` invocation on a server. They're launched inside the container, in their
+compiled form (see "Scripts" below).
 
-Restent hors du dépôt, parce qu'ils tiennent à un compte et non à du code :
-l'authentification auprès de l'hébergeur, la création du tailnet **et
-l'installation du client Tailscale sur le poste d'administration**,
-l'enregistrement DNS `A`/`AAAA`, et la configuration du remote `rclone` des
-sauvegardes.
+What stays outside the repository, because it depends on an account rather than
+code: authenticating with the hosting provider, creating the tailnet **and
+installing the Tailscale client on the administration workstation**,
+the DNS `A`/`AAAA` record, and configuring the `rclone` remote for
+backups.
 
-## Scripts de déploiement — `deploy/`
+## Deployment scripts — `deploy/`
 
-Deux scripts bash, lancés depuis la machine, qui se replacent seuls à la racine
-du dépôt depuis `$0`.
+Two bash scripts, run from the machine, which reposition themselves to the
+repository root from `$0`.
 
-| Script             | Effet                                                                                                                                                                                                                                                                                                                             |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/backup.sh` | `docker compose stop app`, `tar` du volume `nonni-data`, redémarrage, copie du `.env` et archive de `config/` à côté, rétention des 7 derniers de chaque. Écrit dans `NONNI_BACKUP_DIR`, `./backups` par défaut. `--local` s'arrête là ; sinon `rclone copy` vers le remote de `NONNI_BACKUP_REMOTE`, `backups:nonni` par défaut. |
-| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, puis `docker compose pull app` et `up -d` — ou `up -d --build` avec la surcharge de construction si `--build` est passé —, puis **attente active** du retour à `healthy`. Échec ⇒ `docker compose logs --tail=50 app` et code de sortie non nul.                                       |
+| Script             | Effect                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/backup.sh` | `docker compose stop app`, `tar` of the `nonni-data` volume, restart, copy of `.env` and an archive of `config/` alongside, keeping the last 7 of each. Writes to `NONNI_BACKUP_DIR`, `./backups` by default. `--local` stops there; otherwise `rclone copy` to the remote from `NONNI_BACKUP_REMOTE`, `backups:nonni` by default. |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, then `docker compose pull app` and `up -d` — or `up -d --build` with the build override if `--build` is passed —, then **actively waits** for it to return to `healthy`. Failure ⇒ `docker compose logs --tail=50 app` and a non-zero exit code.                                        |
 
-**Pourquoi arrêter `app` pour sauvegarder.** SQLite est en WAL : copier le
-fichier pendant une écriture donne une base à recomposer. L'arrêt dure quelques
-secondes et rend l'archive triviale à restaurer. Écarté : `db.backup()` à chaud,
-correct mais qu'il faudrait déclencher depuis l'extérieur du conteneur, par une
-route ou un signal — plus de surface pour un gain de quelques secondes
-d'indisponibilité par jour.
+**Why `app` is stopped to back up.** SQLite runs in WAL mode: copying the
+file during a write yields a database that needs recomposing. The stop lasts a few
+seconds and makes the archive trivial to restore. Ruled out: a hot `db.backup()`,
+correct but which would need triggering from outside the container, via a
+route or a signal — more surface for a gain of a few seconds of
+downtime per day.
 
-**Pourquoi le script vérifie sa propre archive.** Il refuse une archive qui ne
-contient pas `nonni.db` : c'est exactement le symptôme du volume mal nommé
-ci-dessus, et le seul moment où on le constaterait autrement serait la
-restauration. Un volume `nonni-data` **absent** est en revanche un cas normal —
-installation neuve, rien à sauvegarder — et le script sort à 0 en le disant.
+**Why the script checks its own archive.** It refuses an archive that does
+not contain `nonni.db`: this is exactly the symptom of the mis-named volume
+above, and the only other moment it would show up would be the
+restore. A **missing** `nonni-data` volume, by contrast, is a normal case —
+a fresh install, nothing to back up — and the script exits 0, saying so.
 
-**Pourquoi `deploy.sh` attend.** `docker compose up -d` rend la main dès que le
-conteneur est lancé, pas quand il fonctionne : une migration qui échoue ou une
-variable manquante laisse un conteneur qui redémarre en boucle pendant qu'on
-croit le déploiement terminé. Le script s'appuie sur le `HEALTHCHECK` de l'image
-et plafonne l'attente à 150 s — `start-period` de 20 s, puis trois essais à 30 s
-d'intervalle avant qu'un conteneur soit déclaré `unhealthy`, plus une marge.
+**Why `deploy.sh` waits.** `docker compose up -d` returns as soon as the
+container is launched, not when it's working: a failing migration or a
+missing variable leaves a container restart-looping while everyone
+thinks the deployment finished. The script relies on the image's `HEALTHCHECK`
+and caps the wait at 150 s — a 20 s `start-period`, then three tries 30 s
+apart before a container is declared `unhealthy`, plus a margin.
 
-## Configuration côté Google Cloud
+## Google Cloud-side configuration
 
-Dans un **projet dédié** : l'écran de consentement est unique par projet et porte
-le nom affiché, les scopes et le statut de publication ; y loger plusieurs
-applications les mélange dans une même demande d'autorisation.
+In a **dedicated project**: the consent screen is unique per project and carries
+the displayed name, the scopes and the publication status; housing several
+applications there mixes them into the same authorisation request.
 
-1. **API et services → Bibliothèque** : activer **Google Drive API**.
-2. **Écran de consentement OAuth** : type **Externe**, nom d'application, adresse
-   d'assistance.
-3. **Publier l'application.** Étape indispensable : tant qu'elle reste en statut
-   « Test », **Google fait expirer le refresh token au bout de 7 jours** et il
-   faut se reconnecter chaque semaine. C'est aussi l'une des causes possibles de
-   l'`invalid_grant` que détecte `DriveService` (voir
+1. **APIs & Services → Library**: enable **Google Drive API**.
+2. **OAuth consent screen**: type **External**, application name, support
+   address.
+3. **Publish the application.** An essential step: as long as it stays in
+   "Testing" status, **Google expires the refresh token after 7 days**, and
+   you have to reconnect every week. This is also one of the possible causes of
+   the `invalid_grant` that `DriveService` detects (see
    [04](./04-securite-et-acces.md)).
 
-   Publier ne déclenche aucune procédure de vérification tant qu'on ne la demande
-   pas : l'application reste « publiée, non vérifiée », plafonnée à
-   100 utilisateurs. Seule conséquence visible : au moment du consentement, un
-   écran « Google n'a pas validé cette application », à passer par **Paramètres
-   avancés → Accéder à**. Une seule fois, et pour le propriétaire uniquement.
-   (Avec Google Workspace, le type « Interne » évite cet écran ; il n'est pas
-   proposé aux adresses `gmail.com`.)
+   Publishing triggers no verification procedure unless it's requested:
+   the application stays "published, unverified", capped at
+   100 users. The only visible consequence: at the moment of consent, a
+   "Google hasn't verified this app" screen, to get past via **Advanced
+   settings → Go to**. Once only, and for the owner alone.
+   (With Google Workspace, the "Internal" type avoids this screen; it isn't
+   offered to `gmail.com` addresses.)
 
-4. **Identifiants → Créer → ID client OAuth**, type **Application Web**.
-5. Dans « URI de redirection autorisés », ajouter **exactement** `PUBLIC_URL`
-   suivi de `/api/oauth/callback`. Un caractère de différence — `http` au lieu de
-   `https`, un `/` final, `www.` en trop — donne un `redirect_uri_mismatch` au
-   moment du consentement.
+4. **Credentials → Create → OAuth client ID**, type **Web application**.
+5. Under "Authorised redirect URIs", add **exactly** `PUBLIC_URL`
+   followed by `/api/oauth/callback`. A single character of difference — `http` instead of
+   `https`, a trailing `/`, an extra `www.` — produces a `redirect_uri_mismatch` at
+   the moment of consent.
 
 ## Scripts
 
-| Commande                                           | Effet                                                                                                                                                                                                                                                                  |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm create-admin <identifiant> [mot de passe]`   | Crée le premier administrateur **en base**, avec le joker sur les albums — `admin` seul n'accorde aucun album, et il faut bien qu'il voie ceux qu'il va créer. Seule porte d'entrée quand il n'y a ni compte ni fichier d'amorçage. Refuse un identifiant déjà pris.   |
-| `pnpm reset-password <identifiant> [mot de passe]` | Remplace le mot de passe d'un compte existant et ferme ses sessions ouvertes. Traite le seul cas que l'application ne peut pas régler seule : l'unique administrateur a perdu le sien et ne peut plus atteindre `/admin`. Pour tout autre compte, passer par `/admin`. |
-| `pnpm hash-password`                               | Demande un mot de passe sans l'afficher et imprime la ligne `passwordHash:` à coller. Ne sert plus qu'à préparer un `albums.yaml` d'amorçage. Un argument est accepté mais laisse une trace dans l'historique du shell.                                                |
-| `pnpm --filter @nonni/server seed-demo [nombre]`   | Remplit l'index **et** le cache avec des médias générés localement, pour travailler l'interface sans compte Drive. Défaut : 240 par album.                                                                                                                             |
+| Command                                          | Effect                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm create-admin <identifier> [password]`      | Creates the first administrator **in the database**, with the wildcard on albums — `admin` alone grants no album, and it does need to see the ones it's about to create. The only entry point when there's neither an account nor a bootstrap file. Refuses an identifier already taken. |
+| `pnpm reset-password <identifier> [password]`    | Replaces an existing account's password and closes its open sessions. Handles the one case the application can't resolve on its own: the sole administrator has lost theirs and can no longer reach `/admin`. For any other account, go through `/admin`.                                |
+| `pnpm hash-password`                             | Prompts for a password without displaying it and prints the `passwordHash:` line to paste. Only used to prepare a bootstrap `albums.yaml`. An argument is accepted but leaves a trace in the shell history.                                                                              |
+| `pnpm --filter @nonni/server seed-demo [number]` | Fills the index **and** the cache with locally generated media, for working on the interface without a Drive account. Default: 240 per album.                                                                                                                                            |
 
-`seed-demo` insère dans **tous** les albums de la base et écrit les cinq variantes
-en cache (`t320`, `t640`, `t1280`, `full`, `hd`) pour que le pipeline ne cherche
-jamais à joindre Drive. Deux avertissements : il faut **redémarrer le
-serveur** ensuite, puisque le cache n'est inventorié qu'au démarrage ; et il ne
-faut pas le lancer sur une instance réelle — la prochaine synchronisation
-supprimerait ces entrées, mais elles pollueraient les albums entre-temps.
+`seed-demo` inserts into **every** album in the database and writes the five
+cache variants (`t320`, `t640`, `t1280`, `full`, `hd`) so the pipeline never
+tries to reach Drive. Two warnings: the **server must be restarted**
+afterwards, since the cache is only inventoried at startup; and it must
+not be run on a real instance — the next sync would remove these
+entries, but they would pollute the albums in the meantime.
 
-**Ces invocations `pnpm` supposent un poste de développement.** Sur un serveur
-monté par `deploy/cloud-init.yaml`, il n'y a pas de pnpm — seulement Docker. Les
-deux commandes qui ont un sens en production s'y lancent donc sur leur forme
-compilée, celle que `tsc` a écrite dans `dist/` et que le `Dockerfile` copie
-dans l'image :
+**These `pnpm` invocations assume a development workstation.** On a server
+set up by `deploy/cloud-init.yaml`, there's no pnpm — only Docker. The
+two commands that make sense in production are therefore launched in their
+compiled form, the one `tsc` wrote to `dist/` and the `Dockerfile` copies
+into the image:
 
 ```bash
-docker compose exec app node packages/server/dist/scripts/create-admin.js <identifiant>
-docker compose exec app node packages/server/dist/scripts/reset-password.js <identifiant>
+docker compose exec app node packages/server/dist/scripts/create-admin.js <identifier>
+docker compose exec app node packages/server/dist/scripts/reset-password.js <identifier>
 ```
 
-`exec` demande que `app` tourne ; `docker compose run --rm app node …` fait la
-même chose avant le premier démarrage, ce qui permet de créer l'administrateur
-sur une base encore inexistante. Les deux passent par un **processus distinct**
-de celui du serveur, et c'est ce qui les rend sûrs : l'instantané mémoire de
-`ConfigRepo` se reconstruit sur `PRAGMA data_version`, qui ne bouge que pour les
-écritures venues d'ailleurs (voir [03](./03-modele-de-donnees.md)).
+`exec` requires `app` to be running; `docker compose run --rm app node …` does the
+same before the first startup, which makes it possible to create the administrator
+on a database that doesn't exist yet. Both go through a **process distinct**
+from the server's, and that's what makes them safe: `ConfigRepo`'s in-memory
+snapshot rebuilds on `PRAGMA data_version`, which only changes for
+writes coming from elsewhere (see [03](./03-modele-de-donnees.md)).
 
-`hash-password` n'a pas d'équivalent conteneur, et n'en a pas besoin : il ne
-sert qu'à préparer un `albums.yaml` d'amorçage, ce qui se fait avant le
-déploiement.
+`hash-password` has no container equivalent, and doesn't need one: it's
+only used to prepare a bootstrap `albums.yaml`, which happens before
+deployment.
 
-## Vérifications
+## Checks
 
 ```bash
 pnpm verify   # typecheck, lint, check:format, tests, check:specs, check:links
 ```
 
-Les tests serveur tournent avec le runner natif de Node (`node --import tsx
---test`) : pas de framework de test dans les dépendances.
+Server tests run with Node's native runner (`node --import tsx
+--test`): no test framework among the dependencies.
 
-`check:format` est un `prettier --check` : il constate là où `pnpm format`
-réécrit. Sans lui, le formatage n'était vérifié nulle part et dérivait — cinq
-fichiers de `main` s'en écartaient (D75).
+`check:format` is a `prettier --check`: it flags what `pnpm format`
+would rewrite. Without it, formatting wasn't checked anywhere and drifted — five
+files on `main` had strayed from it (D75).
 
-Deux contrôles portent sur la documentation, et aucun ne juge la prose :
-`tools/check-specs.mjs` compare ce que le code expose à ce que les specs
-mentionnent ; `tools/check-links.mjs` résout les liens relatifs et les ancres
-des trois documents qui se renvoient l'un à l'autre (D64). Les deux tournent
-aussi sur `pre-push`. Les liens externes ne sont pas suivis : cela demanderait
-le réseau, et un contrôle qui échoue parce qu'un site tiers est lent finit
-désactivé.
+Two checks cover documentation, and neither judges the prose:
+`tools/check-specs.mjs` compares what the code exposes to what the specs
+mention; `tools/check-links.mjs` resolves the relative links and anchors
+of the three documents that reference one another (D64). Both also run
+on `pre-push`. External links are not followed: that would require the
+network, and a check that fails because a third-party site is slow eventually gets
+disabled.
 
-`check-specs.mjs` porte en outre sur la **cohérence des décisions** : un
-identifiant défini deux fois, un nom de fichier qui ne reprend pas le titre de
-sa décision, ou un renvoi `(Dxx)` vers une décision absente. `check-links.mjs`
-ne peut pas voir ce dernier cas — un `(D67)` en texte brut n'est pas un lien.
+`check-specs.mjs` also covers **decision consistency**: an
+identifier defined twice, a file name that doesn't match its decision's
+title, or a `(Dxx)` reference to a missing decision. `check-links.mjs`
+can't see this last case — a `(D67)` in plain text isn't a link.
 
-Il vérifie de même qu'un document de specs **cité en texte** entre backticks
-existe bel et bien. Un chemin cité n'est ni un lien ni un renvoi de décision :
-il échappait aux deux, et survivait donc à un renommage.
+It likewise checks that a specs document **cited as text** between backticks
+does in fact exist. A cited path is neither a link nor a decision reference:
+it escaped both, and so survived a rename.
 
-### Voir les emails pour de vrai
+### Seeing emails for real
 
-Les tests vérifient ce que `buildCommentMail`, `buildAlbumUpdateMail` et
-`buildVerificationMail` composent — sujet, liens, échappement. Ils ne disent
-rien du rendu dans un client, ni de l'encodage MIME des accents, qui ne se
-constatent qu'après un envoi. Un relais bouchon suffit :
+The tests verify what `buildCommentMail`, `buildAlbumUpdateMail` and
+`buildVerificationMail` compose — subject, links, escaping. They say
+nothing about rendering in a client, nor about the MIME encoding of accented characters, which
+can only be seen after a send. A dummy relay is enough:
 
 ```bash
 docker run -d --rm --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
-# puis, dans .env : SMTP_URL=smtp://localhost:1025 et MAIL_FROM=Galerie <galerie@exemple.fr>
+# then, in .env: SMTP_URL=smtp://localhost:1025 and MAIL_FROM=Gallery <gallery@example.com>
 ```
 
-Mailpit accepte tout, ne relaie rien et rend les messages sur
-`http://localhost:8025`. C'est le seul moyen d'essayer les emails sans envoyer
-de courrier à une vraie adresse, et sans faire dépendre un test d'un relais
-distant.
+Mailpit accepts everything, relays nothing, and renders the messages at
+`http://localhost:8025`. It's the only way to try emails without sending
+mail to a real address, and without making a test depend on a remote
+relay.

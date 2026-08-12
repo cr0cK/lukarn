@@ -1,26 +1,26 @@
-# D50 — La saisie vit dans l'album, la mutation reste sous `/api/admin`
+# D50 — Input lives in the album; the mutation remains under `/api/admin`
 
-**Contexte.** On ne sait quoi écrire sur une journée qu'en voyant ses photos.
-Faire annoter depuis `/admin` reviendrait à demander à quelqu'un de décrire le
-14 juillet de mémoire, devant une liste d'albums.
+**Context.** It is impossible to know what to write about a day without seeing
+its photos. Annotating from `/admin` would amount to asking someone to describe
+14 July from memory while looking at a list of albums.
 
-**Choix.** Le crayon est dans la grille, en face des photos ; la requête part
-sur `PATCH /api/admin/albums/:id/days/:day`. La lecture, elle, est côté galerie :
+**Choice.** The pencil is in the grid, beside the photos; the request goes to
+`PATCH /api/admin/albums/:id/days/:day`. Reading is on the gallery side:
 `GET /api/albums/:albumId/days`.
 
-Ce n'est pas une incohérence, c'est ce qui **préserve un invariant** : seul
-`/api/admin/*` répond **403**. Partout ailleurs, un refus d'accès répond 404
-pour que la liste des albums d'autrui ne soit pas devinable (D12). Une route
-d'écriture montée sous `/api/albums` aurait dû choisir entre trahir cet
-invariant et répondre 404 à un visiteur légitime qui n'est pas administrateur —
-c'est-à-dire mentir sur l'existence de l'album qu'il est en train de regarder.
+This is not an inconsistency; it **preserves an invariant**: only `/api/admin/*`
+responds with **403**. Everywhere else, denied access responds with 404 so that
+other people's album lists cannot be inferred (D12). A write route mounted under
+`/api/albums` would have had to choose between breaking this invariant and
+responding with 404 to a legitimate visitor who is not an administrator — in
+other words, lying about the existence of the album they are viewing.
 
-**Écarté.** _Un troisième régime de réponse_ (403 sous `/api/albums` pour cette
-route seulement) : un invariant qui souffre une exception n'en est plus un, et
-c'est le genre de détail qui se perd à la revue suivante. _Une section
-« journées » dans `/admin`_ : elle demanderait de retrouver une date dans une
-liste, sans les photos qui disent de quoi il s'agit.
+**Rejected.** _A third response regime_ (403 under `/api/albums` for this route
+only): an invariant that admits an exception is no longer an invariant, and this
+is the kind of detail lost during the next review. _A "days" section in `/admin`_:
+it would require finding a date in a list, without the photos that explain what
+it is about.
 
-**Conséquences.** Le front porte la règle « crayon visible si `me.admin` et
-découpage par jour », et le serveur la revérifie — comme partout, l'interface ne
-fait qu'éviter d'offrir un geste qui échouerait.
+**Consequences.** The frontend carries the rule "pencil visible if `me.admin`
+and grouped by day", and the server checks it again — as everywhere else, the
+interface only avoids offering an action that would fail.

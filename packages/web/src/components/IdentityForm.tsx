@@ -4,17 +4,15 @@ import { errorText } from '../api/client';
 import { useRequestIdentityCode, useVerifyIdentity } from '../api/hooks';
 
 /**
- * Déclaration et vérification de l'identité de commentateur.
+ * Declares and verifies commenter identity.
  *
- * L'identifiant et le mot de passe ouvrent des albums et peuvent être partagés
- * par tout un foyer ; ils ne disent donc pas qui écrit. C'est ce formulaire qui
- * l'établit : un nom, une adresse, et un code reçu par email pour prouver que
- * l'adresse est bien la sienne. Sans cette preuve, n'importe qui derrière la
- * clé partagée pourrait signer du nom d'un autre.
+ * The username and password open albums and may be shared by an entire household,
+ * so they do not say who writes. This form establishes it: a name, an address
+ * and a code received by email to prove ownership of that address. Without this
+ * proof, anyone behind the shared key could sign with somebody else's name.
  *
- * Deux étapes dans un seul composant : l'adresse saisie à la première reste
- * affichée à la seconde, ce qui permet de voir sa faute de frappe sans repartir
- * de zéro.
+ * Two steps in one component: the address entered in the first remains visible
+ * in the second, making a typo apparent without starting over.
  */
 export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement {
   const [step, setStep] = useState<'declare' | 'code'>('declare');
@@ -90,11 +88,11 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
 
   return (
     <form onSubmit={submitDeclare} className="space-y-3">
-      {/* C'est le seul moment où quelqu'un décide de donner son adresse : tout
-          ce qu'on en fera doit être dit ici, y compris l'abonnement automatique
-          aux nouveautés des albums ouverts. Un abonnement par défaut se défend
-          dans un cercle privé à condition d'être annoncé et défait en un clic —
-          pas s'il se découvre à la réception du premier email. */}
+      {/* This is the only time someone decides to provide their address, so every
+          use must be explained here, including automatic subscription to updates
+          from opened albums. A default subscription is defensible in a private
+          circle if announced and removable in one click — not if discovered when
+          the first email arrives. */}
       <p className="text-sm text-ink-300">
         To comment, tell us who you are. Your address signs your messages, tells you about replies,
         and announces new photos in the albums you open; it is never shown to anyone else. Every
@@ -115,7 +113,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         onChange={(event) => setEmail(event.target.value)}
         type="email"
         autoComplete="email"
-        placeholder="ton@adresse.fr"
+        placeholder="you@example.com"
         aria-label="Email address"
         className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />

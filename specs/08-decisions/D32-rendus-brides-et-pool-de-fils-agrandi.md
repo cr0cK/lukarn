@@ -1,53 +1,50 @@
-# D32 — Rendus bridés et pool de fils agrandi
+# D32 — Throttled renders and an enlarged thread pool
 
-**Contexte.** Ouvrir une grille dont les vignettes ne sont pas encore en cache
-déclenche un rendu par photo visible. Chacun charge l'original entier en
-mémoire — neuf mégaoctets pour une photo d'appareil courante — puis le décode et
-le ré-encode. La question posée était : le serveur reste-t-il disponible pour les
-autres visiteurs pendant ce travail ?
+**Context.** Opening a grid whose thumbnails are not yet cached triggers one
+render per visible photo. Each loads the entire original into memory — nine
+megabytes for a typical camera photo — then decodes and re-encodes it. The
+question was: does the server remain available to other visitors during this
+work?
 
-**Mesures.** Banc sur huit cœurs, vingt-quatre rendus simultanés d'une photo
-4000 × 3000 de 9 Mo, en interrogeant en parallèle une vignette **déjà en cache** —
-le chemin d'un visiteur qui ne fait que regarder.
+**Measurements.** Benchmark on eight cores, with twenty-four simultaneous
+renders of a 4,000 × 3,000, 9 MB photo, while querying a thumbnail **already in
+the cache** in parallel — the path of a visitor who is only browsing.
 
-| Configuration                     | p95 de la requête servie depuis le cache | Mémoire du processus |
-| --------------------------------- | ---------------------------------------- | -------------------- |
-| Pool 4 (défaut Node), sans limite | 2 124 ms                                 | +336 Mo              |
-| Pool 4, avec limite               | 2 344 ms                                 | +117 Mo              |
-| Pool 16, avec limite              | **0,25 ms**                              | **+117 Mo**          |
+| Configuration                   | p95 of the request served from the cache | Process memory |
+| ------------------------------- | ---------------------------------------- | -------------- |
+| Pool 4 (Node default), no limit | 2,124 ms                                 | +336 MB        |
+| Pool 4, with limit              | 2,344 ms                                 | +117 MB        |
+| Pool 16, with limit             | **0.25 ms**                              | **+117 MB**    |
 
-Le débit total des rendus est identique dans les trois cas : ces réglages ne
-font pas travailler plus vite, ils empêchent un traitement long de confisquer
-les ressources aux requêtes courtes.
+The total rendering throughput is identical in all three cases: these settings
+do not make the work faster; they prevent long-running processing from taking
+resources away from short requests.
 
-**Choix.** Deux corrections, qui traitent deux problèmes distincts.
+**Decision.** Two fixes, addressing two distinct problems.
 
-- **Un limiteur de rendus simultanés** (`media/semaphore.ts`), dimensionné à
-  `cpus - 2`, borné entre 2 et 4. La place est prise **avant** le
-  téléchargement : attendre son tour avec l'original déjà en mémoire ne
-  limiterait rien. C'est ce qui divise la mémoire par trois.
-- **Un pool de fils de 16** (`threadpool.ts`). Le décodage d'images, les lectures
-  de fichiers et argon2 partagent le pool de libuv, dont la taille par défaut est
-  de quatre : quelques rendus le remplissent et une simple lecture de vignette
-  attend derrière. C'est ce qui ramène la latence de deux secondes à un quart de
-  milliseconde.
+- **A simultaneous-render limiter** (`media/semaphore.ts`), sized at `cpus - 2`
+  and bounded between 2 and 4. The slot is taken **before** the download:
+  waiting for a turn with the original already in memory would limit nothing.
+  This is what divides memory use by three.
+- **A thread pool of 16** (`threadpool.ts`). Image decoding, file reads and
+  argon2 share libuv's pool, whose default size is four: a few renders fill it,
+  and a simple thumbnail read waits behind them. This is what brings latency
+  down from two seconds to a quarter of a millisecond.
 
-**Écarté.** Sortir le traitement dans des processus séparés (`worker_threads`,
-file externe) : sharp travaille déjà hors du fil principal — le retard de la
-boucle d'événements est resté sous 2 ms dans toutes les mesures —, donc le
-problème n'était pas le blocage mais le partage des ressources. Un pool de
-processus ajouterait de la sérialisation, de la mémoire et une supervision, pour
-un gain que la mesure ne montre pas.
+**Rejected.** Moving processing to separate processes (`worker_threads`,
+external queue): sharp already works outside the main thread — event-loop lag
+remained below 2 ms in all measurements — so the problem was not blocking but
+resource sharing. A process pool would add serialisation, memory use and
+supervision for a gain that the measurements do not show.
 
-Écarté aussi : régler le pool depuis le point d'entrée après les imports. Node
-lit la variable au premier usage du pool ; en ESM, tous les imports sont évalués
-avant le corps du module, et il suffirait qu'un seul ouvre un fichier pour figer
-la valeur. D'où un module dédié, importé en premier, qui agit à son chargement.
+Also rejected: setting the pool from the entry point after imports. Node reads
+the variable on the pool's first use; in ESM, all imports are evaluated before
+the module body, and a single one opening a file would be enough to lock in the
+value. Hence a dedicated module, imported first, that acts when loaded.
 
-**Conséquences.** Le `Dockerfile` pose aussi `UV_THREADPOOL_SIZE=16` — redondant
-avec le module, mais visible à l'exploitation et robuste si l'ordre des imports
-change un jour. Une valeur déjà présente dans l'environnement fait autorité.
+**Consequences.** The `Dockerfile` also sets `UV_THREADPOOL_SIZE=16` — redundant
+with the module, but visible to operations and robust if the import order ever
+changes. A value already present in the environment takes precedence.
 
-Sur une grille entièrement à froid, le temps total pour afficher toutes les
-vignettes reste le même ; ce sont les visiteurs qui regardent autre chose qui ne
-le paient plus.
+On an entirely cold grid, the total time to display all thumbnails remains the
+same; visitors browsing something else no longer pay the cost.

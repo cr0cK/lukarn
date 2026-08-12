@@ -1,50 +1,48 @@
 /**
- * La légende d'une photo ouverte : deux textes, deux portées.
+ * Caption of an open photo: two texts, two scopes.
  *
- * Ce qui explique une image se lisait ailleurs qu'elle — la note du jour dans
- * l'en-tête de sa section, et rien du tout sur la photo elle-même. Le bandeau
- * bas de la visionneuse les rassemble, du plus précis au plus général : ce qui
- * se passe ici, puis ce qu'on faisait ce jour-là (D84).
+ * Text explaining an image used to appear elsewhere — the day note in its
+ * section header, and nothing on the photo itself. The viewer's bottom bar
+ * gathers it from the most specific to the broadest: what is happening here,
+ * then what was happening that day (D84).
  *
- * **La description de l'album n'en fait pas partie** (D89). Elle y figurait en
- * troisième ligne, et c'est un texte qu'on a lu en ouvrant l'album, identique
- * sur les neuf cents photos qu'il contient : une ligne par photo pour le
- * relire. Le titre de l'album, lui, reste dans l'en-tête, où il situe sans
- * raconter.
+ * **The album description is not included** (D89). It used to be a third line,
+ * but is read on opening the album and is identical across its nine hundred
+ * photos: one line per photo to reread it. The album title remains in the header,
+ * where it locates without telling a story.
  *
- * Le calcul de ce qu'il faut afficher est ici, hors de tout composant : c'est la
- * seule partie testable sans DOM, et c'est aussi la seule qui a des cas —
- * lignes vides, tout vide, ordre des portées.
+ * Calculate what to display here, outside any component: this is the only part
+ * testable without the DOM and the only one with cases — empty lines, everything
+ * empty and scope order.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 
-/** Les deux textes candidats, tels que la visionneuse les tient. */
+/** The two candidate texts as held by the viewer. */
 export interface CaptionSource {
-  /** Description de la photo ouverte. */
+  /** Description of the open photo. */
   description?: string | null;
-  /** Note de la journée qui la porte. */
+  /** Note for the day containing it. */
   day?: string | null;
 }
 
-/** Portée d'une ligne de légende, du plus précis au plus général. */
+/** Caption-line scope, from most specific to broadest. */
 export type CaptionScope = 'photo' | 'day';
 
 export interface CaptionEntry {
   scope: CaptionScope;
   /**
-   * Préfixe affiché devant le texte, `null` sur la ligne de la photo. La ligne
-   * du dessous parle d'autre chose que de l'image qu'on regarde : sans ce mot,
-   * « Bonifacio, la plage » se lirait comme une légende de la photo.
+   * Prefix shown before text, `null` on the photo line. The line below discusses
+   * something other than the viewed image: without this word, "Bonifacio, the
+   * beach" would read as the photo caption.
    */
   label: string | null;
   text: string;
 }
 
 /**
- * Les lignes non vides, dans l'ordre de portée. Un texte réduit à des espaces
- * ne compte pas : il ouvrirait une ligne vide dans le bandeau, et le bandeau
- * lui-même sur une photo qui n'a rien à dire.
+ * Non-empty lines in scope order. Whitespace-only text does not count: it would
+ * open an empty line in the bar, and the bar itself on a photo with nothing to say.
  */
 export function captionEntries(source: CaptionSource): CaptionEntry[] {
   const candidates: { scope: CaptionScope; label: string | null; value: string | null }[] = [
@@ -59,24 +57,22 @@ export function captionEntries(source: CaptionSource): CaptionEntry[] {
 }
 
 /**
- * Préférence « légende masquée », d'une visite à l'autre.
+ * "Caption hidden" preference across visits.
  *
- * Persistée alors que le dépliement ne l'est pas, et la différence n'est pas
- * arbitraire : masquer est un choix sur la façon de regarder ses photos — on le
- * fait une fois et on n'a pas à le refaire —, déplier est une réponse à un texte
- * précis, qui n'a pas de sens sur la photo suivante.
+ * Persisted while expansion is not, for a deliberate reason: hiding is a choice
+ * about how to view photos — made once rather than repeatedly — while expansion
+ * responds to specific text and has no meaning on the next photo.
  *
- * Une seule clé pour toute l'application, contrairement aux repères de lecture
- * des commentaires : c'est un réglage d'affichage, pas une donnée d'album.
+ * One key for the whole application, unlike comment reading markers: this is a
+ * display setting, not album data.
  */
 const STORAGE_KEY = 'nonni:caption-hidden';
 
 /**
- * Lecture tolérante, sur le modèle de `lib/seenComments.ts` : un `localStorage`
- * refusé (navigation privée sur d'anciens Safari) ne doit pas empêcher la
- * visionneuse de s'ouvrir. Le repli est « visible », la lecture la moins
- * trompeuse d'une mémoire absente — un bandeau de trop se referme, un bandeau
- * manquant ne se devine pas.
+ * Tolerant reading modelled on `lib/seenComments.ts`: denied `localStorage`
+ * (private browsing in older Safari) must not prevent the viewer from opening.
+ * Fall back to "visible", the least misleading interpretation of absent memory
+ * — an extra bar can be closed, while a missing bar cannot be guessed.
  */
 function load(): boolean {
   try {
@@ -94,8 +90,8 @@ export interface CaptionHidden {
 export function useCaptionHidden(): CaptionHidden {
   const [hidden, setHiddenState] = useState(load);
 
-  // Un autre onglet a pu changer le réglage entre deux ouvertures ; et sur le
-  // premier rendu, `load()` a déjà été appelé par l'initialiseur d'état.
+  // Another tab may have changed the setting between openings; on the first
+  // render, the state initialiser has already called `load()`.
   useEffect(() => {
     const onStorage = (event: StorageEvent): void => {
       if (event.key === STORAGE_KEY) setHiddenState(load());
@@ -109,8 +105,8 @@ export function useCaptionHidden(): CaptionHidden {
     try {
       window.localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
     } catch {
-      // Quota dépassé ou écriture refusée : le bandeau réapparaîtra à la
-      // prochaine visite, ce qui ne vaut pas de faire échouer un rendu.
+      // Quota exceeded or write denied: the bar reappears next visit, which is
+      // not worth failing a render.
     }
   }, []);
 

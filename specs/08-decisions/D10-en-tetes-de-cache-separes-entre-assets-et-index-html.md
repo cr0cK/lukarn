@@ -1,17 +1,17 @@
-# D10 — En-têtes de cache séparés entre `/assets/` et `index.html`
+# D10 — Separate cache headers for `/assets/` and `index.html`
 
-**Contexte.** Les deux sont servis par le même plugin statique.
+**Context.** Both are served by the same static plugin.
 
-**Choix.** `setHeaders` distingue sur la présence de `/assets/` dans le chemin :
-`public, max-age=31536000, immutable` pour les bundles hachés,
-**`no-cache` pour `index.html`**.
+**Decision.** `setHeaders` distinguishes them by the presence of `/assets/` in the path:
+`public, max-age=31536000, immutable` for hashed bundles, **`no-cache` for
+`index.html`**.
 
-**Écarté.** Un `Cache-Control` unique. Long, il figerait l'application sur une
-version passée après chaque déploiement, puisque `index.html` garde la même URL
-tout en référençant les bundles du jour. Court, il rechargerait des bundles
-immuables à chaque visite.
+**Rejected.** A single `Cache-Control` value. A long duration would freeze the
+application on an older version after each deployment, because `index.html` keeps the
+same URL while referencing the current bundles. A short duration would reload immutable
+bundles on every visit.
 
-**Conséquences liées.** Un fichier manquant sous `/assets/` répond **404 JSON**
-et non `index.html` : c'est le signe d'un déploiement incomplet, et répondre du
-HTML donnerait une erreur de type MIME qui masquerait le vrai problème.
-`packages/server/test/static.test.ts` verrouille les trois comportements.
+**Related consequences.** A missing file under `/assets/` returns **404 JSON**, not
+`index.html`: it indicates an incomplete deployment, and returning HTML would cause a
+MIME type error that would hide the real problem.
+`packages/server/test/static.test.ts` locks in all three behaviours.

@@ -3,19 +3,19 @@ import { type ReactElement, useId, useState } from 'react';
 
 interface AlbumAccessPickerProps {
   albums: AdminAlbum[];
-  /** Liste d'ids, ou `['*']`. */
+  /** List of IDs, or `['*']`. */
   value: string[];
   onChange: (albums: string[]) => void;
   disabled?: boolean;
 }
 
 /**
- * Attribution des albums à un compte.
+ * Assigns albums to an account.
  *
- * Le joker et une sélection exhaustive donnent aujourd'hui le même accès, et
- * demain non : le joker suivra les albums créés plus tard. Les deux sont donc
- * deux choix distincts et pas une case « tout cocher » — cocher les douze
- * albums existants n'est jamais une manière d'exprimer « tous les albums ».
+ * The wildcard and an exhaustive selection grant the same access today, but not
+ * tomorrow: the wildcard follows albums created later. They are therefore two
+ * separate choices, not a "select all" checkbox — selecting twelve existing
+ * albums never means "all albums".
  */
 export function AlbumAccessPicker({
   albums,
@@ -26,8 +26,8 @@ export function AlbumAccessPicker({
   const groupId = useId();
   const wildcard = value.includes(ALL_ALBUMS);
 
-  // La sélection explicite survit à un aller-retour vers le joker : revenir sur
-  // « une sélection » après l'avoir quittée ne doit pas tout faire recocher.
+  // Preserve the explicit selection through a round trip to the wildcard:
+  // returning to "a selection" must not select everything again.
   const [remembered, setRemembered] = useState<string[]>(wildcard ? [] : value);
   const selected = wildcard ? remembered : value;
 
@@ -40,14 +40,14 @@ export function AlbumAccessPicker({
     select(checked ? [...selected, albumId] : selected.filter((id) => id !== albumId));
   };
 
-  // Un album supprimé peut subsister dans la liste d'un compte : il reste
-  // affiché, sans quoi il serait impossible de l'en retirer.
+  // A deleted album may remain in an account's list: keep it visible or it
+  // would be impossible to remove.
   const orphans = selected.filter((id) => !albums.some((album) => album.id === id));
   const allChecked = albums.length > 0 && albums.every((album) => selected.includes(album.id));
 
   return (
     <fieldset disabled={disabled} className="min-w-0">
-      <legend className="mb-1.5 text-sm text-ink-300">Albums accessibles</legend>
+      <legend className="mb-1.5 text-sm text-ink-300">Accessible albums</legend>
 
       <div className="space-y-2">
         <Choice

@@ -1,81 +1,76 @@
-# D82 — Un fil d'activité, parce qu'une conversation ne se découvre pas
+# D82 — An activity feed, because a conversation cannot be discovered otherwise
 
-**Contexte.** Les commentaires étaient invisibles tant qu'on n'ouvrait pas la
-photo qui les portait. La pastille de la visionneuse ne se voit qu'une fois la
-photo atteinte, et sur un album de milliers de vues dont dix portent un message,
-personne ne tombe dessus. Une discussion pouvait donc vivre et s'éteindre sans
-qu'aucun de ceux à qui elle s'adressait ne la voie — un message écrit sans
-lecteur est un message perdu, et c'est le contraire de ce que des commentaires
-sous des photos de famille sont censés produire.
+**Context.** Comments were invisible until the photo carrying them was opened.
+The viewer badge is only seen once the photo is reached, and in an album with
+thousands of views but ten messages, nobody encounters it. A discussion could
+therefore begin and end without any intended reader seeing it — a message with no
+reader is a lost message, the opposite of what comments beneath family photos are
+meant to achieve.
 
-L'administration avait déjà sa vue globale, la file de modération. Elle n'était
-d'aucun secours ici : elle répond 403 hors `/api/admin`, montre les adresses
-email des auteurs, et sert à trier ce qu'on retire — pas à lire ce qui s'écrit.
+Administration already had its global view, the moderation queue. It was no help
+here: it responds with 403 outside `/api/admin`, shows authors' email addresses,
+and exists to sort what gets removed — not to read what is written.
 
-**Choix.** Une route `GET /api/comments/feed`, et un tiroir ouvert depuis la
-barre supérieure des deux pages de galerie.
+**Choice.** A `GET /api/comments/feed` route and a drawer opened from the top bar
+on both gallery pages.
 
-**La portée vient de `albumsFor()`, jamais de la requête.** C'est la première
-route qui rend, en une réponse, des messages venus d'albums différents : une
-erreur de portée n'y produit pas une page vide mais une fuite, et rien dans
-l'affichage ne la signalerait — la conversation d'un album qu'on n'a pas s'y lit
-comme les autres. `?album=` ne fait que restreindre ; un album qu'on ne voit pas
-répond 404 comme partout (D12). Une session sans album rend une page vide, cas
-qu'un test couvre en premier parce que c'est celui qu'un `IN ()` oublié
-transformerait en corpus entier.
+**Scope comes from `albumsFor()`, never from the request.** This is the first
+route to return messages from different albums in one response: a scope error
+does not produce an empty page but a leak, and nothing in the display would reveal
+it — a conversation from an unavailable album reads like any other. `?album=`
+only narrows; an unseen album responds with 404 as everywhere else (D12). A
+session with no album returns an empty page, covered by the first test because a
+forgotten `IN ()` could turn this case into the entire corpus.
 
-**Aucun index, aucune migration.** `ORDER BY c.id DESC` est l'ordre de la clé
-primaire : SQLite parcourt la table à rebours et s'arrête au `LIMIT`. Un index
-`(album_id, id DESC)` ne ferait pas mieux, SQLite ne sachant pas fusionner
-l'ordre de plusieurs tranches d'un `IN`. Le cas défavorable est assumé, dans la
-continuité de D67 : un compte qui ne voit qu'un album sur cinquante fait
-traverser les commentaires des quarante-neuf autres avant de réunir sa page. Le
-corpus reste borné par ce que des humains écrivent.
+**No index, no migration.** `ORDER BY c.id DESC` follows primary-key order:
+SQLite scans the table backwards and stops at `LIMIT`. An `(album_id, id DESC)`
+index would do no better because SQLite cannot merge the order of several slices
+of an `IN`. The adverse case is accepted, continuing D67: an account seeing only
+one album out of fifty scans comments from the other forty-nine before filling
+its page. The corpus remains bounded by what humans write.
 
-**Le paramètre `?panel=comments` est la moitié utile de l'entrée.** L'onglet du
-panneau latéral était un état local de `Lightbox` : un lien vers `?photo=` ouvrait
-l'image en laissant les messages fermés. Le tiroir aurait donc mené à la photo
-sans mener à la conversation, c'est-à-dire nulle part. L'onglet vit maintenant
-dans l'URL, comme `photo`, `order` et `group`, et les emails de notification en
-profitent — un message annoncé par email menait jusque-là à une image muette.
+**The `?panel=comments` parameter is the useful half of the entry.** The side
+panel tab was local `Lightbox` state: a link to `?photo=` opened the image with
+messages closed. The drawer would therefore lead to the photo but not the
+conversation — nowhere. The tab now lives in the URL, like `photo`, `order`, and
+`group`, which also benefits notification emails — a message announced by email
+previously led to a silent image.
 
-**La pastille compte des identifiants, pas des messages.** Le repère de lecture
-du fil, `nonni:comments-feed-seen`, est le plus grand id vu. Le fil est paginé et
-sans total : compter ce qu'on a lu supposerait de le parcourir en entier, alors
-qu'`AUTOINCREMENT` fait de l'id un jalon exact. Le repère reste dans le
-navigateur pour la raison de D55 — une clé d'accès est partagée par tout un
-foyer, une table côté serveur ferait effacer la pastille des autres par le
-premier qui lit.
+**The badge counts identifiers, not messages.** The feed read marker,
+`nonni:comments-feed-seen`, is the greatest id seen. The feed is paginated and has
+no total: counting what was read would require traversing it completely, whereas
+`AUTOINCREMENT` makes the id an exact milestone. The marker remains in the browser
+for D55's reason — an access key is shared by an entire household, so a
+server-side table would let the first reader clear everyone else's badge.
 
-**Écarté : une notification par email de plus.** L'instance en envoie déjà pour
-les réponses et les nouveautés d'album (D39, D41). Un troisième motif d'écrire
-aurait fait payer à la boîte aux lettres ce qui manquait à l'interface, et se
-serait heurté au fait qu'une identité n'est rattachée à aucun album — on ne sait
-pas à qui écrire pour un message qui ne répond à personne.
+**Rejected: another email notification.** The instance already sends messages
+for replies and album updates (D39, D41). A third reason to write would make the
+mailbox pay for what the interface lacked, and would collide with identities not
+being linked to albums — there is no known recipient for a message that replies
+to nobody.
 
-**Écarté : une page `/activite`.** Une route de plus, et surtout on quitte la
-grille pour y aller. Le tiroir laisse la galerie derrière lui : on referme et on
-est encore au même endroit.
+**Rejected: an `/activity` page.** Another route, and above all leaving the grid
+to visit it. The drawer leaves the gallery behind it: close it and the same place
+remains.
 
-**Écarté : une icône par journée ou par mois dans les en-têtes de section.**
-Filtrer sur une plage de `taken_at` demandait une jointure sur `media` — les
-messages des photos disparues seraient sortis du résultat — et un bouton de plus
-dans un en-tête dont toutes les hauteurs sont déclarées au pixel. La bascule
-« tous les albums / cet album » couvre le besoin réel, qui est de savoir où ça
-parle.
+**Rejected: an icon per day or month in section headers.** Filtering a
+`taken_at` range would require joining `media` — messages for disappeared photos
+would leave the result — plus another button in a header whose heights are all
+declared to the pixel. The "all albums / this album" toggle covers the actual
+need: knowing where people are talking.
 
-**Conséquences.** Une requête de plus au chargement de chaque page de galerie,
-du même ordre que celle des compteurs d'album. Publier un commentaire invalide
-les deux portées du fil, donc recharge les pages déjà parcourues du tiroir — le
-tiroir est presque toujours fermé au moment où l'on écrit.
+**Consequences.** One extra request when each gallery page loads, comparable to
+the album-count request. Publishing a comment invalidates both feed scopes and
+therefore reloads pages already browsed in the drawer — which is almost always
+closed while writing.
 
-`lib/moderation.ts` devient `lib/commentGroups.ts`, et son rangement par journée
-puis par photo devient générique : la file de modération et le tiroir posent la
-même question, et n'ont pas à y répondre deux fois. Le tiroir s'en écarte sur un
-point, assumé : les messages d'un bloc s'y lisent du plus ancien au plus récent,
-parce qu'on y lit une conversation et non une file de travail.
+`lib/moderation.ts` becomes `lib/commentGroups.ts`, and its grouping by day then
+photo becomes generic: the moderation queue and drawer ask the same question and
+need not answer it twice. The drawer deliberately differs in one respect:
+messages in a block read oldest to newest because this is a conversation, not a
+work queue.
 
-Enfin, un album dont l'identifiant Drive serait `feed` n'obtiendrait jamais ses
-compteurs, la précédence des segments littéraux de Fastify jouant ici comme pour
-`unsubscribe`. Même arbitrage : la route générale prime sur un identifiant que
-son créateur peut renommer.
+Finally, an album whose Drive identifier is `feed` would never get its counts,
+because Fastify's literal-segment precedence applies here as it does for
+`unsubscribe`. Same tradeoff: the general route takes precedence over an
+identifier its creator can rename.

@@ -1,112 +1,113 @@
-# D260809h — La télémétrie est mesurée en base, agrégée à l'écriture
+# D260809h — Telemetry is measured in the database and aggregated on write
 
-**Contexte.** L'instance en service ne disait rien de son usage.
-`sessions.created_at` était la seule trace existante, et elle ne répond qu'à
-« quelqu'un s'est connecté un jour » — pas à « ai-je des visiteurs cette
-semaine », ni à « qui ouvre quel album », qui est la question posée. Les
-commentaires étaient le seul signal d'activité disponible, et ils sous-estiment
-massivement la lecture : on regarde un album sans commenter.
+**Context.** The running instance said nothing about its use.
+`sessions.created_at` was the only existing trace, and it answers only "someone
+logged in once" — not "do I have visitors this week?", nor "who opens which
+album?", which is the question being asked. Comments were the only available
+sign of activity, and they vastly undercount reading: people view an album
+without commenting.
 
-**Choix.** La mesure se fait **côté serveur, en base**, dans une table agrégée à
-l'écriture : une ligne par (album, clé, session, jour) portant des compteurs.
+**Decision.** Measurement happens **on the server, in the database**, in a table
+aggregated on write: one row per (album, key, session, day), carrying counters.
 
-## Pourquoi pas un traceur tiers
+## Why not a third-party tracker
 
-Un Plausible, un Umami ou un Matomo verrait un **navigateur anonyme**. Or l'accès
-à cette galerie est authentifié par clé : seule l'instance sait _qui_ regarde, et
-c'est la moitié de la question. Un traceur y répondrait par « 42 visites », là
-où l'écran d'administration répond « la clé `mamie` est venue trois jours cette
-semaine, depuis un téléviseur ».
+Plausible, Umami, or Matomo would see an **anonymous browser**. Access to this
+gallery, however, is authenticated by key: only the instance knows _who_ is
+looking, and that is half the question. A tracker would answer "42 visits",
+where the administration screen answers "the `mamie` key visited on three days
+this week, from a television".
 
-Le reste suit : un script tiers contredirait la promesse d'une galerie qui ne
-laisse rien fuir (voir [04](../04-securite-et-acces.md), « Ce qui sort de
-l'instance »), imposerait un domaine de plus à l'en-tête `Content-Security-Policy`,
-et ferait dépendre d'un service extérieur une instance dont tout l'intérêt est de
-se suffire à elle-même — le même arbitrage qu'en
+The rest follows: a third-party script would contradict the promise of a gallery
+that leaks nothing (see [04](../04-securite-et-acces.md), "What leaves the
+instance"), require another domain in the `Content-Security-Policy` header, and
+make an instance designed to be self-contained depend on an external service —
+the same trade-off as in
 [D63](./D63-le-depot-ne-privilegie-aucun-hebergeur-et-ne-cree-pas-de.md).
 
-## Pourquoi pas un journal d'événements
+## Why not an event log
 
-La forme naturelle aurait été une ligne par requête, agrégée à la lecture. Elle
-est écartée sur un ordre de grandeur : une visite d'album, c'est une requête de
-grille, deux cents vignettes et quelques dizaines d'ouvertures de photo. Compter
-chacune produirait la **dizaine de milliers de lignes par jour** qu'il faudrait
-ensuite indexer, agréger et purger sérieusement.
+The natural shape would have been one row per request, aggregated on read. It is
+rejected on grounds of scale: one album visit is a grid request, two hundred
+thumbnails, and a few dozen photo openings. Counting each one would produce
+**tens of thousands of rows per day**, which would then need serious indexing,
+aggregation, and pruning.
 
-Le `INSERT … ON CONFLICT DO UPDATE` sur `(album_id, username, session_id, day)`
-ramène ça à une dizaine de lignes par jour, ce qui rend la purge presque
-décorative — quatre cents jours de rétention tiennent dans quelques milliers de
-lignes. Ce qu'on perd est réel et assumé : **l'heure exacte de chaque geste**, et
-donc toute courbe intra-journalière. Personne n'a demandé à quelle heure sa mère
-regarde les photos.
+The `INSERT … ON CONFLICT DO UPDATE` on
+`(album_id, username, session_id, day)` reduces this to about ten rows per day,
+making pruning almost decorative — four hundred days of retention fit in a few
+thousand rows. The loss is real and accepted: **the exact time of every
+gesture**, and therefore any intraday chart. Nobody has asked what time their
+mother looks at the photos.
 
-Deux conséquences de forme en découlent :
+Two structural consequences follow:
 
-- **La table n'a aucune clé étrangère**, ni vers `sessions` ni vers `albums`. Une
-  déconnexion détruit la session ; elle ne doit pas effacer l'historique de ce
-  qui a été regardé — `session_id` n'est ici qu'un seau pour compter des
-  visiteurs distincts, pas un lien. Idem pour un album supprimé : sa
-  fréquentation passée reste vraie, et l'écran affiche son identifiant à la
-  place de son titre.
-- **`WITHOUT ROWID`** : la table est entièrement définie par sa clé primaire
-  composite, l'index secondaire implicite ne servirait à rien.
+- **The table has no foreign key**, either to `sessions` or to `albums`. Logging
+  out destroys the session; it must not erase the history of what was viewed —
+  `session_id` is only a bucket for counting distinct visitors here, not a link.
+  The same applies to a deleted album: its past traffic remains true, and the
+  screen displays its identifier in place of its title.
+- **`WITHOUT ROWID`**: the table is fully defined by its composite primary key;
+  the implicit secondary index would serve no purpose.
 
-## Pourquoi la classe d'appareil, et pas le user-agent
+## Why the device class, not the user agent
 
-Le user-agent complet est une **empreinte** : version de navigateur, version
-d'OS, modèle d'appareil, parfois la marque de l'opérateur. Le conserver
-reviendrait à pouvoir distinguer deux personnes derrière une clé d'accès
-partagée, ce que cette télémétrie ne cherche pas à faire.
+The complete user agent is a **fingerprint**: browser version, OS version,
+device model, and sometimes the network operator's brand. Keeping it would make
+it possible to distinguish two people behind a shared access key, which this
+telemetry is not intended to do.
 
-Il est donc lu **une fois**, à la création de la session, réduit à l'une de
-quatre valeurs — `mobile`, `tablette`, `ordinateur`, `tv` — puis jeté. Une classe
-sur quatre ne ré-identifie personne, et répond à la seule question qui décide de
-quelque chose : ce qu'on optimise. `device.ts` teste le téléviseur **en
-premier**, parce qu'un webOS annonce `Mobile` et `Safari` dans son en-tête et
-serait classé téléphone par un test naïf — c'est précisément l'écran qu'on ne
-voit pas dans les journaux.
+It is therefore read **once**, when the session is created, reduced to one of
+four values — `mobile`, `tablette`, `ordinateur`, `tv` — and then discarded.
+One class out of four cannot re-identify anyone, and answers the only question
+that informs a decision: what to optimise. `device.ts` checks for a television
+**first**, because webOS announces `Mobile` and `Safari` in its header and would
+be classified as a phone by a naive test — precisely the screen that does not
+appear in the logs.
 
-Le biais restant est connu : un iPad récent se déclare « Macintosh » et compte
-comme un ordinateur. Le rattraper demanderait de sonder le tactile en
-JavaScript, c'est-à-dire exactement le traceur qu'on vient d'écarter.
+The remaining bias is known: a recent iPad identifies itself as "Macintosh" and
+is counted as a computer. Correcting this would require probing touch support in
+JavaScript — exactly the tracker just rejected.
 
-## Ce que la mesure ne descend pas
+## Where measurement stops
 
-**Jamais le média.** Une ligne par photo ouverte serait l'historique de lecture
-de quelqu'un, dans une application où plusieurs personnes partagent une clé. Les
-compteurs s'arrêtent à « combien de photos ouvertes dans cet album ce jour-là ».
+**Never at the media item.** One row per photo opened would be someone's viewing
+history in an application where several people share a key. The counters stop
+at "how many photos were opened in this album on that day".
 
-**Jamais l'adresse IP.** Elle n'ajouterait rien que la clé d'accès ne dise déjà,
-et transformerait une table de compteurs en donnée personnelle à protéger.
+**Never at the IP address.** It would add nothing that the access key does not
+already say, and would turn a table of counters into personal data that needs
+protection.
 
-## Le coût sur le chemin de la requête
+## The cost on the request path
 
-Deux écritures s'ajoutent, et aucune lecture :
+Two writes are added, and no reads:
 
-- `last_seen_at` est **une colonne de plus au SELECT** que `SessionStore.get()`
-  fait déjà à chaque requête. Sa réécriture est plafonnée à une par heure et par
-  session, sur le raisonnement déjà tenu pour `RENEW_AFTER_MS` : sans ce seuil,
-  chaque vignette d'une grille déclencherait un UPDATE SQLite.
-- L'ouverture d'un album n'est comptée que sur la **première page**, à
-  l'identique de l'abonnement de [D41](./D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md) —
-  les suivantes sont le même geste. Elle est en revanche inconditionnelle sur
-  l'identité, là où l'abonnement exige un commentateur vérifié : on compte des
-  visites, pas des abonnés.
+- `last_seen_at` is **one more column in the SELECT** that `SessionStore.get()`
+  already performs on every request. Rewriting it is capped at once per hour per
+  session, following the reasoning already used for `RENEW_AFTER_MS`: without
+  this threshold, every thumbnail in a grid would trigger a SQLite UPDATE.
+- Opening an album is counted only on the **first page**, just like the
+  subscription in
+  [D41](./D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md) — subsequent
+  pages are the same gesture. It is unconditional with respect to identity,
+  however, whereas subscribing requires a verified commenter: visits are being
+  counted, not subscribers.
 
-Les deux compteurs sont accrochés à des requêtes que la galerie fait **déjà** :
-la première page de la grille, et le détail d'un média. Aucune route de
-signalement n'a été ajoutée — un « ping » de visite serait une requête de plus
-par photo, et une surface d'API que rien d'autre n'utiliserait.
+Both counters are attached to requests the gallery **already** makes: the first
+page of the grid and the details of a media item. No reporting route was added —
+a visit "ping" would be one more request per photo and an API surface used by
+nothing else.
 
-Le second point a demandé une correction côté front, trouvée en vérifiant la
-mesure au navigateur : `useMediaDetail` n'était activée qu'à **l'ouverture du
-panneau latéral**. Compter dessus aurait mesuré les panneaux ouverts en croyant
-compter les photos regardées — soit, pour une visite ordinaire, zéro. La requête
-part désormais dès qu'une photo est affichée, ce qui fait au passage ouvrir le
-panneau « Infos » sur ses lignes déjà là plutôt que sur un indicateur d'attente.
+The second point required a frontend correction, found by checking the
+measurement in the browser: `useMediaDetail` was enabled only when **the side
+panel was opened**. Relying on it would have measured open panels while claiming
+to count viewed photos — zero for an ordinary visit. The request now starts as
+soon as a photo is displayed, which also means the "Info" panel opens on rows
+that are already present rather than on a loading indicator.
 
-## Les visites de l'administrateur sont montrées, pas exclues
+## Administrator visits are shown, not excluded
 
-Les retirer ferait mentir les totaux, et personne ne saurait plus si « 40
-visites » compte ou non celles de la personne qui regarde l'écran. Une colonne
-« administrateur » sur la ligne suffit à les lire pour ce qu'elles sont.
+Removing them would make the totals misleading, and nobody would know whether
+"40 visits" includes those of the person looking at the screen. An
+"administrator" column on the row is enough to read them for what they are.

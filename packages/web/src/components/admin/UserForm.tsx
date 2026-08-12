@@ -14,15 +14,15 @@ import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
 
 interface UserFormProps {
   albums: AdminAlbum[];
-  /** Absent = création d'un compte. */
+  /** Absent means creating an account. */
   user?: AdminUser;
-  /** `true` si le compte modifié est celui de la session en cours. */
+  /** `true` when editing the current session's account. */
   isSelf?: boolean;
   onClose: () => void;
   notify: Notify;
 }
 
-/** Formulaire de création et de modification d'un compte. */
+/** Form for creating and editing an account. */
 export function UserForm({
   albums,
   user,
@@ -64,8 +64,8 @@ export function UserForm({
       return;
     }
 
-    // Un champ absent laisse la valeur en place : n'envoyer que ce qui a changé
-    // évite d'écraser une modification faite ailleurs entre-temps.
+    // An absent field preserves its value: sending only changes avoids overwriting
+    // an edit made elsewhere in the meantime.
     const body: UpdateUserRequest = {};
     if (password) body.password = password;
     if (admin !== user.admin) body.admin = admin;
@@ -158,7 +158,7 @@ export function UserForm({
   );
 }
 
-/** Compare deux attributions sans tenir compte de l'ordre de saisie. */
+/** Compares two assignments regardless of input order. */
 function sameAlbums(a: string[], b: string[]): boolean {
   if (a.includes(ALL_ALBUMS) || b.includes(ALL_ALBUMS)) {
     return a.includes(ALL_ALBUMS) && b.includes(ALL_ALBUMS);
