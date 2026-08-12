@@ -659,6 +659,10 @@ of a SQLite at rest rather than a file copied with a WAL in flight — writes
 **last 7** and deletes the older ones. It checks that the archive really contains
 `nonni.db`: an empty archive would otherwise go unnoticed until restore time.
 
+It restores the state it found: an instance that is already down is archived as
+it stands and stays down (D260812). A backup is most useful exactly when the
+instance is on the floor, so this path has to work.
+
 **Off the machine.** A backup that lives on the machine it protects protects
 nothing. Without `--local`, the script copies the archive through `rclone` to a
 remote configured **outside the repository**:

@@ -61,10 +61,23 @@ configuration="$DESTINATION/nonni-$timestamp.config.tgz"
 # The stop lasts a few seconds, and that is the price of a SQLite at rest: no WAL
 # in flight when `tar` runs. The trade-off is deliberate against a hot
 # `db.backup()`, which is more fragile to trigger from outside the container.
-echo "→ stopping the application"
-docker compose stop app
-# `start` even on failure: a failed backup must not leave the instance down.
-trap 'docker compose start app >/dev/null' EXIT
+#
+# An instance that is already down is archived as it stands, and left down.
+# `docker compose start` exits 1 when the service has no container at all, which
+# under `set -e` killed this script one line before the end — and with it the
+# `deploy.sh` that called it. An update was then impossible because the
+# application was not running, and the application was not running because the
+# update could not run (D260812).
+if [[ -n $(docker compose ps -q app) ]]; then
+  was_running=true
+  echo "→ stopping the application"
+  docker compose stop app
+  # `start` even on failure: a failed backup must not leave the instance down.
+  trap 'docker compose start app >/dev/null' EXIT
+else
+  was_running=false
+  echo "→ application already down: archiving as it stands"
+fi
 
 echo "→ archiving nonni-data"
 # The container writes as root, so the archive belongs to root, mode 0644. It
@@ -106,9 +119,11 @@ if [[ -d config ]]; then
   chmod 600 "$configuration"
 fi
 
-docker compose start app >/dev/null
-trap - EXIT
-echo "→ application restarted"
+if $was_running; then
+  docker compose start app >/dev/null
+  trap - EXIT
+  echo "→ application restarted"
+fi
 
 # Pruning. The names are produced here, without spaces or newlines: splitting
 # `ls` output is safe in this particular case.

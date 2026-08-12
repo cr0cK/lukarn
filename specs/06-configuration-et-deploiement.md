@@ -373,10 +373,10 @@ backups.
 Two bash scripts, run from the machine, which reposition themselves to the
 repository root from `$0`.
 
-| Script             | Effect                                                                                                                                                                                                                                                                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/backup.sh` | `docker compose stop app`, `tar` of the `nonni-data` volume, restart, copy of `.env` and an archive of `config/` alongside, keeping the last 7 of each. Writes to `NONNI_BACKUP_DIR`, `./backups` by default. `--local` stops there; otherwise `rclone copy` to the remote from `NONNI_BACKUP_REMOTE`, `backups:nonni` by default. |
-| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, then `docker compose pull app` and `up -d` — or `up -d --build` with the build override if `--build` is passed —, then **actively waits** for it to return to `healthy`. Failure ⇒ `docker compose logs --tail=50 app` and a non-zero exit code.                                        |
+| Script             | Effect                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/backup.sh` | `docker compose stop app` **if it is running**, `tar` of the `nonni-data` volume, restart of what was stopped, copy of `.env` and an archive of `config/` alongside, keeping the last 7 of each. Writes to `NONNI_BACKUP_DIR`, `./backups` by default. `--local` stops there; otherwise `rclone copy` to the remote from `NONNI_BACKUP_REMOTE`, `backups:nonni` by default. |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, then `docker compose pull app` and `up -d` — or `up -d --build` with the build override if `--build` is passed —, then **actively waits** for it to return to `healthy`. Failure ⇒ `docker compose logs --tail=50 app` and a non-zero exit code.                                                                                 |
 
 **Why `app` is stopped to back up.** SQLite runs in WAL mode: copying the
 file during a write yields a database that needs recomposing. The stop lasts a few
@@ -390,6 +390,15 @@ not contain `nonni.db`: this is exactly the symptom of the mis-named volume
 above, and the only other moment it would show up would be the
 restore. A **missing** `nonni-data` volume, by contrast, is a normal case —
 a fresh install, nothing to back up — and the script exits 0, saying so.
+
+**Why the script restores the state it found.** An instance that is down is
+archived as it stands and left down. `docker compose start` exits 1 when the
+service has no container, and under `set -e` that failure used to take
+`backup.sh` with it — and `deploy.sh` behind it, which calls it before touching
+anything. The update was then impossible because the application was not
+running, and the application was not running because the update could not run.
+The moment a backup matters most is the moment the instance is on the floor
+(D260812).
 
 **Why `deploy.sh` waits.** `docker compose up -d` returns as soon as the
 container is launched, not when it's working: a failing migration or a
