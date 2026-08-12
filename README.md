@@ -15,24 +15,45 @@ people; each person then declares a name and an address in order to comment.
 From `/admin`, the owner declares which Drive folders become albums and who may
 open them — enough to share one album without exposing the rest of the Drive.
 
-| Where to go                 |                                          |
-| --------------------------- | ---------------------------------------- |
-| Run it locally              | [Below](#run-it-locally)                 |
-| Deploy and operate a server | [`deploy/README.md`](./deploy/README.md) |
-| Understand how it is built  | [`specs/README.md`](./specs/README.md)   |
-| Contribute                  | [`CONTRIBUTING.md`](./CONTRIBUTING.md)   |
-| Report a vulnerability      | [`SECURITY.md`](./SECURITY.md)           |
-| See what changed            | [`CHANGELOG.md`](./CHANGELOG.md)         |
+| Where to go                 |                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| Run it locally              | [Below](#run-it-locally)                                                       |
+| Connect it to a Drive       | [`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-the-drive) |
+| Deploy and operate a server | [`deploy/README.md`](./deploy/README.md)                                       |
+| Understand how it is built  | [`specs/README.md`](./specs/README.md)                                         |
+| Contribute                  | [`CONTRIBUTING.md`](./CONTRIBUTING.md)                                         |
+| Report a vulnerability      | [`SECURITY.md`](./SECURITY.md)                                                 |
+| See what changed            | [`CHANGELOG.md`](./CHANGELOG.md)                                               |
 
 ## Two authentications, not to be confused
 
-|                         | Who           | When                  | What it opens                |
-| ----------------------- | ------------- | --------------------- | ---------------------------- |
-| **Google OAuth**        | The owner     | Once, at install time | Read access to _their_ Drive |
-| **Username / password** | Every visitor | Every session         | The albums assigned to them  |
+|                         | Who           | When                  | What it opens                  |
+| ----------------------- | ------------- | --------------------- | ------------------------------ |
+| **Access to the Drive** | The owner     | Once, at install time | The photos the server may read |
+| **Username / password** | Every visitor | Every session         | The albums assigned to them    |
 
 Visitors never see Google and need no Google account. The application holds a
-single token — the owner's — and serves every photo through it.
+single credential — the owner's — and serves every photo through it.
+
+### Giving the server access to a Drive
+
+Two ways, and the choice is worth the thirty seconds because they age
+differently.
+
+A **service account** — the one to prefer — is a Google identity that owns
+nothing. You create one in the Google Cloud console, download its JSON key once,
+and then share album folders with its address the way you would share them with a
+person. No consent screen, nothing to renew, and the server never sees more of
+the Drive than the folders handed to it. The cost is one share per new album.
+
+**OAuth** connects the owner's own Google account instead. Nothing to share per
+album, but it grants read access to the **whole** Drive, shows Google's "hasn't
+verified this app" screen at every consent, and the refresh token expires after
+six months of inactivity.
+
+Both, step by step — creating the project, enabling the Drive API, the key, the
+share and the trap that turns a forgotten folder into a silently empty album:
+[**Give the server access to the Drive**](./deploy/README.md#3-give-the-server-access-to-the-drive).
 
 ## What it does
 
@@ -179,7 +200,7 @@ this way. Start with [`specs/README.md`](./specs/README.md).
   otherwise a client would forge its own on every attempt and never be slowed by
   the login backoff.
 
-Details in [`specs/04`](./specs/04-securite-et-acces.md). Found a hole? Please
+Details in [`specs/04`](./specs/04-security-and-access.md). Found a hole? Please
 report it privately — [`SECURITY.md`](./SECURITY.md) says how, and what counts.
 
 ## License

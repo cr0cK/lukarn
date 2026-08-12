@@ -16,4 +16,4 @@ bytes per row and lose three pieces of information that could not be
 reconstructed. The benefit-to-risk ratio is plainly poor.
 
 **Consequences.** A "dead columns" audit will find them. The comment in `db.ts`
-and the table in [03](../03-modele-de-donnees.md) are there to answer it.
+and the table in [03](../03-data-model.md) are there to answer it.

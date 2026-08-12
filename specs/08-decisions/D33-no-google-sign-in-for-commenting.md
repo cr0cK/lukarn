@@ -21,7 +21,7 @@ which means reinventing the existing accounts, or accepting any Google account
 holder.
 
 Finally, it **contradicts the scope**: "a visitor never has a Google account and
-never sees a Google URL" ([01](../01-vision-et-perimetre.md)), and public
+never sees a Google URL" ([01](../01-vision-and-scope.md)), and public
 registration has been excluded from the outset.
 
 **Consequences.** Commenting presupposes the ability to open the album. If the

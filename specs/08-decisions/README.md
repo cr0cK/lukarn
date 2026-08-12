@@ -7,7 +7,7 @@ later reversed remains useful information.
 The log was a single file up to D99. It became this directory so that two
 parallel branches would stop competing over the same end of file, and so that
 amending an old decision would touch only that decision
-([D260809](./D260809-numerotation-des-decisions.md)).
+([D260809](./D260809-a-decision-is-numbered-by-its-date-and-lives-in-its.md)).
 
 ## The identifier
 
@@ -51,8 +51,8 @@ A clickable link remains appropriate when the reference carries the thread of
 the text rather than serving as a simple citation:
 
 ```markdown
-from this directory [D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)
-from specs/ [D38](./08-decisions/D38-une-cle-d-acces-n-est-pas-une-personne.md)
+from this directory [D38](./D38-an-access-key-is-not-a-person.md)
+from specs/ [D38](./08-decisions/D38-an-access-key-is-not-a-person.md)
 ```
 
 A `#dxx--…` anchor leads nowhere: it dates from the single file, where all
@@ -62,7 +62,7 @@ that no longer leads to a file.
 ## Referring to another spec
 
 This directory is **one level below** the rest of the specs: a link to another
-document is written as `[03](../03-modele-de-donnees.md)`, never `./`.
+document is written as `[03](../03-data-model.md)`, never `./`.
 `check:links` catches this.
 
 The reverse case escapes every check: a spec that refers to a decision but

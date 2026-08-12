@@ -3,7 +3,7 @@
 Everything needed to get from nothing to a running instance, and to keep it
 running. For what the application is and how to run it locally, see the
 [root README](../README.md); for why it is built this way, see
-[`specs/06`](../specs/06-configuration-et-deploiement.md).
+[`specs/06`](../specs/06-configuration-and-deployment.md).
 
 | File              | Role                                                                       |
 | ----------------- | -------------------------------------------------------------------------- |

@@ -8,12 +8,12 @@ so that a developer who was not involved in its design can take it over.
 
 | Document                                                                  | Contents                                                                              |
 | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| [01 — Vision and scope](./01-vision-et-perimetre.md)                      | The problem solved, the intended audience, deliberate exclusions, and constraints     |
+| [01 — Vision and scope](./01-vision-and-scope.md)                         | The problem solved, the intended audience, deliberate exclusions, and constraints     |
 | [02 — Architecture](./02-architecture.md)                                 | The role of each package, and the flow of a thumbnail and a synchronisation           |
-| [03 — Data model](./03-modele-de-donnees.md)                              | Tables, indexes, migrations, and cursor-based pagination                              |
-| [04 — Security and access](./04-securite-et-acces.md)                     | Both authentication methods, sessions, media access control, and token encryption     |
+| [03 — Data model](./03-data-model.md)                                     | Tables, indexes, migrations, and cursor-based pagination                              |
+| [04 — Security and access](./04-security-and-access.md)                   | Both authentication methods, sessions, media access control, and token encryption     |
 | [05 — API](./05-api.md)                                                   | Exhaustive route inventory                                                            |
-| [06 — Configuration and deployment](./06-configuration-et-deploiement.md) | Environment variables, bootstrapping, Docker, `deploy/`, and the Google Cloud console |
+| [06 — Configuration and deployment](./06-configuration-and-deployment.md) | Environment variables, bootstrapping, Docker, `deploy/`, and the Google Cloud console |
 | [07 — Frontend](./07-frontend.md)                                         | Routing, state, justified layout, virtualisation, keyboard, and theme                 |
 | [08 — Decisions](./08-decisions/)                                         | Log of technical decisions and rejected alternatives, one per file                    |
 

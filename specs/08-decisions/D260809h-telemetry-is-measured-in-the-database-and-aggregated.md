@@ -19,11 +19,11 @@ where the administration screen answers "the `mamie` key visited on three days
 this week, from a television".
 
 The rest follows: a third-party script would contradict the promise of a gallery
-that leaks nothing (see [04](../04-securite-et-acces.md), "What leaves the
+that leaks nothing (see [04](../04-security-and-access.md), "What leaves the
 instance"), require another domain in the `Content-Security-Policy` header, and
 make an instance designed to be self-contained depend on an external service —
 the same trade-off as in
-[D63](./D63-le-depot-ne-privilegie-aucun-hebergeur-et-ne-cree-pas-de.md).
+[D63](./D63-the-repository-favours-no-hosting-provider-and-creates-no.md).
 
 ## Why not an event log
 
@@ -89,7 +89,7 @@ Two writes are added, and no reads:
   this threshold, every thumbnail in a grid would trigger a SQLite UPDATE.
 - Opening an album is counted only on the **first page**, just like the
   subscription in
-  [D41](./D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md) — subsequent
+  [D41](./D41-opening-an-album-subscribes-you-to-updates.md) — subsequent
   pages are the same gesture. It is unconditional with respect to identity,
   however, whereas subscribing requires a verified commenter: visits are being
   counted, not subscribers.

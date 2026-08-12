@@ -4,7 +4,7 @@
 decodes the AAC track and ignores the video track: sound plays, no image arrives,
 `videoWidth` remains 0, and `totalVideoFrames` remains 0 — with **no `MediaError`
 emitted**, because the container and audio track are valid. The fallback in
-[D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)
+[D79](./D79-an-unplayable-video-says-so-and-can-be-downloaded-instead.md)
 listens for `error`, so it never triggered. The `poster` remained beneath the
 controls, appearing as a frozen image — worse than D79's corrected black screen
 because nothing signalled failure.

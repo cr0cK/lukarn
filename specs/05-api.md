@@ -75,8 +75,8 @@ response never says **who** exists, only whether anyone does
 
 Four routes for a single exchange: a keyboard-less screen shows a code, a phone
 already signed in approves it, the screen picks up the session. The reasoning is
-in [D260809c](./08-decisions/D260809c-approbation-ecran.md), its access rules in
-[04](./04-securite-et-acces.md).
+in [D260809c](./08-decisions/D260809c-a-television-does-not-type-a-password-it-displays.md), its access rules in
+[04](./04-security-and-access.md).
 
 **`POST /api/auth/device/start`** — no body. Opens a request.
 
@@ -149,7 +149,7 @@ then what the browser remembered for this album (see [07](./07-frontend.md) and
 D99).
 
 **`GET /api/albums/:albumId`** — `404 not_found` if the album does not exist
-**or** is not assigned (see [04](./04-securite-et-acces.md)).
+**or** is not assigned (see [04](./04-security-and-access.md)).
 
 **`GET /api/albums/:albumId/days`** — the annotated days of the album. Same
 access rule as everything else: `404 not_found` if the album is unknown **or**
@@ -190,8 +190,8 @@ access control runs **before** parameter validation.
 
 **A deliberate side effect**: on the **first page** only (`cursor` absent), if
 the session carries a verified identity, an `INSERT OR IGNORE` subscribes that
-person to the album's new items (see [04](./04-securite-et-acces.md) and
-[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md)). One
+person to the album's new items (see [04](./04-security-and-access.md) and
+[D41](./08-decisions/D41-opening-an-album-subscribes-you-to-updates.md)). One
 write per album opening, negligible. Neither later pages nor `/items/:mediaId`
 do this.
 
@@ -218,7 +218,7 @@ visitors will never open.
 
 **`MediaItem.hasPreview`** — can the server render an image for this item? True
 for every photo, and for a video whose first-second preview Drive has produced
-([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). It is a **question, not a
+([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)). It is a **question, not a
 column**: the front end asks for a thumbnail "when there is one" without
 replaying the photo/video rule on its side, and without requesting, on every
 grid load, an image doomed to a 415 for a video Drive has no preview for — a
@@ -228,7 +228,7 @@ codec it does not read, or a file dropped too recently to have been processed.
 codec, as written in the file: `avc1`, `hvc1`, `hev1`. `null` for a photo and for
 any video whose header has not been read, an empty string when it has been read
 without recognising an image track in it (see the three states of `video_codec`
-in [03](./03-modele-de-donnees.md)).
+in [03](./03-data-model.md)).
 
 It travels with the item because **the client chooses its own source**: with the
 real codec, `canPlayType` gives a straight answer where `video/mp4` alone
@@ -239,7 +239,7 @@ answers `maybe` everywhere and learns nothing (D98). Chrome therefore requests
 **`MediaItem.description`** — the caption typed by hand on this photo, `null` if
 no one has written one. It is carried by the **(album, item)** pair: the same
 file indexed under two albums carries two of them, just as it carries two
-comment threads ([04](./04-securite-et-acces.md), D12).
+comment threads ([04](./04-security-and-access.md), D12).
 
 It travels with the item, rather than through a batch call like
 `AlbumCommentCounts`: the viewer must display it on the photo just reached by
@@ -304,7 +304,7 @@ them in the server's time zone.
 out real labels. So are `camera_make` and `camera_model` — searching "iPhone"
 would return half the library. Comments stay out of scope: searching what
 others have written is a different feature, with its own visibility rules
-([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
+([D96](./08-decisions/D96-the-search-index-is-maintained-by-the-schema-not-the-code.md)).
 
 **Ranking stops within a single type.** Each group is sorted by `bm25()` and
 capped at `SEARCH_HITS_PER_KIND` (5); results arrive in the order the groups are
@@ -317,7 +317,7 @@ index (`deleteStale`, D83) renders nothing — a result pointing at a missing
 photo would open an empty viewer — and a day that matches **both** through its
 note and through its place appears only once.
 
-The index itself is described in [03](./03-modele-de-donnees.md): four
+The index itself is described in [03](./03-data-model.md): four
 external-content FTS5 tables maintained by SQL triggers, migration 11.
 `packages/server/test/search.test.ts` locks down the isolation, accents,
 prefixes, deduplication, and the fact that the index follows writes.
@@ -358,7 +358,7 @@ the thread reads `commenters.display_name` through a join. Renaming yourself
 therefore renames your entire history, which is the intended behaviour — the
 identity is the address, the name is only its current label. This is also why a
 rename waits for code validation (`pending_display_name`, see
-[03](./03-modele-de-donnees.md)): without that, the request alone would have
+[03](./03-data-model.md)): without that, the request alone would have
 been enough to rewrite the signature on all of someone else's messages.
 
 ## Comments — `routes/comments.ts`
@@ -376,7 +376,7 @@ been enough to rewrite the signature on all of someone else's messages.
 Access control is redone in each handler rather than set as a prefix
 `preHandler` as for media: here the album does not occupy a fixed URL segment.
 It stays identical to the one for albums — **404 and never 403** on an unknown
-or unassigned album (see [04](./04-securite-et-acces.md)).
+or unassigned album (see [04](./04-security-and-access.md)).
 
 **`GET /api/comments/feed?album=&cursor=&limit=`** — `CommentsFeedPage` =
 `{ comments: FeedComment[], nextCursor }`, from most recent to oldest, across
@@ -399,7 +399,7 @@ The cursor is a comment id, like the one used for moderation. No `total`: this
 is not moderation, it is watching what has just arrived, and counting the whole
 visible corpus would cost a query for a number no one reads. The order is
 descending primary key — SQLite walks the table backwards and stops at
-`LIMIT`, with no extra index needed (see [03](./03-modele-de-donnees.md)).
+`LIMIT`, with no extra index needed (see [03](./03-data-model.md)).
 
 The literal `feed` segment is protected by the same precedence as
 `unsubscribe`, and the reverse holds too: an album whose id was `feed` would
@@ -414,7 +414,7 @@ missing photo therefore counts as zero.
 One call for the whole album, not one per photo: the viewer's badge must be
 there as soon as a photo is reached, and stepping through an album with the
 arrow key would otherwise trigger one request per photo crossed (see
-[D54](./08-decisions/D54-les-compteurs-de-commentaires-se-demandent-par-album-pas-par.md)).
+[D54](./08-decisions/D54-comment-counts-are-requested-per-album-not-per-photo.md)).
 The `MediaDetail.commentCount` counter stays: it serves the open panel's tab,
 for one specific photo.
 
@@ -443,7 +443,7 @@ trimmed of surrounding spaces before validation: 1 to `COMMENT_MAX_LENGTH`
 
 - **`403 identity_required`** as long as no verified identity is attached to
   the session. Second accepted exception to "404 and never 403" (see
-  [04](./04-securite-et-acces.md)): the refusal concerns the state of one's own
+  [04](./04-security-and-access.md)): the refusal concerns the state of one's own
   account, not someone else's resource.
 
 - `404` if the album is unknown/forbidden, or if the media item is not in this
@@ -453,7 +453,7 @@ trimmed of surrounding spaces before validation: 1 to `COMMENT_MAX_LENGTH`
   a thread it has no right to read by guessing an id.
 - Replying to a reply **does not fail**: the message is attached to the
   thread's root (see
-  [D35](./08-decisions/D35-repondre-a-une-reponse-rattache-a-la-racine-plutot-que-de.md)).
+  [D35](./08-decisions/D35-replying-to-a-reply-attaches-it-to-the-root-instead-of.md)).
 
 **`PATCH`** — body `UpdateCommentRequest` = `{ body }`, same bounds as `POST`.
 **Its author only**, and only within `COMMENT_EDIT_WINDOW_MS` (30 s) after
@@ -462,7 +462,7 @@ silently drops unknown keys — a `PATCH` sending one responds `200` without
 having moved the message; it does not respond `400`. Fixing a typo must not
 allow moving to another conversation. `created_at` does not move either — the
 message stays in its place in a thread others were already reading. See
-[D57](./08-decisions/D57-trente-secondes-pour-corriger-une-faute-de-frappe-et-rien-de.md).
+[D57](./08-decisions/D57-thirty-seconds-to-correct-a-typo-and-nothing-more.md).
 
 - **`409 edit_window_closed`** once the delay has passed. Neither 403 nor 404:
   the refusal concerns the message's **state**, not an access right — its
@@ -501,7 +501,7 @@ account id: it is the address that identifies a person. **The only route in
 this prefix with no session.** This link is clicked from a mailbox, often on
 another device: requiring a sign-in to stop being disturbed would amount to not
 answering the request. `t` is an HMAC of the id, with no expiry (see
-[04](./04-securite-et-acces.md)). Renders an HTML page served by the server —
+[04](./04-security-and-access.md)). Renders an HTML page served by the server —
 not the front end, which would redirect to the sign-in screen. An invalid token
 responds `400`; an account deleted since the email was sent renders the page
 saying so.
@@ -567,7 +567,7 @@ All three respond:
 
 A video **does** have a thumbnail: the preview Drive produces of its first
 second, served like any other WebP derivative and disk-cached the same way
-([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)). Nothing is decoded locally.
+([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)). Nothing is decoded locally.
 The two refusals that remain:
 
 | Refusal                            | Why                                                                                                                                     |
@@ -609,7 +609,7 @@ disk cache.
 
 **`playable`** — the H.264 version the server prepares for videos whose codec
 no mainstream browser decodes
-([D260809b](./08-decisions/D260809b-transcodage-video.md)). It comes
+([D260809b](./08-decisions/D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md)). It comes
 from the disk store, not from Drive: ranges are therefore resolved here rather
 than relayed.
 
@@ -685,7 +685,7 @@ Three points worth reading:
   they are (D260809h).
 
 The counters come from `album_visits`, aggregated on write: the route only does
-three bounded reads, with no scan (see [03](./03-modele-de-donnees.md)).
+three bounded reads, with no scan (see [03](./03-data-model.md)).
 
 **`oauth/start`** — `400 oauth_not_configured` if `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` are missing. Otherwise sets the signed
@@ -723,7 +723,7 @@ notified of new comments is the `moderationEmail` setting.
 - `409 conflict` if the username is taken, **case included**.
 - `409 last_admin` on deleting the last administrator or removing their role.
 - Deleting an account and changing its password close its sessions; changing
-  its role or albums does not (see [04](./04-securite-et-acces.md)).
+  its role or albums does not (see [04](./04-security-and-access.md)).
 
 ### Albums
 

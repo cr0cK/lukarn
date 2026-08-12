@@ -63,10 +63,10 @@ version:
 | If you touch…                                | Update…                                    |
 | -------------------------------------------- | ------------------------------------------ |
 | `packages/server/src/routes/*.ts`            | `specs/05-api.md`                          |
-| `packages/server/src/db.ts`, `repo.ts`       | `specs/03-modele-de-donnees.md`            |
-| `env.ts`, `Dockerfile`, `docker-compose.yml` | `specs/06-configuration-et-deploiement.md` |
+| `packages/server/src/db.ts`, `repo.ts`       | `specs/03-data-model.md`                   |
+| `env.ts`, `Dockerfile`, `docker-compose.yml` | `specs/06-configuration-and-deployment.md` |
 | Anything under `packages/web/src`            | `specs/07-frontend.md`                     |
-| Access rules, sessions, crypto               | `specs/04-securite-et-acces.md`            |
+| Access rules, sessions, crypto               | `specs/04-security-and-access.md`          |
 | A trade-off you accepted, an option you cut  | `specs/08-decisions/` — **a new file**     |
 
 The check verifies that a mention **exists**, never that it is still true. It
@@ -152,7 +152,7 @@ a prose-only change.
   touching it makes the real schema diverge from the assumed one. Append to the
   end of `MIGRATIONS` instead.
 - **Scope creep beyond a photo viewer.** See
-  `specs/01-vision-et-perimetre.md` for what is deliberately out.
+  `specs/01-vision-and-scope.md` for what is deliberately out.
 
 ## License
 

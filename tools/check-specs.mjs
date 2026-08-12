@@ -49,7 +49,7 @@ const texteSpecs = fichiers(SPECS, (n) => n.endsWith('.md'))
   .map(lire)
   .join('\n');
 const specApi = lire(join(SPECS, '05-api.md'));
-const specConfig = lire(join(SPECS, '06-configuration-et-deploiement.md'));
+const specConfig = lire(join(SPECS, '06-configuration-and-deployment.md'));
 
 const manques = [];
 
@@ -135,7 +135,7 @@ const dbSource = lire(join(RACINE, 'packages/server/src/db.ts'));
 // the count half as large, and even fractional for an odd number:
 // `Number.isInteger` was then false and silently disabled the check.
 const nbMigrations = (dbSource.match(/^\s{2}`$/gm) ?? []).length;
-const annoncees = [...lire(join(SPECS, '03-modele-de-donnees.md')).matchAll(/migration (\d+)/gi)]
+const annoncees = [...lire(join(SPECS, '03-data-model.md')).matchAll(/migration (\d+)/gi)]
   .map((m) => Number(m[1]))
   .reduce((max, n) => Math.max(max, n), 0);
 

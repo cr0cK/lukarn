@@ -6,7 +6,7 @@ play icon, and the viewer opened on a black rectangle while the stream started.
 In a holiday album where one shot in twenty-five is video, one tile in twenty-five
 said nothing about its contents.
 
-The justification was one word: [D6](./D6-pas-de-transcodage-video.md) — no
+The justification was one word: [D6](./D6-no-video-transcoding.md) — no
 transcoding, since ffmpeg consumes CPU unavailable on a modest VPS.
 
 **Decision.** Serve as the video thumbnail **the preview Drive produces from its
@@ -42,7 +42,7 @@ be requested.
 problem is no longer a missing render, but that the preview belongs to Drive. It
 may be absent from a re-encoded file, and the cover is the only image whose
 absence is visible from the home page with no fallback —
-[D80](./D80-la-couverture-d-un-album-se-choisit-sur-la-photo-et-retombe.md) only
+[D80](./D80-an-album-cover-is-chosen-on-the-photo-and-falls-back.md) only
 covers a photo leaving the index.
 
 **Rejected.** Extracting a frame with ffmpeg — D6, and the cost is the same for a

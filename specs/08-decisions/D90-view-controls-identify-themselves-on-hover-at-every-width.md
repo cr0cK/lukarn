@@ -1,6 +1,6 @@
 # D90 — View controls identify themselves on hover at every width
 
-**Context.** [D73](./D73-la-barre-superieure-tient-sur-une-rangee-et-declare-ses-au.md)
+**Context.** [D73](./D73-the-top-bar-fits-on-one-row-and-declares-its-controls.md)
 measured the cost of view-control labels and postponed them beyond `lg`: at
 768 px, displaying them reduced the album title from 456 to 144 px. Beyond that
 threshold, with space available, they returned.

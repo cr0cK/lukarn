@@ -212,7 +212,7 @@ mount.
 Encodes the URL as a QR code and renders a single SVG `path` — one rectangle
 per module, concatenated into a single drawing command. An inline `<svg>`
 rather than a `data:` image: the CSP only allows `data:` for images inlined by
-Vite (see [04](./04-securite-et-acces.md)), and a path scales without jagged
+Vite (see [04](./04-security-and-access.md)), and a path scales without jagged
 edges on a two-metre screen.
 
 The encoding itself comes from `qrcode-generator`, a dependency with no
@@ -264,7 +264,7 @@ own** — a 101 px header, the album title shrunk to `D.` and the subtitle to
 from 456 to 144 px by truncating the subtitle.
 
 **The label never comes back at any width**
-([D90](./08-decisions/D90-les-controles-de-vue-se-nomment-au-survol-a-toutes-les.md)).
+([D90](./08-decisions/D90-view-controls-identify-themselves-on-hover-at-every-width.md)).
 It used to reappear beyond `lg`, where room is not actually short: "Newest
 first" on its own sat wider than the album subtitle, for a setting touched
 once per visit. Both controls name themselves on hover — tooltip and
@@ -325,7 +325,7 @@ What the menu shows at the top: the **identifier**, then the **address** of the
 commenter identity if the session carries one. Both, because they say
 different things — the identifier opens albums and can be shared by an entire
 household, the address says who is signing (see
-[04 — Identities](./04-securite-et-acces.md#commenter-identity)). The badge
+[04 — Identities](./04-security-and-access.md#commenter-identity)). The badge
 abbreviates the **first line**: an initial taken from elsewhere would read as a
 defect the moment the menu opens.
 
@@ -608,7 +608,7 @@ What has a reason:
   `formatDate` (`lib/format.ts`), hence in UTC.
 - **The comparison against "today" is the only local-time date in the entire
   front end** — see
-  [D31](./08-decisions/D31-le-regroupement-de-la-grille-vit-dans-l-url-mais-aujourd-hui.md).
+  [D31](./08-decisions/D31-grid-grouping-lives-in-the-url-but-today-is-read-from-the.md).
 - **By day, the grid is much taller**: each section costs a header (56 px), a
   margin (28 px), and an unjustified last row. On a pathological album of
   3,000 photos all from different days, 94,000 px by month becomes
@@ -682,7 +682,7 @@ screen's thumbnails lost their `src` the instant they displayed — React does
 not rewrite it, since its view of the DOM believes it unchanged.
 
 **The viewer owes the same gesture, for much heavier payloads**
-([D87](./08-decisions/D87-une-image-qu-on-quitte-doit-etre-abandonnee-sinon-elle-la-de.md)).
+([D87](./08-decisions/D87-a-departed-image-must-be-abandoned-or-it-blocks-the-queue.md)).
 `ZoomableImage` is remounted on every photo (`key={item.id}`), and its
 outgoing `<img>` carries away a roughly one-megabyte `full` that nobody is
 waiting for anymore. Measured by browsing twenty-five photos with the arrow
@@ -804,7 +804,7 @@ thumbnail grid. First-screen thumbnails use `loading="eager"`, the rest
 
 The `<img>` displays as soon as `item.hasPreview`, videos included: their
 preview comes from Drive
-([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)).
+([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)).
 The playback badge then sits **on top of** the image — a `bg-black/45` disc,
 white triangle, centred — because it is what distinguishes a video from a
 photo at a glance and it must stay legible over a light preview. With no
@@ -851,7 +851,7 @@ still for the whole gesture and the photo changed all at once, once the finger
 lifted. A gesture that cannot be seen cannot be discovered, and cannot be
 repeated either. It is the rail's motion, and only that, which teaches the
 gesture
-([D260809e](./08-decisions/D260809e-la-photo-suit-le-doigt-c-est-le-mouvement-qui-apprend-le.md)).
+([D260809e](./08-decisions/D260809e-the-photo-follows-the-finger-the-movement-teaches.md)).
 
 - **Touch and stylus only.** With a mouse, the click already zooms; adding a
   photo change to it would make the click unpredictable depending on whether
@@ -956,7 +956,7 @@ as the emergency exit.
   timestamp stays in the `i` panel, where it already lived.
 
   **The filename has left this spot**
-  ([D88](./08-decisions/D88-la-photo-ouverte-dit-d-ou-elle-vient-et-s-en-debarrasse-d.md)).
+  ([D88](./08-decisions/D88-the-open-photo-says-where-it-comes-from-and-clears-the.md)).
   It used to occupy the top, in bold, even though `IMG_0004.jpg` says neither
   where, nor when, nor what — and it hid the album, the one piece of
   information genuinely missing when arriving via a shared link. It is not
@@ -987,7 +987,7 @@ as the emergency exit.
 
   **`h` hides all chrome** — header, arrows, and strip — leaving only the
   photo
-  ([D88](./08-decisions/D88-la-photo-ouverte-dit-d-ou-elle-vient-et-s-en-debarrasse-d.md)).
+  ([D88](./08-decisions/D88-the-open-photo-says-where-it-comes-from-and-clears-the.md)).
   The shortcut does not duplicate the caption's `L`: `L` puts away the bottom
   text and leaves the button that recalls it, `h` leaves nothing. The ←/→
   keys and swiping keep working: what is hidden is what can be seen, not
@@ -1035,11 +1035,11 @@ as the emergency exit.
   (D92). The wait carries **no** indicator of its own: the `poster` occupies
   it, and the native controls already carry their own — stacking a second one
   on top made two spinners turn, one over the other
-  ([D98](./08-decisions/D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md)).
+  ([D98](./08-decisions/D98-decoding-that-fails-without-an-error-and-one-spinner-too.md)).
   Failure, on the other hand, replaces the tag with a message and a download
   button: the file remains readable elsewhere even when this browser cannot
   decode its codec
-  ([D79](./08-decisions/D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)).
+  ([D79](./08-decisions/D79-an-unplayable-video-says-so-and-can-be-downloaded-instead.md)).
   It is detected two ways — `error`, and a `videoWidth` of zero on
   `loadeddata` or `playing`, the only trace of a half-successful decode
   (D98). Photos: `ZoomableImage`, remounted on every photo
@@ -1143,7 +1143,7 @@ codecs="hvc1"`, rather than the bare type, to which everyone answers `maybe`
   full** on a 393 px screen.
 - **The Info panel opens on the day**, before the EXIF: "Place" then "That
   day". `place` wins over `autoPlaces`, as everywhere else
-  ([D51](./08-decisions/D51-le-lieu-se-corrige-a-la-journee-jamais-a-la-photo.md)).
+  ([D51](./08-decisions/D51-the-place-is-corrected-per-day-never-per-photo.md)).
 
   These two lines are now a **repeat** of the strip, and they stay: they are
   the only ones to render the text **in full** without expanding, and
@@ -1207,7 +1207,7 @@ being looked at, and without that word "Bonifacio, the beach" would read as
 its caption.
 
 **The album description is not a third line**
-([D89](./08-decisions/D89-la-description-de-l-album-quitte-la-legende-on-l-a-lue-en.md)).
+([D89](./08-decisions/D89-the-album-description-leaves-the-caption-it-was-read-on.md)).
 It used to be, and it cost one strip line on each of an album's nine hundred
 photos for a text read once, on opening the grid — identical from one photo
 to the next, hence invisible from being there so much. What the viewer owes
@@ -1282,7 +1282,7 @@ count of comments seen per photo, in `localStorage` under
 is enough to answer "is there anything new?", where a date would force the
 server to carry the timestamp of every thread. The choice of the browser over
 the database is explained in
-[D55](./08-decisions/D55-le-repere-de-lecture-vit-dans-le-navigateur-pas-en-base.md).
+[D55](./08-decisions/D55-the-read-marker-lives-in-the-browser-not-the-database.md).
 
 Three edge cases the calculation must handle:
 
@@ -1437,10 +1437,10 @@ unreadable — and its wait belongs to the browser: the `poster` occupies it,
 the native controls announce it. It went through `previewOverlay` with
 `measured: false` for a while, which laid a second spinner over the
 controls' own
-([D98](./08-decisions/D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md)).
+([D98](./08-decisions/D98-decoding-that-fails-without-an-error-and-one-spinner-too.md)).
 What it keeps from that is the very invariant: a wait must end on an image or
 on a message
-([D79](./08-decisions/D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md)).
+([D79](./08-decisions/D79-an-unplayable-video-says-so-and-can-be-downloaded-instead.md)).
 
 The marker is **actionable**: clicking or dragging on it brings the targeted
 point to the centre of the window. It used to show where one stood without
@@ -1519,7 +1519,7 @@ Every administration row — album, account, Drive status, cache usage,
 comment to moderate — is made of the same two blocks: what describes, and
 what acts. `ROW_CLASS` and `ROW_ACTIONS_CLASS` (`ui.tsx`) hold their single
 geometry: **stacked under `xl`, in a row beyond it**
-([D95](./08-decisions/D95-l-administration-s-empile-plutot-que-de-tronquer-ce-qui-la.md)).
+([D95](./08-decisions/D95-administration-stacks-instead-of-truncating-what-names-it.md)).
 Side by side, only the descriptive block can shrink — the buttons carry
 `whitespace-nowrap` — and it used to collapse to two characters followed by
 an ellipsis.
@@ -1693,7 +1693,7 @@ nothing.
 like everything that states a fact rather than informs. It is the only row
 that, when not seeing it, raises the question of whether the photo has
 nothing to give or the application has not finished its work
-([D94](./08-decisions/D94-une-photo-sans-position-le-dit-au-lieu-de-laisser-la-ligne.md)).
+([D94](./08-decisions/D94-a-photo-without-a-position-says-so-instead-of-letting-the.md)).
 It comes from the photo's EXIF and owes nothing to reverse geocoding: it
 displays whether "Place" has a name or not, and links to OpenStreetMap.
 Reserved for photos — Drive only returns a position in
@@ -1913,7 +1913,7 @@ clock times.
 
 - The "today" that `dayLabel` compares a day key against is taken from the
   browser's **local** calendar. See
-  [D31](./08-decisions/D31-le-regroupement-de-la-grille-vit-dans-l-url-mais-aujourd-hui.md)
+  [D31](./08-decisions/D31-grid-grouping-lives-in-the-url-but-today-is-read-from-the.md)
   — this is not a value coming from the server, it is the wall clock of
   whoever is looking, the same one as the device that timestamped the photo.
 - `formatLocalDateTime` renders a **comment**'s date in the reader's time
@@ -2013,7 +2013,7 @@ A second television, despite being newer than the first, does exactly that
 and therefore displayed no styling at all — with nothing else at fault.
 Unfolding changes nothing for a modern engine, since Tailwind declares its
 layers in the order it emits them
-([D260809i](./08-decisions/D260809i-les-couches-en-cascade-sont-depliees.md)).
+([D260809i](./08-decisions/D260809i-cascade-layers-are-flattened-at-build-time.md)).
 The source itself keeps writing its `@layer` rules: only the output is
 unfolded.
 
@@ -2021,7 +2021,7 @@ The plugin checks its own work and fails the build if an `oklch()`, a
 shorthand with no fallback, or an unfolded layer remains. It **only runs at
 build time**: under `pnpm dev`, an old browser still sees the
 non-downgraded sheet. The full reasoning, `color-mix()` included, is in
-[D260809f](./08-decisions/D260809f-abaissement-css-pour-vieux-moteurs.md).
+[D260809f](./08-decisions/D260809f-the-style-sheet-is-lowered-at-build-time-not-written.md).
 
 ## Installable application
 
@@ -2062,7 +2062,7 @@ An environment variable rather than a build constant: **a single image
 serves every installation**, and nobody rebuilds a container just to name
 their gallery differently. A restart is enough, as with the rest of `.env`.
 The full reasoning is in
-[D72](./08-decisions/D72-le-nom-de-l-instance-vit-dans-le-env-et-le-serveur-le-pose.md).
+[D72](./08-decisions/D72-the-instance-name-lives-in-env-and-the-server-puts-it-in.md).
 
 The manifest is only overridden on its two name fields: icons, colours, and
 `display` stay declared in the single file that lists them, otherwise they
@@ -2138,7 +2138,7 @@ Three rules, in this order:
 
 **It only caches the shell** — the HTML, the JS, the CSS. Never a photo,
 never an API response. The reason why is in
-[D71](./08-decisions/D71-le-service-worker-met-en-cache-la-coquille-jamais-les-photos.md):
+[D71](./08-decisions/D71-the-service-worker-caches-the-shell-never-the-photos.md):
 on a shared phone, a photo cached by the application would survive an
 account switch, and the private HTTP cache set by the server already keeps
 them fast without that risk.

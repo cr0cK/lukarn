@@ -23,7 +23,7 @@ There are two roles, and only two:
 An **account is not a person**: it is an access key, and nothing prevents an
 entire household from sharing one — that has been the intended use since
 `albums.yaml`. When signing a comment, each person identifies themselves with
-their name and address, verified by a code (see [04](./04-securite-et-acces.md)).
+their name and address, verified by a code (see [04](./04-security-and-access.md)).
 
 A visitor never has a Google account and never sees a Google URL. All content
 passes through the server, which obtains it with the owner's single token.

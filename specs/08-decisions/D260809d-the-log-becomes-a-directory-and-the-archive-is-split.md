@@ -1,6 +1,6 @@
 # D260809d — The log becomes a directory, and the archive is split with it
 
-**Context.** [D260809](./D260809-numerotation-des-decisions.md) made every
+**Context.** [D260809](./D260809-a-decision-is-numbered-by-its-date-and-lives-in-its.md) made every
 **new** decision a file, while leaving the first ninety-nine in the original
 log. This division reflected a constraint at the time: two branches were open,
 and moving four thousand lines would have made them conflict. They have now been
@@ -58,7 +58,7 @@ The links underwent three separate transformations, all checked by
 moved up one level, and a link labelled "08" followed by a number in text became
 a link labelled with that number, finally pointing to what it names.
 
-[D260809](./D260809-numerotation-des-decisions.md) named the directory
+[D260809](./D260809-a-decision-is-numbered-by-its-date-and-lives-in-its.md) named the directory
 `specs/decisions/` and described a sequential log still open for reading. Both
 statements are **corrected in that decision**, with a reference to this entry: a
 decision keeps its reasoning, never a false path. A cross-reference that lies

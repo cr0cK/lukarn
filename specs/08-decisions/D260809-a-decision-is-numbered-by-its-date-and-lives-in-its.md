@@ -27,7 +27,7 @@ branches create two files, and there is nothing for the merge to arbitrate.
 The sequential log keeps D1 to D99 and accepts no new entry: splitting it would
 have conflicted with the two branches open when this decision was made. It was
 split as soon as they had been merged, and the directory has since carried the
-document number ([D260809d](./D260809d-le-journal-devient-un-repertoire.md)).
+document number ([D260809d](./D260809d-the-log-becomes-a-directory-and-the-archive-is-split.md)).
 
 `check:specs` checks that the identifier follows the format, that the filename
 reflects the title, that no identifier is used twice, and that every reference

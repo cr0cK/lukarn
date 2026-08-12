@@ -27,7 +27,7 @@ are scarcest, for text the grid already displays.
 **Consequences.** On mobile, the note was then only reachable from the grid:
 `ExifPanel` only listed EXIF data. The remedy announced here as "an addition to
 make" was implemented immediately afterwards —
-[D74](./D74-la-visionneuse-range-ses-actions-et-rend-a-la-photo-la-note.md)
+[D74](./D74-the-viewer-organises-its-actions-and-restores-the-day-s.md)
 gives it "Place" and "That day" rows at every width. The choice above is
 unchanged: the header remains reserved for `md` and above; only the consequence
 described has ceased to be true.

@@ -1,6 +1,6 @@
 # D79 — An unplayable video says so and can be downloaded instead of loading forever
 
-**Context.** [D6](./D6-pas-de-transcodage-video.md) rejects transcoding and states
+**Context.** [D6](./D6-no-video-transcoding.md) rejects transcoding and states
 the consequence: "a format the browser cannot read is not playable at all — no
 fallback". The consequence was correct; the interface did not handle it. The
 viewer's `<video>` element listened for `loadeddata` and nothing else. A playback

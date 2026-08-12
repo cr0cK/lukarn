@@ -28,7 +28,7 @@ There is nothing new about permissions: the session belongs to the account of
 the person who approves, and therefore carries its albums, while
 `plugins/auth.ts` continues to reassess them on every request. Since an account
 is a shared access key and not a person
-([D38](./D38-une-cle-d-acces-n-est-pas-une-personne.md)), delegating that key to
+([D38](./D38-an-access-key-is-not-a-person.md)), delegating that key to
 the living-room screen passes on no personal information.
 
 **What each value protects:**
@@ -43,7 +43,7 @@ arrives without an identity, as it does after a password login: the identity
 belongs to the person, not the key. Without this rule, approving from a phone
 would leave the living-room television signing "Mamie" on behalf of the entire
 household — exactly the impersonation that code verification in
-[D39](./D39-l-adresse-est-verifiee-par-un-code-a-usage-unique.md) prevents.
+[D39](./D39-the-address-is-verified-by-a-one-time-code.md) prevents.
 
 **The accepted risk, and why it is accepted.** The known weakness of this flow
 is social: persuading someone to scan a QR code that is not theirs and gaining
@@ -64,7 +64,7 @@ label at all.
 - **A signed login link generated from `/admin`.** It would have to be entered
   on the television: that is the problem being solved.
 - **A code sent by email.** An address belongs to `commenters`, never to `users`
-  (see [03](../03-modele-de-donnees.md)): assigning one to an access key would
+  (see [03](../03-data-model.md)): assigning one to an access key would
   conflate the key with the person, which D38 has just separated. And without
   SMTP, the instance would lose its only convenient way in.
 - **Passkeys (WebAuthn), whose hybrid flow displays a QR code.** No television
@@ -80,10 +80,10 @@ label at all.
 pairing delegates existing access; it does not create any. On an instance where
 no device is logged in yet, the username must still be entered — consistently
 with the absence of both a registration form and a "forgotten password" flow
-([01](../01-vision-et-perimetre.md)).
+([01](../01-vision-and-scope.md)).
 
 The QR code is encoded in the browser (`lib/qr.ts`, built on
 `qrcode-generator` — a dependency with no dependencies). Having a third-party
 service generate it would have added a fourth outbound destination to those
-listed in [04](../04-securite-et-acces.md), entrusting it with the instance URL:
+listed in [04](../04-security-and-access.md), entrusting it with the instance URL:
 out of all proportion to the few kilobytes saved by the call.

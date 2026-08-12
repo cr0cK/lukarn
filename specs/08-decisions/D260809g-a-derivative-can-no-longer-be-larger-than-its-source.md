@@ -1,6 +1,6 @@
 # D260809g — A derivative can no longer be larger than its source video
 
-**Context.** [D260809b](./D260809b-transcodage-video.md) anticipated a derivative
+**Context.** [D260809b](./D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md) anticipated a derivative
 1.5 times smaller than its source, and the first production batch did yield that
 figure: 1,234 MB of originals for 818 MB of output across twenty videos. The
 average concealed a case nobody had considered — **three of those twenty
@@ -56,7 +56,7 @@ actually encode, and Drive sometimes reports no size or a stale one.
 **Rejected — discarding a derivative larger than its source.** This was the
 natural reaction, but it defeats the feature: the video becomes unplayable
 again, leaving only the Download button from
-[D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md).
+[D79](./D79-an-unplayable-video-says-so-and-can-be-downloaded-instead.md).
 What is being bought is playability, not a smaller file — D260809b already says
 so. It would also have required a persistent marker in the database, and
 therefore a migration; without one, the hourly pass would encode the file again
