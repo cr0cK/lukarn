@@ -66,7 +66,7 @@ export function captionEntries(source: CaptionSource): CaptionEntry[] {
  * One key for the whole application, unlike comment reading markers: this is a
  * display setting, not album data.
  */
-const STORAGE_KEY = 'nonni:caption-hidden';
+const STORAGE_KEY = 'lukarn:caption-hidden';
 
 /**
  * Tolerant reading modelled on `lib/seenComments.ts`: denied `localStorage`

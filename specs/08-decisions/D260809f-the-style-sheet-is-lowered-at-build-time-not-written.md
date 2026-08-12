@@ -46,8 +46,8 @@ alongside `translate` would move an element **twice** on a current engine, which
 would apply both. `transform` is therefore used everywhere, at the cost of a
 less modern property for identical rendering everywhere.
 
-The composed `transform` uses three slots — `--nonni-translate`,
-`--nonni-rotate`, and `--nonni-scale` — instead of writing the function
+The composed `transform` uses three slots — `--lukarn-translate`,
+`--lukarn-rotate`, and `--lukarn-scale` — instead of writing the function
 directly. Without them, `rotate-90` and `-translate-y-1/2` on the same element
 would compete for `transform`, and the latter would erase the former; with them,
 they compose in the prescribed order. Two traps arose here:

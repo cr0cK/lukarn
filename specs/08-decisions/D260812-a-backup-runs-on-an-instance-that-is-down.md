@@ -40,6 +40,6 @@ would make the flow uniform, but it makes a backup script write to the state of
 the instance it is supposed to observe, and it needs a usable image — which is
 exactly what was missing in the incident above.
 
-The check that the archive contains `nonni.db` (D53) is unchanged and covers the
+The check that the archive contains `lukarn.db` (D53) is unchanged and covers the
 new path as well: an instance that is down still has its volume, and an empty
 archive is still refused.

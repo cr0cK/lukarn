@@ -16,7 +16,7 @@ import { MediaRepo, type MediaUpsert } from '../src/repo.js';
  * the wait it removes.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'nonni-prewarm-'));
+const dir = mkdtempSync(join(tmpdir(), 'lukarn-prewarm-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

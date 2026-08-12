@@ -1,4 +1,4 @@
-import { MEDIA_DESCRIPTION_MAX_LENGTH } from '@nonni/shared';
+import { MEDIA_DESCRIPTION_MAX_LENGTH } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateMedia } from '../api/hooks';

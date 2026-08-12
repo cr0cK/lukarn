@@ -14,7 +14,7 @@ import { Mailer } from '../src/mail.js';
  * long-forgotten expected reply never arrives.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-mail-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-mail-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 function journal() {

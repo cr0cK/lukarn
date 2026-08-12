@@ -1,4 +1,4 @@
-import { type DevicePairingStart, formatUserCode } from '@nonni/shared';
+import { type DevicePairingStart, formatUserCode } from '@lukarn/shared';
 import { type ReactElement, useMemo } from 'react';
 import { ApiError } from '../api/client';
 import { usePairingPoll } from '../api/hooks';

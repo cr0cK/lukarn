@@ -35,7 +35,7 @@ import {
   type UpdateUserRequest,
   type VerifyIdentityRequest,
   type VisitsOverview,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 
 /** API error carrying the HTTP status, to distinguish a 401 from a real failure. */
 export class ApiError extends Error {
@@ -79,7 +79,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 /**
  * What the moderation queue requests from the server.
  *
- * Mirrors `ModerationQuery` from `@nonni/shared`, except for the cursor: it
+ * Mirrors `ModerationQuery` from `@lukarn/shared`, except for the cursor: it
  * travels as text in the URL and is converted back to an integer only on arrival.
  */
 export interface AdminCommentsQuery {

@@ -26,7 +26,7 @@ import { MediaRepo, type MediaUpsert } from '../src/repo.js';
  * command line construction.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'nonni-transcode-'));
+const dir = mkdtempSync(join(tmpdir(), 'lukarn-transcode-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

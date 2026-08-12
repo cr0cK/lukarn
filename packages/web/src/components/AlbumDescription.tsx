@@ -1,4 +1,4 @@
-import { ALBUM_DESCRIPTION_MAX_LENGTH } from '@nonni/shared';
+import { ALBUM_DESCRIPTION_MAX_LENGTH } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateAlbum } from '../api/hooks';

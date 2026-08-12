@@ -5,12 +5,12 @@ services:
     # needed in order not to be killed by the OOM killer.
     #
     # `latest` by default, a pinned version if an update should be a decision
-    # rather than a surprise: NONNI_VERSION=1.0.0 in the `.env`.
+    # rather than a surprise: LUKARN_VERSION=1.0.0 in the `.env`.
     #
     # To build from source — an architecture other than amd64, or a local change
     # to try — the overlay is one file:
     #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-    image: ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}
+    image: ghcr.io/cr0ck/lukarn:${LUKARN_VERSION:-latest}
     restart: unless-stopped
     # No port published on the host: only Caddy reaches the application, over the
     # compose-internal network. Nothing listens on a public interface apart from
@@ -48,10 +48,10 @@ services:
       # Configuration, read-only: the application never modifies it.
       - ./config:/app/config:ro
       # SQLite index and encrypted refresh token — the only irreplaceable data.
-      - nonni-data:/app/data
+      - lukarn-data:/app/data
       # Generated thumbnails: losing this volume costs a regeneration, nothing
       # more.
-      - nonni-cache:/app/cache
+      - lukarn-cache:/app/cache
     logging:
       driver: json-file
       options:
@@ -85,16 +85,16 @@ services:
         max-file: '3'
 
 # Without `name:`, compose prefixes every volume with the project name — that of
-# the directory it was cloned into. The `nonni-data` volume is then really called
-# `nonni_nonni-data`, and a `docker run -v nonni-data:/data` creates a brand-new
+# the directory it was cloned into. The `lukarn-data` volume is then really called
+# `lukarn_lukarn-data`, and a `docker run -v lukarn-data:/data` creates a brand-new
 # empty one instead of mounting the right one: a backup written that way is empty,
 # without a single message. The explicit name keeps the README's commands correct
 # whatever the directory (D53).
 volumes:
-  nonni-data:
-    name: nonni-data
-  nonni-cache:
-    name: nonni-cache
+  lukarn-data:
+    name: lukarn-data
+  lukarn-cache:
+    name: lukarn-cache
   caddy-data:
     name: caddy-data
   caddy-config:

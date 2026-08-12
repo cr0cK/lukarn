@@ -17,7 +17,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-order-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-order-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -113,9 +113,9 @@ sync:
     url: '/api/auth/login',
     payload: { username: 'famille', password: PASSWORD },
   });
-  const session = response.cookies.find((entry) => entry.name === 'nonni_session');
+  const session = response.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(session, 'session cookie missing');
-  cookie = `nonni_session=${session.value}`;
+  cookie = `lukarn_session=${session.value}`;
 });
 
 after(async () => {

@@ -9,7 +9,7 @@ import {
   type Comment,
   type CommentsPage,
   type MediaDetail,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -29,7 +29,7 @@ import type { MediaUpsert } from '../src/repo.js';
 
 const PASSWORD = 'mot-de-passe-de-test';
 const silencieux = { info: () => {}, warn: () => {}, debug: () => {} };
-const root = mkdtempSync(join(tmpdir(), 'nonni-comments-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-comments-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -70,9 +70,9 @@ async function login(username: string): Promise<string> {
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `login rejected for ${username}`);
-  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(cookie, 'session cookie missing');
-  return `nonni_session=${cookie.value}`;
+  return `lukarn_session=${cookie.value}`;
 }
 
 /**

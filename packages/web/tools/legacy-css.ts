@@ -88,10 +88,10 @@ const TRANSFORM_DECLARATION = new RegExp(
  * after which specificity gives the same result: `*` does not beat `.rotate-90`.
  */
 const TRANSFORM_RESET =
-  '@layer properties{*,::before,::after,::backdrop{--nonni-translate: ;--nonni-rotate: ;--nonni-scale: }}';
+  '@layer properties{*,::before,::after,::backdrop{--lukarn-translate: ;--lukarn-rotate: ;--lukarn-scale: }}';
 
 const COMPOSED_TRANSFORM =
-  'transform:var(--nonni-translate) var(--nonni-rotate) var(--nonni-scale)';
+  'transform:var(--lukarn-translate) var(--lukarn-rotate) var(--lukarn-scale)';
 
 /** Splits a value on top-level whitespace — `var(--a) var(--b)`. */
 function topLevelParts(value: string): string[] {
@@ -161,7 +161,7 @@ export function replaceIndependentTransforms(css: string): string {
     TRANSFORM_DECLARATION,
     (_whole, before: string, property: string, value: string) => {
       touched = true;
-      const slot = `--nonni-${property}`;
+      const slot = `--lukarn-${property}`;
       return `${before}${slot}:${transformFunction(property, value)};${COMPOSED_TRANSFORM}`;
     },
   );
@@ -331,7 +331,7 @@ function contentHash(content: string): string {
  */
 export function legacyCss(): Plugin {
   return {
-    name: 'nonni-legacy-css',
+    name: 'lukarn-legacy-css',
     apply: 'build',
     // Run last: `index.html` must already be in the bundle so its stylesheet
     // reference can be rewritten with the new name.

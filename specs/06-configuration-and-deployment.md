@@ -36,7 +36,7 @@ without anything reporting it (D78).
 | `MAIL_REPLY_TO`               | absent                                        | Optional, and independent of the previous two: address carried by the `Reply-To` header. A transactional relay has **no** inbox, and the sending domain doesn't necessarily have one either — replying to a notification then goes nowhere or bounces, without the instance knowing anything about it. Same form check as `MAIL_FROM`. If absent, no `Reply-To` is set and a reply follows `MAIL_FROM`: that's the right setting when that address receives its mail. If set without a relay, or naming the same address as `MAIL_FROM`, it is inoperative: startup **warns** without failing. See D81.                                                                                                                                                                                                                                                           |
 | `GEOCODING_URL`               | `https://nominatim.openstreetmap.org`         | Root of the reverse-geocoding service, which gives a name to the photos' EXIF coordinates. **An empty string disables it**: days keep their clusters of positions, simply without a label, and the rest of the application is unchanged. A private Nominatim instance goes here. The `User-Agent` sent is derived from `PUBLIC_URL`, as required by the public instance's usage policy — which also caps requests at **one per second**, which the background pass respects (see [02](./02-architecture.md) and D48). An invalid URL stops startup rather than letting geocoding fail silently for months.                                                                                                                                                                                                                                                        |
 | `CONFIG_PATH`                 | `./config/albums.yaml`                        | **Bootstrap** file, resolved from the `.env`'s directory, not from the cwd (see below). Absent ⇒ the server starts anyway; if there is no account in the database, it says how to create the first administrator.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `DATA_DIR`                    | `./data`                                      | Contains `nonni.db`. Created if missing. **The only irreplaceable data.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `DATA_DIR`                    | `./data`                                      | Contains `lukarn.db`. Created if missing. **The only irreplaceable data.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `CACHE_DIR`                   | `./cache`                                     | WebP derivatives at the root, prepared videos under `CACHE_DIR/video` — two stores, two budgets, two independent LRUs (D260809b). Regenerable, but not at the same cost: a few seconds of CPU per thumbnail, several minutes per video.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `WEB_DIR`                     | `packages/web/dist`, computed from the module | Built front end. Absent ⇒ only the API is served, with a warning.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `LOG_LEVEL`                   | `info`                                        | `fatal` \| `error` \| `warn` \| `info` \| `debug` \| `trace`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -207,7 +207,7 @@ publishing workflow; a local build leaves them at `dev` and
 
 ## Two installation paths, one published image (D260811c)
 
-`docker-compose.yml` references **`ghcr.io/cr0ck/nonni:${NONNI_VERSION:-latest}`**,
+`docker-compose.yml` references **`ghcr.io/cr0ck/lukarn:${LUKARN_VERSION:-latest}`**,
 published by `.github/workflows/release.yml` on every `v*` tag, for `linux/amd64`
 only. Updating therefore compiles nothing on the machine, and the
 sizing drops from 2 vCPU / 4 GB to 1 vCPU / 1 GB — the 4 GB were only there
@@ -224,10 +224,10 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 It's necessary outside `linux/amd64`, useful for trying out a local
 change, and it's the answer for anyone who doesn't want to depend on a third-party
 registry. The repository remains the source; the image is only a convenience. This
-override rewrites `image:` to `nonni:local`: without it, compose would tag the local
+override rewrites `image:` to `lukarn:local`: without it, compose would tag the local
 build with the registry's name, and a `docker compose pull` would silently replace it.
 
-`NONNI_VERSION` is not read by `env.ts` — it's a compose interpolation,
+`LUKARN_VERSION` is not read by `env.ts` — it's a compose interpolation,
 so `check:specs` doesn't watch it. It pins a version when an
 update needs to stay a decision rather than a surprise.
 
@@ -275,27 +275,27 @@ the real cause.
 
 **All four volumes carry an explicit `name:`**, and this is a fix, not
 a presentation detail. Without it, compose prefixes each volume with the
-project's name — that of the working directory: `nonni-data` is actually called
-`nonni_nonni-data`, or something else if it was cloned under another name.
+project's name — that of the working directory: `lukarn-data` is actually called
+`lukarn_lukarn-data`, or something else if it was cloned under another name.
 And docker **silently creates** a named volume that doesn't exist: the backup
-command in `README.md`, `docker run -v nonni-data:/data … tar czf`, would therefore mount
+command in `README.md`, `docker run -v lukarn-data:/data … tar czf`, would therefore mount
 a fresh, empty volume and write an empty archive, without a word. A backup
 that backs up nothing and doesn't say so is only discovered on
 restore (D53). The explicit name makes these commands correct regardless of the
 clone directory; migrating an already-running instance — copying
-`<project>_nonni-data` to `nonni-data` **before** the first `up` — is described in
+`<project>_lukarn-data` to `lukarn-data` **before** the first `up` — is described in
 `deploy/README.md`.
 
 | Mount                     | Contents                                                                                                             | Backup                                                                                           |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `./config:/app/config:ro` | Bootstrap `albums.yaml`, and the service account key if the instance uses one. Read-only: the app never writes here. | **Yes, if the key is there** — otherwise pointless after bootstrap                               |
 | `./Caddyfile:ro`          | Front-end configuration                                                                                              | No — versioned in the repository                                                                 |
-| `nonni-data`              | `nonni.db` — **accounts, albums, settings**, index, sessions, encrypted refresh token                                | **Yes. It's the only irreplaceable data.**                                                       |
-| `nonni-cache`             | WebP derivatives                                                                                                     | No — regenerable on demand                                                                       |
+| `lukarn-data`             | `lukarn.db` — **accounts, albums, settings**, index, sessions, encrypted refresh token                               | **Yes. It's the only irreplaceable data.**                                                       |
+| `lukarn-cache`            | WebP derivatives                                                                                                     | No — regenerable on demand                                                                       |
 | `caddy-data`              | Certificates and ACME account key                                                                                    | Desirable — otherwise reissued on every redeploy, and Let's Encrypt caps per domain and per week |
 | `caddy-config`            | Caddy's internal state                                                                                               | No                                                                                               |
 
-Backing up `nonni-data` alone isn't enough, for two distinct reasons. Without
+Backing up `lukarn-data` alone isn't enough, for two distinct reasons. Without
 `TOKEN_KEY`, the refresh token it contains is undecryptable: `.env` goes
 along with it, then. And on an instance using a service account, Drive access lives
 neither in the volume nor in `.env` but in `config/`, which Google doesn't reissue:
@@ -373,10 +373,10 @@ backups.
 Two bash scripts, run from the machine, which reposition themselves to the
 repository root from `$0`.
 
-| Script             | Effect                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `deploy/backup.sh` | `docker compose stop app` **if it is running**, `tar` of the `nonni-data` volume, restart of what was stopped, copy of `.env` and an archive of `config/` alongside, keeping the last 7 of each. Writes to `NONNI_BACKUP_DIR`, `./backups` by default. `--local` stops there; otherwise `rclone copy` to the remote from `NONNI_BACKUP_REMOTE`, `backups:nonni` by default. |
-| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, then `docker compose pull app` and `up -d` — or `up -d --build` with the build override if `--build` is passed —, then **actively waits** for it to return to `healthy`. Failure ⇒ `docker compose logs --tail=50 app` and a non-zero exit code.                                                                                 |
+| Script             | Effect                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy/backup.sh` | `docker compose stop app` **if it is running**, `tar` of the `lukarn-data` volume, restart of what was stopped, copy of `.env` and an archive of `config/` alongside, keeping the last 7 of each. Writes to `LUKARN_BACKUP_DIR`, `./backups` by default. `--local` stops there; otherwise `rclone copy` to the remote from `LUKARN_BACKUP_REMOTE`, `backups:lukarn` by default. |
+| `deploy/deploy.sh` | `git pull --ff-only`, `backup.sh --local`, then `docker compose pull app` and `up -d` — or `up -d --build` with the build override if `--build` is passed —, then **actively waits** for it to return to `healthy`. Failure ⇒ `docker compose logs --tail=50 app` and a non-zero exit code.                                                                                     |
 
 **Why `app` is stopped to back up.** SQLite runs in WAL mode: copying the
 file during a write yields a database that needs recomposing. The stop lasts a few
@@ -386,9 +386,9 @@ route or a signal — more surface for a gain of a few seconds of
 downtime per day.
 
 **Why the script checks its own archive.** It refuses an archive that does
-not contain `nonni.db`: this is exactly the symptom of the mis-named volume
+not contain `lukarn.db`: this is exactly the symptom of the mis-named volume
 above, and the only other moment it would show up would be the
-restore. A **missing** `nonni-data` volume, by contrast, is a normal case —
+restore. A **missing** `lukarn-data` volume, by contrast, is a normal case —
 a fresh install, nothing to back up — and the script exits 0, saying so.
 
 **Why the script restores the state it found.** An instance that is down is
@@ -438,12 +438,12 @@ applications there mixes them into the same authorisation request.
 
 ## Scripts
 
-| Command                                          | Effect                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm create-admin <identifier> [password]`      | Creates the first administrator **in the database**, with the wildcard on albums — `admin` alone grants no album, and it does need to see the ones it's about to create. The only entry point when there's neither an account nor a bootstrap file. Refuses an identifier already taken. |
-| `pnpm reset-password <identifier> [password]`    | Replaces an existing account's password and closes its open sessions. Handles the one case the application can't resolve on its own: the sole administrator has lost theirs and can no longer reach `/admin`. For any other account, go through `/admin`.                                |
-| `pnpm hash-password`                             | Prompts for a password without displaying it and prints the `passwordHash:` line to paste. Only used to prepare a bootstrap `albums.yaml`. An argument is accepted but leaves a trace in the shell history.                                                                              |
-| `pnpm --filter @nonni/server seed-demo [number]` | Fills the index **and** the cache with locally generated media, for working on the interface without a Drive account. Default: 240 per album.                                                                                                                                            |
+| Command                                           | Effect                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm create-admin <identifier> [password]`       | Creates the first administrator **in the database**, with the wildcard on albums — `admin` alone grants no album, and it does need to see the ones it's about to create. The only entry point when there's neither an account nor a bootstrap file. Refuses an identifier already taken. |
+| `pnpm reset-password <identifier> [password]`     | Replaces an existing account's password and closes its open sessions. Handles the one case the application can't resolve on its own: the sole administrator has lost theirs and can no longer reach `/admin`. For any other account, go through `/admin`.                                |
+| `pnpm hash-password`                              | Prompts for a password without displaying it and prints the `passwordHash:` line to paste. Only used to prepare a bootstrap `albums.yaml`. An argument is accepted but leaves a trace in the shell history.                                                                              |
+| `pnpm --filter @lukarn/server seed-demo [number]` | Fills the index **and** the cache with locally generated media, for working on the interface without a Drive account. Default: 240 per album.                                                                                                                                            |
 
 `seed-demo` inserts into **every** album in the database and writes the five
 cache variants (`t320`, `t640`, `t1280`, `full`, `hd`) so the pipeline never

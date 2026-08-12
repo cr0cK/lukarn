@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import { DEFAULT_SORT_ORDER } from '@nonni/shared';
+import { DEFAULT_SORT_ORDER } from '@lukarn/shared';
 import { openDb } from '../src/db.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
 
-const dir = mkdtempSync(join(tmpdir(), 'nonni-repo-'));
+const dir = mkdtempSync(join(tmpdir(), 'lukarn-repo-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import type { ItemsPage, MediaDetail, MediaItem } from '@nonni/shared';
+import type { ItemsPage, MediaDetail, MediaItem } from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -22,7 +22,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-notes-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-notes-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -66,7 +66,7 @@ async function login(username: string): Promise<string> {
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `login rejected for ${username}`);
-  return `nonni_session=${response.cookies.find((c) => c.name === 'nonni_session')!.value}`;
+  return `lukarn_session=${response.cookies.find((c) => c.name === 'lukarn_session')!.value}`;
 }
 
 function get(url: string, cookie: string): ReturnType<typeof server.inject> {

@@ -1,4 +1,4 @@
-import { THUMB_SIZES } from '@nonni/shared';
+import { THUMB_SIZES } from '@lukarn/shared';
 import type { MediaRepo } from '../repo.js';
 import type { MediaCache } from './cache.js';
 import type { MediaRenderer, Variant } from './renderer.js';

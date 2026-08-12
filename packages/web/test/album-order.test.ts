@@ -52,7 +52,7 @@ describe('per-album memory', () => {
   }
 
   it('reads the stored order under a per-album key', () => {
-    stockage((key) => (key === 'nonni:album-order:corse' ? 'desc' : null));
+    stockage((key) => (key === 'lukarn:album-order:corse' ? 'desc' : null));
 
     assert.equal(readStoredOrder('corse'), 'desc');
     // One key per album means "Corse" follows the trip order while "Les

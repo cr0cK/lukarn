@@ -291,7 +291,7 @@ export function loadEnv(
     // Nominatim's usage policy requires a `User-Agent` that identifies the caller:
     // the public instance blocks anonymous agents, and a generic `node-fetch` would
     // be cut off without making the reason clear.
-    geocoding: geocodingUrl ? { baseUrl: geocodingUrl, userAgent: `nonni (+${publicUrl})` } : null,
+    geocoding: geocodingUrl ? { baseUrl: geocodingUrl, userAgent: `lukarn (+${publicUrl})` } : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),
     cacheDir: resolve(baseDir, env.CACHE_DIR),

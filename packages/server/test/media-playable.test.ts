@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS } from '@nonni/shared';
+import { ALL_ALBUMS } from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -24,7 +24,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-playable-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-playable-'));
 /** Derived file body: short, with content recognisable byte by byte. */
 const CONTENU = Buffer.from('0123456789abcdef');
 
@@ -69,9 +69,9 @@ async function login(username: string): Promise<string> {
     url: '/api/auth/login',
     payload: { username, password: PASSWORD },
   });
-  const session = response.cookies.find((entry) => entry.name === 'nonni_session');
+  const session = response.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(session, `expected login for "${username}"`);
-  return `nonni_session=${session.value}`;
+  return `lukarn_session=${session.value}`;
 }
 
 before(async () => {

@@ -15,7 +15,7 @@ import { MediaRepo, SyncStateRepo } from '../src/repo.js';
  * would index the folder the owner has just left.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'nonni-sync-'));
+const dir = mkdtempSync(join(tmpdir(), 'lukarn-sync-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

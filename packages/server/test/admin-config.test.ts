@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AdminAlbum, AdminUser, AppSettings } from '@nonni/shared';
+import type { AdminAlbum, AdminUser, AppSettings } from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -20,7 +20,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-admin-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-admin-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -63,9 +63,9 @@ async function login(username: string, password = PASSWORD): Promise<string> {
     payload: { username, password },
   });
   assert.equal(response.statusCode, 200, `login rejected for ${username}`);
-  const entry = response.cookies.find((c) => c.name === 'nonni_session');
+  const entry = response.cookies.find((c) => c.name === 'lukarn_session');
   assert.ok(entry, 'session cookie missing');
-  return `nonni_session=${entry.value}`;
+  return `lukarn_session=${entry.value}`;
 }
 
 /** Restores the configuration to a known state before each test. */

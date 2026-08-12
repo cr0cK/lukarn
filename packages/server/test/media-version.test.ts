@@ -15,7 +15,7 @@ import { MediaRepo, type MediaUpsert } from '../src/repo.js';
  * must change, or an edited photo would display its old version indefinitely.
  */
 
-const dir = mkdtempSync(join(tmpdir(), 'nonni-version-'));
+const dir = mkdtempSync(join(tmpdir(), 'lukarn-version-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 const db = openDb(dir);

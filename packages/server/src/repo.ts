@@ -9,7 +9,7 @@ import {
   type SortOrder,
   type SyncStatus,
   type UpdateMediaRequest,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import type { Db } from './db.js';
 
 /** Raw `media` row with its joined description. */

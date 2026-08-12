@@ -1,4 +1,4 @@
-import type { AlbumDay } from '@nonni/shared';
+import type { AlbumDay } from '@lukarn/shared';
 import { type ReactElement, useEffect } from 'react';
 import type { GridLayout } from '../lib/useGridLayout';
 import { SectionHeader } from './SectionHeader';

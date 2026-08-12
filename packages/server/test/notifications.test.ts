@@ -20,7 +20,7 @@ import { Mailer, buildCommentMail, buildVerificationMail, type MailMessage } fro
  * just wrote.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-notif-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-notif-'));
 
 const env = loadEnv({
   NODE_ENV: 'test',

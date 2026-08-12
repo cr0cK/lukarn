@@ -17,7 +17,7 @@ import { loadEnv } from '../src/env.js';
  * missing. The login screen must be able to explain this.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-setup-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-setup-'));
 
 let server: FastifyInstance;
 let context: AppContext;

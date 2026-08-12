@@ -4,7 +4,7 @@ import {
   type AdminAlbum,
   type AdminUser,
   type UpdateUserRequest,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateUser, useUpdateUser } from '../../api/hooks';

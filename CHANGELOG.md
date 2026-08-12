@@ -2,7 +2,7 @@
 
 Notable changes, newest first. Versions follow [semantic versioning], and the
 section matching a `v*` tag becomes the body of its
-[GitHub release](https://github.com/cr0cK/nonni/releases) — so these notes are
+[GitHub release](https://github.com/cr0cK/lukarn/releases) — so these notes are
 written once, reviewed in a pull request, and not rewritten in a web form
 afterwards.
 
@@ -77,7 +77,7 @@ install.
 
 - **One container in production**, Fastify serving both the API and the built
   front end, with Caddy in front for TLS.
-- **A published image**, `ghcr.io/cr0ck/nonni`, so updating compiles nothing on
+- **A published image**, `ghcr.io/cr0ck/lukarn`, so updating compiles nothing on
   the machine. Building from source stays a first-class path, one overlay file
   away, for a host that is not `linux/amd64` or anyone who would rather not depend
   on a registry.
@@ -93,7 +93,7 @@ install.
 The project was called `googledrive-viewer`, and its volumes, database file,
 cookies and browser keys carried a `gdv` prefix. **They do not rename themselves.**
 
-- **Before the first `docker compose up`**, copy `gdv-data` to `nonni-data` and
+- **Before the first `docker compose up`**, copy `gdv-data` to `lukarn-data` and
   rename `gdv.db` inside it — the exact commands are in
   [`deploy/README.md`](./deploy/README.md#backup). Skipping this starts the
   application on an empty database, accounts and index included.
@@ -102,16 +102,16 @@ cookies and browser keys carried a `gdv` prefix. **They do not rename themselves
 - **Read markers restart from zero**, living in the browser under a renamed key.
   Comments already read announce themselves as new, once.
 - Backup archives already on disk keep their `gdv-` prefix, which pruning no
-  longer recognises. Delete them by hand once a `nonni-` archive has restored
+  longer recognises. Delete them by hand once a `lukarn-` archive has restored
   successfully.
 - **Backups are written to `backups/`**, not `sauvegardes/`, and the default
-  rclone remote is `backups:nonni`. Rename both, or keep the old ones by setting
-  `NONNI_BACKUP_DIR` and `NONNI_BACKUP_REMOTE`. Pruning only looks in the
+  rclone remote is `backups:lukarn`. Rename both, or keep the old ones by setting
+  `LUKARN_BACKUP_DIR` and `LUKARN_BACKUP_REMOTE`. Pruning only looks in the
   directory it is given.
 - The SSH hardening file laid down by `cloud-init.yaml` is now
   `99-hardening.conf`. Machines already bootstrapped keep
   `99-durcissement.conf`, and there is nothing to migrate — the rename only
   applies to machines created afterwards.
 
-[unreleased]: https://github.com/cr0cK/nonni/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/cr0cK/nonni/releases/tag/v1.0.0
+[unreleased]: https://github.com/cr0cK/lukarn/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/cr0cK/lukarn/releases/tag/v1.0.0

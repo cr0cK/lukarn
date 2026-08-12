@@ -22,7 +22,7 @@ import { encodeCursor, type MediaUpsert } from '../src/repo.js';
  * erase what was viewed.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-visites-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-visites-'));
 
 const env = loadEnv({
   NODE_ENV: 'test',
@@ -88,9 +88,9 @@ async function connexion(username: string, userAgent: string): Promise<string> {
     payload: { username, password: MOT_DE_PASSE },
   });
   assert.equal(response.statusCode, 200, response.body);
-  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(cookie);
-  return `nonni_session=${cookie.value}`;
+  return `lukarn_session=${cookie.value}`;
 }
 
 before(async () => {

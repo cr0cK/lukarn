@@ -46,7 +46,7 @@ jobs:
 
       # `shared` has to be compiled before the other two typecheck: they import
       # its declarations from `dist`.
-      - run: pnpm --filter @nonni/shared build
+      - run: pnpm --filter @lukarn/shared build
 
       - run: pnpm verify
 
@@ -68,7 +68,7 @@ jobs:
           # release.yml does the pushing.
           push: false
           load: true
-          tags: nonni:ci
+          tags: lukarn:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -79,11 +79,11 @@ jobs:
       # without and no Drive credentials — a configuration it supports.
       - name: Start the container and wait for /api/health
         run: |
-          docker run -d --name nonni-ci -p 8080:8080 \
+          docker run -d --name lukarn-ci -p 8080:8080 \
             -e SESSION_SECRET=$(openssl rand -hex 32) \
             -e TOKEN_KEY=$(openssl rand -hex 32) \
             -e PUBLIC_URL=http://localhost:8080 \
-            nonni:ci
+            lukarn:ci
 
           # The image carries its own HEALTHCHECK, so its verdict is read rather
           # than a second one written here: a divergence between the two would
@@ -94,7 +94,7 @@ jobs:
           # a tighter ceiling would fail on machine load rather than on the
           # image. Locally it reports healthy in about 7s.
           for i in $(seq 1 120); do
-            etat=$(docker inspect -f '{{.State.Health.Status}}' nonni-ci 2>/dev/null || echo none)
+            etat=$(docker inspect -f '{{.State.Health.Status}}' lukarn-ci 2>/dev/null || echo none)
             case $etat in
               healthy) echo "healthy after ${i}s"; exit 0 ;;
               unhealthy) break ;;
@@ -107,4 +107,4 @@ jobs:
 
       - name: Container logs
         if: failure()
-        run: docker logs nonni-ci 2>&1 | tail -40
+        run: docker logs lukarn-ci 2>&1 | tail -40

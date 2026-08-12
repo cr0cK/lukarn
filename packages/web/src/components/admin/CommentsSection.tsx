@@ -1,4 +1,4 @@
-import type { AdminAlbum, AdminComment, ModerationFilter } from '@nonni/shared';
+import type { AdminAlbum, AdminComment, ModerationFilter } from '@lukarn/shared';
 import { type ReactElement, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { errorText } from '../../api/client';

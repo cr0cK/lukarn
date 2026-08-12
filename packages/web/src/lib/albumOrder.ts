@@ -14,11 +14,11 @@
  * local memory itself.
  */
 
-import { isSortOrder, type SortOrder } from '@nonni/shared';
+import { isSortOrder, type SortOrder } from '@lukarn/shared';
 import { useCallback, useEffect, useState } from 'react';
 
 function storageKey(albumId: string): string {
-  return `nonni:album-order:${albumId}`;
+  return `lukarn:album-order:${albumId}`;
 }
 
 /**

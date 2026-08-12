@@ -1,4 +1,4 @@
-import { THUMB_SIZES, type MediaItem, type ThumbSize } from '@nonni/shared';
+import { THUMB_SIZES, type MediaItem, type ThumbSize } from '@lukarn/shared';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { formatDuration } from '../lib/format';

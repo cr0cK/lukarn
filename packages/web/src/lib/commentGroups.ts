@@ -1,4 +1,4 @@
-import type { Comment } from '@nonni/shared';
+import type { Comment } from '@lukarn/shared';
 import { dayLabel, localDayKey } from './justify';
 
 /**

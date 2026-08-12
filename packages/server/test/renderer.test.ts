@@ -14,7 +14,7 @@ import { MediaRenderer } from '../src/media/renderer.js';
  * bundled libvips cannot decode.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-renderer-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-renderer-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const silencieux = { warn: () => {} };

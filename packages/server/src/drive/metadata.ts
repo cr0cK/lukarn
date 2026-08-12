@@ -1,4 +1,4 @@
-import type { MediaKind } from '@nonni/shared';
+import type { MediaKind } from '@lukarn/shared';
 
 export const FOLDER_MIME = 'application/vnd.google-apps.folder';
 

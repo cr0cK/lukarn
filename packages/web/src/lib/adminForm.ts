@@ -3,7 +3,7 @@
  *
  * Pure functions without React or network access. They do not replace server
  * validation — the server remains authoritative — but avoid a round trip to
- * report what is wrong. Rules come from `@nonni/shared` so both sides reject
+ * report what is wrong. Rules come from `@lukarn/shared` so both sides reject
  * exactly the same values.
  */
 
@@ -13,7 +13,7 @@ import {
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 
 /**
  * Extracts a Drive folder identifier from pasted input: full URL, sharing link

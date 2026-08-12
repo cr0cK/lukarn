@@ -23,4 +23,4 @@ services:
     # Overrides the registry reference: without this line, compose would rebuild
     # the image and then tag it with the registry name, and a later
     # `docker compose pull` would silently replace the local build.
-    image: nonni:local
+    image: lukarn:local

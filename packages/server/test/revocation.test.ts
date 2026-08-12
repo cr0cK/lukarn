@@ -15,7 +15,7 @@ import { loadEnv, type Env } from '../src/env.js';
  * while every thumbnail fails.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-revoke-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-revoke-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const TOKEN_KEY = 'k'.repeat(48);

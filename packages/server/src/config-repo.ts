@@ -6,7 +6,7 @@ import {
   type AppSettings,
   type GroupBy,
   type SortOrder,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import { z } from 'zod';
 import type { Db } from './db.js';
 

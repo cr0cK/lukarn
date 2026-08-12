@@ -6,7 +6,7 @@ shapes are the types from `packages/shared/src/index.ts`.
 "Access" column:
 
 - **none** — open route;
-- **session** — valid `nonni_session` cookie, otherwise 401 `unauthorized`;
+- **session** — valid `lukarn_session` cookie, otherwise 401 `unauthorized`;
 - **admin** — session **and** `admin: true`, otherwise 401 or 403 `forbidden`.
 
 ## Error responses
@@ -48,7 +48,7 @@ password. The password is left untouched: it is allowed to contain one.
 
 | Code | Body                                       | When                                                                      |
 | ---- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| 200  | `SessionUser` = `{ username, admin }`      | Success. Sets the `nonni_session` cookie.                                 |
+| 200  | `SessionUser` = `{ username, admin }`      | Success. Sets the `lukarn_session` cookie.                                |
 | 400  | `bad_request`                              | Missing body or out of bounds.                                            |
 | 401  | `invalid_credentials`                      | Unknown username **or** wrong password — identical message in both cases. |
 | 429  | `too_many_attempts` + `Retry-After` header | Throttle active on one of three axes: IP/username pair, username, IP.     |
@@ -92,13 +92,13 @@ without `I`, `O`, `0` or `1`, delivered grouped by four. `deviceCode` is not:
 **`POST /api/auth/device/poll`** — body `{ deviceCode }`. The screen's polling,
 every `intervalMs` (2 s).
 
-| Code | Body                                | When                                                                   |
-| ---- | ----------------------------------- | ---------------------------------------------------------------------- |
-| 200  | `{ status: 'approved', user }`      | Approved. Sets the `nonni_session` cookie and **deletes the request**. |
-| 202  | `{ status: 'pending' }`             | No one has approved yet.                                               |
-| 400  | `bad_request`                       | Missing body or out of bounds.                                         |
-| 404  | `unknown_code`                      | Unknown, expired, already picked up, or the approving account is gone. |
-| 429  | `too_many_attempts` + `Retry-After` | Throttle, on the sign-in flow's three axes.                            |
+| Code | Body                                | When                                                                    |
+| ---- | ----------------------------------- | ----------------------------------------------------------------------- |
+| 200  | `{ status: 'approved', user }`      | Approved. Sets the `lukarn_session` cookie and **deletes the request**. |
+| 202  | `{ status: 'pending' }`             | No one has approved yet.                                                |
+| 400  | `bad_request`                       | Missing body or out of bounds.                                          |
+| 404  | `unknown_code`                      | Unknown, expired, already picked up, or the approving account is gone.  |
+| 429  | `too_many_attempts` + `Retry-After` | Throttle, on the sign-in flow's three axes.                             |
 
 A POST rather than a GET: the response sets a cookie, and the `deviceCode` has no
 business being in a URL — access logs and history would keep it.
@@ -689,7 +689,7 @@ three bounded reads, with no scan (see [03](./03-data-model.md)).
 
 **`oauth/start`** — `400 oauth_not_configured` if `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` are missing. Otherwise sets the signed
-`nonni_oauth_state` cookie and returns the consent URL, which the front end
+`lukarn_oauth_state` cookie and returns the consent URL, which the front end
 follows as a full-page redirect.
 
 **`drive/disconnect`** — deletes the `oauth_token` row. The index and cache
@@ -788,7 +788,7 @@ knows how to distinguish a chosen cover from a default one.
 The **album description** follows exactly the same rule: its pencil lives on
 the album page, its write goes through `PATCH /api/admin/albums/:id`, with the
 `description` field of `UpdateAlbumRequest`. Its bound is
-`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exported by `@nonni/shared` rather than
+`ALBUM_DESCRIPTION_MAX_LENGTH` (2000), exported by `@lukarn/shared` rather than
 written as a literal in the Zod schema: the front end's character counter now
 reads it, and two diverging limits would make an input accepted on screen get
 refused by the server.
@@ -803,7 +803,7 @@ place disappears from `GET /days` if EXIF gives it none.
 `{ description? }`. Absent field = unchanged (the response then returns the
 item as-is), `null` **or an empty string** = cleared — the `media_notes` row is
 deleted, an empty description saying no more than a missing one. Bound:
-`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exported by `@nonni/shared` and applied
+`MEDIA_DESCRIPTION_MAX_LENGTH` (1000), exported by `@lukarn/shared` and applied
 on both sides, otherwise `400`. The response is the updated `MediaItem`.
 
 Two distinct `404`s, and both are needed: an unknown or deleted album, and a

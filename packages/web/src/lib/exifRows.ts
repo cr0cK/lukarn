@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaDetail } from '@nonni/shared';
+import type { AlbumDay, MediaDetail } from '@lukarn/shared';
 import {
   formatAperture,
   formatBytes,
