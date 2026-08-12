@@ -59,6 +59,14 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       context.sessions.attachCommenter(session.id, null);
     }
 
+    // Records the language this person reads, for the emails composed hours later
+    // in another process (D260812d). Guarded by the comparison: this hook runs on
+    // every thumbnail request, and an unconditional UPDATE would put a write on
+    // the critical path of a cold grid.
+    if (commenter && commenter.locale !== request.locale) {
+      context.commenters.setLocale(commenter.id, request.locale);
+    }
+
     // The database just extended expiry, so the cookie must follow. It carries its own
     // expiry date applied by the browser without database knowledge — without reissuing,
     // an active visitor would be signed out a year after sign-in and renewal would only
@@ -86,16 +94,16 @@ export default fp(authPlugin, { name: 'auth', dependencies: ['@fastify/cookie'] 
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
-    await reply.code(401).send({ error: 'unauthorized', message: 'Authentication required' });
+    await reply.code(401).send({ error: 'unauthorized', message: request.t('error.authRequired') });
   }
 }
 
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.user) {
-    await reply.code(401).send({ error: 'unauthorized', message: 'Authentication required' });
+    await reply.code(401).send({ error: 'unauthorized', message: request.t('error.authRequired') });
     return;
   }
   if (!request.user.admin) {
-    await reply.code(403).send({ error: 'forbidden', message: 'Administrators only' });
+    await reply.code(403).send({ error: 'forbidden', message: request.t('error.adminsOnly') });
   }
 }

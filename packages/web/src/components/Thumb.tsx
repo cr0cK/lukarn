@@ -2,6 +2,7 @@ import { THUMB_SIZES, type MediaItem, type ThumbSize } from '@lukarn/shared';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { formatDuration } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { releaseIfDetached } from '../lib/imageRelease';
 
 /**
@@ -43,6 +44,7 @@ export function Thumb({
   onOpen,
   eager = false,
 }: ThumbProps): ReactElement {
+  const t = useT();
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   /** Incremented on every retry; used as `key` to remount the `<img>`. */
@@ -129,7 +131,7 @@ export function Thumb({
 
       {failed && !isVideo && (
         <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-ink-400">
-          Preview unavailable
+          {t('thumb.unavailable')}
         </div>
       )}
 

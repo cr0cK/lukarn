@@ -1,4 +1,6 @@
+import type { Locale } from '@lukarn/shared';
 import { createTransport } from 'nodemailer';
+import { translator } from './i18n/index.js';
 import { signAlbumUnsubscribeToken, signUnsubscribeToken } from './crypto.js';
 import { parseMailAddress, type Env } from './env.js';
 
@@ -139,6 +141,12 @@ export interface CommentNotification {
 export interface Recipient {
   email: string;
   reason: 'moderation' | 'reply';
+  /**
+   * Language this message is written in. It comes from the recipient's identity
+   * for a reply, and from the instance default for the moderation address, which
+   * belongs to no identity (D260812d).
+   */
+  locale: Locale;
 }
 
 /**
@@ -176,10 +184,11 @@ export function buildCommentMail(
   // The subject also serves as the opening line in the body: readers opening from
   // a notification have already read this sentence, and repeating it verbatim tells
   // them they are in the right place.
-  const subject =
-    recipient.reason === 'reply'
-      ? `${notification.authorDisplayName} replied to your comment`
-      : `${notification.authorDisplayName} commented on a photo`;
+  const t = translator(recipient.locale);
+  const subject = t(
+    recipient.reason === 'reply' ? 'mail.replySubject' : 'mail.commentSubject',
+    notification.authorDisplayName,
+  );
 
   const where = notification.mediaName
     ? `${notification.mediaName} — ${notification.albumTitle}`
@@ -192,7 +201,7 @@ export function buildCommentMail(
     '',
     where,
     link,
-    ...(unsubscribe ? ['', '—', `Stop receiving any email from this gallery: ${unsubscribe}`] : []),
+    ...(unsubscribe ? ['', '—', `${t('mail.unsubscribeAll')} : ${unsubscribe}`] : []),
   ].join('\n');
 
   // Deliberately plain HTML: inline styles, no image, no remote font. Email clients
@@ -203,12 +212,12 @@ export function buildCommentMail(
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}:</p>
       <blockquote style="margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid #d4d4d4; background: #fafafa; white-space: pre-wrap;">${escapeHtml(notification.body)}</blockquote>
       <p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>
-      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">View the photo</a></p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">${t('mail.viewPhoto')}</a></p>
       ${
         unsubscribe
           ? `<hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Stop receiving any email from this gallery</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">${t('mail.unsubscribeAll')}</a>
       </p>`
           : ''
       }
@@ -237,8 +246,10 @@ export interface AlbumUpdateNotification {
 export function buildAlbumUpdateMail(
   notification: AlbumUpdateNotification,
   email: string,
+  locale: Locale,
   env: Env,
 ): MailMessage {
+  const t = translator(locale);
   // `?order=desc`: the message announces what has just arrived, so the link must
   // lead there. The parameter only applies to this visit — it takes precedence over
   // the album's default order without overwriting the browser's memory (D99).
@@ -248,8 +259,7 @@ export function buildAlbumUpdateMail(
     `?u=${encodeURIComponent(email)}&a=${encodeURIComponent(notification.albumId)}` +
     `&t=${signAlbumUnsubscribeToken(email, notification.albumId, env.sessionSecret)}`;
 
-  const plural = notification.count > 1;
-  const subject = `${notification.count} new photo${plural ? 's' : ''} in ${notification.albumTitle}`;
+  const subject = t('mail.albumSubject', notification.count, notification.albumTitle);
 
   const text = [
     `${subject}.`,
@@ -257,8 +267,8 @@ export function buildAlbumUpdateMail(
     link,
     '',
     '—',
-    `You are getting this because you have opened this album.`,
-    `Stop hearing about new photos in "${notification.albumTitle}": ${unsubscribe}`,
+    t('mail.albumReason'),
+    `${t('mail.albumUnsubscribe', notification.albumTitle)} : ${unsubscribe}`,
   ].join('\n');
 
   // As restrained as comment notifications: inline styles and nothing to load from
@@ -266,12 +276,12 @@ export function buildAlbumUpdateMail(
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}.</p>
-      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">View the album</a></p>
+      <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">${t('mail.viewAlbum')}</a></p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        You are getting this because you have opened this album.
+        ${t('mail.albumReason')}
         <br>
-        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">Stop hearing about new photos in &quot;${escapeHtml(notification.albumTitle)}&quot;</a>
+        <a href="${escapeHtml(unsubscribe)}" style="color: #888;">${escapeHtml(t('mail.albumUnsubscribe', notification.albumTitle))}</a>
       </p>
     </div>
   `.trim();
@@ -329,44 +339,38 @@ export function buildVerificationMail(
   email: string,
   displayName: string,
   code: string,
+  locale: Locale,
   env: Env,
 ): MailMessage {
+  const t = translator(locale);
   const host = new URL(env.publicUrl).host;
-  const subject = `Verification code — ${host}`;
+  const subject = t('mail.codeSubject', host);
 
   const text = [
-    `Hello ${displayName},`,
+    t('mail.codeHello', displayName),
     '',
-    `You have just given this address on ${host} to sign your comments.`,
-    'Here is your code:',
+    t('mail.codeIntro', host),
+    t('mail.codeHere'),
     '',
     code,
     '',
-    'Type it into the page you left open. It lasts fifteen minutes and works',
-    'once.',
+    t('mail.codeValidity'),
     '',
     '—',
-    'If you did not ask for this, ignore the message: until the code is entered,',
-    'nothing is tied to this address. Do not pass it on to anyone.',
+    t('mail.codeIgnore'),
   ].join('\n');
 
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
-      <p style="margin: 0 0 16px;">Hello ${escapeHtml(displayName)},</p>
+      <p style="margin: 0 0 16px;">${escapeHtml(t('mail.codeHello', displayName))}</p>
       <p style="margin: 0 0 8px;">
-        You have just given this address on ${escapeHtml(host)} to sign your comments.
-        Here is your code:
+        ${escapeHtml(t('mail.codeIntro', host))}
+        ${t('mail.codeHere')}
       </p>
       <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
-      <p style="margin: 0 0 24px; color: #666;">
-        Type it into the page you left open. It lasts fifteen minutes and works
-        once.
-      </p>
+      <p style="margin: 0 0 24px; color: #666;">${t('mail.codeValidity')}</p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
-      <p style="margin: 0; font-size: 13px; color: #888;">
-        If you did not ask for this, ignore the message: until the code is entered,
-        nothing is tied to this address. Do not pass it on to anyone.
-      </p>
+      <p style="margin: 0; font-size: 13px; color: #888;">${t('mail.codeIgnore')}</p>
     </div>
   `.trim();
 

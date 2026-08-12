@@ -11,6 +11,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { EditWindowClosedError, UnknownParentError } from '../comments.js';
 import type { AppContext } from '../context.js';
+import type { Translate } from '../i18n/index.js';
 import { verifyUnsubscribeToken } from '../crypto.js';
 import { buildCommentMail, type Recipient } from '../mail.js';
 import { requireAuth } from '../plugins/auth.js';
@@ -62,12 +63,16 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/unsubscribe', async (request, reply) => {
       const parsed = unsubscribeSchema.safeParse(request.query);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Incomplete link' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.incompleteLink') });
       }
 
       const { u: email, t: token } = parsed.data;
       if (!verifyUnsubscribeToken(email, token, context.env.sessionSecret)) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid or expired link' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidOrExpiredLink') });
       }
 
       const commenter = context.commenters.byEmail(email);
@@ -77,7 +82,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 
       return reply
         .type('text/html; charset=utf-8')
-        .send(unsubscribePage(context.env.publicUrl, Boolean(commenter)));
+        .send(unsubscribePage(context.env.publicUrl, Boolean(commenter), request.t));
     });
 
     await app.register(async (scoped) => {
@@ -98,7 +103,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       scoped.get('/feed', async (request, reply) => {
         const parsed = feedSchema.safeParse(request.query);
         if (!parsed.success) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Invalid request' });
+          return reply
+            .code(400)
+            .send({ error: 'bad_request', message: request.t('error.invalidRequest') });
         }
 
         const account = request.user!;
@@ -108,7 +115,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
           album !== undefined &&
           (!context.findAlbum(album) || !context.canSee(account.username, album))
         ) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.albumNotFound') });
         }
 
         const albumIds =
@@ -141,7 +150,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { albumId } = request.params as { albumId: string };
         const account = request.user!;
         if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.albumNotFound') });
         }
 
         const counts: AlbumCommentCounts = { counts: context.comments.countsByAlbum(albumId) };
@@ -152,7 +163,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
         const account = request.user!;
         if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.albumNotFound') });
         }
 
         const page: CommentsPage = context.comments.thread(albumId, mediaId, {
@@ -167,7 +180,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const account = request.user!;
         const album = context.findAlbum(albumId);
         if (!album || !context.canSee(account.username, albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.albumNotFound') });
         }
 
         // Commenting requires a verified identity. This 403 is the second deliberate
@@ -178,7 +193,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         if (commenterId === null) {
           return reply.code(403).send({
             error: 'identity_required',
-            message: 'Add and verify your email address in order to comment.',
+            message: request.t('error.identityRequired'),
           });
         }
 
@@ -186,14 +201,16 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         // leave threads that moderation displays without a file name.
         const detail = context.media.getDetail(albumId, mediaId);
         if (!detail) {
-          return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
         }
 
         const parsed = createSchema.safeParse(request.body);
         if (!parsed.success) {
           return reply.code(400).send({
             error: 'bad_request',
-            message: `A comment must be between 1 and ${COMMENT_MAX_LENGTH} characters.`,
+            message: request.t('error.commentLength', COMMENT_MAX_LENGTH),
           });
         }
 
@@ -209,7 +226,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
           });
         } catch (error) {
           if (error instanceof UnknownParentError) {
-            return reply.code(404).send({ error: 'not_found', message: error.message });
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.unknownParent') });
           }
           throw error;
         }
@@ -238,14 +257,16 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { commentId } = request.params as { commentId: string };
         const id = Number(commentId);
         if (!Number.isInteger(id) || id <= 0) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
+          return reply
+            .code(400)
+            .send({ error: 'bad_request', message: request.t('error.invalidUsername') });
         }
 
         const parsed = updateSchema.safeParse(request.body);
         if (!parsed.success) {
           return reply.code(400).send({
             error: 'bad_request',
-            message: `A comment must be between 1 and ${COMMENT_MAX_LENGTH} characters.`,
+            message: request.t('error.commentLength', COMMENT_MAX_LENGTH),
           });
         }
 
@@ -254,7 +275,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const account = request.user!;
         const location = context.comments.locate(id);
         if (!location || !context.canSee(account.username, location.albumId)) {
-          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.commentNotFound') });
         }
 
         let comment: Comment | null;
@@ -266,13 +289,17 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
           );
         } catch (error) {
           if (error instanceof EditWindowClosedError) {
-            return reply.code(409).send({ error: 'edit_window_closed', message: error.message });
+            return reply
+              .code(409)
+              .send({ error: 'edit_window_closed', message: request.t('error.editWindowClosed') });
           }
           throw error;
         }
 
         if (!comment) {
-          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.commentNotFound') });
         }
         return reply.send(comment);
       });
@@ -286,7 +313,9 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { commentId } = request.params as { commentId: string };
         const id = Number(commentId);
         if (!Number.isInteger(id) || id <= 0) {
-          return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
+          return reply
+            .code(400)
+            .send({ error: 'bad_request', message: request.t('error.invalidUsername') });
         }
 
         const account = request.user!;
@@ -294,13 +323,17 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         // otherwise revoked access would leave a surviving write permission.
         const location = context.comments.locate(id);
         if (!location || (!account.admin && !context.canSee(account.username, location.albumId))) {
-          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.commentNotFound') });
         }
 
         if (
           !context.comments.remove(id, { commenterId: request.commenterId, admin: account.admin })
         ) {
-          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.commentNotFound') });
         }
         return reply.code(204).send();
       });
@@ -330,12 +363,26 @@ function notify(
   // The moderation address is an instance setting: an administrator account is an
   // access key, not a reachable person.
   const moderation = context.settings.moderationEmail;
-  if (moderation) recipients.push({ email: moderation, reason: 'moderation' });
+  // The moderation address has no identity, hence no recorded language: the
+  // instance default applies.
+  if (moderation) {
+    recipients.push({
+      email: moderation,
+      reason: 'moderation',
+      locale: context.env.defaultLocale,
+    });
+  }
 
   // Reply: the thread root's author, never the person who just wrote.
   if (input.comment.parentId !== null) {
     const author = context.commenters.recipientForReply(input.comment.parentId, input.commenterId);
-    if (author) recipients.push({ email: author.email, reason: 'reply' });
+    if (author) {
+      recipients.push({
+        email: author.email,
+        reason: 'reply',
+        locale: author.locale ?? context.env.defaultLocale,
+      });
+    }
   }
 
   for (const recipient of recipients) {
@@ -361,25 +408,25 @@ function notify(
  * users arrive without a session, and loading the React application to display one
  * sentence would redirect to the sign-in screen.
  */
-function unsubscribePage(publicUrl: string, found: boolean): string {
-  const message = found
-    ? 'You will no longer get an email when a new comment arrives.'
-    : 'That account no longer exists: there is nothing to unsubscribe from.';
+function unsubscribePage(publicUrl: string, found: boolean, t: Translate): string {
+  const message = t(found ? 'page.commentsStopped' : 'page.commentsUnknown');
 
+  // `lang` follows the language actually written: this page is opened from an
+  // inbox, outside the React application, so nothing else would set it.
   return `<!doctype html>
-<html lang="en">
+<html lang="${t.locale}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Unsubscribed</title>
+    <title>${t('page.unsubscribedTitle')}</title>
   </head>
   <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6; color: #1a1a1a;">
-    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">Done</h1>
+    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">${t('page.done')}</h1>
     <p style="margin: 0 0 1.5rem;">${message}</p>
     <p style="margin: 0; font-size: 0.9rem; color: #666;">
-      To turn them back on, ask the administrator of this instance.
+      ${t('page.commentsRestore')}
       <br>
-      <a href="${publicUrl}" style="color: #2563eb;">Back to the gallery</a>
+      <a href="${publicUrl}" style="color: #2563eb;">${t('page.backToGallery')}</a>
     </p>
   </body>
 </html>`;

@@ -17,6 +17,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import type { Translate } from './i18n/translate';
 
 /** The two candidate texts as held by the viewer. */
 export interface CaptionSource {
@@ -44,10 +45,10 @@ export interface CaptionEntry {
  * Non-empty lines in scope order. Whitespace-only text does not count: it would
  * open an empty line in the bar, and the bar itself on a photo with nothing to say.
  */
-export function captionEntries(source: CaptionSource): CaptionEntry[] {
+export function captionEntries(source: CaptionSource, t: Translate): CaptionEntry[] {
   const candidates: { scope: CaptionScope; label: string | null; value: string | null }[] = [
     { scope: 'photo', label: null, value: source.description ?? null },
-    { scope: 'day', label: 'That day', value: source.day ?? null },
+    { scope: 'day', label: t('caption.thatDay'), value: source.day ?? null },
   ];
 
   return candidates

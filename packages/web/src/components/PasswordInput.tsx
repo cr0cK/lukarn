@@ -1,4 +1,5 @@
 import { type InputHTMLAttributes, type ReactElement, useState } from 'react';
+import { useT } from '../lib/i18n';
 
 /** Everything an `input` accepts except `type`, which this component decides. */
 type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>;
@@ -12,6 +13,7 @@ type PasswordInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>;
  * visible behind.
  */
 export function PasswordInput({ className = '', ...props }: PasswordInputProps): ReactElement {
+  const t = useT();
   const [revealed, setRevealed] = useState(false);
 
   return (
@@ -25,8 +27,8 @@ export function PasswordInput({ className = '', ...props }: PasswordInputProps):
         disabled={props.disabled}
         // The label announces what the click **will do**, like bar controls:
         // "Show" on a hidden field.
-        aria-label={revealed ? 'Hide the password' : 'Show the password'}
-        title={revealed ? 'Hide the password' : 'Show the password'}
+        aria-label={t(revealed ? 'password.hide' : 'password.show')}
+        title={t(revealed ? 'password.hide' : 'password.show')}
         // Keep it away from the edge rather than using `inset-y-0`: the keyboard
         // focus ring extends 2 px and would be clipped by the field edge.
         className="absolute top-1/2 right-1.5 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-ink-400 transition-colors hover:text-ink-100 disabled:opacity-60"

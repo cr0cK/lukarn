@@ -79,6 +79,8 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                 |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                      |
 | `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                   |
+| A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes          |
+| `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                   |
 | `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                      |
 | An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                |
 | The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                              |
@@ -155,22 +157,53 @@ fix (D75).
 
 ## Language
 
-**Everything is in English.** The repository is public under the AGPL (D260811):
-splitting language by audience—English for what is read on GitHub and French for
-the rest—does not work when an unknown contributor must read the code, its
-comments and the specs that explain it, then edit a `.env.example`. The
-repository therefore uses the single language accessible to the greatest number
-of potential readers.
+**The repository is written in English; the interface is translated from it.**
+Two different questions, settled separately.
 
-The migration was completed in the following batches, from the most-read surface
-to the least-read:
+**The repository.** It is public under the AGPL (D260811): splitting language by
+audience—English for what is read on GitHub and French for the rest—does not work
+when an unknown contributor must read the code, its comments and the specs that
+explain it, then edit a `.env.example`. The repository therefore uses the single
+language accessible to the greatest number of potential readers. Code, comments,
+test names, logs, commits, pull requests and `specs/` are English, with no
+exception.
 
-| Batch | Scope                                                      | Status |
-| ----- | ---------------------------------------------------------- | ------ |
-| 4     | Installation surface—see below                             | done   |
-| 5a    | Server: HTTP messages, logs, exceptions, commands and demo | done   |
-| 5b    | Emails, unsubscribe pages and interface (`packages/web`)   | done   |
-| 6     | Code comments, test names, `specs/` and this file          | done   |
+**What a reader sees.** Someone opening an album did not choose this project's
+language. Every message shown to a person—interface labels, the text beside an
+HTTP refusal, emails, the two unsubscribe pages—therefore lives in a **catalogue**
+and exists in English and French (D260812c).
+
+| Surface           | Catalogues                                                      |
+| ----------------- | --------------------------------------------------------------- |
+| Interface         | `packages/web/src/lib/i18n/messages-en.ts` and `messages-fr.ts` |
+| Server and emails | `packages/server/src/i18n/messages-en.ts` and `messages-fr.ts`  |
+
+**English declares the keys; French is typed against them.** A key missing from
+the French file, or one whose parameters no longer match, fails `pnpm typecheck`.
+Adding a visible message therefore means editing **both** files, in that order,
+and never writing the sentence in the component.
+
+A message is a sentence, or a function of what varies inside it. Never assemble
+one from fragments at the call site: `${count}` followed by `"items"` cannot be
+translated into a language that agrees the noun differently.
+
+`t` carries its language (`t.locale`), so anything producing text for a human
+takes it and nothing else: `formatDate(iso, t)`, `dayLabel(key, t)`,
+`validateTitle(value, t)`. The browser announces the language in force with
+`Accept-Language`, and the server records it against the commenter identity so
+emails arrive in the language their recipient reads (D260812d).
+
+The move to English was completed in the following batches, from the most-read
+surface to the least-read—**before** the interface became translatable, which is
+why "in English" below means "in the source language":
+
+| Batch | Scope                                                       | Status |
+| ----- | ----------------------------------------------------------- | ------ |
+| 4     | Installation surface—see below                              | done   |
+| 5a    | Server: HTTP messages, logs, exceptions, commands and demo  | done   |
+| 5b    | Emails, unsubscribe pages and interface (`packages/web`)    | done   |
+| 6     | Code comments, test names, `specs/` and this file           | done   |
+| 7     | Both catalogues, and French restored as a choice (D260812c) | done   |
 
 **Batch 5b was not verifiable through `pnpm verify`.** About fifteen labels were
 found only by walking through the application in a browser: they were short and
@@ -178,6 +211,12 @@ unaccented, alone on a JSX line or buried in an interpolated template. No
 literal-text search found them, and no test failed. The browser also revealed
 that a global replacement had put "Username" on the **album identifier** field,
 where it made no sense.
+
+Batch 7 caught four of those survivors—"Corriger l’adresse", "masquer", "Lieu"
+as an EXIF label, and a hint left in French under the account username field—
+because moving every string into a catalogue reads every string. Extraction is
+the check that batch 5b lacked: what stays behind in a component is, by
+definition, what nobody translated.
 
 Some code identifiers remain in French (`titre` in `SearchBox`,
 `Mesure`/`valeur`/`unite`/`visiteur` in `VisitsSection`, `elaguer`, `accord`).

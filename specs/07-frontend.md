@@ -1895,10 +1895,56 @@ The author's address carries the **grouped action**: clicking it offers to
 hide all their messages at once, behind a `ConfirmDialog` that states what
 is at stake — every album, not just the displayed page.
 
+## Two languages — `lib/i18n/`
+
+The interface speaks English or French. Four files, no library: the part of
+`i18next` that this needs fits in them, and the rest — namespaces, lazy loading,
+backends — would be configuration to maintain for behaviour nobody would use
+(D260812c).
+
+| File             | Role                                                                             |
+| ---------------- | -------------------------------------------------------------------------------- |
+| `messages-en.ts` | The English catalogue, and **the source of the keys**: its type is the contract. |
+| `messages-fr.ts` | The French catalogue, typed as `Messages`. A missing key fails `pnpm typecheck`. |
+| `translate.ts`   | Reading a catalogue, without React — for `lib/` modules and their tests.         |
+| `locale.ts`      | Which language, and where the answer comes from. No React either.                |
+| `index.tsx`      | `LocaleProvider`, `useT`, `useLocale`.                                           |
+
+**Resolution order**: what this browser was told to use
+(`localStorage['lukarn:locale']`), then the first supported language in
+`navigator.languages`, then English. The choice is a property of the **browser**,
+not of the account: one access key may be shared by a household, and one member
+reading French must not switch the television in the living room.
+
+The account menu carries it, as its own group below the account actions: every
+language listed, with a tick on the active one and `aria-checked` for what the
+tick shows. One entry toggling between two would have nowhere to put a third, and
+never says what it is about to switch to.
+
+**A message is a sentence, or a function of what varies within it.** Assembling
+one from fragments at the call site — "3" then "items" — cannot be translated
+into a language that agrees the noun differently, and leaves the catalogue
+holding words without the sentence that explains them.
+
+`t` also carries its language (`t.locale`), which is why everything that produces
+text for a human takes it and nothing else: `formatDate(iso, t)`,
+`dayLabel(key, t)`, `exifRows(detail, day, t)`, `validateTitle(value, t)`.
+Threading a second `locale` parameter through those call sites would eventually
+see the two passed the wrong way round.
+
+Switching language also sets `document.documentElement.lang` — hyphenation and
+screen-reader pronunciation depend on it — and `api/client.ts` sends the same
+value as `Accept-Language` on every request, which is how the server learns which
+language to write its refusals and its emails in (see
+[05](./05-api.md)).
+
 ## Dates: all in UTC
 
 `lib/format.ts` builds every one of its `Intl.DateTimeFormat` instances with
-`timeZone: 'UTC'`, and `monthLabel` does the same.
+`timeZone: 'UTC'`, and `monthLabel` does the same. They are built per language —
+`en-GB` and `fr-FR`, cached by shape — and the words around a date come from the
+catalogue rather than from `Intl`: "5 days ago" and "il y a 5 jours" are not a
+formatting difference.
 
 The reason: `taken_at` is the time the device displayed at the moment of
 capture, read from an EXIF field with no time zone and interpreted as UTC by

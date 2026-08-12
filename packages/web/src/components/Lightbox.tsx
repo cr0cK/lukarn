@@ -11,6 +11,7 @@ import {
 import { errorText, mediaUrl } from '../api/client';
 import { useCommentCounts, useMediaDetail, useUpdateAlbum } from '../api/hooks';
 import { useCaptionHidden } from '../lib/caption';
+import { useT, type Translate } from '../lib/i18n';
 import { dayKey, dayLabel } from '../lib/justify';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { isTyping } from '../lib/typing';
@@ -106,6 +107,7 @@ export function Lightbox({
   onClose,
   onNeedMore,
 }: LightboxProps): ReactElement | null {
+  const t = useT();
   const item = items[index];
   const isVideo = item?.kind === 'video';
   /**
@@ -512,7 +514,7 @@ export function Lightbox({
     onSelect: () => void;
   }[] = [
     {
-      label: 'Information',
+      label: t('viewer.information'),
       shortcut: 'i',
       active: panel === 'info',
       onSelect: () => togglePanel('info'),
@@ -527,7 +529,7 @@ export function Lightbox({
       ? []
       : [
           {
-            label: zoomed ? 'Back to screen size' : 'Zoom in',
+            label: t(zoomed ? 'viewer.zoomOut' : 'viewer.zoomIn'),
             shortcut: 'z',
             active: zoomed,
             onSelect: () => setZoomed((value) => !value),
@@ -540,19 +542,19 @@ export function Lightbox({
           },
         ]),
     {
-      label: 'Download the original',
+      label: t('viewer.download'),
       shortcut: 'd',
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
     {
-      label: 'Fullscreen',
+      label: t('viewer.fullscreen'),
       shortcut: 'f',
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
     {
-      label: 'Hide the chrome',
+      label: t('viewer.hideChrome'),
       shortcut: 'h',
       onSelect: () => setBare(true),
       // Use a crossed-out eye: it represents what disappears, not what remains.
@@ -578,7 +580,7 @@ export function Lightbox({
     ...(isAdmin && !isVideo
       ? [
           {
-            label: isCover ? 'Album cover' : 'Set as cover',
+            label: t(isCover ? 'viewer.cover' : 'viewer.setCover'),
             active: isCover,
             onSelect: () => setCover.mutate({ albumId, body: { coverId: item.id } }),
             icon: (
@@ -623,7 +625,7 @@ export function Lightbox({
             aria-valuenow={index + 1}
             aria-valuemin={1}
             aria-valuemax={count}
-            aria-label="Progress through the album"
+            aria-label={t('viewer.progress')}
           >
             <div
               className="h-full bg-accent transition-[width] duration-200"
@@ -670,8 +672,8 @@ export function Lightbox({
               type="button"
               onClick={onClose}
               className="shrink-0 rounded-full p-1.5 text-ink-200 transition-colors sm:p-2 hover:bg-white/10 hover:text-white"
-              aria-label="Close (Esc)"
-              title="Close (Esc)"
+              aria-label={t('viewer.close')}
+              title={t('viewer.close')}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -704,7 +706,7 @@ export function Lightbox({
                     <span className="shrink-0 px-1.5 text-ink-400">·</span>
                   </>
                 )}
-                <span className="shrink-0">{dayLabel(dayKey(item.takenAt))}</span>
+                <span className="shrink-0">{dayLabel(dayKey(item.takenAt), t)}</span>
               </p>
               {/* Place gets its own line now that the first is full. The day note
                   moved to the bottom bar (D84): it is written by hand like the
@@ -721,7 +723,7 @@ export function Lightbox({
                 Inside the menu, it would no longer signal anything. */}
             <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
               <IconButton
-                label={commentsLabel(commentTotal, unread)}
+                label={commentsLabel(commentTotal, unread, t)}
                 active={panel === 'comments'}
                 onClick={() => togglePanel('comments')}
                 badge={<CommentBadge total={commentTotal} unread={unread} />}
@@ -734,7 +736,11 @@ export function Lightbox({
                 {actions.map((action) => (
                   <IconButton
                     key={action.label}
-                    label={action.shortcut ? `${action.label} (${action.shortcut})` : action.label}
+                    label={
+                      action.shortcut
+                        ? t('viewer.shortcut', action.label, action.shortcut)
+                        : action.label
+                    }
                     active={action.active}
                     onClick={action.onSelect}
                   >
@@ -745,7 +751,7 @@ export function Lightbox({
 
               <div className="sm:hidden">
                 <ActionMenu
-                  label="Photo actions"
+                  label={t('viewer.actions')}
                   triggerClassName="rounded-full p-1.5 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
                   groupes={[
                     actions.map((action) => ({
@@ -821,7 +827,7 @@ export function Lightbox({
 
             {isVideo && failed ? (
               <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
-                <p className="text-sm text-ink-300">This video could not be played.</p>
+                <p className="text-sm text-ink-300">{t('viewer.videoFailed')}</p>
                 {/* Name the format rather than saying "an error occurred": it is
                   almost always a codec this browser cannot decode (D79), while
                   the file remains perfectly playable elsewhere. Without the
@@ -832,16 +838,14 @@ export function Lightbox({
                   for it: the message says what will happen without asking for a
                   return or reload (D260809b). */}
                 <p className="text-xs text-ink-400">
-                  {transcoded
-                    ? 'This browser does not decode its format. A playable version is being prepared on the server: it will start here as soon as it is ready. The original file stays downloadable.'
-                    : 'Its format may not be playable by this browser. The original file stays downloadable.'}
+                  {t(transcoded ? 'viewer.videoTranscoding' : 'viewer.videoUnsupported')}
                 </p>
                 <button
                   type="button"
                   onClick={download}
                   className="rounded border border-ink-700 px-3 py-1.5 text-xs text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
                 >
-                  Download
+                  {t('viewer.downloadShort')}
                 </button>
               </div>
             ) : isVideo ? (
@@ -895,8 +899,8 @@ export function Lightbox({
             <button
               type="button"
               onClick={() => setBare(false)}
-              title="Show the chrome (h)"
-              aria-label="Show the chrome (h)"
+              title={t('viewer.showChrome')}
+              aria-label={t('viewer.showChrome')}
               className="absolute top-[calc(0.5rem_+_env(safe-area-inset-top))] right-[calc(0.5rem_+_env(safe-area-inset-right))] z-10 rounded-full bg-black/40 p-2 text-ink-200 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-white"
             >
               <svg
@@ -926,7 +930,7 @@ export function Lightbox({
               role="alert"
               className="absolute inset-x-4 bottom-28 mx-auto max-w-md rounded-lg bg-red-950/90 px-3 py-2 text-center text-xs text-red-200 shadow-lg"
             >
-              {errorText(setCover.error, 'The cover could not be saved.')}
+              {errorText(setCover.error, t('viewer.coverFailed'))}
             </p>
           )}
         </div>
@@ -947,7 +951,7 @@ export function Lightbox({
             side="left"
             disabled={index === 0}
             onClick={() => goTo(index - 1)}
-            label="Previous (←)"
+            label={t('viewer.previous')}
           />
         )}
         {!zoomed && !bare && (
@@ -955,7 +959,7 @@ export function Lightbox({
             side="right"
             disabled={index === items.length - 1}
             onClick={() => goTo(index + 1)}
-            label="Next (→)"
+            label={t('viewer.next')}
           />
         )}
 
@@ -1130,10 +1134,10 @@ function CommentBadge({ total, unread }: { total: number; unread: number }): Rea
  * Accessible button label: it carries the badge information because the badge
  * is purely visual.
  */
-function commentsLabel(total: number, unread: number): string {
-  if (total === 0) return 'Comments (c)';
-  if (unread === 0) return `Comments: ${total} (c)`;
-  return `Comments: ${total}, ${unread} ${unread > 1 ? 'unread' : 'unread'} (c)`;
+function commentsLabel(total: number, unread: number, t: Translate): string {
+  if (total === 0) return t('viewer.comments');
+  if (unread === 0) return t('viewer.commentsCount', total);
+  return t('viewer.commentsUnread', total, unread);
 }
 
 function NavButton({

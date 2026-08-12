@@ -1,5 +1,6 @@
 import { ALL_ALBUMS, type AdminAlbum } from '@lukarn/shared';
 import { type ReactElement, useId, useState } from 'react';
+import { useT } from '../../lib/i18n';
 
 interface AlbumAccessPickerProps {
   albums: AdminAlbum[];
@@ -23,6 +24,7 @@ export function AlbumAccessPicker({
   onChange,
   disabled = false,
 }: AlbumAccessPickerProps): ReactElement {
+  const t = useT();
   const groupId = useId();
   const wildcard = value.includes(ALL_ALBUMS);
 
@@ -47,7 +49,7 @@ export function AlbumAccessPicker({
 
   return (
     <fieldset disabled={disabled} className="min-w-0">
-      <legend className="mb-1.5 text-sm text-ink-300">Accessible albums</legend>
+      <legend className="mb-1.5 text-sm text-ink-300">{t('access.legend')}</legend>
 
       <div className="space-y-2">
         <Choice
@@ -55,11 +57,10 @@ export function AlbumAccessPicker({
           id={`${groupId}-all`}
           checked={wildcard}
           onSelect={() => onChange([ALL_ALBUMS])}
-          label="Every album"
+          label={t('access.every')}
           hint={
             <>
-              Including those created later. Stored as the wildcard{' '}
-              <code className="text-ink-300">{ALL_ALBUMS}</code>.
+              {t('access.everyHint')} <code className="text-ink-300">{ALL_ALBUMS}</code>.
             </>
           }
         />
@@ -69,8 +70,8 @@ export function AlbumAccessPicker({
           id={`${groupId}-pick`}
           checked={!wildcard}
           onSelect={() => select(remembered)}
-          label="A selection of albums"
-          hint="Only the albums ticked. An album created later has to be assigned by hand."
+          label={t('access.selection')}
+          hint={t('access.selectionHint')}
         />
       </div>
 
@@ -78,7 +79,7 @@ export function AlbumAccessPicker({
         <div className="mt-3">
           {albums.length === 0 && orphans.length === 0 ? (
             <p className="rounded-lg border border-dashed border-ink-700 px-3 py-4 text-xs text-ink-400">
-              No album exists yet. Create one in the Albums section, or grant the wildcard.
+              {t('access.noAlbum')}
             </p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-ink-700 p-2">
@@ -89,7 +90,7 @@ export function AlbumAccessPicker({
                   checked={selected.includes(album.id)}
                   onChange={(checked) => toggle(album.id, checked)}
                   title={album.title}
-                  detail={`${album.id} · ${album.itemCount.toLocaleString('en-GB')} items`}
+                  detail={t('access.albumDetail', album.id, album.itemCount)}
                 />
               ))}
 
@@ -100,18 +101,13 @@ export function AlbumAccessPicker({
                   checked
                   onChange={() => toggle(albumId, false)}
                   title={albumId}
-                  detail="unknown album — untick to remove it"
+                  detail={t('access.orphan')}
                 />
               ))}
             </div>
           )}
 
-          {allChecked && (
-            <p className="mt-2 text-xs text-amber-300">
-              Every current album is ticked, which is not the same as "Every album": the next ones
-              will not be assigned automatically.
-            </p>
-          )}
+          {allChecked && <p className="mt-2 text-xs text-amber-300">{t('access.allTicked')}</p>}
         </div>
       )}
     </fieldset>

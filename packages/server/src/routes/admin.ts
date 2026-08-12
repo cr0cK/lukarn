@@ -25,7 +25,7 @@ import { z } from 'zod';
 import type { StoredAlbum } from '../config-repo.js';
 import { toAdminUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
-import { DriveNotConfiguredError } from '../drive/service.js';
+import type { Translate } from '../i18n/index.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { buildAlbum } from '../repo.js';
 
@@ -160,12 +160,18 @@ function commenterIdOf(params: unknown): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-/** Readable error message: the invalid field's path followed by the reason. */
-function badRequest(reply: FastifyReply, error: z.ZodError): FastifyReply {
+/**
+ * Readable error message: the invalid field's path followed by the reason.
+ *
+ * The reason itself comes from Zod and stays in English — it names the schema,
+ * not the interface, and translating a library's vocabulary would mean
+ * maintaining a copy of it.
+ */
+function badRequest(reply: FastifyReply, error: z.ZodError, t: Translate): FastifyReply {
   const details = error.issues
     .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
     .join(' ; ');
-  return reply.code(400).send({ error: 'bad_request', message: `Invalid request — ${details}` });
+  return reply.code(400).send({ error: 'bad_request', message: t('error.validation', details) });
 }
 
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
@@ -230,7 +236,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
      */
     app.get('/visits', async (request, reply) => {
       const parsed = visitsQuerySchema.safeParse(request.query);
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
       const overview: VisitsOverview = context.visits.overview(parsed.data.days);
       return reply.send(overview);
@@ -244,7 +250,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
     app.post('/users', async (request, reply) => {
       const parsed = createUserSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const input = parsed.data;
 
       // Overwriting an existing account would change its password and permissions
@@ -252,7 +258,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (context.config.user(input.username)) {
         return reply.code(409).send({
           error: 'conflict',
-          message: `The username "${input.username}" is already taken.`,
+          message: request.t('error.usernameTaken', input.username),
         });
       }
 
@@ -260,7 +266,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (missing) {
         return reply
           .code(400)
-          .send({ error: 'unknown_album', message: `Unknown album: "${missing}"` });
+          .send({ error: 'unknown_album', message: request.t('error.unknownAlbum', missing) });
       }
 
       const user = context.config.createUser({
@@ -278,11 +284,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { username } = request.params as { username: string };
       const stored = context.config.user(username);
       if (!stored) {
-        return reply.code(404).send({ error: 'not_found', message: 'Account not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.accountNotFound') });
       }
 
       const parsed = updateUserSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const patch = parsed.data;
 
       // Removing the last administrator's role would make the instance impossible to
@@ -290,9 +298,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (patch.admin === false && stored.admin && context.config.adminCount() <= 1) {
         return reply.code(409).send({
           error: 'last_admin',
-          message:
-            'The last administrator cannot have the role removed: the instance would ' +
-            'become unadministrable. Appoint another administrator first.',
+          message: request.t('error.lastAdminRole'),
         });
       }
 
@@ -301,7 +307,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         if (missing) {
           return reply
             .code(400)
-            .send({ error: 'unknown_album', message: `Unknown album: "${missing}"` });
+            .send({ error: 'unknown_album', message: request.t('error.unknownAlbum', missing) });
         }
       }
 
@@ -335,15 +341,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { username } = request.params as { username: string };
       const stored = context.config.user(username);
       if (!stored) {
-        return reply.code(404).send({ error: 'not_found', message: 'Account not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.accountNotFound') });
       }
 
       if (stored.admin && context.config.adminCount() <= 1) {
         return reply.code(409).send({
           error: 'last_admin',
-          message:
-            'The last administrator cannot be deleted: the instance would become ' +
-            'unadministrable.',
+          message: request.t('error.lastAdminDelete'),
         });
       }
 
@@ -364,7 +370,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
      */
     app.get('/comments', async (request, reply) => {
       const parsed = moderationQuerySchema.safeParse(request.query);
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const { filter, albumId: album, q, limit, cursor } = parsed.data;
 
       return reply.send(
@@ -381,7 +387,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/comments/:commentId/hide', async (request, reply) => {
       const id = Number((request.params as { commentId: string }).commentId);
       if (!Number.isInteger(id) || id <= 0) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidUsername') });
       }
 
       // Hiding twice is not an error but must not rewrite the date: the original
@@ -389,7 +397,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!context.comments.hide(id, request.user!.username)) {
         const existing = context.comments.byId(id, { commenterId: null, admin: true });
         if (!existing) {
-          return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.commentNotFound') });
         }
       }
 
@@ -400,11 +410,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/comments/:commentId/show', async (request, reply) => {
       const id = Number((request.params as { commentId: string }).commentId);
       if (!Number.isInteger(id) || id <= 0) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidUsername') });
       }
 
       if (!context.comments.show(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Comment not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.commentNotFound') });
       }
 
       request.log.info(`Commentaire ${id} rendu visible par "${request.user!.username}"`);
@@ -424,12 +438,16 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/commenters/:commenterId/hide', async (request, reply) => {
       const id = commenterIdOf(request.params);
       if (id === null) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidUsername') });
       }
       // Without this check, an invented identifier would return "0 messages affected" —
       // indistinguishable from an identity that wrote nothing.
       if (!context.commenters.byId(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Identity not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.identityNotFound') });
       }
 
       const affected = context.comments.hideAllFrom(id, request.user!.username);
@@ -442,10 +460,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/commenters/:commenterId/show', async (request, reply) => {
       const id = commenterIdOf(request.params);
       if (id === null) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid username' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidUsername') });
       }
       if (!context.commenters.byId(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Identity not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.identityNotFound') });
       }
 
       const affected = context.comments.showAllFrom(id);
@@ -464,13 +486,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
     app.post('/albums', async (request, reply) => {
       const parsed = createAlbumSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const input = parsed.data;
 
       if (context.findAlbum(input.id)) {
         return reply
           .code(409)
-          .send({ error: 'conflict', message: `Album "${input.id}" already exists.` });
+          .send({ error: 'conflict', message: request.t('error.albumExists', input.id) });
       }
 
       const album = context.config.createAlbum({
@@ -493,11 +515,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const { id } = request.params as { id: string };
       const stored = context.findAlbum(id);
       if (!stored) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
       }
 
       const parsed = updateAlbumSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const { coverId, ...patch } = parsed.data;
 
       /**
@@ -510,7 +534,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         if (!chosen || chosen.kind !== 'photo') {
           return reply.code(400).send({
             error: 'unknown_cover',
-            message: 'That cover is not a photo indexed in this album.',
+            message: request.t('error.coverNotInAlbum'),
           });
         }
       }
@@ -548,7 +572,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.delete('/albums/:id', async (request, reply) => {
       const { id } = request.params as { id: string };
       if (!context.findAlbum(id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
       }
 
       context.config.deleteAlbum(id);
@@ -578,14 +604,16 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.patch('/albums/:id/days/:day', async (request, reply) => {
       const params = request.params as { id: string; day: string };
       if (!context.findAlbum(params.id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
       }
 
       const day = dayKey.safeParse(params.day);
-      if (!day.success) return badRequest(reply, day.error);
+      if (!day.success) return badRequest(reply, day.error, request.t);
 
       const parsed = updateAlbumDaySchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
       return reply.send(context.days.upsertNote(params.id, day.data, parsed.data));
     });
@@ -599,17 +627,21 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.patch('/albums/:id/items/:mediaId', async (request, reply) => {
       const params = request.params as { id: string; mediaId: string };
       if (!context.findAlbum(params.id)) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
       }
 
       const parsed = updateMediaSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
       // Describing a photo absent from the index would leave text that is never
       // displayed, attached to a possibly invented identifier.
       const item = context.media.setDescription(params.id, params.mediaId, parsed.data);
       if (!item) {
-        return reply.code(404).send({ error: 'not_found', message: 'Media not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
       return reply.send(item);
@@ -621,7 +653,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
     app.patch('/settings', async (request, reply) => {
       const parsed = updateSettingsSchema.safeParse(request.body ?? {});
-      if (!parsed.success) return badRequest(reply, parsed.error);
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
       // `updateSettings` also applies changes: disk-cache limit and synchronisation
       // timer rescheduling, without a restart.
@@ -642,19 +674,17 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
      * the folder in Drive. Refusing it here rather than allowing completion avoids
      * recording a token nothing would use and suggesting that consent is required.
      */
-    app.get('/oauth/start', async (_request, reply) => {
+    app.get('/oauth/start', async (request, reply) => {
       if (context.drive.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
-          message:
-            'This instance authenticates with a service account: there is no consent to ' +
-            'give. Share the folder with its address from Google Drive.',
+          message: request.t('error.serviceAccountConsent'),
         });
       }
       if (!context.drive.configured) {
         return reply.code(400).send({
           error: 'oauth_not_configured',
-          message: new DriveNotConfiguredError().message,
+          message: request.t('error.oauthNotConfigured'),
         });
       }
 
@@ -671,16 +701,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         .send({ url: context.drive.authUrl(state) });
     });
 
-    app.post('/drive/disconnect', async (_request, reply) => {
+    app.post('/drive/disconnect', async (request, reply) => {
       // Nothing to disconnect: the key comes from configuration and access from Drive
       // sharing. Responding "done" would suggest the instance is disconnected while
       // it continues to read everything.
       if (context.drive.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
-          message:
-            'This instance authenticates with a service account: remove ' +
-            'GOOGLE_SERVICE_ACCOUNT_FILE, or the folder share on the Drive side.',
+          message: request.t('error.serviceAccountDisconnect'),
         });
       }
       context.drive.disconnect();
@@ -690,13 +718,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/resync', async (request, reply) => {
       const parsed = resyncSchema.safeParse(request.body ?? {});
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid parameters' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidParameters') });
       }
 
       if (!context.drive.connected) {
         return reply.code(503).send({
           error: 'drive_disconnected',
-          message: 'Connect Google Drive before starting a sync.',
+          message: request.t('error.driveNotConnected'),
         });
       }
 
@@ -705,7 +735,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         : context.albums;
 
       if (targets.length === 0) {
-        return reply.code(404).send({ error: 'not_found', message: 'Album not found' });
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
       }
 
       // Sync runs in the background: on a large album it greatly exceeds an HTTP

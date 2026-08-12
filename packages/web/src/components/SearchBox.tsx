@@ -2,6 +2,7 @@ import { SEARCH_MIN_LENGTH, type SearchHit, type SearchHitKind } from '@lukarn/s
 import { type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearch } from '../api/hooks';
+import { useT, type Translate } from '../lib/i18n';
 import { dayLabel } from '../lib/justify';
 import { useDebounced } from '../lib/useDebounced';
 import { useShortcut } from '../lib/useShortcut';
@@ -18,11 +19,13 @@ import { useShortcut } from '../lib/useShortcut';
  * would interrupt typing, defeating the purpose of suggestions.
  */
 
-const GROUPES: { kind: SearchHitKind; titre: string }[] = [
-  { kind: 'album', titre: 'Albums' },
-  { kind: 'day', titre: 'Days and places' },
-  { kind: 'media', titre: 'Photos' },
-];
+/** Result groups, in display order. Their heading is read from the catalogue. */
+const GROUPES: { kind: SearchHitKind; titre: 'search.albums' | 'search.days' | 'search.photos' }[] =
+  [
+    { kind: 'album', titre: 'search.albums' },
+    { kind: 'day', titre: 'search.days' },
+    { kind: 'media', titre: 'search.photos' },
+  ];
 
 /** Where a result leads. */
 function lienDe(hit: SearchHit): string {
@@ -43,9 +46,9 @@ function lienDe(hit: SearchHit): string {
  * only when it is not already the label, and the date is formatted here like
  * every application date (`format.ts`, in UTC).
  */
-function situationDe(hit: SearchHit): string | null {
+function situationDe(hit: SearchHit, t: Translate): string | null {
   const parts = [
-    ...(hit.kind === 'day' && hit.day ? [dayLabel(hit.day)] : []),
+    ...(hit.kind === 'day' && hit.day ? [dayLabel(hit.day, t)] : []),
     ...(hit.kind === 'album' ? [] : [hit.albumTitle]),
     ...(hit.context ? [hit.context] : []),
   ];
@@ -62,6 +65,7 @@ interface SearchBoxProps {
 
 export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElement {
   const navigate = useNavigate();
+  const t = useT();
   const [saisie, setSaisie] = useState('');
   const [ouvert, setOuvert] = useState(false);
   const [actif, setActif] = useState(0);
@@ -163,12 +167,12 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
         ref={champ}
         type="search"
         role="combobox"
-        aria-label="Search"
+        aria-label={t('search.label')}
         aria-expanded={deplie}
         aria-controls="recherche-resultats"
         aria-autocomplete="list"
         aria-activedescendant={deplie && hits[actif] ? `recherche-option-${actif}` : undefined}
-        placeholder="Search…"
+        placeholder={t('search.placeholder')}
         value={saisie}
         onChange={(event) => {
           setSaisie(event.target.value);
@@ -189,17 +193,17 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
           {/* Use `div` elements rather than lists: a `role="listbox"` owns only
               `option` and `group`, and the implicit `list` role of a nested `ul`
               would sit between them. */}
-          <div id="recherche-resultats" role="listbox" aria-label="Search results">
+          <div id="recherche-resultats" role="listbox" aria-label={t('search.results')}>
             {groupes.map((groupe) => (
-              <div key={groupe.kind} role="group" aria-label={groupe.titre}>
+              <div key={groupe.kind} role="group" aria-label={t(groupe.titre)}>
                 <p
                   aria-hidden="true"
                   className="px-3 pt-2 pb-1 text-xs tracking-wide text-ink-400 uppercase"
                 >
-                  {groupe.titre}
+                  {t(groupe.titre)}
                 </p>
                 {groupe.entrees.map(({ hit, rang }) => {
-                  const situation = situationDe(hit);
+                  const situation = situationDe(hit, t);
                   return (
                     <div
                       key={`${hit.kind}-${hit.albumId}-${hit.day ?? hit.mediaId ?? ''}`}
@@ -233,7 +237,7 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
               false statement between two characters. */}
           {hits.length === 0 && (
             <p className="px-3 py-4 text-center text-sm text-ink-400">
-              {isFetching ? 'Searching…' : 'No result'}
+              {t(isFetching ? 'search.searching' : 'search.empty')}
             </p>
           )}
         </div>

@@ -6,6 +6,7 @@ import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply } f
 import { AppContext } from './context.js';
 import type { Env } from './env.js';
 import authPlugin from './plugins/auth.js';
+import localePlugin from './plugins/locale.js';
 import securityHeaders from './plugins/headers.js';
 import { createAdminRoutes, createOAuthCallbackRoute } from './routes/admin.js';
 import { createAlbumRoutes } from './routes/albums.js';
@@ -58,6 +59,9 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
   // produced independently by subsequent plugins.
   await server.register(securityHeaders, { publicUrl: env.publicUrl });
   await server.register(fastifyCookie, { secret: env.sessionSecret });
+  // Before authentication: `requireAuth` refuses in the language of the request,
+  // so `request.t` must already exist when its `preHandler` runs.
+  await server.register(localePlugin, { env });
   await server.register(authPlugin, { context });
 
   await server.register(

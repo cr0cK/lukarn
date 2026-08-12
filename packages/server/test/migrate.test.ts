@@ -376,6 +376,34 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('adds the reading language to a version 15 database without touching an identity', () => {
+    const db = databaseAtVersion(15);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO commenters (email, display_name, notify, verified_at, created_at)
+       VALUES ('mamie@exemple.fr', 'Mamie', 1, ?, ?)`,
+    ).run(date, date);
+
+    migrate(db);
+
+    const commenter = db
+      .prepare('SELECT * FROM commenters WHERE email = ?')
+      .get('mamie@exemple.fr') as {
+      display_name: string;
+      verified_at: string;
+      locale: string | null;
+    };
+
+    // The identity survives verified, and its language arrives empty: inferring
+    // one from past emails would be a guess, and the next request settles it
+    // (D260812d).
+    assert.equal(commenter.display_name, 'Mamie');
+    assert.equal(commenter.verified_at, date);
+    assert.equal(commenter.locale, null);
+
+    db.close();
+  });
+
   it('adds telemetry to a version 14 database without losing anything', () => {
     const db = databaseAtVersion(14);
     const date = '2026-01-01T00:00:00.000Z';

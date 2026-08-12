@@ -1,6 +1,7 @@
 import type { AlbumDay, MediaDetail } from '@lukarn/shared';
 import type { ReactElement } from 'react';
 import { exifRows } from '../lib/exifRows';
+import { useT } from '../lib/i18n';
 
 /**
  * Contents of the side panel's "Info" tab.
@@ -17,11 +18,12 @@ export function ExifPanel({
   detail: MediaDetail | undefined;
   day: AlbumDay | undefined;
 }): ReactElement {
-  if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">Loading…</p>;
+  const t = useT();
+  if (!detail) return <p className="px-5 py-4 text-sm text-ink-400">{t('common.loading')}</p>;
 
   return (
     <dl className="divide-y divide-ink-800">
-      {exifRows(detail, day).map((row) => (
+      {exifRows(detail, day, t).map((row) => (
         // `items-baseline`: the label is 12 px and its value 14 px. Aligned by the
         // top of their boxes, their baselines differ by three pixels — enough to
         // make every label seem to float above its value. The baseline aligns them

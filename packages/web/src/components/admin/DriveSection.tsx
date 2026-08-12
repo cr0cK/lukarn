@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';
 import { queryKeys } from '../../api/hooks';
 import { formatRelative } from '../../lib/format';
+import { useT } from '../../lib/i18n';
 import { Button, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
 
 /** "Google Drive connection" section: OAuth authorisation status. */
@@ -14,6 +15,7 @@ export function DriveSection({
   status: AdminStatus;
   notify: Notify;
 }): ReactElement {
+  const t = useT();
   const queryClient = useQueryClient();
 
   const connect = useMutation({
@@ -23,16 +25,17 @@ export function DriveSection({
     onSuccess: ({ url }) => {
       window.location.href = url;
     },
-    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Connection failed.') }),
+    onError: (error) => notify({ tone: 'error', text: errorText(error, t('drive.connectFailed')) }),
   });
 
   const disconnect = useMutation({
     mutationFn: api.driveDisconnect,
     onSuccess: () => {
-      notify({ tone: 'ok', text: 'Google Drive disconnected.' });
+      notify({ tone: 'ok', text: t('drive.disconnected') });
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
-    onError: (error) => notify({ tone: 'error', text: errorText(error, 'Cannot disconnect.') }),
+    onError: (error) =>
+      notify({ tone: 'error', text: errorText(error, t('drive.disconnectFailed')) }),
   });
 
   /**
@@ -43,51 +46,45 @@ export function DriveSection({
    */
   if (status.driveMode === 'service_account') {
     return (
-      <Section title="Google Drive connection">
+      <Section title={t('drive.title')}>
         <div className="px-4 py-4">
           <p className="text-sm text-ink-200">
-            Service account{status.driveAccount ? ` — ${status.driveAccount}` : ''}
+            {t('drive.serviceAccount')}
+            {status.driveAccount ? ` — ${status.driveAccount}` : ''}
           </p>
-          <p className="mt-1 text-xs text-ink-400">
-            No consent to give, no token to renew. Every album folder has to be shared read-only
-            with this address from Google Drive — otherwise it stays invisible, and its
-            synchronisation finds nothing.
-          </p>
+          <p className="mt-1 text-xs text-ink-400">{t('drive.serviceAccountHint')}</p>
         </div>
       </Section>
     );
   }
 
   return (
-    <Section title="Google Drive connection">
+    <Section title={t('drive.title')}>
       <div className={`${ROW_CLASS} px-4 py-4 xl:items-center`}>
         <div className="min-w-0 flex-1">
           {!status.oauthConfigured ? (
             <p className="text-sm text-amber-300">
-              GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set in the <code>.env</code> file.
+              {t('drive.notConfigured')} <code>.env</code>
+              {t('drive.notConfiguredEnd')}
             </p>
           ) : status.driveRevokedAt ? (
             // Authorisation existed but Google now refuses it. State this explicitly
             // to avoid looking for the failure elsewhere.
             <>
               <p className="text-sm text-red-300">
-                Authorisation revoked
-                {status.driveAccount ? ` for ${status.driveAccount}` : ''} —{' '}
-                {formatRelative(status.driveRevokedAt)}
+                {t('drive.revoked')}
+                {status.driveAccount ? ` ${t('drive.revokedFor', status.driveAccount)}` : ''} —{' '}
+                {formatRelative(status.driveRevokedAt, t)}
               </p>
-              <p className="mt-1 text-xs text-ink-400">
-                Access was withdrawn on the Google side, or the token expired. The albums stay
-                viewable as long as thumbnails remain cached. Reconnect to resume synchronisation.
-              </p>
+              <p className="mt-1 text-xs text-ink-400">{t('drive.revokedHint')}</p>
             </>
           ) : status.driveConnected ? (
             <p className="text-sm text-ink-200">
-              Connected{status.driveAccount ? ` — ${status.driveAccount}` : ''}
+              {t('drive.connected')}
+              {status.driveAccount ? ` — ${status.driveAccount}` : ''}
             </p>
           ) : (
-            <p className="text-sm text-ink-300">
-              No account connected. Authorise read access to your Drive.
-            </p>
+            <p className="text-sm text-ink-300">{t('drive.notConnected')}</p>
           )}
         </div>
 
@@ -98,7 +95,7 @@ export function DriveSection({
               onClick={() => disconnect.mutate()}
               disabled={disconnect.isPending}
             >
-              Disconnect
+              {t('drive.disconnect')}
             </Button>
           ) : (
             <Button
@@ -106,7 +103,7 @@ export function DriveSection({
               onClick={() => connect.mutate()}
               disabled={!status.oauthConfigured || connect.isPending}
             >
-              {status.driveRevokedAt ? 'Reconnect Google Drive' : 'Connect Google Drive'}
+              {t(status.driveRevokedAt ? 'drive.reconnect' : 'drive.connect')}
             </Button>
           )}
         </div>

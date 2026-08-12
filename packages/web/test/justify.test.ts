@@ -9,8 +9,16 @@ import {
   monthLabel,
   targetRowHeightFor,
 } from '../src/lib/justify';
+import { makeTranslate } from '../src/lib/i18n/translate';
+
+/**
+ * The English catalogue, read without a provider: these functions produce text,
+ * and a test that stubbed the translation would check its own stub.
+ */
+const t = makeTranslate('en');
 
 const OPTIONS = {
+  t,
   containerWidth: 1200,
   targetRowHeight: 240,
   gap: 4,
@@ -180,7 +188,7 @@ describe('grouping by month', () => {
   });
 
   it('returns a readable label with an initial capital', () => {
-    assert.equal(monthLabel('2024-07'), 'July 2024');
+    assert.equal(monthLabel('2024-07', t), 'July 2024');
   });
 });
 
@@ -198,22 +206,22 @@ describe('grouping by day', () => {
   });
 
   it('returns a readable date rather than the technical key', () => {
-    assert.equal(dayLabel('2026-07-14', '2026-08-01'), '14 July 2026');
+    assert.equal(dayLabel('2026-07-14', t, '2026-08-01'), '14 July 2026');
   });
 
   it('names the two most recent days instead of dating them', () => {
     // In a newly updated album, "Today" is recognisable at a glance whereas two
     // neighbouring day numbers require reading the digits.
-    assert.equal(dayLabel('2026-08-01', '2026-08-01'), 'Today');
-    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Yesterday');
-    assert.equal(dayLabel('2026-07-30', '2026-08-01'), '30 July 2026');
+    assert.equal(dayLabel('2026-08-01', t, '2026-08-01'), 'Today');
+    assert.equal(dayLabel('2026-07-31', t, '2026-08-01'), 'Yesterday');
+    assert.equal(dayLabel('2026-07-30', t, '2026-08-01'), '30 July 2026');
   });
 
   it('finds yesterday across a month boundary and a leap year', () => {
     // Naively decrementing the day number would date "Yesterday" as 0 March.
-    assert.equal(dayLabel('2026-07-31', '2026-08-01'), 'Yesterday');
-    assert.equal(dayLabel('2024-02-29', '2024-03-01'), 'Yesterday');
-    assert.equal(dayLabel('2025-12-31', '2026-01-01'), 'Yesterday');
+    assert.equal(dayLabel('2026-07-31', t, '2026-08-01'), 'Yesterday');
+    assert.equal(dayLabel('2024-02-29', t, '2024-03-01'), 'Yesterday');
+    assert.equal(dayLabel('2025-12-31', t, '2026-01-01'), 'Yesterday');
   });
 });
 

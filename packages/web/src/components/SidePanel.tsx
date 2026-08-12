@@ -1,5 +1,6 @@
 import type { AlbumDay, MediaDetail } from '@lukarn/shared';
 import type { ReactElement } from 'react';
+import { useT } from '../lib/i18n';
 import { CommentsPanel } from './CommentsPanel';
 import { ExifPanel } from './ExifPanel';
 
@@ -49,6 +50,8 @@ export function SidePanel({
   onTabChange: (tab: PanelTab) => void;
   onClose: () => void;
 }): ReactElement {
+  const t = useT();
+
   return (
     <aside
       // Two modes depending on width. From `md`, the panel sits in the flow: the
@@ -59,7 +62,7 @@ export function SidePanel({
       // three luminance points apart blended together — only the border revealed
       // the open panel.
       className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-850/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-850 md:backdrop-blur-none lg:w-96"
-      aria-label="Information and comments"
+      aria-label={t('panel.label')}
     >
       <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
         <h3 className="min-w-0 text-sm font-medium break-words text-ink-100">{mediaName}</h3>
@@ -72,7 +75,7 @@ export function SidePanel({
           // Without this, its 4 px placed it below the title and to the right of
           // the content column — two offsets that are hard to name but visible.
           className="-my-1 -mr-1 shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-          aria-label="Close the panel (Esc)"
+          aria-label={t('panel.close')}
         >
           <svg
             viewBox="0 0 24 24"
@@ -86,16 +89,16 @@ export function SidePanel({
         </button>
       </header>
 
-      <div role="tablist" aria-label="Panel sections" className="flex border-b border-ink-800">
+      <div role="tablist" aria-label={t('panel.sections')} className="flex border-b border-ink-800">
         <Tab selected={tab === 'info'} onSelect={() => onTabChange('info')} controls="panel-info">
-          Info
+          {t('panel.info')}
         </Tab>
         <Tab
           selected={tab === 'comments'}
           onSelect={() => onTabChange('comments')}
           controls="panel-comments"
         >
-          Comments
+          {t('panel.comments')}
           {/* The count comes from already loaded media detail: showing "3"
               before the tab opens is what makes it worth reading. */}
           {detail && detail.commentCount > 0 && (

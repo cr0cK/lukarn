@@ -554,6 +554,20 @@ export const MIGRATIONS: string[] = [
   -- Supports both "Visits" tab aggregations, bounded by "day >= ?", and annual cleanup.
   CREATE INDEX idx_album_visits_day ON album_visits (day);
   `,
+
+  // 16 — the language a person is written to in.
+  //
+  // On `commenters` rather than `users`: a username is an access key a household
+  // may share, while an email lands in one inbox belonging to one reader. The
+  // interface language stays in the browser (`localStorage`), which is what a
+  // shared television needs; this column exists only so an email composed hours
+  // later reaches its recipient in the language they read (D260812d).
+  //
+  // NULL until that person's browser announces one: the instance's DEFAULT_LOCALE
+  // then applies, rather than a value invented at migration time.
+  `
+  ALTER TABLE commenters ADD COLUMN locale TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

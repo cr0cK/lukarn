@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useT, type MessageKey } from '../../lib/i18n';
 
 /**
  * Administration sections in display order.
@@ -8,12 +9,12 @@ import { NavLink } from 'react-router-dom';
  * segment against this list. Adding a section here requires no second update.
  */
 export const ADMIN_TABS = [
-  { slug: 'albums', label: 'Albums' },
-  { slug: 'accounts', label: 'Accounts' },
-  { slug: 'comments', label: 'Comments' },
-  { slug: 'server', label: 'Server' },
-  { slug: 'visits', label: 'Visits' },
-] as const;
+  { slug: 'albums', label: 'admin.tabAlbums' },
+  { slug: 'accounts', label: 'admin.tabAccounts' },
+  { slug: 'comments', label: 'admin.tabComments' },
+  { slug: 'server', label: 'admin.tabServer' },
+  { slug: 'visits', label: 'admin.tabVisits' },
+] as const satisfies readonly { slug: string; label: MessageKey }[];
 
 /** Administration section as it appears in the URL. */
 export type AdminTab = (typeof ADMIN_TABS)[number]['slug'];
@@ -31,9 +32,11 @@ export function isAdminTab(valeur: string | undefined): valeur is AdminTab {
  * path comparisons.
  */
 export function AdminNav(): ReactElement {
+  const t = useT();
+
   return (
     <nav
-      aria-label="Administration sections"
+      aria-label={t('admin.sections')}
       // Two width-dependent modes, like `SidePanel`. From `md`, use a sticky
       // column that remains visible while scrolling the paginated, and therefore
       // long, moderation queue. Below that, use a horizontally scrolling row —
@@ -53,7 +56,7 @@ export function AdminNav(): ReactElement {
             }`
           }
         >
-          {tab.label}
+          {t(tab.label)}
         </NavLink>
       ))}
     </nav>

@@ -15,6 +15,7 @@ import {
 } from '../api/hooks';
 import { PICKER_EMOJI, emojify, insertEmoji } from '../lib/emoji';
 import { formatLocalDateTime, formatRelative } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { IdentityForm } from './IdentityForm';
 import { Spinner } from './Spinner';
 
@@ -33,22 +34,21 @@ export function CommentsPanel({
   albumId: string;
   mediaId: string;
 }): ReactElement {
+  const t = useT();
   const { data, isPending, error } = useComments(albumId, mediaId, true);
   const [replyTo, setReplyTo] = useState<number | null>(null);
 
   if (isPending) {
     return (
       <div className="flex justify-center py-8">
-        <Spinner label="Loading comments" />
+        <Spinner label={t('comments.loading')} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <p className="px-5 py-4 text-sm text-ink-400">
-        {errorText(error, 'Comments could not be loaded.')}
-      </p>
+      <p className="px-5 py-4 text-sm text-ink-400">{errorText(error, t('comments.loadFailed'))}</p>
     );
   }
 
@@ -58,7 +58,7 @@ export function CommentsPanel({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 overflow-y-auto">
         {threads.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-ink-400">No comments. Be the first to write one.</p>
+          <p className="px-5 py-6 text-sm text-ink-400">{t('comments.empty')}</p>
         ) : (
           <ul className="divide-y divide-ink-800">
             {threads.map((thread) => (
@@ -98,6 +98,7 @@ export function CommentsPanel({
  * person being asked.
  */
 function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): ReactElement {
+  const t = useT();
   const { data: me } = useMe();
   const [identifying, setIdentifying] = useState(false);
 
@@ -108,16 +109,16 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
           albumId={albumId}
           mediaId={mediaId}
           parentId={null}
-          placeholder={`Comment as ${me.identity.displayName}…`}
+          placeholder={t('comments.placeholder', me.identity.displayName)}
         />
         <p className="mt-2 text-xs text-ink-400">
-          You're commenting as <span className="text-ink-200">{me.identity.displayName}</span>.{' '}
+          {t('comments.signedAs')} <span className="text-ink-200">{me.identity.displayName}</span>.{' '}
           <button
             type="button"
             onClick={() => setIdentifying(true)}
             className="underline underline-offset-2 transition-colors hover:text-ink-100"
           >
-            Change address
+            {t('comments.changeAddress')}
           </button>
         </p>
       </>
@@ -127,11 +128,7 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
   // Without an SMTP server, no code can be sent: explaining that is better than
   // offering a form that fails at the final step.
   if (me && !me.commentsEnabled) {
-    return (
-      <p className="text-sm text-ink-400">
-        Comments are unavailable: this gallery has no mail server configured.
-      </p>
-    );
+    return <p className="text-sm text-ink-400">{t('comments.disabled')}</p>;
   }
 
   if (identifying) return <IdentityForm onDone={() => setIdentifying(false)} />;
@@ -142,7 +139,7 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
       onClick={() => setIdentifying(true)}
       className="w-full rounded border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
     >
-      Sign in to comment
+      {t('comments.signIn')}
     </button>
   );
 }
@@ -160,6 +157,7 @@ function ThreadView({
   replyTo: number | null;
   onReplyTo: (id: number | null) => void;
 }): ReactElement {
+  const t = useT();
   const { data: me } = useMe();
   // Without a verified identity, the server would reject the reply: offering
   // the button would lead straight to an error message.
@@ -194,7 +192,7 @@ function ThreadView({
             albumId={albumId}
             mediaId={mediaId}
             parentId={thread.root.id}
-            placeholder={`Reply to ${thread.root.author.displayName}…`}
+            placeholder={t('comments.replyPlaceholder', thread.root.author.displayName)}
             autoFocus
             onDone={() => onReplyTo(null)}
           />
@@ -246,6 +244,7 @@ function CommentView({
   mediaId: string;
   onReply?: () => void;
 }): ReactElement {
+  const t = useT();
   const remove = useDeleteComment(albumId, mediaId);
   const update = useUpdateComment(albumId, mediaId);
   const [editing, setEditing] = useState(false);
@@ -257,10 +256,10 @@ function CommentView({
         <span className="text-sm font-medium text-ink-100">{comment.author.displayName}</span>
         <time
           dateTime={comment.createdAt}
-          title={formatLocalDateTime(comment.createdAt)}
+          title={formatLocalDateTime(comment.createdAt, t)}
           className="text-xs text-ink-400"
         >
-          {formatRelative(comment.createdAt)}
+          {formatRelative(comment.createdAt, t)}
         </time>
       </header>
 
@@ -270,9 +269,7 @@ function CommentView({
           // the shortcut with the emoji in stored content.
           initial={comment.body}
           pending={update.isPending}
-          error={
-            update.isError ? errorText(update.error, 'The correction could not be saved.') : null
-          }
+          error={update.isError ? errorText(update.error, t('comments.editFailed')) : null}
           onCancel={() => {
             update.reset();
             setEditing(false);
@@ -293,17 +290,17 @@ function CommentView({
       <div className="mt-1.5 flex gap-3 text-xs text-ink-400">
         {onReply && !editing && (
           <button type="button" onClick={onReply} className="transition-colors hover:text-ink-100">
-            Reply
+            {t('comments.reply')}
           </button>
         )}
         {secondsLeft !== null && !editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            title="Fix a typo, within thirty seconds of posting"
+            title={t('comments.editHint')}
             className="tabular-nums transition-colors hover:text-ink-100"
           >
-            Edit ({secondsLeft} s)
+            {t('comments.edit', secondsLeft)}
           </button>
         )}
         {comment.canDelete && !editing && (
@@ -315,7 +312,7 @@ function CommentView({
             // much visual weight as "Reply" while reading a thread.
             className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:text-red-400 disabled:opacity-50"
           >
-            Delete
+            {t('comments.delete')}
           </button>
         )}
       </div>
@@ -343,6 +340,7 @@ function EditForm({
   onCancel: () => void;
   onSubmit: (body: string) => void;
 }): ReactElement {
+  const t = useT();
   const [body, setBody] = useState(initial);
 
   const submit = (event: FormEvent): void => {
@@ -377,14 +375,14 @@ function EditForm({
           onClick={onCancel}
           className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           type="submit"
           disabled={!body.trim() || pending}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {pending ? 'Sending…' : 'Save'}
+          {t(pending ? 'common.sending' : 'common.save')}
         </button>
       </div>
     </form>
@@ -399,6 +397,7 @@ function EditForm({
  * Thirty-two entries and no search — see `lib/emoji.ts`.
  */
 function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElement {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -434,11 +433,11 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        aria-label="Add an emoji"
+        aria-label={t('comments.emoji')}
         aria-expanded={open}
         // The form no longer has a caption: the tooltip is the last place where
         // shortcut substitution can still be discovered.
-        title='Add an emoji — ":)" becomes 🙂'
+        title={t('comments.emojiHint')}
         className={`rounded p-1 text-base transition-colors hover:bg-white/10 ${
           open ? 'bg-white/10' : ''
         }`}
@@ -452,7 +451,7 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
         // would overflow the panel.
         <div
           role="group"
-          aria-label="Emoji"
+          aria-label={t('comments.emojiGroup')}
           className="absolute right-0 bottom-full z-10 mb-2 grid w-64 grid-cols-8 gap-0.5 rounded border border-ink-700 bg-ink-900 p-2 shadow-lg"
         >
           {PICKER_EMOJI.map((emoji) => (
@@ -490,6 +489,7 @@ function CommentForm({
   autoFocus?: boolean;
   onDone?: () => void;
 }): ReactElement {
+  const t = useT();
   const [body, setBody] = useState('');
   const create = useCreateComment(albumId, mediaId);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
@@ -556,7 +556,7 @@ function CommentForm({
 
       {create.isError && (
         <p className="mt-1 text-xs text-red-400">
-          {errorText(create.error, 'The comment could not be posted.')}
+          {errorText(create.error, t('comments.postFailed'))}
         </p>
       )}
 
@@ -571,7 +571,7 @@ function CommentForm({
             onClick={onDone}
             className="rounded px-2 py-1 text-xs text-ink-400 transition-colors hover:text-ink-100"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
         )}
         <EmojiPicker onPick={addEmoji} />
@@ -580,7 +580,7 @@ function CommentForm({
           disabled={!body.trim() || create.isPending}
           className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {create.isPending ? 'Sending…' : 'Post'}
+          {t(create.isPending ? 'common.sending' : 'comments.post')}
         </button>
       </div>
     </form>

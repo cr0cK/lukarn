@@ -9,6 +9,7 @@ import {
   formatExposure,
   formatFocalLength,
 } from './format';
+import type { Translate } from './i18n/translate';
 
 /** A row in the "Info" tab: a label, its value and status. */
 export interface ExifRow {
@@ -27,7 +28,7 @@ export interface ExifRow {
  * cases — data present, absent, or absent and stated — and the only one verifiable
  * without the DOM.
  */
-export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRow[] {
+export function exifRows(detail: MediaDetail, day: AlbumDay | undefined, t: Translate): ExifRow[] {
   const rows: ExifRow[] = [];
   const push = (label: string, value: string | null | undefined, href?: string): void => {
     if (value) rows.push(href ? { label, value, href } : { label, value });
@@ -43,19 +44,25 @@ export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRo
   //
   // `place` takes precedence over `autoPlaces` — it is a manual correction, and
   // a correction overwritten by geocoding would serve no purpose (D51).
-  push('Lieu', day?.place ?? day?.autoPlaces.join(' · '));
-  push('That day', day?.description);
+  push(t('exif.place'), day?.place ?? day?.autoPlaces.join(' · '));
+  push(t('exif.thatDay'), day?.description);
 
-  push(detail.takenAtFromExif ? 'Taken' : 'Modified', formatDateTime(detail.takenAt));
-  push('Dimensions', detail.width && detail.height ? `${detail.width} × ${detail.height}` : null);
-  push('Size', formatBytes(detail.size));
-  push('Duration', formatDuration(detail.durationMs));
-  push('Camera', formatCamera(detail.exif.cameraMake, detail.exif.cameraModel));
-  push('Lens', detail.exif.lens);
-  push('Focal length', formatFocalLength(detail.exif.focalLength));
-  push('Aperture', formatAperture(detail.exif.aperture));
-  push('Shutter', formatExposure(detail.exif.exposureTime));
-  push('ISO', detail.exif.isoSpeed ? String(detail.exif.isoSpeed) : null);
+  push(
+    t(detail.takenAtFromExif ? 'exif.taken' : 'exif.modified'),
+    formatDateTime(detail.takenAt, t),
+  );
+  push(
+    t('exif.dimensions'),
+    detail.width && detail.height ? `${detail.width} × ${detail.height}` : null,
+  );
+  push(t('exif.size'), formatBytes(detail.size, t));
+  push(t('exif.duration'), formatDuration(detail.durationMs));
+  push(t('exif.camera'), formatCamera(detail.exif.cameraMake, detail.exif.cameraModel));
+  push(t('exif.lens'), detail.exif.lens);
+  push(t('exif.focalLength'), formatFocalLength(detail.exif.focalLength));
+  push(t('exif.aperture'), formatAperture(detail.exif.aperture));
+  push(t('exif.shutter'), formatExposure(detail.exif.exposureTime));
+  push(t('exif.iso'), detail.exif.isoSpeed ? String(detail.exif.isoSpeed) : null);
 
   // Position comes from **this** photo's EXIF and owes nothing to reverse
   // geocoding: display it whether "Place" has a name or not (D94).
@@ -68,15 +75,15 @@ export function exifRows(detail: MediaDetail, day: AlbumDay | undefined): ExifRo
   // Photos only: Drive returns position in `imageMediaMetadata`, never for video.
   // The row would say "none" for every file, revealing nothing about the viewed
   // one and implying geolocation had been removed from a video.
-  const coordinates = formatCoordinates(detail.exif.latitude, detail.exif.longitude);
+  const coordinates = formatCoordinates(detail.exif.latitude, detail.exif.longitude, t);
   if (coordinates) {
     rows.push({
-      label: 'Position',
+      label: t('exif.position'),
       value: coordinates,
       href: `https://www.openstreetmap.org/?mlat=${detail.exif.latitude}&mlon=${detail.exif.longitude}#map=15/${detail.exif.latitude}/${detail.exif.longitude}`,
     });
   } else if (detail.kind === 'photo') {
-    rows.push({ label: 'Position', value: 'No GPS data', absent: true });
+    rows.push({ label: t('exif.position'), value: t('exif.noPosition'), absent: true });
   }
 
   return rows;

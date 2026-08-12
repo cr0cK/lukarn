@@ -1,11 +1,13 @@
 import { type ReactElement, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useT, type MessageKey } from '../lib/i18n';
 
-const ETAPES = [
-  ['Share', 'The square with an arrow, at the bottom of the screen on iPhone.'],
-  ['Add to Home Screen', 'A little further down the list.'],
-  ['Add', 'Top right. You will be asked to sign in once more, only once.'],
-] as const;
+/** The three iOS steps: the name Safari gives them, then what to look for. */
+const ETAPES: [MessageKey, MessageKey][] = [
+  ['install.share', 'install.shareHint'],
+  ['install.addToHome', 'install.addToHomeHint'],
+  ['install.add', 'install.addHint'],
+];
 
 /**
  * iOS instructions modelled on `ShortcutsOverlay` — same overlay, same card:
@@ -18,6 +20,8 @@ const ETAPES = [
  * fifty-pixel-high bar, centring the dialog there and clipping its top.
  */
 export function InstallInstructions({ onClose }: { onClose: () => void }): ReactElement {
+  const t = useT();
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose();
@@ -30,7 +34,7 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Add to home screen"
+      aria-label={t('install.title')}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
       onClick={onClose}
     >
@@ -39,12 +43,12 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-base font-medium">Add to home screen</h2>
+          <h2 className="text-base font-medium">{t('install.title')}</h2>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <svg
               viewBox="0 0 24 24"
@@ -65,8 +69,8 @@ export function InstallInstructions({ onClose }: { onClose: () => void }): React
                 {rang + 1}
               </span>
               <div className="min-w-0">
-                <p className="text-sm text-ink-100">{libelle}</p>
-                <p className="text-xs text-ink-400">{precision}</p>
+                <p className="text-sm text-ink-100">{t(libelle)}</p>
+                <p className="text-xs text-ink-400">{t(precision)}</p>
               </div>
             </li>
           ))}

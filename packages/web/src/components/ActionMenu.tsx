@@ -1,10 +1,18 @@
 import { Fragment, type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react';
+import { useT } from '../lib/i18n';
 
 /** What a menu entry displays: a label, an icon and an action. */
 export interface MenuEntry {
   label: string;
   icon: ReactNode;
   onSelect: () => void;
+  /**
+   * Present when the entry is one choice among several — the language list.
+   * The tick beside the active entry is visual only; this is what a screen
+   * reader announces, and it also turns the group into a set of alternatives
+   * rather than a series of independent actions.
+   */
+  checked?: boolean;
 }
 
 interface ActionMenuProps {
@@ -16,7 +24,7 @@ interface ActionMenuProps {
    */
   entete?: string[];
   /** Accessible button name when several menus share a page. */
-  label?: string;
+  label?: string | undefined;
   /** Button content. Three dots by default, an account badge when needed. */
   trigger?: ReactNode;
   /** Button styling: the bar and viewer have different backgrounds. */
@@ -40,10 +48,12 @@ const TRIGGER_PAR_DEFAUT =
 export function ActionMenu({
   groupes,
   entete,
-  label = 'Menu',
+  label,
   trigger,
   triggerClassName = TRIGGER_PAR_DEFAUT,
 }: ActionMenuProps): ReactElement {
+  const t = useT();
+  const nom = label ?? t('common.menu');
   const [ouvert, setOuvert] = useState(false);
   const zone = useRef<HTMLDivElement>(null);
   const bouton = useRef<HTMLButtonElement>(null);
@@ -82,7 +92,7 @@ export function ActionMenu({
         type="button"
         onClick={() => setOuvert((etat) => !etat)}
         className={triggerClassName}
-        aria-label={label}
+        aria-label={nom}
         aria-haspopup="menu"
         aria-expanded={ouvert}
       >
@@ -127,7 +137,8 @@ export function ActionMenu({
                   <button
                     key={entree.label}
                     type="button"
-                    role="menuitem"
+                    role={entree.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                    aria-checked={entree.checked}
                     onClick={() => {
                       // Close first: `onSelect` may navigate or open a panel, and
                       // a menu left open would sit above what it just triggered.

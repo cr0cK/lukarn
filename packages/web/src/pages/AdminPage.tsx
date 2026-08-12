@@ -4,6 +4,7 @@ import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { errorText } from '../api/client';
 import { useAdminAlbums, useAdminStatus } from '../api/hooks';
 import { Spinner } from '../components/Spinner';
+import { useT, type MessageKey } from '../lib/i18n';
 import { TopBar } from '../components/TopBar';
 import { AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
@@ -16,21 +17,16 @@ import { VisitsSection } from '../components/admin/VisitsSection';
 import { FormError, type Notice } from '../components/admin/ui';
 
 /** Messages from the Google consent return, passed in `?oauth=`. */
-const OAUTH_MESSAGES: Record<string, Notice> = {
-  connected: {
-    tone: 'ok',
-    text: 'Google Drive is connected. The first sync has started.',
-  },
-  denied: { tone: 'error', text: 'Authorisation refused on the Google side.' },
-  invalid: { tone: 'error', text: 'Incomplete response from Google. Start the connection again.' },
-  state_mismatch: {
-    tone: 'error',
-    text: 'The anti-CSRF token does not match. Start the connection again from this page.',
-  },
-  error: { tone: 'error', text: 'The connection failed. Check the server logs.' },
+const OAUTH_MESSAGES: Record<string, { tone: Notice['tone']; text: MessageKey }> = {
+  connected: { tone: 'ok', text: 'admin.oauthConnected' },
+  denied: { tone: 'error', text: 'admin.oauthDenied' },
+  invalid: { tone: 'error', text: 'admin.oauthInvalid' },
+  state_mismatch: { tone: 'error', text: 'admin.oauthStateMismatch' },
+  error: { tone: 'error', text: 'admin.oauthError' },
 };
 
 export default function AdminPage(): ReactElement {
+  const t = useT();
   const { tab } = useParams<{ tab: string }>();
   const status = useAdminStatus();
   const albums = useAdminAlbums();
@@ -38,7 +34,9 @@ export default function AdminPage(): ReactElement {
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const oauthResult = searchParams.get('oauth');
-  const message = notice ?? (oauthResult ? OAUTH_MESSAGES[oauthResult] : undefined) ?? null;
+  const retourOauth = oauthResult ? OAUTH_MESSAGES[oauthResult] : undefined;
+  const message: Notice | null =
+    notice ?? (retourOauth ? { tone: retourOauth.tone, text: t(retourOauth.text) } : null);
 
   const dismiss = (): void => {
     setNotice(null);
@@ -49,8 +47,8 @@ export default function AdminPage(): ReactElement {
   // status can appear before it is known, or they would wrongly announce "no albums".
   const avecAlbums = (rendu: (liste: AdminAlbum[]) => ReactElement): ReactElement => (
     <>
-      {albums.isPending && <Spinner label="Loading albums" />}
-      {albums.error && <FormError message={errorText(albums.error, 'Cannot load the albums.')} />}
+      {albums.isPending && <Spinner label={t('albums.loading')} />}
+      {albums.error && <FormError message={errorText(albums.error, t('albums.loadFailed'))} />}
       {albums.data && rendu(albums.data)}
     </>
   );
@@ -77,7 +75,7 @@ export default function AdminPage(): ReactElement {
           <>
             {status.isPending && <Spinner />}
             {status.error && (
-              <FormError message={errorText(status.error, 'Cannot load the server state.')} />
+              <FormError message={errorText(status.error, t('admin.statusFailed'))} />
             )}
             {status.data && <DriveSection status={status.data} notify={setNotice} />}
             <SettingsSection notify={setNotice} />
@@ -95,7 +93,7 @@ export default function AdminPage(): ReactElement {
 
   return (
     <div className="min-h-full">
-      <TopBar title="Administration" back />
+      <TopBar title={t('admin.title')} back />
 
       {/* Use 90 rem rather than the original 64 rem: the content column grows from
           760 to 1170 px on a laptop, where album rows truncated their title while
@@ -121,7 +119,7 @@ export default function AdminPage(): ReactElement {
                 onClick={dismiss}
                 className="ml-3 text-xs underline underline-offset-2 opacity-70 hover:opacity-100"
               >
-                masquer
+                {t('common.hide')}
               </button>
             </p>
           )}

@@ -9,10 +9,31 @@ shapes are the types from `packages/shared/src/index.ts`.
 - **session** — valid `lukarn_session` cookie, otherwise 401 `unauthorized`;
 - **admin** — session **and** `admin: true`, otherwise 401 or 403 `forbidden`.
 
+## The language of a response — `plugins/locale.ts`
+
+Every request carries a language, resolved from `Accept-Language` before
+authentication so that a refusal is already written in it. The front end sends
+the language chosen in its account menu rather than the browser's own list; a
+link opened straight from an inbox — the two unsubscribe pages — carries that
+list instead, quality factors and all. Neither a missing nor a malformed header
+is an error: `DEFAULT_LOCALE` applies (see [06](./06-configuration-and-deployment.md)).
+
+Two things follow from it. `request.t` translates every message below through
+`i18n/messages-en.ts` and `i18n/messages-fr.ts`; and, when the session carries a
+commenter identity, the language is **recorded** on it — only when it changes —
+so an email composed hours later reaches its recipient in the language they read
+(see [03](./03-data-model.md) and D260812d).
+
+Logs are not translated: they are read next to the code, which is in English.
+
 ## Error responses
 
 All errors have the `ApiError` shape:
-`{ "error": "<code>", "message": "<English text>" }`.
+`{ "error": "<code>", "message": "<text in the language of the request>" }`.
+
+**The `error` code is the contract; the message is for the eye.** The front end
+displays the message and never branches on it — it is translated, and comparing
+translated text is how a refusal silently stops being recognised.
 
 The global handler in `app.ts` returns `internal_error` / "Internal error" for
 any status ≥ 500 — the detail stays in the logs — and `request_error` with the

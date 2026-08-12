@@ -9,6 +9,7 @@ import {
   validateFolderInput,
   validateTitle,
 } from '../../lib/adminForm';
+import { useT } from '../../lib/i18n';
 import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
 
 interface AlbumFormProps {
@@ -20,6 +21,7 @@ interface AlbumFormProps {
 
 /** Form for creating and editing an album. */
 export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElement {
+  const t = useT();
   const fieldId = useId();
   const create = useCreateAlbum();
   const update = useUpdateAlbum();
@@ -37,9 +39,9 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
   const [newestFirst, setNewestFirst] = useState(album?.sortOrder === 'desc');
   const [touched, setTouched] = useState(false);
 
-  const idError = editing ? null : validateAlbumId(albumId);
-  const titleError = validateTitle(title);
-  const folderError = validateFolderInput(folder);
+  const idError = editing ? null : validateAlbumId(albumId, t);
+  const titleError = validateTitle(title, t);
+  const folderError = validateFolderInput(folder, t);
   const pending = create.isPending || update.isPending;
   const serverError = create.error ?? update.error;
 
@@ -69,10 +71,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         },
         {
           onSuccess: (created) => {
-            notify({
-              tone: 'ok',
-              text: `Album "${created.title}" created. Syncing will fill it.`,
-            });
+            notify({ tone: 'ok', text: t('albumForm.created', created.title) });
             onClose();
           },
         },
@@ -103,7 +102,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
       { albumId: album.id, body },
       {
         onSuccess: (saved) => {
-          notify({ tone: 'ok', text: `Album "${saved.title}" saved.` });
+          notify({ tone: 'ok', text: t('albumForm.saved', saved.title) });
           onClose();
         },
       },
@@ -115,7 +114,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id={`${fieldId}-title`}
-          label="Title"
+          label={t('albumForm.titleField')}
           value={title}
           onChange={changeTitle}
           autoFocus={!editing}
@@ -125,7 +124,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
 
         <TextField
           id={`${fieldId}-id`}
-          label="Identifier"
+          label={t('albumForm.id')}
           value={albumId}
           onChange={(value) => {
             setIdTouchedByUser(true);
@@ -135,17 +134,13 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           readOnly={editing}
           disabled={pending}
           error={touched ? idError : null}
-          hint={
-            editing
-              ? 'The identifier does not change: it is the address of the album.'
-              : 'Appears in the URL of the album. Suggested from the title.'
-          }
+          hint={t(editing ? 'albumForm.idFixed' : 'albumForm.idHint')}
         />
       </div>
 
       <TextField
         id={`${fieldId}-description`}
-        label="Description (optional)"
+        label={t('albumForm.description')}
         value={description}
         onChange={setDescription}
         disabled={pending}
@@ -154,7 +149,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
 
       <TextField
         id={`${fieldId}-folder`}
-        label="Google Drive folder"
+        label={t('albumForm.folder')}
         value={folder}
         onChange={setFolder}
         onBlur={() => {
@@ -168,49 +163,49 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         hint={
           extracted ? (
             <>
-              Identifier used: <code className="text-ink-300">{folderId}</code>
+              {t('albumForm.folderExtracted')} <code className="text-ink-300">{folderId}</code>
             </>
           ) : (
-            'Paste the folder URL: the identifier is the segment after /folders/.'
+            t('albumForm.folderHint')
           )
         }
       />
 
       <Checkbox
         id={`${fieldId}-recursive`}
-        label="Include subfolders"
+        label={t('albumForm.recursive')}
         checked={recursive}
         onChange={setRecursive}
         disabled={pending}
-        hint="Untick to index only the files sitting directly in the folder."
+        hint={t('albumForm.recursiveHint')}
       />
 
       <Checkbox
         id={`${fieldId}-group-by`}
-        label="Open the grid grouped by day"
+        label={t('albumForm.byDay')}
         checked={byDay}
         onChange={setByDay}
         disabled={pending}
-        hint="The right split for a trip. Day notes only show up per day. A visitor can always flip it back."
+        hint={t('albumForm.byDayHint')}
       />
 
       <Checkbox
         id={`${fieldId}-sort-order`}
-        label="Open the album newest first"
+        label={t('albumForm.newestFirst')}
         checked={newestFirst}
         onChange={setNewestFirst}
         disabled={pending}
-        hint="Unticked, the album reads in the order it was lived. Tick it for a library fed as things happen. A visitor can flip it back, and their browser remembers."
+        hint={t('albumForm.newestFirstHint')}
       />
 
-      <FormError message={serverError ? errorText(serverError, 'Saving failed.') : null} />
+      <FormError message={serverError ? errorText(serverError, t('common.saveFailed')) : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={onClose} disabled={pending}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Saving…' : editing ? 'Save' : 'Create the album'}
+          {pending ? t('common.saving') : editing ? t('common.save') : t('albumForm.create')}
         </Button>
       </div>
     </form>

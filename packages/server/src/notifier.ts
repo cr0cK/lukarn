@@ -94,15 +94,17 @@ export class AlbumNotifier {
       if (subscribers.length === 0) continue;
 
       for (const subscriber of subscribers) {
-        this.deps
-          .mailer()
-          .queue(
-            buildAlbumUpdateMail(
-              { albumId: album.id, albumTitle: album.title, count },
-              subscriber.email,
-              this.deps.env,
-            ),
-          );
+        this.deps.mailer().queue(
+          buildAlbumUpdateMail(
+            { albumId: album.id, albumTitle: album.title, count },
+            subscriber.email,
+            // Someone who has never opened the gallery in a supported language
+            // gets the instance default: an announcement written in a language
+            // chosen at random would be worse than one in the operator's.
+            subscriber.locale ?? this.deps.env.defaultLocale,
+            this.deps.env,
+          ),
+        );
       }
 
       announced++;

@@ -2,6 +2,7 @@ import { ALBUM_ID_PATTERN, EMAIL_MAX_LENGTH, USERNAME_MAX_LENGTH } from '@lukarn
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import type { Translate } from '../i18n/index.js';
 import { verifyAlbumUnsubscribeToken } from '../crypto.js';
 import { escapeHtml } from '../mail.js';
 
@@ -32,14 +33,18 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
     app.get('/unsubscribe', async (request, reply) => {
       const parsed = unsubscribeSchema.safeParse(request.query);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Incomplete link' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.incompleteLink') });
       }
 
       const { u: email, a: albumId, t: token } = parsed.data;
       // The token covers the pair: one album's token is not valid for another,
       // otherwise a copied link could disable an unintended subscription.
       if (!verifyAlbumUnsubscribeToken(email, albumId, token, context.env.sessionSecret)) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid link' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidLink') });
       }
 
       const commenter = context.commenters.byEmail(email);
@@ -50,7 +55,7 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
 
       return reply
         .type('text/html; charset=utf-8')
-        .send(unsubscribePage(context.env.publicUrl, album?.title ?? null));
+        .send(unsubscribePage(context.env.publicUrl, album?.title ?? null, request.t));
     });
   };
 }
@@ -60,26 +65,27 @@ export function createSubscriptionRoutes(context: AppContext): FastifyPluginAsyn
  * without a session, and loading the React application to display one sentence would
  * redirect to the sign-in screen.
  */
-function unsubscribePage(publicUrl: string, albumTitle: string | null): string {
+function unsubscribePage(publicUrl: string, albumTitle: string | null, t: Translate): string {
   const message = albumTitle
-    ? `You will no longer get an email when new photos arrive in &quot;${escapeHtml(albumTitle)}&quot;.`
-    : 'That album or that account no longer exists: there is nothing to unsubscribe from.';
+    ? escapeHtml(t('page.albumStopped', albumTitle))
+    : t('page.albumUnknown');
 
+  // `lang` follows the language actually written: this page is opened from an
+  // inbox, outside the React application, so nothing else would set it.
   return `<!doctype html>
-<html lang="en">
+<html lang="${t.locale}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Unsubscribed</title>
+    <title>${t('page.unsubscribedTitle')}</title>
   </head>
   <body style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6; color: #1a1a1a;">
-    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">Done</h1>
+    <h1 style="font-size: 1.25rem; margin: 0 0 1rem;">${t('page.done')}</h1>
     <p style="margin: 0 0 1.5rem;">${message}</p>
     <p style="margin: 0; font-size: 0.9rem; color: #666;">
-      Replies to your comments keep arriving: those are stopped from the link in
-      one of those emails.
+      ${t('page.albumRepliesContinue')}
       <br>
-      <a href="${publicUrl}" style="color: #2563eb;">Back to the gallery</a>
+      <a href="${publicUrl}" style="color: #2563eb;">${t('page.backToGallery')}</a>
     </p>
   </body>
 </html>`;

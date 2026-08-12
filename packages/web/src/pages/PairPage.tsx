@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useApprovePairing, usePairingState } from '../api/hooks';
 import { Spinner } from '../components/Spinner';
+import { useT } from '../lib/i18n';
 
 /**
  * Pairing as seen from the phone (D260809c). `RequireAuth` guards it: without a
@@ -14,6 +15,7 @@ import { Spinner } from '../components/Spinner';
  * a QR code from a different screen.
  */
 export default function PairPage(): ReactElement {
+  const t = useT();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const code = normalizeUserCode(params.get('code') ?? '');
@@ -36,12 +38,9 @@ export default function PairPage(): ReactElement {
   if (state.isError) {
     return (
       <Card>
-        <Title>That code is no longer valid</Title>
-        <p className="text-sm text-ink-400">
-          A request expires after five minutes. Start the sign-in again from the screen, then scan
-          the new code.
-        </p>
-        <SecondaryButton onClick={() => setParams({})}>Enter another code</SecondaryButton>
+        <Title>{t('pair.expiredTitle')}</Title>
+        <p className="text-sm text-ink-400">{t('pair.expiredBody')}</p>
+        <SecondaryButton onClick={() => setParams({})}>{t('pair.enterAnother')}</SecondaryButton>
       </Card>
     );
   }
@@ -49,12 +48,13 @@ export default function PairPage(): ReactElement {
   if (approve.isSuccess) {
     return (
       <Card>
-        <Title>All set</Title>
+        <Title>{t('pair.doneTitle')}</Title>
         <p className="text-sm text-ink-400">
-          The screen opens in a few seconds, with the albums of{' '}
-          <span className="text-ink-200">your account</span>.
+          {t('pair.doneBody')} <span className="text-ink-200">{t('pair.doneAccount')}</span>.
         </p>
-        <SecondaryButton onClick={() => void navigate('/')}>Back to the albums</SecondaryButton>
+        <SecondaryButton onClick={() => void navigate('/')}>
+          {t('pair.backToAlbums')}
+        </SecondaryButton>
       </Card>
     );
   }
@@ -64,12 +64,11 @@ export default function PairPage(): ReactElement {
   if (state.data.approved) {
     return (
       <Card>
-        <Title>This screen has already been paired</Title>
-        <p className="text-sm text-ink-400">
-          An account has already approved this request. If that was not you, start the sign-in again
-          from the screen to get a new code.
-        </p>
-        <SecondaryButton onClick={() => void navigate('/')}>Back to the albums</SecondaryButton>
+        <Title>{t('pair.alreadyTitle')}</Title>
+        <p className="text-sm text-ink-400">{t('pair.alreadyBody')}</p>
+        <SecondaryButton onClick={() => void navigate('/')}>
+          {t('pair.backToAlbums')}
+        </SecondaryButton>
       </Card>
     );
   }
@@ -78,19 +77,14 @@ export default function PairPage(): ReactElement {
 
   return (
     <Card>
-      <Title>Approve this screen?</Title>
-      <p className="text-sm text-ink-400">
-        Check that this code is the one shown on the screen you want to pair.
-      </p>
+      <Title>{t('pair.approveTitle')}</Title>
+      <p className="text-sm text-ink-400">{t('pair.approveCheck')}</p>
 
       <p className="my-2 font-mono text-3xl tracking-widest text-ink-100">
         {formatUserCode(state.data.userCode)}
       </p>
 
-      <p className="text-xs text-ink-400">
-        The screen will reach the same albums as you, for as long as nobody changes the password of
-        this account. It won't be able to sign comments in your name.
-      </p>
+      <p className="text-xs text-ink-400">{t('pair.approveWarning')}</p>
 
       {message && (
         <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -104,15 +98,16 @@ export default function PairPage(): ReactElement {
         onClick={() => approve.mutate(code)}
         className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {approve.isPending ? 'Approving…' : 'Approve'}
+        {t(approve.isPending ? 'pair.approving' : 'pair.approve')}
       </button>
-      <SecondaryButton onClick={() => void navigate('/')}>Cancel</SecondaryButton>
+      <SecondaryButton onClick={() => void navigate('/')}>{t('common.cancel')}</SecondaryButton>
     </Card>
   );
 }
 
 /** Code input for someone opening `/pair` without scanning the QR code. */
 function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElement {
+  const t = useT();
   const [value, setValue] = useState('');
   const code = normalizeUserCode(value);
 
@@ -123,8 +118,8 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElem
 
   return (
     <Card>
-      <Title>Pair a screen</Title>
-      <p className="text-sm text-ink-400">Enter the code shown on the screen you want to pair.</p>
+      <Title>{t('pair.formTitle')}</Title>
+      <p className="text-sm text-ink-400">{t('pair.formHint')}</p>
       <form onSubmit={submit} className="space-y-4">
         <input
           name="code"
@@ -144,7 +139,7 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElem
           disabled={code.length !== USER_CODE_LENGTH}
           className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Continue
+          {t('pair.continue')}
         </button>
       </form>
     </Card>

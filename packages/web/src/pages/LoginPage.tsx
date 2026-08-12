@@ -6,8 +6,10 @@ import { DeviceLogin } from '../components/DeviceLogin';
 import { PasswordInput } from '../components/PasswordInput';
 import { Spinner } from '../components/Spinner';
 import { appName } from '../lib/appName';
+import { useT } from '../lib/i18n';
 
 export default function LoginPage(): ReactElement {
+  const t = useT();
   const { data: user, isPending } = useMe();
   const { data: setup } = useSetupState();
   const login = useLogin();
@@ -48,17 +50,13 @@ export default function LoginPage(): ReactElement {
   };
 
   const message =
-    login.error instanceof ApiError
-      ? login.error.message
-      : login.error
-        ? 'Cannot sign in. Try again.'
-        : null;
+    login.error instanceof ApiError ? login.error.message : login.error ? t('login.failed') : null;
 
   return (
     <div className="flex min-h-full items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">{appName()}</h1>
-        <p className="mb-8 text-sm text-ink-400">Sign in to reach the albums.</p>
+        <p className="mb-8 text-sm text-ink-400">{t('login.subtitle')}</p>
 
         {!pairing.isIdle ? (
           <DeviceLogin
@@ -74,10 +72,8 @@ export default function LoginPage(): ReactElement {
             merely remains. */}
             {setup?.needsSetup && (
               <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-                <p className="font-medium">No account is configured yet.</p>
-                <p className="mt-1 text-amber-200/80">
-                  Create the first administrator on the server:
-                </p>
+                <p className="font-medium">{t('login.noAccount')}</p>
+                <p className="mt-1 text-amber-200/80">{t('login.createAdmin')}</p>
                 <code className="mt-2 block rounded bg-black/30 px-2 py-1 font-mono text-xs text-amber-100">
                   pnpm create-admin &lt;username&gt;
                 </code>
@@ -87,7 +83,7 @@ export default function LoginPage(): ReactElement {
             <form onSubmit={submit} className="space-y-4">
               <div>
                 <label htmlFor="username" className="mb-1.5 block text-sm text-ink-300">
-                  Username
+                  {t('login.username')}
                 </label>
                 <input
                   id="username"
@@ -104,7 +100,7 @@ export default function LoginPage(): ReactElement {
 
               <div>
                 <label htmlFor="password" className="mb-1.5 block text-sm text-ink-300">
-                  Password
+                  {t('login.password')}
                 </label>
                 <PasswordInput
                   id="password"
@@ -128,7 +124,7 @@ export default function LoginPage(): ReactElement {
                 disabled={login.isPending}
                 className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {login.isPending ? 'Signing in…' : 'Sign in'}
+                {t(login.isPending ? 'login.submitting' : 'login.submit')}
               </button>
             </form>
 
@@ -140,7 +136,7 @@ export default function LoginPage(): ReactElement {
               onClick={() => pairing.mutate()}
               className="mt-6 w-full rounded-lg border border-ink-700 px-3 py-2.5 text-sm text-ink-300 transition-colors hover:border-ink-500 hover:text-ink-100"
             >
-              Sign in with a phone
+              {t('login.withPhone')}
             </button>
           </>
         )}

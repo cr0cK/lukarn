@@ -2,6 +2,7 @@ import type { MediaDetail, MediaExif } from '@lukarn/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { exifRows } from '../src/lib/exifRows';
+import { makeTranslate } from '../src/lib/i18n/translate';
 
 /**
  * Information panel rows.
@@ -51,19 +52,29 @@ function detail(patch: DetailPatch = {}): MediaDetail {
 const position = (rows: ReturnType<typeof exifRows>): (typeof rows)[number] | undefined =>
   rows.find((row) => row.label === 'Position');
 
+/**
+ * The English catalogue, read without a provider: these functions produce text,
+ * and a test that stubbed the translation would check its own stub.
+ */
+const t = makeTranslate('en');
+
 describe('information panel rows', () => {
   it('shows the position without waiting for the day to be named', () => {
-    const rows = exifRows(detail({ exif: { latitude: 41.3878, longitude: 9.1597 } }), {
-      day: '2026-08-07',
-      description: null,
-      place: null,
-      // Reverse geocoding has not returned anything yet: the "Lieu" row is
-      // missing, but the position remains readable.
-      autoPlaces: [],
-    });
+    const rows = exifRows(
+      detail({ exif: { latitude: 41.3878, longitude: 9.1597 } }),
+      {
+        day: '2026-08-07',
+        description: null,
+        place: null,
+        // Reverse geocoding has not returned anything yet: the "Place" row is
+        // missing, but the position remains readable.
+        autoPlaces: [],
+      },
+      t,
+    );
 
     assert.equal(
-      rows.find((row) => row.label === 'Lieu'),
+      rows.find((row) => row.label === 'Place'),
       undefined,
     );
     assert.equal(position(rows)?.value, '41.38780° N, 9.15970° E');
@@ -71,7 +82,7 @@ describe('information panel rows', () => {
   });
 
   it('states that a photo has no position instead of omitting the row', () => {
-    const row = position(exifRows(detail(), undefined));
+    const row = position(exifRows(detail(), undefined, t));
 
     assert.equal(row?.value, 'No GPS data');
     assert.equal(row?.absent, true);
@@ -81,7 +92,7 @@ describe('information panel rows', () => {
   });
 
   it('says nothing about the position of video, which Drive never geolocates', () => {
-    const rows = exifRows(detail({ kind: 'video', durationMs: 12_000 }), undefined);
+    const rows = exifRows(detail({ kind: 'video', durationMs: 12_000 }), undefined, t);
 
     assert.equal(position(rows), undefined);
     // The missing row must not remove the rest of the panel with it.
