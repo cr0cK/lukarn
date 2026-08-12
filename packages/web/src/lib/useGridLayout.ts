@@ -1,5 +1,6 @@
 import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@lukarn/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useT } from './i18n';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
 import { measureLines } from './measureLines';
 
@@ -134,6 +135,7 @@ export function useGridLayout(
   days?: Map<string, AlbumDay>,
   collapsedKeys?: ReadonlySet<string>,
 ): GridLayout {
+  const t = useT();
   const [element, setElement] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   const [offsetTop, setOffsetTop] = useState(0);
@@ -224,8 +226,9 @@ export function useGridLayout(
         sectionGap: GRID_SECTION_GAP,
         groupBy,
         isCollapsed,
+        t,
       }),
-    [items, width, groupBy, headerHeightFor, isCollapsed],
+    [items, width, groupBy, headerHeightFor, isCollapsed, t],
   );
 
   return {

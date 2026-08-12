@@ -28,6 +28,18 @@ their name and address, verified by a code (see [04](./04-security-and-access.md
 A visitor never has a Google account and never sees a Google URL. All content
 passes through the server, which obtains it with the owner's single token.
 
+## Two languages, chosen by the reader
+
+The interface, the server's refusals, its emails and its unsubscribe pages exist
+in English and in French. A visitor gets the language of their browser and can
+change it from the account menu; the choice is remembered by that browser, not by
+the account, because one access key may open the same albums on a phone and on a
+television in the living room.
+
+Adding a third language means two files and no other decision — the catalogues
+are typed against each other, so a forgotten sentence stops the build rather than
+reaching a screen (see [07](./07-frontend.md)).
+
 ## Deliberately out of scope
 
 These omissions are not gaps to fill; they are choices that keep the project

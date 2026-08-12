@@ -16,6 +16,7 @@ import {
   zoomPercent,
   type Point,
 } from '../lib/zoom';
+import { useT } from '../lib/i18n';
 import { previewOverlay } from '../lib/preview';
 import { releaseIfDetached } from '../lib/imageRelease';
 
@@ -86,6 +87,7 @@ export function ZoomableImage({
   zoomed,
   onZoomedChange,
 }: ZoomableImageProps): ReactElement {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const [container, setContainer] = useState<Box>({ width: 0, height: 0 });
@@ -493,14 +495,14 @@ export function ZoomableImage({
       {overlay.spinner && (
         <span
           role="status"
-          aria-label="Loading the photo"
+          aria-label={t('zoom.loadingPhoto')}
           className="absolute flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 text-xs text-ink-100"
         >
           <span
             className="size-3.5 animate-spin rounded-full border-2 border-ink-600 border-t-accent"
             aria-hidden="true"
           />
-          Loading…
+          {t('common.loading')}
         </span>
       )}
 
@@ -548,12 +550,12 @@ export function ZoomableImage({
           {/* State that the served render is smaller than the file: otherwise
               "100%" on a 6000 px photo would imply viewing its pixels when only
               4096 are available. */}
-          {limited && ` · rendered ${availableWidth} px of ${naturalWidth} px`}
-          {!hdReady && ' · loading HD…'}
+          {limited && ` · ${t('zoom.limited', availableWidth, naturalWidth ?? 0)}`}
+          {!hdReady && ` · ${t('zoom.loadingHd')}`}
         </span>
       )}
 
-      {overlay.error && <p className="text-sm text-ink-400">This image could not be displayed.</p>}
+      {overlay.error && <p className="text-sm text-ink-400">{t('zoom.failed')}</p>}
     </div>
   );
 }
@@ -579,6 +581,7 @@ function Minimap({
   /** Receives the target point as image fractions `[0, 1]`. */
   onSeek: (center: Point) => void;
 }): ReactElement {
+  const t = useT();
   const MAX_EDGE = 132;
   const ratio = Math.min(MAX_EDGE / displayed.width, MAX_EDGE / displayed.height);
   const width = displayed.width * ratio;
@@ -604,7 +607,7 @@ function Minimap({
       className="absolute right-4 bottom-4 cursor-crosshair overflow-hidden rounded border border-white/25 shadow-lg transition-colors hover:border-white/60"
       style={{ width, height }}
       role="img"
-      aria-label="Position locator: click or drag to move inside the photo"
+      aria-label={t('zoom.locator')}
       onPointerDown={(event) => {
         // Without this stop, the container would also start its own movement: the
         // image would follow the drag while the indicator sent it elsewhere.

@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
+import type { Translate } from '../i18n/index.js';
 import { classifyDevice } from '../device.js';
 import { requireAuth } from '../plugins/auth.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
@@ -42,7 +43,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Username and password required' });
+          .send({ error: 'bad_request', message: request.t('error.credentialsRequired') });
       }
 
       const { username, password } = parsed.data;
@@ -55,7 +56,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           .header('Retry-After', String(Math.ceil(retryAfter / 1000)))
           .send({
             error: 'too_many_attempts',
-            message: `Too many attempts. Try again in ${Math.ceil(retryAfter / 1000)} s.`,
+            message: request.t('error.tooManyAttempts', Math.ceil(retryAfter / 1000)),
           });
       }
 
@@ -71,9 +72,10 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       if (!user || !valid) {
         throttle.fail(attempt);
         request.log.warn({ username, ip: request.ip }, 'Login failure');
-        return reply
-          .code(401)
-          .send({ error: 'invalid_credentials', message: 'Incorrect username or password' });
+        return reply.code(401).send({
+          error: 'invalid_credentials',
+          message: request.t('error.badCredentials'),
+        });
       }
 
       throttle.succeed(attempt);
@@ -107,7 +109,9 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/me', async (request, reply) => {
       if (!request.user) {
-        return reply.code(401).send({ error: 'unauthorized', message: 'Not signed in' });
+        return reply
+          .code(401)
+          .send({ error: 'unauthorized', message: request.t('error.notSignedIn') });
       }
       return reply.send(request.user);
     });
@@ -136,16 +140,19 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
      * without a session. It reveals nothing — a random code and a secret received only
      * by its intended recipient.
      */
-    app.post('/device/start', async (_request, reply) => {
+    app.post('/device/start', async (request, reply) => {
       const started = context.pairings.start();
       if (!started) {
         // The limit has been reached: the table lives in the database, and a burst of
         // requests must not make it grow without bound. Nobody gains access; pairing
         // merely becomes unavailable until current requests expire.
-        return reply.code(429).header('Retry-After', '60').send({
-          error: 'too_many_pairings',
-          message: 'Too many requests in flight. Try again in a minute.',
-        });
+        return reply
+          .code(429)
+          .header('Retry-After', '60')
+          .send({
+            error: 'too_many_pairings',
+            message: request.t('error.tooManyPairings'),
+          });
       }
       return noStore(reply).send(started);
     });
@@ -158,12 +165,14 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
     app.post('/device/poll', async (request, reply) => {
       const parsed = pollSchema.safeParse(request.body);
       if (!parsed.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Device code required' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.deviceCodeRequired') });
       }
 
       const { deviceCode } = parsed.data;
       const attempt = { ip: request.ip, username: deviceCode };
-      const blocked = blockedReply(reply, throttle.blockedFor(attempt));
+      const blocked = blockedReply(reply, throttle.blockedFor(attempt), request.t);
       if (blocked) return blocked;
 
       const claimed = context.pairings.claim(deviceCode);
@@ -172,7 +181,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
       if (claimed.status === 'unknown') {
         throttle.fail(attempt);
-        return noStore(reply).code(404).send(UNKNOWN_CODE);
+        return noStore(reply).code(404).send(unknownCode(request.t));
       }
 
       // Configuration is authoritative, as for every session: an account deleted
@@ -181,7 +190,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       const user = context.config.user(claimed.username);
       if (!user) {
         throttle.fail(attempt);
-        return noStore(reply).code(404).send(UNKNOWN_CODE);
+        return noStore(reply).code(404).send(unknownCode(request.t));
       }
 
       throttle.succeed(attempt);
@@ -220,13 +229,13 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       async (request, reply) => {
         const userCode = normalizeUserCode(request.params.userCode);
         const attempt = { ip: request.ip, username: userCode };
-        const blocked = blockedReply(reply, throttle.blockedFor(attempt));
+        const blocked = blockedReply(reply, throttle.blockedFor(attempt), request.t);
         if (blocked) return blocked;
 
         const pairing = USER_CODE_PATTERN.test(userCode) ? context.pairings.find(userCode) : null;
         if (!pairing) {
           throttle.fail(attempt);
-          return noStore(reply).code(404).send(UNKNOWN_CODE);
+          return noStore(reply).code(404).send(unknownCode(request.t));
         }
 
         return noStore(reply).send({
@@ -250,7 +259,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       async (request, reply) => {
         const userCode = normalizeUserCode(request.params.userCode);
         const attempt = { ip: request.ip, username: userCode };
-        const blocked = blockedReply(reply, throttle.blockedFor(attempt));
+        const blocked = blockedReply(reply, throttle.blockedFor(attempt), request.t);
         if (blocked) return blocked;
 
         const result = USER_CODE_PATTERN.test(userCode)
@@ -259,16 +268,18 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
 
         if (result === 'unknown') {
           throttle.fail(attempt);
-          return noStore(reply).code(404).send(UNKNOWN_CODE);
+          return noStore(reply).code(404).send(unknownCode(request.t));
         }
         if (result === 'taken') {
           // 409 rather than 404: refusal concerns the request state, not the existence
           // of someone else's resource that must be hidden — the approver has the code
           // in front of them.
-          return noStore(reply).code(409).send({
-            error: 'already_paired',
-            message: 'This screen has already been paired by another account.',
-          });
+          return noStore(reply)
+            .code(409)
+            .send({
+              error: 'already_paired',
+              message: request.t('error.alreadyPaired'),
+            });
         }
 
         throttle.succeed(attempt);
@@ -282,10 +293,9 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
  * Shared response for an unknown, expired, already claimed or malformed code.
  * Distinguishing these cases would tell someone trying random codes which ones existed.
  */
-const UNKNOWN_CODE = {
-  error: 'unknown_code',
-  message: 'That code is no longer valid. Start the sign-in again from the screen.',
-};
+function unknownCode(t: Translate): { error: string; message: string } {
+  return { error: 'unknown_code', message: t('error.unknownCode') };
+}
 
 /**
  * No pairing response may be retained: each carries a secret, state that changes
@@ -296,14 +306,15 @@ function noStore(reply: FastifyReply): FastifyReply {
 }
 
 /** The throttle's 429, or `null` when the attempt may proceed. */
-function blockedReply(reply: FastifyReply, retryAfterMs: number): FastifyReply | null {
+function blockedReply(
+  reply: FastifyReply,
+  retryAfterMs: number,
+  t: Translate,
+): FastifyReply | null {
   if (retryAfterMs <= 0) return null;
   const seconds = Math.ceil(retryAfterMs / 1000);
   return reply
     .code(429)
     .header('Retry-After', String(seconds))
-    .send({
-      error: 'too_many_attempts',
-      message: `Too many attempts. Try again in ${seconds} s.`,
-    });
+    .send({ error: 'too_many_attempts', message: t('error.tooManyAttempts', seconds) });
 }

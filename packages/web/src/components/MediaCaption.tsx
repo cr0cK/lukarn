@@ -3,6 +3,7 @@ import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateMedia } from '../api/hooks';
 import { captionEntries, type CaptionEntry } from '../lib/caption';
+import { useT } from '../lib/i18n';
 
 /**
  * Viewer caption bar: the photo description, then its day note — in that order,
@@ -55,6 +56,7 @@ export function MediaCaption({
   onEditingChange,
   overlay,
 }: MediaCaptionProps): ReactElement | null {
+  const t = useT();
   /**
    * Expansion is **not** persisted, unlike hiding: it relates to specific text
    * and has no meaning on the next photo. The viewer remounts this component for
@@ -62,7 +64,7 @@ export function MediaCaption({
    */
   const [expanded, setExpanded] = useState(false);
 
-  const entries = captionEntries({ description, day });
+  const entries = captionEntries({ description, day }, t);
 
   // Nothing to say or write: not even a ghost button inviting discovery of an
   // empty bar.
@@ -78,7 +80,7 @@ export function MediaCaption({
           onClick={() => onHiddenChange(false)}
           className="rounded-full bg-black/40 px-2.5 py-1 text-xs text-ink-400 backdrop-blur-sm transition-colors hover:bg-black/60 hover:text-ink-100"
         >
-          Show the caption (l)
+          {t('caption.show')}
         </button>
       </div>
     );
@@ -104,7 +106,7 @@ export function MediaCaption({
               onClick={() => onEditingChange(true)}
               className="rounded text-sm text-ink-400 transition-colors hover:text-ink-100"
             >
-              + Describe this photo
+              {t('caption.describe')}
             </button>
           )}
 
@@ -116,7 +118,7 @@ export function MediaCaption({
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
                 aria-expanded={expanded}
-                aria-label={expanded ? 'Collapse the caption' : 'Expand the caption'}
+                aria-label={t(expanded ? 'caption.collapse' : 'caption.expand')}
                 className="block w-full space-y-0.5 text-left"
               >
                 {entries.map((entry) => (
@@ -131,7 +133,7 @@ export function MediaCaption({
             controls — the photo description and the entire bar. */}
         <div className="flex shrink-0 flex-col justify-between">
           {editable && description ? (
-            <IconButton label="Edit this photo description" onClick={() => onEditingChange(true)}>
+            <IconButton label={t('caption.edit')} onClick={() => onEditingChange(true)}>
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
             </IconButton>
@@ -139,7 +141,7 @@ export function MediaCaption({
             <span />
           )}
 
-          <IconButton label="Hide the caption (l)" onClick={() => onHiddenChange(true)}>
+          <IconButton label={t('caption.hide')} onClick={() => onHiddenChange(true)}>
             <path d="m6 9 6 6 6-6" />
           </IconButton>
         </div>
@@ -230,6 +232,7 @@ function CaptionEditor({
   description: string | null;
   onClose: () => void;
 }): ReactElement {
+  const t = useT();
   const update = useUpdateMedia(albumId);
   const [value, setValue] = useState(description ?? '');
 
@@ -253,15 +256,15 @@ function CaptionEditor({
         onChange={(event) => setValue(event.target.value)}
         maxLength={MEDIA_DESCRIPTION_MAX_LENGTH}
         rows={3}
-        placeholder="What's happening in this photo"
-        aria-label="Photo description"
+        placeholder={t('caption.placeholder')}
+        aria-label={t('caption.label')}
         autoFocus
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, 'Saving failed.')}
+          {errorText(update.error, t('common.saveFailed'))}
         </p>
       )}
 
@@ -276,14 +279,14 @@ function CaptionEditor({
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Saving…' : 'Save'}
+            {t(update.isPending ? 'common.saving' : 'common.save')}
           </button>
         </div>
       </div>

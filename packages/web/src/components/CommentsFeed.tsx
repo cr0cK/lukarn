@@ -6,6 +6,7 @@ import { useCommentsFeed } from '../api/hooks';
 import { groupByDayAndPhoto, type PhotoGroup } from '../lib/commentGroups';
 import { emojify } from '../lib/emoji';
 import { formatLocalDateTime, formatRelative } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { unreadFeedCount, useSeenFeed } from '../lib/seenComments';
 import { Spinner } from './Spinner';
 
@@ -78,6 +79,7 @@ export function CommentsFeed({
   albumTitle: string | null;
   onClose: () => void;
 }): ReactElement {
+  const t = useT();
   // Default to global scope, even in an album. That is what the badge counts,
   // and opening a narrower list than it announces would make people look for
   // messages that are not there.
@@ -95,13 +97,13 @@ export function CommentsFeed({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
-  const days = groupByDayAndPhoto(comments);
+  const days = groupByDayAndPhoto(comments, t);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Recent activity"
+      aria-label={t('feed.title')}
       className="fixed inset-0 z-40 flex justify-end bg-black/60"
       onClick={onClose}
     >
@@ -114,14 +116,14 @@ export function CommentsFeed({
       >
         <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
           <div className="min-w-0">
-            <h2 className="text-sm font-medium text-ink-100">Recent activity</h2>
-            <p className="mt-0.5 text-xs text-ink-400">The latest messages, across all photos.</p>
+            <h2 className="text-sm font-medium text-ink-100">{t('feed.title')}</h2>
+            <p className="mt-0.5 text-xs text-ink-400">{t('feed.subtitle')}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-            aria-label="Close activity (Esc)"
+            aria-label={t('feed.close')}
           >
             <svg
               viewBox="0 0 24 24"
@@ -140,10 +142,10 @@ export function CommentsFeed({
         {albumId && (
           <div className="flex gap-1 border-b border-ink-800 px-5 py-2.5">
             <ScopeTab active={scope === 'all'} onSelect={() => setScope('all')}>
-              Every album
+              {t('feed.everyAlbum')}
             </ScopeTab>
             <ScopeTab active={scope === 'album'} onSelect={() => setScope('album')}>
-              {albumTitle ?? 'This album'}
+              {albumTitle ?? t('feed.thisAlbum')}
             </ScopeTab>
           </div>
         )}
@@ -151,20 +153,18 @@ export function CommentsFeed({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isPending && (
             <div className="flex justify-center py-8">
-              <Spinner label="Loading activity" />
+              <Spinner label={t('feed.loading')} />
             </div>
           )}
 
           {error && (
             <p role="alert" className="px-5 py-4 text-sm text-ink-400">
-              {errorText(error, 'Activity could not be loaded.')}
+              {errorText(error, t('feed.loadFailed'))}
             </p>
           )}
 
           {!isPending && !error && days.length === 0 && (
-            <p className="px-5 py-6 text-sm text-ink-400">
-              No comments yet. Open a photo to write the first one.
-            </p>
+            <p className="px-5 py-6 text-sm text-ink-400">{t('feed.empty')}</p>
           )}
 
           {days.map((day) => (
@@ -196,7 +196,7 @@ export function CommentsFeed({
                 disabled={isFetchingNextPage}
                 className="w-full rounded-lg border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 disabled:opacity-60"
               >
-                {isFetchingNextPage ? 'Loading…' : 'Older messages'}
+                {t(isFetchingNextPage ? 'common.loading' : 'feed.older')}
               </button>
             </div>
           )}
@@ -245,6 +245,7 @@ function PhotoBlock({
   showAlbum: boolean;
   onNavigate: () => void;
 }): ReactElement {
+  const t = useT();
   // Take the version from the first message: every message in a group refers to
   // the same photo, and therefore the same fingerprint.
   const version = photo.comments[0]?.mediaVersion ?? null;
@@ -262,7 +263,7 @@ function PhotoBlock({
             to={target}
             onClick={onNavigate}
             className="group shrink-0"
-            aria-label={`View ${photo.mediaName} in ${photo.albumTitle}`}
+            aria-label={t('feed.view', photo.mediaName, photo.albumTitle)}
           >
             <img
               src={mediaUrl.thumb(photo.mediaId, 320, version)}
@@ -287,7 +288,7 @@ function PhotoBlock({
                 {photo.mediaName}
               </Link>
             ) : (
-              <span className="italic">photo removed from the index</span>
+              <span className="italic">{t('feed.removedPhoto')}</span>
             )}
             {showAlbum && <span> · {photo.albumTitle}</span>}
           </p>
@@ -304,10 +305,13 @@ function PhotoBlock({
                   <span className="text-sm font-medium text-ink-100">
                     {comment.author.displayName}
                   </span>
-                  <time dateTime={comment.createdAt} title={formatLocalDateTime(comment.createdAt)}>
-                    {formatRelative(comment.createdAt)}
+                  <time
+                    dateTime={comment.createdAt}
+                    title={formatLocalDateTime(comment.createdAt, t)}
+                  >
+                    {formatRelative(comment.createdAt, t)}
                   </time>
-                  {comment.parentId !== null && <span>· in reply</span>}
+                  {comment.parentId !== null && <span>· {t('comments.inReply')}</span>}
                 </p>
                 {/* At most three lines: the drawer is an overview of what was
                     said, not the conversation — that opens beneath the photo

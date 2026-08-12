@@ -9,6 +9,7 @@ import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateUser, useUpdateUser } from '../../api/hooks';
 import { validatePassword, validateUsername } from '../../lib/adminForm';
+import { useT } from '../../lib/i18n';
 import { AlbumAccessPicker } from './AlbumAccessPicker';
 import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
 
@@ -30,6 +31,7 @@ export function UserForm({
   onClose,
   notify,
 }: UserFormProps): ReactElement {
+  const t = useT();
   const fieldId = useId();
   const create = useCreateUser();
   const update = useUpdateUser();
@@ -41,8 +43,8 @@ export function UserForm({
   const [userAlbums, setUserAlbums] = useState<string[]>(user?.albums ?? []);
   const [touched, setTouched] = useState(false);
 
-  const usernameError = editing ? null : validateUsername(username);
-  const passwordError = validatePassword(password, !editing);
+  const usernameError = editing ? null : validateUsername(username, t);
+  const passwordError = validatePassword(password, !editing, t);
   const pending = create.isPending || update.isPending;
   const serverError = create.error ?? update.error;
 
@@ -56,7 +58,7 @@ export function UserForm({
         { username: username.trim(), password, admin, albums: userAlbums },
         {
           onSuccess: (created) => {
-            notify({ tone: 'ok', text: `Account "${created.username}" created.` });
+            notify({ tone: 'ok', text: t('userForm.created', created.username) });
             onClose();
           },
         },
@@ -80,7 +82,7 @@ export function UserForm({
       { username: user.username, body },
       {
         onSuccess: (saved) => {
-          notify({ tone: 'ok', text: `Account "${saved.username}" saved.` });
+          notify({ tone: 'ok', text: t('userForm.saved', saved.username) });
           onClose();
         },
       },
@@ -92,7 +94,7 @@ export function UserForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id={`${fieldId}-username`}
-          label="Username"
+          label={t('userForm.username')}
           value={username}
           onChange={setUsername}
           autoComplete="off"
@@ -100,16 +102,12 @@ export function UserForm({
           readOnly={editing}
           disabled={pending}
           error={touched ? usernameError : null}
-          hint={
-            editing
-              ? 'The username does not change; delete and recreate the account if needed.'
-              : 'Lettres, chiffres, point, tiret ou tiret bas.'
-          }
+          hint={t(editing ? 'userForm.usernameFixed' : 'userForm.usernameHint')}
         />
 
         <TextField
           id={`${fieldId}-password`}
-          label={editing ? 'New password' : 'Password'}
+          label={t(editing ? 'userForm.newPassword' : 'userForm.password')}
           type="password"
           value={password}
           onChange={setPassword}
@@ -117,24 +115,18 @@ export function UserForm({
           disabled={pending}
           error={touched ? passwordError : null}
           hint={
-            editing
-              ? 'Leave empty to keep the current password.'
-              : `${PASSWORD_MIN_LENGTH} characters minimum.`
+            editing ? t('userForm.passwordKeep') : t('userForm.passwordHint', PASSWORD_MIN_LENGTH)
           }
         />
       </div>
 
       <Checkbox
         id={`${fieldId}-admin`}
-        label="Administrator role"
+        label={t('userForm.admin')}
         checked={admin}
         onChange={setAdmin}
         disabled={pending || isSelf}
-        hint={
-          isSelf
-            ? 'You cannot remove your own role: this page needs an administrator.'
-            : 'Grants access to this page. Album access stays the one chosen below.'
-        }
+        hint={t(isSelf ? 'userForm.adminSelf' : 'userForm.adminHint')}
       />
 
       <AlbumAccessPicker
@@ -144,14 +136,14 @@ export function UserForm({
         disabled={pending}
       />
 
-      <FormError message={serverError ? errorText(serverError, 'Saving failed.') : null} />
+      <FormError message={serverError ? errorText(serverError, t('common.saveFailed')) : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={onClose} disabled={pending}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? 'Saving…' : editing ? 'Save' : 'Create the account'}
+          {pending ? t('common.saving') : editing ? t('common.save') : t('userForm.create')}
         </Button>
       </div>
     </form>

@@ -227,6 +227,7 @@ A **person**, as opposed to the access key in `users`.
 | `verified_at`                                                   | `NULL` until the code has been entered          |
 | `code_hash`, `code_expires_at`, `code_sent_at`, `code_attempts` | Verification in progress                        |
 | `pending_display_name`                                          | Requested rename, pending the code              |
+| `locale`                                                        | Language this person is written to in           |
 
 Key choices:
 
@@ -249,6 +250,15 @@ Key choices:
   and because a comment signature is reread on every request, their entire history
   would change name without a single code being entered. An identity not yet
   verified is written directly — nothing is signed by it.
+
+- **`locale` exists so an email arrives in the language its recipient reads.** It
+  is recorded from `Accept-Language` on every authenticated request, and only when
+  it changes (`plugins/locale.ts`). It sits here rather than on `users` because a
+  username is an access key a household may share, while an address lands in one
+  inbox belonging to one reader — and the interface language stays in the browser,
+  which is what a shared television needs. `NULL` until one of that person's
+  requests announces a supported language; the instance's `DEFAULT_LOCALE` then
+  applies (D260812d).
 
 `sessions` holds a `commenter_id` (`ON DELETE SET NULL`): the session
 **remembers** the identity; it does not define it. Losing one's identity therefore
@@ -566,6 +576,13 @@ Current state:
 | 13      | `device_pairings`: pair a screen without a keyboard instead of typing a password.    |
 | 14      | `media.video_codec`: which codec does a video's video track use?                     |
 | 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.         |
+| 16      | `commenters.locale`: the language this person is written to in.                      |
+
+Migration 16 is additive and touches no row: the column arrives as `NULL` for
+every identity, and the instance's `DEFAULT_LOCALE` applies until one of that
+person's requests announces a language. Nothing is backfilled — a language
+inferred from an old email would be a guess, and the first request corrects it
+anyway.
 
 Migration 15 is additive and touches no rows: the table arrives empty — nothing
 reconstructs past traffic — and both `sessions` columns arrive as `NULL`. A

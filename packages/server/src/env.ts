@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import type { Locale } from '@lukarn/shared';
 import { z } from 'zod';
+import { defaultLocale } from './i18n/index.js';
 
 /**
  * Built front end, next to the server in the monorepo. The path is calculated
@@ -30,6 +32,14 @@ const schema = z.object({
    * is the sign-in screen, and it already carries this name.
    */
   APP_NAME: z.string().trim().min(1).default('Photos'),
+
+  /**
+   * Language used when nothing else answers: an email to the moderation address,
+   * which has no commenter identity, or a browser whose `Accept-Language` names
+   * no supported language. Visitors are unaffected — their browser decides, and
+   * the account menu overrides it (D260812d).
+   */
+  DEFAULT_LOCALE: z.string().trim().default('en'),
 
   SESSION_SECRET: secret,
   TOKEN_KEY: secret,
@@ -81,6 +91,8 @@ export interface Env {
   publicUrl: string;
   /** Displayed instance name, and application name once installed. */
   appName: string;
+  /** Fallback language for what the server writes without knowing its reader. */
+  defaultLocale: Locale;
   sessionSecret: string;
   tokenKey: string;
   google: { clientId: string; clientSecret: string } | null;
@@ -277,6 +289,7 @@ export function loadEnv(
     host: env.HOST,
     publicUrl,
     appName: env.APP_NAME,
+    defaultLocale: defaultLocale(env.DEFAULT_LOCALE),
     sessionSecret: env.SESSION_SECRET,
     tokenKey: env.TOKEN_KEY,
     google:

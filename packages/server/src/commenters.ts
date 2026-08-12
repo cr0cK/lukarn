@@ -1,4 +1,9 @@
-import { VERIFICATION_CODE_LENGTH, type CommenterIdentity } from '@lukarn/shared';
+import {
+  VERIFICATION_CODE_LENGTH,
+  isLocale,
+  type CommenterIdentity,
+  type Locale,
+} from '@lukarn/shared';
 import { randomInt } from 'node:crypto';
 import { hashVerificationCode, safeEqual } from './crypto.js';
 import type { Db } from './db.js';
@@ -37,6 +42,12 @@ export interface StoredCommenter {
   displayName: string;
   notify: boolean;
   verifiedAt: string | null;
+  /**
+   * Language this person reads, recorded from their browser. `null` until one of
+   * their requests announces a supported one, in which case the instance default
+   * applies (D260812d).
+   */
+  locale: Locale | null;
 }
 
 interface CommenterRow {
@@ -50,6 +61,7 @@ interface CommenterRow {
   code_sent_at: string | null;
   code_attempts: number;
   pending_display_name: string | null;
+  locale: string | null;
 }
 
 function toCommenter(row: CommenterRow): StoredCommenter {
@@ -59,6 +71,7 @@ function toCommenter(row: CommenterRow): StoredCommenter {
     displayName: row.display_name,
     notify: row.notify === 1,
     verifiedAt: row.verified_at,
+    locale: isLocale(row.locale) ? row.locale : null,
   };
 }
 
@@ -87,6 +100,18 @@ export class CommenterRepo {
     const row = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(email.trim()) as
       CommenterRow | undefined;
     return row ? toCommenter(row) : null;
+  }
+
+  /**
+   * Records the language this person reads, and does nothing when it has not
+   * changed.
+   *
+   * Called on every authenticated request (`plugins/locale.ts`), hence the guard:
+   * a comparison in memory costs nothing, while an UPDATE per thumbnail would put
+   * a write on the critical path of a cold grid.
+   */
+  setLocale(id: number, locale: Locale): void {
+    this.db.prepare('UPDATE commenters SET locale = ? WHERE id = ?').run(locale, id);
   }
 
   byId(id: number): StoredCommenter | null {

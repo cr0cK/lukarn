@@ -30,7 +30,9 @@ export function createSearchRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/', async (request, reply) => {
       const query = querySchema.safeParse(request.query);
       if (!query.success) {
-        return reply.code(400).send({ error: 'bad_request', message: 'Invalid search' });
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidSearch') });
       }
 
       const albumIds = context.albumsFor(request.user!.username).map((album) => album.id);

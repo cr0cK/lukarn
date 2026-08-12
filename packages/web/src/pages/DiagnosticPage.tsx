@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react';
+import { useT, type Translate } from '../lib/i18n';
 
 /**
  * One report row: a label, a value and the judgement deciding its colour. `null`
@@ -81,9 +82,18 @@ function encoches(): string {
   return lu;
 }
 
-function releve(): Ligne[] {
+/**
+ * The survey names CSS properties, which are not translated — `@layer` is called
+ * `@layer` everywhere. Only what surrounds them is: the four measurements at the
+ * top, and the yes/no of every test.
+ */
+function releve(t: Translate): Ligne[] {
   const info = (cle: string, valeur: string): Ligne => ({ cle, valeur, bon: null });
-  const test = (cle: string, ok: boolean): Ligne => ({ cle, valeur: ok ? 'OUI' : 'NON', bon: ok });
+  const test = (cle: string, ok: boolean): Ligne => ({
+    cle,
+    valeur: t(ok ? 'diagnostic.yes' : 'diagnostic.no'),
+    bon: ok,
+  });
 
   // Geometry measurements alone distinguish "recognised" from "applied", and
   // logical properties are precisely what Tailwind v4 emits everywhere instead
@@ -119,17 +129,31 @@ function releve(): Ligne[] {
   }, 150);
 
   return [
-    info('Viewport CSS', `${window.innerWidth} × ${window.innerHeight}`),
-    info('Screen', `${window.screen.width} × ${window.screen.height}`),
+    info(t('diagnostic.viewport'), `${window.innerWidth} × ${window.innerHeight}`),
+    info(t('diagnostic.screen'), `${window.screen.width} × ${window.screen.height}`),
     info('devicePixelRatio', String(window.devicePixelRatio)),
-    info('Safe-area insets t/r/b/l', encoches()),
-    info('Fine pointer', window.matchMedia('(pointer: fine)').matches ? 'yes' : 'no'),
-    info('Hover available', window.matchMedia('(hover: hover)').matches ? 'yes' : 'no'),
+    info(t('diagnostic.insets'), encoches()),
+    info(
+      t('diagnostic.finePointer'),
+      t(
+        window.matchMedia('(pointer: fine)').matches
+          ? 'diagnostic.answerYes'
+          : 'diagnostic.answerNo',
+      ),
+    ),
+    info(
+      t('diagnostic.hover'),
+      t(
+        window.matchMedia('(hover: hover)').matches
+          ? 'diagnostic.answerYes'
+          : 'diagnostic.answerNo',
+      ),
+    ),
 
     test(
       // NO no longer condemns the application: the produced stylesheet is flattened
       // during the build (D260809h). It remains a useful generation marker.
-      '@layer — no longer required, unwrapped at build time',
+      t('diagnostic.layer'),
       regleAppliquee(
         '@layer diagnostic { #sonde-diagnostic { color: rgb(1, 2, 3) } }',
         (sonde) => getComputedStyle(sonde).color === 'rgb(1, 2, 3)',
@@ -147,9 +171,9 @@ function releve(): Ligne[] {
     test('color-mix()', supporte('color', 'color-mix(in oklab, red 50%, blue)')),
     test('oklch()', supporte('color', 'oklch(63.7% .237 25.331)')),
 
-    test('inset-inline applied (measured)', insetInline),
-    test('padding-inline applied (measured)', paddingInline),
-    test('flex: 1 1 0% applied (measured)', flexUn),
+    test(t('diagnostic.measured', 'inset-inline'), insetInline),
+    test(t('diagnostic.measured', 'padding-inline'), paddingInline),
+    test(t('diagnostic.measured', 'flex: 1 1 0%'), flexUn),
 
     test(':has()', supporteCondition('selector(:has(a))')),
     test('dvh units', supporte('height', '100dvh')),
@@ -173,10 +197,11 @@ function releve(): Ligne[] {
  * must still be able to describe itself.
  */
 export default function DiagnosticPage(): ReactElement {
+  const t = useT();
   const [lignes, setLignes] = useState<Ligne[]>([]);
 
   // After mounting only: the entire report measures the real DOM.
-  useEffect(() => setLignes(releve()), []);
+  useEffect(() => setLignes(releve(t)), [t]);
 
   const version = /Chr[o0]me\/(\d+)/.exec(navigator.userAgent)?.[1];
 
@@ -193,11 +218,11 @@ export default function DiagnosticPage(): ReactElement {
       }}
     >
       <h1 style={{ font: '700 30px/1.2 system-ui, Arial, sans-serif', margin: '0 0 8px' }}>
-        Browser diagnostics
+        {t('diagnostic.title')}
       </h1>
 
       <p style={{ font: '700 34px/1.2 system-ui, Arial, sans-serif', color: '#7aa2ff', margin: 0 }}>
-        Chromium {version ?? 'unknown'} · {window.innerWidth} × {window.innerHeight}
+        Chromium {version ?? t('diagnostic.unknown')} · {window.innerWidth} × {window.innerHeight}
       </p>
 
       <p

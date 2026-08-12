@@ -2,6 +2,7 @@ import { type DevicePairingStart, formatUserCode } from '@lukarn/shared';
 import { type ReactElement, useMemo } from 'react';
 import { ApiError } from '../api/client';
 import { usePairingPoll } from '../api/hooks';
+import { useT } from '../lib/i18n';
 import { qrCode } from '../lib/qr';
 import { Spinner } from './Spinner';
 
@@ -35,6 +36,7 @@ interface DeviceLoginProps {
  * which is the event that justifies it anyway.
  */
 export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginProps): ReactElement {
+  const t = useT();
   const url = useMemo(
     () => (pairing ? `${window.location.origin}/pair?code=${pairing.userCode}` : null),
     [pairing],
@@ -51,10 +53,8 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
   return (
     <div className="space-y-5 text-center">
       <div>
-        <h2 className="text-sm font-medium text-ink-100">Sign in with a phone</h2>
-        <p className="mt-1 text-sm text-ink-400">
-          Scan this code with a phone that is already signed in, then approve this screen.
-        </p>
+        <h2 className="text-sm font-medium text-ink-100">{t('device.title')}</h2>
+        <p className="mt-1 text-sm text-ink-400">{t('device.hint')}</p>
       </div>
 
       {!pairing && !message && (
@@ -73,7 +73,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
             onClick={onRetry}
             className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
           >
-            Try again
+            {t('common.tryAgain')}
           </button>
         </div>
       )}
@@ -85,7 +85,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
               viewBox={`${-QUIET_ZONE} ${-QUIET_ZONE} ${qr.size + QUIET_ZONE * 2} ${qr.size + QUIET_ZONE * 2}`}
               className="size-56 rounded-lg"
               role="img"
-              aria-label={`QR code to ${url}`}
+              aria-label={t('device.qr', url)}
             >
               {/* Fixed contrast, independent of the theme: a QR reader decodes
                   only a dark pattern on a light background. */}
@@ -104,7 +104,8 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
 
           <div>
             <p className="text-xs text-ink-400">
-              Or go to <span className="text-ink-300">{window.location.host}/pair</span> and enter
+              {t('device.orGoTo')} <span className="text-ink-300">{window.location.host}/pair</span>{' '}
+              {t('device.andEnter')}
             </p>
             {/* The code is shown in clear text because it is used both to pair
                 without a camera and to verify on the phone that the visible
@@ -117,19 +118,19 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
           {expired ? (
             <div className="space-y-3">
               <p role="alert" className="text-sm text-amber-300">
-                This code has expired.
+                {t('device.expired')}
               </p>
               <button
                 type="button"
                 onClick={onRetry}
                 className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
               >
-                Show a new code
+                {t('device.newCode')}
               </button>
             </div>
           ) : (
             <p className="text-sm text-ink-400" aria-live="polite">
-              Waiting for authorisation…
+              {t('device.waiting')}
             </p>
           )}
         </>
@@ -140,7 +141,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
         onClick={onCancel}
         className="text-sm text-ink-400 underline-offset-4 transition-colors hover:text-ink-200 hover:underline"
       >
-        Use a username and password
+        {t('device.usePassword')}
       </button>
     </div>
   );

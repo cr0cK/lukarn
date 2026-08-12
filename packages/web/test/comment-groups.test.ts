@@ -2,6 +2,7 @@ import type { AdminComment } from '@lukarn/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { groupByDayAndPhoto, type DayGroup } from '../src/lib/commentGroups';
+import { makeTranslate } from '../src/lib/i18n/translate';
 
 /**
  * Grouping a comment list by day and then by photo, for both the moderation
@@ -46,6 +47,12 @@ function aplati(groupes: DayGroup<AdminComment>[]): AdminComment[] {
   return groupes.flatMap((jour) => jour.photos.flatMap((photo) => photo.comments));
 }
 
+/**
+ * The English catalogue, read without a provider: these functions produce text,
+ * and a test that stubbed the translation would check its own stub.
+ */
+const t = makeTranslate('en');
+
 describe('moderation queue grouping', () => {
   it('neither loses nor duplicates any comment', () => {
     const entree = [
@@ -55,7 +62,7 @@ describe('moderation queue grouping', () => {
       commentaire('2026-08-06T08:00:00.000Z', { albumId: 'corse', albumTitle: 'Corse' }),
     ];
 
-    const sortie = aplati(groupByDayAndPhoto(entree));
+    const sortie = aplati(groupByDayAndPhoto(entree, t));
 
     assert.equal(sortie.length, entree.length);
     assert.deepEqual(
@@ -65,11 +72,14 @@ describe('moderation queue grouping', () => {
   });
 
   it('groups comments on the same photo under one heading', () => {
-    const groupes = groupByDayAndPhoto([
-      commentaire('2026-08-07T12:00:00.000Z'),
-      commentaire('2026-08-07T11:00:00.000Z', { mediaId: 'phare', mediaName: 'phare.jpg' }),
-      commentaire('2026-08-07T10:00:00.000Z'),
-    ]);
+    const groupes = groupByDayAndPhoto(
+      [
+        commentaire('2026-08-07T12:00:00.000Z'),
+        commentaire('2026-08-07T11:00:00.000Z', { mediaId: 'phare', mediaName: 'phare.jpg' }),
+        commentaire('2026-08-07T10:00:00.000Z'),
+      ],
+      t,
+    );
 
     assert.equal(groupes.length, 1, 'expected a single day');
     const [plage, phare] = groupes[0]!.photos;
@@ -85,10 +95,13 @@ describe('moderation queue grouping', () => {
     // The same media in two albums means two separate conversations (D12), and
     // therefore two blocks — combining them would expose what was said in an
     // isolated album.
-    const groupes = groupByDayAndPhoto([
-      commentaire('2026-08-07T12:00:00.000Z', { albumId: 'vacances', albumTitle: 'Vacances' }),
-      commentaire('2026-08-07T11:00:00.000Z', { albumId: 'corse', albumTitle: 'Corse' }),
-    ]);
+    const groupes = groupByDayAndPhoto(
+      [
+        commentaire('2026-08-07T12:00:00.000Z', { albumId: 'vacances', albumTitle: 'Vacances' }),
+        commentaire('2026-08-07T11:00:00.000Z', { albumId: 'corse', albumTitle: 'Corse' }),
+      ],
+      t,
+    );
 
     assert.equal(groupes[0]!.photos.length, 2);
   });
@@ -100,7 +113,7 @@ describe('moderation queue grouping', () => {
       commentaire('2026-08-05T18:00:00.000Z'),
     ];
 
-    const sortie = aplati(groupByDayAndPhoto(entree));
+    const sortie = aplati(groupByDayAndPhoto(entree, t));
 
     assert.deepEqual(
       sortie.map((comment) => comment.id),
@@ -115,10 +128,10 @@ describe('moderation queue grouping', () => {
     const local = new Date(2026, 7, 7, 0, 30);
     const veilleUtc = new Date(2026, 7, 6, 23, 30);
 
-    const groupes = groupByDayAndPhoto([
-      commentaire(local.toISOString()),
-      commentaire(veilleUtc.toISOString()),
-    ]);
+    const groupes = groupByDayAndPhoto(
+      [commentaire(local.toISOString()), commentaire(veilleUtc.toISOString())],
+      t,
+    );
 
     // Two distinct local days, regardless of UTC's position.
     assert.equal(groupes.length, 2);

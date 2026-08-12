@@ -25,6 +25,7 @@ services:
       # for `APP_NAME` it is a mistake the zod schema must be able to reject
       # rather than have it papered over.
       APP_NAME: ${APP_NAME-Photos}
+      DEFAULT_LOCALE: ${DEFAULT_LOCALE-en}
       SESSION_SECRET: ${SESSION_SECRET:?generate it with openssl rand -hex 32}
       TOKEN_KEY: ${TOKEN_KEY:?generate it with openssl rand -hex 32}
       # A path **inside the container**: the key is read under /app/config, mounted

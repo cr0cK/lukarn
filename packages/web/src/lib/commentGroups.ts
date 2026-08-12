@@ -1,4 +1,5 @@
 import type { Comment } from '@lukarn/shared';
+import type { Translate } from './i18n/translate';
 import { dayLabel, localDayKey } from './justify';
 
 /**
@@ -57,7 +58,10 @@ export interface DayGroup<T extends SituatedComment = SituatedComment> {
  * first comment, and comments on a photo retain theirs. The incoming list is in
  * reverse chronological order and stays that way.
  */
-export function groupByDayAndPhoto<T extends SituatedComment>(comments: T[]): DayGroup<T>[] {
+export function groupByDayAndPhoto<T extends SituatedComment>(
+  comments: T[],
+  t: Translate,
+): DayGroup<T>[] {
   const days = new Map<string, Map<string, PhotoGroup<T>>>();
 
   for (const comment of comments) {
@@ -94,7 +98,7 @@ export function groupByDayAndPhoto<T extends SituatedComment>(comments: T[]): Da
 
   return [...days].map(([key, photos]) => ({
     key,
-    label: dayLabel(key),
+    label: dayLabel(key, t),
     photos: [...photos.values()],
   }));
 }

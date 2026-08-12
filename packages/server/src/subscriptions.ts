@@ -1,3 +1,4 @@
+import { isLocale, type Locale } from '@lukarn/shared';
 import type { Db } from './db.js';
 
 /**
@@ -23,6 +24,8 @@ export interface Subscriber {
   id: number;
   email: string;
   displayName: string;
+  /** Language this person reads, `null` until one of their requests said so. */
+  locale: Locale | null;
 }
 
 export type SubscriptionState = 'auto' | 'opted_out';
@@ -87,14 +90,24 @@ export class SubscriptionRepo {
   subscribers(albumId: string): Subscriber[] {
     const rows = this.db
       .prepare(
-        `SELECT c.id, c.email, c.display_name
+        `SELECT c.id, c.email, c.display_name, c.locale
            FROM album_subscriptions s
            JOIN commenters c ON c.id = s.commenter_id
           WHERE s.album_id = ? AND s.state = 'auto'
             AND c.verified_at IS NOT NULL AND c.notify = 1
           ORDER BY c.id`,
       )
-      .all(albumId) as { id: number; email: string; display_name: string }[];
-    return rows.map((row) => ({ id: row.id, email: row.email, displayName: row.display_name }));
+      .all(albumId) as {
+      id: number;
+      email: string;
+      display_name: string;
+      locale: string | null;
+    }[];
+    return rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name,
+      locale: isLocale(row.locale) ? row.locale : null,
+    }));
   }
 }

@@ -3,24 +3,26 @@ import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useAdminStatus, useSettings, useUpdateSettings } from '../../api/hooks';
 import { parseNumber, validateCacheSizeGB, validateIntervalMinutes } from '../../lib/adminForm';
+import { useT } from '../../lib/i18n';
 import { Spinner } from '../Spinner';
 import { Button, Checkbox, FormError, Section, TextField, type Notify } from './ui';
 
 /** "Settings" section: sync frequency and cache size. */
 export function SettingsSection({ notify }: { notify: Notify }): ReactElement {
+  const t = useT();
   const { data: settings, isPending, error } = useSettings();
 
   return (
-    <Section title="Settings" description="How often it syncs, and how much disk it takes.">
+    <Section title={t('settings.title')} description={t('settings.description')}>
       {isPending && (
         <div className="px-4 py-6">
-          <Spinner label="Loading settings" />
+          <Spinner label={t('settings.loading')} />
         </div>
       )}
 
       {error && (
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Cannot load the settings.')} />
+          <FormError message={errorText(error, t('settings.loadFailed'))} />
         </div>
       )}
 
@@ -40,6 +42,7 @@ function SettingsForm({
   settings: AppSettings;
   notify: Notify;
 }): ReactElement {
+  const t = useT();
   const save = useUpdateSettings();
   // Already loaded by the dashboard, so this read uses the cache. Without SMTP,
   // no verification code is sent and nobody can comment — the setting must say
@@ -56,9 +59,9 @@ function SettingsForm({
   const [moderationEmail, setModerationEmail] = useState(settings.moderationEmail ?? '');
   const [touched, setTouched] = useState(false);
 
-  const intervalError = validateIntervalMinutes(minutes);
-  const cacheError = validateCacheSizeGB(cacheSize);
-  const videoCacheError = validateCacheSizeGB(videoCacheSize);
+  const intervalError = validateIntervalMinutes(minutes, t);
+  const cacheError = validateCacheSizeGB(cacheSize, t);
+  const videoCacheError = validateCacheSizeGB(videoCacheSize, t);
 
   const parsedInterval = parseNumber(minutes);
   const parsedCache = parseNumber(cacheSize);
@@ -94,7 +97,7 @@ function SettingsForm({
     if (Object.keys(body).length === 0) return;
 
     save.mutate(body, {
-      onSuccess: () => notify({ tone: 'ok', text: 'Settings saved.' }),
+      onSuccess: () => notify({ tone: 'ok', text: t('settings.saved') }),
     });
   };
 
@@ -114,87 +117,83 @@ function SettingsForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id="settings-interval"
-          label="Sync interval (minutes)"
+          label={t('settings.interval')}
           value={minutes}
           onChange={setMinutes}
           inputMode="numeric"
           disabled={save.isPending}
           error={touched ? intervalError : null}
-          hint="0 disables automatic syncing; a manual resync stays available."
+          hint={t('settings.intervalHint')}
         />
 
         <TextField
           id="settings-cache"
-          label="Maximum cache size (GB)"
+          label={t('settings.cache')}
           value={cacheSize}
           onChange={setCacheSize}
           inputMode="decimal"
           disabled={save.isPending}
           error={touched ? cacheError : null}
-          hint="Thumbnails and renders. Past it, the oldest entries are evicted."
+          hint={t('settings.cacheHint')}
         />
 
         <TextField
           id="settings-video-cache"
-          label="Maximum size of prepared videos (GB)"
+          label={t('settings.videoCache')}
           value={videoCacheSize}
           onChange={setVideoCacheSize}
           inputMode="decimal"
           disabled={save.isPending}
           error={touched ? videoCacheError : null}
-          hint="A budget of its own, separate from thumbnails: a video costs minutes of CPU, a thumbnail a few seconds. Reckon about 95 MB per minute of 1080p footage."
+          hint={t('settings.videoCacheHint')}
         />
       </div>
 
       <TextField
         id="settings-moderation-email"
-        label="Address told about new comments"
+        label={t('settings.moderationEmail')}
         type="email"
         value={moderationEmail}
         onChange={setModerationEmail}
         disabled={save.isPending}
-        hint={
-          mailConfigured
-            ? 'Gets an email for every comment posted. Empty: no moderation alert.'
-            : 'No SMTP server configured: filled in, it will receive nothing — and nobody can comment for as long as verification codes cannot be sent.'
-        }
+        hint={t(mailConfigured ? 'settings.moderationEmailHint' : 'settings.moderationEmailNoMail')}
       />
 
       <Checkbox
         id="settings-startup"
-        label="Sync when the server starts"
+        label={t('settings.onStartup')}
         checked={onStartup}
         onChange={setOnStartup}
         disabled={save.isPending}
-        hint="Useful after a restart; avoid it if startup has to be immediate."
+        hint={t('settings.onStartupHint')}
       />
 
       <Checkbox
         id="settings-prewarm"
-        label="Prepare photos in advance"
+        label={t('settings.prewarm')}
         checked={prewarm}
         onChange={setPrewarm}
         disabled={save.isPending}
-        hint="Renders photos in the background, one at a time, newest to oldest: the first opening goes from a few seconds to instant. Untick it if the bandwidth of the server is metered."
+        hint={t('settings.prewarmHint')}
       />
 
       <Checkbox
         id="settings-transcode"
-        label="Prepare the videos the browser cannot play"
+        label={t('settings.transcode')}
         checked={transcode}
         onChange={setTranscode}
         disabled={save.isPending}
-        hint="Converts HEVC videos in the background, one at a time and at low priority: reckon about a minute of CPU per minute of footage. Without it, they stay downloadable only."
+        hint={t('settings.transcodeHint')}
       />
 
-      <FormError message={save.error ? errorText(save.error, 'Saving failed.') : null} />
+      <FormError message={save.error ? errorText(save.error, t('common.saveFailed')) : null} />
 
       <div className="flex justify-end gap-2">
         <Button onClick={reset} disabled={!dirty || save.isPending}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={!dirty || save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save'}
+          {t(save.isPending ? 'common.saving' : 'common.save')}
         </Button>
       </div>
     </form>

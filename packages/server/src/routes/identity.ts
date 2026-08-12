@@ -53,7 +53,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       if (!context.mailer.enabled) {
         return reply.code(503).send({
           error: 'mail_not_configured',
-          message: 'This gallery has no mail server configured: comments are unavailable.',
+          message: request.t('error.mailNotConfigured'),
         });
       }
 
@@ -61,7 +61,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply.code(400).send({
           error: 'bad_request',
-          message: parsed.error.issues[0]?.message ?? 'Invalid address or name',
+          message: parsed.error.issues[0]?.message ?? request.t('error.invalidIdentity'),
         });
       }
 
@@ -75,11 +75,15 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
           .header('Retry-After', String(seconds))
           .send({
             error: 'too_soon',
-            message: `A code has just been sent. Try again in ${seconds} s.`,
+            message: request.t('error.codeJustSent', seconds),
           });
       }
 
-      context.mailer.queue(buildVerificationMail(email, displayName, result.code, context.env));
+      // The language of the request, not a stored one: the code is read within
+      // minutes, in the tab that asked for it.
+      context.mailer.queue(
+        buildVerificationMail(email, displayName, result.code, request.locale, context.env),
+      );
       request.log.info(`Verification code sent to an address from "${request.user!.username}"`);
 
       return reply.code(202).send({ ok: true });
@@ -94,17 +98,18 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) {
         return reply
           .code(400)
-          .send({ error: 'bad_request', message: 'Invalid code — six digits expected.' });
+          .send({ error: 'bad_request', message: request.t('error.invalidCode') });
       }
 
       const result = context.commenters.verify(parsed.data.email, parsed.data.code);
       if ('failure' in result) {
         // Incorrect, expired and exhausted codes return the same message: identifying
         // which case occurred mainly helps someone trying random codes.
-        const message =
+        const message = request.t(
           result.failure === 'too_many_attempts'
-            ? 'Too many attempts. Ask for a new code.'
-            : 'Wrong or expired code. Ask for a new one if needed.';
+            ? 'error.codeAttemptsExhausted'
+            : 'error.codeWrongOrExpired',
+        );
         return reply.code(400).send({ error: result.failure, message });
       }
 

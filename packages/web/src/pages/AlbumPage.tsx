@@ -18,6 +18,7 @@ import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
 import { resolveOrder, useStoredOrder } from '../lib/albumOrder';
 import { formatRange } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { isTyping } from '../lib/typing';
 import { moveSelection, scrollSelectionIntoView, useGridLayout } from '../lib/useGridLayout';
 import { useShortcut } from '../lib/useShortcut';
@@ -33,6 +34,7 @@ type ViewParam = 'photo' | 'panel' | 'order' | 'group' | 'day';
 const DAY_SCROLL_MARGIN = 80;
 
 export default function AlbumPage(): ReactElement {
+  const t = useT();
   const { albumId = '' } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -331,25 +333,25 @@ export default function AlbumPage(): ReactElement {
 
   const subtitle = album.data
     ? [
-        `${album.data.itemCount.toLocaleString('en-GB')} ${album.data.itemCount > 1 ? 'items' : 'item'}`,
-        formatRange(album.data.oldestAt, album.data.newestAt),
+        t('albums.itemCount', album.data.itemCount),
+        formatRange(album.data.oldestAt, album.data.newestAt, t),
       ]
         .filter(Boolean)
         .join(' · ')
     : null;
 
   // The button states the current state; the tooltip states what clicking will do.
-  const orderLabel = shownOrder === 'desc' ? 'Newest first' : 'Oldest first';
-  const orderAction = shownOrder === 'desc' ? 'Show oldest first' : 'Show newest first';
+  const orderLabel = t(shownOrder === 'desc' ? 'album.newestFirst' : 'album.oldestFirst');
+  const orderAction = t(shownOrder === 'desc' ? 'album.showOldestFirst' : 'album.showNewestFirst');
 
   // Same rule for grouping: the label states the state, the tooltip the click effect.
-  const groupLabel = groupBy === 'month' ? 'By month' : 'By day';
-  const groupAction = groupBy === 'month' ? 'Group by day' : 'Group by month';
+  const groupLabel = t(groupBy === 'month' ? 'album.byMonth' : 'album.byDay');
+  const groupAction = t(groupBy === 'month' ? 'album.groupByDay' : 'album.groupByMonth');
 
   return (
     <div className="min-h-full">
       <TopBar
-        title={album.data?.title ?? 'Album'}
+        title={album.data?.title ?? t('album.title')}
         subtitle={subtitle}
         back
         feed={{ unread: activity.unread, onOpen: activity.open }}
@@ -392,21 +394,23 @@ export default function AlbumPage(): ReactElement {
           />
         )}
 
-        {isPending && <Spinner label="Loading photos" />}
+        {isPending && <Spinner label={t('album.loadingPhotos')} />}
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            Cannot load this album.
+            {t('album.loadFailed')}
           </p>
         )}
 
         {!isPending && items.length === 0 && !error && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
-            <p className="text-sm text-ink-300">This album has no photos yet.</p>
+            <p className="text-sm text-ink-300">{t('album.empty')}</p>
             <p className="mt-1 text-xs text-ink-400">
-              {album.data?.syncStatus === 'never'
-                ? 'Start a sync from the administration page.'
-                : 'Check the Drive folder it points at.'}
+              {t(
+                album.data?.syncStatus === 'never'
+                  ? 'album.emptyNeverSynced'
+                  : 'album.emptyCheckFolder',
+              )}
             </p>
           </div>
         )}
@@ -429,7 +433,7 @@ export default function AlbumPage(): ReactElement {
 
         {isFetchingNextPage && (
           <div className="flex justify-center py-8">
-            <Spinner label="Loading…" />
+            <Spinner label={t('common.loading')} />
           </div>
         )}
       </main>

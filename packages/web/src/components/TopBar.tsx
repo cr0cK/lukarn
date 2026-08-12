@@ -1,6 +1,8 @@
+import type { Locale } from '@lukarn/shared';
 import { type ReactElement, type ReactNode, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLogout, useMe } from '../api/hooks';
+import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT, type Translate } from '../lib/i18n';
 import { useInstallPrompt } from '../lib/useInstallPrompt';
 import { ActionMenu, type MenuEntry } from './ActionMenu';
 import { InstallInstructions } from './InstallInstructions';
@@ -105,6 +107,8 @@ export function TopBar({
   const logout = useLogout();
   const navigate = useNavigate();
   const install = useInstallPrompt();
+  const t = useT();
+  const { locale, setLocale } = useLocale();
   const [modeEmploi, setModeEmploi] = useState(false);
 
   const seDeconnecter = (): void => {
@@ -120,13 +124,31 @@ export function TopBar({
   // permanent controls between visits.
   const compte: MenuEntry[] = [
     ...(user?.admin
-      ? [{ label: 'Administration', icon: <IconeAdmin />, onSelect: () => void navigate('/admin') }]
+      ? [
+          {
+            label: t('topbar.admin'),
+            icon: <IconeAdmin />,
+            onSelect: () => void navigate('/admin'),
+          },
+        ]
       : []),
-    { label: 'Sign out', icon: <IconeDeconnexion />, onSelect: seDeconnecter },
+    { label: t('topbar.signOut'), icon: <IconeDeconnexion />, onSelect: seDeconnecter },
     ...(install.disponible
-      ? [{ label: 'Install', icon: <IconeInstaller />, onSelect: proposerInstallation }]
+      ? [{ label: t('topbar.install'), icon: <IconeInstaller />, onSelect: proposerInstallation }]
       : []),
   ];
+
+  // Its own group, below the account actions: changing language is a setting,
+  // not an action on the session, and the rule separating them says so without a
+  // heading. Every language is listed with a tick on the current one rather than
+  // one entry toggling between two — a third language would otherwise have
+  // nowhere to go, and a toggle never says what it will switch to.
+  const langues: MenuEntry[] = AVAILABLE_LOCALES.map((code: Locale) => ({
+    label: LOCALE_NAMES[code],
+    icon: code === locale ? <IconeCoche /> : <span className="block size-4" aria-hidden="true" />,
+    checked: code === locale,
+    onSelect: () => setLocale(code),
+  }));
 
   return (
     // Use `ink-800` on an `ink-900` body: the bar is a surface, not part of the
@@ -143,7 +165,7 @@ export function TopBar({
           <Link
             to="/"
             className="-ml-1 rounded-full p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
-            aria-label="Back to the albums"
+            aria-label={t('topbar.back')}
           >
             <svg
               viewBox="0 0 24 24"
@@ -188,8 +210,8 @@ export function TopBar({
             <button
               type="button"
               onClick={feed.onOpen}
-              title="Recent activity"
-              aria-label={feedLabel(feed.unread)}
+              title={t('topbar.activity')}
+              aria-label={feedLabel(feed.unread, t)}
               className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
             >
               <svg
@@ -232,8 +254,8 @@ export function TopBar({
                 key={item.label}
                 type="button"
                 onClick={item.onSelect}
-                title={`${item.label} — ${item.action}`}
-                aria-label={`${item.label}. ${item.action}.`}
+                title={t('topbar.actionTooltip', item.label, item.action)}
+                aria-label={t('topbar.actionLabel', item.label, item.action)}
                 className={CLASSE_BOUTON}
               >
                 <IconeAction taille="size-5">{item.icon}</IconeAction>
@@ -246,7 +268,7 @@ export function TopBar({
           {actions.length > 0 && (
             <div className="sm:hidden">
               <ActionMenu
-                label="View"
+                label={t('topbar.view')}
                 groupes={[
                   actions.map((item) => ({
                     label: item.action,
@@ -263,7 +285,7 @@ export function TopBar({
             make the bar jump on every page. */}
           {user && (
             <ActionMenu
-              label="Account"
+              label={t('topbar.account')}
               // Use the identifier initial, not the display-name initial: it
               // abbreviates the menu's first line, and different letters before
               // and after the click would look like a defect.
@@ -273,7 +295,7 @@ export function TopBar({
               // the address says who signs comments. Show both when they differ
               // — precisely when someone wonders which name they write under.
               entete={[user.username, ...(user.identity ? [user.identity.email] : [])]}
-              groupes={[compte]}
+              groupes={[compte, langues]}
             />
           )}
         </div>
@@ -287,9 +309,9 @@ export function TopBar({
  * Accessible activity button name: it carries the badge information because the
  * badge is purely visual.
  */
-function feedLabel(unread: number): string {
-  if (unread === 0) return 'Recent activity';
-  return `Recent activity: ${unread} unread message${unread > 1 ? 's' : ''}`;
+function feedLabel(unread: number, t: Translate): string {
+  if (unread === 0) return t('topbar.activity');
+  return t('topbar.activityUnread', unread);
 }
 
 /**
@@ -313,6 +335,24 @@ function IconeAction({
       aria-hidden="true"
     >
       {children}
+    </svg>
+  );
+}
+
+/** Tick beside the active language. Purely visual: `aria-checked` says it. */
+function IconeCoche(): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m5 13 4 4 10-10" />
     </svg>
   );
 }

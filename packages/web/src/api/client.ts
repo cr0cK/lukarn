@@ -36,6 +36,7 @@ import {
   type VerifyIdentityRequest,
   type VisitsOverview,
 } from '@lukarn/shared';
+import { activeLocale } from '../lib/i18n/locale';
 
 /** API error carrying the HTTP status, to distinguish a 401 from a real failure. */
 export class ApiError extends Error {
@@ -53,6 +54,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
+      // The language chosen in the menu, not the one the browser would send by
+      // itself: the server writes its refusals in it, and records it against the
+      // commenter identity so its emails arrive in the language being read.
+      'Accept-Language': activeLocale(),
       ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },

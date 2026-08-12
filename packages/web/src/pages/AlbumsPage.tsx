@@ -9,10 +9,12 @@ import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
 import { formatRange } from '../lib/format';
+import { useT } from '../lib/i18n';
 import { useShortcut } from '../lib/useShortcut';
 
 function AlbumCard({ album }: { album: Album }): ReactElement {
-  const period = formatRange(album.oldestAt, album.newestAt);
+  const t = useT();
+  const period = formatRange(album.oldestAt, album.newestAt, t);
 
   return (
     <Link
@@ -30,7 +32,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
           />
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-ink-400">
-            {album.syncStatus === 'never' ? 'Not synced yet' : 'Empty album'}
+            {t(album.syncStatus === 'never' ? 'albums.neverSynced' : 'albums.empty')}
           </div>
         )}
       </div>
@@ -46,7 +48,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
           </p>
         )}
         <p className="mt-0.5 truncate text-xs text-ink-400">
-          {album.itemCount.toLocaleString('en-US')} {album.itemCount > 1 ? 'items' : 'item'}
+          {t('albums.itemCount', album.itemCount)}
           {period ? ` · ${period}` : ''}
         </p>
       </div>
@@ -55,6 +57,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
 }
 
 export default function AlbumsPage(): ReactElement {
+  const t = useT();
   const { data: albums, isPending, error } = useAlbums();
   const { data: user } = useMe();
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -68,30 +71,28 @@ export default function AlbumsPage(): ReactElement {
           and after roughly twenty albums "where are the Marseille photos?" stops
           having an obvious answer. */}
       <TopBar
-        title="Albums"
+        title={t('albums.title')}
         search={<SearchBox shortcutEnabled={!activity.isOpen && !showShortcuts} />}
         feed={{ unread: activity.unread, onOpen: activity.open }}
       />
 
       <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
-        {isPending && <Spinner label="Loading albums" />}
+        {isPending && <Spinner label={t('albums.loading')} />}
 
         {error && (
           <p role="alert" className="rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-300">
-            Cannot load the albums.
+            {t('albums.loadFailed')}
           </p>
         )}
 
         {albums && albums.length === 0 && (
           <div className="rounded-xl border border-dashed border-ink-700 px-6 py-12 text-center">
-            <p className="text-sm text-ink-300">No album is assigned to you.</p>
+            <p className="text-sm text-ink-300">{t('albums.none')}</p>
             {/* Do not refer to `config/albums.yaml`: once an account exists the
                 database is authoritative and the file is never reread. Following
                 that instruction meant editing a file with no effect. */}
             <p className="mt-1 text-xs text-ink-400">
-              {user?.admin
-                ? 'Create an album from /admin, then assign it to an account.'
-                : 'Ask the administrator of this instance to assign you one.'}
+              {t(user?.admin ? 'albums.noneAdmin' : 'albums.noneVisitor')}
             </p>
           </div>
         )}

@@ -13,6 +13,13 @@ import {
   validatePassword,
   validateUsername,
 } from '../src/lib/adminForm';
+import { makeTranslate } from '../src/lib/i18n/translate';
+
+/**
+ * The English catalogue, read without a provider: these functions produce text,
+ * and a test that stubbed the translation would check its own stub.
+ */
+const t = makeTranslate('en');
 
 describe('extractFolderId', () => {
   it('takes the segment after /folders/ from the pasted URL', () => {
@@ -50,54 +57,54 @@ describe('extractFolderId', () => {
 describe('validateUsername', () => {
   it('accepts usernames matching the shared pattern', () => {
     for (const value of ['alexis', 'a.b_c-1', 'Famille2026']) {
-      assert.equal(validateUsername(value), null, value);
+      assert.equal(validateUsername(value, t), null, value);
     }
   });
 
   it('rejects emptiness, forbidden characters and a non-alphanumeric first character', () => {
-    assert.ok(validateUsername(''));
-    assert.ok(validateUsername('jean dupont'));
-    assert.ok(validateUsername('_alexis'));
-    assert.ok(validateUsername('éric'));
+    assert.ok(validateUsername('', t));
+    assert.ok(validateUsername('jean dupont', t));
+    assert.ok(validateUsername('_alexis', t));
+    assert.ok(validateUsername('éric', t));
   });
 
   it('rejects values beyond the shared maximum length', () => {
-    assert.equal(validateUsername('a'.repeat(64)), null);
-    assert.ok(validateUsername('a'.repeat(65)));
+    assert.equal(validateUsername('a'.repeat(64), t), null);
+    assert.ok(validateUsername('a'.repeat(65), t));
   });
 });
 
 describe('validateAlbumId', () => {
   it('uses the same pattern as account usernames', () => {
-    assert.equal(validateAlbumId('2026-07-allemagne'), null);
-    assert.ok(validateAlbumId('-2026'));
-    assert.ok(validateAlbumId('vacances été'));
+    assert.equal(validateAlbumId('2026-07-allemagne', t), null);
+    assert.ok(validateAlbumId('-2026', t));
+    assert.ok(validateAlbumId('vacances été', t));
   });
 });
 
 describe('validatePassword', () => {
   it('enforces the shared minimum length', () => {
-    assert.ok(validatePassword('court'));
-    assert.equal(validatePassword('assezlong'), null);
+    assert.ok(validatePassword('court', true, t));
+    assert.equal(validatePassword('assezlong', true, t), null);
   });
 
   it('accepts an empty value when editing, where it means "do not change"', () => {
-    assert.equal(validatePassword('', false), null);
-    assert.ok(validatePassword('', true));
+    assert.equal(validatePassword('', false, t), null);
+    assert.ok(validatePassword('', true, t));
     // A password that is too short remains invalid even when optional.
-    assert.ok(validatePassword('abc', false));
+    assert.ok(validatePassword('abc', false, t));
   });
 });
 
 describe('validateFolderInput', () => {
   it('accepts both a URL and a bare identifier', () => {
-    assert.equal(validateFolderInput('https://drive.google.com/drive/folders/abc123'), null);
-    assert.equal(validateFolderInput('abc123'), null);
+    assert.equal(validateFolderInput('https://drive.google.com/drive/folders/abc123', t), null);
+    assert.equal(validateFolderInput('abc123', t), null);
   });
 
   it('explains where to find the identifier when the value is unreadable', () => {
-    assert.ok(validateFolderInput('Mon Drive/Photos'));
-    assert.ok(validateFolderInput(''));
+    assert.ok(validateFolderInput('Mon Drive/Photos', t));
+    assert.ok(validateFolderInput('', t));
   });
 });
 
@@ -105,7 +112,7 @@ describe('slugifyAlbumId', () => {
   it('produces a valid identifier from a title with accents', () => {
     const slug = slugifyAlbumId('2026-07 - Allemagne / Forêt Noire');
     assert.equal(slug, '2026-07-allemagne-foret-noire');
-    assert.equal(validateAlbumId(slug), null);
+    assert.equal(validateAlbumId(slug, t), null);
   });
 
   it('leaves neither an edge hyphen nor a disguised empty title', () => {
@@ -129,14 +136,14 @@ describe('parseNumber', () => {
 
 describe('validateIntervalMinutes and validateCacheSizeGB', () => {
   it('accept 0 minutes for disabled synchronisation but not a 0 GB cache', () => {
-    assert.equal(validateIntervalMinutes('0'), null);
-    assert.ok(validateCacheSizeGB('0'));
+    assert.equal(validateIntervalMinutes('0', t), null);
+    assert.ok(validateCacheSizeGB('0', t));
   });
 
   it('reject a non-integer interval and an unreadable size', () => {
-    assert.ok(validateIntervalMinutes('30,5'));
-    assert.equal(validateCacheSizeGB('2,5'), null);
-    assert.ok(validateCacheSizeGB('beaucoup'));
+    assert.ok(validateIntervalMinutes('30,5', t));
+    assert.equal(validateCacheSizeGB('2,5', t), null);
+    assert.ok(validateCacheSizeGB('beaucoup', t));
   });
 });
 
@@ -149,26 +156,26 @@ describe('formatAlbumAccess', () => {
   ]);
 
   it('names the wildcard instead of confusing it with a complete list', () => {
-    assert.equal(formatAlbumAccess([ALL_ALBUMS], titles), 'Every album, present and future');
+    assert.equal(formatAlbumAccess([ALL_ALBUMS], titles, t), 'Every album, present and future');
     assert.notEqual(
-      formatAlbumAccess(['a', 'b', 'c', 'd'], titles),
-      formatAlbumAccess([ALL_ALBUMS], titles),
+      formatAlbumAccess(['a', 'b', 'c', 'd'], titles, t),
+      formatAlbumAccess([ALL_ALBUMS], titles, t),
     );
   });
 
   it('states explicitly when no album is assigned', () => {
-    assert.equal(formatAlbumAccess([], titles), 'No album');
+    assert.equal(formatAlbumAccess([], titles, t), 'No album');
   });
 
   it('abbreviates beyond three albums', () => {
-    assert.equal(formatAlbumAccess(['a', 'b'], titles), 'Vacances, Famille');
+    assert.equal(formatAlbumAccess(['a', 'b'], titles, t), 'Vacances, Famille');
     assert.equal(
-      formatAlbumAccess(['a', 'b', 'c', 'd'], titles),
+      formatAlbumAccess(['a', 'b', 'c', 'd'], titles, t),
       'Vacances, Famille, Mariage and 1 other',
     );
   });
 
   it('falls back to the raw identifier of a missing album', () => {
-    assert.equal(formatAlbumAccess(['z'], titles), 'z');
+    assert.equal(formatAlbumAccess(['z'], titles, t), 'z');
   });
 });

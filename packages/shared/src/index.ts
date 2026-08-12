@@ -11,6 +11,41 @@ export function isThumbSize(value: number): value is ThumbSize {
   return (THUMB_SIZES as readonly number[]).includes(value);
 }
 
+/**
+ * Languages the interface, the emails and the server's messages are written in.
+ *
+ * Declared here rather than in the front end because both ends need the same list:
+ * the browser announces its choice with `Accept-Language`, and the server composes
+ * an email in the language the recipient reads. A locale absent from this list is
+ * resolved back to `DEFAULT_LOCALE` rather than rejected — an unsupported language
+ * must degrade to a readable page, never to an error.
+ */
+export const LOCALES = ['en', 'fr'] as const;
+export type Locale = (typeof LOCALES)[number];
+
+/**
+ * Language used when nothing else answers: an unrecognised browser preference, or a
+ * recipient who has never opened the gallery. English because it is the language the
+ * repository itself is written in.
+ */
+export const DEFAULT_LOCALE: Locale = 'en';
+
+export function isLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);
+}
+
+/**
+ * The supported language behind a language tag: `fr-CA` reads as `fr`.
+ *
+ * Region is dropped deliberately. The gallery translates a language, not a variant,
+ * and matching `fr-FR` exactly would leave a Swiss browser in English.
+ */
+export function resolveLocale(tag: string | null | undefined): Locale | null {
+  if (!tag) return null;
+  const base = tag.trim().toLowerCase().split('-')[0];
+  return isLocale(base) ? base : null;
+}
+
 export type MediaKind = 'photo' | 'video';
 
 /** Direction of an album's chronological sort. `desc` = newest first. */

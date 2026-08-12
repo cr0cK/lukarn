@@ -2,6 +2,7 @@ import { ALBUM_DESCRIPTION_MAX_LENGTH } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateAlbum } from '../api/hooks';
+import { useT } from '../lib/i18n';
 
 /**
  * Album description above the grid: readable by everyone and editable in place
@@ -29,6 +30,7 @@ export function AlbumDescription({
   description,
   editable,
 }: AlbumDescriptionProps): ReactElement | null {
+  const t = useT();
   const [editing, setEditing] = useState(false);
 
   if (!description && !editable) return null;
@@ -46,7 +48,7 @@ export function AlbumDescription({
         <p className="text-sm leading-relaxed whitespace-pre-line text-ink-300">
           {description}
           {editable && (
-            <EditButton label="Edit the album description" onClick={() => setEditing(true)} />
+            <EditButton label={t('album.editDescription')} onClick={() => setEditing(true)} />
           )}
         </p>
       ) : (
@@ -55,7 +57,7 @@ export function AlbumDescription({
           onClick={() => setEditing(true)}
           className="rounded-lg text-sm text-ink-500 transition-colors hover:text-ink-200"
         >
-          + Describe this album
+          {t('album.describe')}
         </button>
       )}
 
@@ -107,6 +109,7 @@ function DescriptionEditor({
   description,
   onClose,
 }: DescriptionEditorProps): ReactElement {
+  const t = useT();
   const update = useUpdateAlbum();
   const [value, setValue] = useState(description ?? '');
 
@@ -132,15 +135,15 @@ function DescriptionEditor({
         onChange={(event) => setValue(event.target.value)}
         maxLength={ALBUM_DESCRIPTION_MAX_LENGTH}
         rows={4}
-        placeholder="What this album contains"
-        aria-label="Album description"
+        placeholder={t('album.descriptionPlaceholder')}
+        aria-label={t('album.descriptionLabel')}
         autoFocus
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, 'Saving failed.')}
+          {errorText(update.error, t('common.saveFailed'))}
         </p>
       )}
 
@@ -155,14 +158,14 @@ function DescriptionEditor({
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Saving…' : 'Save'}
+            {t(update.isPending ? 'common.saving' : 'common.save')}
           </button>
         </div>
       </div>

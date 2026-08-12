@@ -1,4 +1,5 @@
 import { type ReactElement, type ReactNode, useEffect, useId, useRef } from 'react';
+import { useT } from '../../lib/i18n';
 import { Button } from './ui';
 
 interface ConfirmDialogProps {
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): ReactElement {
+  const t = useT();
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -62,10 +64,10 @@ export function ConfirmDialog({
 
         <div className="mt-5 flex justify-end gap-2">
           <Button onClick={onCancel} disabled={busy}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={busy}>
-            {busy ? 'Deleting…' : confirmLabel}
+            {busy ? t('confirm.deleting') : confirmLabel}
           </Button>
         </div>
       </div>

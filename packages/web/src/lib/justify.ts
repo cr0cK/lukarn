@@ -1,5 +1,6 @@
 import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@lukarn/shared';
-import { formatDate } from './format';
+import { formatDate, formatMonthYear } from './format';
+import type { Translate } from './i18n/translate';
 
 /**
  * Computes the grid's "justified" layout: variable-height rows whose images
@@ -31,6 +32,12 @@ export interface LayoutOptions {
   sectionGap: number;
   /** Section grouping. Omitted means month — the shared default. */
   groupBy?: GroupBy;
+  /**
+   * Translation function: section headings are computed here, before any DOM
+   * node exists, so the layout cannot leave naming them to the component that
+   * renders them without also leaving it to measure their height.
+   */
+  t: Translate;
   /**
    * Collapsed sections keep their header and lose their rows.
    *
@@ -112,14 +119,13 @@ export function dayKey(iso: string): string {
   return iso.slice(0, 10);
 }
 
-export function monthLabel(key: string, locale = 'en-GB'): string {
-  const [year, month] = key.split('-');
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, 1));
-  const label = new Intl.DateTimeFormat(locale, {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(date);
+export function monthLabel(key: string, t: Translate): string {
+  // Noon on the first, for `dayLabel`'s reason: a key is a calendar date, and
+  // midnight would change month in half the time zones if a formatter ever
+  // stopped using UTC.
+  const label = formatMonthYear(`${key}-01T12:00:00.000Z`, t);
+  // French names its months in lower case; a section heading starts with a
+  // capital in both languages.
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -156,13 +162,13 @@ function previousDayKey(key: string): string {
  *
  * `today` is injectable so tests do not depend on the current date.
  */
-export function dayLabel(key: string, today = localDayKey(new Date())): string {
-  if (key === today) return 'Today';
-  if (key === previousDayKey(today)) return 'Yesterday';
+export function dayLabel(key: string, t: Translate, today = localDayKey(new Date())): string {
+  if (key === today) return t('day.today');
+  if (key === previousDayKey(today)) return t('day.yesterday');
   // Use noon, not midnight: a day key is only a calendar date, and if a
   // `format.ts` formatter ever stopped using UTC, midnight would change day in
   // half the time zones — noon changes in none.
-  return formatDate(`${key}T12:00:00.000Z`);
+  return formatDate(`${key}T12:00:00.000Z`, t);
 }
 
 /** Section key for media according to the requested grouping. */
@@ -171,8 +177,8 @@ export function sectionKeyOf(iso: string, groupBy: GroupBy): string {
 }
 
 /** Header displayed for a section key according to the requested grouping. */
-export function sectionLabelOf(key: string, groupBy: GroupBy): string {
-  return groupBy === 'day' ? dayLabel(key) : monthLabel(key);
+export function sectionLabelOf(key: string, groupBy: GroupBy, t: Translate): string {
+  return groupBy === 'day' ? dayLabel(key, t) : monthLabel(key, t);
 }
 
 export function computeLayout(items: MediaItem[], options: LayoutOptions): Layout {
@@ -185,6 +191,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
     sectionGap,
     groupBy = DEFAULT_GROUP_BY,
     isCollapsed,
+    t,
   } = options;
 
   if (containerWidth <= 0 || items.length === 0) {
@@ -270,7 +277,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
     const sectionHeight = collapsed ? sectionHeaderHeight : Math.max(0, rowY - gap - sectionY);
     sections.push({
       key,
-      label: sectionLabelOf(key, groupBy),
+      label: sectionLabelOf(key, groupBy, t),
       y: sectionY,
       headerHeight: sectionHeaderHeight,
       height: sectionHeight,

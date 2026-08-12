@@ -3,6 +3,7 @@ import { type ReactElement, useMemo, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useAdminUsers, useDeleteUser, useMe } from '../../api/hooks';
 import { formatAlbumAccess } from '../../lib/adminForm';
+import { useT } from '../../lib/i18n';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 import { UserForm } from './UserForm';
@@ -16,6 +17,7 @@ export function UsersSection({
   albums: AdminAlbum[];
   notify: Notify;
 }): ReactElement {
+  const t = useT();
   const { data: users, isPending, error } = useAdminUsers();
   const { data: me } = useMe();
   const remove = useDeleteUser();
@@ -29,11 +31,11 @@ export function UsersSection({
   const confirmDelete = (user: AdminUser): void => {
     remove.mutate(user.username, {
       onSuccess: () => {
-        notify({ tone: 'ok', text: `Account "${user.username}" deleted.` });
+        notify({ tone: 'ok', text: t('adminUsers.deleted', user.username) });
         setConfirming(null);
       },
       onError: (deleteError) => {
-        notify({ tone: 'error', text: errorText(deleteError, 'Cannot delete.') });
+        notify({ tone: 'error', text: errorText(deleteError, t('adminUsers.deleteFailed')) });
         setConfirming(null);
       },
     });
@@ -41,8 +43,8 @@ export function UsersSection({
 
   return (
     <Section
-      title="Accounts"
-      description="Who can sign in, and to which albums."
+      title={t('adminUsers.title')}
+      description={t('adminUsers.description')}
       action={
         <Button
           variant="primary"
@@ -52,7 +54,7 @@ export function UsersSection({
           }}
           disabled={creating}
         >
-          New account
+          {t('adminUsers.new')}
         </Button>
       }
     >
@@ -60,20 +62,18 @@ export function UsersSection({
 
       {isPending && (
         <div className="px-4 py-6">
-          <Spinner label="Loading accounts" />
+          <Spinner label={t('adminUsers.loading')} />
         </div>
       )}
 
       {error && (
         <div className="px-4 py-4">
-          <FormError message={errorText(error, 'Cannot load the accounts.')} />
+          <FormError message={errorText(error, t('adminUsers.loadFailed'))} />
         </div>
       )}
 
       {users?.length === 0 && !creating && (
-        <p className="px-4 py-6 text-sm text-ink-400">
-          No account. Create one so that someone can sign in.
-        </p>
+        <p className="px-4 py-6 text-sm text-ink-400">{t('adminUsers.none')}</p>
       )}
 
       {users?.map((user) =>
@@ -100,15 +100,17 @@ export function UsersSection({
                 <span className="truncate">{user.username}</span>
                 {user.admin && (
                   <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-normal text-accent">
-                    administrator
+                    {t('adminUsers.administrator')}
                   </span>
                 )}
                 {user.username === me?.username && (
-                  <span className="shrink-0 text-xs font-normal text-ink-400">(you)</span>
+                  <span className="shrink-0 text-xs font-normal text-ink-400">
+                    {t('adminUsers.you')}
+                  </span>
                 )}
               </p>
               <p className="truncate text-xs text-ink-400">
-                {formatAlbumAccess(user.albums, titles)}
+                {formatAlbumAccess(user.albums, titles, t)}
               </p>
             </div>
 
@@ -118,21 +120,21 @@ export function UsersSection({
                   setCreating(false);
                   setEditing(user.username);
                 }}
-                ariaLabel={`Edit account ${user.username}`}
+                ariaLabel={t('adminUsers.editAccount', user.username)}
               >
-                Edit
+                {t('adminUsers.edit')}
               </Button>
 
               <Button
                 variant="danger"
                 onClick={() => setConfirming(user)}
                 disabled={user.username === me?.username}
-                ariaLabel={`Delete account ${user.username}`}
+                ariaLabel={t('adminUsers.deleteAccount', user.username)}
                 title={
-                  user.username === me?.username ? "You can't delete your own account." : undefined
+                  user.username === me?.username ? t('adminUsers.cannotDeleteSelf') : undefined
                 }
               >
-                Delete
+                {t('adminUsers.delete')}
               </Button>
             </div>
           </div>
@@ -141,14 +143,14 @@ export function UsersSection({
 
       {confirming && (
         <ConfirmDialog
-          title={`Delete account "${confirming.username}"?`}
-          confirmLabel={`Delete ${confirming.username}`}
+          title={t('adminUsers.confirmTitle', confirming.username)}
+          confirmLabel={t('adminUsers.confirmButton', confirming.username)}
           busy={remove.isPending}
           onConfirm={() => confirmDelete(confirming)}
           onCancel={() => setConfirming(null)}
         >
-          <p>This account will no longer be able to sign in.</p>
-          <p>The albums and the indexed media are untouched.</p>
+          <p>{t('adminUsers.confirmSignIn')}</p>
+          <p>{t('adminUsers.confirmMedia')}</p>
         </ConfirmDialog>
       )}
     </Section>

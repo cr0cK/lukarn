@@ -2,6 +2,7 @@ import { VERIFICATION_CODE_LENGTH } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useRequestIdentityCode, useVerifyIdentity } from '../api/hooks';
+import { useT } from '../lib/i18n';
 
 /**
  * Declares and verifies commenter identity.
@@ -15,6 +16,7 @@ import { useRequestIdentityCode, useVerifyIdentity } from '../api/hooks';
  * in the second, making a typo apparent without starting over.
  */
 export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement {
+  const t = useT();
   const [step, setStep] = useState<'declare' | 'code'>('declare');
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -42,7 +44,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
     return (
       <form onSubmit={submitCode} className="space-y-3">
         <p className="text-sm text-ink-300">
-          A {VERIFICATION_CODE_LENGTH}-digit code has just been sent to{' '}
+          {t('identity.codeSent', VERIFICATION_CODE_LENGTH)}{' '}
           <span className="text-ink-100">{email}</span>.
         </p>
 
@@ -53,13 +55,13 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
           autoComplete="one-time-code"
           maxLength={VERIFICATION_CODE_LENGTH}
           placeholder="123456"
-          aria-label="Verification code"
+          aria-label={t('identity.codeLabel')}
           className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-center font-mono text-lg tracking-[0.3em] text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
         />
 
         {verify.isError && (
           <p className="text-xs text-red-400">
-            {errorText(verify.error, 'The code could not be checked.')}
+            {errorText(verify.error, t('identity.checkFailed'))}
           </p>
         )}
 
@@ -72,14 +74,14 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
             }}
             className="text-xs text-ink-400 transition-colors hover:text-ink-100"
           >
-            Corriger l’adresse
+            {t('identity.fixAddress')}
           </button>
           <button
             type="submit"
             disabled={code.length !== VERIFICATION_CODE_LENGTH || verify.isPending}
             className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
           >
-            {verify.isPending ? 'Checking…' : 'Confirm'}
+            {t(verify.isPending ? 'identity.checking' : 'identity.confirm')}
           </button>
         </div>
       </form>
@@ -93,18 +95,14 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
           from opened albums. A default subscription is defensible in a private
           circle if announced and removable in one click — not if discovered when
           the first email arrives. */}
-      <p className="text-sm text-ink-300">
-        To comment, tell us who you are. Your address signs your messages, tells you about replies,
-        and announces new photos in the albums you open; it is never shown to anyone else. Every
-        email carries a link to stop them.
-      </p>
+      <p className="text-sm text-ink-300">{t('identity.intro')}</p>
 
       <input
         value={displayName}
         onChange={(event) => setDisplayName(event.target.value)}
         maxLength={64}
-        placeholder="Your name, as it will appear"
-        aria-label="Display name"
+        placeholder={t('identity.namePlaceholder')}
+        aria-label={t('identity.nameLabel')}
         className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
@@ -114,13 +112,13 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         type="email"
         autoComplete="email"
         placeholder="you@example.com"
-        aria-label="Email address"
+        aria-label={t('identity.emailLabel')}
         className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 text-sm text-ink-100 placeholder:text-ink-400 focus:border-accent focus:outline-none"
       />
 
       {requestCode.isError && (
         <p className="text-xs text-red-400">
-          {errorText(requestCode.error, 'The code could not be sent.')}
+          {errorText(requestCode.error, t('identity.sendFailed'))}
         </p>
       )}
 
@@ -129,7 +127,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
         disabled={!email.trim() || !displayName.trim() || requestCode.isPending}
         className="w-full rounded bg-accent px-3 py-2 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
       >
-        {requestCode.isPending ? 'Sending…' : 'Get a code'}
+        {t(requestCode.isPending ? 'common.sending' : 'identity.getCode')}
       </button>
     </form>
   );

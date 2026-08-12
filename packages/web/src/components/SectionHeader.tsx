@@ -6,6 +6,7 @@ import {
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateAlbumDay } from '../api/hooks';
+import { useT } from '../lib/i18n';
 import { GRID_HEADER_NOTE_CLASS, placeLabelOf } from '../lib/useGridLayout';
 import type { LayoutSection } from '../lib/justify';
 
@@ -50,9 +51,9 @@ export function SectionHeader({
   descriptionLines,
   onToggle,
 }: SectionHeaderProps): ReactElement {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const place = placeLabelOf(day);
-  const unit = section.count > 1 ? 'items' : 'item';
 
   return (
     <div
@@ -75,8 +76,8 @@ export function SectionHeader({
             type="button"
             onClick={onToggle}
             aria-expanded={!section.collapsed}
-            aria-label={`${section.label}, ${section.count} ${unit}`}
-            title={section.collapsed ? 'Expand' : 'Collapse'}
+            aria-label={t('section.label', section.label, section.count)}
+            title={t(section.collapsed ? 'section.expand' : 'section.collapse')}
             // Explicit `h-6`: baseline alignment offsets the count's 12 px box
             // from the title's 16 px box, growing the row by two pixels. On a
             // collapsed section whose box is exactly `PAD_TOP + TITLE_HEIGHT`,
@@ -111,7 +112,7 @@ export function SectionHeader({
               className="shrink-0 text-xs leading-none text-ink-400 tabular-nums"
             >
               {section.count}
-              <span className="hidden sm:inline"> {unit}</span>
+              <span className="hidden sm:inline"> {t('section.unit', section.count)}</span>
             </span>
           </button>
         </h2>
@@ -120,10 +121,10 @@ export function SectionHeader({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            title={day?.description || day?.place ? 'Edit the note' : 'Annotate this day'}
+            title={t(day?.description || day?.place ? 'section.editNote' : 'section.annotate')}
             // "the day of Today": relative labels from `dayLabel` cannot be
             // introduced by an article.
-            aria-label={`Annotate ${section.label}`}
+            aria-label={t('section.annotateDay', section.label)}
             // Keep it discreet with a mouse: one visible pencil per day would
             // turn the grid into a form. But hide it only for a **fine pointer**,
             // where hover can reveal it — in Tailwind v4 `hover:` is already
@@ -201,6 +202,7 @@ interface DayEditorProps {
 }
 
 function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): ReactElement {
+  const t = useT();
   const update = useUpdateAlbumDay(albumId);
   const [description, setDescription] = useState(day?.description ?? '');
   const [place, setPlace] = useState(day?.place ?? '');
@@ -234,8 +236,8 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
         maxLength={ALBUM_DAY_PLACE_MAX_LENGTH}
         // The placeholder shows what EXIF inferred, making the value replaced by
         // new input explicit.
-        placeholder={day?.autoPlaces.join(' · ') || 'Place (optional)'}
-        aria-label="Place"
+        placeholder={day?.autoPlaces.join(' · ') || t('section.placePlaceholder')}
+        aria-label={t('section.place')}
         autoFocus
         className="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
@@ -245,14 +247,14 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
         onChange={(event) => setDescription(event.target.value)}
         maxLength={ALBUM_DAY_DESCRIPTION_MAX_LENGTH}
         rows={2}
-        placeholder="What happened that day"
-        aria-label="Note for the day"
+        placeholder={t('section.notePlaceholder')}
+        aria-label={t('section.noteLabel')}
         className="w-full resize-none rounded-lg border border-ink-700 bg-ink-850 px-3 py-1.5 text-sm outline-none placeholder:text-ink-500 focus:border-accent-dim"
       />
 
       {update.error && (
         <p role="alert" className="text-xs text-red-300">
-          {errorText(update.error, 'Saving failed.')}
+          {errorText(update.error, t('common.saveFailed'))}
         </p>
       )}
 
@@ -267,14 +269,14 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
             disabled={update.isPending}
             className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="submit"
             disabled={update.isPending}
             className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {update.isPending ? 'Saving…' : 'Save'}
+            {t(update.isPending ? 'common.saving' : 'common.save')}
           </button>
         </div>
       </div>

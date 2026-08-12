@@ -14,6 +14,7 @@ import {
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
 } from '@lukarn/shared';
+import type { Translate } from './i18n/translate';
 
 /**
  * Extracts a Drive folder identifier from pasted input: full URL, sharing link
@@ -40,25 +41,21 @@ export function extractFolderId(input: string): string | null {
 }
 
 /** Error message, or `null` when the value is acceptable. */
-export function validateUsername(value: string): string | null {
+export function validateUsername(value: string, t: Translate): string | null {
   const username = value.trim();
-  if (!username) return 'Enter a username.';
+  if (!username) return t('validate.username');
   if (username.length > USERNAME_MAX_LENGTH) {
-    return `A username cannot be longer than ${USERNAME_MAX_LENGTH} characters.`;
+    return t('validate.usernameLength', USERNAME_MAX_LENGTH);
   }
-  if (!USERNAME_PATTERN.test(username)) {
-    return 'Letters, digits, dot, dash or underscore, starting with a letter or a digit.';
-  }
+  if (!USERNAME_PATTERN.test(username)) return t('validate.identifierPattern');
   return null;
 }
 
 /** Error message, or `null`. An album identifier is also used in a URL. */
-export function validateAlbumId(value: string): string | null {
+export function validateAlbumId(value: string, t: Translate): string | null {
   const id = value.trim();
-  if (!id) return 'Enter an identifier.';
-  if (!ALBUM_ID_PATTERN.test(id)) {
-    return 'Letters, digits, dot, dash or underscore, starting with a letter or a digit.';
-  }
+  if (!id) return t('validate.albumId');
+  if (!ALBUM_ID_PATTERN.test(id)) return t('validate.identifierPattern');
   return null;
 }
 
@@ -66,25 +63,23 @@ export function validateAlbumId(value: string): string | null {
  * Error message, or `null`. While editing, an empty field means "do not change
  * the password": this is the only case where empty is valid.
  */
-export function validatePassword(value: string, required = true): string | null {
-  if (!value) return required ? 'Enter a password.' : null;
+export function validatePassword(value: string, required: boolean, t: Translate): string | null {
+  if (!value) return required ? t('validate.password') : null;
   if (value.length < PASSWORD_MIN_LENGTH) {
-    return `A password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+    return t('validate.passwordLength', PASSWORD_MIN_LENGTH);
   }
   return null;
 }
 
 /** Error message, or `null`. */
-export function validateTitle(value: string): string | null {
-  return value.trim() ? null : 'Enter a title.';
+export function validateTitle(value: string, t: Translate): string | null {
+  return value.trim() ? null : t('validate.title');
 }
 
 /** Error message for the "Drive folder" field, or `null`. */
-export function validateFolderInput(value: string): string | null {
-  if (!value.trim()) return 'Enter the Drive folder.';
-  if (extractFolderId(value) === null) {
-    return 'Paste the Drive folder URL or its identifier — the segment after /folders/.';
-  }
+export function validateFolderInput(value: string, t: Translate): string | null {
+  if (!value.trim()) return t('validate.folder');
+  if (extractFolderId(value) === null) return t('validate.folderPattern');
   return null;
 }
 
@@ -103,7 +98,7 @@ export function slugifyAlbumId(title: string): string {
   return slug.slice(0, USERNAME_MAX_LENGTH);
 }
 
-/** Number entered in French: accepts a decimal comma. `null` when unreadable. */
+/** Number entered with a decimal comma or a point. `null` when unreadable. */
 export function parseNumber(value: string): number | null {
   const normalized = value.trim().replace(',', '.');
   if (!/^\d+(\.\d+)?$/.test(normalized)) return null;
@@ -111,19 +106,17 @@ export function parseNumber(value: string): number | null {
 }
 
 /** Error message for the sync interval, or `null`. */
-export function validateIntervalMinutes(value: string): string | null {
+export function validateIntervalMinutes(value: string, t: Translate): string | null {
   const minutes = parseNumber(value);
-  if (minutes === null || !Number.isInteger(minutes)) {
-    return 'Give a whole number of minutes (0 to disable).';
-  }
+  if (minutes === null || !Number.isInteger(minutes)) return t('validate.interval');
   return null;
 }
 
 /** Error message for the maximum cache size, or `null`. */
-export function validateCacheSizeGB(value: string): string | null {
+export function validateCacheSizeGB(value: string, t: Translate): string | null {
   const size = parseNumber(value);
-  if (size === null) return 'Give a size in gigabytes.';
-  if (size <= 0) return 'The cache size must be greater than 0.';
+  if (size === null) return t('validate.cacheSize');
+  if (size <= 0) return t('validate.cacheSizePositive');
   return null;
 }
 
@@ -135,15 +128,17 @@ const NAMED_ALBUMS = 3;
  * such: "all albums" and "the 12 selected albums" stop meaning the same thing
  * once the thirteenth is created.
  */
-export function formatAlbumAccess(albums: string[], titles: ReadonlyMap<string, string>): string {
-  if (albums.includes(ALL_ALBUMS)) return 'Every album, present and future';
-  if (albums.length === 0) return 'No album';
+export function formatAlbumAccess(
+  albums: string[],
+  titles: ReadonlyMap<string, string>,
+  t: Translate,
+): string {
+  if (albums.includes(ALL_ALBUMS)) return t('access.everyPresentAndFuture');
+  if (albums.length === 0) return t('access.none');
 
   // A deleted album may remain in an account's list: show its raw identifier
   // rather than silently omitting it.
   const named = albums.slice(0, NAMED_ALBUMS).map((id) => titles.get(id) ?? id);
   const rest = albums.length - named.length;
-  return rest > 0
-    ? `${named.join(', ')} and ${rest} other${rest > 1 ? 's' : ''}`
-    : named.join(', ');
+  return rest > 0 ? t('access.andOthers', named.join(', '), rest) : named.join(', ');
 }
