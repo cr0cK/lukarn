@@ -15,7 +15,7 @@ concurrent writes would be lost. Also rejected: keeping the file as the source o
 truth with writes back to it, which would have left two truths to reconcile — and
 a restart could have overwritten a change made in the application.
 
-**Consequences.** The `nonni-data` volume now contains the accounts: it is the
+**Consequences.** The `lukarn-data` volume now contains the accounts: it is the
 only thing that needs backing up, and losing it means losing access as well as the
 index. `POST /api/admin/reload` and `AppContext.reloadConfig()` disappear. A fresh
 installation without a file needs `pnpm create-admin`, otherwise nobody can log

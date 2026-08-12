@@ -558,7 +558,7 @@ export const MIGRATIONS: string[] = [
 
 export function openDb(dataDir: string): Db {
   mkdirSync(dataDir, { recursive: true });
-  const db = new Database(join(dataDir, 'nonni.db'));
+  const db = new Database(join(dataDir, 'lukarn.db'));
 
   // WAL: grid reads do not block background sync writes.
   db.pragma('journal_mode = WAL');

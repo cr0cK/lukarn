@@ -66,10 +66,10 @@ FROM node:24-slim AS runtime
 # published one.
 ARG VERSION=dev
 ARG REVISION=unknown
-LABEL org.opencontainers.image.title="nonni" \
+LABEL org.opencontainers.image.title="lukarn" \
   org.opencontainers.image.description="Self-hosted photo and video gallery for a Google Drive account" \
-  org.opencontainers.image.source="https://github.com/cr0cK/nonni" \
-  org.opencontainers.image.documentation="https://github.com/cr0cK/nonni/blob/main/deploy/README.md" \
+  org.opencontainers.image.source="https://github.com/cr0cK/lukarn" \
+  org.opencontainers.image.documentation="https://github.com/cr0cK/lukarn/blob/main/deploy/README.md" \
   org.opencontainers.image.licenses="AGPL-3.0-only" \
   org.opencontainers.image.version="${VERSION}" \
   org.opencontainers.image.revision="${REVISION}"

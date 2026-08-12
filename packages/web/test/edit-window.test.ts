@@ -1,4 +1,4 @@
-import { COMMENT_EDIT_WINDOW_MS, remainingEditMs } from '@nonni/shared';
+import { COMMENT_EDIT_WINDOW_MS, remainingEditMs } from '@lukarn/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 

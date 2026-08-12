@@ -96,9 +96,9 @@ describe('stylesheet lowering', () => {
 describe('independent transform properties', () => {
   it('replaces translate with a composed transform', () => {
     const out = replaceIndependentTransforms('.a{translate:0 -50%}');
-    assert.ok(out.includes('--nonni-translate:translate(0,-50%)'));
+    assert.ok(out.includes('--lukarn-translate:translate(0,-50%)'));
     assert.ok(
-      out.includes('transform:var(--nonni-translate) var(--nonni-rotate) var(--nonni-scale)'),
+      out.includes('transform:var(--lukarn-translate) var(--lukarn-rotate) var(--lukarn-scale)'),
     );
     assert.ok(!/[{;]\s*translate\s*:/.test(out), 'the independent property must no longer remain');
   });
@@ -107,8 +107,8 @@ describe('independent transform properties', () => {
     // With `rotate-90 -translate-y-1/2` on the same element, writing `transform`
     // directly would make the second class erase the first.
     const out = replaceIndependentTransforms('.a{translate:0 -50%}.b{rotate:90deg}');
-    assert.ok(out.includes('--nonni-rotate:rotate(90deg)'));
-    assert.equal(out.match(/transform:var\(--nonni-translate\)/g)?.length, 2);
+    assert.ok(out.includes('--lukarn-rotate:rotate(90deg)'));
+    assert.equal(out.match(/transform:var\(--lukarn-translate\)/g)?.length, 2);
   });
 
   it('resets slots inside a layer and never outside one', () => {
@@ -176,7 +176,7 @@ describe('cascade layer flattening', () => {
     const out = lowerForLegacyEngines('@layer utilities{.a{translate:0 -50%;padding-inline:4px}}');
     assert.ok(!out.includes('@layer'));
     assert.ok(out.includes('padding-left:4px'));
-    assert.ok(out.includes('--nonni-translate:translate(0,-50%)'));
+    assert.ok(out.includes('--lukarn-translate:translate(0,-50%)'));
   });
 
   it('reports a layer left in place', () => {

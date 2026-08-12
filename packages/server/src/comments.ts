@@ -8,7 +8,7 @@ import {
   type CommentsPage,
   type FeedComment,
   type ModerationQuery,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import type { Db } from './db.js';
 
 /**

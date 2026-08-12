@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { MediaCache } from '../src/media/cache.js';
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-cache-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-cache-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 /** Lets asynchronous eviction finish before inspecting the cache. */

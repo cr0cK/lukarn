@@ -1,4 +1,4 @@
-import type { AdminComment } from '@nonni/shared';
+import type { AdminComment } from '@lukarn/shared';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { groupByDayAndPhoto, type DayGroup } from '../src/lib/commentGroups';

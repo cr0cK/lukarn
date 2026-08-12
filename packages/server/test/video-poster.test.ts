@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS } from '@nonni/shared';
+import { ALL_ALBUMS } from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
@@ -20,7 +20,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-poster-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-poster-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -114,9 +114,9 @@ before(async () => {
     url: '/api/auth/login',
     payload: { username: 'alexis', password: PASSWORD },
   });
-  const session = login.cookies.find((entry) => entry.name === 'nonni_session');
+  const session = login.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(session);
-  cookie = `nonni_session=${session.value}`;
+  cookie = `lukarn_session=${session.value}`;
 });
 
 after(async () => {

@@ -6,7 +6,7 @@ sections, which provides no meaningful landmark. Splitting by day gives useful
 headers, but the entire front end displays dates in UTC (see `CLAUDE.md`), and
 splitting by day in local time would move late-evening photos between sections.
 
-**Decision.** `GroupBy = 'month' | 'day'` in `@nonni/shared`, `?group=day` in
+**Decision.** `GroupBy = 'month' | 'day'` in `@lukarn/shared`, `?group=day` in
 the URL like `?order=asc`, and `LayoutOptions.groupBy` in `computeLayout`. Both
 section keys are slices of the ISO string (`slice(0, 7)`, `slice(0, 10)`), so
 they are in UTC by construction: no `Date` object is involved in the split, and

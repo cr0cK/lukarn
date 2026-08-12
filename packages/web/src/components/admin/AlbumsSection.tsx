@@ -1,4 +1,4 @@
-import type { AdminAlbum, SyncStatus } from '@nonni/shared';
+import type { AdminAlbum, SyncStatus } from '@lukarn/shared';
 import { type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useDeleteAlbum, useResync, useUpdateAlbum } from '../../api/hooks';

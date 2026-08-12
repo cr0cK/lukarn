@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { AdminStatus, AdminUser } from '@nonni/shared';
+import type { AdminStatus, AdminUser } from '@lukarn/shared';
 import argon2 from 'argon2';
 import Database from 'better-sqlite3';
 import { buildApp } from '../src/app.js';
@@ -25,7 +25,7 @@ import { loadEnv } from '../src/env.js';
 const PASSWORD = 'mot-de-passe-de-test';
 const INDEXED = 471;
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-bootstrap-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-bootstrap-'));
 let hash: string;
 
 function env(dir: string, configPath: string): ReturnType<typeof loadEnv> {
@@ -74,7 +74,7 @@ cache:
  */
 function databaseInUse(dataDir: string): void {
   mkdirSync(dataDir, { recursive: true });
-  const db = new Database(join(dataDir, 'nonni.db'));
+  const db = new Database(join(dataDir, 'lukarn.db'));
   for (let index = 0; index < 2; index++) db.exec(MIGRATIONS[index]!);
   db.pragma('user_version = 2');
 
@@ -333,7 +333,7 @@ async function login(
     payload: { username, password: PASSWORD },
   });
   assert.equal(response.statusCode, 200, `login rejected for ${username}`);
-  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(cookie, 'session cookie missing');
-  return `nonni_session=${cookie.value}`;
+  return `lukarn_session=${cookie.value}`;
 }

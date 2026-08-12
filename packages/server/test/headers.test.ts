@@ -16,7 +16,7 @@ import { loadEnv } from '../src/env.js';
  * cannot guarantee precisely this.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-headers-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-headers-'));
 const webDir = join(root, 'web');
 
 /** Builds an instance in which only `PUBLIC_URL` varies. */

@@ -1,6 +1,6 @@
 # D76 — The backup includes `config/` because a service account key cannot be downloaded again
 
-**Context.** `deploy/backup.sh` backed up the `nonni-data` volume and `.env`. The
+**Context.** `deploy/backup.sh` backed up the `lukarn-data` volume and `.env`. The
 two belong together, as D14 explains: the refresh token is encrypted and only
 `TOKEN_KEY` decrypts it, so an archive without its `.env` requires new consent.
 
@@ -20,14 +20,14 @@ created. The failure does not appear during restoration: the application starts,
 synchronisation, when nothing is retrieved.
 
 **Decision.** `backup.sh` archives `config/` as a third piece beside `.env`, under
-`nonni-<timestamp>.config.tgz`.
+`lukarn-<timestamp>.config.tgz`.
 
 The entire directory rather than a list of files: filtering would require keeping
 a pattern aligned with `.gitignore`, and the version-controlled album example
 that travels with it weighs two kilobytes.
 
 The `.tgz` extension is not cosmetic. Pruning distinguishes archives by pattern,
-and `nonni-*.tar.gz` would include this one: retention would fall from seven real
+and `lukarn-*.tar.gz` would include this one: retention would fall from seven real
 backups to three without a message. A third `prune` call handles it.
 
 **Rejected.** Merging `config/` into the volume archive. Both trees would have

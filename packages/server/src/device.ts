@@ -1,4 +1,4 @@
-import type { DeviceKind } from '@nonni/shared';
+import type { DeviceKind } from '@lukarn/shared';
 
 /**
  * Device class inferred from the user-agent when the session is created.

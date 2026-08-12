@@ -1,4 +1,4 @@
-import { ALBUM_ID_PATTERN, EMAIL_MAX_LENGTH, USERNAME_MAX_LENGTH } from '@nonni/shared';
+import { ALBUM_ID_PATTERN, EMAIL_MAX_LENGTH, USERNAME_MAX_LENGTH } from '@lukarn/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';

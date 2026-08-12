@@ -1,11 +1,11 @@
 blank_issues_enabled: true
 contact_links:
   - name: Report a vulnerability
-    url: https://github.com/cr0cK/nonni/security/advisories/new
+    url: https://github.com/cr0cK/lukarn/security/advisories/new
     about: Privately, never as a public issue. See SECURITY.md for what is in scope.
   - name: Deploying and operating an instance
-    url: https://github.com/cr0cK/nonni/blob/main/deploy/README.md
+    url: https://github.com/cr0cK/lukarn/blob/main/deploy/README.md
     about: Installing, updating, backing up, restoring — and the common OAuth and mail failures.
   - name: Why it is built this way
-    url: https://github.com/cr0cK/nonni/blob/main/specs/README.md
+    url: https://github.com/cr0cK/lukarn/blob/main/specs/README.md
     about: Design documents and the decision log, for anyone picking up the code.

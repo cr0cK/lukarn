@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaItem } from '@nonni/shared';
+import type { AlbumDay, MediaItem } from '@lukarn/shared';
 import {
   type ReactElement,
   type ReactNode,

@@ -19,7 +19,7 @@ import { openDb, type Db } from '../src/db.js';
  * after losing a password.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-externe-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-externe-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 let serveur: Db;

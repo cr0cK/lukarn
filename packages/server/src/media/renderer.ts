@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import { cpus } from 'node:os';
 import sharp from 'sharp';
-import type { ThumbSize } from '@nonni/shared';
+import type { ThumbSize } from '@lukarn/shared';
 import type { DriveService } from '../drive/service.js';
 import type { MediaCache } from './cache.js';
 import { Semaphore, renderConcurrencyFor } from './semaphore.js';

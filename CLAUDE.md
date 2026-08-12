@@ -102,8 +102,8 @@ to run it locally and the link table. Every server procedure belongs in
 ```bash
 pnpm install
 
-pnpm --filter @nonni/server dev      # API on port 8080 (tsx watch)
-pnpm --filter @nonni/web dev         # front end on port 5173, proxy /api to port 8080
+pnpm --filter @lukarn/server dev      # API on port 8080 (tsx watch)
+pnpm --filter @lukarn/web dev         # front end on port 5173, proxy /api to port 8080
 pnpm dev                             # both in parallel
 
 pnpm build                           # shared, then web, then server—order matters
@@ -119,7 +119,7 @@ pnpm verify                          # all six at once—the gate before publish
 pnpm create-admin <identifier>       # first administrator of an empty database
 pnpm reset-password <identifier>     # lost password: last resort outside /admin
 pnpm hash-password                   # argon2id hash for a bootstrap config/albums.yaml
-pnpm --filter @nonni/server seed-demo 300   # demo dataset, no Drive account
+pnpm --filter @lukarn/server seed-demo 300   # demo dataset, no Drive account
 ```
 
 Before declaring work complete, run **`pnpm verify`**—typecheck, lint,

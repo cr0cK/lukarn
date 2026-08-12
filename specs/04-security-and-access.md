@@ -114,7 +114,7 @@ the browser closes, exactly the opposite. The cookie set here is persistent. Ext
 at half-life rather than on every request reduces the cost to one write per visitor every six
 months, instead of one per thumbnail.
 
-The `nonni_session` cookie is `httpOnly`, `sameSite: 'lax'`, **signed** with `SESSION_SECRET` via
+The `lukarn_session` cookie is `httpOnly`, `sameSite: 'lax'`, **signed** with `SESSION_SECRET` via
 `@fastify/cookie`, and `secure` only if `PUBLIC_URL` starts with `https://`—otherwise the browser
 would never send it back during local development. Its options come from a single function
 (`sessionCookieOptions`), used both **at login and on extension**: two diverging sets of options
@@ -365,7 +365,7 @@ generated for each encryption. Stored format:
 Because the salt is random, encrypting the same token twice produces two different strings—a
 database observer cannot infer that the token has not changed.
 
-The threat model is explicit: **a dump of `nonni.db` must not be enough to access Drive.**
+The threat model is explicit: **a dump of `lukarn.db` must not be enough to access Drive.**
 `TOKEN_KEY` is also required; it lives in the process environment and is never written to the
 database. The VPS is not an HSM; someone who obtains a shell in the container has both.
 
@@ -444,7 +444,7 @@ to copy into Drive sharing.
 ## OAuth consent
 
 - `GET /api/admin/oauth/start` requires an administrator session, generates a random 24-byte
-  `state`, stores it in a signed `nonni_oauth_state` cookie (path `/api`, TTL 600 s), and returns the
+  `state`, stores it in a signed `lukarn_oauth_state` cookie (path `/api`, TTL 600 s), and returns the
   consent URL.
 - `authUrl()` requests `access_type: 'offline'` and `prompt: 'consent'`: without the latter, a second
   authorisation would not return a refresh token and reconnection would fail without explanation.

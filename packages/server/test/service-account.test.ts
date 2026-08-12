@@ -22,7 +22,7 @@ import { loadEnv } from '../src/env.js';
  * remove, and that /admin stops offering actions that no longer apply.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-sa-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-sa-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 const silencieux = { info: () => {}, warn: () => {} };
@@ -158,9 +158,9 @@ describe('administration with a service account', () => {
         url: '/api/auth/login',
         payload: { username: 'patron', password: 'mot-de-passe-de-test' },
       });
-      const session = login.cookies.find((entry) => entry.name === 'nonni_session');
+      const session = login.cookies.find((entry) => entry.name === 'lukarn_session');
       assert.ok(session);
-      const cookie = `nonni_session=${session.value}`;
+      const cookie = `lukarn_session=${session.value}`;
 
       const statut = await server.inject({
         method: 'GET',

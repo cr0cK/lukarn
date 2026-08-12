@@ -1,4 +1,4 @@
-import type { FeedComment } from '@nonni/shared';
+import type { FeedComment } from '@lukarn/shared';
 import { type ReactElement, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { errorText, mediaUrl } from '../api/client';

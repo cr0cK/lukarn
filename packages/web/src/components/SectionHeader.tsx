@@ -2,7 +2,7 @@ import {
   ALBUM_DAY_DESCRIPTION_MAX_LENGTH,
   ALBUM_DAY_PLACE_MAX_LENGTH,
   type AlbumDay,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../api/client';
 import { useUpdateAlbumDay } from '../api/hooks';

@@ -24,7 +24,7 @@ import { loadEnv } from '../src/env.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-sync-prewarm-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-sync-prewarm-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -63,7 +63,7 @@ before(async () => {
     url: '/api/auth/login',
     payload: { username: 'patron', password: PASSWORD },
   });
-  cookie = `nonni_session=${response.cookies.find((c) => c.name === 'nonni_session')!.value}`;
+  cookie = `lukarn_session=${response.cookies.find((c) => c.name === 'lukarn_session')!.value}`;
 });
 
 after(async () => {

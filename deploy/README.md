@@ -5,11 +5,11 @@ running. For what the application is and how to run it locally, see the
 [root README](../README.md); for why it is built this way, see
 [`specs/06`](../specs/06-configuration-and-deployment.md).
 
-| File              | Role                                                                       |
-| ----------------- | -------------------------------------------------------------------------- |
-| `cloud-init.yaml` | Provisions a fresh machine: account, security updates, Docker, ufw, VPN    |
-| `deploy.sh`       | Updates a live instance and waits for it to come back healthy              |
-| `backup.sh`       | Archives the `nonni-data` volume and its `.env`, then ships it off-machine |
+| File              | Role                                                                        |
+| ----------------- | --------------------------------------------------------------------------- |
+| `cloud-init.yaml` | Provisions a fresh machine: account, security updates, Docker, ufw, VPN     |
+| `deploy.sh`       | Updates a live instance and waits for it to come back healthy               |
+| `backup.sh`       | Archives the `lukarn-data` volume and its `.env`, then ships it off-machine |
 
 ---
 
@@ -19,7 +19,7 @@ is obtained automatically from that name: without DNS in place, step 5 fails.
 
 ## Two ways in, and the sizing follows from which one you pick
 
-**The published image**, `ghcr.io/cr0ck/nonni`, is what `docker-compose.yml`
+**The published image**, `ghcr.io/cr0ck/lukarn`, is what `docker-compose.yml`
 references by default. Updating pulls a few hundred megabytes and restarts:
 nothing is compiled on the machine.
 
@@ -49,7 +49,7 @@ Disk is dominated by neither: **the cache targets 20 GB by default**
 Below 40 GB, LRU eviction runs permanently — it works, it just throws away
 thumbnails it will regenerate an hour later.
 
-**Pinning a version.** `latest` follows every release. `NONNI_VERSION=1.0.0` in
+**Pinning a version.** `latest` follows every release. `LUKARN_VERSION=1.0.0` in
 the `.env` freezes it, and a `docker compose pull` then changes nothing until you
 raise the number — which is what you want if an update should be a decision
 rather than a surprise.
@@ -116,7 +116,7 @@ The file is read **from a local clone** of the repository, not from the server,
 which does not exist yet:
 
 ```bash
-git clone <this-repo> && cd nonni
+git clone <this-repo> && cd lukarn
 ```
 
 <details>
@@ -359,7 +359,7 @@ authorisation request.
 administration workstation, for cloud-init.
 
 ```bash
-git clone <this-repo> && cd nonni
+git clone <this-repo> && cd lukarn
 
 cp .env.example .env
 # Generate both secrets and paste them into .env
@@ -617,7 +617,7 @@ Google.
 | Turn off place geocoding       | `GEOCODING_URL=` (empty) in `.env`. By default, coordinates rounded to the kilometre go to Nominatim/OSM to name days; a private Nominatim instance goes in the same variable |
 | Administrator password lost    | `docker compose exec app node packages/server/dist/scripts/reset-password.js <username>` — also closes that account's open sessions                                           |
 | Update                         | `./deploy/deploy.sh` — backs up, rebuilds, and **waits** for the health check to go green again                                                                               |
-| Back up                        | `./deploy/backup.sh` — the `nonni-data` volume **and** the `.env`, see below. `nonni-cache` is regenerable                                                                    |
+| Back up                        | `./deploy/backup.sh` — the `lukarn-data` volume **and** the `.env`, see below. `lukarn-cache` is regenerable                                                                  |
 | Read the logs                  | `docker compose logs -f` (or `logs -f caddy` for the certificate)                                                                                                             |
 
 Updating an instance that was running on `config/albums.yaml`: nothing to do. At
@@ -630,7 +630,7 @@ is ever written to Drive: the requested scope is read-only.
 
 ## Backup
 
-Two things, and they go together: the `nonni-data` volume holds the accounts, the
+Two things, and they go together: the `lukarn-data` volume holds the accounts, the
 index and the **encrypted** refresh token, which only `TOKEN_KEY` decrypts. A
 backup of the volume without the `.env` yields an unreadable token and forces a
 new Google consent. `backup.sh` takes both.
@@ -642,11 +642,11 @@ access to Drive at all — a failure that only shows up at the first sync.
 
 Three files per run, then:
 
-| File                           | Holds                                            |
-| ------------------------------ | ------------------------------------------------ |
-| `nonni-<timestamp>.tar.gz`     | the `nonni-data` volume — accounts, index, token |
-| `nonni-<timestamp>.env`        | the secrets, `TOKEN_KEY` first among them        |
-| `nonni-<timestamp>.config.tgz` | `config/`, absent on an OAuth-only install       |
+| File                            | Holds                                             |
+| ------------------------------- | ------------------------------------------------- |
+| `lukarn-<timestamp>.tar.gz`     | the `lukarn-data` volume — accounts, index, token |
+| `lukarn-<timestamp>.env`        | the secrets, `TOKEN_KEY` first among them         |
+| `lukarn-<timestamp>.config.tgz` | `config/`, absent on an OAuth-only install        |
 
 ```bash
 ./deploy/backup.sh            # local archive, then upload through rclone
@@ -655,9 +655,9 @@ Three files per run, then:
 
 The script stops `app` for the duration of the `tar` — a few seconds, the price
 of a SQLite at rest rather than a file copied with a WAL in flight — writes
-`backups/nonni-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
+`backups/lukarn-<timestamp>.tar.gz` with the `.env` alongside it, keeps the
 **last 7** and deletes the older ones. It checks that the archive really contains
-`nonni.db`: an empty archive would otherwise go unnoticed until restore time.
+`lukarn.db`: an empty archive would otherwise go unnoticed until restore time.
 
 It restores the state it found: an instance that is already down is archived as
 it stands and stays down (D260812). A backup is most useful exactly when the
@@ -669,14 +669,14 @@ remote configured **outside the repository**:
 
 ```bash
 rclone config     # any backend: S3 and compatibles, B2, SFTP…
-# The default remote is `backups:nonni`. Another name?
-# NONNI_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
+# The default remote is `backups:lukarn`. Another name?
+# LUKARN_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
 ```
 
-`NONNI_BACKUP_DIR` moves the local directory the same way. An instance
+`LUKARN_BACKUP_DIR` moves the local directory the same way. An instance
 bootstrapped before 1.0.0 wrote into `sauvegardes/` and configured its rclone
 remote as `sauvegardes:` — either rename both, or keep them by setting
-`NONNI_BACKUP_DIR` and `NONNI_BACKUP_REMOTE`. Pruning only looks in the directory
+`LUKARN_BACKUP_DIR` and `LUKARN_BACKUP_REMOTE`. Pruning only looks in the directory
 it is pointed at, so archives left in the old one stay there until removed by
 hand.
 
@@ -685,26 +685,26 @@ images ship systemd but frequently **no `cron` at all** — `crontab` is simply 
 a command there.
 
 ```ini
-# /etc/systemd/system/nonni-backup.service
+# /etc/systemd/system/lukarn-backup.service
 [Unit]
-Description=Gallery backup (nonni-data volume and its .env)
+Description=Gallery backup (lukarn-data volume and its .env)
 After=docker.service network-online.target
 Requires=docker.service
 
 [Service]
 Type=oneshot
 User=deploy
-WorkingDirectory=/home/deploy/nonni
+WorkingDirectory=/home/deploy/lukarn
 # rclone reads ~/.config/rclone/rclone.conf. Without HOME it finds no remote,
 # and the off-machine copy fails while the local archive succeeds — the kind of
 # half-failure that goes unnoticed until a restore.
 Environment=HOME=/home/deploy
-ExecStart=/home/deploy/nonni/deploy/backup.sh
+ExecStart=/home/deploy/lukarn/deploy/backup.sh
 TimeoutStartSec=30min
 ```
 
 ```ini
-# /etc/systemd/system/nonni-backup.timer
+# /etc/systemd/system/lukarn-backup.timer
 [Unit]
 Description=Daily gallery backup
 
@@ -720,10 +720,10 @@ WantedBy=timers.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now nonni-backup.timer
-systemctl list-timers nonni-backup.timer   # when it next fires
-sudo systemctl start nonni-backup.service  # run one now, without waiting
-journalctl -u nonni-backup.service         # what it did
+sudo systemctl enable --now lukarn-backup.timer
+systemctl list-timers lukarn-backup.timer   # when it next fires
+sudo systemctl start lukarn-backup.service  # run one now, without waiting
+journalctl -u lukarn-backup.service         # what it did
 ```
 
 The output goes to the journal, so there is no log file to rotate and nothing
@@ -731,21 +731,21 @@ appended to a file nobody reads. Where `cron` **is** installed, one `crontab -e`
 line does the same job, minus the catch-up after downtime:
 
 ```cron
-0 4 * * * cd /home/deploy/nonni && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
+0 4 * * * cd /home/deploy/lukarn && ./deploy/backup.sh >> /home/deploy/sauvegarde.log 2>&1
 ```
 
-`nonni-cache` does not need backing up: it regenerates.
+`lukarn-cache` does not need backing up: it regenerates.
 
 **Restoring**, on a fresh machine, from a clone of the repository and **before**
 the first `docker compose up`:
 
 ```bash
-cp nonni-<timestamp>.env .env          # the secrets, TOKEN_KEY included
-tar xzf nonni-<timestamp>.config.tgz   # recreates config/, service account key and all
+cp lukarn-<timestamp>.env .env          # the secrets, TOKEN_KEY included
+tar xzf lukarn-<timestamp>.config.tgz   # recreates config/, service account key and all
 
-docker volume create nonni-data
-docker run --rm -v nonni-data:/data -v "$PWD:/e" alpine \
-  tar xzf /e/nonni-<timestamp>.tar.gz -C /data
+docker volume create lukarn-data
+docker run --rm -v lukarn-data:/data -v "$PWD:/e" alpine \
+  tar xzf /e/lukarn-<timestamp>.tar.gz -C /data
 ```
 
 The volume archive keeps the layout it has always had — the files sit at its
@@ -763,23 +763,23 @@ folders are shared with the service account, never with one of its keys.
 >
 > ```bash
 > docker compose down
-> docker volume create nonni-data
-> docker run --rm -v gdv-data:/old -v nonni-data:/new alpine sh -c '
+> docker volume create lukarn-data
+> docker run --rm -v gdv-data:/old -v lukarn-data:/new alpine sh -c '
 >   cp -a /old/. /new/
->   mv /new/gdv.db /new/nonni.db
+>   mv /new/gdv.db /new/lukarn.db
 >   # A clean shutdown checkpoints the WAL, so these two are usually absent.
 >   # Leaving them behind under the old name would silently drop whatever the
 >   # last transactions had not yet folded into the database file.
->   [ -e /new/gdv.db-wal ] && mv /new/gdv.db-wal /new/nonni.db-wal
->   [ -e /new/gdv.db-shm ] && mv /new/gdv.db-shm /new/nonni.db-shm
+>   [ -e /new/gdv.db-wal ] && mv /new/gdv.db-wal /new/lukarn.db-wal
+>   [ -e /new/gdv.db-shm ] && mv /new/gdv.db-shm /new/lukarn.db-shm
 >   exit 0'
 > docker compose up -d
 > ```
 >
-> `nonni-cache` is not worth copying: it regenerates. Once the instance is
+> `lukarn-cache` is not worth copying: it regenerates. Once the instance is
 > verified, `docker volume rm gdv-data gdv-cache` reclaims the space. Backups
 > already on disk keep their `gdv-` prefix, and pruning no longer sees them —
-> delete them by hand once a `nonni-` archive has been restored successfully.
+> delete them by hand once a `lukarn-` archive has been restored successfully.
 
 > **Updating an instance older than the explicit volume names.** Volumes carry a
 > `name:` of their own since D53. Before that, compose prefixed them with the

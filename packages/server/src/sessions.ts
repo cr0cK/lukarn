@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import type { DeviceKind } from '@nonni/shared';
+import type { DeviceKind } from '@lukarn/shared';
 import type { Db } from './db.js';
 
-export const SESSION_COOKIE = 'nonni_session';
+export const SESSION_COOKIE = 'lukarn_session';
 
 /**
  * One year, extended along the way (see `get`). In practice, users are never signed

@@ -14,7 +14,7 @@ broken image passed `verify` — types, lint, tests, specs, links — and was on
 discovered during deployment, on the machine, with the site down.
 
 **Decision.** An image is published to GHCR for every `v*` tag,
-`ghcr.io/cr0ck/nonni:<version>` and `:latest`, and referenced by default in
+`ghcr.io/cr0ck/lukarn:<version>` and `:latest`, and referenced by default in
 Compose. **Local builds remain a first-class path**, one override file away:
 
 ```bash
@@ -59,7 +59,7 @@ than as silent divergence whenever the other value is forgotten.
 intended and unsurprising behaviour **provided that D260811's update has been
 performed** — the image changes nothing about volumes.
 
-`NONNI_VERSION` pins a version in `.env`. It is not read by `env.ts`: it is a
+`LUKARN_VERSION` pins a version in `.env`. It is not read by `env.ts`: it is a
 Compose interpolation, so D78's check does not monitor it, and it need not reach
 the container.
 

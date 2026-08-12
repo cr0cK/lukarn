@@ -1,4 +1,4 @@
-import type { AdminAlbum } from '@nonni/shared';
+import type { AdminAlbum } from '@lukarn/shared';
 import { type ReactElement, useState } from 'react';
 import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { errorText } from '../api/client';

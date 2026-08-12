@@ -15,7 +15,7 @@ import { loadEnv } from '../src/env.js';
  * simple page reload would fail.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-static-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-static-'));
 const webDir = join(root, 'web');
 
 let server: FastifyInstance;

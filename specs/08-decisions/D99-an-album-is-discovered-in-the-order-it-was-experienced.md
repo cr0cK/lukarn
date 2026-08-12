@@ -16,7 +16,7 @@ so once.
 
 **Choice.** A default **per album**, in the database and configurable in /admin
 (`albums.sort_order`, migration 12, default `asc`), and memory **per album in the
-browser** (`nonni:album-order:<albumId>`). Priority: **URL > browser > album**:
+browser** (`lukarn:album-order:<albumId>`). Priority: **URL > browser > album**:
 
 - URL first because it is an exact view — shared or received by email — and the
   recipient's habit must not contradict it;

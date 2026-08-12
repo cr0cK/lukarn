@@ -1,4 +1,4 @@
-import type { AdminStatus } from '@nonni/shared';
+import type { AdminStatus } from '@lukarn/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 import { api, errorText } from '../../api/client';

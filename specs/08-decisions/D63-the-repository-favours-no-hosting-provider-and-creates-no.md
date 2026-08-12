@@ -13,7 +13,7 @@ obtained — a Debian 12+ or Ubuntu LTS image, cloud-init supplied as "user data
 ports 80/443 open and port 22 during bootstrapping, and a DNS record — while the
 CLIs of three providers appear equally in a `<details>` block as illustrations of
 the same operation. The system account becomes `deploy`: a role, not a person.
-The default backup remote becomes `backups:nonni`, with no brand.
+The default backup remote becomes `backups:lukarn`, with no brand.
 
 **Rejected.** Keeping no provider command: the most neutral option, but it loses
 the ready-to-paste path, including for a first deployment — and documentation

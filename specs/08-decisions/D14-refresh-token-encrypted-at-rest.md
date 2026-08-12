@@ -12,7 +12,7 @@ enough. A random salt for each encryption also rules out the "key derived once
 at startup" variant, which would make two encryptions of the same token
 identical and reveal that it had not changed.
 
-**Consequences.** Backing up `nonni-data` without the `.env` is useless: the
+**Consequences.** Backing up `lukarn-data` without the `.env` is useless: the
 token would be impossible to decrypt. If `TOKEN_KEY` changes, the GCM tag fails,
 the token is deleted and `/admin` displays "not connected" rather than looping
 on an error.

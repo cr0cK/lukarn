@@ -1,4 +1,4 @@
-import type { AdminAlbum, UpdateAlbumRequest } from '@nonni/shared';
+import type { AdminAlbum, UpdateAlbumRequest } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateAlbum, useUpdateAlbum } from '../../api/hooks';

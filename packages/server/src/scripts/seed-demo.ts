@@ -12,7 +12,7 @@ import { MediaRepo, SyncStateRepo, type MediaUpsert } from '../repo.js';
  * Demonstration dataset for developing and checking the interface without a Google
  * Drive account.
  *
- *   pnpm --filter @nonni/server seed-demo [count]
+ *   pnpm --filter @lukarn/server seed-demo [count]
  *
  * Inserts media into the index **and** pre-fills the cache with locally generated
  * images: the rendering pipeline finds everything cached and never contacts Drive.

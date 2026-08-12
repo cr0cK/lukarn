@@ -1,4 +1,4 @@
-import type { AlbumDay, UpdateAlbumDayRequest } from '@nonni/shared';
+import type { AlbumDay, UpdateAlbumDayRequest } from '@lukarn/shared';
 import type { Db } from './db.js';
 import type { Geocoder } from './geocoder.js';
 import type { MediaRepo } from './repo.js';

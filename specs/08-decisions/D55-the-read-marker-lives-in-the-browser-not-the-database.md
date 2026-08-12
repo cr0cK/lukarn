@@ -3,7 +3,7 @@
 **Context.** Displaying "3 new comments" requires knowing where the reader had
 reached. A server-side table would be the instinctive answer.
 
-**Choice.** `localStorage`, under `nonni:comments-seen:<albumId>`, storing a
+**Choice.** `localStorage`, under `lukarn:comments-seen:<albumId>`, storing a
 **number of comments seen** per photo. The total comes from the server, and the
 difference is calculated for display (`unreadCount`).
 

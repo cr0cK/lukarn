@@ -13,7 +13,7 @@ import { loadEnv } from '../src/env.js';
  * is first used.
  */
 
-const root = mkdtempSync(join(tmpdir(), 'nonni-env-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-env-'));
 after(() => rmSync(root, { recursive: true, force: true }));
 
 function env(surcharges: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {

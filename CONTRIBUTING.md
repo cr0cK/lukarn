@@ -14,7 +14,7 @@ Node ≥ 22 and pnpm. Nothing else — no Google account, no domain, no server.
 
 ```bash
 pnpm install
-pnpm --filter @nonni/shared build   # not optional, see below
+pnpm --filter @lukarn/shared build   # not optional, see below
 cp .env.example .env
 openssl rand -hex 32                # → SESSION_SECRET
 openssl rand -hex 32                # → TOKEN_KEY
@@ -22,12 +22,12 @@ pnpm create-admin alice             # password is prompted
 pnpm dev                            # API on :8080, front on :5173
 ```
 
-**Building `shared` first is not a formality.** `@nonni/shared` is exposed
+**Building `shared` first is not a formality.** `@lukarn/shared` is exposed
 through its `dist/`, not its sources, so on a fresh clone both `pnpm dev` and
 `pnpm create-admin` fail with `ERR_MODULE_NOT_FOUND` until it has been built. The
 same constraint fixes the order of the full build: `shared` → `web` → `server`.
 
-Without a Drive account, `pnpm --filter @nonni/server seed-demo 300` fills the
+Without a Drive account, `pnpm --filter @lukarn/server seed-demo 300` fills the
 index with locally generated media. Restart the server afterwards — the disk
 cache is inventoried only at startup, so freshly written thumbnails are invisible
 to a running process.

@@ -30,7 +30,7 @@ export function unreadCount(total: number, seen: number | undefined): number {
 }
 
 function storageKey(albumId: string): string {
-  return `nonni:comments-seen:${albumId}`;
+  return `lukarn:comments-seen:${albumId}`;
 }
 
 /**
@@ -77,7 +77,7 @@ export interface SeenComments {
  * Activity feed
  * ------------------------------------------------------------------------ */
 
-const FEED_KEY = 'nonni:comments-feed-seen';
+const FEED_KEY = 'lukarn:comments-feed-seen';
 
 /**
  * Activity-feed reading marker: the greatest identifier already seen.

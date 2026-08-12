@@ -37,7 +37,7 @@ conversation — nowhere. The tab now lives in the URL, like `photo`, `order`, a
 previously led to a silent image.
 
 **The badge counts identifiers, not messages.** The feed read marker,
-`nonni:comments-feed-seen`, is the greatest id seen. The feed is paginated and has
+`lukarn:comments-feed-seen`, is the greatest id seen. The feed is paginated and has
 no total: counting what was read would require traversing it completely, whereas
 `AUTOINCREMENT` makes the id an exact milestone. The marker remains in the browser
 for D55's reason — an access key is shared by an entire household, so a

@@ -1,14 +1,18 @@
-# Nonni
+# Lukarn
 
-[![verify](https://github.com/cr0cK/nonni/actions/workflows/verify.yml/badge.svg)](https://github.com/cr0cK/nonni/actions/workflows/verify.yml)
+[![verify](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml/badge.svg)](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml)
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](./LICENSE)
 
 A self-hosted gallery for browsing the photos and videos of a Google Drive
 account, in place of Drive's own preview: justified grid grouped by month,
 keyboard-driven fullscreen viewer, dark theme.
 
-_Nonni_ is Italian for grandparents — who this was built for, and who wanted to
-see the photos without being handed a Google account first.
+_Lukarn_ is Gothic for a lantern — the thing you pick up to go and look in the
+dark. It is also the word the linguists put forward, next to Irish _luacharn_,
+when they argued that French _lucarne_ came from Latin _lucerna_: the small
+opening in a roof that lets the light in and lets you see inside. Either reading
+suits an application whose whole job is to open one window onto photos that
+would otherwise stay in the dark of someone else's Drive.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment.
@@ -104,13 +108,13 @@ name or a Google account. Node ≥ 22 and pnpm are all that is needed.
 
 ```bash
 pnpm install
-pnpm --filter @nonni/shared build   # before anything else — see below
+pnpm --filter @lukarn/shared build   # before anything else — see below
 ```
 
-**Building `shared` is not optional.** `@nonni/shared` is exposed through its
+**Building `shared` is not optional.** `@lukarn/shared` is exposed through its
 `dist/`, not through its sources: on a fresh clone, `pnpm dev` and
 `pnpm create-admin` both fail with
-`ERR_MODULE_NOT_FOUND … @nonni/shared/dist/index.js` until it has been built. It is
+`ERR_MODULE_NOT_FOUND … @lukarn/shared/dist/index.js` until it has been built. It is
 the same reason the full `pnpm build` imposes the order `shared` → `web` →
 `server`.
 
@@ -136,7 +140,7 @@ pnpm dev                  # API on :8080, front on :5173 (proxying /api)
 locally generated media:
 
 ```bash
-pnpm --filter @nonni/server seed-demo 300
+pnpm --filter @lukarn/server seed-demo 300
 ```
 
 Restart the server afterwards: the disk cache is inventoried only at startup, so
@@ -212,6 +216,6 @@ deploy a modified version and let anyone reach it over a network, section 13
 requires you to offer those users the source of _your_ version. Running it
 unmodified for your family asks nothing of you.
 
-Nonni is not affiliated with, endorsed by, or sponsored by Google LLC. Google
+Lukarn is not affiliated with, endorsed by, or sponsored by Google LLC. Google
 Drive is a trademark of Google LLC, named here only to say which service the
 application reads.

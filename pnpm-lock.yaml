@@ -41,7 +41,7 @@ importers:
       '@googleapis/oauth2':
         specifier: ^5.0.1
         version: 5.0.1
-      '@nonni/shared':
+      '@lukarn/shared':
         specifier: workspace:*
         version: link:../shared
       argon2:
@@ -99,7 +99,7 @@ importers:
 
   packages/web:
     dependencies:
-      '@nonni/shared':
+      '@lukarn/shared':
         specifier: workspace:*
         version: link:../shared
       '@tanstack/react-query':

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS } from '@nonni/shared';
+import { ALL_ALBUMS } from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -18,7 +18,7 @@ import type { MediaUpsert } from '../src/repo.js';
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
-const root = mkdtempSync(join(tmpdir(), 'nonni-access-'));
+const root = mkdtempSync(join(tmpdir(), 'lukarn-access-'));
 
 let server: FastifyInstance;
 let context: AppContext;
@@ -60,9 +60,9 @@ async function login(username: string): Promise<string> {
   });
   assert.equal(response.statusCode, 200, `login rejected for ${username}`);
 
-  const cookie = response.cookies.find((entry) => entry.name === 'nonni_session');
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
   assert.ok(cookie, 'session cookie missing');
-  return `nonni_session=${cookie.value}`;
+  return `lukarn_session=${cookie.value}`;
 }
 
 before(async () => {
@@ -260,14 +260,14 @@ describe('session lifecycle', () => {
     const response = await server.inject({
       method: 'GET',
       url: '/api/auth/me',
-      headers: { cookie: 'nonni_session=identifiant-invente' },
+      headers: { cookie: 'lukarn_session=identifiant-invente' },
     });
     assert.equal(response.statusCode, 401);
   });
 
   it('sets the cookie again when the session is extended', async () => {
     const cookie = await login('famille');
-    const sessionId = cookie.slice('nonni_session='.length);
+    const sessionId = cookie.slice('lukarn_session='.length);
 
     // Once the session reaches half its lifetime, the next read pushes its
     // database expiry back. The cookie still carries the login date — without
@@ -286,7 +286,7 @@ describe('session lifecycle', () => {
     });
     assert.equal(response.statusCode, 200);
 
-    const repose = response.cookies.find((entry) => entry.name === 'nonni_session');
+    const repose = response.cookies.find((entry) => entry.name === 'lukarn_session');
     assert.ok(repose, 'extending the session must reissue the cookie');
     assert.ok(
       (repose.maxAge ?? 0) > context.sessions.ttlMs / 1000 / 2,

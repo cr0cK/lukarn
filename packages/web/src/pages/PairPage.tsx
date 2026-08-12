@@ -1,4 +1,4 @@
-import { USER_CODE_LENGTH, formatUserCode, normalizeUserCode } from '@nonni/shared';
+import { USER_CODE_LENGTH, formatUserCode, normalizeUserCode } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError } from '../api/client';

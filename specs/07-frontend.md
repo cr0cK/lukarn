@@ -80,7 +80,7 @@ On `/album/:albumId`:
   (`isSortOrder`), so a hand-crafted URL cannot trigger a 400.
 
   On top of that there is a **per-album memory in the browser**, which the
-  grouping does not have: `nonni:album-order:<albumId>` (see
+  grouping does not have: `lukarn:album-order:<albumId>` (see
   `lib/albumOrder.ts`). The priority is **URL > browser > album**. The URL
   first because it is an exact view, shared or received by email, and the
   recipient's local memory has no business contradicting it; the browser next,
@@ -577,7 +577,7 @@ whole point of a collapsed day.
 ### By month or by day — `GroupBy`
 
 `LayoutOptions.groupBy` chooses the grouping; omitted, it is
-`DEFAULT_GROUP_BY`, so month. The type comes from `@nonni/shared` even though
+`DEFAULT_GROUP_BY`, so month. The type comes from `@lukarn/shared` even though
 no route carries it: it is an interface value, not a payload, and duplicating
 it on the front end for the sole reason that it never crosses the network
 would give the same vocabulary two sources.
@@ -789,7 +789,7 @@ folder, or the grouping.
   two-thousand-pixel-wide input field is not proofread comfortably, so it
   stays at `max-w-prose`.
 - **Length is bounded by `ALBUM_DESCRIPTION_MAX_LENGTH`**, exported by
-  `@nonni/shared` and applied on both sides. The server already bounded it,
+  `@lukarn/shared` and applied on both sides. The server already bounded it,
   but with a literal the front end would have redeclared on its own.
 
 On `AlbumsPage`, the description is clamped to two lines under the title: the
@@ -1278,7 +1278,7 @@ The badge is `aria-hidden`; what it says is carried by the button's
 **The total comes from the server, the read marker from the browser.** The
 first is `GET /api/comments/:albumId`, loaded once per album. The second is a
 count of comments seen per photo, in `localStorage` under
-`nonni:comments-seen:<albumId>` — a count, not a date: comparing two integers
+`lukarn:comments-seen:<albumId>` — a count, not a date: comparing two integers
 is enough to answer "is there anything new?", where a date would force the
 server to carry the timestamp of every thread. The choice of the browser over
 the database is explained in
@@ -1294,7 +1294,7 @@ Three edge cases the calculation must handle:
   moment would clear the marker only to rebuild it wrong once the real
   totals arrive.
 
-**The activity feed has its own marker**, `nonni:comments-feed-seen`, and it
+**The activity feed has its own marker**, `lukarn:comments-feed-seen`, and it
 is a comment **identifier**, not a count. The feed is paginated and has no
 total: counting what has been read would require walking through the whole
 thing, whereas `AUTOINCREMENT` makes the id an exact milestone — anything past
@@ -2104,7 +2104,7 @@ The PNGs are derived once and for all, with `sharp` — already a server
 dependency:
 
 ```bash
-cd packages/web/public/icons && pnpm --filter @nonni/server exec node -e "
+cd packages/web/public/icons && pnpm --filter @lukarn/server exec node -e "
 const sharp = require('sharp'); const s = () => sharp('icon.svg', { density: 384 });
 Promise.all([
   s().resize(192).png().toFile('icon-192.png'),

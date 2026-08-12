@@ -1,6 +1,6 @@
 # 03 — Data model
 
-Single database: `${DATA_DIR}/nonni.db`, opened by `packages/server/src/db.ts`.
+Single database: `${DATA_DIR}/lukarn.db`, opened by `packages/server/src/db.ts`.
 
 ## Pragmas
 
@@ -759,5 +759,5 @@ database (see
 
 Accounts, albums, and settings, however, **have been in the database** since
 migration 3. `config/albums.yaml` now serves only to bootstrap a fresh
-installation. Operational consequence: the `nonni-data` volume now contains the
+installation. Operational consequence: the `lukarn-data` volume now contains the
 accounts, and is the only thing that needs backing up.

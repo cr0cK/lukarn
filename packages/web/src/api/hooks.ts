@@ -17,7 +17,7 @@ import {
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import {
   type InfiniteData,
   type QueryClient,

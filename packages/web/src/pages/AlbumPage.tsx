@@ -4,7 +4,7 @@ import {
   isGroupBy,
   type GroupBy,
   type SortOrder,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';

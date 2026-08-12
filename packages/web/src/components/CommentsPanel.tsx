@@ -3,7 +3,7 @@ import {
   remainingEditMs,
   type Comment,
   type CommentThread,
-} from '@nonni/shared';
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react';
 import { errorText } from '../api/client';
 import {

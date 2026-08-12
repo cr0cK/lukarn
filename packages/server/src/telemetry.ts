@@ -1,4 +1,4 @@
-import type { AlbumVisitRow, DeviceKind, VisitorRow, VisitsOverview } from '@nonni/shared';
+import type { AlbumVisitRow, DeviceKind, VisitorRow, VisitsOverview } from '@lukarn/shared';
 import type { Db } from './db.js';
 
 /**

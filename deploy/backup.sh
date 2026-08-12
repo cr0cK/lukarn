@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Backs up the `nonni-data` volume together with the `.env` that goes with it.
+# Backs up the `lukarn-data` volume together with the `.env` that goes with it.
 #
 # The two belong together, and this is the part not to miss: the volume holds the
 # Google refresh token **encrypted**, and only `TOKEN_KEY` decrypts it. An archive
@@ -10,17 +10,17 @@
 #   ./deploy/backup.sh --local    local archive only (what deploy.sh calls)
 #
 # The rclone remote is configured outside the repository (`rclone config`) and
-# named by NONNI_BACKUP_REMOTE. No secret lives here.
+# named by LUKARN_BACKUP_REMOTE. No secret lives here.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DESTINATION=${NONNI_BACKUP_DIR:-$PWD/backups}
+DESTINATION=${LUKARN_BACKUP_DIR:-$PWD/backups}
 # Any rclone remote will do — S3 and compatibles, Backblaze B2, a remote disk
-# over SFTP. `rclone config` names it, NONNI_BACKUP_REMOTE points at it; the
+# over SFTP. `rclone config` names it, LUKARN_BACKUP_REMOTE points at it; the
 # repository favours none of them and knows none of their secrets.
-REMOTE=${NONNI_BACKUP_REMOTE:-backups:nonni}
+REMOTE=${LUKARN_BACKUP_REMOTE:-backups:lukarn}
 RETENTION=7
 
 local_only=false
@@ -41,8 +41,8 @@ fi
 # The volume only exists once the instance has started at least once. On a fresh
 # install there is nothing to back up, and that is not an error — it is however
 # to be told apart from a volume that exists but is empty, further down.
-if ! docker volume inspect nonni-data >/dev/null 2>&1; then
-  echo "No nonni-data volume: instance never started, nothing to back up."
+if ! docker volume inspect lukarn-data >/dev/null 2>&1; then
+  echo "No lukarn-data volume: instance never started, nothing to back up."
   exit 0
 fi
 
@@ -51,12 +51,12 @@ mkdir -p "$DESTINATION"
 # volume**, and would therefore mount an empty one without complaining.
 DESTINATION=$(cd "$DESTINATION" && pwd)
 timestamp=$(date +%F-%H%M%S)
-archive="$DESTINATION/nonni-$timestamp.tar.gz"
-secrets="$DESTINATION/nonni-$timestamp.env"
+archive="$DESTINATION/lukarn-$timestamp.tar.gz"
+secrets="$DESTINATION/lukarn-$timestamp.env"
 # `.tgz` rather than `.tar.gz`, and it is not an affectation: pruning tells the
-# archives apart by pattern, and `nonni-*.tar.gz` would swallow this one.
+# archives apart by pattern, and `lukarn-*.tar.gz` would swallow this one.
 # Retention would drop to three real backups instead of seven, silently.
-configuration="$DESTINATION/nonni-$timestamp.config.tgz"
+configuration="$DESTINATION/lukarn-$timestamp.config.tgz"
 
 # The stop lasts a few seconds, and that is the price of a SQLite at rest: no WAL
 # in flight when `tar` runs. The trade-off is deliberate against a hot
@@ -79,17 +79,17 @@ else
   echo "→ application already down: archiving as it stands"
 fi
 
-echo "→ archiving nonni-data"
+echo "→ archiving lukarn-data"
 # The container writes as root, so the archive belongs to root, mode 0644. It
 # stays readable by rclone and removable by pruning, which only needs write
 # permission on the directory.
 docker run --rm \
-  -v nonni-data:/data:ro \
+  -v lukarn-data:/data:ro \
   -v "$DESTINATION:/out" \
   alpine tar czf "/out/$(basename "$archive")" -C /data .
 
 # Compose used to prefix volumes with the working directory name: `-v
-# nonni-data:…` then mounted a brand-new empty volume and produced an empty
+# lukarn-data:…` then mounted a brand-new empty volume and produced an empty
 # archive without a word of warning (D53). The explicit `name:` in
 # docker-compose.yml fixed the cause; this check verifies the effect, because it
 # is precisely the kind of failure only a restore reveals.
@@ -98,8 +98,8 @@ docker run --rm \
 # first match, `tar` would take a SIGPIPE, and `pipefail` would fail the test on
 # a perfectly valid archive.
 contents=$(tar tzf "$archive")
-if ! grep -q 'nonni\.db' <<<"$contents"; then
-  echo "Archive without nonni.db — the wrong volume was mounted. Nothing backed up." >&2
+if ! grep -q 'lukarn\.db' <<<"$contents"; then
+  echo "Archive without lukarn.db — the wrong volume was mounted. Nothing backed up." >&2
   rm -f "$archive"
   exit 1
 fi
@@ -138,9 +138,9 @@ prune() {
     rm -f "$old"
   done
 }
-prune 'nonni-*.tar.gz'
-prune 'nonni-*.env'
-prune 'nonni-*.config.tgz'
+prune 'lukarn-*.tar.gz'
+prune 'lukarn-*.env'
+prune 'lukarn-*.config.tgz'
 
 echo "✓ $(basename "$archive") ($(du -h "$archive" | cut -f1)), its .env$(
   [[ -f $configuration ]] && echo ' and its config/'

@@ -1,4 +1,4 @@
-import { VERIFICATION_CODE_LENGTH, type CommenterIdentity } from '@nonni/shared';
+import { VERIFICATION_CODE_LENGTH, type CommenterIdentity } from '@lukarn/shared';
 import { randomInt } from 'node:crypto';
 import { hashVerificationCode, safeEqual } from './crypto.js';
 import type { Db } from './db.js';
