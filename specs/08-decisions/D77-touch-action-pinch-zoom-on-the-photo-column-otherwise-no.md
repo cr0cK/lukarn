@@ -29,7 +29,7 @@ never reached `pointerup`, so the photo never changed. Two gestures, one defect.
 **`pinch-zoom` rather than `none`.** Both remove arbitration, but `none` also
 removes two-finger pinching — the instinctive zoom gesture on a phone, which the
 viewer does not attempt to replace and whose scale it watches to load the `hd`
-variant ([D20](./D20-zoom-sur-variante-haute-resolution-plutot-que-scale-sur-le-d.md)).
+variant ([D20](./D20-zooming-with-a-high-resolution-variant-rather-than-scale.md)).
 `pinch-zoom` only removes one-finger scrolling, exactly what nobody needs there:
 nothing beneath the viewer scrolls.
 

@@ -1,12 +1,12 @@
 # D91 — A synchronisation names the days it has just filled
 
-**Context.** [D48](./D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)
+**Context.** [D48](./D48-geocoding-runs-in-the-background-and-its-cache-is-a-one.md)
 connected the places pass to startup and hourly housekeeping while explicitly
 excluding synchronisation: geocoding is capped at one request per second, and a
 sync should not wait for it.
 
 That reasoning concerned blocking, which has since disappeared.
-[D58](./D58-le-prechauffage-prepare-les-vignettes-et-suit-la.md) routed every
+[D58](./D58-prewarming-prepares-thumbnails-and-follows-synchronisation.md) routed every
 synchronisation through `AppContext.syncThenPrewarm`, called detached:
 `/admin/resync` responds with 202 before anything starts. What remained was no
 longer a technical constraint but a gratuitous delay — phone photos from a day

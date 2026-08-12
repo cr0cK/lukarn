@@ -42,7 +42,7 @@ The index. One row = one Drive file **in one album**.
 render — the pipeline decodes it and falls back to the Drive preview when libvips
 cannot read it —, while a video has an image only if Drive produced one from its
 first second
-([D92](./08-decisions/D92-l-apercu-d-une-video-vient-de-drive-pas-d-un-decodage-local.md)).
+([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)).
 The API therefore exposes not the column but the question being asked:
 `MediaItem.hasPreview`, calculated by `toItem()` as
 `kind === 'photo' || has_thumbnail === 1`. The frontend requests a thumbnail
@@ -53,7 +53,7 @@ to `{width, height, durationMillis}`: there is no capture date. The sync therefo
 reads the container's `creation_time` through a few `Range` requests and compares
 it with the timestamp in the file name — `resolveVideoTakenAt`, with four rules
 described in
-[D97](./08-decisions/D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md).
+[D97](./08-decisions/D97-a-video-s-date-comes-from-the-file-not-its-upload-date.md).
 `taken_at_from_exif` is 1 for the first three and 0 for the last, where only the
 upload date remained: the panel then writes "Modified", which is exactly what is
 known. No migration accompanies this change — the sync upserts every file again,
@@ -62,7 +62,7 @@ and a video already dated from its file is reread only when its `md5` changes.
 **`video_codec` has three states, and the distinction is not cosmetic.** It holds
 the four-letter code written in the video track's `stsd` — `avc1`, `hvc1`, `hev1`
 — and determines what the server prepares and which source the client requests
-([D260809b](./08-decisions/D260809b-transcodage-video.md)):
+([D260809b](./08-decisions/D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md)):
 
 | Value       | Meaning                                                                            | Consequence                                                   |
 | ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -102,7 +102,7 @@ sets the boundary **without sending anything**.
 ### `oauth_token`
 
 A single row, guaranteed by `CHECK (id = 1)`. Columns: `ciphertext` (the encrypted
-refresh token; see [04](./04-securite-et-acces.md)), `account` (email displayed in
+refresh token; see [04](./04-security-and-access.md)), `account` (email displayed in
 `/admin`), `scope`, `granted_at`, `revoked_at`.
 
 A non-null `revoked_at` means "Google rejected the token". The row is **retained**
@@ -279,7 +279,7 @@ Structural choices:
 - **The thread belongs to the `(album_id, media_id)` pair.** The same Drive file
   indexed under two albums has two conversations. Combining them would show a
   visitor remarks made in an album they are not authorised to view, contradicting
-  the isolation in [04](./04-securite-et-acces.md).
+  the isolation in [04](./04-security-and-access.md).
 - **No foreign key to `media`.** `deleteStale` removes a photo as soon as a
   synchronisation does not see it again — renamed folder, interrupted sync, trip
   through the Drive bin. A cascade would destroy comments after a simple indexing
@@ -377,7 +377,7 @@ Key choices:
   precedence**. A label fixed once and for all would force a choice between never
   recalculating days and calling Nominatim again on every pass — when separated,
   recalculation is free and labels appear by themselves when they arrive (see
-  [D48](./08-decisions/D48-le-geocodage-tourne-en-fond-et-son-cache-est-une-cellule-d.md)).
+  [D48](./08-decisions/D48-geocoding-runs-in-the-background-and-its-cache-is-a-one.md)).
 - **Recalculation never overwrites manual input.** `replaceCells` performs
   `DO UPDATE SET cells = excluded.cells` **and nothing else**: slipping an
   `excluded.description` in there would erase everything the administrator wrote
@@ -419,7 +419,7 @@ Key choices:
   rollback, renamed folder, interrupted sync. A cascade would destroy manually
   written text that nothing can regenerate after an indexing mishap. The Drive
   identifier is stable, so a returning photo recovers its description (see
-  [D83](./08-decisions/D83-une-description-par-photo-portee-par-l-album.md)).
+  [D83](./08-decisions/D83-a-description-per-photo-scoped-to-the-album.md)).
 - **No clean-up touches it.** Neither `deleteStale`, `clearAlbum`, `pruneAlbums`,
   nor the `ON CONFLICT DO UPDATE` in `upsertMany` — the same invariant as
   `AlbumDayRepo`: a background pass never overwrites manual input. The only
@@ -468,7 +468,7 @@ Key choices:
   `MediaRepo.setDescription`, and cascades on `albums`. Reindexing from code would
   require forgetting none of them, now or in any future write path; a stale index
   is invisible and merely returns fewer results
-  ([D96](./08-decisions/D96-l-index-de-recherche-est-tenu-par-le-schema-pas-par-le-code.md)).
+  ([D96](./08-decisions/D96-the-search-index-is-maintained-by-the-schema-not-the-code.md)).
 - **The `AFTER DELETE` triggers cover cascading deletes.** Deleting an album
   removes its days and photo descriptions through `ON DELETE CASCADE`, and the
   index follows without any explicit `DELETE` — verified on
@@ -648,7 +648,7 @@ instance applies it without affecting its access keys or open sessions.
 
 Migration 3 creates empty tables. `bootstrap.ts` and `ConfigRepo` fill them at
 startup from `config/albums.yaml` if the installation had one (see
-[06](./06-configuration-et-deploiement.md)) —
+[06](./06-configuration-and-deployment.md)) —
 `packages/server/test/bootstrap.test.ts` verifies that after the update, a running
 instance recovers its accounts, permissions, settings, index, and OAuth token.
 
@@ -748,7 +748,7 @@ comments from the other forty-nine before collecting its page.
 Three columns appear in no read query. They are **retained** — SQLite removes a
 column only by recreating the table, which is not worth the benefit on a running
 database (see
-[D28](./08-decisions/D28-trois-colonnes-ecrites-sans-etre-relues-sont-conservees.md))
+[D28](./08-decisions/D28-three-columns-written-but-never-read-are-retained.md))
 — and `db.ts` explains their purpose:
 
 | Column                | Why it remains                                                                                                   |

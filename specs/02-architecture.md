@@ -51,7 +51,7 @@ flowchart LR
 | `src/media/transcode.ts` | `VideoTranscoder` and `TranscodePass`: background H.264 versions of videos whose codec no common browser decodes, one at a time.                                   |
 | `src/media/range.ts`     | Validation of the `Range` header before relaying it.                                                                                                               |
 | `src/plugins/auth.ts`    | Session resolution on every request, `requireAuth` / `requireAdmin` guards.                                                                                        |
-| `src/plugins/headers.ts` | Security headers applied to every response — see [04](./04-securite-et-acces.md).                                                                                  |
+| `src/plugins/headers.ts` | Security headers applied to every response — see [04](./04-security-and-access.md).                                                                                |
 | `src/routes/*.ts`        | The four route families — see [05](./05-api.md).                                                                                                                   |
 
 ## Thumbnail flow
@@ -187,7 +187,7 @@ imageMediaMetadata, videoMediaMetadata`. **No content is downloaded.**
     written are committed and `deleteStale` has not run, so the index contains a
     mixture of old and new content. It remains consistent — everything written
     does exist in Drive — but is simply incomplete (see
-    [D27](./08-decisions/D27-une-sync-interrompue-laisse-un-index-melange-et-c-est-assume.md)).
+    [D27](./08-decisions/D27-an-interrupted-sync-leaves-a-mixed-index-and-that-is.md)).
 11. `syncAll` processes albums **sequentially** to preserve the quota, and stops
     immediately on `DriveRevokedError` — subsequent albums would fail in the same
     way.

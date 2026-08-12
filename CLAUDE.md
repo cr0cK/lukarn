@@ -5,7 +5,7 @@ one container, with Fastify serving the API and the built front end.
 
 The design is documented in [`specs/`](./specs/). Read
 [`specs/README.md`](./specs/README.md) first; it gives the reading order for each
-kind of task. By default: `01-vision-et-perimetre` → `02-architecture` →
+kind of task. By default: `01-vision-and-scope` → `02-architecture` →
 `08-decisions`.
 
 ## Documentation update rule
@@ -65,23 +65,23 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                           |
 | `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                            |
-| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-modele-de-donnees.md`                                             |
-| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-modele-de-donnees.md`                                             |
-| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`            |
-| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`            |
-| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-et-deploiement.md`, and `08` if a trade-off changes |
-| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-et-deploiement.md`                                  |
-| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-modele-de-donnees.md`, `specs/04-securite-et-acces.md`            |
-| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-et-deploiement.md`                                  |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-et-deploiement.md`, and `deploy/README.md`          |
-| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-securite-et-acces.md`                                             |
+| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-data-model.md`                                                    |
+| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-data-model.md`                                                    |
+| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-data-model.md`, `specs/04-security-and-access.md`                 |
+| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-data-model.md`, `specs/04-security-and-access.md`                 |
+| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-and-deployment.md`, and `08` if a trade-off changes |
+| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-and-deployment.md`                                  |
+| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-data-model.md`, `specs/04-security-and-access.md`                 |
+| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-and-deployment.md`                                  |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`          |
+| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                           |
 | `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                   | `specs/02-architecture.md` (sync flow)                                      |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                 |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                      |
 | `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                   |
 | `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                      |
 | An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                |
-| The scope: a feature enters or leaves                                      | `specs/01-vision-et-perimetre.md`                                           |
+| The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                              |
 
 Five documents, five readers, no duplication between them:
 

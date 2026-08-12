@@ -49,7 +49,7 @@ checks a constant `DUMMY_HASH`. Without this precaution, a nonexistent login wou
 fraction of the time taken by a wrong password, allowing accounts to be enumerated by timing them.
 
 User lookup is **case-insensitive** (`ConfigRepo.user`), as is uniqueness—this is the role of the
-primary key's `COLLATE NOCASE` (see [03](./03-modele-de-donnees.md)). Creating "ALEXIS" when
+primary key's `COLLATE NOCASE` (see [03](./03-data-model.md)). Creating "ALEXIS" when
 "alexis" exists returns **409**, never a silent overwrite.
 
 ## Attempt throttling
@@ -152,7 +152,7 @@ The cost is one SQLite read per request—negligible in-process.
 ## Pairing a screen without a keyboard
 
 `packages/server/src/pairings.ts` holds the state, and `routes/auth.ts` the four routes. The full
-reasoning is in [D260809c](./08-decisions/D260809c-approbation-ecran.md); what follows concerns
+reasoning is in [D260809c](./08-decisions/D260809c-a-television-does-not-type-a-password-it-displays.md); what follows concerns
 access.
 
 A television has no camera: **it** displays the QR code, and an already connected phone scans it.
@@ -321,7 +321,7 @@ and returns 403 to a visitor, never 404.
 
 `subscriptions.ts` holds the state, `notifier.ts` handles sending, and
 `routes/subscriptions.ts` handles unsubscribing. The full reasoning is in
-[D41](./08-decisions/D41-on-s-abonne-aux-nouveautes-en-ouvrant-l-album.md); what follows concerns
+[D41](./08-decisions/D41-opening-an-album-subscribes-you-to-updates.md); what follows concerns
 access and consent.
 
 - **Opening the album subscribes the user**, on the first page of
@@ -334,7 +334,7 @@ access and consent.
   subscribe the user to new items in the album, which nobody requested.
 - **An unsubscribe survives reopening the album.** This is the feature's most important invariant:
   because subscription is automatic, simply deleting a row would recreate it the next day. Hence
-  the `opted_out` state and `INSERT OR IGNORE` (see [03](./03-modele-de-donnees.md)).
+  the `opted_out` state and `INSERT OR IGNORE` (see [03](./03-data-model.md)).
 - **Unsubscribing is per album.** `commenters.notify` remains the global switch: it disables comment
   replies **and** new-item announcements. Without this distinction, someone who finds "Christmas
   2019" too noisy would disable everything and lose replies to their own comments—the most valuable
@@ -377,7 +377,7 @@ this by deleting the unrecoverable token and logging the advice to grant consent
 
 Google returns `invalid_grant` when the refresh token can no longer be exchanged: access revoked
 from `myaccount.google.com`, six months without use, or the application moved back to "Testing"
-status (see [06](./06-configuration-et-deploiement.md)).
+status (see [06](./06-configuration-and-deployment.md)).
 
 `DriveService.guard(operation)` wraps every Drive call. `isRevocation` recognises the error in
 **two** places—`error.response.data.error` and the message—because its shape varies depending on

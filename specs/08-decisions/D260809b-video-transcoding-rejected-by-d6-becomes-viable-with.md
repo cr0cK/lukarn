@@ -1,14 +1,14 @@
 # D260809b — Video transcoding, rejected by D6, becomes viable with figures
 
-**Context.** [D6](./D6-pas-de-transcodage-video.md) rejected transcoding on
+**Context.** [D6](./D6-no-video-transcoding.md) rejected transcoding on
 three objections, expressed without measurements: "the CPU of a modest VPS
 cannot keep up, transcoded versions would have to be stored, and a job queue
 would have to be managed". It was not wrong; it simply had no order of magnitude.
 
 The album that prompted this decision provides one: **25 of 38 files use HEVC**,
 all from the same phone. On a computer, two videos in three do not open —
-[D79](./D79-une-video-illisible-le-dit-et-se-laisse-telecharger-au-lieu.md) and
-[D98](./D98-un-decodage-qui-echoue-sans-erreur-et-un-tourniquet-de-trop.md) made
+[D79](./D79-an-unplayable-video-says-so-and-can-be-downloaded-instead.md) and
+[D98](./D98-decoding-that-fails-without-an-error-and-one-spinner-too.md) made
 them honest, not playable. Each of the three objections now has a quantified
 answer:
 
@@ -31,7 +31,7 @@ Four points underpin this decision.
 the first track whose `hdlr` is `vide` — a phone video has at least one audio
 track, often placed before the video, and taking the first available `stsd`
 would yield `mp4a` for every other file. The read shares the `Range` window from
-[D97](./D97-la-date-d-une-video-vient-du-fichier-pas-de-sa-date-de.md):
+[D97](./D97-a-video-s-date-comes-from-the-file-not-its-upload-date.md):
 separating them would double the number of requests to reread the same bytes.
 The `video_codec` column has three states — never examined, examined without a
 result, and the codec itself — and the first pass populates it without backfill,
@@ -75,7 +75,7 @@ gallery whose videos last a minute.
 
 **Consequences.** The container image grows by approximately **250 MB**: this is
 `ffmpeg`, it is the cost of entry, and it is stated as such in
-[06](../06-configuration-et-deploiement.md). Without it, the server starts with
+[06](../06-configuration-and-deployment.md). Without it, the server starts with
 a warning, and the affected videos keep D79's message.
 
 A newly arrived video is not immediately playable — it says so, and **starts

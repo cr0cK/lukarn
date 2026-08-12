@@ -1,9 +1,9 @@
 # D88 — The open photo says where it comes from and clears the chrome with one key
 
-**Context.** [D84](./D84-le-contexte-descend-en-bas-de-la-visionneuse-a-toutes-les.md)
+**Context.** [D84](./D84-context-moves-to-the-bottom-of-the-viewer-at-every-width.md)
 moved everything **written by hand** about a photo into the bottom strip. The
 header retained its previous split: the filename in bold and first
-([D74](./D74-la-visionneuse-range-ses-actions-et-rend-a-la-photo-la-note.md)),
+([D74](./D74-the-viewer-organises-its-actions-and-restores-the-day-s.md)),
 with the day and place compressed on the line below. But `IMG_0004.jpg` says
 neither where, when, nor what, while occupying the place of the one piece of
 information genuinely missing when opening a shared link: which album the photo

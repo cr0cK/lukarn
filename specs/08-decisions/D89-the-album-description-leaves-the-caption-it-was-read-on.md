@@ -1,6 +1,6 @@
 # D89 — The album description leaves the caption: it was read on entry
 
-**Context.** [D84](./D84-le-contexte-descend-en-bas-de-la-visionneuse-a-toutes-les.md)
+**Context.** [D84](./D84-context-moves-to-the-bottom-of-the-viewer-at-every-width.md)
 gathered three texts at the bottom of the viewer, from most specific to most
 general: photo, day, album. The reasoning held for the first two — they belong to
 what is being viewed. It held less well for the third, as use showed: the album
@@ -14,7 +14,7 @@ The strip carries two lines: photo, then day.
 
 What the viewer owes the album is saying **which one**, not narrating it. Its
 title moved to the top of the header at the same time
-([D88](./D88-la-photo-ouverte-dit-d-ou-elle-vient-et-s-en-debarrasse-d.md)),
+([D88](./D88-the-open-photo-says-where-it-comes-from-and-clears-the.md)),
 which makes this removal lossless: someone arriving through a shared link still
 knows where they are, in one phrase rather than a paragraph.
 

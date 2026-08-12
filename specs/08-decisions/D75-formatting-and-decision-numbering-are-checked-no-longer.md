@@ -37,7 +37,7 @@ this is already the purpose of `MODULES_TOLERES`.
 
 The check does not belong in `check-links.mjs`, despite the similarity: a plain
 text `(D67)` is not a Markdown link, and
-`[D67](./D67-la-file-de-moderation-est-une-liste-de-travail-pas-un-flux.md)`
+`[D67](./D67-the-moderation-queue-is-a-work-list-not-a-feed.md)`
 refers to the file, never the entry. That tool resolves paths and anchors; the
 decision check reads a file and counts.
 

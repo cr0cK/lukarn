@@ -1,6 +1,6 @@
 # D260809i — Cascade layers are flattened at build time
 
-**Context.** [D260809f](./D260809f-abaissement-css-pour-vieux-moteurs.md) lowers
+**Context.** [D260809f](./D260809f-the-style-sheet-is-lowered-at-build-time-not-written.md) lowers
 the generated style sheet to the Chromium 79 observed on a television, with one
 caveat: `@layer` does not exist before Chromium 99, Tailwind v4 encloses all its
 output in it, and if the application rendered anyway, it was because that

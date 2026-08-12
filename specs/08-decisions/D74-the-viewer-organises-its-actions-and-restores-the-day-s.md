@@ -43,7 +43,7 @@ the price of a fixed position and the right tradeoff: the only action that never
 moves is the one that must be easy to locate.
 
 The kebab menu is extracted into `components/ActionMenu.tsx`, shared with
-`TopBar` ([D73](./D73-la-barre-superieure-tient-sur-une-rangee-et-declare-ses-au.md)).
+`TopBar` ([D73](./D73-the-top-bar-fits-on-one-row-and-declares-its-controls.md)).
 What matters in this component is not its appearance but its three closing rules
 — outside click, `Escape` with focus restoration, and closing before the action —
 which would have been rewritten incorrectly the second time. Its `Escape`

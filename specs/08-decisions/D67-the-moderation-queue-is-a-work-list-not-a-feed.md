@@ -34,7 +34,7 @@ reload after every action would remain. Also rejected: numbered pages using
 `OFFSET`; they provide direct access to page 5, but their numbering shifts as
 soon as a comment arrives during moderation, and the repository already rejected
 `OFFSET` for media (see cursor pagination in
-[03](../03-modele-de-donnees.md)). Finally rejected: an FTS5 table using
+[03](../03-data-model.md)). Finally rejected: an FTS5 table using
 `unicode61` for search — a virtual table and synchronisation triggers to maintain
 for a corpus of a few thousand rows, while an escaped `LIKE` answers in
 microseconds.
