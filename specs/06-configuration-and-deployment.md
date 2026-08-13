@@ -460,16 +460,24 @@ applications there mixes them into the same authorisation request.
 
 ## Scripts
 
-| Command                                           | Effect                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pnpm create-admin <identifier> [password]`       | Creates the first administrator **in the database**, with the wildcard on albums — `admin` alone grants no album, and it does need to see the ones it's about to create. The only entry point when there's neither an account nor a bootstrap file. Refuses an identifier already taken. |
-| `pnpm reset-password <identifier> [password]`     | Replaces an existing account's password and closes its open sessions. Handles the one case the application can't resolve on its own: the sole administrator has lost theirs and can no longer reach `/admin`. For any other account, go through `/admin`.                                |
-| `pnpm hash-password`                              | Prompts for a password without displaying it and prints the `passwordHash:` line to paste. Only used to prepare a bootstrap `albums.yaml`. An argument is accepted but leaves a trace in the shell history.                                                                              |
-| `pnpm --filter @lukarn/server seed-demo [number]` | Fills the index **and** the cache with locally generated media, for working on the interface without a Drive account. Default: 240 per album.                                                                                                                                            |
+| Command                                                            | Effect                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm create-admin <identifier> [password]`                        | Creates the first administrator **in the database**, with the wildcard on albums — `admin` alone grants no album, and it does need to see the ones it's about to create. The only entry point when there's neither an account nor a bootstrap file. Refuses an identifier already taken. |
+| `pnpm reset-password <identifier> [password]`                      | Replaces an existing account's password and closes its open sessions. Handles the one case the application can't resolve on its own: the sole administrator has lost theirs and can no longer reach `/admin`. For any other account, go through `/admin`.                                |
+| `pnpm hash-password`                                               | Prompts for a password without displaying it and prints the `passwordHash:` line to paste. Only used to prepare a bootstrap `albums.yaml`. An argument is accepted but leaves a trace in the shell history.                                                                              |
+| `pnpm --filter @lukarn/server seed-demo [number] [--photos <dir>]` | Fills the index **and** the cache with locally generated media, for working on the interface without a Drive account. Default: 240 per album. `--photos` uses real photographs from a directory instead of gradients.                                                                    |
 
 `seed-demo` inserts into **every** album in the database and writes the five
 cache variants (`t320`, `t640`, `t1280`, `full`, `hd`) so the pipeline never
-tries to reach Drive. Two warnings: the **server must be restarted**
+tries to reach Drive.
+
+`--photos <dir>` cycles through the images in a directory rather than drawing
+gradients, offsetting the cycle per album so two albums never open on the same
+cover. The index records each file's dimensions **after** its EXIF rotation, not
+the ones stored on disk: the grid computes its layout from those numbers before
+anything loads, and a quarter turn read the wrong way would justify every row
+against proportions the photograph does not have. The screenshots in `README.md`
+are taken this way. Two warnings: the **server must be restarted**
 afterwards, since the cache is only inventoried at startup; and it must
 not be run on a real instance — the next sync would remove these
 entries, but they would pollute the albums in the meantime.
