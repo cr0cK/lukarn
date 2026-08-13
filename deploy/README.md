@@ -196,10 +196,6 @@ sudo sed -i 's/^PermitRootLogin .*/PermitRootLogin no/' \
 sudo systemctl reload ssh
 ```
 
-On a machine bootstrapped before 1.0.0 that file is still called
-`99-durcissement.conf`; the rename only applies to machines created afterwards,
-and there is nothing to migrate.
-
 Then remove the port 22 rule from the provider's firewall, if it offers one in
 front of the machine — most do, under the name security group, firewall or
 network rules. `ufw` alone is enough to block the port; the upstream rule merely
@@ -673,12 +669,9 @@ rclone config     # any backend: S3 and compatibles, B2, SFTP…
 # LUKARN_BACKUP_REMOTE=my-remote:my-bucket ./deploy/backup.sh
 ```
 
-`LUKARN_BACKUP_DIR` moves the local directory the same way. An instance
-bootstrapped before 1.0.0 wrote into `sauvegardes/` and configured its rclone
-remote as `sauvegardes:` — either rename both, or keep them by setting
-`LUKARN_BACKUP_DIR` and `LUKARN_BACKUP_REMOTE`. Pruning only looks in the directory
-it is pointed at, so archives left in the old one stay there until removed by
-hand.
+`LUKARN_BACKUP_DIR` moves the local directory the same way. Pruning only looks in
+the directory it is pointed at, so archives left in a former one stay there until
+removed by hand.
 
 **Automating.** Two units, and nothing to install: Debian and Ubuntu cloud
 images ship systemd but frequently **no `cron` at all** — `crontab` is simply not
@@ -754,41 +747,3 @@ included restores with the very same command. What is missing from those older
 ones is the key, and a new one costs three clicks in the console
 (**Keys → Add key**, then revoke the old one). No album has to be re-shared:
 folders are shared with the service account, never with one of its keys.
-
-> **Updating an instance that ran under the project's former name.** The project
-> was called `googledrive-viewer` until version 1.0.0, and its volumes and
-> database carried a `gdv` prefix. Nothing adopts the new names on its own: run
-> this **before** the first `docker compose up` on this version, or the
-> application starts on an empty database — accounts and index included.
->
-> ```bash
-> docker compose down
-> docker volume create lukarn-data
-> docker run --rm -v gdv-data:/old -v lukarn-data:/new alpine sh -c '
->   cp -a /old/. /new/
->   mv /new/gdv.db /new/lukarn.db
->   # A clean shutdown checkpoints the WAL, so these two are usually absent.
->   # Leaving them behind under the old name would silently drop whatever the
->   # last transactions had not yet folded into the database file.
->   [ -e /new/gdv.db-wal ] && mv /new/gdv.db-wal /new/lukarn.db-wal
->   [ -e /new/gdv.db-shm ] && mv /new/gdv.db-shm /new/lukarn.db-shm
->   exit 0'
-> docker compose up -d
-> ```
->
-> `lukarn-cache` is not worth copying: it regenerates. Once the instance is
-> verified, `docker volume rm gdv-data gdv-cache` reclaims the space. Backups
-> already on disk keep their `gdv-` prefix, and pruning no longer sees them —
-> delete them by hand once a `lukarn-` archive has been restored successfully.
-
-> **Updating an instance older than the explicit volume names.** Volumes carry a
-> `name:` of their own since D53. Before that, compose prefixed them with the
-> working directory, so the volume is called `<directory>_gdv-data` —
-> `googledrive-viewer_gdv-data` when cloned under that name; `docker volume ls`
-> gives the exact one. Substitute it for `gdv-data` in the commands above, and
-> copy the certificates across too, which spares a reissue:
->
-> ```bash
-> docker run --rm -v googledrive-viewer_caddy-data:/old -v caddy-data:/new alpine \
->   sh -c 'cp -a /old/. /new/'
-> ```
