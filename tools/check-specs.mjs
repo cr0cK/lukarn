@@ -64,7 +64,9 @@ for (const chemin of fichiers(join(RACINE, 'packages/server/src/routes'), (n) =>
   n.endsWith('.ts'),
 )) {
   const source = lire(chemin);
-  for (const [, methode, url] of source.matchAll(/app\.(get|post|patch|delete)\(\s*'([^']+)'/g)) {
+  for (const [, methode, url] of source.matchAll(
+    /app\.(get|post|put|patch|delete)\(\s*'([^']+)'/g,
+  )) {
     // The mount prefix comes from `app.ts`; only the final segment is compared,
     // as it is distinctive enough and unaffected by prefix restructuring.
     const segment = url

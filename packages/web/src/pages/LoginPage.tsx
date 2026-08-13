@@ -2,6 +2,7 @@ import { type FormEvent, type ReactElement, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { useLogin, useMe, useSetupState, useStartPairing } from '../api/hooks';
+import { Brand } from '../components/Brand';
 import { DeviceLogin } from '../components/DeviceLogin';
 import { PasswordInput } from '../components/PasswordInput';
 import { Spinner } from '../components/Spinner';
@@ -55,6 +56,10 @@ export default function LoginPage(): ReactElement {
   return (
     <div className="flex min-h-full items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
+        {/* The one screen where the application introduces itself: whoever arrives
+            here has followed a link from an email or a message, and the mark is
+            what tells them they are on the right gallery before they type. */}
+        <Brand className="mb-5" />
         <h1 className="mb-1 text-2xl font-semibold tracking-tight">{appName()}</h1>
         <p className="mb-8 text-sm text-ink-400">{t('login.subtitle')}</p>
 
@@ -122,7 +127,7 @@ export default function LoginPage(): ReactElement {
               <button
                 type="submit"
                 disabled={login.isPending}
-                className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t(login.isPending ? 'login.submitting' : 'login.submit')}
               </button>

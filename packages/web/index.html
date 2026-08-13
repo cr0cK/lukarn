@@ -1,5 +1,22 @@
 <!doctype html>
-<html lang="en" class="dark">
+<!-- The palette below is a slot, like the names further down: `shell.ts` replaces
+     the whole `style` attribute with the colours derived from the instance's
+     primary colour. Inline, because a custom property set on the element beats any
+     stylesheet rule for it whatever order Vite emits its `<link>` in, and because
+     it is read before the first paint — nobody sees the built-in red flash into
+     the configured colour. The values written here match the `@theme` defaults in
+     `styles.css`, so `pnpm dev`, where Vite serves this file untouched, looks
+     exactly like production. -->
+<html
+  lang="en"
+  class="dark"
+  style="
+    --color-accent: #eb2020;
+    --color-accent-dim: #a91717;
+    --color-accent-soft: #351417;
+    --color-accent-ink: #ffffff;
+  "
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -8,9 +25,13 @@
     <meta name="robots" content="noindex, nofollow" />
 
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
-    <!-- iOS ignores the manifest for the home screen icon: it needs this link. -->
-    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- Both icons come from the API rather than `public/`: an instance may have
+         uploaded its own logo, and the built-in mark carries the configured
+         primary colour in its dot. One route generates whichever is in force. -->
+    <link rel="icon" href="/api/branding/logo" />
+    <!-- iOS ignores the manifest for the home screen icon: it needs this link, and
+         it needs a PNG — it does not render SVG here. -->
+    <link rel="apple-touch-icon" href="/api/branding/icon-apple-180.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <!-- The name below, like the one in `<title>`, is a default rather than a
          hardcoded value: the server substitutes APP_NAME at startup

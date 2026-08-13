@@ -1466,6 +1466,7 @@ Administration is navigated by **sections, one per URL** (D66):
 | Albums   | `/admin/albums`   | `AlbumsSection`                                         |
 | Accounts | `/admin/accounts` | `UsersSection`                                          |
 | Comments | `/admin/comments` | `CommentsSection`                                       |
+| Identity | `/admin/identity` | `IdentitySection`                                       |
 | Server   | `/admin/server`   | `DriveSection`, `SettingsSection`, `MaintenanceSection` |
 | Visits   | `/admin/visits`   | `VisitsSection`                                         |
 
@@ -1495,10 +1496,11 @@ unnoticed from the bottom of the queue.
 
 | Component                     | Role                                                                                    |
 | ----------------------------- | --------------------------------------------------------------------------------------- |
-| `AdminNav`                    | Navigation between the five sections, as `NavLink`                                      |
+| `AdminNav`                    | Navigation between the six sections, as `NavLink`                                       |
 | `DriveSection`                | OAuth connection status, consent, disconnect                                            |
 | `UsersSection` / `UserForm`   | Account list, creation, editing, confirmed deletion                                     |
 | `AlbumsSection` / `AlbumForm` | Album list, sync status, default grouping, revert to automatic cover, creation, editing |
+| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                |
 | `SettingsSection`             | Sync interval, sync on startup, cache                                                   |
 | `MaintenanceSection`          | Cache usage and purge                                                                   |
 | `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                          |
@@ -1508,6 +1510,56 @@ unnoticed from the bottom of the queue.
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
+
+### Identity — `components/admin/IdentitySection.tsx` and `lib/branding.ts`
+
+Its own section rather than a block under Server, which is about the machine —
+disk budgets, sync cadence, Drive consent. Nothing here changes what the instance
+does; it changes what a visitor sees, and the person renaming their gallery is
+not the person raising a cache limit.
+
+Three controls: the name, a colour — a native swatch and a text field editing the
+same value, one for choosing and one for pasting a colour a brand already has —
+and the logo, with an upload and a reset. Beside the colour sits a **preview**
+computed by `derivePalette` client-side: the dot, a filled button in
+`accent`/`accent-ink`, and a row in `accent-soft`. It reads the same function the
+server does, so it cannot show something a reload would contradict.
+
+Saving pushes the result onto the page already open (`lib/branding.ts`). The
+palette goes onto `<html>` as inline custom properties — the same slot `shell.ts`
+fills — so buttons, the selected section and the mark's dot follow with no
+reload. The logo cannot be handled the same way: it is an `<img>` and a
+`<link rel="icon">`, neither of which TanStack Query knows about, and the route
+answers `no-cache`, which makes the browser revalidate only on a **new** request.
+So a version counter is bumped, `Brand` subscribes to it through
+`useSyncExternalStore`, and the tab icon's `href` is rewritten by hand. None of
+it is a source of truth: a reload produces the same page from the server.
+
+The upload is refused above `LOGO_MAX_BYTES` before it is sent — otherwise the
+whole file crosses the network to come back as a bare 413 — and refused again by
+the route, which is what actually enforces it.
+
+### The mark on screen — `components/Brand.tsx`
+
+One component for the three surfaces that show the mark, because they must show
+the _same_ image: three `<img>` tags would eventually differ in their URL, and
+the one that differed would be the one nobody looks at until an operator uploads
+a logo.
+
+| Where            | Size | Why there                                                                   |
+| ---------------- | ---- | --------------------------------------------------------------------------- |
+| Sign-in screen   | 48px | The one screen where the application introduces itself, before anyone types |
+| Top bar          | 28px | Beside the title, a constant anchor on every authenticated page             |
+| Identity section | 48px | What "the logo" currently means, next to the buttons that change it         |
+
+It is decorative in all three: `alt=""`, because the instance name is written
+beside it and reading the same name twice helps nobody. In the top bar it is a
+link to the album list **only when there is no back arrow** — beside the arrow it
+would be a second control for the same destination, two targets apart. It also
+travels inside the title block rather than beside the arrow, so the one rule that
+hides the title below `sm` on a page with a search field hides the mark too:
+alone on a 393 px screen it would take width from the field it was meant to sit
+beside.
 
 ### A row stacks rather than truncating what names it
 
@@ -1981,8 +2033,36 @@ block and become utilities (`--color-ink-850` → `bg-ink-850`).
 
 The `ink-950 → ink-100` scale is neutral, slightly cool, and **deliberately
 low-contrast between background levels**: what needs to stand out is the
-photos, not the chrome. Only two accents, `--color-accent` and
-`--color-accent-dim`.
+photos, not the chrome.
+
+**The four accent tokens are not fixed values.** They are derived from one
+setting, `primaryColor`, by `derivePalette` in `packages/shared/src/branding.ts`:
+
+| Token                 | What it is                               | Where it is painted                                        |
+| --------------------- | ---------------------------------------- | ---------------------------------------------------------- |
+| `--color-accent`      | the colour itself                        | filled buttons, the selected admin section, the focus ring |
+| `--color-accent-dim`  | 28 % darker                              | `focus:border-accent-dim` on every field                   |
+| `--color-accent-soft` | 16 % of it mixed into `--color-ink-850`  | a hovered or selected row — tinted, not shouting           |
+| `--color-accent-ink`  | white or `--color-ink-950`, by luminance | the label **on** a filled button                           |
+
+`--color-accent-ink` exists because the default is now red. `bg-accent
+text-ink-950` was fine on the previous blue and unreadable on red; the token
+decides per colour instead of per component, so the roughly fifty-five existing
+`accent` usages follow a configured colour with no edit.
+
+The values in `@theme` are **defaults**. `shell.ts` writes the configured palette
+into the `style` attribute of `<html>`, where an inline custom property outranks
+this block whatever order Vite emits its `<link>` in, and where it is parsed
+before the first paint — nobody watches the built-in red flash into the
+configured colour. Keeping the same values in `styles.css` means `pnpm dev`,
+which bypasses the server entirely, looks like production; `shell.test.ts`
+compares the two so they cannot drift.
+
+Derived in TypeScript rather than by `color-mix()`, which does not exist before
+Chromium 111 while the television this is read on reports Chromium 79: an
+unparseable colour is dropped, not approximated, so a hovered row would lose its
+background rather than its tint. The full reasoning is in
+[D260813](./08-decisions/D260813-the-brand-colour-is-a-setting-and-its-palette-is.md).
 
 There is **no** light theme and no toggle: `index.html` hardcodes
 `class="dark"` and `<meta name="color-scheme" content="dark">`. Adding a
@@ -2036,12 +2116,13 @@ nothing about any of this.
 
 The target is **Chromium 79**, taken from a television's browser, while
 Tailwind v4 only claims Chromium 111 and above. A Vite plugin therefore
-reworks the produced CSS right before it is written, in four passes:
+reworks the produced CSS right before it is written, in five passes:
 Lightning CSS targeted at Chromium 79 — which converts `oklch()` to
 `rgb()` —, doubling logical shorthands (`padding-inline`, `inset-inline`,
-`margin-block`…) with their physical equivalents, a composed `transform` in
-place of the `translate`, `rotate`, and `scale` properties, and **unfolding
-cascade layers**.
+`margin-block`…) with their physical equivalents, **initialising Tailwind's
+own `--tw-*` variables for every engine**, a composed `transform` in place of
+the `translate`, `rotate`, and `scale` properties, and **unfolding cascade
+layers**.
 
 Without it, `px-*` and `py-*` set **no** padding at all on these engines,
 `inset-x-*` anchors nothing, and `-translate-y-1/2` recentres nothing. The
@@ -2051,6 +2132,21 @@ other hand, are **replaced** rather than doubled — a modern engine would
 apply both and move the element twice. The JS target drops to `chrome79`
 for the same reason, otherwise `?.` and `??` leave a blank page rather than
 a badly laid-out one.
+
+**Tailwind's variables reach every engine, not the two its sniff names.**
+Every utility built on one dereferences it unconditionally — `.border` is
+`border-style: var(--tw-border-style); border-width: 1px` — and the value comes
+from `@property`, absent before Chromium 85. Tailwind ships a fallback block
+setting them all, behind an `@supports` that detects **Safari and Firefox**.
+Chromium 79 matches neither and has no `@property`, so the variables stay unset,
+`border-style: var(--tw-border-style)` is invalid, and `border-style` reverts to
+`none`: every border, divider and outline in the application disappears. The
+plugin replaces that conditional block with its contents, matching it by shape —
+an `@supports` holding nothing but a `*, ::before, ::after, ::backdrop` rule of
+custom properties — rather than by the condition string. The `color-mix()` blocks
+are deliberately untouched: they guard a real declaration whose plain-hex version
+sits just before them, which is exactly the fallback an old engine should take.
+See [D260813d](./08-decisions/D260813d-tailwind-s-own-variables-are-initialised-for-every.md).
 
 **Unfolding the layers decides everything else**: 91% of the produced
 sheet lives inside an `@layer`, an at-rule that does not exist before
@@ -2064,9 +2160,12 @@ The source itself keeps writing its `@layer` rules: only the output is
 unfolded.
 
 The plugin checks its own work and fails the build if an `oklch()`, a
-shorthand with no fallback, or an unfolded layer remains. It **only runs at
-build time**: under `pnpm dev`, an old browser still sees the
-non-downgraded sheet. The full reasoning, `color-mix()` included, is in
+shorthand with no fallback, an unfolded layer, a `--tw-*` initialisation still
+behind a sniff, or a `--tw-border-style` that some utility reads and nothing sets
+remains. Those last two are deliberately separate: "Tailwind stopped emitting the
+block" and "the block was hoisted" both leave no `@supports`, and only one of them
+is correct. It **only runs at build time**: under `pnpm dev`, an old browser still
+sees the non-downgraded sheet. The full reasoning, `color-mix()` included, is in
 [D260809f](./08-decisions/D260809f-the-style-sheet-is-lowered-at-build-time-not-written.md).
 
 ## Installable application
@@ -2092,23 +2191,32 @@ manifest: `apple-touch-icon`, `apple-mobile-web-app-title`, and
 and the viewer's header, positioned `absolute` at the very top, would end up
 there.
 
-### The instance name — `APP_NAME` and `shell.ts`
+### The instance identity — `shell.ts`
 
-The static file carries `Photos`, and the server substitutes `APP_NAME`
-into it on startup. Two files, four locations:
+The static files carry `Photos` and the built-in palette, and the server
+substitutes what the instance has chosen. Two files, five slots:
 
-| File                   | Location                     | What it names                         |
+| File                   | Location                     | What it carries                       |
 | ---------------------- | ---------------------------- | ------------------------------------- |
 | `index.html`           | `<title>`                    | The browser tab                       |
 | `index.html`           | `apple-mobile-web-app-title` | The iOS home-screen icon              |
 | `index.html`           | `application-name`           | What the front end reads back (below) |
+| `index.html`           | `style` on `<html>`          | The four palette tokens               |
 | `manifest.webmanifest` | `name`, `short_name`         | The Android home-screen icon          |
 
-An environment variable rather than a build constant: **a single image
-serves every installation**, and nobody rebuilds a container just to name
-their gallery differently. A restart is enough, as with the rest of `.env`.
-The full reasoning is in
-[D72](./08-decisions/D72-the-instance-name-lives-in-env-and-the-server-puts-it-in.md).
+Not a build constant: **a single image serves every installation**, and nobody
+rebuilds a container to name their gallery differently
+([D72](./08-decisions/D72-the-instance-name-lives-in-env-and-the-server-puts-it-in.md)).
+No longer an environment variable either: the name is a **setting** now, edited
+from `/admin/identity` beside the colour and the logo, with `APP_NAME` left only
+to seed it on a database that has none
+([D260813c](./08-decisions/D260813c-the-instance-name-leaves-the-environment-for-the.md)).
+
+The consequence lands here: neither file can be rendered once at startup any
+more, and neither can be rendered per navigation — every URL of the application
+returns the shell. Both are therefore rendered on first request and **cached
+until settings change**, the cache dropped by the `SettingsListener` that
+`context.ts` already defines for rescheduling the sync timer.
 
 The manifest is only overridden on its two name fields: icons, colours, and
 `display` stay declared in the single file that lists them, otherwise they
@@ -2132,45 +2240,46 @@ whereas a network call would show an empty title while waiting for the
 response — and this is the only way to have it available on the sign-in
 screen, which displays precisely when no authenticated route responds.
 
-### The icons — `public/icons/`
+### The mark, and the icons generated from it
 
-`icon.svg` is the source, and also serves as the favicon (there was none
-before). Six tiles of unequal widths across two rows, in `--color-accent`
-and `--color-accent-dim` on an `--color-ink-900` background: **it is the
-justified grid the application actually renders on screen**, not a generic
-image pictogram — the first attempt, a thin-lined frame, vanished at the
-size an icon is actually looked at.
+There are **no icon files in `public/`**. The tab icon points at
+`/api/branding/logo` and the manifest at `/api/branding/icon-*.png`: one path
+generates every size from whichever logo the instance uses, in whichever colour.
+The placeholder mosaic of blue tiles that used to live here is gone, along with
+the four PNGs derived from it and the hand-run `sharp` recipe that produced them.
 
-Two flat fills rather than opacities, because an opacity composites with
-whatever is behind it and Android places the maskable variant on its own
-background. Gutters at 16 units out of 512, i.e. 1.75 px on a 56 px
-launcher icon: below that they close up and the six tiles become a smudge.
+**The mark** is drawn as source in `packages/server/src/branding/mark.ts`, not
+exported from a design tool. The delivered file was a Fabric.js export — nested
+groups, `matrix(2.2987785…)` on every element — which cannot be recoloured
+without reverse-engineering four levels of transform, and the dot's colour is
+exactly what has to change per instance. The shape was measured off that export
+and redrawn on a `0 0 256 256` grid at the proportions it actually has: corner
+radius a fifth of the side, dot at (82.5 %, 18.5 %) with a radius of 8.3 %, and
+an `L` spanning 40.5–61.8 % across and 52.8–82.4 % down, its stem 31.8 % of its
+own width and its foot 21.4 % of its height. Four elements — the `L` is two
+rectangles rather than a six-point polygon, so those measurements appear in the
+file rather than being implied by vertices.
 
-The PNGs are derived once and for all, with `sharp` — already a server
-dependency:
+`renderMark(primary)` substitutes the dot's fill and nothing else. A value that
+is not `#rrggbb` falls back to the default rather than being interpolated: this
+string is served as `image/svg+xml` from our own origin.
 
-```bash
-cd packages/web/public/icons && pnpm --filter @lukarn/server exec node -e "
-const sharp = require('sharp'); const s = () => sharp('icon.svg', { density: 384 });
-Promise.all([
-  s().resize(192).png().toFile('icon-192.png'),
-  s().resize(512).png().toFile('icon-512.png'),
-  s().resize(512).flatten({ background: '#0b0b0d' }).png().toFile('icon-maskable-512.png'),
-  s().resize(180).flatten({ background: '#0b0b0d' }).png().toFile('apple-touch-icon.png'),
-]);"
-```
+`assets/lukarn-mark.svg` is the same file on disk, for `README.md`, and
+`branding.test.ts` asserts it equals `renderMark('#eb2020')` — a documentation
+asset that drifts from the live one is worse than none.
+`assets/lukarn-logo.svg` adds the `LUKARN` wordmark as outlined paths lifted from
+the delivered file, so it needs no font; its wordmark flips colour under
+`prefers-color-scheme` because a black wordmark is invisible on a dark README.
+Neither carries the delivered tagline: it is French, and the repository is
+English (D260811b).
 
-Two details carry everything else. The `flatten` fills the transparent
-corners with the dark background: that is what distinguishes the
-**maskable** variant, which Android crops into the system's shape and must
-therefore overflow, from the `any` variant, which it displays as-is with its
-rounded corners. And the mosaic occupies 59% of the canvas in width, 50% in
-height, which keeps it within the safe zone — the circle covering 80% of the
-side — whatever mask gets applied.
-
-No permanent script: the recipe fits in the block above, and one more
-script would be one more module to document for four files that will not
-change.
+**The generated sizes** — `192.png`, `512.png`, `maskable-512.png`,
+`apple-180.png` — are declared in `ICON_VARIANTS` (`packages/shared`), rendered
+by `BrandingStore` on first miss and discarded on any branding change. The
+maskable variant is inset to 62 % on `--color-ink-900`, because Android crops it
+to a circle and a full-bleed rounded square would lose the dot that makes the
+mark recognisable. `apple-180.png` is flattened onto the mark's own black, iOS
+compositing a home-screen icon on black regardless.
 
 ### The service worker — `public/sw.js`
 

@@ -5,6 +5,7 @@ import { useLogout, useMe } from '../api/hooks';
 import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT, type Translate } from '../lib/i18n';
 import { useInstallPrompt } from '../lib/useInstallPrompt';
 import { ActionMenu, type MenuEntry } from './ActionMenu';
+import { Brand } from './Brand';
 import { InstallInstructions } from './InstallInstructions';
 
 /**
@@ -182,10 +183,28 @@ export function TopBar({
         {/* Hide the title below `sm` when the page has a search field: keep one
             row at every width, and "Albums" at the root says nothing beyond the
             URL. The field cannot collapse elsewhere — a menu cannot be searched
-            from within itself. */}
-        <div className={`min-w-0 flex-1 ${search ? 'hidden sm:block' : ''}`}>
-          <h1 className="truncate text-base font-medium tracking-tight">{title}</h1>
-          {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
+            from within itself.
+
+            The mark travels with the title rather than sitting beside the back
+            arrow, so that one rule hides both: alone on a 393 px screen it would
+            take width from the search field it was meant to sit beside. */}
+        <div
+          className={`min-w-0 flex-1 items-center gap-2.5 ${search ? 'hidden sm:flex' : 'flex'}`}
+        >
+          {/* A link only where nothing else already leads to the album list. Beside
+              the back arrow it would be a second control for the same destination,
+              two targets apart; here it only identifies the instance. */}
+          {back ? (
+            <Brand size="sm" />
+          ) : (
+            <Link to="/" aria-label={t('topbar.home')} className="shrink-0">
+              <Brand size="sm" />
+            </Link>
+          )}
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-medium tracking-tight">{title}</h1>
+            {subtitle && <p className="truncate text-xs text-ink-400">{subtitle}</p>}
+          </div>
         </div>
 
         {/* Centring determines the width: from `sm`, the field stops growing at
@@ -231,7 +250,7 @@ export function TopBar({
                   // Cap at "9+" like the viewer badge: beyond that the number
                   // overflows the icon, and knowing whether there are twelve or
                   // seventeen changes no action.
-                  className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
+                  className="absolute top-0.5 right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-accent-ink tabular-nums"
                 >
                   {feed.unread > 9 ? '9+' : feed.unread}
                 </span>

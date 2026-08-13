@@ -96,7 +96,7 @@ export default function PairPage(): ReactElement {
         type="button"
         disabled={approve.isPending}
         onClick={() => approve.mutate(code)}
-        className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {t(approve.isPending ? 'pair.approving' : 'pair.approve')}
       </button>
@@ -137,7 +137,7 @@ function CodeForm({ onSubmit }: { onSubmit: (code: string) => void }): ReactElem
         <button
           type="submit"
           disabled={code.length !== USER_CODE_LENGTH}
-          className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t('pair.continue')}
         </button>

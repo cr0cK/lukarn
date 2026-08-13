@@ -23,7 +23,11 @@ let context: AppContext;
 
 before(async () => {
   mkdirSync(join(webDir, 'assets'), { recursive: true });
-  writeFileSync(join(webDir, 'index.html'), '<!doctype html><title>Photos</title>', 'utf8');
+  writeFileSync(
+    join(webDir, 'index.html'),
+    '<!doctype html><html lang="en" style="--color-accent: #eb2020"><title>Photos</title></html>',
+    'utf8',
+  );
   writeFileSync(join(webDir, 'assets', 'index-abc123.js'), 'export default 1;\n', 'utf8');
 
   const hash = await argon2.hash('x', { type: argon2.argon2id });
@@ -109,5 +113,17 @@ describe('front-end serving', () => {
     const response = await server.inject({ method: 'GET', url: '/api/health' });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), { status: 'ok' });
+  });
+
+  it('carries a renamed instance and a new colour without a restart', async () => {
+    // The shell is rendered once and kept, so the risk here is not performance
+    // but a rename that never reaches the tab. What drops the cache is the
+    // settings listener — the same mechanism that reschedules the sync timer
+    // (D260813c). Last in this file: it changes state the others read.
+    context.updateSettings({ instanceName: 'Chez les Martin', primaryColor: '#3fae2a' });
+
+    const page = await server.inject({ method: 'GET', url: '/album/vacances' });
+    assert.match(page.body, /<title>Chez les Martin<\/title>/);
+    assert.match(page.body, /--color-accent: #3fae2a/);
   });
 });

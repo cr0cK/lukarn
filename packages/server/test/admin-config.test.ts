@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import type { AdminAlbum, AdminUser, AppSettings } from '@lukarn/shared';
+import {
+  DEFAULT_PRIMARY_COLOR,
+  type AdminAlbum,
+  type AdminUser,
+  type AppSettings,
+} from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -637,6 +642,8 @@ describe('settings', () => {
       syncOnStartup: true,
       cacheMaxSizeGB: 2,
       // Untouched by this PATCH: only the submitted fields change.
+      instanceName: 'Photos',
+      primaryColor: DEFAULT_PRIMARY_COLOR,
       prewarmCache: true,
       transcodeVideos: true,
       videoCacheMaxSizeGB: 5,

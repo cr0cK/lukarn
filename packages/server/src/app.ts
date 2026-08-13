@@ -11,6 +11,7 @@ import securityHeaders from './plugins/headers.js';
 import { createAdminRoutes, createOAuthCallbackRoute } from './routes/admin.js';
 import { createAlbumRoutes } from './routes/albums.js';
 import { createAuthRoutes } from './routes/auth.js';
+import { createAdminBrandingRoutes, createBrandingRoutes } from './routes/branding.js';
 import { createCommentRoutes } from './routes/comments.js';
 import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
@@ -49,6 +50,7 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
   });
 
   const context = new AppContext(env, server.log);
+  await context.branding.load();
   await context.cache.load();
   // The video store has its own inventory, which removes temporary files left by
   // transcoding interrupted by an abrupt shutdown.
@@ -74,13 +76,18 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
       await api.register(createCommentRoutes(context), { prefix: '/comments' });
       await api.register(createIdentityRoutes(context), { prefix: '/identity' });
       await api.register(createSubscriptionRoutes(context), { prefix: '/subscriptions' });
+      await api.register(createBrandingRoutes(context), { prefix: '/branding' });
       await api.register(createAdminRoutes(context), { prefix: '/admin' });
+      // A sibling of `/admin` rather than a block inside it: its body is raw image
+      // bytes, and the content-type parser and larger limit that accept them stay
+      // scoped to it.
+      await api.register(createAdminBrandingRoutes(context), { prefix: '/admin/branding' });
       await api.register(createOAuthCallbackRoute(context), { prefix: '/oauth' });
     },
     { prefix: '/api' },
   );
 
-  await registerFrontend(server, env.webDir, env.appName);
+  await registerFrontend(server, context);
 
   server.setErrorHandler(async (error: FastifyError, request, reply) => {
     const status = error.statusCode ?? 500;
@@ -96,11 +103,8 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
   return { server, context };
 }
 
-async function registerFrontend(
-  server: FastifyInstance,
-  webDir: string,
-  appName: string,
-): Promise<void> {
+async function registerFrontend(server: FastifyInstance, context: AppContext): Promise<void> {
+  const webDir = context.env.webDir;
   const hasBuild = existsSync(join(webDir, 'index.html'));
 
   if (!hasBuild) {
@@ -141,14 +145,28 @@ async function registerFrontend(
     },
   });
 
-  // The shell and manifest carry the instance name, substituted once at startup:
-  // these two files do not change while the server is running, and rendering them
-  // from memory avoids one disk read per navigation. A restart applies a changed
-  // APP_NAME, as with the rest of `.env`.
-  const shell = renderShell(readFileSync(join(webDir, 'index.html'), 'utf8'), appName);
+  /**
+   * The shell and manifest carry the instance name and its palette, both of which
+   * are now settings rather than environment variables (D260813c). They can
+   * therefore no longer be rendered once at startup — but they must not be rendered
+   * per navigation either, since every URL of the application returns the shell.
+   *
+   * Hence a cache of one, dropped when settings change. The listener already exists
+   * for exactly this: `main.ts` uses it to reschedule the synchronisation timer.
+   */
+  const template = readFileSync(join(webDir, 'index.html'), 'utf8');
+  let shell: string | null = null;
+  let manifest: string | null = null;
+  context.onSettingsChanged(() => {
+    shell = null;
+    manifest = null;
+  });
 
   const sendShell = (reply: FastifyReply): FastifyReply =>
-    reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-cache').send(shell);
+    reply
+      .type('text/html; charset=utf-8')
+      .header('Cache-Control', 'no-cache')
+      .send((shell ??= renderShell(template, context.settings)));
 
   // This exact route precedes the generic @fastify/static route, which would
   // otherwise serve the raw file with its default name. It is required anyway:
@@ -157,12 +175,12 @@ async function registerFrontend(
 
   const manifestPath = join(webDir, 'manifest.webmanifest');
   if (existsSync(manifestPath)) {
-    const manifest = renderManifest(readFileSync(manifestPath, 'utf8'), appName);
+    const manifestTemplate = readFileSync(manifestPath, 'utf8');
     server.get('/manifest.webmanifest', async (_request, reply) =>
       reply
         .type('application/manifest+json; charset=utf-8')
         .header('Cache-Control', 'no-cache')
-        .send(manifest),
+        .send((manifest ??= renderManifest(manifestTemplate, context.settings))),
     );
   } else {
     // Without a manifest the application remains fully usable but is no longer

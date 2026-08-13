@@ -123,6 +123,27 @@ export class Mailer {
   }
 }
 
+/**
+ * Header opening every message: the instance's icon and its name.
+ *
+ * **A PNG, not the SVG the interface uses**: no mail client renders SVG, and the
+ * one place the mark must survive a hostile renderer is the inbox. A client that
+ * blocks remote images shows the `alt` text instead — which is the instance name,
+ * the very thing the header exists to say.
+ *
+ * The name has to be passed in rather than read from the environment: it is a
+ * setting now (D260813c), and this module has no database.
+ */
+function header(instanceName: string, publicUrl: string): string {
+  const name = escapeHtml(instanceName);
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 0 20px;">
+        <tr>
+          <td style="padding-right: 10px;"><img src="${escapeHtml(publicUrl)}/api/branding/icon-192.png" width="32" height="32" alt="${name}" style="display: block; border-radius: 7px;"></td>
+          <td style="font-size: 15px; font-weight: 600; color: #1a1a1a;">${name}</td>
+        </tr>
+      </table>`;
+}
+
 /** The comment data required to compose the notification. */
 export interface CommentNotification {
   albumId: string;
@@ -164,6 +185,7 @@ export interface Recipient {
 export function buildCommentMail(
   notification: CommentNotification,
   recipient: Recipient,
+  instanceName: string,
   env: Env,
 ): MailMessage {
   const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
@@ -204,11 +226,12 @@ export function buildCommentMail(
     ...(unsubscribe ? ['', '—', `${t('mail.unsubscribeAll')} : ${unsubscribe}`] : []),
   ].join('\n');
 
-  // Deliberately plain HTML: inline styles, no image, no remote font. Email clients
-  // remove everything else, and an email that loads nothing from the server cannot
-  // report that it has been read either.
+  // Deliberately plain HTML: inline styles, table layout and no remote font. Email
+  // clients remove everything else. The header icon is the one remote resource, and
+  // it is a deliberate trade: a blocked image degrades to the instance name.
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      ${header(instanceName, env.publicUrl)}
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}:</p>
       <blockquote style="margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid #d4d4d4; background: #fafafa; white-space: pre-wrap;">${escapeHtml(notification.body)}</blockquote>
       <p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>
@@ -247,6 +270,7 @@ export function buildAlbumUpdateMail(
   notification: AlbumUpdateNotification,
   email: string,
   locale: Locale,
+  instanceName: string,
   env: Env,
 ): MailMessage {
   const t = translator(locale);
@@ -271,10 +295,11 @@ export function buildAlbumUpdateMail(
     `${t('mail.albumUnsubscribe', notification.albumTitle)} : ${unsubscribe}`,
   ].join('\n');
 
-  // As restrained as comment notifications: inline styles and nothing to load from
-  // the server — so nothing reports that the message has been read either.
+  // As restrained as comment notifications: inline styles, and the header icon as
+  // the single remote resource.
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      ${header(instanceName, env.publicUrl)}
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}.</p>
       <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">${t('mail.viewAlbum')}</a></p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
@@ -340,6 +365,7 @@ export function buildVerificationMail(
   displayName: string,
   code: string,
   locale: Locale,
+  instanceName: string,
   env: Env,
 ): MailMessage {
   const t = translator(locale);
@@ -362,6 +388,7 @@ export function buildVerificationMail(
 
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      ${header(instanceName, env.publicUrl)}
       <p style="margin: 0 0 16px;">${escapeHtml(t('mail.codeHello', displayName))}</p>
       <p style="margin: 0 0 8px;">
         ${escapeHtml(t('mail.codeIntro', host))}

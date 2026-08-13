@@ -380,7 +380,7 @@ function EditForm({
         <button
           type="submit"
           disabled={!body.trim() || pending}
-          className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="rounded bg-accent px-3 py-1 text-xs font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {t(pending ? 'common.sending' : 'common.save')}
         </button>
@@ -578,7 +578,7 @@ function CommentForm({
         <button
           type="submit"
           disabled={!body.trim() || create.isPending}
-          className="rounded bg-accent px-3 py-1 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="rounded bg-accent px-3 py-1 text-xs font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {t(create.isPending ? 'common.sending' : 'comments.post')}
         </button>

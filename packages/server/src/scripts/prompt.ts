@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline/promises';
  * Password input without terminal echo. Shared by `hash-password` and `create-admin`:
  * passing a password as an argument is possible but leaves it in shell history.
  */
-export async function promptPassword(label = 'Mot de passe : '): Promise<string> {
+export async function promptPassword(label = 'Password: '): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
 
   // Disables terminal echo during input.

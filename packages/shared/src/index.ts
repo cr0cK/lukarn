@@ -3,6 +3,13 @@
  * crossing the network is described here; the front end never redeclares response types.
  */
 
+/**
+ * Visual identity: the primary colour and everything derived from it. Re-exported
+ * rather than left aside because the package has a single entry point, and both
+ * ends import the palette from here like any other part of the contract.
+ */
+export * from './branding.js';
+
 /** Thumbnail sizes the server accepts to generate. */
 export const THUMB_SIZES = [320, 640, 1280] as const;
 export type ThumbSize = (typeof THUMB_SIZES)[number];
@@ -599,6 +606,13 @@ export interface AdminStatus {
    * will be sent.
    */
   mailConfigured: boolean;
+  /**
+   * `true` when an operator has uploaded a logo, `false` while the built-in mark is
+   * in force. Reported rather than inferred from the image: both are served at the
+   * same URL, so nothing in the picture says which one it is — and "back to the
+   * built-in mark" must only be offered when there is something to go back from.
+   */
+  logoCustom: boolean;
 }
 
 export interface ApiError {
@@ -705,6 +719,21 @@ export interface UpdateAlbumRequest {
 export const ALBUM_DESCRIPTION_MAX_LENGTH = 2000;
 
 export interface AppSettings {
+  /**
+   * Displayed instance name: browser tab, sign-in screen and, above all, the label
+   * under the icon once the application is installed.
+   *
+   * A setting rather than an environment variable (D260813c): whoever names their
+   * gallery is already in /admin, and renaming it should not mean opening a shell.
+   * `APP_NAME` still seeds this value while nothing has been saved, exactly as
+   * `config/albums.yaml` seeds accounts (D24).
+   */
+  instanceName: string;
+  /**
+   * Instance colour as `#rrggbb`. It drives the mark's dot, filled buttons, the
+   * active tab border and a softer derived hover — see `derivePalette`.
+   */
+  primaryColor: string;
   /** Minutes between automatic synchronisations. 0 to disable. */
   syncIntervalMinutes: number;
   syncOnStartup: boolean;

@@ -168,6 +168,63 @@ export function replaceIndependentTransforms(css: string): string {
   return touched ? `${TRANSFORM_RESET}${out}` : out;
 }
 
+/**
+ * Tailwind's initialisation of its own `--tw-*` variables, and the browser sniff
+ * it hides behind.
+ *
+ * Every utility built from a variable dereferences it unconditionally:
+ * `.border` is `border-style: var(--tw-border-style); border-width: 1px`, and
+ * `.outline` is `outline-style: var(--tw-outline-style); outline-width: 1px`.
+ * The value comes from `@property`, which does not exist before Chromium 85.
+ * Tailwind knows this and ships a fallback block — but gated behind
+ * `@supports ((-webkit-hyphens: none) and …) or ((-moz-orient: inline) and …)`,
+ * a **detection written for Safari and Firefox**. Chromium 79 matches neither
+ * and has no `@property` either, so the variables are simply never set.
+ *
+ * An unset variable does not fall back to anything: `border-style:
+ * var(--tw-border-style)` is invalid at computed-value time, `border-style`
+ * reverts to its initial `none`, and **every border in the application
+ * disappears** — the top bar's hairline, every panel, every field. The same for
+ * `outline-*`, `--tw-divide-*` and `--tw-space-*`.
+ *
+ * This is the same defect `replaceIndependentTransforms` fixes for
+ * `--tw-translate-*`, met from the other end: there, the fallback was missing at
+ * the call site; here, it exists but is addressed to two other engines.
+ *
+ * The block is matched by **shape**, not by that condition string: an
+ * `@supports` containing nothing but a `*, ::before, ::after, ::backdrop` rule of
+ * custom properties is Tailwind's initialisation and nothing else. Matching the
+ * sniff itself would silently stop working the day it is reworded.
+ */
+const VARIABLE_INITIALISATION =
+  /@supports\s*\([^{}]*\)\s*\{\s*(\*(?:\s*,\s*::?[a-z-]+)*)\s*\{([^{}]*)\}\s*\}/g;
+
+/** A declaration group made only of custom properties. */
+function onlyCustomProperties(declarations: string): boolean {
+  return declarations
+    .split(';')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .every((d) => d.startsWith('--'));
+}
+
+/**
+ * Applies Tailwind's variable initialisation to every engine instead of two.
+ *
+ * The guard is **replaced**, not duplicated: applying these values everywhere is
+ * strictly what the block is for, and an engine with `@property` computes exactly
+ * the same thing from them — Tailwind already sends this block to Safari and
+ * Firefox versions that have `@property`, for the same reason.
+ *
+ * Specificity is unchanged: `*` loses to every utility class, so `outline-none`
+ * still overrides `--tw-outline-style` where it is asked to.
+ */
+export function unguardVariableInitialisation(css: string): string {
+  return css.replace(VARIABLE_INITIALISATION, (whole, selector: string, declarations: string) =>
+    onlyCustomProperties(declarations) ? `${selector}{${declarations}}` : whole,
+  );
+}
+
 /** Index of the closing quote for a CSS string opened at `debut`. */
 function finDeChaine(css: string, debut: number): number {
   const quote = css[debut];
@@ -266,6 +323,25 @@ export function findUnloweredDeclarations(css: string): string[] {
     );
   }
 
+  // A `--tw-*` initialisation still trapped behind a browser sniff. Left there,
+  // the utilities that read it produce nothing on an engine the sniff excludes —
+  // borders, outlines and dividers, all silently absent (see
+  // `unguardVariableInitialisation`).
+  for (const [, , declarations] of css.matchAll(VARIABLE_INITIALISATION)) {
+    if (onlyCustomProperties(declarations!)) {
+      problems.push(
+        `custom-property initialisation still inside @supports: ${declarations!.slice(0, 60)}…`,
+      );
+    }
+  }
+
+  // The single value that proves the hoist happened. Named explicitly because the
+  // check above passes just as well when Tailwind stops emitting the block at all,
+  // and "nothing to hoist" and "hoisted" must not look alike.
+  if (css.includes('var(--tw-border-style)') && !/(^|[{;])--tw-border-style:/.test(css)) {
+    problems.push('--tw-border-style is read but never set: every border would vanish');
+  }
+
   // Allow a logical shorthand when a physical equivalent precedes it in the same
   // declaration group — exactly what `addPhysicalFallbacks` adds.
   for (const found of css.matchAll(new RegExp(`(^|[{;])\\s*(${SHORTHAND_NAMES})\\s*:`, 'g'))) {
@@ -284,7 +360,8 @@ export function findUnloweredDeclarations(css: string): string[] {
 
 /**
  * Lowers a stylesheet to the oldest supported engine: `oklch()` to `rgb()`,
- * logical properties to physical, missing prefixes and flattened cascade layers.
+ * logical properties to physical, missing prefixes, Tailwind's own variables
+ * initialised for everyone, and flattened cascade layers.
  *
  * **Flattening comes last** because `replaceIndependentTransforms` adds a layer
  * itself: reversing them would leave the one at-rule these engines discard with
@@ -301,7 +378,9 @@ export function lowerForLegacyEngines(css: string, filename = 'style.css'): stri
     include: Features.LogicalProperties,
   }).code.toString();
 
-  return flattenLayers(replaceIndependentTransforms(addPhysicalFallbacks(lowered)));
+  return flattenLayers(
+    replaceIndependentTransforms(unguardVariableInitialisation(addPhysicalFallbacks(lowered))),
+  );
 }
 
 /** Short content fingerprint in the same form as Vite's. */

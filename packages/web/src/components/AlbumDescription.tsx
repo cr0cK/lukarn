@@ -163,7 +163,7 @@ function DescriptionEditor({
           <button
             type="submit"
             disabled={update.isPending}
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-50"
           >
             {t(update.isPending ? 'common.saving' : 'common.save')}
           </button>

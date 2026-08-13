@@ -1123,7 +1123,7 @@ function CommentBadge({ total, unread }: { total: number; unread: number }): Rea
       aria-hidden="true"
       // Cap at "9+": beyond that the number overflows the icon, and knowing
       // whether twelve or seventeen messages are unread changes no action.
-      className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-ink-950 tabular-nums"
+      className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-accent-ink tabular-nums"
     >
       {unread > 9 ? '9+' : unread}
     </span>

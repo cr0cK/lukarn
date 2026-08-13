@@ -71,7 +71,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
           <button
             type="button"
             onClick={onRetry}
-            className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
+            className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90"
           >
             {t('common.tryAgain')}
           </button>
@@ -123,7 +123,7 @@ export function DeviceLogin({ pairing, error, onRetry, onCancel }: DeviceLoginPr
               <button
                 type="button"
                 onClick={onRetry}
-                className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90"
+                className="w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90"
               >
                 {t('device.newCode')}
               </button>

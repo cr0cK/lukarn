@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { AppSettings } from '@lukarn/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { bootstrapFromYaml } from './bootstrap.js';
+import { BrandingStore } from './branding/store.js';
 import { CommentRepo } from './comments.js';
 import { CommenterRepo } from './commenters.js';
 import { ConfigRepo, type StoredAlbum } from './config-repo.js';
@@ -77,6 +78,11 @@ export class AppContext {
    */
   readonly throttle = new LoginThrottle();
   readonly drive: DriveService;
+  /**
+   * The instance's logo, and the icons derived from it. Under `DATA_DIR` rather than
+   * `CACHE_DIR`: an uploaded logo is not recomputable from anything (D260813b).
+   */
+  readonly branding: BrandingStore;
   readonly cache: MediaCache;
   /**
    * Store of playable video versions, with its own budget.
@@ -99,7 +105,7 @@ export class AppContext {
     readonly log: FastifyBaseLogger,
   ) {
     this.db = openDb(env.dataDir);
-    this.config = new ConfigRepo(this.db);
+    this.config = new ConfigRepo(this.db, env.appName);
     this.media = new MediaRepo(this.db);
     this.comments = new CommentRepo(this.db);
     this.commenters = new CommenterRepo(this.db, env.sessionSecret);
@@ -125,6 +131,7 @@ export class AppContext {
 
     this.mailer = Mailer.fromEnv(env, logger);
     this.drive = new DriveService(env, this.db, logger);
+    this.branding = new BrandingStore(join(env.dataDir, 'branding'), logger);
     this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
     this.videoStore = new MediaCache(
       join(env.cacheDir, 'video'),
@@ -141,6 +148,7 @@ export class AppContext {
       syncState: this.syncState,
       subscriptions: this.subscriptions,
       mailer: () => this.mailer,
+      instanceName: () => this.settings.instanceName,
       env,
       log: logger,
     });
@@ -289,6 +297,12 @@ export class AppContext {
     const settings = this.config.updateSettings(patch);
     this.cache.setMaxBytes(settings.cacheMaxSizeGB * GIB);
     this.videoStore.setMaxBytes(settings.videoCacheMaxSizeGB * GIB);
+    // The built-in mark's dot carries the primary colour, so every generated icon
+    // becomes stale the moment it changes. Detached: four small files are rebuilt on
+    // the next request, and a disk error there must not fail the write that succeeded.
+    void this.branding.clearGenerated().catch((error: unknown) => {
+      this.log.warn({ err: error }, 'Could not discard the generated icons');
+    });
     for (const listener of this.settingsListeners) listener(settings);
     return settings;
   }
