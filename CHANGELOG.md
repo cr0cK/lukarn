@@ -13,6 +13,42 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### An identity of its own, and one each instance can change
+
+- **The Lukarn mark** — a rounded black square, a white `L`, and a dot standing
+  for both the lucarne and the lens — on the sign-in screen, in the top bar, as
+  the browser tab icon, on a home screen and at the head of every email. It is
+  drawn as source rather than exported, so it can be recoloured.
+- **The gallery's colour is a setting.** One colour in `/admin` → Identity, and
+  the buttons, the selected section, the focus outline and the mark's dot follow,
+  along with a softer tint derived from it for hovered rows. It applies without
+  a reload and without a restart.
+- **The logo can be replaced** with an image of your own, from the same screen.
+  Whatever you upload is converted to a PNG on arrival, and every size a phone or
+  a mail client asks for is generated from it.
+- **The gallery's name is a setting too**, and the album list's header now carries
+  it rather than the word "Albums".
+
+### Migration notes
+
+- **`APP_NAME` becomes a bootstrap value.** An instance in service keeps its name:
+  the variable seeds the new setting on the first start after updating, and is
+  ignored from then on. Rename from `/admin` → Identity afterwards; editing the
+  `.env` will no longer change anything.
+- **The accent colour changes from blue to red** on any instance that has never
+  chosen one — that red is the default identity, not a fixed choice. Set the old
+  `#7aa2ff`, or any other colour, in `/admin` → Identity.
+- Nothing to do about the backup: the uploaded logo lives in `DATA_DIR`, which is
+  already archived whole.
+
+### Fixed
+
+- **Borders, dividers and outlines were absent on browsers older than
+  Chromium 85.** Tailwind's initialisation of its own variables sits behind a
+  detection written for Safari and Firefox, so on any other engine without
+  `@property` the values were never set and `border-style` fell back to `none`.
+  The build now applies them to every engine.
+
 ## [1.0.0] — 2026-08-11
 
 First published release. The application has been running in production for
