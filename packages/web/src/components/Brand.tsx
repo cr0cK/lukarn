@@ -48,9 +48,16 @@ export function Brand({
       // missing only where the mark meets a near-black surface, so it is
       // restored here rather than in the palette.
       //
-      // `inset` so it traces the rounded corner instead of boxing it, and
-      // `ring` rather than `border`, which would take a pixel from the image.
-      className={`${size === 'sm' ? 'size-7' : 'size-12'} shrink-0 rounded-lg ring-1 ring-ink-700 ring-inset ${className}`}
+      // **Outside the box, never `ring-inset`.** An inset shadow on a replaced
+      // element is painted *behind* the replaced content, and the mark's square
+      // is opaque and full-bleed: the ring was covered by the very image it was
+      // meant to outline, leaving the page pixel-identical to having no ring at
+      // all. `ring` rather than `border`, which would take a pixel from the image.
+      //
+      // `ink-600` and not the `ink-700` used for panel edges: this line separates
+      // two nearly black surfaces rather than a panel from a page, and at
+      // `ink-700` it was there but not legible at 28 px.
+      className={`${size === 'sm' ? 'size-7' : 'size-12'} shrink-0 rounded-lg ring-1 ring-ink-600 ${className}`}
     />
   );
 }

@@ -1572,6 +1572,15 @@ backing and the ground the photos sit on, to solve a problem that only exists
 where the mark meets a near-black surface. So the silhouette is restored here,
 in the one component that draws it, and nowhere else.
 
+**Outside the box, never inset.** An inset shadow on a replaced element is
+painted behind the replaced content, and this square is opaque and full-bleed:
+the first attempt used `ring-inset` and was covered by the very image it was
+meant to outline, leaving the page pixel-identical to having no ring — which is
+how it shipped, and how it was reported. The colour is `ink-600` rather than the
+`ink-700` used for panel edges, because this line separates two nearly black
+surfaces rather than a panel from a page; at `ink-700` it was present but not
+legible at 28 px.
+
 It rides on `--tw-ring-*`, which is exactly the family that reaches an old engine
 only because the build hoists Tailwind's initialisation out of its browser sniff
 (D260813d) — without that, this hairline would be invisible on the very screen
