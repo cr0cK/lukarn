@@ -50,6 +50,11 @@ export const fr: Messages = {
   'error.codeAttemptsExhausted': 'Trop de tentatives. Demander un nouveau code.',
   'error.codeWrongOrExpired': 'Code erroné ou expiré. En demander un nouveau si besoin.',
 
+  'error.noIcon': 'Aucune icône de ce nom',
+  'error.logoEmpty': 'Aucune image reçue.',
+  'error.logoUnreadable':
+    'Ce fichier n’a pas pu être lu comme une image. PNG, JPEG, WebP et SVG conviennent, jusqu’à 512 ko.',
+
   'error.noFullscreenForVideo': 'Pas de rendu plein écran pour une vidéo',
   'error.noVideoPreview': 'Aucun aperçu disponible pour cette vidéo',
   'error.unsupportedThumbSize': 'Taille de vignette non prise en charge',

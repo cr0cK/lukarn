@@ -52,6 +52,7 @@ export const en = {
   /* ------------------------------------------------------------- Top bar */
 
   'topbar.back': 'Back to the albums',
+  'topbar.home': 'The album list',
   'topbar.admin': 'Administration',
   'topbar.signOut': 'Sign out',
   'topbar.install': 'Install',
@@ -168,7 +169,6 @@ export const en = {
 
   /* ---------------------------------------------------------- Album list */
 
-  'albums.title': 'Albums',
   'albums.loading': 'Loading albums',
   'albums.loadFailed': 'Cannot load the albums.',
   'albums.none': 'No album is assigned to you.',
@@ -353,6 +353,7 @@ export const en = {
   'admin.tabAlbums': 'Albums',
   'admin.tabAccounts': 'Accounts',
   'admin.tabComments': 'Comments',
+  'admin.tabIdentity': 'Identity',
   'admin.tabServer': 'Server',
   'admin.tabVisits': 'Visits',
   'admin.statusFailed': 'Cannot load the server state.',
@@ -497,6 +498,9 @@ export const en = {
   'validate.interval': 'Give a whole number of minutes (0 to disable).',
   'validate.cacheSize': 'Give a size in gigabytes.',
   'validate.cacheSizePositive': 'The cache size must be greater than 0.',
+  'validate.instanceName': 'Enter a name for this gallery.',
+  'validate.instanceNameLength': (max: number) => `A name cannot be longer than ${max} characters.`,
+  'validate.color': 'Give a colour written as #rrggbb.',
 
   /* ---------------------------------------------------- Administration: moderation */
 
@@ -594,6 +598,32 @@ export const en = {
   'settings.transcodeHint':
     'Converts HEVC videos in the background, one at a time and at low priority: reckon about a minute of CPU per minute of footage. Without it, they stay downloadable only.',
   'settings.saved': 'Settings saved.',
+
+  /* ---------------------------------------------------- Administration: identity */
+
+  'brand.title': 'Identity',
+  'brand.description':
+    'What a visitor sees before anything else: the name, the colour and the mark.',
+  'brand.name': 'Gallery name',
+  'brand.nameHint':
+    'In the browser tab, on the sign-in screen and under the icon once installed. Keep it short: a phone truncates beyond a dozen characters.',
+  'brand.color': 'Primary colour',
+  'brand.colorHint':
+    'Buttons, the selected section, the focus outline and the dot in the mark. Everything else is derived from it.',
+  'brand.preview': 'Preview',
+  'brand.previewHover': 'A hovered row',
+  'brand.logo': 'Logo',
+  'brand.logoHint':
+    'PNG, JPEG, WebP or SVG, up to 512 kB. It is converted to a PNG on arrival and then stands in for the mark everywhere — tab icon, sign-in screen, top bar, home screen and emails.',
+  'brand.logoChoose': 'Choose an image',
+  'brand.logoReplace': 'Replace',
+  'brand.logoReset': 'Back to the built-in mark',
+  'brand.logoCustom': 'This gallery uses a logo of its own.',
+  'brand.logoBuiltIn': 'This gallery uses the built-in mark, with the colour above.',
+  'brand.logoTooLarge': (kb: number) => `That image is over ${kb} kB. Reduce it before sending it.`,
+  'brand.logoSaved': 'Logo replaced.',
+  'brand.logoRemoved': 'Back to the built-in mark.',
+  'brand.saved': 'Identity saved.',
 
   /* -------------------------------------------------- Administration: maintenance */
 

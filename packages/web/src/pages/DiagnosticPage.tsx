@@ -1,3 +1,4 @@
+import { DEFAULT_PRIMARY_COLOR } from '@lukarn/shared';
 import { useEffect, useState, type ReactElement } from 'react';
 import { useT, type Translate } from '../lib/i18n';
 
@@ -221,7 +222,21 @@ export default function DiagnosticPage(): ReactElement {
         {t('diagnostic.title')}
       </h1>
 
-      <p style={{ font: '700 34px/1.2 system-ui, Arial, sans-serif', color: '#7aa2ff', margin: 0 }}>
+      {/* The instance colour, read from the custom property `shell.ts` writes onto
+          `<html>`, with the default as a literal fallback. Two things at once:
+          this line stops carrying a copy of a colour that is now configurable,
+          and it becomes the proof this page exists for — if the heading is the
+          instance's colour on the television, the injection survived the
+          stylesheet lowering (D260813). Custom properties reach back to
+          Chromium 49; `color-mix()`, which produced this palette everywhere else,
+          would not have. */}
+      <p
+        style={{
+          font: '700 34px/1.2 system-ui, Arial, sans-serif',
+          color: `var(--color-accent, ${DEFAULT_PRIMARY_COLOR})`,
+          margin: 0,
+        }}
+      >
         Chromium {version ?? t('diagnostic.unknown')} · {window.innerWidth} × {window.innerHeight}
       </p>
 

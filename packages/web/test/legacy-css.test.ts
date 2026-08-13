@@ -7,6 +7,7 @@ import {
   legacyCss,
   lowerForLegacyEngines,
   replaceIndependentTransforms,
+  unguardVariableInitialisation,
 } from '../tools/legacy-css';
 
 /** The minimum Rollup bundle needed to exercise the plugin. */
@@ -134,6 +135,61 @@ describe('independent transform properties', () => {
     const problems = findUnloweredDeclarations('.a{scale:1.1}');
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /transform/);
+  });
+});
+
+/**
+ * Tailwind's `--tw-*` variables, and the browser sniff that used to hide them.
+ *
+ * The defect this guards against is the worst kind: the build passes, every test
+ * passes, the application is perfect on the machine that built it, and on the
+ * television every border, divider and outline is simply absent — because
+ * `border-style: var(--tw-border-style)` with the variable unset is invalid, and
+ * `border-style` reverts to `none`.
+ */
+describe('Tailwind variable initialisation', () => {
+  /** The shape Tailwind emits: its own values behind a Safari/Firefox sniff. */
+  const GUARDED =
+    '@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ' +
+    '((-moz-orient:inline) and (not (color:rgb(from red r g b))))' +
+    '{*,:before,:after,::backdrop{--tw-border-style:solid;--tw-outline-style:solid}}';
+
+  it('applies the values to every engine instead of two', () => {
+    const out = unguardVariableInitialisation(GUARDED);
+    assert.equal(
+      out,
+      '*,:before,:after,::backdrop{--tw-border-style:solid;--tw-outline-style:solid}',
+    );
+    assert.ok(!out.includes('@supports'), 'the sniff must be gone, not merely satisfied');
+  });
+
+  it('leaves a conditional block that carries real declarations alone', () => {
+    // Only a group of custom properties is Tailwind's initialisation. An
+    // `@supports` guarding an actual style rule is a deliberate fallback — the
+    // `color-mix()` blocks, whose plain-hex version sits just before them — and
+    // hoisting it would apply a value the engine was meant not to take.
+    const real =
+      '@supports (color:color-mix(in lab,red,red)){.a{color:color-mix(in oklab,red 5%,#0000)}}';
+    assert.equal(unguardVariableInitialisation(real), real);
+  });
+
+  it('reports an initialisation still trapped behind a sniff', () => {
+    const problems = findUnloweredDeclarations(GUARDED);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /still inside @supports/);
+  });
+
+  it('reports a variable read by a utility and set by nothing', () => {
+    // What remains if Tailwind ever stops emitting the block at all: nothing to
+    // hoist, and nothing to notice, until somebody looks at an old screen.
+    const problems = findUnloweredDeclarations('.border{border-style:var(--tw-border-style)}');
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /every border would vanish/);
+  });
+
+  it('accepts the variable once something sets it unconditionally', () => {
+    const ok = '*{--tw-border-style:solid}.border{border-style:var(--tw-border-style)}';
+    assert.deepEqual(findUnloweredDeclarations(ok), []);
   });
 });
 

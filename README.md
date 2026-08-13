@@ -1,4 +1,4 @@
-# Lukarn
+<img src="./assets/lukarn-logo.svg" alt="Lukarn" width="320">
 
 [![verify](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml/badge.svg)](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml)
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](./LICENSE)

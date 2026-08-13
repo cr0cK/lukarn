@@ -10,6 +10,7 @@ import { AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNa
 import { AlbumsSection } from '../components/admin/AlbumsSection';
 import { CommentsSection } from '../components/admin/CommentsSection';
 import { DriveSection } from '../components/admin/DriveSection';
+import { IdentitySection } from '../components/admin/IdentitySection';
 import { MaintenanceSection } from '../components/admin/MaintenanceSection';
 import { SettingsSection } from '../components/admin/SettingsSection';
 import { UsersSection } from '../components/admin/UsersSection';
@@ -70,6 +71,8 @@ export default function AdminPage(): ReactElement {
         return avecAlbums((liste) => <UsersSection albums={liste} notify={setNotice} />);
       case 'comments':
         return <CommentsSection notify={setNotice} />;
+      case 'identity':
+        return <IdentitySection notify={setNotice} />;
       case 'server':
         return (
           <>

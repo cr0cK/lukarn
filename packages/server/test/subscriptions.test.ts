@@ -143,6 +143,7 @@ function notifieur(envoyes: MailMessage[]): {
     syncState: context.syncState,
     subscriptions: context.subscriptions,
     mailer: () => mailer,
+    instanceName: () => context.settings.instanceName,
     env,
     log: silencieux,
   });
@@ -441,6 +442,7 @@ describe('new content announcements', () => {
       syncState: context.syncState,
       subscriptions: context.subscriptions,
       mailer: () => new Mailer(null, silencieux),
+      instanceName: () => context.settings.instanceName,
       env,
       log: silencieux,
     });
@@ -586,6 +588,7 @@ describe('notifier coupling to the delivery service', () => {
       syncState: context.syncState,
       subscriptions: context.subscriptions,
       mailer: () => mailer,
+      instanceName: () => context.settings.instanceName,
       env,
       log: silencieux,
     });

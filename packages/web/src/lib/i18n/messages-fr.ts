@@ -47,6 +47,7 @@ export const fr: Messages = {
   /* ------------------------------------------------------------- Top bar */
 
   'topbar.back': 'Retour aux albums',
+  'topbar.home': 'La liste des albums',
   'topbar.admin': 'Administration',
   'topbar.signOut': 'Se déconnecter',
   'topbar.install': 'Installer',
@@ -159,7 +160,6 @@ export const fr: Messages = {
 
   /* ---------------------------------------------------------- Album list */
 
-  'albums.title': 'Albums',
   'albums.loading': 'Chargement des albums',
   'albums.loadFailed': 'Impossible de charger les albums.',
   'albums.none': 'Aucun album n’est attribué à ce compte.',
@@ -344,6 +344,7 @@ export const fr: Messages = {
   'admin.tabAlbums': 'Albums',
   'admin.tabAccounts': 'Comptes',
   'admin.tabComments': 'Commentaires',
+  'admin.tabIdentity': 'Identité',
   'admin.tabServer': 'Serveur',
   'admin.tabVisits': 'Visites',
   'admin.statusFailed': 'Impossible de charger l’état du serveur.',
@@ -496,6 +497,9 @@ export const fr: Messages = {
   'validate.interval': 'Indiquer un nombre entier de minutes (0 pour désactiver).',
   'validate.cacheSize': 'Indiquer une taille en gigaoctets.',
   'validate.cacheSizePositive': 'La taille du cache doit être supérieure à 0.',
+  'validate.instanceName': 'Donner un nom à cette galerie.',
+  'validate.instanceNameLength': (max: number) => `Un nom ne dépasse pas ${max} caractères.`,
+  'validate.color': 'Donner une couleur écrite sous la forme #rrggbb.',
 
   /* ---------------------------------------------------- Administration: moderation */
 
@@ -597,6 +601,33 @@ export const fr: Messages = {
   'settings.transcodeHint':
     'Convertit les vidéos HEVC en arrière-plan, une à une et en basse priorité : compter environ une minute de processeur par minute de vidéo. Sans cela, elles restent seulement téléchargeables.',
   'settings.saved': 'Réglages enregistrés.',
+
+  /* ------------------------------------------------ Administration : identité */
+
+  'brand.title': 'Identité',
+  'brand.description':
+    'Ce qu’un visiteur voit avant tout le reste : le nom, la couleur et la marque.',
+  'brand.name': 'Nom de la galerie',
+  'brand.nameHint':
+    'Dans l’onglet du navigateur, sur l’écran de connexion et sous l’icône une fois installée. Court de préférence : un téléphone tronque au-delà d’une douzaine de caractères.',
+  'brand.color': 'Couleur principale',
+  'brand.colorHint':
+    'Les boutons, la rubrique choisie, le contour de focus et le point de la marque. Tout le reste en découle.',
+  'brand.preview': 'Aperçu',
+  'brand.previewHover': 'Une ligne survolée',
+  'brand.logo': 'Logo',
+  'brand.logoHint':
+    'PNG, JPEG, WebP ou SVG, jusqu’à 512 ko. Il est converti en PNG à l’arrivée, puis remplace la marque partout : icône d’onglet, écran de connexion, barre du haut, écran d’accueil et courriels.',
+  'brand.logoChoose': 'Choisir une image',
+  'brand.logoReplace': 'Remplacer',
+  'brand.logoReset': 'Revenir à la marque d’origine',
+  'brand.logoCustom': 'Cette galerie utilise son propre logo.',
+  'brand.logoBuiltIn': 'Cette galerie utilise la marque d’origine, avec la couleur ci-dessus.',
+  'brand.logoTooLarge': (kb: number) =>
+    `Cette image dépasse ${kb} ko. La réduire avant de l’envoyer.`,
+  'brand.logoSaved': 'Logo remplacé.',
+  'brand.logoRemoved': 'Retour à la marque d’origine.',
+  'brand.saved': 'Identité enregistrée.',
 
   /* -------------------------------------------------- Administration: maintenance */
 

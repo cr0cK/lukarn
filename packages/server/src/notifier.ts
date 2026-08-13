@@ -43,6 +43,11 @@ export interface AlbumNotifierDeps {
    * as a wait that never completes.
    */
   mailer: () => Mailer;
+  /**
+   * A function, for the same reason as `albums`: the name is a setting now
+   * (D260813c), and an announcement sent after a rename must carry the new one.
+   */
+  instanceName: () => string;
   env: Env;
   log: Logger;
 }
@@ -102,6 +107,7 @@ export class AlbumNotifier {
             // gets the instance default: an announcement written in a language
             // chosen at random would be worse than one in the operator's.
             subscriber.locale ?? this.deps.env.defaultLocale,
+            this.deps.instanceName(),
             this.deps.env,
           ),
         );

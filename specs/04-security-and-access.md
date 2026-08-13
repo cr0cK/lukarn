@@ -513,6 +513,41 @@ journey, and two stays in the same place produce only one request thanks to the 
 `GEOCODING_URL` accepts a private Nominatim instance, and an empty value disables this outbound
 traffic entirely—the days retain their clusters, without labels.
 
+## The uploaded logo: rasterised, never relayed
+
+An administrator can replace the mark with an image of their own
+(`PUT /api/admin/branding/logo`). This is the only place in the application where
+a **file supplied by a person** is stored on the instance and served back from its
+own origin, so it gets its own paragraph.
+
+The obvious threat is SVG. It is the natural format for a logo and it is also a
+document: `<script>`, `onload=` and `<foreignObject>` all work inside one, and
+served from `PUBLIC_URL` it would run with the session cookie in scope. The CSP's
+`script-src 'self'` does not help — the file _is_ self.
+
+The answer is not to inspect the upload but to **stop serving it**:
+`BrandingStore.replace` decodes whatever arrived and writes a PNG, so what leaves
+the instance is a bitmap in every case (D260813b). An SVG is accepted as _input_
+and never survives as one. A `Content-Type` check would have been the reflex
+answer, and it checks a value the client chooses.
+
+Three other limits sit around it:
+
+- **512 KB** (`LOGO_MAX_BYTES`), enforced by `bodyLimit` on that route alone; the
+  rest of the API keeps the 64 KB that fits a JSON payload. The body is held whole
+  in memory before sharp sees it, so the limit is what prevents a request being
+  used to occupy it.
+- **Decoding is throttled** by the store's own semaphore, for the same reason as
+  media rendering: rasterising holds a full bitmap.
+- **An image sharp cannot read is a 400**, logged and refused. Not a 500: the
+  instance is fine, the file is not — and not a silent success either, which
+  would leave the previous logo in place while reporting a change.
+
+The two `GET` routes are public, unlike everything else that reads instance
+state. They serve an image the sign-in screen already shows and the tab icon
+already requests before a session exists; they reveal nothing the page title does
+not.
+
 ## Security headers
 
 `packages/server/src/plugins/headers.ts`, registered **before** everything else in `app.ts`. The hook

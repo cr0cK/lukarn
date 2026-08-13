@@ -10,6 +10,8 @@
 import {
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
+  HEX_COLOR_PATTERN,
+  INSTANCE_NAME_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
@@ -74,6 +76,27 @@ export function validatePassword(value: string, required: boolean, t: Translate)
 /** Error message, or `null`. */
 export function validateTitle(value: string, t: Translate): string | null {
   return value.trim() ? null : t('validate.title');
+}
+
+/** Error message for the instance name, or `null`. */
+export function validateInstanceName(value: string, t: Translate): string | null {
+  const name = value.trim();
+  if (!name) return t('validate.instanceName');
+  if (name.length > INSTANCE_NAME_MAX_LENGTH) {
+    return t('validate.instanceNameLength', INSTANCE_NAME_MAX_LENGTH);
+  }
+  return null;
+}
+
+/**
+ * Error message for the primary colour, or `null`.
+ *
+ * A native colour input can only produce `#rrggbb`, but the field beside it takes
+ * a value pasted from anywhere — a design tool exporting `rgb(235 32 32)`, or a
+ * three-digit form.
+ */
+export function validatePrimaryColor(value: string, t: Translate): string | null {
+  return HEX_COLOR_PATTERN.test(value.trim()) ? null : t('validate.color');
 }
 
 /** Error message for the "Drive folder" field, or `null`. */

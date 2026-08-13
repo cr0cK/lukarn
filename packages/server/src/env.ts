@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
-import type { Locale } from '@lukarn/shared';
+import { DEFAULT_INSTANCE_NAME, type Locale } from '@lukarn/shared';
 import { z } from 'zod';
 import { defaultLocale } from './i18n/index.js';
 
@@ -26,12 +26,15 @@ const schema = z.object({
   PUBLIC_URL: z.string().url().default('http://localhost:8080'),
 
   /**
-   * Instance name: browser tab, sign-in screen, and especially the icon added
-   * to a home screen. An environment variable rather than a database setting,
-   * because it must have a value before an account exists — the first page served
-   * is the sign-in screen, and it already carries this name.
+   * Instance name, as a **bootstrap value**: it seeds the `instanceName` setting
+   * while nothing has been saved, and is ignored from then on — exactly what
+   * `config/albums.yaml` does for accounts (D24, D260813c).
+   *
+   * It still lives here because the name must exist before an account does: the
+   * first page served is the sign-in screen, and it already carries it. What
+   * changed is where it is edited afterwards — /admin, not a shell (D260813c).
    */
-  APP_NAME: z.string().trim().min(1).default('Photos'),
+  APP_NAME: z.string().trim().min(1).default(DEFAULT_INSTANCE_NAME),
 
   /**
    * Language used when nothing else answers: an email to the moderation address,
@@ -89,7 +92,7 @@ export interface Env {
   port: number;
   host: string;
   publicUrl: string;
-  /** Displayed instance name, and application name once installed. */
+  /** Instance name seeded into settings on a database that has none yet. */
   appName: string;
   /** Fallback language for what the server writes without knowing its reader. */
   defaultLocale: Locale;

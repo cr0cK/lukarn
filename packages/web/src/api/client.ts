@@ -58,7 +58,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // itself: the server writes its refusals in it, and records it against the
       // commenter identity so its emails arrive in the language being read.
       'Accept-Language': activeLocale(),
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      // Only a **string** body is JSON: every call below builds one with
+      // `JSON.stringify`. A `File` carries its own type, and announcing JSON over
+      // it made Fastify's JSON parser read the bytes as UTF-8 — the re-measured
+      // length no longer matched `Content-Length`, and the logo upload failed with
+      // a message about neither JSON nor images.
+      ...(typeof init?.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
     // The session cookie is httpOnly and on the same origin.
@@ -290,6 +295,28 @@ export const api = {
 
   updateSettings: (body: UpdateSettingsRequest) =>
     request<AppSettings>('/admin/settings', { method: 'PATCH', body: JSON.stringify(body) }),
+
+  /**
+   * Sends the chosen file as-is. No `FormData`, no `Content-Type`: the server
+   * decides what the bytes are by decoding them, and a multipart envelope would
+   * add a parser for a request that carries one field.
+   */
+  uploadLogo: (file: File) =>
+    request<{ custom: boolean }>('/admin/branding/logo', { method: 'PUT', body: file }),
+
+  resetLogo: () => request<{ custom: boolean }>('/admin/branding/logo', { method: 'DELETE' }),
+};
+
+/**
+ * The instance logo, and the icons derived from it.
+ *
+ * Served as `no-cache`, so a change is picked up on the next request — but only
+ * on a *new* request. `bust` appends the fingerprint of whatever just changed, so
+ * an `<img>` already on the page reloads instead of showing the previous logo
+ * until a navigation.
+ */
+export const brandingUrl = {
+  logo: (bust?: string | number) => `/api/branding/logo${bust ? `?v=${bust}` : ''}`,
 };
 
 /**

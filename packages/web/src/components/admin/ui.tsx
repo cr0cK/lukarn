@@ -12,7 +12,7 @@ export type Notify = (notice: Notice) => void;
 
 const BUTTON_VARIANTS = {
   default: 'border border-ink-600 text-ink-200 hover:bg-white/5',
-  primary: 'bg-accent text-ink-950 hover:opacity-90',
+  primary: 'bg-accent text-accent-ink hover:opacity-90',
   danger: 'border border-red-500/40 text-red-300 hover:bg-red-500/10',
   ghost: 'text-ink-300 hover:bg-white/5 hover:text-ink-100',
 } as const;

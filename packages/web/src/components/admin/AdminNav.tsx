@@ -12,6 +12,7 @@ export const ADMIN_TABS = [
   { slug: 'albums', label: 'admin.tabAlbums' },
   { slug: 'accounts', label: 'admin.tabAccounts' },
   { slug: 'comments', label: 'admin.tabComments' },
+  { slug: 'identity', label: 'admin.tabIdentity' },
   { slug: 'server', label: 'admin.tabServer' },
   { slug: 'visits', label: 'admin.tabVisits' },
 ] as const satisfies readonly { slug: string; label: MessageKey }[];
@@ -48,11 +49,20 @@ export function AdminNav(): ReactElement {
         <NavLink
           key={tab.slug}
           to={`/admin/${tab.slug}`}
+          // The selected section carries the instance colour: a tinted panel and
+          // an outline in the accent itself. An outline rather than a border
+          // because the nav is a column above `md` and a scrolling row below —
+          // one edge would be the wrong edge in the other orientation, while an
+          // outline reads the same both ways and takes no layout space.
+          //
+          // Hovering an unselected section uses the same tint at rest, which is
+          // what `accent-soft` exists for: it says "this is where you are going"
+          // in the colour that says "this is where you are".
           className={({ isActive }) =>
             `shrink-0 rounded-lg px-3 py-2 text-sm transition-colors ${
               isActive
-                ? 'bg-white/5 text-ink-100'
-                : 'text-ink-300 hover:bg-white/5 hover:text-ink-100'
+                ? 'bg-accent-soft text-ink-100 outline outline-accent'
+                : 'text-ink-300 hover:bg-accent-soft hover:text-ink-100'
             }`
           }
         >

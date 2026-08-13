@@ -1,7 +1,12 @@
 import {
   ALL_ALBUMS,
   DEFAULT_GROUP_BY,
+  DEFAULT_INSTANCE_NAME,
+  DEFAULT_PRIMARY_COLOR,
   DEFAULT_SORT_ORDER,
+  HEX_COLOR_PATTERN,
+  INSTANCE_NAME_MAX_LENGTH,
+  normalizeHexColor,
   type AdminUser,
   type AppSettings,
   type GroupBy,
@@ -97,21 +102,34 @@ export interface UpdateAlbumInput {
   coverMediaId?: string | null;
 }
 
-/** Values applied while no settings have been saved. */
-export const DEFAULT_SETTINGS: AppSettings = {
-  syncIntervalMinutes: 30,
-  syncOnStartup: true,
-  cacheMaxSizeGB: 20,
-  prewarmCache: true,
-  transcodeVideos: true,
-  // Five gigabytes, around three hours of transcoded 1080p: enough to cover several
-  // holiday albums. One tenth of the thumbnail budget because a library holds far
-  // more photos than films.
-  videoCacheMaxSizeGB: 5,
-  moderationEmail: null,
-};
+/**
+ * Values applied while no settings have been saved.
+ *
+ * A function rather than a constant because one of them comes from outside: the
+ * instance name is seeded by `APP_NAME` and only by it, the same way
+ * `config/albums.yaml` seeds accounts and is never read again (D260813c). Everything
+ * else is a judgement this repository makes.
+ */
+export function defaultSettings(instanceName: string): AppSettings {
+  return {
+    instanceName,
+    primaryColor: DEFAULT_PRIMARY_COLOR,
+    syncIntervalMinutes: 30,
+    syncOnStartup: true,
+    cacheMaxSizeGB: 20,
+    prewarmCache: true,
+    transcodeVideos: true,
+    // Five gigabytes, around three hours of transcoded 1080p: enough to cover several
+    // holiday albums. One tenth of the thumbnail budget because a library holds far
+    // more photos than films.
+    videoCacheMaxSizeGB: 5,
+    moderationEmail: null,
+  };
+}
 
 const settingsSchema = z.object({
+  instanceName: z.string().trim().min(1).max(INSTANCE_NAME_MAX_LENGTH),
+  primaryColor: z.string().regex(HEX_COLOR_PATTERN),
   syncIntervalMinutes: z.number().int().min(0),
   syncOnStartup: z.boolean(),
   cacheMaxSizeGB: z.number().positive(),
@@ -185,7 +203,16 @@ export class ConfigRepo {
   /** Last observed value of `PRAGMA data_version`. See `read()`. */
   private dataVersion = -1;
 
-  constructor(private readonly db: Db) {}
+  /**
+   * `instanceName` is the value `APP_NAME` seeds while nothing has been saved. It is
+   * a default, not a source of truth: once someone renames the gallery from /admin,
+   * the environment variable no longer says anything (D260813c). Command-line tools
+   * construct this without one — they never render a page.
+   */
+  constructor(
+    private readonly db: Db,
+    private readonly instanceName: string = DEFAULT_INSTANCE_NAME,
+  ) {}
 
   /* -------------------------------------------------------------------- reading */
 
@@ -396,11 +423,7 @@ export class ConfigRepo {
     this.db.transaction(() => {
       for (const [key, value] of Object.entries(patch)) {
         if (value === undefined) continue;
-        // An address cleared in the form arrives as an empty string: storing it as-is
-        // would create two ways to say "none", and `moderationEmail: ''` would pass
-        // the recipient presence check.
-        const stored = key === 'moderationEmail' ? normalize(value as string | null) : value;
-        statement.run(key, JSON.stringify(stored));
+        statement.run(key, JSON.stringify(storedForm(key, value)));
       }
     })();
 
@@ -530,7 +553,34 @@ export class ConfigRepo {
     }
 
     const parsed = settingsSchema.partial().safeParse(raw);
-    return { ...DEFAULT_SETTINGS, ...(parsed.success ? parsed.data : {}) };
+    return { ...defaultSettings(this.instanceName), ...(parsed.success ? parsed.data : {}) };
+  }
+}
+
+/**
+ * Reduces a value to the single form it is stored in.
+ *
+ * Three settings arrive from a form in more than one shape, and the difference is
+ * not cosmetic in any of them.
+ */
+function storedForm(key: string, value: unknown): unknown {
+  switch (key) {
+    // An address cleared in the form arrives as an empty string: stored as-is it
+    // would be a second way to say "none", and `moderationEmail: ''` would pass the
+    // recipient presence check.
+    case 'moderationEmail':
+      return normalize(value as string | null);
+    // A colour picker sends `#EB2020` as readily as `#eb2020`. Both spellings go
+    // into an `ETag` and into the generated-icon key, where they would be two
+    // entries for one image.
+    case 'primaryColor':
+      return normalizeHexColor(String(value)) ?? DEFAULT_PRIMARY_COLOR;
+    // A name with a trailing space is a different name in the tab title and under
+    // the home-screen icon, and looks like neither.
+    case 'instanceName':
+      return String(value).trim();
+    default:
+      return value;
   }
 }
 

@@ -901,16 +901,24 @@ reason as at the single-comment level. An unknown identity responds **404**,
 not `{affected: 0}`, which would be indistinguishable from an identity with no
 messages.
 
-`AdminStatus` carries `hiddenComments` (the queue's badge) and
+`AdminStatus` carries `hiddenComments` (the queue's badge),
 `mailConfigured` — with no SMTP, entering an address produces nothing, and the
-administration screen must say so rather than let notifications be expected.
+administration screen must say so rather than let notifications be expected —
+and `logoCustom`, which says whether an operator has uploaded a logo. That last
+one is reported rather than inferred from the image: the built-in mark and an
+upload are served at the same URL, so nothing in the picture says which it is,
+and "back to the built-in mark" must only be offered when there is something to
+go back from.
 
 ### Settings
 
-`AppSettings` = `{ syncIntervalMinutes, syncOnStartup, cacheMaxSizeGB,
-prewarmCache, transcodeVideos, videoCacheMaxSizeGB, moderationEmail }`. `PATCH`
-accepts a subset (`UpdateSettingsRequest`) and returns the full state. Bounds:
-`syncIntervalMinutes` integer from 0 to 10080, `cacheMaxSizeGB` > 0,
+`AppSettings` = `{ instanceName, primaryColor, syncIntervalMinutes,
+syncOnStartup, cacheMaxSizeGB, prewarmCache, transcodeVideos,
+videoCacheMaxSizeGB, moderationEmail }`. `PATCH` accepts a subset
+(`UpdateSettingsRequest`) and returns the full state. Bounds: `instanceName`
+non-empty after trimming and at most `INSTANCE_NAME_MAX_LENGTH` (64) characters,
+`primaryColor` matching `#rrggbb`, `syncIntervalMinutes` integer from 0 to 10080,
+`cacheMaxSizeGB` > 0,
 `prewarmCache` boolean (default `true`, re-read on every photo by the
 prewarming — unchecking it stops the current pass, not just the next one),
 `transcodeVideos` boolean (default `true`, re-read the same way on every
@@ -924,9 +932,54 @@ seconds for a thumbnail, several minutes of processor time for a video. A
 shared LRU would let browsing the grid evict hours of work (D260809b).
 
 **Settings apply without a restart**: the two `MediaCache` limits are adjusted
-straight away (with eviction if they are lowered) and `main.ts`'s
-synchronisation timer is rescheduled. That was the limit of the earlier
+straight away (with eviction if they are lowered), `main.ts`'s synchronisation
+timer is rescheduled, the generated icons are discarded — the mark's dot carries
+the primary colour — and the cached shell and manifest are dropped so the next
+navigation carries the new name and palette. That was the limit of the earlier
 configuration reload, which only re-read these values at startup.
+
+## Branding — `routes/branding.ts`
+
+The instance's logo and the icons derived from it. Everything here is stored by
+`BrandingStore` under `DATA_DIR/branding/` and drawn by `branding/mark.ts` when
+no upload is in force (D260813b).
+
+| Method | Path                        | Access | Response                                              |
+| ------ | --------------------------- | ------ | ----------------------------------------------------- |
+| GET    | `/api/branding/logo`        | public | `image/svg+xml` (the mark) or `image/png` (an upload) |
+| GET    | `/api/branding/icon-<name>` | public | `image/png`                                           |
+| PUT    | `/api/admin/branding/logo`  | admin  | `{ custom: true }`                                    |
+| DELETE | `/api/admin/branding/logo`  | admin  | `{ custom: false }`                                   |
+
+**The two `GET` routes are public**, the only routes reading instance state that
+are. The sign-in screen carries the mark, the tab icon is requested before any
+session exists, and a home screen fetches manifest icons without cookies. Neither
+reveals more than the name already printed in the page title.
+
+`<name>` is one of `192.png`, `512.png`, `maskable-512.png` and `apple-180.png`,
+declared once in `ICON_VARIANTS` (`packages/shared`) because the server answers
+these URLs and `manifest.webmanifest` names three of them. Anything else is a 404. The maskable variant is inset to 62 % on `--color-ink-900`: Android crops a
+maskable icon to a circle, and a full-bleed rounded square would lose the dot
+that makes the mark recognisable. `apple-180.png` is flattened onto the mark's
+own black, because iOS composites a home-screen icon on black and transparent
+corners would come out a colour nobody chose.
+
+Both carry an `ETag` and `Cache-Control: public, no-cache` — stable URLs over
+changing content, the opposite of a media derivative, which carries a content
+fingerprint and is `immutable`. The browser therefore revalidates, and the usual
+answer is a 304 with no body.
+
+`PUT` takes the **raw image bytes** as its body, not a multipart envelope: one
+field needs no parser. Its `bodyLimit` is 512 KB (`LOGO_MAX_BYTES`) on that route
+alone — everywhere else keeps the 64 KB set in `app.ts` — and it is the only
+route with a permissive content-type parser, which is why it lives in its own
+plugin rather than inside `routes/admin.ts`. **The declared type is not
+trusted**: `BrandingStore.replace` decides what the bytes are by decoding them
+and re-encoding a PNG (D260813b). An image sharp cannot read is a **400**, not a
+500 — the instance is fine, the file is not.
+
+`DELETE` returns to the built-in mark and is idempotent: removing nothing is
+still a success.
 
 ## OAuth callback — `routes/admin.ts`
 
@@ -953,21 +1006,29 @@ Never returns JSON: always redirects to `/admin/server?oauth=<reason>`
 
 Served by `registerFrontend` (`app.ts`) when `WEB_DIR/index.html` exists.
 
-| Path                    | Behaviour                                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `/`                     | `index.html`, `Cache-Control: no-cache`                                                                             |
-| `/manifest.webmanifest` | The manifest, `application/manifest+json`, `Cache-Control: no-cache`                                                |
-| `/sw.js`, `/icons/*`    | Actual files from `public/`. Outside `/assets/`, hence `Cache-Control: no-cache` — intended for the service worker. |
-| `/assets/*`             | Actual file, `Cache-Control: public, max-age=31536000, immutable`. Missing ⇒ **404 JSON**, never `index.html`.      |
-| `/api/*`                | Unknown ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                                   |
-| everything else         | `index.html` — routing lives in the front end, a reload on `/album/x` must work                                     |
+| Path                    | Behaviour                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `/`                     | `index.html`, `Cache-Control: no-cache`                                                                            |
+| `/manifest.webmanifest` | The manifest, `application/manifest+json`, `Cache-Control: no-cache`                                               |
+| `/sw.js`                | Actual file from `public/`. Outside `/assets/`, hence `Cache-Control: no-cache` — intended for the service worker. |
+| `/assets/*`             | Actual file, `Cache-Control: public, max-age=31536000, immutable`. Missing ⇒ **404 JSON**, never `index.html`.     |
+| `/api/*`                | Unknown ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                                  |
+| everything else         | `index.html` — routing lives in the front end, a reload on `/album/x` must work                                    |
 
-**`/` and `/manifest.webmanifest` are not served from disk**: both carry
-`APP_NAME`, substituted once at startup and rendered from memory (`shell.ts`,
-see [07](./07-frontend.md)). These are exact routes, so they take precedence
-over `@fastify/static`'s generic route, which would otherwise serve the raw
-files. A manifest missing from the build is only a warning at startup; present
-but unreadable, it stops startup.
+**`/` and `/manifest.webmanifest` are not served from disk**: both carry the
+instance name, and the shell carries its palette as well, substituted by
+`shell.ts` (see [07](./07-frontend.md)). Both are **rendered on first request and
+cached until settings change**, not once at startup: the name and the colour are
+settings now, and a rename must reach the tab without a restart (D260813c). The
+cache is dropped by the `SettingsListener` `context.ts` defines. These are exact
+routes, so they take precedence over `@fastify/static`'s generic route, which
+would otherwise serve the raw files. A manifest missing from the build is only a
+warning at startup; present but unreadable, it stops startup.
+
+**There are no icon files under `public/`.** The manifest's `icons` and the
+`apple-touch-icon` link point at `/api/branding/icon-*.png`, and the tab icon at
+`/api/branding/logo`: one path generates them from whichever logo is in force,
+in whichever colour.
 
 **A consequence worth knowing: rebuilding the front end under a running server
 is not enough.** It keeps serving the previous `index.html`, which references

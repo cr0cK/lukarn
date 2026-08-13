@@ -230,6 +230,7 @@ describe('message composition', () => {
     const message = buildCommentMail(
       { ...notification, body: '<script>alert(1)</script>' },
       { email: 'papi2@exemple.fr', reason: 'reply', locale: 'en' },
+      'Chez les Martin',
       env,
     );
 
@@ -246,11 +247,13 @@ describe('message composition', () => {
     const versAuteur = buildCommentMail(
       notification,
       { email: 'papi2@exemple.fr', reason: 'reply', locale: 'en' },
+      'Chez les Martin',
       env,
     );
     const versModeration = buildCommentMail(
       notification,
       { email: 'moderation@exemple.fr', reason: 'moderation', locale: 'en' },
+      'Chez les Martin',
       env,
     );
 
@@ -264,7 +267,14 @@ describe('message composition', () => {
   });
 
   it('keeps the verification code out of the subject, which names the instance', () => {
-    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', 'en', env);
+    const message = buildVerificationMail(
+      'mamie@exemple.fr',
+      'Mamie',
+      '123456',
+      'en',
+      'Chez les Martin',
+      env,
+    );
     // A subject code can be read over a shoulder and remains visible in
     // notification history; the host instead explains why the email arrived.
     assert.ok(!message.subject.includes('123456'));
@@ -274,7 +284,14 @@ describe('message composition', () => {
   });
 
   it('names the instance in both body versions', () => {
-    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', 'en', env);
+    const message = buildVerificationMail(
+      'mamie@exemple.fr',
+      'Mamie',
+      '123456',
+      'en',
+      'Chez les Martin',
+      env,
+    );
     // HTML had diverged from text, which alone named the instance — and the
     // recipient sees HTML.
     assert.match(message.text, /photos\.exemple\.fr/);
@@ -282,14 +299,28 @@ describe('message composition', () => {
   });
 
   it('does not group the code, which cannot be pasted into the field', () => {
-    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', 'en', env);
+    const message = buildVerificationMail(
+      'mamie@exemple.fr',
+      'Mamie',
+      '123456',
+      'en',
+      'Chez les Martin',
+      env,
+    );
     // `verify` requires six characters after trim(): pasted "123 456" is rejected.
     assert.ok(!message.text.includes('123 456'));
     assert.ok(!message.html.includes('123 456'));
   });
 
   it('offers no clickable link in the code email', () => {
-    const message = buildVerificationMail('mamie@exemple.fr', 'Mamie', '123456', 'en', env);
+    const message = buildVerificationMail(
+      'mamie@exemple.fr',
+      'Mamie',
+      '123456',
+      'en',
+      'Chez les Martin',
+      env,
+    );
     // A link would open a second session in another browser while the code is
     // expected in the tab left open.
     assert.ok(!message.html.includes('<a '));

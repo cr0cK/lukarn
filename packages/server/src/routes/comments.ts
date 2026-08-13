@@ -397,6 +397,7 @@ function notify(
           body: input.comment.body,
         },
         recipient,
+        context.settings.instanceName,
         context.env,
       ),
     );

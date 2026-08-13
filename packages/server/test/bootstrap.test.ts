@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { AdminStatus, AdminUser } from '@lukarn/shared';
+import { DEFAULT_PRIMARY_COLOR, type AdminStatus, type AdminUser } from '@lukarn/shared';
 import argon2 from 'argon2';
 import Database from 'better-sqlite3';
 import { buildApp } from '../src/app.js';
@@ -163,7 +163,11 @@ describe('updating a live instance', () => {
         syncIntervalMinutes: 0,
         syncOnStartup: false,
         cacheMaxSizeGB: 5,
-        // The bootstrap YAML knows neither setting: they retain their defaults.
+        // The bootstrap YAML knows none of these settings: they retain their
+        // defaults. `instanceName` takes the one `APP_NAME` seeds — the whole
+        // point of it remaining an environment variable (D260813c).
+        instanceName: 'Photos',
+        primaryColor: DEFAULT_PRIMARY_COLOR,
         prewarmCache: true,
         transcodeVideos: true,
         videoCacheMaxSizeGB: 5,

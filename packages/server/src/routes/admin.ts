@@ -8,6 +8,8 @@ import {
   DEFAULT_GROUP_BY,
   DEFAULT_SORT_ORDER,
   EMAIL_MAX_LENGTH,
+  HEX_COLOR_PATTERN,
+  INSTANCE_NAME_MAX_LENGTH,
   MEDIA_DESCRIPTION_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
@@ -143,6 +145,11 @@ const updateMediaSchema = z.object({
 });
 
 const updateSettingsSchema = z.object({
+  instanceName: z.string().trim().min(1).max(INSTANCE_NAME_MAX_LENGTH).optional(),
+  // Six digits and nothing else. A three-digit form would have to be expanded
+  // before every mix, and an alpha channel means nothing for a value painted as an
+  // opaque surface — see `derivePalette`.
+  primaryColor: z.string().regex(HEX_COLOR_PATTERN, 'a colour written as #rrggbb').optional(),
   // One-week maximum: beyond that, `setInterval` is no longer a setting but a
   // disabled state, represented by `0`.
   syncIntervalMinutes: z.number().int().min(0).max(10080).optional(),
@@ -222,6 +229,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         cache: context.cache.stats(),
         hiddenComments: context.comments.hiddenCount(),
         mailConfigured: context.mailer.enabled,
+        logoCustom: context.branding.custom,
       };
       return reply.send(status);
     });

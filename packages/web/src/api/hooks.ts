@@ -28,6 +28,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useMemo } from 'react';
+import { logoChanged } from '../lib/branding';
 import { ApiError, api, type AdminCommentsQuery } from './client';
 
 export const queryKeys = {
@@ -674,6 +675,43 @@ export function useDeleteAlbum() {
       queryClient.removeQueries({ queryKey: ['items', albumId] });
     },
   });
+}
+
+/**
+ * Replaces the instance logo. The response says only whether one is now in force:
+ * the image itself is read back from `/api/branding/logo`, the single URL every
+ * surface already points at.
+ */
+export function useUploadLogo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.uploadLogo(file),
+    onSuccess: () => invalidateBranding(queryClient),
+  });
+}
+
+export function useResetLogo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.resetLogo(),
+    onSuccess: () => invalidateBranding(queryClient),
+  });
+}
+
+/**
+ * Tells the pages already open that the logo changed.
+ *
+ * Two halves, because the logo lives in two places the cache does not cover the
+ * same way. The **image** is an `<img>` and a `<link rel="icon">`, neither of
+ * which TanStack Query knows about: `logoChanged()` handles them
+ * (`lib/branding.ts`). Whether a logo is **in force** is `AdminStatus.logoCustom`,
+ * and that is what decides between "Choose an image" and "Replace" and whether
+ * there is anything to reset — left stale, the form would show a new logo above a
+ * sentence saying there is none.
+ */
+function invalidateBranding(queryClient: QueryClient): void {
+  logoChanged();
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
 }
 
 export function useUpdateSettings() {

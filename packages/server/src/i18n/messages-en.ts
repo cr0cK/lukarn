@@ -54,6 +54,11 @@ export const en = {
   'error.codeAttemptsExhausted': 'Too many attempts. Ask for a new code.',
   'error.codeWrongOrExpired': 'Wrong or expired code. Ask for a new one if needed.',
 
+  'error.noIcon': 'No icon of that name',
+  'error.logoEmpty': 'No image received.',
+  'error.logoUnreadable':
+    'That file could not be read as an image. PNG, JPEG, WebP and SVG all work, up to 512 kB.',
+
   'error.noFullscreenForVideo': 'No fullscreen render for a video',
   'error.noVideoPreview': 'No preview available for this video',
   'error.unsupportedThumbSize': 'Unsupported thumbnail size',

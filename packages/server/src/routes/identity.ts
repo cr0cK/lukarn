@@ -82,7 +82,14 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       // The language of the request, not a stored one: the code is read within
       // minutes, in the tab that asked for it.
       context.mailer.queue(
-        buildVerificationMail(email, displayName, result.code, request.locale, context.env),
+        buildVerificationMail(
+          email,
+          displayName,
+          result.code,
+          request.locale,
+          context.settings.instanceName,
+          context.env,
+        ),
       );
       request.log.info(`Verification code sent to an address from "${request.user!.username}"`);
 

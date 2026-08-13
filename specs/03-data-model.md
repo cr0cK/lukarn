@@ -162,12 +162,12 @@ Three points maintain the isolation:
 The configuration: who can sign in, which Drive folders are exposed, and the
 settings. Written **only** by `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Columns                                                                                                                                         |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                           |
-| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at` |
-| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                      |
-| `settings`    | `key` (PK), `value` — JSON. Keys: `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`                   |
+| Table         | Columns                                                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                                         |
+| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at`               |
+| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                                    |
+| `settings`    | `key` (PK), `value` — JSON. Keys: `instanceName`, `primaryColor`, `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail` |
 
 Key choices:
 
@@ -206,6 +206,17 @@ Key choices:
   the cover is the only image whose absence is visible from the home page with no
   fallback. Because the Drive identifier is stable, a returning photo becomes the
   cover again.
+- **`instanceName` and `primaryColor` are the instance's visible identity**, and
+  they live here rather than in `.env` (D260813c). `instanceName` is seeded by
+  `APP_NAME` while no value has been saved and ignored afterwards, the same
+  bootstrap relationship `config/albums.yaml` has with accounts (D24).
+  `primaryColor` is `#rrggbb`, defaulting to `#eb2020` — the red of the mark's
+  dot — and everything else the interface paints with is derived from it by
+  `derivePalette` (D260813). `ConfigRepo` folds both to one stored form on
+  write: the name trimmed, the colour lower-cased, because that colour becomes an
+  `ETag` and a generated-icon key where two spellings would be two entries. The
+  logo itself is not in the database — it is a file under `DATA_DIR/branding/`
+  (D260813b).
 - **`created_at` / `updated_at` are written by the application**, in ISO 8601 UTC,
   rather than by `CURRENT_TIMESTAMP`, which would produce a different format from
   the rest of the database.

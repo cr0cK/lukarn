@@ -79,7 +79,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
           <button
             type="submit"
             disabled={code.length !== VERIFICATION_CODE_LENGTH || verify.isPending}
-            className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {t(verify.isPending ? 'identity.checking' : 'identity.confirm')}
           </button>
@@ -125,7 +125,7 @@ export function IdentityForm({ onDone }: { onDone?: () => void }): ReactElement 
       <button
         type="submit"
         disabled={!email.trim() || !displayName.trim() || requestCode.isPending}
-        className="w-full rounded bg-accent px-3 py-2 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-40"
+        className="w-full rounded bg-accent px-3 py-2 text-sm font-medium text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-40"
       >
         {t(requestCode.isPending ? 'common.sending' : 'identity.getCode')}
       </button>
