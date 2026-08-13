@@ -1,3 +1,10 @@
+# Without this, compose derives the project name from the directory the file sits
+# in, so containers are named after whatever the clone was called — an instance
+# cloned before the rename still answers to `googledrive-viewer-app-1`. The
+# volumes escape it because they carry their own `name:` (D53); the containers
+# had nothing equivalent (D260813e).
+name: lukarn
+
 services:
   app:
     # Published on every `v*` tag: updating compiles nothing on the machine, which
