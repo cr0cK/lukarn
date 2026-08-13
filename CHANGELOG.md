@@ -124,30 +124,5 @@ install.
   the application came back — a `docker compose up -d` returns when the container
   starts, not when it works.
 
-### Notes for an instance running the pre-1.0 code
-
-The project was called `googledrive-viewer`, and its volumes, database file,
-cookies and browser keys carried a `gdv` prefix. **They do not rename themselves.**
-
-- **Before the first `docker compose up`**, copy `gdv-data` to `lukarn-data` and
-  rename `gdv.db` inside it — the exact commands are in
-  [`deploy/README.md`](./deploy/README.md#backup). Skipping this starts the
-  application on an empty database, accounts and index included.
-- **Everyone signs in once more**: the session cookie changed name, so open
-  sessions stop being recognised. The rows in the database survive.
-- **Read markers restart from zero**, living in the browser under a renamed key.
-  Comments already read announce themselves as new, once.
-- Backup archives already on disk keep their `gdv-` prefix, which pruning no
-  longer recognises. Delete them by hand once a `lukarn-` archive has restored
-  successfully.
-- **Backups are written to `backups/`**, not `sauvegardes/`, and the default
-  rclone remote is `backups:lukarn`. Rename both, or keep the old ones by setting
-  `LUKARN_BACKUP_DIR` and `LUKARN_BACKUP_REMOTE`. Pruning only looks in the
-  directory it is given.
-- The SSH hardening file laid down by `cloud-init.yaml` is now
-  `99-hardening.conf`. Machines already bootstrapped keep
-  `99-durcissement.conf`, and there is nothing to migrate — the rename only
-  applies to machines created afterwards.
-
 [unreleased]: https://github.com/cr0cK/lukarn/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/cr0cK/lukarn/releases/tag/v1.0.0

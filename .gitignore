@@ -8,9 +8,7 @@ cache/
 .env
 config/albums.yaml
 # Archives produced by deploy/backup.sh — they contain a copy of the .env.
-# `sauvegardes/` stays ignored: an instance bootstrapped before 1.0.0 has one.
 backups/
-sauvegardes/
 # A service account's private key: it is worth read access to the shared folders,
 # and nothing expires it.
 config/*.json
