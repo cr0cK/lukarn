@@ -11,50 +11,7 @@ in this application migrates volumes or renames files on its own.
 
 [semantic versioning]: https://semver.org
 
-## [Unreleased]
-
-### An identity of its own, and one each instance can change
-
-- **The Lukarn mark** — a rounded black square, a white `L`, and a dot standing
-  for both the lucarne and the lens — on the sign-in screen, in the top bar, as
-  the browser tab icon, on a home screen and at the head of every email. It is
-  drawn as source rather than exported, so it can be recoloured.
-- **The gallery's colour is a setting.** One colour in `/admin` → Identity, and
-  the buttons, the selected section, the focus outline and the mark's dot follow,
-  along with a softer tint derived from it for hovered rows. It applies without
-  a reload and without a restart.
-- **The logo can be replaced** with an image of your own, from the same screen.
-  Whatever you upload is converted to a PNG on arrival, and every size a phone or
-  a mail client asks for is generated from it.
-- **The gallery's name is a setting too**, and the album list's header now carries
-  it rather than the word "Albums".
-
-### Migration notes
-
-- **`APP_NAME` becomes a bootstrap value.** An instance in service keeps its name:
-  the variable seeds the new setting on the first start after updating, and is
-  ignored from then on. Rename from `/admin` → Identity afterwards; editing the
-  `.env` will no longer change anything.
-- **The accent colour changes from blue to red** on any instance that has never
-  chosen one — that red is the default identity, not a fixed choice. Set the old
-  `#7aa2ff`, or any other colour, in `/admin` → Identity.
-- Nothing to do about the backup: the uploaded logo lives in `DATA_DIR`, which is
-  already archived whole.
-- **The containers are renamed** to `lukarn-app-1` and `lukarn-caddy-1`. Compose
-  used to name them after the clone directory; it now names the project itself.
-  The first deployment recreates both, which costs the seconds `deploy.sh`
-  already spends on its health gate. No volume is touched, so nothing is lost —
-  the certificates included.
-
-### Fixed
-
-- **Borders, dividers and outlines were absent on browsers older than
-  Chromium 85.** Tailwind's initialisation of its own variables sits behind a
-  detection written for Safari and Firefox, so on any other engine without
-  `@property` the values were never set and `border-style` fell back to `none`.
-  The build now applies them to every engine.
-
-## [1.0.0] — 2026-08-11
+## [1.0.0] — 2026-08-13
 
 First published release. The application has been running in production for
 several months; this is the point at which it becomes something someone else can
@@ -82,6 +39,12 @@ install.
 - **Installable on a phone.** Added to the home screen it opens full-screen, with
   no address bar and no password to type again. The service worker caches the
   application shell only — never a photo, never an API response.
+- **Readable in English or French**, each reader choosing for themselves. Emails
+  arrive in the language their recipient reads, recorded against the identity that
+  subscribed.
+- **Borders and outlines hold on engines older than Chromium 85**, the television
+  browsers among them: the style sheet initialises its own variables for every
+  engine rather than behind a feature detection none of them satisfy.
 
 ### Sharing and comments
 
@@ -97,6 +60,22 @@ install.
   conversation nobody has.
 - **Device pairing** for a television or a tablet, by code rather than by typing a
   password on a remote control.
+
+### An identity of its own, and one each instance can change
+
+- **The Lukarn mark** — a rounded black square, a white `L`, and a dot standing
+  for both the lucarne and the lens — on the sign-in screen, in the top bar, as
+  the browser tab icon, on a home screen and at the head of every email. It is
+  drawn as source rather than exported, so it can be recoloured.
+- **The gallery's colour is a setting.** One colour in `/admin` → Identity, and
+  the buttons, the selected section, the focus outline and the mark's dot follow,
+  along with a softer tint derived from it for hovered rows. It applies without
+  a reload and without a restart.
+- **The logo can be replaced** with an image of your own, from the same screen.
+  Whatever you upload is converted to a PNG on arrival, and every size a phone or
+  a mail client asks for is generated from it.
+- **The gallery's name is a setting too**, and the album list's header carries it
+  rather than the word "Albums".
 
 ### Security
 
@@ -129,5 +108,4 @@ install.
   the application came back — a `docker compose up -d` returns when the container
   starts, not when it works.
 
-[unreleased]: https://github.com/cr0cK/lukarn/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/cr0cK/lukarn/releases/tag/v1.0.0
