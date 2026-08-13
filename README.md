@@ -7,12 +7,16 @@ A self-hosted gallery for browsing the photos and videos of a Google Drive
 account, in place of Drive's own preview: justified grid grouped by month,
 keyboard-driven fullscreen viewer, dark theme.
 
+Drive is the first storage it reads, and the only one it reads today. Others are
+meant to follow: the gallery is the point, and where the photos happen to sit is
+not.
+
 _Lukarn_ is Gothic for a lantern — the thing you pick up to go and look in the
 dark. It is also the word the linguists put forward, next to Irish _luacharn_,
 when they argued that French _lucarne_ came from Latin _lucerna_: the small
 opening in a roof that lets the light in and lets you see inside. Either reading
 suits an application whose whole job is to open one window onto photos that
-would otherwise stay in the dark of someone else's Drive.
+would otherwise stay in the dark of someone else's storage.
 
 The mark keeps both readings. Its dot sits high and to the right — where a
 dormer sits in a roof, and where the shutter release sits under a thumb: the

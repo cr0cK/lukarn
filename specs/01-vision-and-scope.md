@@ -11,6 +11,21 @@ it.
 The application replaces this preview with a self-hosted gallery that reads the
 owner's Drive and exposes it behind a username and password, one album at a time.
 
+## One storage today, not one by definition
+
+Google Drive is the **first** storage read, and the only one read today.
+`packages/server/src/drive/` speaks to the Drive API directly, with nothing
+abstracting it, and the administration screens that declare an album name Drive
+folders. Support for other backends is intended, and naming the work it implies
+is more useful than implying it: an interface where `drive/service.ts` sits
+today, a way for an album to record which storage it belongs to, and a migration
+for the single-row `oauth_token` table.
+
+This is a different question from the row excluding **multiple Drives** below.
+That one is about how many accounts a single instance serves — `oauth_token`
+carries `CHECK (id = 1)` — and adding a second _kind_ of storage does not relax
+it. One instance still reads one account.
+
 ## Intended users
 
 There are two roles, and only two:
