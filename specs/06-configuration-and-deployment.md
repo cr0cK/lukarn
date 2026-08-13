@@ -247,6 +247,14 @@ update needs to stay a decision rather than a surprise.
 
 ## docker-compose and volumes
 
+`docker-compose.yml` opens with a top-level **`name: lukarn`**. Left out, compose
+takes the project name from the directory the file sits in and prefixes every
+container with it, so a clone made under another name reports
+`<directory>-app-1` on each deployment. Nothing reads those names — `deploy.sh`
+resolves the container by service, through `docker compose ps -q app` — but they
+are what `docker ps` and every deployment print (D260813e). Setting it applies
+D53's reasoning to the one identifier that escaped it.
+
 `docker-compose.yml` declares **two services**:
 
 - **`app`** — the application. It publishes **no port on the host** (`expose`

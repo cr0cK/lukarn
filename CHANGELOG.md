@@ -40,6 +40,11 @@ in this application migrates volumes or renames files on its own.
   `#7aa2ff`, or any other colour, in `/admin` → Identity.
 - Nothing to do about the backup: the uploaded logo lives in `DATA_DIR`, which is
   already archived whole.
+- **The containers are renamed** to `lukarn-app-1` and `lukarn-caddy-1`. Compose
+  used to name them after the clone directory; it now names the project itself.
+  The first deployment recreates both, which costs the seconds `deploy.sh`
+  already spends on its health gate. No volume is touched, so nothing is lost —
+  the certificates included.
 
 ### Fixed
 
