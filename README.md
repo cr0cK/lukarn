@@ -14,6 +14,10 @@ opening in a roof that lets the light in and lets you see inside. Either reading
 suits an application whose whole job is to open one window onto photos that
 would otherwise stay in the dark of someone else's Drive.
 
+The mark keeps both readings. Its dot sits high and to the right — where a
+dormer sits in a roof, and where the shutter release sits under a thumb: the
+opening that lets the light in is also the lens it came through.
+
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment.
 From `/admin`, the owner declares which Drive folders become albums and who may
