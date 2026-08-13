@@ -1561,6 +1561,22 @@ hides the title below `sm` on a page with a search field hides the mark too:
 alone on a 393 px screen it would take width from the field it was meant to sit
 beside.
 
+**A one-pixel inset ring, and it is not decoration.** The mark's square is black,
+which is right on the white of an email header, on a README and against light
+browser chrome — and is also the one value darker than every surface in this
+interface. On `ink-900` it therefore has no edge at all, and what remains on
+screen is a floating white `L`: the rounded square, which is half the identity,
+disappears. Lightening the square would fix this page and spoil the others;
+lightening `ink-900` would move the manifest's colours, the maskable icon's
+backing and the ground the photos sit on, to solve a problem that only exists
+where the mark meets a near-black surface. So the silhouette is restored here,
+in the one component that draws it, and nowhere else.
+
+It rides on `--tw-ring-*`, which is exactly the family that reaches an old engine
+only because the build hoists Tailwind's initialisation out of its browser sniff
+(D260813d) — without that, this hairline would be invisible on the very screen
+the palette work was checked against.
+
 ### A row stacks rather than truncating what names it
 
 The page is bounded to **`max-w-[90rem]`**, not the original 64 rem: that

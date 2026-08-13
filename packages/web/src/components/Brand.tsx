@@ -37,7 +37,20 @@ export function Brand({
       // Rounded, because the built-in mark already is and a square upload
       // otherwise sits oddly next to the rest of this interface's radii. The
       // mark's own corners fall inside this one, so nothing is clipped.
-      className={`${size === 'sm' ? 'size-7' : 'size-12'} shrink-0 rounded-lg ${className}`}
+      //
+      // **The hairline is what makes the mark visible here.** Its square is
+      // black, which is right on the white of an email header, on a README and
+      // against light browser chrome — and is the one value darker than every
+      // surface in this interface. On `ink-900` it has no edge at all, and what
+      // is left on screen is a floating white `L`. Lightening the square would
+      // fix this page and break the others; lightening the page would move the
+      // manifest's colours and the ground the photos sit on. The silhouette is
+      // missing only where the mark meets a near-black surface, so it is
+      // restored here rather than in the palette.
+      //
+      // `inset` so it traces the rounded corner instead of boxing it, and
+      // `ring` rather than `border`, which would take a pixel from the image.
+      className={`${size === 'sm' ? 'size-7' : 'size-12'} shrink-0 rounded-lg ring-1 ring-ink-700 ring-inset ${className}`}
     />
   );
 }
