@@ -160,7 +160,6 @@ export const fr: Messages = {
 
   /* ---------------------------------------------------------- Album list */
 
-  'albums.title': 'Albums',
   'albums.loading': 'Chargement des albums',
   'albums.loadFailed': 'Impossible de charger les albums.',
   'albums.none': 'Aucun album n’est attribué à ce compte.',

@@ -8,6 +8,7 @@ import { SearchBox } from '../components/SearchBox';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
 import { Spinner } from '../components/Spinner';
 import { TopBar } from '../components/TopBar';
+import { useInstanceName } from '../lib/branding';
 import { formatRange } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { useShortcut } from '../lib/useShortcut';
@@ -58,6 +59,7 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
 
 export default function AlbumsPage(): ReactElement {
   const t = useT();
+  const instanceName = useInstanceName();
   const { data: albums, isPending, error } = useAlbums();
   const { data: user } = useMe();
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -71,7 +73,11 @@ export default function AlbumsPage(): ReactElement {
           and after roughly twenty albums "where are the Marseille photos?" stops
           having an obvious answer. */}
       <TopBar
-        title={t('albums.title')}
+        // The gallery's own name, not the word "Albums": this is the one page
+        // that is the gallery rather than a part of it, and the name beside the
+        // mark is what makes the top bar say whose photos these are. Every other
+        // page names what it shows — an album, Administration.
+        title={instanceName}
         search={<SearchBox shortcutEnabled={!activity.isOpen && !showShortcuts} />}
         feed={{ unread: activity.unread, onOpen: activity.open }}
       />

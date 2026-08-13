@@ -245,6 +245,14 @@ title and its subtitle, activity, view controls — then, all the way to the
 right, **who is looking at it**: a badge carrying the account's initial, which
 opens Admin, Sign out and Install.
 
+**The title names what the page shows, except on the album list, which names the
+gallery.** An album page carries the album, `/admin` carries "Administration",
+and the root carries the instance name rather than the word "Albums" — it is the
+one page that _is_ the gallery rather than a part of it, and the name beside the
+mark is what makes the bar say whose photos these are. It comes from
+`useInstanceName`, so a rename from `/admin/identity` reaches it without a
+reload, like the colour and the logo.
+
 | Width        | What is visible                                           |
 | ------------ | --------------------------------------------------------- |
 | `< sm` (640) | Back, title, **Activity**, a **View** menu, the badge     |
@@ -1532,8 +1540,11 @@ reload. The logo cannot be handled the same way: it is an `<img>` and a
 `<link rel="icon">`, neither of which TanStack Query knows about, and the route
 answers `no-cache`, which makes the browser revalidate only on a **new** request.
 So a version counter is bumped, `Brand` subscribes to it through
-`useSyncExternalStore`, and the tab icon's `href` is rewritten by hand. None of
-it is a source of truth: a reload produces the same page from the server.
+`useSyncExternalStore`, and the tab icon's `href` is rewritten by hand. The name
+takes the same route for the same reason: it lives in the tab title and two
+`<meta>` tags, which is where `appName()` reads it, so `applyInstanceName`
+rewrites those three and the album-list header follows. None of it is a source of
+truth: a reload produces the same page from the server.
 
 The upload is refused above `LOGO_MAX_BYTES` before it is sent — otherwise the
 whole file crosses the network to come back as a bare 413 — and refused again by

@@ -169,7 +169,6 @@ export const en = {
 
   /* ---------------------------------------------------------- Album list */
 
-  'albums.title': 'Albums',
   'albums.loading': 'Loading albums',
   'albums.loadFailed': 'Cannot load the albums.',
   'albums.none': 'No album is assigned to you.',

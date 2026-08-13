@@ -15,7 +15,7 @@ import {
   useUploadLogo,
 } from '../../api/hooks';
 import { validateInstanceName, validatePrimaryColor } from '../../lib/adminForm';
-import { applyPalette, logoChanged } from '../../lib/branding';
+import { applyInstanceName, applyPalette, logoChanged } from '../../lib/branding';
 import { useT } from '../../lib/i18n';
 import { Brand } from '../Brand';
 import { Spinner } from '../Spinner';
@@ -97,6 +97,10 @@ function IdentityForm({
         // Pushing the saved one onto `<html>` is what makes the top bar, the tab
         // borders and every button follow without a reload.
         applyPalette(saved.primaryColor);
+        // The shell carries the name in the tab title and two metas, and the
+        // album list now shows it in its header: left alone, a rename would be
+        // visible only after a reload, on the page it names.
+        applyInstanceName(saved.instanceName);
         // The mark's dot carries that colour too, and the mark is an image: CSS
         // does not reach it, and the browser makes no request for something
         // already on screen. Without this, every button turns and the logo beside
