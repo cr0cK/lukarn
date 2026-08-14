@@ -96,6 +96,7 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                   | `specs/02-architecture.md` (sync flow)                                      |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                 |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                      |
+| `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                     |
 | `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                   |
 | A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes          |
 | `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                   |
@@ -131,6 +132,7 @@ pnpm typecheck
 pnpm lint                            # eslint .
 pnpm format                          # prettier --write .
 pnpm test                            # native Node runner, all packages
+pnpm test:e2e                        # Playwright, the built artefact in two browsers
 pnpm check:format                    # prettier --check .—does formatting match the repository?
 pnpm check:specs                     # have the specs drifted from the code?
 pnpm check:links                     # do references between documents lead anywhere?
@@ -147,6 +149,19 @@ Before declaring work complete, run **`pnpm verify`**—typecheck, lint,
 formatting, tests, spec checks and link checks. CI runs the same command, and the
 two documentation checks also run on `pre-push`: divergence blocks publication
 before it reaches the remote repository.
+
+**A change under `packages/web/src` is not finished until `pnpm test:e2e` has
+passed too.** `verify` compiles the front end and never loads it: the whole of
+1.1.0—a tab bar, sheets, a bare viewer, a pinch—lived in that gap. The suite
+(`packages/e2e`) builds a throwaway instance, starts the **built** server on it
+and drives the real page on a phone (WebKit) and a desktop (Chromium). Reckon two
+minutes, most of it seeding, and `pnpm exec playwright install chromium webkit`
+once.
+
+It is **not** part of `verify`, and must not be added to it: `verify` runs on the
+22/24 matrix and on `pre-push`, and a gate that downloads two browsers is a gate
+people bypass (D260814g). CI runs it as a job of its own and again in
+`release.yml` before the image is pushed.
 
 `pnpm format` rewrites; `pnpm check:format` only checks. The latter belongs in
 `verify` because the former runs only when someone remembers: before the check

@@ -49,6 +49,23 @@ because unformatted code used to reach `main`, and the next person to run
 `pnpm format` would reformat someone else's work along with their own — a muddied
 diff for a fix that was not theirs.
 
+**If you touched anything under `packages/web/src`, run the browser suite too:**
+
+```bash
+pnpm exec playwright install chromium webkit   # once
+pnpm build && pnpm test:e2e
+```
+
+It builds a throwaway instance under `packages/e2e/.tmp/`, starts the **built**
+server on it, and drives the real page on a phone (WebKit) and a desktop
+(Chromium): the tab bar, the sheets, the viewer, search, `/admin` and the comment
+flow end to end. Reckon two minutes, most of it seeding.
+
+It is not in `pnpm verify` on purpose — that command runs on `pre-push`, and a
+gate that downloads two browsers is a gate people bypass. CI runs it as a job of
+its own, so a pull request that skips it locally is still stopped; running it
+yourself only means finding out sooner.
+
 ## Documentation is part of the change
 
 **Any change to behaviour, the API, the data model, configuration, or a technical

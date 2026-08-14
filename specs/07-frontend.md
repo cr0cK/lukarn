@@ -2744,3 +2744,45 @@ application does not touch the edges.
 
 `index.html` already carries `viewport-fit=cover`, without which `env()`
 would be zero.
+
+## What is proven, and by what
+
+Two suites, and the split is not a matter of taste: each covers exactly what the
+other cannot see.
+
+**`packages/web/test/` — the pure functions, under the native runner.** Layout
+arithmetic (`justify.ts`, `useGridLayout.ts` heights), zoom clamping
+(`zoom.ts`), gesture thresholds (`swipeTrack.ts`), thumbnail choice
+(`thumb.ts`), the catalogues (`i18n`), the stylesheet downgrade
+(`legacy-css.ts`). They are fast, they run in `pnpm verify`, and they answer
+questions with one right answer. What they cannot answer is whether any of it
+ever reaches a screen: none of them loads `index.html`.
+
+**`packages/e2e/` — the rendered page, under Playwright.** One spec per surface,
+against the **built** server serving the **built** front end, on two projects:
+`phone` (iPhone 13, WebKit) and `desktop` (1280 px, Chromium). It is what says
+the tab bar has four tabs and 48 px targets, that the top bar retracts on the way
+down, that a sheet arrives from the bottom edge and leaves by the same drag, that
+the viewer opens with nothing over the photo, that a pinch requests the `hd`
+variant, that `/admin` is a list of sections whose settings are rows — and, on
+the desktop side, that none of that happened above 768 px.
+
+| Spec               | What it holds to account                                                                       |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                               |
+| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals |
+| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                   |
+| `search.spec.ts`   | The field opens where the button is, focused                                                   |
+| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field                               |
+| `comments.spec.ts` | Address → code → comment → thread → activity feed                                              |
+| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                         |
+
+It runs as `pnpm test:e2e`, on its own CI job and again before a release image is
+pushed, and stays out of `pnpm verify` on purpose — see
+[D260814g](./08-decisions/D260814g-a-release-is-gated-by-a-browser.md), which
+also records why WebKit is in it, why no `data-testid` is, and why safe areas are
+asserted on the CSS rule rather than on a computed value.
+
+**Locators are roles and accessible names, never test hooks.** That is a
+constraint on the components as much as on the suite: a control the tests cannot
+name is a control a screen reader cannot name either.

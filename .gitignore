@@ -13,6 +13,11 @@ backups/
 # and nothing expires it.
 config/*.json
 
+# The throwaway instance the browser suite builds, and what a run leaves behind.
+packages/e2e/.tmp/
+packages/e2e/test-results/
+packages/e2e/playwright-report/
+
 # Browser automation artefacts (screenshots, snapshots, console logs)
 .playwright-cli/
 # Design plugin cache, specific to each workstation

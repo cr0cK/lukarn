@@ -54,6 +54,49 @@ jobs:
 
       - run: pnpm verify
 
+  # Everything above compiles the front end and never loads it. The whole of
+  # 1.1.0 was in that gap — a tab bar, sheets, a bare viewer, a pinch — and the
+  # only claim CI made about any of it was that Vite had no complaints.
+  #
+  # A job of its own, and deliberately **not** part of `pnpm verify`: that
+  # command runs on the 22/24 matrix and on `pre-push`, and making either
+  # download two browsers turns a fast local gate into a slow one, which is how
+  # gates come to be bypassed.
+  e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          # The version the Dockerfile ships: the suite runs the built server,
+          # so it should run it the way production does.
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The suite exercises `dist/`, not a dev server: `packages/server/dist`
+      # serving `packages/web/dist` is the artefact the image carries.
+      - run: pnpm build
+
+      # WebKit is the engine the mobile rework targets — safe-area insets, pinch
+      # and view transitions are iOS claims, and Chromium agreeing proves
+      # nothing about them. Chromium covers the desktop half.
+      - run: pnpm --filter @lukarn/e2e exec playwright install --with-deps chromium webkit
+
+      - run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: playwright-report
+          path: packages/e2e/playwright-report/
+          retention-days: 7
+
   # The image is what production runs, and nothing built it before a tag was
   # pushed: a broken Dockerfile passed every check and only showed itself at
   # deploy time, on the machine, with the site down.

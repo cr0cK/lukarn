@@ -48,6 +48,13 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // The browser suite runs in Node and drives a browser from there. What it
+    // evaluates *inside* the page is typed by Playwright, not linted as browser
+    // code: the file it is written in is a Node module.
+    files: ['packages/e2e/**/*.ts'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // The service worker: neither Node nor a window. `self`, `caches` and
     // `clients` exist only in that context, and would otherwise be errors.
     files: ['packages/web/public/*.js'],
