@@ -362,6 +362,10 @@ export const en = {
 
   'admin.title': 'Administration',
   'admin.sections': 'Administration sections',
+  'admin.notSet': 'Not set',
+  'admin.groupLibrary': 'Library',
+  'admin.groupPeople': 'People',
+  'admin.groupInstance': 'This instance',
   'admin.tabAlbums': 'Albums',
   'admin.tabAccounts': 'Accounts',
   'admin.tabComments': 'Comments',

@@ -78,9 +78,18 @@ export default function App(): ReactElement {
           </RequireAuth>
         }
       />
-      {/* `/admin` without a section remains a valid link: bookmarks and the top
-          bar still lead there. */}
-      <Route path="/admin" element={<Navigate to="/admin/albums" replace />} />
+      {/* `/admin` is a page of its own, not a redirect: on a phone it is the list
+          of sections, and a redirect would leave nowhere for a section's back
+          arrow to return to. From `md` it still opens on Albums, so the address
+          behaves as it always did on a desktop. */}
+      <Route
+        path="/admin"
+        element={
+          <RequireAuth admin>
+            <AdminPage />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/admin/:tab"
         element={
