@@ -7,8 +7,9 @@ import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { Spinner } from '../components/Spinner';
 import { useT, type MessageKey } from '../lib/i18n';
+import { PHONE_QUERY, useMediaQuery } from '../lib/useMediaQuery';
 import { TopBar } from '../components/TopBar';
-import { AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
+import { AdminMenu, AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
 import { CommentsSection } from '../components/admin/CommentsSection';
 import { DriveSection } from '../components/admin/DriveSection';
@@ -39,6 +40,7 @@ export default function AdminPage(): ReactElement {
   // nothing on one page is exactly the irregularity these tabs remove. The
   // drawer is global anyway — its scope is `null`, every album the account sees.
   const activity = useActivityFeed();
+  const phone = useMediaQuery(PHONE_QUERY);
 
   const oauthResult = searchParams.get('oauth');
   const retourOauth = oauthResult ? OAUTH_MESSAGES[oauthResult] : undefined;
@@ -96,13 +98,28 @@ export default function AdminPage(): ReactElement {
     }
   };
 
-  // An unknown section — stale link or typo — is better redirected to the
-  // first than displayed as a blank page.
-  if (!isAdminTab(tab)) return <Navigate to="/admin/albums" replace />;
+  // An unknown section — stale link or typo — is better redirected to the root
+  // than displayed as a blank page. `/admin` itself carries no segment and is
+  // not an error: it is the root of administration.
+  if (tab !== undefined && !isAdminTab(tab)) return <Navigate to="/admin" replace />;
+
+  /**
+   * `/admin` is the list of sections **on a phone only**. On a desktop the
+   * sidebar already lists them beside every section, so a screen whose whole
+   * content repeated that column would be a screen for nothing — and it keeps
+   * redirecting to the first section, exactly as D66 left it, which also keeps
+   * `AdminNav` reading its selected entry from the router rather than from a
+   * path comparison.
+   */
+  const root = tab === undefined;
+  if (root && !phone) return <Navigate to="/admin/albums" replace />;
 
   return (
     <div className="min-h-full">
-      <TopBar title={t('admin.title')} back />
+      {/* The back arrow follows the level above, which differs by width: a phone
+          came from the list of sections, a desktop from the gallery, where
+          `/admin` was never a screen of its own. */}
+      <TopBar title={t('admin.title')} back backTo={phone && !root ? '/admin' : '/'} />
 
       {/* Use 90 rem rather than the original 64 rem: the content column grows from
           760 to 1170 px on a laptop, where album rows truncated their title while
@@ -135,7 +152,7 @@ export default function AdminPage(): ReactElement {
             </p>
           )}
 
-          {rubrique(tab)}
+          {root ? <AdminMenu unread={activity.unread} /> : rubrique(tab)}
         </div>
       </main>
 

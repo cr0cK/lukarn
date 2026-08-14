@@ -1621,8 +1621,30 @@ Administration is navigated by **sections, one per URL** (D66):
 
 `ADMIN_TABS`, in `AdminNav`, is the single source: navigation renders it, and
 `AdminPage` validates the `:tab` parameter against it. An unknown section
-redirects to Albums rather than showing a blank page, and `/admin` with no
-section remains a valid link — which is still what the top bar points to.
+redirects rather than showing a blank page.
+
+**`/admin` itself differs by width**
+([D260814c](./08-decisions/D260814c-administration-gets-a-root-on-a-phone-and-settings-become-rows.md)).
+From `md` it still redirects to `/admin/albums`, exactly as D66 left it — which
+is also what lets `AdminNav` read its selected entry from the router rather than
+from a path comparison. Below `md` it is a screen: `AdminMenu`, the six sections
+as a list grouped into Library, People and This instance, a chevron per row and
+the activity count on Comments. A section's back arrow then returns there rather
+than to the gallery, through `TopBar`'s `backTo`.
+
+The sidebar used to fold into a horizontally scrolling row of tabs down there.
+Six sections across 390 px showed two, the rest reached by a sideways gesture
+nothing announced, and the row cost a line of every administration screen at all
+times. A phone shows one level per screen; this is that level.
+
+`ADMIN_TABS` carries a `group` read only by that list. The sidebar ignores it: a
+twelve-rem column has no room for headings, and at that width the six rows are
+read at once anyway.
+
+**The badge on Comments counts activity, not a queue.** There is no moderation
+queue: a comment is visible until somebody hides it, so "waiting" is not a state
+this data model has. The row carries the count already computed for the activity
+drawer — messages received since the last visit.
 
 **The section lives in the URL, not in local state.** A link to the
 moderation queue can be shared, the browser's back button returns to the
@@ -1655,10 +1677,40 @@ unnoticed from the bottom of the queue.
 | `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                          |
 | `AlbumAccessPicker`           | Assigning albums to an account (see below)                                              |
 | `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                          |
-| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry                   |
+| `AdminMenu`                   | The same six sections as a grouped list, below `md`, filling `/admin`                   |
+| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry, `SettingRow`     |
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
+
+### A setting is a row on a phone — `SettingRow`
+
+`TextField` stacks a label, a field and a hint: three lines for a value nobody is
+changing today, and the settings section has seven of them. Below `md` the same
+field renders as a **row** instead — its name on the left, what it currently
+reads on the right, a chevron opening the field underneath. `TextField` picks its
+own shape from the width, so every administration form gets the list without a
+single call site knowing, the arrangement `ActionMenu` and `MediaCaption` already
+use.
+
+It **discloses in place** rather than opening a screen of its own, because a
+section is one form with one Save button: a row leading elsewhere would have to
+save on its own, and a partial save is a different promise from the one the
+button at the bottom makes.
+
+Three rules make it behave:
+
+- **Open when the value is empty**, so a creation form is a form rather than six
+  closed rows to open one at a time.
+- **Open while the field has an error**, because an error nobody can see is an
+  error nobody corrects.
+- **The value shows only while closed** — "Not set" printed beside an empty input
+  somebody is about to fill answers a question the input already asks.
+
+The label keeps the room when the row is too narrow for both: it is what the eye
+scans down a list, and a truncated one no longer names anything. A password's
+value is never the characters themselves — the row is what a shoulder reads
+first, and the field behind it already has its own reveal button.
 
 ### Identity — `components/admin/IdentitySection.tsx` and `lib/branding.ts`
 

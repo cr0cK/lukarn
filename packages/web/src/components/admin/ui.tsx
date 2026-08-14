@@ -1,5 +1,8 @@
-import type { ReactElement, ReactNode } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
+import { useT } from '../../lib/i18n';
+import { PHONE_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { PasswordInput } from '../PasswordInput';
+import { Chevron } from './AdminNav';
 
 /** Action outcome shown at the top of the administration page. */
 export interface Notice {
@@ -107,6 +110,77 @@ export const ROW_ACTIONS_CLASS = 'flex flex-wrap items-center gap-2 xl:justify-e
 const CONTROL_CLASS =
   'w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60 read-only:text-ink-300';
 
+/**
+ * One setting as a **row**: its name on the left, what it currently reads on the
+ * right, and a chevron that opens the field itself below.
+ *
+ * Below `md` only. A stacked label, field and hint is three lines of a phone
+ * screen for a value nobody is changing today, and the settings section has
+ * seven of them: the page became a form to scroll rather than a list to read.
+ * As a row, the same seven settings are seven readable lines and the one being
+ * changed is the only one taking room.
+ *
+ * It **discloses in place** rather than opening its own screen, because the
+ * whole section is one form with one Save button — a row leading elsewhere would
+ * have to save on its own, and a partial save is a different promise from the
+ * one the button at the bottom makes.
+ *
+ * Open from the start when the value is empty: on a creation form every row
+ * would otherwise be a closed row saying nothing, to be opened one at a time.
+ */
+export function SettingRow({
+  label,
+  value,
+  alert = false,
+  startOpen = false,
+  children,
+}: {
+  label: string;
+  /** The value as it currently reads. Empty means "not set", and opens the row. */
+  value: string;
+  /** Keeps the row open: an error nobody can see is an error nobody corrects. */
+  alert?: boolean;
+  /** Opens the row regardless — a field asking for focus is a field to show. */
+  startOpen?: boolean;
+  children: ReactNode;
+}): ReactElement {
+  const t = useT();
+  const [open, setOpen] = useState(startOpen || value === '');
+  const shown = open || alert;
+
+  return (
+    <div className="-mx-4 border-b border-ink-800 last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={shown}
+        className="flex min-h-12 w-full items-center gap-3 px-4 text-left transition-colors hover:bg-white/5"
+      >
+        {/* The **label** keeps the room: it is what the eye scans down the list,
+            and a truncated one no longer names anything. The value gives way
+            first, capped at half the row — a long address reads in the field
+            once the row is open, which is where it is edited anyway. */}
+        <span className="min-w-0 flex-1 truncate text-sm text-ink-300">{label}</span>
+        {/* Only while closed. Open, the field below **is** the value, and "Not
+            set" printed beside an empty input someone is about to fill is a
+            second answer to a question the input already asks. */}
+        {!shown && (
+          <span className="max-w-[50%] shrink-0 truncate text-right text-sm text-ink-100">
+            {value || t('admin.notSet')}
+          </span>
+        )}
+        {/* Quarter-turn down when open: the chevron says where the content is,
+            and the same mark serves both states rather than two drawings. */}
+        <span className={`shrink-0 transition-transform ${shown ? 'rotate-90' : ''}`}>
+          <Chevron />
+        </span>
+      </button>
+
+      {shown && <div className="px-4 pb-3">{children}</div>}
+    </div>
+  );
+}
+
 interface TextFieldProps {
   id: string;
   label: string;
@@ -126,7 +200,14 @@ interface TextFieldProps {
   multiline?: boolean;
 }
 
-/** Input with label, help and error, all connected by `id`. */
+/**
+ * Input with label, help and error, all connected by `id`.
+ *
+ * **Two shapes.** From `md`, the label sits above the field, as it always has.
+ * Below it, the same field lives inside a `SettingRow`: name on the left, value
+ * on the right, opened by a chevron. The call sites are identical — every
+ * administration form gets the list on a phone without a single one knowing.
+ */
 export function TextField({
   id,
   label,
@@ -144,6 +225,7 @@ export function TextField({
   onBlur,
   multiline = false,
 }: TextFieldProps): ReactElement {
+  const phone = useMediaQuery(PHONE_QUERY);
   const hintId = hint ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [errorId, hintId].filter(Boolean).join(' ') || undefined;
@@ -162,23 +244,21 @@ export function TextField({
     className: `${CONTROL_CLASS} ${error ? 'border-red-500/60' : ''}`,
   };
 
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm text-ink-300">
-        {label}
-      </label>
-      {multiline ? (
-        <textarea {...shared} rows={2} onChange={(event) => onChange(event.target.value)} />
-      ) : type === 'password' ? (
-        <PasswordInput {...shared} onChange={(event) => onChange(event.target.value)} />
-      ) : (
-        <input
-          {...shared}
-          type={type}
-          inputMode={inputMode}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      )}
+  const control = multiline ? (
+    <textarea {...shared} rows={2} onChange={(event) => onChange(event.target.value)} />
+  ) : type === 'password' ? (
+    <PasswordInput {...shared} onChange={(event) => onChange(event.target.value)} />
+  ) : (
+    <input
+      {...shared}
+      type={type}
+      inputMode={inputMode}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+
+  const messages = (
+    <>
       {error && (
         <p id={errorId} className="mt-1 text-xs text-red-400">
           {error}
@@ -189,6 +269,39 @@ export function TextField({
           {hint}
         </p>
       )}
+    </>
+  );
+
+  if (phone) {
+    return (
+      <SettingRow
+        label={label}
+        // Never the characters themselves for a password: the row is what a
+        // shoulder reads first, and the field behind it already has its own
+        // reveal button.
+        value={type === 'password' && value ? '••••••••' : value}
+        alert={Boolean(error)}
+        startOpen={Boolean(autoFocus)}
+      >
+        {/* The row's own text is the label visually; the `<label>` stays in the
+            document for the association `id` needs, hidden because a second
+            copy two centimetres from the first names the field twice. */}
+        <label htmlFor={id} className="sr-only">
+          {label}
+        </label>
+        {control}
+        {messages}
+      </SettingRow>
+    );
+  }
+
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-sm text-ink-300">
+        {label}
+      </label>
+      {control}
+      {messages}
     </div>
   );
 }

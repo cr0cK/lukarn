@@ -350,6 +350,10 @@ export const fr: Messages = {
 
   'admin.title': 'Administration',
   'admin.sections': 'Rubriques d’administration',
+  'admin.notSet': 'Non renseigné',
+  'admin.groupLibrary': 'Bibliothèque',
+  'admin.groupPeople': 'Personnes',
+  'admin.groupInstance': 'Cette instance',
   'admin.tabAlbums': 'Albums',
   'admin.tabAccounts': 'Comptes',
   'admin.tabComments': 'Commentaires',
