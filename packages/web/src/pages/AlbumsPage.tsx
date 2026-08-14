@@ -3,6 +3,7 @@ import { type ReactElement, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { mediaUrl } from '../api/client';
 import { useAlbums, useMe } from '../api/hooks';
+import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { SearchBox } from '../components/SearchBox';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
@@ -20,7 +21,11 @@ function AlbumCard({ album }: { album: Album }): ReactElement {
   return (
     <Link
       to={`/album/${encodeURIComponent(album.id)}`}
-      className="group block overflow-hidden rounded-xl bg-ink-850 transition-transform hover:-translate-y-0.5"
+      // 20 px corners over the 12 px of `rounded-xl`, and a 12 px gutter instead
+      // of 16: two purely visual values, applied at **every** width. A card whose
+      // radius changed at 768 px would carry two numbers in every class for a
+      // difference nobody can see side by side.
+      className="group block overflow-hidden rounded-[20px] bg-ink-850 transition-transform hover:-translate-y-0.5"
     >
       <div className="relative aspect-[4/3] overflow-hidden bg-ink-800">
         {album.coverId ? (
@@ -82,7 +87,9 @@ export default function AlbumsPage(): ReactElement {
         feed={{ unread: activity.unread, onOpen: activity.open }}
       />
 
-      <main className="mx-auto max-w-[2000px] px-4 py-6 sm:px-6">
+      {/* The tab bar is `fixed` and therefore outside the flow: the page reserves
+          its height itself, or the last row of albums would end underneath it. */}
+      <main className="mx-auto max-w-[2000px] px-4 py-6 pb-[calc(5rem_+_env(safe-area-inset-bottom))] sm:px-6 md:pb-6">
         {isPending && <Spinner label={t('albums.loading')} />}
 
         {error && (
@@ -104,13 +111,15 @@ export default function AlbumsPage(): ReactElement {
         )}
 
         {albums && albums.length > 0 && (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {albums.map((album) => (
               <AlbumCard key={album.id} album={album} />
             ))}
           </div>
         )}
       </main>
+
+      <BottomTabs current="albums" activity={activity} />
 
       {activity.isOpen && (
         <CommentsFeed albumId={null} albumTitle={null} onClose={activity.close} />

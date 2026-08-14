@@ -1,12 +1,11 @@
-import type { Locale } from '@lukarn/shared';
-import { type ReactElement, type ReactNode, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useLogout, useMe } from '../api/hooks';
-import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT, type Translate } from '../lib/i18n';
-import { useInstallPrompt } from '../lib/useInstallPrompt';
-import { ActionMenu, type MenuEntry } from './ActionMenu';
+import { type ReactElement, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { useMe } from '../api/hooks';
+import { useT, type Translate } from '../lib/i18n';
+import { useHideOnScroll } from '../lib/useHideOnScroll';
+import { AccountMenu, accountInitial } from './AccountMenu';
+import { ActionMenu } from './ActionMenu';
 import { Brand } from './Brand';
-import { InstallInstructions } from './InstallInstructions';
 
 /**
  * A view control, described rather than rendered.
@@ -39,6 +38,12 @@ interface TopBarProps {
   subtitle?: string | null;
   /** Shows a back arrow to the album list. */
   back?: boolean;
+  /**
+   * Where the back arrow leads, when it is not the album list. Administration
+   * uses it to return to its own root on a phone, where `/admin` is a list of
+   * sections rather than a redirect.
+   */
+  backTo?: string;
   /** Page-specific controls to the left of account controls. */
   actions?: TopBarAction[];
   /**
@@ -64,21 +69,16 @@ interface TopBarProps {
  * feed's 20 px icon. Without the label that lengthened them, two 28 px targets
  * sat beside a 36 px one in the same row, becoming the only irregularity in an
  * otherwise regular alignment.
+ *
+ * **48 px below `md`**, where the target is a fingertip rather than a cursor:
+ * 36 px is under both the 44 px iOS asks for and the 48 px of Material. Above
+ * `md` it stays exactly the square D90 measured.
  */
 const CLASSE_BOUTON =
-  'flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100';
+  'flex size-12 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:size-9';
 
 const CLASSE_PASTILLE =
   'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-sm font-medium text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
-
-/**
- * Account initial when there is no photo to display.
- *
- * Use `Array.from` rather than `[0]`: an identifier may start outside the Basic
- * Multilingual Plane — an emoji or ideogram — where indexed access would return
- * only half and display a replacement character.
- */
-const initiale = (username: string): string => Array.from(username)[0]?.toUpperCase() ?? '?';
 
 /**
  * Sticky top bar shared by all authenticated pages.
@@ -88,84 +88,66 @@ const initiale = (username: string): string => Array.from(username)[0]?.toUpperC
  * badge, opened only on request. Admin, Sign out and Install no longer need to
  * fit in the bar, returning their width to the title.
  *
- * Below `sm`, view controls move into a menu: five controls across 393 px reduced
- * the album title to an initial and pushed them onto their own row, producing a
- * 101 px header in an application where photos should stand out.
+ * Below `md`, the bar keeps only what describes **this page** — back, title,
+ * subtitle, view controls — and everything reached from every page moves down to
+ * `BottomTabs`, within reach of a thumb. Above `md` the bar carries all of it,
+ * exactly as it did.
  *
- * Between `sm` and `lg`, they return to the bar but remain icons only. At 768 px,
- * measured labels reduced the title from 456 to 144 px and truncated the
- * subtitle, precisely the defect being fixed.
+ * View controls fold into a menu below `md` rather than below `sm`: five aligned
+ * controls across 393 px reduced the album title to an initial and pushed them
+ * onto a second row, a 101 px header in an application where photos should stand
+ * out. They return to the bar as icons only. At 768 px, measured labels reduced
+ * the title from 456 to 144 px and truncated the subtitle, precisely the defect
+ * being fixed.
  */
 export function TopBar({
   title,
   subtitle,
   back = false,
+  backTo = '/',
   actions = [],
   search,
   feed,
 }: TopBarProps): ReactElement {
   const { data: user } = useMe();
-  const logout = useLogout();
-  const navigate = useNavigate();
-  const install = useInstallPrompt();
   const t = useT();
-  const { locale, setLocale } = useLocale();
-  const [modeEmploi, setModeEmploi] = useState(false);
-
-  const seDeconnecter = (): void => {
-    logout.mutate(undefined, { onSuccess: () => void navigate('/login', { replace: true }) });
-  };
-  const proposerInstallation = (): void => {
-    if (install.manuel) setModeEmploi(true);
-    else install.installer();
-  };
-
-  // Installation is **last**, even after "Sign out": it appears and disappears
-  // by browser and installation status, and placing it elsewhere would shift
-  // permanent controls between visits.
-  const compte: MenuEntry[] = [
-    ...(user?.admin
-      ? [
-          {
-            label: t('topbar.admin'),
-            icon: <IconeAdmin />,
-            onSelect: () => void navigate('/admin'),
-          },
-        ]
-      : []),
-    { label: t('topbar.signOut'), icon: <IconeDeconnexion />, onSelect: seDeconnecter },
-    ...(install.disponible
-      ? [{ label: t('topbar.install'), icon: <IconeInstaller />, onSelect: proposerInstallation }]
-      : []),
-  ];
-
-  // Its own group, below the account actions: changing language is a setting,
-  // not an action on the session, and the rule separating them says so without a
-  // heading. Every language is listed with a tick on the current one rather than
-  // one entry toggling between two — a third language would otherwise have
-  // nowhere to go, and a toggle never says what it will switch to.
-  const langues: MenuEntry[] = AVAILABLE_LOCALES.map((code: Locale) => ({
-    label: LOCALE_NAMES[code],
-    icon: code === locale ? <IconeCoche /> : <span className="block size-4" aria-hidden="true" />,
-    checked: code === locale,
-    onSelect: () => setLocale(code),
-  }));
+  const hidden = useHideOnScroll();
 
   return (
     // Use `ink-800` on an `ink-900` body: the bar is a surface, not part of the
     // page. At the same values, only its one-pixel rule defined it, and isolated
     // content — the badge at the far end of a wide screen — appeared to float.
     // Raise the rule accordingly or it disappears into the background it marks.
-    <header className="sticky top-0 z-30 border-b border-ink-700 bg-ink-800/85 backdrop-blur-md">
+    //
+    // `pt-[env(safe-area-inset-top)]`: `index.html` declares `viewport-fit=cover`
+    // and the manifest `display: standalone`, so an installed application draws
+    // under the notch. Without this the bar's whole first row sat beneath the
+    // clock. Padding rather than a margin, so the surface still reaches the top
+    // of the screen and the status bar keeps a background.
+    //
+    // **The retraction is the phone's alone**: `md:translate-y-0` pins the bar
+    // above the breakpoint whatever the hook returns, and there the reserved
+    // height is not what limits the page.
+    <header
+      className={`sticky top-0 z-30 border-b border-ink-700 bg-ink-800/85 pt-[env(safe-area-inset-top)] backdrop-blur-md transition-transform duration-200 md:translate-y-0 ${
+        hidden ? '-translate-y-full' : ''
+      }`}
+    >
       {/* `min-h-16`: height is **reserved**, never inferred from content. A page
           without a subtitle — the album list — otherwise produced a 57 px bar
           where an album page had 65 px, and centred content jumped 8 px between
           navigations. The lone badge at its end revealed this most clearly. */}
-      <div className="mx-auto flex min-h-16 max-w-[2000px] items-center gap-x-2 px-4 py-3 sm:gap-x-3 sm:px-6">
+      {/* `py-2` below `md`, `py-3` above: the reserved height is what must not
+          move, and a 48 px target inside a 64 px box leaves exactly 16 px of
+          padding. With `py-3` the album page measured 73 px against the album
+          list's 65 — the very 8 px jump `min-h-16` exists to prevent. */}
+      <div className="mx-auto flex min-h-16 max-w-[2000px] items-center gap-x-2 px-4 py-2 sm:gap-x-3 sm:px-6 md:py-3">
         {back && (
           <Link
-            to="/"
-            className="-ml-1 rounded-full p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+            to={backTo}
+            // 48 px below `md` like the other bar controls: Back is the most
+            // used target on a phone and was the smallest of them at 36.
+            className="-ml-2 flex size-12 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:-ml-1 md:size-9"
             aria-label={t('topbar.back')}
           >
             <svg
@@ -221,17 +203,18 @@ export function TopBar({
             search ? 'sm:flex-1 sm:justify-end' : ''
           }`}
         >
-          {/* Activity remains **inline at every width**, unlike view controls:
-            its icon carries the unread badge, the only sign that a conversation
-            changed somewhere. Inside the menu below `sm`, it would no longer
-            signal anything — the same reason as the viewer's "Comments" button. */}
+          {/* Activity stays **inline from `md`**, never inside the View menu: its
+            icon carries the unread badge, the only sign that a conversation
+            changed somewhere, and a badge folded into a menu signals nothing —
+            the same reason as the viewer's "Comments" button. Below `md` it is
+            not folded either but **moved**, to the tab that now owns it. */}
           {feed && (
             <button
               type="button"
               onClick={feed.onOpen}
               title={t('topbar.activity')}
               aria-label={feedLabel(feed.unread, t)}
-              className={`relative flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100`}
+              className={`relative hidden size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:flex`}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -258,7 +241,7 @@ export function TopBar({
             </button>
           )}
 
-          {/* From `sm`: view controls in the bar, **icons only at every width**.
+          {/* From `md`: view controls in the bar, **icons only at every width**.
             Labels used to return beyond `lg`, where "Newest first" alone took
             more space than the album subtitle: two settings touched once per
             visit permanently weighed as much as what they controlled. Hover
@@ -267,7 +250,7 @@ export function TopBar({
             The tooltip states both current state **and** click effect, using the
             accessible name: an icon alone says neither, while announcing only
             the effect would leave the starting point implicit. */}
-          <div className="hidden shrink-0 items-center gap-1 sm:flex lg:gap-2">
+          <div className="hidden shrink-0 items-center gap-1 md:flex lg:gap-2">
             {actions.map((item) => (
               <button
                 key={item.label}
@@ -282,12 +265,15 @@ export function TopBar({
             ))}
           </div>
 
-          {/* Only below `sm`, and only when it has content: an empty menu would
-            offer a target that does nothing. */}
+          {/* Only below `md`, and only when it has content: an empty menu would
+            offer a target that does nothing. It is the **one** control the bar
+            keeps down there, because it acts on what this page is showing —
+            everything else moved to the tabs. */}
           {actions.length > 0 && (
-            <div className="sm:hidden">
+            <div className="md:hidden">
               <ActionMenu
                 label={t('topbar.view')}
+                triggerClassName={CLASSE_BOUTON}
                 groupes={[
                   actions.map((item) => ({
                     label: item.action,
@@ -299,28 +285,23 @@ export function TopBar({
             </div>
           )}
 
-          {/* Account at every width. Render only once the session is known: an
-            empty badge during a network round trip followed by a letter would
-            make the bar jump on every page. */}
+          {/* Account from `md`; below it, the tab bar carries the same menu.
+            Render only once the session is known: an empty badge during a
+            network round trip followed by a letter would make the bar jump on
+            every page. */}
           {user && (
-            <ActionMenu
-              label={t('topbar.account')}
-              // Use the identifier initial, not the display-name initial: it
-              // abbreviates the menu's first line, and different letters before
-              // and after the click would look like a defect.
-              trigger={initiale(user.username)}
-              triggerClassName={CLASSE_PASTILLE}
-              // The identifier opens albums and may be shared by a household;
-              // the address says who signs comments. Show both when they differ
-              // — precisely when someone wonders which name they write under.
-              entete={[user.username, ...(user.identity ? [user.identity.email] : [])]}
-              groupes={[compte, langues]}
-            />
+            <div className="hidden md:block">
+              <AccountMenu
+                // Use the identifier initial, not the display-name initial: it
+                // abbreviates the menu's first line, and different letters before
+                // and after the click would look like a defect.
+                trigger={accountInitial(user.username)}
+                triggerClassName={CLASSE_PASTILLE}
+              />
+            </div>
           )}
         </div>
       </div>
-
-      {modeEmploi && <InstallInstructions onClose={() => setModeEmploi(false)} />}
     </header>
   );
 }
@@ -354,75 +335,6 @@ function IconeAction({
       aria-hidden="true"
     >
       {children}
-    </svg>
-  );
-}
-
-/** Tick beside the active language. Purely visual: `aria-checked` says it. */
-function IconeCoche(): ReactElement {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m5 13 4 4 10-10" />
-    </svg>
-  );
-}
-
-function IconeAdmin(): ReactElement {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      aria-hidden="true"
-    >
-      <path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" />
-    </svg>
-  );
-}
-
-function IconeDeconnexion(): ReactElement {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-    </svg>
-  );
-}
-
-function IconeInstaller(): ReactElement {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      className="size-4"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3v12m0 0 4-4m-4 4-4-4" />
-      <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
     </svg>
   );
 }

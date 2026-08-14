@@ -46,6 +46,30 @@
     height: 100%;
   }
 
+  /* The type scale is 5% larger below `md`.
+   *
+   * The sizes were chosen at desk reading distance; a phone is held further from
+   * the eye and its text is read in motion. Tailwind v4 emits `font-size:
+   * var(--text-sm)` for every size utility, so redefining the five variables in
+   * force is enough and **no class changes** — a `text-sm md:text-xs` on each of
+   * the several hundred call sites would say the same thing several hundred times.
+   *
+   * Line heights follow on their own: Tailwind expresses them as unitless ratios
+   * — `calc(1.25 / 0.875)` — which multiply whatever font size is in force.
+   *
+   * Deliberately **not** `html { font-size }`, which is the usual way to do this:
+   * `rem` is also the unit of the whole spacing scale, and every padding, gap and
+   * fixed height in the application would grow with the text. */
+  @media (max-width: 47.99rem) {
+    :root {
+      --text-xs: 0.7875rem;
+      --text-sm: 0.91875rem;
+      --text-base: 1.05rem;
+      --text-lg: 1.18125rem;
+      --text-xl: 1.3125rem;
+    }
+  }
+
   /* The scrollbar gutter is permanently reserved.
 
      Without it, usable width changes during a session — between a short and long

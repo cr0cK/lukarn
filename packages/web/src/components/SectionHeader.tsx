@@ -82,7 +82,14 @@ export function SectionHeader({
             // from the title's 16 px box, growing the row by two pixels. On a
             // collapsed section whose box is exactly `PAD_TOP + TITLE_HEIGHT`,
             // those two pixels overflow. Declare the height like everything else.
-            className="-ml-1.5 flex h-6 min-w-0 items-baseline gap-1.5 rounded-lg px-1.5 text-left transition-colors hover:bg-white/5"
+            //
+            // Below `md`, a pseudo-element widens the **target** to 48 px without
+            // touching that height: `GRID_HEADER_TITLE_HEIGHT` is a layout
+            // constant the virtualiser computes every coordinate from, and a
+            // taller button would move every photo in the album. It grows 16 px
+            // into the 20 px of `PAD_TOP` and 8 px into the 12 px below, so it
+            // stays inside the header box either way.
+            className="relative -ml-1.5 flex h-6 min-w-0 items-baseline gap-1.5 rounded-lg px-1.5 text-left transition-colors after:absolute after:inset-x-0 after:-top-4 after:-bottom-2 after:content-[''] hover:bg-white/5 md:after:hidden"
           >
             <svg
               viewBox="0 0 24 24"

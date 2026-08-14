@@ -55,6 +55,24 @@ function situationDe(hit: SearchHit, t: Translate): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/**
+ * The mounted field, and a focus request made while none was.
+ *
+ * The bottom Search tab creates no route of its own: it returns to the album
+ * list and hands focus to the field already living in the bar. Pressed from an
+ * album, that navigation unmounts the tab bar and mounts this component — so the
+ * request cannot be held in either component's state. It waits here, at module
+ * level, until the field that answers it exists.
+ */
+let mountedField: HTMLInputElement | null = null;
+let focusRequested = false;
+
+/** Focuses the library search field, now or as soon as it is mounted. */
+export function requestSearchFocus(): void {
+  if (mountedField) mountedField.focus();
+  else focusRequested = true;
+}
+
 interface SearchBoxProps {
   /**
    * The `/` shortcut. Disabled while a panel covers the page: it would focus an
@@ -77,6 +95,17 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
   const hits = useMemo(() => data ?? [], [data]);
 
   useShortcut('/', () => champ.current?.focus(), shortcutEnabled);
+
+  useEffect(() => {
+    mountedField = champ.current;
+    if (focusRequested) {
+      focusRequested = false;
+      champ.current?.focus();
+    }
+    return () => {
+      mountedField = null;
+    };
+  }, []);
 
   // Highlight the first result immediately: typing then pressing Enter is the
   // most common action, and requiring an arrow first would turn a shortcut
