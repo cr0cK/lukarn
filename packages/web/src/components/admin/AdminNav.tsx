@@ -59,7 +59,10 @@ export function AdminNav(): ReactElement {
           // what `accent-soft` exists for: it says "this is where you are going"
           // in the colour that says "this is where you are".
           className={({ isActive }) =>
-            `shrink-0 rounded-lg px-3 py-2 text-sm transition-colors ${
+            // `min-h-12` below `md`, where the target is a fingertip: the row was
+            // 36 px, under both the 44 px iOS asks for and the 48 px of Material.
+            // Above `md` it is a cursor target in a column and keeps its size.
+            `flex min-h-12 shrink-0 items-center rounded-lg px-3 py-2 text-sm transition-colors md:min-h-0 md:block ${
               isActive
                 ? 'bg-accent-soft text-ink-100 outline outline-accent'
                 : 'text-ink-300 hover:bg-accent-soft hover:text-ink-100'

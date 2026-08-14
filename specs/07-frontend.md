@@ -231,6 +231,22 @@ one being looked at — everything else is up to whoever approves it (D260809c).
 Three states follow: approved ("the screen is about to open"), expired, or
 already claimed by another account.
 
+## The shell splits at `md`
+
+One rule divides the whole application chrome
+([D260814](./08-decisions/D260814-the-mobile-shell-moves-to-a-bottom-tab-bar.md)):
+**the top bar describes the page, and below `md` (768 px) a bottom bar navigates
+between pages.**
+
+| Width  | Top bar carries                                          | Bottom    |
+| ------ | -------------------------------------------------------- | --------- |
+| `< md` | Back, title, subtitle, search field, the **View** menu   | Four tabs |
+| `≥ md` | All of the above **plus** activity and the account badge | Nothing   |
+
+Above `md`, nothing on this page has changed: the tab bar is `md:hidden`, and
+every rule below that mentions a threshold applies where it always did. What
+follows describes both states each time they differ.
+
 ## Top bar — `components/TopBar.tsx`
 
 A single row, at every width, and **65 px reserved** rather than derived from
@@ -243,7 +259,26 @@ best.
 Two families follow one another and never mix: **what this page does** — back,
 title and its subtitle, activity, view controls — then, all the way to the
 right, **who is looking at it**: a badge carrying the account's initial, which
-opens Admin, Sign out and Install.
+opens Admin, Sign out and Install. Below `md`, the second family is not in the
+bar at all: the tabs carry it.
+
+The back arrow leads to `/` unless the page says otherwise through `backTo`.
+Administration is the one that does, and only on a phone, where `/admin` is a
+list of sections rather than a redirect to the first of them.
+
+**The bar retracts while the page scrolls down** — `lib/useHideOnScroll.ts` —
+and returns on the first upward movement. The reading surface of a phone _is_
+the photo grid, and 65 px permanently reserved is the largest single thing
+taking room from it. `md:translate-y-0` pins the bar above the breakpoint
+whatever the hook returns, and the hook itself stays at `false` for good under
+`prefers-reduced-motion`: a bar sliding in and out on every gesture is exactly
+the movement that setting asks to stop, and the reserved height is what it
+falls back to.
+
+Twelve pixels of travel are required before the state changes, and nothing
+happens in the first 64 px of the page. A phone reports a handful of pixels in
+both directions during elastic overscroll, without anyone having scrolled: the
+bar flickered while the page stood still.
 
 **The title names what the page shows, except on the album list, which names the
 gallery.** An album page carries the album, `/admin` carries "Administration",
@@ -253,17 +288,17 @@ mark is what makes the bar say whose photos these are. It comes from
 `useInstanceName`, so a rename from `/admin/identity` reaches it without a
 reload, like the colour and the logo.
 
-| Width        | What is visible                                           |
-| ------------ | --------------------------------------------------------- |
-| `< sm` (640) | Back, title, **Activity**, a **View** menu, the badge     |
-| `≥ sm`       | Same, view controls unfolded in the bar as **icons only** |
+| Width        | What is visible                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| `< md` (768) | Back, title, subtitle, a **View** menu                                                     |
+| `≥ md`       | Same, plus **Activity** and the badge, view controls unfolded in the bar as **icons only** |
 
-**`Activity` stays inline at every width**, and never enters a menu. Its icon
-carries the unread badge, the only sign that a conversation has moved
-somewhere; tucked into the menu, it would no longer signal anything. Exactly
-the rule for the viewer's "Comments" button, for the same reason. The button is
-declared through the `feed` prop and not in the `actions` array, which is
-precisely what falls back into the menu.
+**`Activity` never enters a menu.** Its icon carries the unread badge, the only
+sign that a conversation has moved somewhere; tucked into the menu, it would no
+longer signal anything. Exactly the rule for the viewer's "Comments" button, for
+the same reason. The button is declared through the `feed` prop and not in the
+`actions` array, which is precisely what falls back into the menu. Below `md` it
+is not folded either but **moved**, badge included, to the tab that now owns it.
 
 The thresholds come from measurements, not an aesthetic choice. At 393 px,
 five aligned controls pushed the view toggles onto **a second row of their
@@ -278,15 +313,19 @@ first" on its own sat wider than the album subtitle, for a setting touched
 once per visit. Both controls name themselves on hover — tooltip and
 accessible name carry both the state **and** the effect of the click, "Newest
 first — Show oldest first" —, and their state reads from the artwork: the
-direction of the arrow, one or two lines in the calendar. Under `sm` it is the
+direction of the arrow, one or two lines in the calendar. Under `md` it is the
 menu that names them in full, where room is exactly what is least scarce.
 
-The buttons in the row are **36 px squares**, all of them. Without a label, two
-28 px targets sat next to the activity button, alone at its size, and the
-irregularity stood out on an otherwise aligned row.
+The buttons in the row are **36 px squares from `md`**, all of them. Without a
+label, two 28 px targets sat next to the activity button, alone at its size, and
+the irregularity stood out on an otherwise aligned row. Below `md` they are
+**48 px**: the target is a fingertip there, and 36 sits under both the 44 px iOS
+asks for and the 48 px of Material.
 
 The **View** menu only renders if the page declares controls; without this
-guard, `/` and `/admin` would offer a target under `sm` that opens nothing.
+guard, `/` and `/admin` would offer a target under `md` that opens nothing. It
+is the one control the bar keeps down there, because it acts on what the page is
+currently showing — everything else moved to the tabs.
 
 **The bar is a surface, not a portion of a page**: translucent `ink-800` over a
 body in `ink-900`, hairline in `ink-700`. It used to be `ink-900/85`, exactly
@@ -321,7 +360,7 @@ would impose the same size on both — which used to be the case, and the
 four-pixel gap with the activity button was visible as soon as the label
 stopped hiding it.
 
-**The account fits in a badge**, at every width. Admin, Sign out and Install
+**The account fits in a badge**, from `md`. Admin, Sign out and Install
 used to be three buttons aligned in the bar, and the signed-in identifier lived
 in the album list's subtitle — on the left, under "Albums", far from the
 buttons it relates to, and in the spot an album page gives to the item count
@@ -356,6 +395,57 @@ press must not do both.
 
 A shared component rather than a menu per call site: these are the three
 closing rules that would get rewritten slightly wrong the second time around.
+
+It opens **below** its button, or above it when `placement="above"` says so. A
+control sitting on the bottom edge of the screen — the Account tab — has nothing
+underneath it to open into.
+
+**What the menu contains lives in `components/AccountMenu.tsx`**, not in the
+bar. Two surfaces open the same list: the badge above `md` and the Account tab
+below it. Written in `TopBar`, a second copy would have drifted the day a
+language or an action was added, and the divergence would have shown on only one
+of the two screens. `AccountMenu` also owns the `InstallInstructions` dialog,
+which the Install entry opens.
+
+## Bottom tabs — `components/BottomTabs.tsx`
+
+Below `md` only. Albums, Search, Activity, Account: a 56 px row of four equal
+columns, a hairline above it, and `env(safe-area-inset-bottom)` as padding
+**underneath** rather than as part of the height — an iPhone's home bar pushes
+the tabs up instead of overlapping them, and the row keeps its 56 px on every
+device.
+
+A grid of four columns, not a flex row: each tab is a quarter of the width
+whatever the length of its name. Fitted to the text, the targets would move
+between English and French, and a thumb aims at a position it already knows.
+
+**Each tab names itself under its icon, permanently.** This is the one place
+D90's rule does not hold: a finger has no hover, so an unnamed icon down here
+would never say what it is. There is room for it — four tabs across a phone
+screen, against the seven controls the bar had to fit onto one row.
+
+| Tab      | What it does                                                                                                                |
+| -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Albums   | `/`. Current on the album list **and** inside an album, viewer included: the viewer covers the grid rather than leaving it. |
+| Search   | Returns to `/` and focuses the field in the bar. **No route.**                                                              |
+| Activity | Opens the drawer, and carries the unread badge, capped at "9+"                                                              |
+| Account  | The `AccountMenu` the badge opens above `md`, anchored upwards                                                              |
+
+**Search creates no route** on purpose. The field already answers across the
+whole library from the bar; a results page would be a second place to search
+from. The handover crosses a navigation that unmounts the very tab that was
+pressed, so component state cannot carry it: the request waits at module level
+in `SearchBox.tsx` until the field that answers it is mounted, and is honoured
+then.
+
+Every page mounting the tabs **reserves their height** at the bottom of its
+`main`. The bar is `fixed` and outside the flow; without the reservation, the
+last row of albums ends underneath it.
+
+Administration mounts them too, and therefore the activity drawer, which it did
+not have before. A tab that does nothing on one page is exactly the irregularity
+these tabs remove — and the drawer's scope is global anyway, every album the
+account can see.
 
 ### Search — `components/SearchBox.tsx` and `lib/useDebounced.ts`
 
@@ -2104,6 +2194,19 @@ There is **no** light theme and no toggle: `index.html` hardcodes
 `class="dark"` and `<meta name="color-scheme" content="dark">`. Adding a
 light theme means doubling the `ink-*` scale, not flipping a variable.
 
+**The type scale is 5 % larger below `md`.** The sizes were chosen at desk
+reading distance; a phone is held further from the eye and read in motion.
+Tailwind v4 emits `font-size: var(--text-sm)` for every size utility, so
+redefining `--text-xs` … `--text-xl` inside one `@media` block is enough and
+**no class changes** — a `text-sm md:text-xs` on each of the several hundred
+call sites would say the same thing several hundred times. Line heights follow
+on their own: Tailwind expresses them as unitless ratios, `calc(1.25 / 0.875)`,
+which multiply whatever font size is in force.
+
+Deliberately **not** `html { font-size }`, the usual way to do this: `rem` is
+also the unit of the entire spacing scale, and every padding, gap and fixed
+height in the application would grow with the text.
+
 The rest of `styles.css`: full height on `html/body/#root`, discreet
 scrollbars, a `:focus-visible` focus ring only (the app is driven by arrow
 keys, the active target must stay identifiable), and two animations —
@@ -2388,9 +2491,15 @@ anchors under its button.
 
 ### Safe areas
 
-Only two places, where standalone mode genuinely breaks something.
-Elsewhere, the application does not touch the edges.
+Only where standalone mode genuinely breaks something. Elsewhere, the
+application does not touch the edges.
 
+- `TopBar` — its first row sat under the clock: `pt-[env(safe-area-inset-top)]`.
+  Padding rather than a margin, so the surface still reaches the top of the
+  screen and the status bar keeps a background behind it.
+- `BottomTabs` — the same, at the other end and for the home bar:
+  `pb-[env(safe-area-inset-bottom)]`, added **under** the 56 px row rather than
+  taken out of it. The pages reserving that height reserve the inset with it.
 - `CommentsPanel` — the form anchored at the bottom would slide under the
   iPhone's home bar: `pb-[calc(1rem_+_env(safe-area-inset-bottom))]`.
 - `Lightbox` — in landscape, the notch covers the Close button exactly:

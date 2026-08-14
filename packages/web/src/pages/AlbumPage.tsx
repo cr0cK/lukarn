@@ -9,6 +9,7 @@ import { type ReactElement, useCallback, useEffect, useRef, useState } from 'rea
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
 import { AlbumDescription } from '../components/AlbumDescription';
+import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { Lightbox } from '../components/Lightbox';
@@ -385,7 +386,9 @@ export default function AlbumPage(): ReactElement {
         ]}
       />
 
-      <main className="mx-auto max-w-[2000px] px-4 py-4 sm:px-6">
+      {/* The tab bar is `fixed` and therefore outside the flow: the page reserves
+          its height itself, or the last row of photos would end underneath it. */}
+      <main className="mx-auto max-w-[2000px] px-4 py-4 pb-[calc(5rem_+_env(safe-area-inset-bottom))] sm:px-6 md:pb-4">
         {album.data && (
           <AlbumDescription
             albumId={albumId}
@@ -437,6 +440,10 @@ export default function AlbumPage(): ReactElement {
           </div>
         )}
       </main>
+
+      {/* The open viewer still belongs to Albums: it covers the grid rather than
+          leaving it, and Back returns there. */}
+      <BottomTabs current="albums" activity={activity} />
 
       {isOpen && (
         <Lightbox

@@ -59,6 +59,14 @@ export const fr: Messages = {
   'topbar.actionTooltip': (state: string, action: string) => `${state} — ${action}`,
   'topbar.actionLabel': (state: string, action: string) => `${state}. ${action}.`,
 
+  /* ---------------------------------------------------- Onglets bas (téléphone) */
+
+  'tabs.label': 'Sections principales',
+  'tabs.albums': 'Albums',
+  'tabs.search': 'Recherche',
+  'tabs.activity': 'Activité',
+  'tabs.account': 'Compte',
+
   /* --------------------------------------------------------------- Search */
 
   'search.label': 'Rechercher',

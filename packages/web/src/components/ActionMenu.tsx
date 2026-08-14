@@ -29,6 +29,12 @@ interface ActionMenuProps {
   trigger?: ReactNode;
   /** Button styling: the bar and viewer have different backgrounds. */
   triggerClassName?: string;
+  /**
+   * Which side of the button the panel opens on. `below` everywhere a control
+   * sits at the top of the screen; `above` for the bottom tab bar, where there
+   * is nothing under the button but the edge of the screen.
+   */
+  placement?: 'below' | 'above';
 }
 
 const TRIGGER_PAR_DEFAUT =
@@ -51,6 +57,7 @@ export function ActionMenu({
   label,
   trigger,
   triggerClassName = TRIGGER_PAR_DEFAUT,
+  placement = 'below',
 }: ActionMenuProps): ReactElement {
   const t = useT();
   const nom = label ?? t('common.menu');
@@ -106,7 +113,11 @@ export function ActionMenu({
       </button>
 
       {ouvert && (
-        <div className="absolute top-full right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl">
+        <div
+          className={`absolute right-0 z-40 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl ${
+            placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
+          }`}
+        >
           {/* Outside `role="menu"`, which accepts only `menuitem`: these lines
               cannot be selected. `title` is present because a slightly long
               address is truncated rather than widening the menu. */}

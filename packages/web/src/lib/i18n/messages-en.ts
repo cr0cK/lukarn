@@ -66,6 +66,17 @@ export const en = {
   'topbar.actionTooltip': (state: string, action: string) => `${state} — ${action}`,
   'topbar.actionLabel': (state: string, action: string) => `${state}. ${action}.`,
 
+  /* ------------------------------------------------------ Bottom tabs (phone) */
+
+  // Deliberately shorter than the same things named in the bar: "Recent
+  // activity" under an icon would wrap onto three lines in a quarter of a
+  // 390 px screen. The accessible name keeps the long form, badge included.
+  'tabs.label': 'Main sections',
+  'tabs.albums': 'Albums',
+  'tabs.search': 'Search',
+  'tabs.activity': 'Activity',
+  'tabs.account': 'Account',
+
   /* --------------------------------------------------------------- Search */
 
   'search.label': 'Search',

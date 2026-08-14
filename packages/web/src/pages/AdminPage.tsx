@@ -3,6 +3,8 @@ import { type ReactElement, useState } from 'react';
 import { Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { errorText } from '../api/client';
 import { useAdminAlbums, useAdminStatus } from '../api/hooks';
+import { BottomTabs } from '../components/BottomTabs';
+import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { Spinner } from '../components/Spinner';
 import { useT, type MessageKey } from '../lib/i18n';
 import { TopBar } from '../components/TopBar';
@@ -33,6 +35,10 @@ export default function AdminPage(): ReactElement {
   const albums = useAdminAlbums();
   const [searchParams, setSearchParams] = useSearchParams();
   const [notice, setNotice] = useState<Notice | null>(null);
+  // Administration also carries the tab bar on a phone, and a tab that does
+  // nothing on one page is exactly the irregularity these tabs remove. The
+  // drawer is global anyway — its scope is `null`, every album the account sees.
+  const activity = useActivityFeed();
 
   const oauthResult = searchParams.get('oauth');
   const retourOauth = oauthResult ? OAUTH_MESSAGES[oauthResult] : undefined;
@@ -101,7 +107,9 @@ export default function AdminPage(): ReactElement {
       {/* Use 90 rem rather than the original 64 rem: the content column grows from
           760 to 1170 px on a laptop, where album rows truncated their title while
           one third of the screen remained empty on either side. */}
-      <main className="mx-auto flex max-w-[90rem] flex-col gap-6 px-4 py-6 sm:px-6 md:flex-row">
+      {/* The tab bar is `fixed` and therefore outside the flow: the page reserves
+          its height itself, or the last setting would end underneath it. */}
+      <main className="mx-auto flex max-w-[90rem] flex-col gap-6 px-4 py-6 pb-[calc(5rem_+_env(safe-area-inset-bottom))] sm:px-6 md:flex-row md:pb-6">
         <AdminNav />
 
         <div className="min-w-0 flex-1 space-y-6">
@@ -130,6 +138,12 @@ export default function AdminPage(): ReactElement {
           {rubrique(tab)}
         </div>
       </main>
+
+      <BottomTabs current={null} activity={activity} />
+
+      {activity.isOpen && (
+        <CommentsFeed albumId={null} albumTitle={null} onClose={activity.close} />
+      )}
     </div>
   );
 }
