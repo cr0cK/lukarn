@@ -1,4 +1,5 @@
-import { dirname } from 'node:path';
+import { readdir } from 'node:fs/promises';
+import { dirname, extname, join } from 'node:path';
 import sharp from 'sharp';
 import { ConfigRepo } from '../config-repo.js';
 import { openDb } from '../db.js';
@@ -12,10 +13,15 @@ import { MediaRepo, SyncStateRepo, type MediaUpsert } from '../repo.js';
  * Demonstration dataset for developing and checking the interface without a Google
  * Drive account.
  *
- *   pnpm --filter @lukarn/server seed-demo [count]
+ *   pnpm --filter @lukarn/server seed-demo [count] [--photos <directory>]
  *
  * Inserts media into the index **and** pre-fills the cache with locally generated
  * images: the rendering pipeline finds everything cached and never contacts Drive.
+ *
+ * `--photos` fills the cache from real photographs instead, cycling through the
+ * directory. Generated gradients are readable but uniform, and their flat areas hide
+ * exactly what a photograph reveals — banding, thumbnail sharpness, a justified row
+ * built from mixed proportions. The screenshots in `README.md` come from this path.
  *
  * Do not run on a real instance — the next synchronisation would delete these entries,
  * but they would pollute albums meanwhile.
@@ -118,6 +124,50 @@ async function renderPlaceholder(
   return sharp(Buffer.from(svg)).webp({ quality: 80 }).toBuffer();
 }
 
+/** A photograph read from `--photos`, with the dimensions the index must record. */
+type Source = { path: string; width: number; height: number };
+
+const READABLE = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.tif', '.tiff']);
+
+/**
+ * Reads a directory of photographs, keeping the dimensions of each.
+ *
+ * The index stores width and height, and the grid computes its layout from them before
+ * a single image loads: inventing them here would justify rows against proportions the
+ * files do not have, and every tile would shift once loaded.
+ */
+async function readSources(dir: string): Promise<Source[]> {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const sources: Source[] = [];
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !READABLE.has(extname(entry.name).toLowerCase())) continue;
+    const path = join(dir, entry.name);
+    const { width, height, orientation } = await sharp(path).metadata();
+    if (!width || !height) continue;
+    // Orientations 5 to 8 are quarter turns: the file stores its pixels one way and
+    // asks viewers to display them the other. `renderSource` applies the rotation, so
+    // the index must record the dimensions after it, not the ones on disk.
+    const turned = orientation !== undefined && orientation >= 5;
+    sources.push({ path, width: turned ? height : width, height: turned ? width : height });
+  }
+
+  if (sources.length === 0) throw new Error(`No readable image in ${dir}`);
+  return sources.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * Renders one variant from a real photograph, matching `renderPlaceholder`'s contract:
+ * a WebP no larger than `edge` on its longest side, never enlarged.
+ */
+async function renderSource(source: Source, edge: number): Promise<Buffer> {
+  return sharp(source.path)
+    .rotate()
+    .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 80 })
+    .toBuffer();
+}
+
 /** Position of a demo photo: two out of three have none. */
 function position(index: number): { lat: number | null; lng: number | null } {
   if (index % 3 !== 0) return { lat: null, lng: null };
@@ -162,10 +212,24 @@ function labelDemoCells(db: ReturnType<typeof openDb>): number {
 async function main(): Promise<void> {
   const envFile = loadDotEnv();
 
-  const count = Number(process.argv[2] ?? 240);
+  const args = process.argv.slice(2);
+  const photosAt = args.indexOf('--photos');
+  const photosDir = photosAt === -1 ? null : args[photosAt + 1];
+  if (photosAt !== -1 && !photosDir) {
+    throw new Error('--photos expects a directory');
+  }
+
+  const positional = args.filter((_, i) => i !== photosAt && i !== photosAt + 1);
+  const count = Number(positional[0] ?? 240);
   if (!Number.isFinite(count) || count <= 0) {
     throw new Error('Invalid media count');
   }
+
+  // Real photographs make the interface behave as it will in service: flat gradients
+  // hide banding in the WebP encoder, and their uniform proportions never exercise a
+  // justified row the way a mixed set does.
+  const sources = photosDir ? await readSources(photosDir) : null;
+  if (sources) console.log(`${sources.length} photographs read from ${photosDir}`);
 
   const env = loadEnv(process.env, envFile ? dirname(envFile) : process.cwd());
   const db = openDb(env.dataDir);
@@ -194,7 +258,10 @@ async function main(): Promise<void> {
     const baseMonth = albumIndex * 5;
 
     for (let index = 0; index < count; index++) {
-      const shape = SHAPES[index % SHAPES.length]!;
+      // Offset per album, otherwise every album starts on the same photograph and
+      // their covers are identical — which reads as a bug rather than as demo data.
+      const source = sources ? sources[(index + albumIndex * 7) % sources.length]! : null;
+      const shape = source ?? SHAPES[index % SHAPES.length]!;
       const camera = CAMERAS[index % CAMERAS.length]!;
       const id = `demo-${album.id}-${String(index).padStart(4, '0')}`;
 
@@ -249,7 +316,12 @@ async function main(): Promise<void> {
       }
 
       for (const [key, edge] of variantes) {
-        await cache.put(key, await renderPlaceholder(index, shape.width, shape.height, edge));
+        await cache.put(
+          key,
+          source
+            ? await renderSource(source, edge)
+            : await renderPlaceholder(index, shape.width, shape.height, edge),
+        );
       }
 
       created++;

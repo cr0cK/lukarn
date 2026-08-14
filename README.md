@@ -37,6 +37,30 @@ open them — enough to share one album without exposing the rest of the Drive.
 | Report a vulnerability      | [`SECURITY.md`](./SECURITY.md)                                                 |
 | See what changed            | [`CHANGELOG.md`](./CHANGELOG.md)                                               |
 
+## What it looks like
+
+<img src="./assets/screenshots/grid.jpg" alt="An album grouped by month: a justified grid of photographs of mixed proportions, with a video tile carrying its duration">
+
+A justified grid, grouped by month or by day. Proportions are known before a single
+image loads, so rows are laid out once and never move.
+
+<img src="./assets/screenshots/viewer.jpg" alt="The fullscreen viewer with its information panel: place, capture date, dimensions, camera, lens, aperture, shutter, ISO and position">
+
+The viewer, and everything the file knows about itself. The place comes from the
+photographs of that day, named by reverse geocoding rather than typed in.
+
+<img src="./assets/screenshots/comments.jpg" alt="The comments panel on a photograph: two conversations, one carrying a reply">
+
+A conversation under the photograph, with one level of reply. A credential may be
+shared by a household, so each writer declares a name and an address, confirmed by a
+code received by email.
+
+<img src="./assets/screenshots/tour.gif" alt="Signing in, opening an album, scrolling the grid, opening a photograph, then its information and its comments">
+
+Screenshots come from `seed-demo --photos`, on
+[public-domain and CC0 photographs](https://commons.wikimedia.org/) — no Drive
+account, and nobody's family in a public README.
+
 ## Two authentications, not to be confused
 
 |                         | Who           | When                  | What it opens                  |
