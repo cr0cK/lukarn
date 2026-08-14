@@ -238,10 +238,18 @@ One rule divides the whole application chrome
 **the top bar describes the page, and below `md` (768 px) a bottom bar navigates
 between pages.**
 
-| Width  | Top bar carries                                          | Bottom    |
-| ------ | -------------------------------------------------------- | --------- |
-| `< md` | Back, title, subtitle, search field, the **View** menu   | Four tabs |
-| `≥ md` | All of the above **plus** activity and the account badge | Nothing   |
+| Width  | Top bar carries                                          | Bottom                          |
+| ------ | -------------------------------------------------------- | ------------------------------- |
+| `< md` | Back, title, subtitle, the **View** menu                 | Four tabs; the viewer's actions |
+| `≥ md` | All of the above **plus** search, activity and the badge | Nothing                         |
+
+The rule holds inside the viewer too
+([D260814d](./08-decisions/D260814d-the-phone-rule-reaches-the-viewer-and-the-pinch-reaches-the-photo.md)):
+its header identifies the photo and lets you out, and everything acting on it
+sits in the sheet at the bottom. What stopped halfway read as one defect rather
+than three — a Search tab that moved focus to the top bar, a Comments button in
+the header **and** a Comments tab in the sheet, and a kebab of actions nobody's
+thumb reached.
 
 Above `md`, nothing on this page has changed: the tab bar is `md:hidden`, and
 every rule below that mentions a threshold applies where it always did. What
@@ -431,16 +439,17 @@ screen, against the seven controls the bar had to fit onto one row.
 | Tab      | What it does                                                                                                                |
 | -------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Albums   | `/`. Current on the album list **and** inside an album, viewer included: the viewer covers the grid rather than leaving it. |
-| Search   | Returns to `/` and focuses the field in the bar. **No route.**                                                              |
+| Search   | Opens the search sheet, keyboard raised. **No route.**                                                                      |
 | Activity | Opens the drawer, and carries the unread badge, capped at "9+"                                                              |
 | Account  | The `AccountMenu` the badge opens above `md`, anchored upwards                                                              |
 
-**Search creates no route** on purpose. The field already answers across the
-whole library from the bar; a results page would be a second place to search
-from. The handover crosses a navigation that unmounts the very tab that was
-pressed, so component state cannot carry it: the request waits at module level
-in `SearchBox.tsx` until the field that answers it is mounted, and is honoured
-then.
+**Search creates no route** on purpose: the field answers across the whole
+library, so a results page would be a second place to search from. It opens
+**where the tab is**, as a sheet — it used to send focus to the field in the top
+bar, a control at the bottom whose effect appeared at the top, above a keyboard
+that then covered the results (D260814d). Opening in place also means searching
+from inside an album no longer leaves it, which removed the focus request that
+previously had to survive that navigation at module level.
 
 Every page mounting the tabs **reserves their height** at the bottom of its
 `main`. The bar is `fixed` and outside the flow; without the reservation, the
@@ -452,6 +461,16 @@ these tabs remove — and the drawer's scope is global anyway, every album the
 account can see.
 
 ### Search — `components/SearchBox.tsx` and `lib/useDebounced.ts`
+
+**Two shapes.** From `md` it is a field centred in the top bar with its results
+hanging beneath. Below `md` it is not in the bar at all: the Search tab opens it
+as a sheet — field first with the keyboard raised, results filling the rest — so
+the control and its effect are at the same end of the screen. It still creates
+no route, and searching from inside an album no longer means leaving it.
+
+The field is `text-base` in that sheet and never smaller. iOS zooms the whole
+page in when a field under 16 px takes focus and does not come back on its own;
+at the mobile type scale `text-sm` is 14.7 px, which is exactly the trap.
 
 **On the home page only.** Search covers the entire library, and it is past
 about twenty albums that "where are the photos from Marseille" stops having an
@@ -1000,9 +1019,9 @@ between two key presses.
 
 #### No touch gesture works without `touch-action`
 
-The viewer's photo column carries `touch-pinch-zoom`, and that is what makes
-its two gestures possible: swiping from one photo to another, and panning
-inside an enlarged photo. With the default value `auto`, the browser keeps the
+The viewer's photo column carries `touch-none`, and that is what makes its three
+gestures possible: swiping from one photo to another, panning inside an enlarged
+photo, and pinching it. With the default value `auto`, the browser keeps the
 right to interpret a one-finger drag as scrolling; it settles on that after
 one or two `pointermove` events, emits `pointercancel`, and the handlers
 abandon the gesture. Swiping then never reached its `pointerup`, and the
@@ -1011,9 +1030,16 @@ not an interruption. `setPointerCapture` does not protect against this: it
 guarantees receiving the rest of the events, it does not stop the browser from
 cancelling the gesture.
 
-`pinch-zoom` rather than `none`: it removes only one-finger scrolling and
-leaves two-finger pinching, which the viewer needs (see the Zoom section). The
-declaration lives on the column, not on `ZoomableImage`'s container: the rule
+It was `pinch-zoom` for a while, which left the two-finger gesture to the
+browser's own page zoom. That looked like the humbler choice and was the wrong
+one: page zoom magnifies pixels that have already been rasterised, so pinching
+a photo in a photo viewer softened it instead of fetching the sharper variant.
+`ZoomableImage` now handles the pinch itself and `none` is what lets it
+([D260814d](./08-decisions/D260814d-the-phone-rule-reaches-the-viewer-and-the-pinch-reaches-the-photo.md)).
+Nothing is lost by taking it: the viewer is `fixed` over a frozen body, so no
+page remains to pan or zoom there.
+
+The declaration lives on the column, not on `ZoomableImage`'s container: the rule
 is the same for everything inside it, and a descendant inherits it through
 intersection — the position marker therefore has nothing to declare. A video
 is excluded from it, its native playback controls having their own touch
@@ -1061,11 +1087,12 @@ as the emergency exit.
   hover already names every control, the arrows are how a mouse navigates, and
   no screen edge needs reclaiming.
 
-  Zoom therefore moves to a **double** tap on touch, and this is a cost. A single
-  tap was the only way to enlarge a photo with a finger, since
-  `touch-action: pinch-zoom` hands two fingers to the browser's own page zoom,
-  which magnifies rendered pixels rather than requesting the 4096 px variant.
-  Each single tap now waits 250 ms to learn whether a second one follows.
+  Zoom therefore moves to a **double** tap on touch, and each single tap waits
+  250 ms to learn whether a second one follows. That cost was briefly the whole
+  of zoom on a phone: two fingers went to the browser's page zoom, so the single
+  tap had been the only way to enlarge a photo. It is not any more — the pinch
+  reaches the photo now (see Zoom), and the double tap is the shortcut beside it
+  rather than the only door.
 
 - **Opening carries the thumbnail into place.** `lib/viewTransition.ts` runs the
   URL change inside `document.startViewTransition`, with the tile and then the
@@ -1080,6 +1107,20 @@ as the emergency exit.
   would have to be given to the destination after the update rather than before
   it, and the thumbnail may have been unmounted by the virtualiser after a swipe
   through fifty photos.
+
+- **Nothing actionable in the header below `md`.** Close, the album and the date;
+  everything acting on the photo is the sheet's first row — Info · Comments ·
+  Download · overflow — at the edge the thumb is already on. That row **is** the
+  panel's tab strip: Info and Comments open the sheet on their tab and then show
+  which is open, so `PanelBody` renders without tabs of its own down there. One
+  pair of choices, where the header button and the sheet tab used to make two.
+
+  From `md` the row returns to the header: a cursor reaches the top of the screen
+  as easily as the bottom, and hover names every icon. Comments never enters the
+  overflow menu at any width — its icon carries the unread badge, and a badge
+  inside a closed menu signals nothing. Each action declares a stable `key`,
+  because the row partitions the list and matching on `label` would break
+  silently the day one is translated.
 
 - **The header locates, the bottom strip narrates.** At the top: the album
   and the day on one line, the place on the next — what situates the image.
@@ -1478,17 +1519,27 @@ pixels already rasterised. On the first zoom-in, the component loads the
 ready — then keeps it, because switching back to `full` when returning to the
 frame would make the image flicker on every round trip.
 
-**The page's native pinch also counts as a zoom-in.** On a phone, nobody uses
-the application's own zoom: people pinch the screen with two fingers, and
-that is the right gesture — intercepting it with a homemade handler would
-conflict with navigation swiping, to redo worse what the system already does.
-But the browser then re-rasterises from the `full` render (2560 px), which
-turns soft beyond roughly 2×. An effect therefore watches
-`window.visualViewport` and triggers loading of `hd` as soon as
-`viewport.scale > 1`: the scale is read once on open (the page may already be
-pinched), then on `resize` **and** `scroll`, since engines do not signal a
-pinch the same way. Nothing downloads until a pinch happens — `hd` is heavy,
-and on mobile data the cost is real.
+**Two fingers on the photo are the application's own zoom.** This is the gesture
+everyone tries first, and it belongs to `ZoomableImage`: a second pointer turns
+whatever was happening into a pinch, and the scale it produces goes through the
+same `applyScale` as the wheel and the double tap — so it clamps identically and
+triggers the `hd` variant identically. Handing it to the browser's page zoom, as
+this did until D260814d, magnified pixels already rasterised from the 2560 px
+`full` render; the photo softened rather than sharpened.
+
+Two details are what make it feel right. The **focus is fixed** at the start
+rather than recomputed each frame: a midpoint that follows drifts with the
+smallest asymmetry between two fingers, and the photo slides out from under
+them. And the second finger **cancels** the pan in progress and any first tap
+still waiting for a partner — letting either survive made the photo jump when
+the fingers lifted.
+
+A pinch started **outside** the frame is still the browser's page zoom, and the
+effect watching `window.visualViewport` remains for it: it triggers loading of
+`hd` as soon as `viewport.scale > 1`, read once on open (the page may already be
+pinched), then on `resize` **and** `scroll`, since engines do not signal a pinch
+the same way. Nothing downloads until one happens — `hd` is heavy, and on mobile
+data the cost is real.
 
 **Click and drag are told apart on release**, in the container's
 `onPointerUp`, not via an `onClick` on the image. The reason is mechanical:

@@ -536,6 +536,12 @@ export function Lightbox({
   const isCover = item.id === coverId;
 
   const actions: {
+    /**
+     * Stable name, used to split this list between the phone's action row and its
+     * overflow menu. Matching on `label` would break the day somebody translates
+     * it, and silently: the menu would simply hold one entry more.
+     */
+    key: 'info' | 'zoom' | 'download' | 'fullscreen' | 'bare' | 'cover';
     label: string;
     /** Absent for an action without a shortcut: see "Set as cover". */
     shortcut?: string;
@@ -544,6 +550,7 @@ export function Lightbox({
     onSelect: () => void;
   }[] = [
     {
+      key: 'info',
       label: t('viewer.information'),
       shortcut: 'i',
       active: panel === 'info',
@@ -559,6 +566,7 @@ export function Lightbox({
       ? []
       : [
           {
+            key: 'zoom' as const,
             label: t(zoomed ? 'viewer.zoomOut' : 'viewer.zoomIn'),
             shortcut: 'z',
             active: zoomed,
@@ -572,18 +580,21 @@ export function Lightbox({
           },
         ]),
     {
+      key: 'download',
       label: t('viewer.download'),
       shortcut: 'd',
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
     {
+      key: 'fullscreen',
       label: t('viewer.fullscreen'),
       shortcut: 'f',
       onSelect: toggleFullscreen,
       icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
     },
     {
+      key: 'bare',
       label: t('viewer.hideChrome'),
       shortcut: 'h',
       onSelect: () => setBare(true),
@@ -610,6 +621,7 @@ export function Lightbox({
     ...(isAdmin && !isVideo
       ? [
           {
+            key: 'cover' as const,
             label: t(isCover ? 'viewer.cover' : 'viewer.setCover'),
             active: isCover,
             onSelect: () => setCover.mutate({ albumId, body: { coverId: item.id } }),
@@ -748,10 +760,16 @@ export function Lightbox({
               )}
             </div>
 
-            {/* Comments **always** remain inline, unlike other actions: their icon
-                carries the unread badge, the only sign that a photo has comments.
-                Inside the menu, it would no longer signal anything. */}
-            <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
+            {/* **Nothing actionable up here below `md`.** The header identifies
+                the photo and offers the way out; everything that acts on it sits
+                in the sheet's action row, at the edge the thumb is already on
+                (D260814d). From `md` the row returns: a cursor reaches the top of
+                the screen as easily as the bottom, and hover names every icon.
+
+                Comments never enters the overflow menu even there: its icon
+                carries the unread badge, the only sign that a photo has a
+                conversation, and a badge inside a closed menu signals nothing. */}
+            <div className="hidden shrink-0 items-center gap-0.5 md:flex md:gap-2">
               <IconButton
                 label={commentsLabel(commentTotal, unread, t)}
                 active={panel === 'comments'}
@@ -761,50 +779,20 @@ export function Lightbox({
                 <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
               </IconButton>
 
-              {/* From `sm` upwards there is room, so everything aligns. */}
-              <div className="hidden items-center gap-0.5 sm:flex sm:gap-2">
-                {actions.map((action) => (
-                  <IconButton
-                    key={action.label}
-                    label={
-                      action.shortcut
-                        ? t('viewer.shortcut', action.label, action.shortcut)
-                        : action.label
-                    }
-                    active={action.active}
-                    onClick={action.onSelect}
-                  >
-                    {action.icon}
-                  </IconButton>
-                ))}
-              </div>
-
-              <div className="sm:hidden">
-                <ActionMenu
-                  label={t('viewer.actions')}
-                  triggerClassName="rounded-full p-1.5 text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
-                  groupes={[
-                    actions.map((action) => ({
-                      // Omit the keyboard shortcut: this menu opens only by touch,
-                      // where "(i)" is only another syllable to read.
-                      label: action.label,
-                      icon: (
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="size-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          {action.icon}
-                        </svg>
-                      ),
-                      onSelect: action.onSelect,
-                    })),
-                  ]}
-                />
-              </div>
+              {actions.map((action) => (
+                <IconButton
+                  key={action.label}
+                  label={
+                    action.shortcut
+                      ? t('viewer.shortcut', action.label, action.shortcut)
+                      : action.label
+                  }
+                  active={action.active}
+                  onClick={action.onSelect}
+                >
+                  {action.icon}
+                </IconButton>
+              ))}
             </div>
           </div>
         </header>
@@ -817,17 +805,20 @@ export function Lightbox({
             interruption. `setPointerCapture` changes nothing: it guarantees the
             remaining events, not the survival of the gesture.
 
-            Use `pinch-zoom` rather than `none`: it removes only one-finger
-            scrolling and preserves the two-finger pinch, still the natural zoom
-            gesture on a phone. Set it here rather than in `ZoomableImage` because
-            the rule is shared by the whole column and descendants inherit it by
+            Use `none` rather than `pinch-zoom`: the two-finger pinch now belongs
+            to `ZoomableImage`, which scales the **photo** and fetches the 4096 px
+            variant, where the browser's own page zoom magnified pixels already
+            rendered (D260814d). Nothing is lost by taking it: the viewer is
+            `fixed` over a frozen body, so there is no page left to pan or scroll
+            here. Set it on the column rather than in `ZoomableImage` because the
+            rule is shared by everything in it and descendants inherit it by
             intersection (D77).
 
             Except on video, whose native playback controls handle touch
             themselves — swiping is already disabled there. */}
         <div
           className={`relative flex flex-1 items-center justify-center overflow-hidden ${
-            isVideo ? '' : 'touch-pinch-zoom'
+            isVideo ? '' : 'touch-none'
           }`}
           {...swipe.handlers}
           onPointerDownCapture={dismissPanelOnOutsideClick}
@@ -1111,8 +1102,17 @@ export function Lightbox({
             <SheetPeek
               day={dayLabel(dayKey(item.takenAt), t)}
               place={dayPlace}
-              comments={commentTotal}
-              t={t}
+              actions={
+                <SheetActions
+                  panel={panel}
+                  onPanel={(next) => onPanelChange(next)}
+                  commentTotal={commentTotal}
+                  unread={unread}
+                  overflow={actions.filter((action) => action.key !== 'info')}
+                  onDownload={download}
+                  t={t}
+                />
+              }
             >
               <MediaCaption
                 key={item.id}
@@ -1142,6 +1142,8 @@ export function Lightbox({
               day={days.get(dayKey(item.takenAt))}
               tab={panel}
               onTabChange={onPanelChange}
+              // The action row above already carries Info and Comments.
+              tabs={false}
             />
           )}
         </Sheet>
@@ -1151,41 +1153,175 @@ export function Lightbox({
 }
 
 /**
- * The sheet's resting stop: where and when, then what was written about it.
+ * The sheet's resting stop: what can be done, where and when, then what was
+ * written about the photo.
  *
- * The day and place come from the header, which is hidden by default on a touch
- * screen — without them the sheet would open on a description with nothing
- * saying which photo it belongs to. The comment count is here rather than only
- * inside the panel because it is the reason to pull the sheet up at all.
+ * The actions come **first** because they are why a thumb reaches down here; the
+ * day and place follow because the header carrying them is hidden by default on
+ * a touch screen, and without them the sheet would open on a description with
+ * nothing saying which photo it describes.
  */
 function SheetPeek({
   day,
   place,
-  comments,
-  t,
+  actions,
   children,
 }: {
   day: string;
   place: string | null;
-  comments: number;
-  t: Translate;
+  actions: ReactNode;
   children: ReactNode;
 }): ReactElement {
   return (
-    <div className="px-4 pb-1">
-      <div className="flex items-baseline gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-100">
+    <div className="pb-1">
+      {actions}
+      <div className="px-4">
+        <p className="truncate text-sm font-medium text-ink-100">
           {day}
           {place && <span className="text-ink-400"> · {place}</span>}
         </p>
-        {comments > 0 && (
-          <span className="shrink-0 rounded-full bg-ink-700 px-2 py-0.5 text-xs text-ink-200 tabular-nums">
-            {t('panel.commentCount', comments)}
-          </span>
-        )}
+        {children}
       </div>
-      {children}
     </div>
+  );
+}
+
+/**
+ * The viewer's actions, below `md`: a row at the top of the sheet.
+ *
+ * They used to live in the top bar — a corner of the screen a thumb reaches by
+ * shifting its grip, over a photo the whole point was to look at. Down here they
+ * sit where the hand already is, and the same row **is** the panel's tab strip:
+ * Info and Comments open the sheet on their tab and then show which one is
+ * showing, instead of a second pair of tabs a centimetre below (D260814d).
+ *
+ * Only those two are tabs. Download acts and returns nothing, and the rest go
+ * behind one overflow menu rather than four more targets in a 390 px row.
+ */
+function SheetActions({
+  panel,
+  onPanel,
+  commentTotal,
+  unread,
+  overflow,
+  onDownload,
+  t,
+}: {
+  panel: PanelTab | null;
+  onPanel: (panel: PanelTab | null) => void;
+  commentTotal: number;
+  unread: number;
+  overflow: { label: string; icon: ReactNode; active?: boolean; onSelect: () => void }[];
+  onDownload: () => void;
+  t: Translate;
+}): ReactElement {
+  return (
+    <div className="flex items-center gap-1 border-b border-ink-800 px-2 pb-2">
+      {/* `flex-[2]` for two children against Download's one: without it the pair
+          shares a single unit and Download gets a slot twice their width, which
+          reads as a gap somebody forgot to close. */}
+      <div role="tablist" aria-label={t('panel.sections')} className="flex flex-[2] gap-1">
+        <SheetAction
+          tab
+          selected={panel === 'info'}
+          label={t('panel.info')}
+          onSelect={() => onPanel(panel === 'info' ? null : 'info')}
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 7.5v.5" />
+        </SheetAction>
+
+        <SheetAction
+          tab
+          selected={panel === 'comments'}
+          label={t('panel.comments')}
+          announce={commentsLabel(commentTotal, unread, t)}
+          badge={<CommentBadge total={commentTotal} unread={unread} />}
+          onSelect={() => onPanel(panel === 'comments' ? null : 'comments')}
+        >
+          <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+        </SheetAction>
+      </div>
+
+      <SheetAction label={t('viewer.downloadShort')} onSelect={onDownload}>
+        <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+      </SheetAction>
+
+      <ActionMenu
+        label={t('viewer.actions')}
+        triggerClassName="flex min-h-12 min-w-12 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+        groupes={[
+          overflow.map((action) => ({
+            // Omit the keyboard shortcut: this menu opens by touch, where "(f)"
+            // is one more syllable to read and no key to press.
+            label: action.label,
+            icon: (
+              <svg
+                viewBox="0 0 24 24"
+                className="size-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                {action.icon}
+              </svg>
+            ),
+            onSelect: action.onSelect,
+          })),
+        ]}
+      />
+    </div>
+  );
+}
+
+/** One control in that row: a 48 px target, its name under the icon. */
+function SheetAction({
+  label,
+  announce,
+  onSelect,
+  selected = false,
+  tab = false,
+  badge,
+  children,
+}: {
+  label: string;
+  /** Accessible name when the visible one omits what the badge carries. */
+  announce?: string;
+  onSelect: () => void;
+  selected?: boolean;
+  tab?: boolean;
+  badge?: ReactNode;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      role={tab ? 'tab' : undefined}
+      aria-selected={tab ? selected : undefined}
+      aria-label={announce}
+      onClick={onSelect}
+      className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-[0.6875rem] leading-none transition-colors ${
+        selected ? 'bg-accent-soft text-ink-100' : 'text-ink-300 hover:bg-white/5'
+      }`}
+    >
+      <span className="relative">
+        <svg
+          viewBox="0 0 24 24"
+          className="size-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          {children}
+        </svg>
+        {badge}
+      </span>
+      {label}
+    </button>
   );
 }
 

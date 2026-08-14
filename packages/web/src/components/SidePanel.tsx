@@ -120,6 +120,7 @@ export function PanelBody({
   day,
   tab,
   onTabChange,
+  tabs = true,
 }: {
   albumId: string;
   mediaId: string;
@@ -127,30 +128,43 @@ export function PanelBody({
   day: AlbumDay | undefined;
   tab: PanelTab;
   onTabChange: (tab: PanelTab) => void;
+  /**
+   * `false` below `md`, where the sheet's own action row already carries Info and
+   * Comments. Rendering both put the same two choices twice on one screen, a
+   * centimetre apart — exactly the duplication the phone layout set out to remove
+   * (D260814d).
+   */
+  tabs?: boolean;
 }): ReactElement {
   const t = useT();
 
   return (
     <>
-      <div role="tablist" aria-label={t('panel.sections')} className="flex border-b border-ink-800">
-        <Tab selected={tab === 'info'} onSelect={() => onTabChange('info')} controls="panel-info">
-          {t('panel.info')}
-        </Tab>
-        <Tab
-          selected={tab === 'comments'}
-          onSelect={() => onTabChange('comments')}
-          controls="panel-comments"
+      {tabs && (
+        <div
+          role="tablist"
+          aria-label={t('panel.sections')}
+          className="flex border-b border-ink-800"
         >
-          {t('panel.comments')}
-          {/* The count comes from already loaded media detail: showing "3"
+          <Tab selected={tab === 'info'} onSelect={() => onTabChange('info')} controls="panel-info">
+            {t('panel.info')}
+          </Tab>
+          <Tab
+            selected={tab === 'comments'}
+            onSelect={() => onTabChange('comments')}
+            controls="panel-comments"
+          >
+            {t('panel.comments')}
+            {/* The count comes from already loaded media detail: showing "3"
               before the tab opens is what makes it worth reading. */}
-          {detail && detail.commentCount > 0 && (
-            <span className="ml-1.5 rounded-full bg-ink-700 px-1.5 py-0.5 text-[0.7rem] text-ink-200">
-              {detail.commentCount}
-            </span>
-          )}
-        </Tab>
-      </div>
+            {detail && detail.commentCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-ink-700 px-1.5 py-0.5 text-[0.7rem] text-ink-200">
+                {detail.commentCount}
+              </span>
+            )}
+          </Tab>
+        </div>
+      )}
 
       {tab === 'info' ? (
         <div id="panel-info" role="tabpanel" className="flex-1 overflow-y-auto">

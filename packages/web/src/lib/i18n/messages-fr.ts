@@ -271,7 +271,6 @@ export const fr: Messages = {
   'panel.sections': 'Onglets du panneau',
   'panel.info': 'Infos',
   'panel.comments': 'Commentaires',
-  'panel.commentCount': (count: number) => `${count} commentaire${count > 1 ? 's' : ''}`,
 
   /* ------------------------------------------------------------ EXIF rows */
 
