@@ -46,7 +46,11 @@ const PRELOAD_BEHIND = 1;
 const PLAYABLE_RETRY_MS = 20_000;
 
 /**
- * The viewer's sheet, below `md`: the caption at rest, the panel pulled up.
+ * The viewer's sheet, below `md`: the toolbar at rest, the panel pulled up.
+ *
+ * The resting stop is `'auto'` — one row of controls, measured, because what the
+ * photo *says* moved up into the header (D260814e) and only what acts on it is
+ * left down here.
  *
  * `0.85` and not `1`: a strip of photo stays visible above the panel, which is
  * what says the photo is still there and that the sheet can be pushed back down.
@@ -758,6 +762,32 @@ export function Lightbox({
                   {dayPlace}
                 </p>
               )}
+
+              {/* Below `md`, what somebody **wrote** joins what situates the
+                  photo, instead of waiting at the other end of the screen under
+                  a row of buttons (D260814e). The bottom then carries the
+                  toolbar and nothing else.
+
+                  It ignores `captionHidden` here: the tap that hides the chrome
+                  already puts this away, and `l` has no key to press on a phone
+                  — someone who had collapsed the strip on a desktop would have
+                  found no way to bring it back. */}
+              {phone && (
+                <MediaCaption
+                  key={item.id}
+                  albumId={albumId}
+                  mediaId={item.id}
+                  description={item.description}
+                  day={day?.description ?? null}
+                  editable={isAdmin}
+                  hidden={false}
+                  onHiddenChange={setCaptionHidden}
+                  editing={editingCaption}
+                  onEditingChange={setEditingCaption}
+                  overlay={false}
+                  variant="header"
+                />
+              )}
             </div>
 
             {/* **Nothing actionable up here below `md`.** The header identifies
@@ -1006,9 +1036,12 @@ export function Lightbox({
             does not stop at the top of the screen, and the "Show caption" button
             left by `l` is still something overlaid on it.
 
-            Below `md` this bar is the sheet's resting stop instead, mounted
-            further down with the panel it opens into. */}
-        {(!phone || isVideo) && !zoomed && !bare && (
+            Below `md` it is not here at all: the texts moved into the header,
+            beside the album and the date (D260814e). A video used to be the one
+            phone exception — its native controls sit at the bottom of the
+            element, so nothing may rest there — and moving the caption up
+            removed the exception with the problem. */}
+        {!phone && !zoomed && !bare && (
           <MediaCaption
             key={item.id}
             albumId={albumId}
@@ -1021,26 +1054,6 @@ export function Lightbox({
             editing={editingCaption}
             onEditingChange={setEditingCaption}
             overlay={!isVideo}
-          />
-        )}
-
-        {/* The put-away caption's way back, on a phone. In the sheet the chevron
-            is gone — pulling past the lowest stop is what puts the caption away
-            — so this pill is the only thing left saying it exists. It is the
-            component's own hidden state rather than a copy of its markup: one
-            pill, one label, one place to change either. */}
-        {phone && !isVideo && !zoomed && !bare && captionHidden && (
-          <MediaCaption
-            albumId={albumId}
-            mediaId={item.id}
-            description={item.description}
-            day={day?.description ?? null}
-            editable={isAdmin}
-            hidden
-            onHiddenChange={setCaptionHidden}
-            editing={false}
-            onEditingChange={setEditingCaption}
-            overlay
           />
         )}
       </div>
@@ -1083,7 +1096,7 @@ export function Lightbox({
         </Sheet>
       )}
 
-      {phone && !isVideo && !zoomed && !bare && !captionHidden && (
+      {phone && !isVideo && !zoomed && !bare && (
         <Sheet
           stops={VIEWER_SHEET_STOPS}
           stop={panel ? 1 : 0}
@@ -1099,36 +1112,15 @@ export function Lightbox({
           }}
           label={t('panel.label')}
           peek={
-            <SheetPeek
-              day={dayLabel(dayKey(item.takenAt), t)}
-              place={dayPlace}
-              actions={
-                <SheetActions
-                  panel={panel}
-                  onPanel={(next) => onPanelChange(next)}
-                  commentTotal={commentTotal}
-                  unread={unread}
-                  overflow={actions.filter((action) => action.key !== 'info')}
-                  onDownload={download}
-                  t={t}
-                />
-              }
-            >
-              <MediaCaption
-                key={item.id}
-                albumId={albumId}
-                mediaId={item.id}
-                description={item.description}
-                day={day?.description ?? null}
-                editable={isAdmin}
-                hidden={false}
-                onHiddenChange={setCaptionHidden}
-                editing={editingCaption}
-                onEditingChange={setEditingCaption}
-                overlay={false}
-                variant="sheet"
-              />
-            </SheetPeek>
+            <SheetActions
+              panel={panel}
+              onPanel={(next) => onPanelChange(next)}
+              commentTotal={commentTotal}
+              unread={unread}
+              overflow={actions.filter((action) => action.key !== 'info')}
+              onDownload={download}
+              t={t}
+            />
           }
         >
           {/* Mounted only at the taller stop: the comments tab carries a form
@@ -1148,40 +1140,6 @@ export function Lightbox({
           )}
         </Sheet>
       )}
-    </div>
-  );
-}
-
-/**
- * The sheet's resting stop: what can be done, where and when, then what was
- * written about the photo.
- *
- * The actions come **first** because they are why a thumb reaches down here; the
- * day and place follow because the header carrying them is hidden by default on
- * a touch screen, and without them the sheet would open on a description with
- * nothing saying which photo it describes.
- */
-function SheetPeek({
-  day,
-  place,
-  actions,
-  children,
-}: {
-  day: string;
-  place: string | null;
-  actions: ReactNode;
-  children: ReactNode;
-}): ReactElement {
-  return (
-    <div className="pb-1">
-      {actions}
-      <div className="px-4">
-        <p className="truncate text-sm font-medium text-ink-100">
-          {day}
-          {place && <span className="text-ink-400"> · {place}</span>}
-        </p>
-        {children}
-      </div>
     </div>
   );
 }

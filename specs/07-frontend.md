@@ -1108,12 +1108,17 @@ as the emergency exit.
   it, and the thumbnail may have been unmounted by the virtualiser after a swipe
   through fifty photos.
 
-- **Nothing actionable in the header below `md`.** Close, the album and the date;
-  everything acting on the photo is the sheet's first row — Info · Comments ·
-  Download · overflow — at the edge the thumb is already on. That row **is** the
-  panel's tab strip: Info and Comments open the sheet on their tab and then show
-  which is open, so `PanelBody` renders without tabs of its own down there. One
-  pair of choices, where the header button and the sheet tab used to make two.
+- **Nothing actionable in the header below `md`, and nothing else in the sheet.**
+  The header carries Close, the album, the date, the place **and the caption**
+  ([D260814e](./08-decisions/D260814e-what-the-photo-says-joins-what-situates-it.md));
+  the sheet's resting stop carries the toolbar and nothing more — Info ·
+  Comments · Download · overflow, at the edge the thumb is already on. What the
+  photo _says_ is at one end, what can be _done_ with it at the other.
+
+  That row **is** the panel's tab strip: Info and Comments open the sheet on
+  their tab and then show which is open, so `PanelBody` renders without tabs of
+  its own down there. One pair of choices, where the header button and the sheet
+  tab used to make two.
 
   From `md` the row returns to the header: a cursor reaches the top of the screen
   as easily as the bottom, and hover names every icon. Comments never enters the
@@ -1122,10 +1127,11 @@ as the emergency exit.
   because the row partitions the list and matching on `label` would break
   silently the day one is translated.
 
-- **The header locates, the bottom strip narrates.** At the top: the album
-  and the day on one line, the place on the next — what situates the image.
+- **The header locates, the bottom strip narrates — from `md`.** At the top: the
+  album and the day on one line, the place on the next — what situates the image.
   At the bottom, in `MediaCaption`: the hand-written texts. The exact
-  timestamp stays in the `i` panel, where it already lived.
+  timestamp stays in the `i` panel, where it already lived. Below `md` the two
+  join in the header and the bottom keeps the toolbar (D260814e).
 
   **The filename has left this spot**
   ([D88](./08-decisions/D88-the-open-photo-says-where-it-comes-from-and-clears-the.md)).
@@ -1367,23 +1373,32 @@ The hand-written texts, gathered at the bottom of the photo column, at
 image itself — the day's note in its section header, and nothing at all on
 the photo — opening an image lost most of what explains it (D84).
 
-**Below `md` it is the resting stop of the viewer's sheet** (`variant="sheet"`):
-the gradient, the absolute placement and the collapse chevron all belong to the
-sheet, which already has a grip and a backdrop, so only the text, the pencil and
-the editor remain. Above it, the strip over the photo, unchanged. The day, the
-place and the comment count are added above the text down there, because the
-header carrying them is hidden by default on a touch screen — without them the
-sheet would open on a description with nothing saying which photo it describes.
+**Below `md` it lives in the viewer's header** (`variant="header"`), under the
+album, the date and the place — the gradient, the placement and the collapse
+chevron belong to that header, so only the text, the pencil and the editor
+remain. Above `md`, the strip over the photo, unchanged.
 
-Pulling that stop past its bottom hides the caption, which is what the chevron
-does above `md`; the "Show the caption" pill that comes back is the component's
-own hidden state, not a copy of it.
+This reverses D84's split — header locates, bottom bar narrates — and only where
+the phone made it fail
+([D260814e](./08-decisions/D260814e-what-the-photo-says-joins-what-situates-it.md)).
+Once the viewer's actions came down to a toolbar, the hand-written text sat
+_under_ it: two bands at opposite ends of a 390 px screen were never two
+registers, only one subject cut in half by a layout. The day note travels with
+the description for the same reason — leaving it below would keep text under the
+toolbar for a distinction the caption already carries in its prefix and colour.
 
-**A video keeps the strip in the flow at every width.** Native playback controls
-live at the bottom of the element, and a sheet resting there would cover play,
-pause and the progress bar — the same reason the strip already pushes instead of
-overlaying on video. On a phone the sheet then carries the panel alone, with no
-resting stop.
+It **ignores `captionHidden` down there**. Hiding the text apart from the chrome
+made sense when it was a bar with a chevron; in the header the tap that hides the
+chrome does it. And `l` has no key to press on a phone: somebody who collapsed
+the strip on a desktop would open the viewer with no description and no way to
+ask for one. Clamping and tap-to-expand are unchanged, still bounded at half the
+viewport — the header is `absolute` and does not scroll, so a long text would run
+off the bottom with no way to reach its end. The editor opens **downwards** from
+the header, because that is where the text it replaces now is.
+
+**A video was the one phone exception** and no longer is. Its native controls sit
+at the bottom of the element, so nothing may rest there; moving the caption up
+removed the exception with the problem, and the sheet carries the panel alone.
 
 | Line  | Prefix     | Style                 | Visible lines |
 | ----- | ---------- | --------------------- | ------------- |
