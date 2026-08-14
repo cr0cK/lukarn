@@ -16,12 +16,15 @@ import { dayKey, dayLabel } from '../lib/justify';
 import { unreadCount, useSeenComments } from '../lib/seenComments';
 import { isTyping } from '../lib/typing';
 import { GUTTER_PX } from '../lib/swipeTrack';
+import { COARSE_POINTER_QUERY, PHONE_QUERY, useMediaQuery } from '../lib/useMediaQuery';
 import { placeLabelOf } from '../lib/useGridLayout';
 import { SETTLE_EASING, useSwipeTrack } from '../lib/useSwipe';
 import { canPlayVideoType, chooseVideoSource } from '../lib/videoSource';
+import { SHARED_MEDIA } from '../lib/viewTransition';
 import { ActionMenu } from './ActionMenu';
 import { MediaCaption } from './MediaCaption';
-import { SidePanel, type PanelTab } from './SidePanel';
+import { Sheet, type SheetStop } from './Sheet';
+import { PanelBody, SidePanel, type PanelTab } from './SidePanel';
 import { ZoomableImage } from './ZoomableImage';
 
 /**
@@ -41,6 +44,25 @@ const PRELOAD_BEHIND = 1;
  * been ready for a minute.
  */
 const PLAYABLE_RETRY_MS = 20_000;
+
+/**
+ * The viewer's sheet, below `md`: the caption at rest, the panel pulled up.
+ *
+ * `0.85` and not `1`: a strip of photo stays visible above the panel, which is
+ * what says the photo is still there and that the sheet can be pushed back down.
+ * A full-height panel is a page, and a page needs a Back button.
+ */
+const VIEWER_SHEET_STOPS: readonly SheetStop[] = ['auto', 0.85];
+
+/**
+ * The same sheet for a **video**, which has no resting stop.
+ *
+ * Native playback controls live at the bottom of the element, and a caption
+ * resting there would cover play, pause and the progress bar — the reason the
+ * caption already pushes instead of overlaying on video. So on a video the
+ * caption stays in the flow as it is, and the sheet carries the panel alone.
+ */
+const VIDEO_SHEET_STOPS: readonly SheetStop[] = [0.85];
 
 interface LightboxProps {
   albumId: string;
@@ -145,8 +167,16 @@ export function Lightbox({
    * The state follows the viewing session rather than the photo, but unlike the
    * caption it is not retained between visits: reopening without a single cue
    * would leave anyone who forgot the shortcut facing a silent image.
+   *
+   * **It starts hidden on a touch screen.** A phone opening a photo should show
+   * the photo, as every native viewer does; the header, arrows and caption are
+   * one tap away and the eye button in the corner is the affordance that says
+   * so. With a cursor the chrome stays: hover already names every control, the
+   * arrows are how a mouse navigates, and there is no screen edge to reclaim.
    */
-  const [bare, setBare] = useState(false);
+  const [bare, setBare] = useState(() => window.matchMedia(COARSE_POINTER_QUERY).matches);
+  const phone = useMediaQuery(PHONE_QUERY);
+  const coarse = useMediaQuery(COARSE_POINTER_QUERY);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -887,6 +917,14 @@ export function Lightbox({
                 naturalHeight={item.height}
                 zoomed={zoomed}
                 onZoomedChange={setZoomed}
+                // A tap shows or hides the chrome on a touch screen; zoom moves
+                // to a double tap. With a cursor, `undefined` keeps one click
+                // zooming — there is nothing hidden for it to reveal.
+                onTap={coarse ? () => setBare((value) => !value) : undefined}
+                // Only the photo the grid was opened on: during a swipe the rail
+                // mounts its neighbours, and three images sharing one transition
+                // name would silently cancel the animation.
+                sharedName={swipe.active ? undefined : SHARED_MEDIA}
               />
             )}
           </div>
@@ -975,8 +1013,11 @@ export function Lightbox({
 
             Also hidden by `h`, not merely collapsed like `l`: "only the photo"
             does not stop at the top of the screen, and the "Show caption" button
-            left by `l` is still something overlaid on it. */}
-        {!zoomed && !bare && (
+            left by `l` is still something overlaid on it.
+
+            Below `md` this bar is the sheet's resting stop instead, mounted
+            further down with the panel it opens into. */}
+        {(!phone || isVideo) && !zoomed && !bare && (
           <MediaCaption
             key={item.id}
             albumId={albumId}
@@ -991,9 +1032,31 @@ export function Lightbox({
             overlay={!isVideo}
           />
         )}
+
+        {/* The put-away caption's way back, on a phone. In the sheet the chevron
+            is gone — pulling past the lowest stop is what puts the caption away
+            — so this pill is the only thing left saying it exists. It is the
+            component's own hidden state rather than a copy of its markup: one
+            pill, one label, one place to change either. */}
+        {phone && !isVideo && !zoomed && !bare && captionHidden && (
+          <MediaCaption
+            albumId={albumId}
+            mediaId={item.id}
+            description={item.description}
+            day={day?.description ?? null}
+            editable={isAdmin}
+            hidden
+            onHiddenChange={setCaptionHidden}
+            editing={false}
+            onEditingChange={setEditingCaption}
+            overlay
+          />
+        )}
       </div>
 
-      {panel && (
+      {/* From `md`, the panel is a column in the flow: the photo shrinks once and
+          the panel can stay open from one photo to the next. */}
+      {!phone && panel && (
         <SidePanel
           albumId={albumId}
           mediaId={item.id}
@@ -1005,6 +1068,123 @@ export function Lightbox({
           onClose={() => onPanelChange(null)}
         />
       )}
+
+      {/* Below `md`, **one** sheet carries both. At rest it is the caption; pulled
+          up it becomes the panel, which is the honest shape of the relationship —
+          "what this photo is" and "everything about this photo" are the same
+          subject at two depths, and they were two separate full-screen surfaces
+          for no reason a finger could discover. */}
+      {phone && isVideo && panel && (
+        <Sheet
+          stops={VIDEO_SHEET_STOPS}
+          stop={0}
+          onStopChange={() => onPanelChange(null)}
+          label={t('panel.label')}
+        >
+          <PanelBody
+            albumId={albumId}
+            mediaId={item.id}
+            detail={detail}
+            day={days.get(dayKey(item.takenAt))}
+            tab={panel}
+            onTabChange={onPanelChange}
+          />
+        </Sheet>
+      )}
+
+      {phone && !isVideo && !zoomed && !bare && !captionHidden && (
+        <Sheet
+          stops={VIEWER_SHEET_STOPS}
+          stop={panel ? 1 : 0}
+          layerFrom={1}
+          onStopChange={(next) => {
+            if (next < 0) {
+              onPanelChange(null);
+              setCaptionHidden(true);
+            } else if (next === 0) onPanelChange(null);
+            // Open on Info: it is what the sheet was already showing, one level
+            // deeper. Comments are one tap away and carry their own count.
+            else onPanelChange(panel ?? 'info');
+          }}
+          label={t('panel.label')}
+          peek={
+            <SheetPeek
+              day={dayLabel(dayKey(item.takenAt), t)}
+              place={dayPlace}
+              comments={commentTotal}
+              t={t}
+            >
+              <MediaCaption
+                key={item.id}
+                albumId={albumId}
+                mediaId={item.id}
+                description={item.description}
+                day={day?.description ?? null}
+                editable={isAdmin}
+                hidden={false}
+                onHiddenChange={setCaptionHidden}
+                editing={editingCaption}
+                onEditingChange={setEditingCaption}
+                overlay={false}
+                variant="sheet"
+              />
+            </SheetPeek>
+          }
+        >
+          {/* Mounted only at the taller stop: the comments tab carries a form
+              with a draft in it, and keeping it alive behind a resting caption
+              would hold that draft for every photo scrolled past. */}
+          {panel && (
+            <PanelBody
+              albumId={albumId}
+              mediaId={item.id}
+              detail={detail}
+              day={days.get(dayKey(item.takenAt))}
+              tab={panel}
+              onTabChange={onPanelChange}
+            />
+          )}
+        </Sheet>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The sheet's resting stop: where and when, then what was written about it.
+ *
+ * The day and place come from the header, which is hidden by default on a touch
+ * screen — without them the sheet would open on a description with nothing
+ * saying which photo it belongs to. The comment count is here rather than only
+ * inside the panel because it is the reason to pull the sheet up at all.
+ */
+function SheetPeek({
+  day,
+  place,
+  comments,
+  t,
+  children,
+}: {
+  day: string;
+  place: string | null;
+  comments: number;
+  t: Translate;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <div className="px-4 pb-1">
+      <div className="flex items-baseline gap-2">
+        <p className="min-w-0 flex-1 truncate text-sm font-medium text-ink-100">
+          {day}
+          {place && <span className="text-ink-400"> · {place}</span>}
+        </p>
+        {comments > 0 && (
+          <span className="shrink-0 rounded-full bg-ink-700 px-2 py-0.5 text-xs text-ink-200 tabular-nums">
+            {t('panel.commentCount', comments)}
+          </span>
+        )}
+      </div>
+      {children}
     </div>
   );
 }

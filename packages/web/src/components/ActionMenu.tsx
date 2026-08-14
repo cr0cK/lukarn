@@ -1,5 +1,7 @@
 import { Fragment, type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react';
 import { useT } from '../lib/i18n';
+import { PHONE_QUERY, useMediaQuery } from '../lib/useMediaQuery';
+import { Sheet } from './Sheet';
 
 /** What a menu entry displays: a label, an icon and an action. */
 export interface MenuEntry {
@@ -29,27 +31,29 @@ interface ActionMenuProps {
   trigger?: ReactNode;
   /** Button styling: the bar and viewer have different backgrounds. */
   triggerClassName?: string;
-  /**
-   * Which side of the button the panel opens on. `below` everywhere a control
-   * sits at the top of the screen; `above` for the bottom tab bar, where there
-   * is nothing under the button but the edge of the screen.
-   */
-  placement?: 'below' | 'above';
 }
 
 const TRIGGER_PAR_DEFAUT =
   'rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100';
 
+/** One stop, tall enough for the account menu and short enough to keep context. */
+const SHEET_STOPS = ['auto'] as const;
+
 /**
- * Small-screen kebab menu shared by the top bar and viewer.
+ * Kebab menu shared by the top bar, the tab bar and the viewer.
  *
  * One component rather than one per location: the important behaviour — close
  * on an outside click, close on `Escape` while restoring focus, close **before**
  * running the selected action — would be rewritten incorrectly the second time.
  *
- * Positioned as `absolute`, never `fixed`: both hosts have a `backdrop-blur` or
- * live in a stack of contexts, where `fixed` would relate to the filtered
- * ancestor rather than the viewport.
+ * **Two shapes for one list.** From `md` it is a dropdown anchored under its
+ * button, positioned `absolute` and never `fixed`: both hosts have a
+ * `backdrop-blur` or live in a stack of contexts, where `fixed` would relate to
+ * the filtered ancestor rather than the viewport. Below `md` the same entries
+ * render in a `Sheet`, because the button opening them may be a tab on the
+ * bottom edge — a dropdown there would open off the screen — and because a
+ * 16 rem panel pinned to the top right corner is the one part of a phone screen
+ * a thumb cannot reach.
  */
 export function ActionMenu({
   groupes,
@@ -57,7 +61,6 @@ export function ActionMenu({
   label,
   trigger,
   triggerClassName = TRIGGER_PAR_DEFAUT,
-  placement = 'below',
 }: ActionMenuProps): ReactElement {
   const t = useT();
   const nom = label ?? t('common.menu');
@@ -65,9 +68,20 @@ export function ActionMenu({
   const zone = useRef<HTMLDivElement>(null);
   const bouton = useRef<HTMLButtonElement>(null);
   const remplis = groupes.filter((groupe) => groupe.length > 0);
+  const phone = useMediaQuery(PHONE_QUERY);
+
+  const fermer = (): void => {
+    setOuvert(false);
+    // Restore focus to the button: closing must not send navigation back to the
+    // top of the page.
+    bouton.current?.focus();
+  };
 
   useEffect(() => {
-    if (!ouvert) return;
+    // The sheet closes on its own backdrop and handles its own `Escape`: a
+    // second outside-click listener would see the backdrop as "outside" and
+    // close twice, and a second `Escape` listener would fight it.
+    if (!ouvert || phone) return;
 
     const surPointeur = (event: PointerEvent): void => {
       if (!zone.current?.contains(event.target as Node)) setOuvert(false);
@@ -90,7 +104,63 @@ export function ActionMenu({
       document.removeEventListener('pointerdown', surPointeur);
       document.removeEventListener('keydown', surTouche, true);
     };
-  }, [ouvert]);
+  }, [ouvert, phone]);
+
+  // Close first: `onSelect` may navigate or open a panel, and a menu left open
+  // would sit above what it just triggered.
+  const choisir = (entree: MenuEntry): void => {
+    setOuvert(false);
+    entree.onSelect();
+  };
+
+  const entrees = (
+    <>
+      {/* Outside `role="menu"`, which accepts only `menuitem`: these lines
+          cannot be selected. `title` is present because a slightly long
+          address is truncated rather than widening the menu. */}
+      {entete && entete.length > 0 && (
+        <>
+          <div className="px-4 py-2">
+            {entete.map((ligne, rang) => (
+              <p
+                key={ligne}
+                title={ligne}
+                className={
+                  rang === 0 ? 'truncate text-sm text-ink-200' : 'truncate text-xs text-ink-400'
+                }
+              >
+                {ligne}
+              </p>
+            ))}
+          </div>
+          <div className="mb-1 h-px bg-ink-700" />
+        </>
+      )}
+
+      <div role="menu">
+        {remplis.map((groupe, rang) => (
+          <Fragment key={groupe[0]!.label}>
+            {rang > 0 && <div role="separator" className="my-1 h-px bg-ink-700" />}
+            {groupe.map((entree) => (
+              <button
+                key={entree.label}
+                type="button"
+                role={entree.checked === undefined ? 'menuitem' : 'menuitemradio'}
+                aria-checked={entree.checked}
+                onClick={() => choisir(entree)}
+                // 48 px rows in the sheet, where the target is a fingertip; the
+                // dropdown keeps the 40 px a cursor aims at without effort.
+                className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-200 transition-colors hover:bg-white/5 hover:text-ink-100 md:min-h-0"
+              >
+                <span className="shrink-0 text-ink-400">{entree.icon}</span>
+                {entree.label}
+              </button>
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <div ref={zone} className="relative shrink-0">
@@ -112,61 +182,16 @@ export function ActionMenu({
         )}
       </button>
 
-      {ouvert && (
-        <div
-          className={`absolute right-0 z-40 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl ${
-            placement === 'above' ? 'bottom-full mb-2' : 'top-full mt-2'
-          }`}
-        >
-          {/* Outside `role="menu"`, which accepts only `menuitem`: these lines
-              cannot be selected. `title` is present because a slightly long
-              address is truncated rather than widening the menu. */}
-          {entete && entete.length > 0 && (
-            <>
-              <div className="px-4 py-2">
-                {entete.map((ligne, rang) => (
-                  <p
-                    key={ligne}
-                    title={ligne}
-                    className={
-                      rang === 0 ? 'truncate text-sm text-ink-200' : 'truncate text-xs text-ink-400'
-                    }
-                  >
-                    {ligne}
-                  </p>
-                ))}
-              </div>
-              <div className="mb-1 h-px bg-ink-700" />
-            </>
-          )}
-
-          <div role="menu">
-            {remplis.map((groupe, rang) => (
-              <Fragment key={groupe[0]!.label}>
-                {rang > 0 && <div role="separator" className="my-1 h-px bg-ink-700" />}
-                {groupe.map((entree) => (
-                  <button
-                    key={entree.label}
-                    type="button"
-                    role={entree.checked === undefined ? 'menuitem' : 'menuitemradio'}
-                    aria-checked={entree.checked}
-                    onClick={() => {
-                      // Close first: `onSelect` may navigate or open a panel, and
-                      // a menu left open would sit above what it just triggered.
-                      setOuvert(false);
-                      entree.onSelect();
-                    }}
-                    className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-200 transition-colors hover:bg-white/5 hover:text-ink-100"
-                  >
-                    <span className="shrink-0 text-ink-400">{entree.icon}</span>
-                    {entree.label}
-                  </button>
-                ))}
-              </Fragment>
-            ))}
+      {ouvert &&
+        (phone ? (
+          <Sheet stops={SHEET_STOPS} stop={0} onStopChange={fermer} label={nom}>
+            <div className="pb-2">{entrees}</div>
+          </Sheet>
+        ) : (
+          <div className="absolute top-full right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl">
+            {entrees}
           </div>
-        </div>
-      )}
+        ))}
     </div>
   );
 }

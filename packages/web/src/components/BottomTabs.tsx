@@ -101,10 +101,10 @@ export function BottomTabs({ current, activity }: BottomTabsProps): ReactElement
           {t('tabs.activity')}
         </button>
 
-        {/* The same menu the bar's badge opens above `md`, anchored upwards:
-            there is nothing below this button but the edge of the screen. */}
+        {/* The same menu the bar's badge opens above `md`. Down here it is a
+            sheet, which is what a button sitting on the bottom edge needs: a
+            dropdown would open past the edge of the screen. */}
         <AccountMenu
-          placement="above"
           triggerClassName={TAB_INACTIVE}
           trigger={
             <>

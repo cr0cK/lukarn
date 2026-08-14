@@ -42,6 +42,13 @@ interface MediaCaptionProps {
    * and the progress bar unreachable.
    */
   overlay: boolean;
+  /**
+   * `sheet` below `md`, where the bar is the resting stop of the viewer's sheet:
+   * the gradient, the absolute placement and the collapse chevron all belong to
+   * the sheet, which already has a grip and a backdrop. Only the text, the
+   * pencil and the editor remain.
+   */
+  variant?: 'overlay' | 'sheet';
 }
 
 export function MediaCaption({
@@ -55,6 +62,7 @@ export function MediaCaption({
   editing,
   onEditingChange,
   overlay,
+  variant = 'overlay',
 }: MediaCaptionProps): ReactElement | null {
   const t = useT();
   /**
@@ -65,6 +73,7 @@ export function MediaCaption({
   const [expanded, setExpanded] = useState(false);
 
   const entries = captionEntries({ description, day }, t);
+  const inSheet = variant === 'sheet';
 
   // Nothing to say or write: not even a ghost button inviting discovery of an
   // empty bar.
@@ -94,11 +103,21 @@ export function MediaCaption({
     // cuts into precisely that edge. Apply them to the content rather than the
     // wrapper so the gradient reaches the edge of the screen.
     <div
-      className={`${
-        overlay ? 'absolute inset-x-0 bottom-0 z-10' : 'relative'
-      } bg-gradient-to-t from-black/85 via-black/55 to-transparent pt-10`}
+      className={
+        inSheet
+          ? 'relative'
+          : `${
+              overlay ? 'absolute inset-x-0 bottom-0 z-10' : 'relative'
+            } bg-gradient-to-t from-black/85 via-black/55 to-transparent pt-10`
+      }
     >
-      <div className="flex items-stretch gap-2 pb-2 pl-[calc(0.75rem_+_env(safe-area-inset-left))] pr-[calc(0.75rem_+_env(safe-area-inset-right))] sm:pb-3 sm:pl-[calc(1rem_+_env(safe-area-inset-left))] sm:pr-[calc(1rem_+_env(safe-area-inset-right))]">
+      <div
+        className={
+          inSheet
+            ? 'flex items-stretch gap-2 pb-2'
+            : 'flex items-stretch gap-2 pb-2 pl-[calc(0.75rem_+_env(safe-area-inset-left))] pr-[calc(0.75rem_+_env(safe-area-inset-right))] sm:pb-3 sm:pl-[calc(1rem_+_env(safe-area-inset-left))] sm:pr-[calc(1rem_+_env(safe-area-inset-right))]'
+        }
+      >
         <div className="min-w-0 flex-1">
           {editable && !description && (
             <button
@@ -113,7 +132,7 @@ export function MediaCaption({
           {entries.length > 0 && (
             // Scroll the wrapper rather than the button: when expanded, a thousand
             // characters would cover the entire photo.
-            <div className={expanded ? 'max-h-[50vh] overflow-y-auto' : undefined}>
+            <div className={expanded && !inSheet ? 'max-h-[50vh] overflow-y-auto' : undefined}>
               <button
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
@@ -130,7 +149,9 @@ export function MediaCaption({
         </div>
 
         {/* Pencil at the top, chevron at the bottom: each faces the line it
-            controls — the photo description and the entire bar. */}
+            controls — the photo description and the entire bar. In a sheet the
+            chevron is absent: pulling the sheet down is the same action, done
+            with the grip already there. */}
         <div className="flex shrink-0 flex-col justify-between">
           {editable && description ? (
             <IconButton label={t('caption.edit')} onClick={() => onEditingChange(true)}>
@@ -141,9 +162,11 @@ export function MediaCaption({
             <span />
           )}
 
-          <IconButton label={t('caption.hide')} onClick={() => onHiddenChange(true)}>
-            <path d="m6 9 6 6 6-6" />
-          </IconButton>
+          {!inSheet && (
+            <IconButton label={t('caption.hide')} onClick={() => onHiddenChange(true)}>
+              <path d="m6 9 6 6 6-6" />
+            </IconButton>
+          )}
         </div>
       </div>
 
