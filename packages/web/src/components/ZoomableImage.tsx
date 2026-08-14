@@ -122,6 +122,10 @@ export function ZoomableImage({
   const imageRef = useRef<HTMLImageElement>(null);
   /** A first tap waiting to learn whether a second one follows. */
   const pendingTap = useRef<{ point: Point; timer: ReturnType<typeof setTimeout> } | null>(null);
+  /** Every finger currently on the frame: a second one turns a drag into a pinch. */
+  const pointersRef = useRef(new Map<number, Point>());
+  /** The pinch in progress: what it started from, and the point it turns around. */
+  const pinchRef = useRef<{ distance: number; scale: number; focus: Point } | null>(null);
   const [container, setContainer] = useState<Box>({ width: 0, height: 0 });
   const [intrinsic, setIntrinsic] = useState<Box>({
     width: naturalWidth ?? 0,
@@ -335,13 +339,15 @@ export function ZoomableImage({
   }, [src]);
 
   /**
-   * Native page pinch, the natural zoom gesture on a phone.
+   * Page pinch started **outside** the frame — on the caption, or beside the photo.
    *
-   * No custom gesture intercepts it: that would conflict with navigation swipe,
-   * and the system handles it better. But the browser then rasterises the page
-   * again from the `full` render (2560 px) — beyond ~2× the photo softens while
-   * `hd` holds the missing pixels. Loading them as visual scale rises keeps the
-   * pinch sharp without further action from the user.
+   * Two fingers on the photo itself no longer reach here: the frame declares
+   * `touch-action: none` and this component scales the image, which is what makes
+   * the gesture request the 4096 px variant instead of magnifying pixels that
+   * have already been rendered (D260814d). What remains is the page zoom a
+   * browser still performs elsewhere, after which it rasterises from the `full`
+   * render (2560 px) — beyond ~2× the photo softens while `hd` holds the missing
+   * pixels. Loading them as visual scale rises keeps that case sharp too.
    */
   useEffect(() => {
     const viewport = window.visualViewport;
@@ -421,8 +427,48 @@ export function ZoomableImage({
     onZoomedChange(true);
   };
 
+  /** Distance and midpoint between the two fingers, in client coordinates. */
+  const spanOf = (points: Point[]): { distance: number; middle: Point } => {
+    const [a, b] = points as [Point, Point];
+    return {
+      distance: Math.hypot(b.x - a.x, b.y - a.y),
+      middle: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
+  };
+
+  /** A client point expressed from the frame's centre, as `applyScale` expects. */
+  const focusFrom = (point: Point): Point => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
+    return { x: point.x - rect.left - rect.width / 2, y: point.y - rect.top - rect.height / 2 };
+  };
+
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
+
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    // The second finger converts whatever was happening into a pinch. Drop the
+    // single-pointer gesture and any tap waiting on a partner: a pinch is neither
+    // a pan nor the first half of a double tap, and letting either survive made
+    // the photo jump when the fingers lifted.
+    if (pointersRef.current.size === 2 && canZoom) {
+      gestureRef.current = null;
+      if (pendingTap.current) {
+        clearTimeout(pendingTap.current.timer);
+        pendingTap.current = null;
+      }
+      const span = spanOf([...pointersRef.current.values()]);
+      pinchRef.current = {
+        distance: span.distance,
+        scale: scaleRef.current,
+        // Fixed at the start rather than followed: a focus recomputed on every
+        // frame drifts with the smallest asymmetry in how the fingers move, and
+        // the photo slides away from under them.
+        focus: focusFrom(span.middle),
+      };
+      return;
+    }
 
     if (scale > 1 + FIT_EPSILON) {
       // Capture guarantees receiving release even if the pointer leaves the frame
@@ -443,6 +489,22 @@ export function ZoomableImage({
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    }
+
+    const pinch = pinchRef.current;
+    if (pinch && pointersRef.current.size >= 2) {
+      const span = spanOf([...pointersRef.current.values()].slice(0, 2));
+      // A pinch that starts as a rotation reports a near-zero span for a frame:
+      // dividing by it would send scale to infinity and blank the photo.
+      if (span.distance < 1) return;
+      const next = (pinch.scale * span.distance) / pinch.distance;
+      applyScale(next, pinch.focus);
+      onZoomedChange(next > 1 + FIT_EPSILON);
+      return;
+    }
+
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     if (scale <= 1 + FIT_EPSILON) return;
@@ -465,6 +527,12 @@ export function ZoomableImage({
    * return to fitted view. Deciding here works regardless of capture.
    */
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    pointersRef.current.delete(event.pointerId);
+    // The finger still down after a pinch does not resume panning and is not a
+    // tap: `gestureRef` was cleared when the pinch began, so both paths below
+    // already ignore it until it lifts and touches again.
+    if (pinchRef.current && pointersRef.current.size < 2) pinchRef.current = null;
+
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
 
@@ -508,9 +576,11 @@ export function ZoomableImage({
     };
   };
 
-  // Gesture interrupted by the browser — second finger or edge-swipe back:
-  // retain neither click nor movement; capture is released automatically.
-  const onPointerCancel = (): void => {
+  // Gesture interrupted by the browser — an edge-swipe back, say: retain neither
+  // click nor movement; capture is released automatically.
+  const onPointerCancel = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) pinchRef.current = null;
     gestureRef.current = null;
   };
 

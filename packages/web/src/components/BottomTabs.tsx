@@ -1,9 +1,10 @@
-import type { ReactElement, ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { type ReactElement, type ReactNode, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useT, type Translate } from '../lib/i18n';
 import { AccountMenu } from './AccountMenu';
 import type { ActivityFeed } from './CommentsFeed';
-import { requestSearchFocus } from './SearchBox';
+import { SearchBox } from './SearchBox';
+import { Sheet, type SheetStop } from './Sheet';
 
 /**
  * One tab: the full height of a 56 px row, icon over name.
@@ -18,6 +19,15 @@ const TAB =
 
 const TAB_INACTIVE = `${TAB} text-ink-400`;
 const TAB_ACTIVE = `${TAB} text-ink-100`;
+
+/**
+ * One tall stop for search: the field, then as many results as fit.
+ *
+ * `0.9` rather than full height because the sheet is dismissed by pulling it
+ * down, and a strip of the page behind it is what says so. The keyboard covers
+ * the lower half anyway.
+ */
+const SEARCH_STOPS: readonly SheetStop[] = [0.9];
 
 interface BottomTabsProps {
   /**
@@ -43,16 +53,7 @@ interface BottomTabsProps {
  */
 export function BottomTabs({ current, activity }: BottomTabsProps): ReactElement {
   const t = useT();
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // The Search tab creates no route: it returns to the album list, where the
-  // field lives in the bar, and focuses it. A results page would be a second
-  // place to search from, and the field already answers the whole library.
-  const openSearch = (): void => {
-    if (location.pathname !== '/') void navigate('/');
-    requestSearchFocus();
-  };
+  const [searching, setSearching] = useState(false);
 
   return (
     <nav
@@ -73,7 +74,17 @@ export function BottomTabs({ current, activity }: BottomTabsProps): ReactElement
           {t('tabs.albums')}
         </Link>
 
-        <button type="button" onClick={openSearch} className={TAB_INACTIVE}>
+        {/* Search opens **where the tab is**. It used to send focus to the field
+            in the top bar — a control at the bottom whose effect appeared at the
+            top, above a keyboard that then covered the results
+            (D260814d). It still creates no route: the field answers across the
+            whole library, so a result page would be a second place to search
+            from, and searching from inside an album no longer means leaving it. */}
+        <button
+          type="button"
+          onClick={() => setSearching(true)}
+          className={searching ? TAB_ACTIVE : TAB_INACTIVE}
+        >
           <IconeRecherche />
           {t('tabs.search')}
         </button>
@@ -114,6 +125,17 @@ export function BottomTabs({ current, activity }: BottomTabsProps): ReactElement
           }
         />
       </div>
+
+      {searching && (
+        <Sheet
+          stops={SEARCH_STOPS}
+          stop={0}
+          onStopChange={() => setSearching(false)}
+          label={t('search.label')}
+        >
+          <SearchBox variant="sheet" onDone={() => setSearching(false)} />
+        </Sheet>
+      )}
     </nav>
   );
 }

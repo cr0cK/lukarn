@@ -55,33 +55,28 @@ function situationDe(hit: SearchHit, t: Translate): string | null {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
-/**
- * The mounted field, and a focus request made while none was.
- *
- * The bottom Search tab creates no route of its own: it returns to the album
- * list and hands focus to the field already living in the bar. Pressed from an
- * album, that navigation unmounts the tab bar and mounts this component — so the
- * request cannot be held in either component's state. It waits here, at module
- * level, until the field that answers it exists.
- */
-let mountedField: HTMLInputElement | null = null;
-let focusRequested = false;
-
-/** Focuses the library search field, now or as soon as it is mounted. */
-export function requestSearchFocus(): void {
-  if (mountedField) mountedField.focus();
-  else focusRequested = true;
-}
-
 interface SearchBoxProps {
   /**
    * The `/` shortcut. Disabled while a panel covers the page: it would focus an
    * invisible field and swallow the next keystroke.
    */
   shortcutEnabled?: boolean;
+  /**
+   * `sheet` below `md`, where the field is the first row of a sheet rather than
+   * a control in the top bar: results fill the sheet instead of hanging from the
+   * field, and the keyboard is raised on arrival.
+   */
+  variant?: 'bar' | 'sheet';
+  /** A result was chosen. The sheet closes on it; the bar has nothing to do. */
+  onDone?: (() => void) | undefined;
 }
 
-export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElement {
+export function SearchBox({
+  shortcutEnabled = true,
+  variant = 'bar',
+  onDone,
+}: SearchBoxProps): ReactElement {
+  const inSheet = variant === 'sheet';
   const navigate = useNavigate();
   const t = useT();
   const [saisie, setSaisie] = useState('');
@@ -94,18 +89,9 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
   const { data, isFetching } = useSearch(retardee);
   const hits = useMemo(() => data ?? [], [data]);
 
-  useShortcut('/', () => champ.current?.focus(), shortcutEnabled);
-
-  useEffect(() => {
-    mountedField = champ.current;
-    if (focusRequested) {
-      focusRequested = false;
-      champ.current?.focus();
-    }
-    return () => {
-      mountedField = null;
-    };
-  }, []);
+  // Not in the sheet: it opens with the field already focused, and there is no
+  // keyboard on the screen that reaches it.
+  useShortcut('/', () => champ.current?.focus(), shortcutEnabled && !inSheet);
 
   // Highlight the first result immediately: typing then pressing Enter is the
   // most common action, and requiring an arrow first would turn a shortcut
@@ -131,6 +117,7 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
     setOuvert(false);
     champ.current?.blur();
     void navigate(lienDe(hit));
+    onDone?.();
   };
 
   const surTouche = (event: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -178,47 +165,67 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
   })).filter((groupe) => groupe.entrees.length > 0);
 
   return (
-    <div ref={zone} className="relative">
-      <svg
-        viewBox="0 0 24 24"
-        className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-ink-400"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        aria-hidden="true"
-      >
-        <circle cx="11" cy="11" r="7" />
-        <path d="m20 20-3.5-3.5" />
-      </svg>
+    <div ref={zone} className={inSheet ? 'flex min-h-0 flex-1 flex-col' : 'relative'}>
+      <div className={inSheet ? 'relative px-4 pb-3' : 'contents'}>
+        <svg
+          viewBox="0 0 24 24"
+          className={`pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 text-ink-400 ${
+            inSheet ? 'left-7' : 'left-2.5'
+          }`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" />
+        </svg>
 
-      <input
-        ref={champ}
-        type="search"
-        role="combobox"
-        aria-label={t('search.label')}
-        aria-expanded={deplie}
-        aria-controls="recherche-resultats"
-        aria-autocomplete="list"
-        aria-activedescendant={deplie && hits[actif] ? `recherche-option-${actif}` : undefined}
-        placeholder={t('search.placeholder')}
-        value={saisie}
-        onChange={(event) => {
-          setSaisie(event.target.value);
-          setOuvert(true);
-        }}
-        onFocus={() => setOuvert(true)}
-        onKeyDown={surTouche}
-        // `[&::-webkit-search-cancel-button]:hidden`: WebKit draws the native
-        // `type="search"` cross in a light colour, unreadable on a dark background.
-        // Keep the `search` type for screen-reader announcements and mobile keyboards.
-        className="w-full rounded-lg border border-ink-700 bg-ink-850 py-1.5 pr-3 pl-8 text-sm text-ink-100 placeholder:text-ink-400 focus:border-ink-600 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
-      />
+        <input
+          ref={champ}
+          type="search"
+          role="combobox"
+          aria-label={t('search.label')}
+          aria-expanded={deplie}
+          aria-controls="recherche-resultats"
+          aria-autocomplete="list"
+          aria-activedescendant={deplie && hits[actif] ? `recherche-option-${actif}` : undefined}
+          placeholder={t('search.placeholder')}
+          // The sheet opens for this field and nothing else.
+          autoFocus={inSheet}
+          value={saisie}
+          onChange={(event) => {
+            setSaisie(event.target.value);
+            setOuvert(true);
+          }}
+          onFocus={() => setOuvert(true)}
+          onKeyDown={surTouche}
+          // `[&::-webkit-search-cancel-button]:hidden`: WebKit draws the native
+          // `type="search"` cross in a light colour, unreadable on a dark background.
+          // Keep the `search` type for screen-reader announcements and mobile keyboards.
+          className={`w-full rounded-lg border border-ink-700 bg-ink-850 pr-3 pl-8 text-ink-100 placeholder:text-ink-400 focus:border-ink-600 focus:outline-none [&::-webkit-search-cancel-button]:hidden ${
+            // `text-base` in the sheet, never smaller: iOS zooms the whole page in
+            // when a field below 16 px takes focus, and the layout never comes back
+            // on its own. It also gives the 48 px target the bar does not need.
+            inSheet ? 'py-3 text-base' : 'py-1.5 text-sm'
+          }`}
+        />
+      </div>
 
       {deplie && (
-        // Use `absolute`, not `fixed`: the bar has a `backdrop-blur`, making it
-        // the containing block for a fixed element — the same trap as `ActionMenu`.
-        <div className="absolute top-full right-0 left-0 z-40 mt-2 max-h-[70vh] min-w-72 overflow-y-auto rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl">
+        // In the bar, a panel hanging from the field: `absolute`, never `fixed`,
+        // because the bar has a `backdrop-blur` and would become its containing
+        // block — the same trap as `ActionMenu`. In the sheet there is nothing to
+        // hang from: the results **are** the rest of the sheet, and they scroll
+        // with it rather than inside a box of their own.
+        <div
+          className={
+            inSheet
+              ? 'min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-ink-800 py-1'
+              : 'absolute top-full right-0 left-0 z-40 mt-2 max-h-[70vh] min-w-72 overflow-y-auto rounded-xl border border-ink-700 bg-ink-850 py-1 shadow-2xl'
+          }
+        >
           {/* Use `div` elements rather than lists: a `role="listbox"` owns only
               `option` and `group`, and the implicit `list` role of a nested `ul`
               would sit between them. */}
@@ -227,7 +234,9 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
               <div key={groupe.kind} role="group" aria-label={t(groupe.titre)}>
                 <p
                   aria-hidden="true"
-                  className="px-3 pt-2 pb-1 text-xs tracking-wide text-ink-400 uppercase"
+                  className={`pt-2 pb-1 text-xs tracking-wide text-ink-400 uppercase ${
+                    inSheet ? 'px-4' : 'px-3'
+                  }`}
                 >
                   {t(groupe.titre)}
                 </p>
@@ -247,8 +256,9 @@ export function SearchBox({ shortcutEnabled = true }: SearchBoxProps): ReactElem
                         aller(hit);
                       }}
                       onMouseEnter={() => setActif(rang)}
-                      className={`cursor-pointer px-3 py-2 ${
-                        rang === actif ? 'bg-white/10' : 'hover:bg-white/5'
+                      // 48 px rows in the sheet, where a fingertip aims at them.
+                      className={`cursor-pointer ${inSheet ? 'min-h-12 px-4 py-2.5' : 'px-3 py-2'} ${
+                        rang === actif && !inSheet ? 'bg-white/10' : 'hover:bg-white/5'
                       }`}
                     >
                       <p className="truncate text-sm text-ink-100">{hit.label}</p>

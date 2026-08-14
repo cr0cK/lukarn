@@ -162,17 +162,15 @@ export function TopBar({
           </Link>
         )}
 
-        {/* Hide the title below `sm` when the page has a search field: keep one
-            row at every width, and "Albums" at the root says nothing beyond the
-            URL. The field cannot collapse elsewhere — a menu cannot be searched
-            from within itself.
+        {/* The title is shown at **every** width now that the search field has
+            left the bar below `md`. It used to be hidden on the album list, where
+            the field took the whole row: the one page that names the gallery
+            showed the mark alone, and the instance's name — the thing that says
+            whose photos these are — appeared nowhere on a phone (D260814d).
 
             The mark travels with the title rather than sitting beside the back
-            arrow, so that one rule hides both: alone on a 393 px screen it would
-            take width from the search field it was meant to sit beside. */}
-        <div
-          className={`min-w-0 flex-1 items-center gap-2.5 ${search ? 'hidden sm:flex' : 'flex'}`}
-        >
+            arrow, so one rule governs both. */}
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {/* A link only where nothing else already leads to the album list. Beside
               the back arrow it would be a second control for the same destination,
               two targets apart; here it only identifies the instance. */}
@@ -189,18 +187,16 @@ export function TopBar({
           </div>
         </div>
 
-        {/* Centring determines the width: from `sm`, the field stops growing at
-            20 rem and both sides share the remainder equally — hence symmetrical
-            `flex-1` on the title and right group. When stretched, it touched the
-            account controls and made the bar appear to lean that way.
-
-            Below `sm` it fills the line again: the title disappears, and a fixed
-            20 rem would leave a gap in the middle of a 393 px screen. */}
-        {search && <div className="min-w-0 flex-1 sm:flex-none sm:basis-80">{search}</div>}
+        {/* From `md` only: below it, the Search tab opens the same field in a
+            sheet, at the edge the hand is on. Centring determines the width — the
+            field stops growing at 20 rem and both sides share the remainder
+            equally, hence symmetrical `flex-1` on the title and the right group.
+            Stretched, it touched the account controls and made the bar lean. */}
+        {search && <div className="hidden min-w-0 md:block md:basis-80">{search}</div>}
 
         <div
           className={`flex shrink-0 items-center gap-x-2 sm:gap-x-3 ${
-            search ? 'sm:flex-1 sm:justify-end' : ''
+            search ? 'md:flex-1 md:justify-end' : ''
           }`}
         >
           {/* Activity stays **inline from `md`**, never inside the View menu: its

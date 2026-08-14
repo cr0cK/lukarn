@@ -77,6 +77,11 @@ export const en = {
   'tabs.activity': 'Activity',
   'tabs.account': 'Account',
 
+  /* ------------------------------------------------------------ Sheets */
+
+  'sheet.expand': 'Expand',
+  'sheet.collapse': 'Collapse',
+
   /* --------------------------------------------------------------- Search */
 
   'search.label': 'Search',
@@ -285,7 +290,6 @@ export const en = {
   'panel.sections': 'Panel sections',
   'panel.info': 'Info',
   'panel.comments': 'Comments',
-  'panel.commentCount': (count: number) => `${count} comment${count > 1 ? 's' : ''}`,
 
   /* ------------------------------------------------------------ EXIF rows */
 

@@ -43,12 +43,12 @@ interface MediaCaptionProps {
    */
   overlay: boolean;
   /**
-   * `sheet` below `md`, where the bar is the resting stop of the viewer's sheet:
-   * the gradient, the absolute placement and the collapse chevron all belong to
-   * the sheet, which already has a grip and a backdrop. Only the text, the
-   * pencil and the editor remain.
+   * `header` below `md`, where the texts sit under the album and the date rather
+   * than at the other end of the screen. The gradient, the placement and the
+   * collapse chevron all belong to the viewer's header, which already has them;
+   * only the text, the pencil and the editor remain.
    */
-  variant?: 'overlay' | 'sheet';
+  variant?: 'overlay' | 'header';
 }
 
 export function MediaCaption({
@@ -73,7 +73,7 @@ export function MediaCaption({
   const [expanded, setExpanded] = useState(false);
 
   const entries = captionEntries({ description, day }, t);
-  const inSheet = variant === 'sheet';
+  const inHeader = variant === 'header';
 
   // Nothing to say or write: not even a ghost button inviting discovery of an
   // empty bar.
@@ -104,7 +104,7 @@ export function MediaCaption({
     // wrapper so the gradient reaches the edge of the screen.
     <div
       className={
-        inSheet
+        inHeader
           ? 'relative'
           : `${
               overlay ? 'absolute inset-x-0 bottom-0 z-10' : 'relative'
@@ -113,8 +113,8 @@ export function MediaCaption({
     >
       <div
         className={
-          inSheet
-            ? 'flex items-stretch gap-2 pb-2'
+          inHeader
+            ? 'flex items-stretch gap-2 pt-0.5'
             : 'flex items-stretch gap-2 pb-2 pl-[calc(0.75rem_+_env(safe-area-inset-left))] pr-[calc(0.75rem_+_env(safe-area-inset-right))] sm:pb-3 sm:pl-[calc(1rem_+_env(safe-area-inset-left))] sm:pr-[calc(1rem_+_env(safe-area-inset-right))]'
         }
       >
@@ -130,9 +130,10 @@ export function MediaCaption({
           )}
 
           {entries.length > 0 && (
-            // Scroll the wrapper rather than the button: when expanded, a thousand
-            // characters would cover the entire photo.
-            <div className={expanded && !inSheet ? 'max-h-[50vh] overflow-y-auto' : undefined}>
+            // Scroll the wrapper rather than the button: expanded, a thousand
+            // characters would cover the whole photo, and the header is
+            // `absolute` and does not scroll — the end would be unreachable.
+            <div className={expanded ? 'max-h-[50vh] overflow-y-auto' : undefined}>
               <button
                 type="button"
                 onClick={() => setExpanded((value) => !value)}
@@ -149,9 +150,7 @@ export function MediaCaption({
         </div>
 
         {/* Pencil at the top, chevron at the bottom: each faces the line it
-            controls — the photo description and the entire bar. In a sheet the
-            chevron is absent: pulling the sheet down is the same action, done
-            with the grip already there. */}
+            controls — the photo description and the entire bar. */}
         <div className="flex shrink-0 flex-col justify-between">
           {editable && description ? (
             <IconButton label={t('caption.edit')} onClick={() => onEditingChange(true)}>
@@ -162,7 +161,10 @@ export function MediaCaption({
             <span />
           )}
 
-          {!inSheet && (
+          {/* No chevron in the header: a tap on the photo already hides the whole
+              chrome, and `caption.hide` has no key to press on a phone — someone
+              who collapsed the bar on a desktop would have found no way back. */}
+          {!inHeader && (
             <IconButton label={t('caption.hide')} onClick={() => onHiddenChange(true)}>
               <path d="m6 9 6 6 6-6" />
             </IconButton>
@@ -175,6 +177,7 @@ export function MediaCaption({
           albumId={albumId}
           mediaId={mediaId}
           description={description}
+          atTop={inHeader}
           onClose={() => onEditingChange(false)}
         />
       )}
@@ -248,11 +251,14 @@ function CaptionEditor({
   albumId,
   mediaId,
   description,
+  atTop = false,
   onClose,
 }: {
   albumId: string;
   mediaId: string;
   description: string | null;
+  /** The caption lives in the header: the editor opens downwards from it. */
+  atTop?: boolean;
   onClose: () => void;
 }): ReactElement {
   const t = useT();
@@ -272,7 +278,11 @@ function CaptionEditor({
   return (
     <form
       onSubmit={submit}
-      className="absolute inset-x-2 bottom-2 z-20 space-y-2 rounded-xl border border-ink-700 bg-ink-900 p-3 shadow-xl sm:inset-x-4 sm:bottom-3 sm:max-w-prose"
+      className={`absolute inset-x-2 z-20 space-y-2 rounded-xl border border-ink-700 bg-ink-900 p-3 shadow-xl sm:inset-x-4 sm:max-w-prose ${
+        // It opens where the text it replaces was: under the header's title
+        // block, or above the strip at the bottom of the photo column.
+        atTop ? 'top-0' : 'bottom-2 sm:bottom-3'
+      }`}
     >
       <textarea
         value={value}
