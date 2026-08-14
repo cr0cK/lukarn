@@ -219,7 +219,11 @@ async function main(): Promise<void> {
     throw new Error('--photos expects a directory');
   }
 
-  const positional = args.filter((_, i) => i !== photosAt && i !== photosAt + 1);
+  // Without `--photos`, `photosAt` is -1 and `photosAt + 1` is 0: filtering on it
+  // dropped the **first** argument, which is the count. `seed-demo 40` therefore
+  // seeded 240 — the default — and said nothing about it.
+  const positional =
+    photosAt === -1 ? args : args.filter((_, i) => i !== photosAt && i !== photosAt + 1);
   const count = Number(positional[0] ?? 240);
   if (!Number.isFinite(count) || count <= 0) {
     throw new Error('Invalid media count');
