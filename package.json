@@ -20,8 +20,9 @@
     "reset-password": "pnpm --filter @lukarn/server reset-password",
     "check:format": "prettier --check .",
     "check:specs": "node tools/check-specs.mjs",
+    "check:changelog": "node tools/check-changelog.mjs",
     "check:links": "node tools/check-links.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm check:format && pnpm test && pnpm check:specs && pnpm check:links",
+    "verify": "pnpm typecheck && pnpm lint && pnpm check:format && pnpm test && pnpm check:specs && pnpm check:links && pnpm check:changelog",
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {

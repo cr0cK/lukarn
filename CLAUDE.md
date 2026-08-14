@@ -47,6 +47,24 @@ links nor `(Dxx)` references cover this case, and a renamed directory once left
 a stale path that nothing reported (D260809d). The decisions directory is
 excluded: a log names what it replaced.
 
+`pnpm check:changelog` guards a third reader. The specs are for whoever takes
+over the code; `CHANGELOG.md` is for whoever **runs** the application, and the
+section matching a `v*` tag becomes the body of its GitHub release — a feature
+absent from it is a feature nobody is told about.
+
+It triggers on the **commit type**, not on the paths touched. A rule reading
+`packages/web/src/**` would demand an entry for a rename, and a check that fires
+on work nobody would report gets disabled — the reason `MODULES_TOLERES` exists.
+Conventional Commits already carry the answer: `feat`, `fix` and `perf` claim
+somebody will notice, and the section `## [Unreleased]` must have moved with
+them. Every other type says the opposite and is believed. For the `fix` nobody
+outside the repository could observe, a `Changelog: none — <reason>` line in the
+commit body excuses it; stating the reason is the point.
+
+Write the entry **in the voice of the file**: what it does for the reader, and
+why it is better, never a restatement of the diff. That is the one thing this
+check cannot verify.
+
 `pnpm check:links` complements these checks by catching the other silent defect:
 a reference between the three documents that no longer leads anywhere. It
 resolves every relative link and anchor without calling the network—a check that
@@ -116,7 +134,8 @@ pnpm test                            # native Node runner, all packages
 pnpm check:format                    # prettier --check .—does formatting match the repository?
 pnpm check:specs                     # have the specs drifted from the code?
 pnpm check:links                     # do references between documents lead anywhere?
-pnpm verify                          # all six at once—the gate before publishing
+pnpm check:changelog                 # does a visible change say so in CHANGELOG.md?
+pnpm verify                          # all seven at once—the gate before publishing
 
 pnpm create-admin <identifier>       # first administrator of an empty database
 pnpm reset-password <identifier>     # lost password: last resort outside /admin

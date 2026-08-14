@@ -38,11 +38,11 @@ to a running process.
 pnpm verify
 ```
 
-Six gates in one command: `typecheck`, `lint`, `check:format`, `test`,
-`check:specs`, `check:links`. This is exactly what CI runs, so a green `verify`
-means a green pull request. Two of them also run on `pre-push`, installed
-automatically by the `prepare` script — a push that would make the documentation
-lie is stopped before it reaches the remote.
+Seven gates in one command: `typecheck`, `lint`, `check:format`, `test`,
+`check:specs`, `check:links`, `check:changelog`. This is exactly what CI runs, so
+a green `verify` means a green pull request. Three of them also run on
+`pre-push`, installed automatically by the `prepare` script — a push that would
+make the documentation lie is stopped before it reaches the remote.
 
 If `check:format` fails, run `pnpm format`. It is a gate rather than a suggestion
 because unformatted code used to reach `main`, and the next person to run
@@ -68,6 +68,19 @@ version:
 | Anything under `packages/web/src`            | `specs/07-frontend.md`                     |
 | Access rules, sessions, crypto               | `specs/04-security-and-access.md`          |
 | A trade-off you accepted, an option you cut  | `specs/08-decisions/` — **a new file**     |
+
+## What someone will notice goes in the changelog
+
+A commit typed `feat`, `fix` or `perf` says somebody using the application will
+see the difference, and `pnpm check:changelog` holds you to it: the
+`## [Unreleased]` section of `CHANGELOG.md` has to move with it. The section of a
+`v*` tag becomes the body of its GitHub release, so anything missing from it is
+missing from what users are told.
+
+Write it for the person running the gallery, not for the person reading the
+diff — what it does for them and why it is better. If the change is genuinely
+invisible from outside the repository, say so in the commit body with
+`Changelog: none — <reason>` and the check stands down.
 
 The check verifies that a mention **exists**, never that it is still true. It
 catches a route added without a word in `05-api.md`; it will never catch a
