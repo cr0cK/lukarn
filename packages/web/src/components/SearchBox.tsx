@@ -166,7 +166,10 @@ export function SearchBox({
 
   return (
     <div ref={zone} className={inSheet ? 'flex min-h-0 flex-1 flex-col' : 'relative'}>
-      <div className={inSheet ? 'relative px-4 pb-3' : 'contents'}>
+      {/* The gap under the field is a margin, never padding: the icon centres on
+          `top-1/2` of this box, and padding-bottom would grow it below the input,
+          dropping the icon half that padding under the middle of the field. */}
+      <div className={inSheet ? 'relative mb-3 px-4' : 'contents'}>
         <svg
           viewBox="0 0 24 24"
           className={`pointer-events-none absolute top-1/2 size-4 -translate-y-1/2 text-ink-400 ${

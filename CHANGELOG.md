@@ -55,6 +55,8 @@ its side panel and its keyboard navigation.
   space above the home indicator.
 - Opening a photo carries its thumbnail into place instead of cutting to a
   full-screen image, on browsers that support view transitions.
+- The magnifier now sits on the middle of the search field in the phone's search
+  sheet, rather than six pixels below it.
 
 ## [1.0.0] — 2026-08-13
 
