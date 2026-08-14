@@ -4,6 +4,7 @@ import { mediaUrl } from '../api/client';
 import { formatDuration } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { releaseIfDetached } from '../lib/imageRelease';
+import { MEDIA_ID_ATTRIBUTE } from '../lib/viewTransition';
 
 /**
  * Smallest variant covering the actual display size, including screen density.
@@ -96,6 +97,10 @@ export function Thumb({
     <button
       type="button"
       onClick={onOpen}
+      // The tile the viewer grows out of is found by this attribute rather than
+      // by a ref: the grid is virtualised, and a ref per cell would have to
+      // survive the rows being unmounted while scrolling.
+      {...{ [MEDIA_ID_ATTRIBUTE]: item.id }}
       // Arrow keys navigate on the container: remove thumbnails from tab order
       // to avoid duplicating the keyboard path.
       tabIndex={-1}

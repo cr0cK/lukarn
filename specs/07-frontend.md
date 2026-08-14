@@ -396,9 +396,13 @@ press must not do both.
 A shared component rather than a menu per call site: these are the three
 closing rules that would get rewritten slightly wrong the second time around.
 
-It opens **below** its button, or above it when `placement="above"` says so. A
-control sitting on the bottom edge of the screen — the Account tab — has nothing
-underneath it to open into.
+**Two shapes for one list.** From `md` it is a dropdown anchored under its
+button. Below `md` the same entries render in a `Sheet`, because the button
+opening them may be a tab on the bottom edge — a dropdown there would open past
+the edge of the screen — and because a 16 rem panel pinned to the top right
+corner is the one part of a phone screen a thumb cannot reach. The sheet owns
+its own dismissal, so the outside-click and `Escape` listeners above stand down
+there rather than fight it.
 
 **What the menu contains lives in `components/AccountMenu.tsx`**, not in the
 bar. Two surfaces open the same list: the badge above `md` and the Account tab
@@ -1048,6 +1052,35 @@ as the emergency exit.
 
 ## Viewer — `components/Lightbox.tsx`
 
+- **It opens bare on a coarse pointer**
+  ([D260814b](./08-decisions/D260814b-a-sheet-replaces-the-overlay-and-the-viewer-opens.md)).
+  A phone opening a photo shows the photo: no header, no arrows, no caption.
+  The state is the one `h` already toggled; the eye button in the corner is the
+  affordance saying the rest is one tap away, and **a tap on the photo** toggles
+  it — which is what every native viewer does. With a cursor nothing changes:
+  hover already names every control, the arrows are how a mouse navigates, and
+  no screen edge needs reclaiming.
+
+  Zoom therefore moves to a **double** tap on touch, and this is a cost. A single
+  tap was the only way to enlarge a photo with a finger, since
+  `touch-action: pinch-zoom` hands two fingers to the browser's own page zoom,
+  which magnifies rendered pixels rather than requesting the 4096 px variant.
+  Each single tap now waits 250 ms to learn whether a second one follows.
+
+- **Opening carries the thumbnail into place.** `lib/viewTransition.ts` runs the
+  URL change inside `document.startViewTransition`, with the tile and then the
+  full-screen image wearing the same `view-transition-name` — one at a time,
+  because two elements holding it produce no animation at all, silently. Found
+  through `data-media-id` rather than a ref, since the grid is virtualised and a
+  ref per cell would have to survive its row being unmounted while scrolling.
+
+  Detected at runtime, and everything still works without it: the build targets
+  `chrome79`, where the API does not exist and the update simply happens. Same
+  under `prefers-reduced-motion`. **Closing is not animated** — the shared name
+  would have to be given to the destination after the update rather than before
+  it, and the thumbnail may have been unmounted by the virtualiser after a swipe
+  through fifty photos.
+
 - **The header locates, the bottom strip narrates.** At the top: the album
   and the day on one line, the place on the next — what situates the image.
   At the bottom, in `MediaCaption`: the hand-written texts. The exact
@@ -1292,6 +1325,24 @@ The hand-written texts, gathered at the bottom of the photo column, at
 **every** width. What explains an image used to be read elsewhere than the
 image itself — the day's note in its section header, and nothing at all on
 the photo — opening an image lost most of what explains it (D84).
+
+**Below `md` it is the resting stop of the viewer's sheet** (`variant="sheet"`):
+the gradient, the absolute placement and the collapse chevron all belong to the
+sheet, which already has a grip and a backdrop, so only the text, the pencil and
+the editor remain. Above it, the strip over the photo, unchanged. The day, the
+place and the comment count are added above the text down there, because the
+header carrying them is hidden by default on a touch screen — without them the
+sheet would open on a description with nothing saying which photo it describes.
+
+Pulling that stop past its bottom hides the caption, which is what the chevron
+does above `md`; the "Show the caption" pill that comes back is the component's
+own hidden state, not a copy of it.
+
+**A video keeps the strip in the flow at every width.** Native playback controls
+live at the bottom of the element, and a sheet resting there would cover play,
+pause and the progress bar — the same reason the strip already pushes instead of
+overlaying on video. On a phone the sheet then carries the panel alone, with no
+resting stop.
 
 | Line  | Prefix     | Style                 | Visible lines |
 | ----- | ---------- | --------------------- | ------------- |
@@ -1812,6 +1863,48 @@ to a UTC-day count would give two scales in the same table, and a visit at
 00:30 on 1 August would read on 31 July's row. The relative form
 (`formatRelative`) is what displays, the exact date stays on hover.
 
+### Sheets — `components/Sheet.tsx`, `lib/sheetDrag.ts` and `lib/haptics.ts`
+
+Below `md`, everything that used to overlay arrives from the bottom edge
+instead ([D260814b](./08-decisions/D260814b-a-sheet-replaces-the-overlay-and-the-viewer-opens.md)).
+A sheet is a `fixed` panel rendered into `document.body` through
+`createPortal`, for the reason `InstallInstructions` already needed: the three
+places that open one are a `backdrop-blur` header, a `z-10` band inside the
+viewer and a `fixed` tab bar, and a `fixed` element inside any of them
+resolves against its ancestor rather than the viewport.
+
+It has **stops** rather than one open height — a fraction of the viewport, or
+`'auto'` measured from its resting content, which is what the viewer's
+caption needs since its height depends on how much somebody wrote. `layerFrom`
+says which stops are a **layer**: backdrop, trapped focus and `Escape`. Below
+it the sheet is a strip resting on the page, and the page stays usable behind
+it — the caption, where the photo must remain reachable.
+
+**The gesture is the same one the photo rail uses**, deliberately.
+`lib/sheetDrag.ts` is the vertical `swipeTrack.ts` and imports that module's
+edge resistance and flick speed; settling reuses `settleDuration` and
+`SETTLE_EASING` unchanged. A flick moves exactly one stop in its own
+direction, anything slower snaps to the nearest, and one stop below the
+lowest is dismissal — a sheet that could only be shrunk would leave a strip
+on the photo that nothing could put away.
+
+**The grip captures the pointer on `pointerdown`**, unlike the rail, which
+must first decide whether a gesture is horizontal. The grip is 44 px tall and
+the drag that matters is 400 px long: without early capture the very first
+move already lands outside the handle, the element never receives it, and the
+sheet does not move. This is measured — the first implementation captured
+after the direction lock and no drag ever committed.
+
+`env(safe-area-inset-bottom)` is padding **inside** the sheet: its content
+clears the home bar while its surface still reaches the bottom of the screen,
+which is what makes it read as attached to the edge rather than floating.
+
+`lib/haptics.ts` confirms a new stop with an 8 ms `navigator.vibrate`,
+detected at runtime and silent under `prefers-reduced-motion`. **It does
+nothing on iOS**, which has never implemented the API — on the archetypal
+phone for a photo gallery this feedback does not exist, and that is worth
+stating rather than discovering.
+
 ### Side panel — `components/SidePanel.tsx`
 
 A single `aside` on the right, two tabs: "Info" (`ExifPanel`) and "Comments"
@@ -1841,13 +1934,20 @@ part of it: `ExifPanel` and `CommentsPanel` separators move to `ink-800`, now
 input fields move to `ink-900`, darker than the panel, to keep reading as
 recesses. A field the exact colour of its panel is no longer a field.
 
-**Two position regimes depending on width.** From `md` on, the panel is a
-flow element (`md:relative md:w-80 lg:w-96 md:shrink-0`): the photo area
-shrinks accordingly, and that is what allows leaving it open from one photo
-to the next. As an overlay, it used to cover the "Next" arrow, forcing it
-open and closed constantly. Below `md` it goes back to overlay — 320 px
-taken from a phone screen would leave nothing to see — and regains its
-`backdrop-blur`, useless once it is opaque.
+**Two frames depending on width.** From `md` on, the panel is a flow element
+(`md:relative md:w-80 lg:w-96 md:shrink-0`): the photo area shrinks
+accordingly, and that is what allows leaving it open from one photo to the
+next. As an overlay, it used to cover the "Next" arrow, forcing it open and
+closed constantly.
+
+**Below `md` this component is not used at all.** The viewer renders
+`PanelBody` — the two tabs and their contents, extracted for exactly this —
+into the taller stop of its sheet, reached by pulling the caption up. What
+was a full-screen overlay arriving from the top, dismissed by a cross in the
+far corner, is now the same surface the caption already occupies, one drag
+deeper ([D260814b](./08-decisions/D260814b-a-sheet-replaces-the-overlay-and-the-viewer-opens.md)).
+Only the frame differs; everything inside it is shared, which is why the body
+lives in its own component rather than behind a prop on this one.
 
 Zoom has nothing to know about this shrinking: `ZoomableImage` measures its
 container via `ResizeObserver`, so the fit scale and the framing bounds
