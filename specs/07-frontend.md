@@ -2013,6 +2013,24 @@ move already lands outside the handle, the element never receives it, and the
 sheet does not move. This is measured — the first implementation captured
 after the direction lock and no drag ever committed.
 
+**The grip is a `button`, and a tap on it moves one stop**
+([D260814f](./08-decisions/D260814f-the-sheet-s-grip-answers-a-tap-not-only-a-drag.md)):
+up, or back down from the top, and away on a sheet whose only stop is its top.
+The drag was the only way in for a while, which asked for a deliberate 400 px
+gesture on a control that looks like something to press — and made dismissing a
+menu opened by mistake a whole hand's work. A real `button` brings `Enter` and
+`Space` with it, which matters because the sheet traps focus and a gesture is
+the one thing a keyboard cannot perform; `aria-expanded` and the accessible name
+— Expand, Collapse, Close — say what a drawn bar cannot.
+
+A completed drag **must not be undone by the click that follows it**: the browser
+fires `click` after `pointerup`, so the gesture would settle and the click would
+toggle it straight off. A flag raised only when a drag actually moves, cleared on
+the next `pointerdown`, swallows that one click and no other. Growing is
+committed at once while shrinking animates, because `dragged` only renders
+downwards — animating a tap upwards would hold the sheet still for the settling
+duration and then jump.
+
 `env(safe-area-inset-bottom)` is padding **inside** the sheet: its content
 clears the home bar while its surface still reaches the bottom of the screen,
 which is what makes it read as attached to the edge rather than floating.

@@ -121,6 +121,16 @@ export function Sheet({
   const commit = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLayer = stop >= layerFrom;
+  /**
+   * What a tap on the grip will do, named for whoever cannot see the sheet move.
+   * A one-stop sheet has nowhere to go but away, so it says so.
+   */
+  const gripLabel =
+    stop < stops.length - 1
+      ? t('sheet.expand')
+      : stops.length > 1
+        ? t('sheet.collapse')
+        : t('common.close');
 
   /**
    * Measure after layout, not during render: an `'auto'` stop is the height its
@@ -185,6 +195,41 @@ export function Sheet({
     [heights, stop, onStopChange],
   );
 
+  /**
+   * Where a **tap** on the grip goes: up one stop, or back down from the top.
+   *
+   * The drag teaches the sheet's whole range, but it asks for a gesture where a
+   * press would do — and on a one-stop sheet, dragging it away to dismiss is a
+   * lot of hand for a menu somebody opened by mistake. A tap therefore does the
+   * obvious thing at each end: open it further, or put it back
+   * ([D260814f](../../../../specs/08-decisions/D260814f-the-sheet-s-grip-answers-a-tap-not-only-a-drag.md)).
+   */
+  const nextOnTap = stop < stops.length - 1 ? stop + 1 : stop - 1;
+
+  const tapGrip = useCallback(() => {
+    if (heights.length === 0) return;
+    if (nextOnTap > stop) {
+      // Growing is not animated — the sheet's height is a style, and a drag
+      // upwards does not preview it either — so commit at once rather than sit
+      // still for a settling delay that shows nothing.
+      tapFeedback();
+      onStopChange(nextOnTap);
+      return;
+    }
+    // Shrinking and dismissal do animate: `dragged` is positive there, which is
+    // the direction the transform actually renders.
+    settleTo(nextOnTap, heights[stop] ?? 0, 0);
+  }, [heights, stop, nextOnTap, onStopChange, settleTo]);
+
+  /**
+   * A gesture that moved is not also a press.
+   *
+   * The browser fires `click` on the element after `pointerup`, so without this
+   * every completed drag would settle on a stop and then be toggled off it again
+   * by the click that followed.
+   */
+  const dragMoved = useRef(false);
+
   const end = useCallback(
     (event: ReactPointerEvent<HTMLElement>, cancelled: boolean) => {
       const from = gesture.current;
@@ -195,7 +240,11 @@ export function Sheet({
       }
       // Before the first measurement there is no stop to decide between, and
       // `decideSheetStop` would compare against nothing.
-      if (!from.locked || heights.length === 0) return;
+      if (heights.length === 0) return;
+      // A press that never moved is left to the button's own `click`, which also
+      // covers the keyboard.
+      if (!from.locked) return;
+      dragMoved.current = true;
 
       const dy = resistAboveTop(event.clientY - from.originY, stop === stops.length - 1);
       const velocity = performance.now() - from.lastAt > VELOCITY_IDLE_MS ? 0 : from.velocity;
@@ -285,9 +334,25 @@ export function Sheet({
             `touch-action: none` on it and nothing else: the browser must not
             claim this drag as a page scroll, while the content below keeps its
             own scrolling — which is the whole point of the taller stop. */}
-        <div
-          className="flex h-11 shrink-0 cursor-grab touch-none items-center justify-center"
+        <button
+          type="button"
+          // A `button`, not a bare handle: it answers a tap and, with it, `Enter`
+          // and `Space` from the keyboard the focus trap can reach — the drag was
+          // the only way in, and a gesture is the one thing a keyboard cannot make.
+          aria-label={gripLabel}
+          aria-expanded={stops.length > 1 ? stop === stops.length - 1 : undefined}
+          onClick={() => {
+            // A drag ends with a `click` on the same element: without this, every
+            // completed gesture would settle on a stop and then be toggled off it.
+            if (dragMoved.current) {
+              dragMoved.current = false;
+              return;
+            }
+            tapGrip();
+          }}
+          className="flex h-11 w-full shrink-0 cursor-grab touch-none items-center justify-center transition-colors hover:bg-white/5"
           onPointerDown={(event) => {
+            dragMoved.current = false;
             if (settleMs > 0) return;
             // Capture **immediately**, unlike the photo rail, which must first
             // decide whether the gesture is horizontal. A grip is 44 px tall and
@@ -329,7 +394,7 @@ export function Sheet({
           onPointerCancel={(event) => end(event, true)}
         >
           <span aria-hidden="true" className="h-1 w-9 rounded-full bg-ink-600" />
-        </div>
+        </button>
 
         {peek !== undefined && (
           <div ref={resting} className="shrink-0">

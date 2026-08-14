@@ -67,6 +67,11 @@ export const fr: Messages = {
   'tabs.activity': 'Activité',
   'tabs.account': 'Compte',
 
+  /* ------------------------------------------------------------ Sheets */
+
+  'sheet.expand': 'Déplier',
+  'sheet.collapse': 'Replier',
+
   /* --------------------------------------------------------------- Search */
 
   'search.label': 'Rechercher',

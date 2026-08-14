@@ -77,6 +77,11 @@ export const en = {
   'tabs.activity': 'Activity',
   'tabs.account': 'Account',
 
+  /* ------------------------------------------------------------ Sheets */
+
+  'sheet.expand': 'Expand',
+  'sheet.collapse': 'Collapse',
+
   /* --------------------------------------------------------------- Search */
 
   'search.label': 'Search',
