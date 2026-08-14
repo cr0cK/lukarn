@@ -46,7 +46,35 @@ interface ZoomableImageProps {
   /** Controlled from the viewer (`z` key). */
   zoomed: boolean;
   onZoomedChange: (zoomed: boolean) => void;
+  /**
+   * What a **single** tap does when one is supplied — the viewer passes its
+   * chrome toggle here on a coarse pointer, where a tap on the photo means
+   * "show me the photo" in every native viewer.
+   *
+   * Zoom then moves to a **double** tap, and does not simply disappear: on
+   * touch, the single tap was the only way to enlarge. `touch-action:
+   * pinch-zoom` hands two fingers to the browser's own page zoom, which
+   * magnifies the rendered pixels rather than requesting the 4096 px variant.
+   */
+  onTap?: (() => void) | undefined;
+  /**
+   * View transition name, so the thumbnail the viewer was opened from can grow
+   * into this image (`lib/viewTransition.ts`). Held permanently rather than for
+   * the duration of the animation: the name must be **unique in the document**
+   * when a snapshot is taken, and this is the only full-screen image there is.
+   */
+  sharedName?: string | undefined;
 }
+
+/**
+ * Window for a second tap, and how far it may land from the first.
+ *
+ * 250 ms is what a single tap costs in latency, because it can only be resolved
+ * once the second one has failed to arrive. Shorter and a deliberate double tap
+ * is read as two singles; longer and revealing the chrome feels broken.
+ */
+const DOUBLE_TAP_MS = 250;
+const DOUBLE_TAP_PX = 32;
 
 interface Box {
   width: number;
@@ -86,10 +114,14 @@ export function ZoomableImage({
   naturalHeight,
   zoomed,
   onZoomedChange,
+  onTap,
+  sharedName,
 }: ZoomableImageProps): ReactElement {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  /** A first tap waiting to learn whether a second one follows. */
+  const pendingTap = useRef<{ point: Point; timer: ReturnType<typeof setTimeout> } | null>(null);
   const [container, setContainer] = useState<Box>({ width: 0, height: 0 });
   const [intrinsic, setIntrinsic] = useState<Box>({
     width: naturalWidth ?? 0,
@@ -446,8 +478,34 @@ export function ZoomableImage({
     // The frame background is not the photo: releasing there toggles nothing,
     // just as before. Only the photo responds to a click.
     if (!gesture.onImage) return;
-    if (!isTap(gesture.origin, { x: event.clientX, y: event.clientY })) return;
-    toggleZoomAt({ x: event.clientX, y: event.clientY });
+    const point = { x: event.clientX, y: event.clientY };
+    if (!isTap(gesture.origin, point)) return;
+
+    // With a cursor, one click zooms, as it always has: there is no chrome to
+    // reveal that a mouse cannot already see.
+    if (!onTap) {
+      toggleZoomAt(point);
+      return;
+    }
+
+    // Two taps close together in space and time: zoom. The first tap's effect is
+    // **held** rather than applied then undone — a chrome bar appearing and
+    // disappearing under the second tap reads as a glitch, not as a gesture.
+    const previous = pendingTap.current;
+    if (previous && isTap(previous.point, point, DOUBLE_TAP_PX)) {
+      clearTimeout(previous.timer);
+      pendingTap.current = null;
+      toggleZoomAt(point);
+      return;
+    }
+
+    pendingTap.current = {
+      point,
+      timer: setTimeout(() => {
+        pendingTap.current = null;
+        onTap();
+      }, DOUBLE_TAP_MS),
+    };
   };
 
   // Gesture interrupted by the browser — second finger or edge-swipe back:
@@ -455,6 +513,15 @@ export function ZoomableImage({
   const onPointerCancel = (): void => {
     gestureRef.current = null;
   };
+
+  // A photo left mid-wait would fire its single tap on the next one, or after
+  // the viewer closed.
+  useEffect(() => {
+    const pending = pendingTap;
+    return () => {
+      if (pending.current) clearTimeout(pending.current.timer);
+    };
+  }, []);
 
   const isZoomed = scale > 1 + FIT_EPSILON;
 
@@ -530,6 +597,7 @@ export function ZoomableImage({
           // No transition while dragging: movement must stick to the pointer, not
           // follow it with delay.
           transition: gestureRef.current?.panning ? 'none' : 'transform 120ms ease-out',
+          viewTransitionName: sharedName,
         }}
       />
 

@@ -6,6 +6,7 @@ import {
   type SortOrder,
 } from '@lukarn/shared';
 import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
 import { AlbumDescription } from '../components/AlbumDescription';
@@ -23,6 +24,7 @@ import { useT } from '../lib/i18n';
 import { isTyping } from '../lib/typing';
 import { moveSelection, scrollSelectionIntoView, useGridLayout } from '../lib/useGridLayout';
 import { useShortcut } from '../lib/useShortcut';
+import { openWithSharedElement } from '../lib/viewTransition';
 
 /** View settings carried by the album address bar. */
 type ViewParam = 'photo' | 'panel' | 'order' | 'group' | 'day';
@@ -126,11 +128,15 @@ export default function AlbumPage(): ReactElement {
     [setSearchParams],
   );
 
+  // Opening is the one navigation that carries a shared element: the thumbnail
+  // grows into the viewer, which is what says *which* of two hundred tiles was
+  // touched. `flushSync` because the browser snapshots the new state as soon as
+  // the callback returns, and React would otherwise still be holding the update.
   const openAt = useCallback(
     (index: number) => {
       const item = items[index];
       if (!item) return;
-      setParams({ photo: item.id }, false);
+      openWithSharedElement(item.id, () => flushSync(() => setParams({ photo: item.id }, false)));
     },
     [items, setParams],
   );

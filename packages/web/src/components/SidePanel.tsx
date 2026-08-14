@@ -29,6 +29,11 @@ export function isPanelTab(value: string | null): value is PanelTab {
  * flow. This lets it remain open: as an overlay, it covered the "Next" arrow.
  * Zoom need not know, because `ZoomableImage` measures its container with
  * `ResizeObserver`.
+ *
+ * **Below `md` this component is not used.** The viewer renders `PanelBody` into
+ * a sheet instead, where the same tabs are reached by pulling the caption up.
+ * Only the frame differs; everything inside it is shared, which is why the body
+ * lives in its own component rather than behind a prop on this one.
  */
 export function SidePanel({
   albumId,
@@ -89,6 +94,44 @@ export function SidePanel({
         </button>
       </header>
 
+      <PanelBody
+        albumId={albumId}
+        mediaId={mediaId}
+        detail={detail}
+        day={day}
+        tab={tab}
+        onTabChange={onTabChange}
+      />
+    </aside>
+  );
+}
+
+/**
+ * The two tabs and their contents, without the frame holding them.
+ *
+ * Extracted because the frame is the only thing that changes with width: a
+ * column above `md`, a sheet below it. Duplicating the tabs would eventually
+ * leave the comment count on one of the two.
+ */
+export function PanelBody({
+  albumId,
+  mediaId,
+  detail,
+  day,
+  tab,
+  onTabChange,
+}: {
+  albumId: string;
+  mediaId: string;
+  detail: MediaDetail | undefined;
+  day: AlbumDay | undefined;
+  tab: PanelTab;
+  onTabChange: (tab: PanelTab) => void;
+}): ReactElement {
+  const t = useT();
+
+  return (
+    <>
       <div role="tablist" aria-label={t('panel.sections')} className="flex border-b border-ink-800">
         <Tab selected={tab === 'info'} onSelect={() => onTabChange('info')} controls="panel-info">
           {t('panel.info')}
@@ -120,7 +163,7 @@ export function SidePanel({
           <CommentsPanel albumId={albumId} mediaId={mediaId} />
         </div>
       )}
-    </aside>
+    </>
   );
 }
 

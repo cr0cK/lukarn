@@ -285,6 +285,7 @@ export const en = {
   'panel.sections': 'Panel sections',
   'panel.info': 'Info',
   'panel.comments': 'Comments',
+  'panel.commentCount': (count: number) => `${count} comment${count > 1 ? 's' : ''}`,
 
   /* ------------------------------------------------------------ EXIF rows */
 

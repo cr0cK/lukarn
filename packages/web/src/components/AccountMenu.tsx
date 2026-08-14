@@ -22,8 +22,6 @@ interface AccountMenuProps {
   /** Button content: the bar draws an initial, the tab bar an icon and a name. */
   trigger: ReactNode;
   triggerClassName: string;
-  /** Where the panel opens. A tab at the bottom of the screen has no room below. */
-  placement?: 'below' | 'above';
 }
 
 /**
@@ -35,11 +33,7 @@ interface AccountMenuProps {
  * written once; a second copy would drift the day a language or an action is
  * added, and the divergence would be visible only on one of the two screens.
  */
-export function AccountMenu({
-  trigger,
-  triggerClassName,
-  placement = 'below',
-}: AccountMenuProps): ReactElement {
+export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): ReactElement {
   const { data: user } = useMe();
   const logout = useLogout();
   const navigate = useNavigate();
@@ -93,7 +87,6 @@ export function AccountMenu({
         label={t('topbar.account')}
         trigger={trigger}
         triggerClassName={triggerClassName}
-        placement={placement}
         // The identifier opens albums and may be shared by a household; the
         // address says who signs comments. Show both when they differ — precisely
         // when someone wonders which name they write under.
