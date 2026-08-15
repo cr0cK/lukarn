@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useMe } from '../api/hooks';
 import { useT, type Translate } from '../lib/i18n';
 import { useHideOnScroll } from '../lib/useHideOnScroll';
-import { AccountMenu, accountInitial } from './AccountMenu';
+import { AccountIcon, AccountMenu } from './AccountMenu';
 import { ActionMenu } from './ActionMenu';
 import { Brand } from './Brand';
 
@@ -78,7 +78,7 @@ const CLASSE_BOUTON =
   'flex size-12 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:size-9';
 
 const CLASSE_PASTILLE =
-  'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-sm font-medium text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
+  'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
 
 /**
  * Sticky top bar shared by all authenticated pages.
@@ -288,10 +288,11 @@ export function TopBar({
           {user && (
             <div className="hidden md:block">
               <AccountMenu
-                // Use the identifier initial, not the display-name initial: it
-                // abbreviates the menu's first line, and different letters before
-                // and after the click would look like a defect.
-                trigger={accountInitial(user.username)}
+                // The person, not their initial: the badge is the one target on
+                // the bar that stands for somebody rather than for an action,
+                // and it now opens onto the same glyph beside the identifier —
+                // one thing continued rather than a letter replaced by a name.
+                trigger={<AccountIcon className="size-[1.125rem]" />}
                 triggerClassName={CLASSE_PASTILLE}
               />
             </div>

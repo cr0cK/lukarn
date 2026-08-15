@@ -13,6 +13,19 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### The account is a person everywhere
+
+The corner of the bar used to hold the first letter of your username, the phone's
+Account tab a little drawing of somebody, and the menu they both open began with
+your name pushed out of line with everything under it.
+
+- **The same person is drawn in all three places**, so the mark you press is the
+  mark you land on, and your name now lines up with Administration and Sign out
+  as what those actions apply to.
+- Nothing is fetched from anywhere for it: no photo, no avatar service, no
+  address handed to a third party — the drawing comes with the page, as the
+  letter did.
+
 ### The gallery says what it runs, and when something newer exists
 
 Until now, an instance could not tell you which version it was: the number lived

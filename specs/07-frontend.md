@@ -266,7 +266,7 @@ best.
 
 Two families follow one another and never mix: **what this page does** — back,
 title and its subtitle, activity, view controls — then, all the way to the
-right, **who is looking at it**: a badge carrying the account's initial, which
+right, **who is looking at it**: a badge carrying the account glyph, which
 opens Admin, Sign out and Install. Below `md`, the second family is not in the
 bar at all: the tabs carry it.
 
@@ -380,14 +380,19 @@ What the menu shows at the top: the **identifier**, then the **address** of the
 commenter identity if the session carries one. Both, because they say
 different things — the identifier opens albums and can be shared by an entire
 household, the address says who is signing (see
-[04 — Identities](./04-security-and-access.md#commenter-identity)). The badge
-abbreviates the **first line**: an initial taken from elsewhere would read as a
-defect the moment the menu opens.
+[04 — Identities](./04-security-and-access.md#commenter-identity)). The
+identifier line carries the account glyph, on the gutter the entries below draw
+theirs in: it is the head of that list, not a caption floating to its left
+(D260815b).
 
-No photo, no remote avatar service: a single letter, rendered locally.
-Fetching an image from a third party based on the address would hand it over
-on every page load, for a purely decorative gain on an application that is
-self-hosted precisely to avoid that (D86).
+No photo, no remote avatar service, and no initial either: one glyph —
+`AccountIcon`, exported by `AccountMenu` — drawn by the three surfaces that
+stand for the person, the badge, the Account tab and that first line. Fetching
+an image from a third party based on the address would hand it over on every
+page load, for a purely decorative gain on an application that is self-hosted
+precisely to avoid that (D86). Each of the three sizes it from `className`,
+because each sits among icons of a different weight — 24 px at 1.75 between the
+tabs, 16 px at 2 inside the menu.
 
 **Install comes last, after Sign out.** The prompt appears and disappears
 depending on the browser and on whether the app is already installed; placing
@@ -422,7 +427,8 @@ which the Install entry opens.
 ### What runs this gallery — `components/PoweredBy.tsx`
 
 `ActionMenu` takes a `pied`, a non-clickable block under the entries and below
-the rule that separates them, mirroring the `entete` above them. The account menu
+the rule that separates them, mirroring the `entete` — and its optional
+`headerIcon` — above them. The account menu
 fills it with `PoweredBy`: **"Powered by Lukarn v1.2.3"**, a link to the
 changelog, and — for an administrator with a newer release published — a badge
 reading "Update to 1.2.4" linking to that release.

@@ -9,18 +9,34 @@ import { InstallInstructions } from './InstallInstructions';
 import { PoweredBy } from './PoweredBy';
 
 /**
- * Account initial when there is no photo to display.
+ * The person the session belongs to, drawn once for the three places that show
+ * them: the bar's badge, the Account tab and the identifier line in the menu.
  *
- * Use `Array.from` rather than `[0]`: an identifier may start outside the Basic
- * Multilingual Plane — an emoji or ideogram — where indexed access would return
- * only half and display a replacement character.
+ * Size and stroke come from `className` because each of the three sits among
+ * icons of its own weight — 24 px at 1.75 between the tabs, 16 px at 2 inside
+ * the menu — and a glyph that ignored its neighbours would be the one thing on
+ * the row that looks pasted in.
  */
-export function accountInitial(username: string): string {
-  return Array.from(username)[0]?.toUpperCase() ?? '?';
+export function AccountIcon({ className }: { className: string }): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
 }
 
 interface AccountMenuProps {
-  /** Button content: the bar draws an initial, the tab bar an icon and a name. */
+  /** Button content: the bar draws the badge, the tab bar an icon and a name. */
   trigger: ReactNode;
   triggerClassName: string;
 }
@@ -92,6 +108,11 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
         // address says who signs comments. Show both when they differ — precisely
         // when someone wonders which name they write under.
         entete={user ? [user.username, ...(user.identity ? [user.identity.email] : [])] : undefined}
+        // The same person the badge and the tab draw, at the size the entries
+        // below use: without it the identifier started to the left of every
+        // action it applies to, and read as a stray label rather than the head
+        // of the list.
+        headerIcon={<AccountIcon className="size-4" />}
         groupes={[compte, langues]}
         // The one place reachable from every page, on both shapes of the
         // interface: what runs this gallery belongs at the bottom of it, under
