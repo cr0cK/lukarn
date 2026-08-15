@@ -38,6 +38,6 @@ document cited between backticks must be a file.
 
 ## Current
 
-| Plan                                                    | State                               |
-| ------------------------------------------------------- | ----------------------------------- |
-| [1.2.0 — Storage backends](./1.2.0-storage-backends.md) | Two of four written, both in review |
+| Plan                                                    | State              |
+| ------------------------------------------------------- | ------------------ |
+| [1.2.0 — Storage backends](./1.2.0-storage-backends.md) | Two of four merged |
