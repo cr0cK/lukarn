@@ -56,6 +56,8 @@ class DriveStub extends DriveService {
   thumbnailLink: string | null = null;
   /** Page tokens received, so pagination can be observed from outside. */
   readonly pages: (string | undefined)[] = [];
+  /** The `q` clause of the last listing, where the container is interpolated. */
+  lastQuery = '';
 
   protected override accessToken(): Promise<string> {
     return Promise.resolve('jeton');
@@ -64,8 +66,9 @@ class DriveStub extends DriveService {
   protected override api(): drive_v3.Drive {
     return {
       files: {
-        list: (params: { pageToken?: string }) => {
+        list: (params: { pageToken?: string; q?: string }) => {
           this.pages.push(params.pageToken);
+          this.lastQuery = params.q ?? '';
           return Promise.resolve({
             data: { files: this.listed, nextPageToken: this.nextPageToken },
           });
@@ -161,6 +164,17 @@ describe('listing translated into storage entries', () => {
     // The distinction is the whole point of the field: `null` is what tells the
     // indexer it must read the bytes itself, which is how every other backend works.
     assert.equal((await drive.list('racine', null)).entries[0]?.media, null);
+  });
+
+  it('escapes the backslash before the quote in the container it interpolates', async () => {
+    const drive = service();
+
+    await drive.list("dossier\\'bizarre", null);
+
+    // Escaping the quote first would double the backslash it just added, turning
+    // the escape back into a literal backslash and a closing quote — the query
+    // then fails on a syntax error whose only symptom is an empty album.
+    assert.equal(drive.lastQuery, "'dossier\\\\\\'bizarre' in parents and trashed = false");
   });
 
   it('relays the page token as an opaque cursor', async () => {

@@ -123,6 +123,21 @@ function isRateLimited(status: number, body: string): boolean {
 }
 
 /**
+ * A value placed inside the single quotes of a Drive query.
+ *
+ * **The backslash is escaped first, and the order is the whole point**: escaping
+ * the quote first would produce a `\'` whose backslash the second pass would then
+ * double into `\\'`, turning the escape back into a literal backslash followed by
+ * a closing quote. A folder identifier is typed by an administrator rather than a
+ * visitor, so this is not an injection an outsider reaches — but one unescaped
+ * backslash is enough for `files.list` to fail on a syntax error whose only
+ * visible symptom is an album that stays empty.
+ */
+function escapeQueryValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/**
  * Delay before the next attempt. Google's `Retry-After` is authoritative when
  * present; otherwise the delay doubles on each attempt.
  */
@@ -300,7 +315,7 @@ export class DriveService implements StorageProvider {
    */
   async list(container: string, cursor: string | null): Promise<StoragePage> {
     const { data } = await this.api().files.list({
-      q: `'${container.replace(/'/g, "\\'")}' in parents and trashed = false`,
+      q: `'${escapeQueryValue(container)}' in parents and trashed = false`,
       fields: FIELDS,
       pageSize: PAGE_SIZE,
       pageToken: cursor ?? undefined,
