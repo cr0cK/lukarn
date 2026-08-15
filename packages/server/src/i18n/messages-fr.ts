@@ -59,7 +59,7 @@ export const fr: Messages = {
   'error.noVideoPreview': 'Aucun aperçu disponible pour cette vidéo',
   'error.unsupportedThumbSize': 'Taille de vignette non prise en charge',
   'error.videoNotReady': 'Version lisible pas encore préparée',
-  'error.emptyFromDrive': 'Réponse vide de Drive',
+  'error.emptyFromStorage': 'Réponse vide du stockage',
 
   'error.usernameTaken': (username: string) => `L’identifiant « ${username} » est déjà pris.`,
   'error.unknownAlbum': (albumId: string) => `Album inconnu : « ${albumId} »`,

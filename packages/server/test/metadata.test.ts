@@ -7,7 +7,7 @@ import {
   resolveVideoTakenAt,
   toCoordinates,
   toNumber,
-} from '../src/drive/metadata.js';
+} from '../src/sync/metadata.js';
 
 describe('classify', () => {
   it('recognises photos and videos', () => {

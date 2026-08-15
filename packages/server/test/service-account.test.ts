@@ -6,7 +6,7 @@ import { after, describe, it } from 'node:test';
 import argon2 from 'argon2';
 import { buildApp } from '../src/app.js';
 import { openDb, type Db } from '../src/db.js';
-import { DriveService } from '../src/drive/service.js';
+import { DriveService } from '../src/storage/drive.js';
 import { loadEnv } from '../src/env.js';
 
 /**

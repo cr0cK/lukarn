@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import { cpus } from 'node:os';
 import sharp from 'sharp';
 import type { ThumbSize } from '@lukarn/shared';
-import type { DriveService } from '../drive/service.js';
+import type { StorageProvider } from '../storage/provider.js';
 import type { MediaCache } from './cache.js';
 import { Semaphore, renderConcurrencyFor } from './semaphore.js';
 
@@ -18,7 +18,7 @@ const FULL_MAX_EDGE = 2560;
 const HD_MAX_EDGE = 4096;
 
 /**
- * Beyond this, the original is not decoded locally and goes straight to the Drive
+ * Beyond this, the original is not decoded locally and goes straight to the backend
  * preview fallback.
  *
  * The limiter bounds the **number** of renders, not their size, and each render loads
@@ -58,10 +58,10 @@ export type Variant = { kind: 'thumb'; size: ThumbSize } | { kind: 'full' } | { 
 /**
  * Where rendering starts.
  *
- * `original` decodes the Drive file and falls back to the Drive preview only if that
- * fails. `poster` goes straight to the preview: this is the video case, which is not
- * decoded here (D92). Without this shortcut, every thumbnail would fetch a 48 MB MP4
- * only for `MAX_DECODE_BYTES` to discard it.
+ * `original` decodes the stored file and falls back to the backend's own preview only
+ * if that fails. `poster` goes straight to the preview: this is the video case, which
+ * is not decoded here (D92). Without this shortcut, every thumbnail would fetch a
+ * 48 MB MP4 only for `MAX_DECODE_BYTES` to discard it.
  */
 export type RenderOrigin = 'original' | 'poster';
 
@@ -78,10 +78,11 @@ interface Logger {
 /**
  * Cache key for a derivative.
  *
- * The content fingerprint (`md5` from Drive) is included: Drive keeps a file ID when
- * content is replaced with a new version, and without the fingerprint the cache would
- * serve the old image indefinitely. Rare files lack it and fall back to the identifier
- * alone, preserving previous behaviour.
+ * The content fingerprint (`md5`, whatever the backend guarantees changes with the
+ * bytes) is included: a storage keeps a file's identifier when content is replaced
+ * with a new version, and without the fingerprint the cache would serve the old image
+ * indefinitely. Rare files lack it and fall back to the identifier alone, preserving
+ * previous behaviour.
  */
 function variantKey(fileId: string, variant: Variant, md5: string | null): string {
   const kind = variant.kind === 'thumb' ? `t${variant.size}` : variant.kind;
@@ -115,14 +116,14 @@ function encodingFor(variant: Variant): { edge: number; quality: number } {
  * The sensitive point is an album's first load: the grid requests dozens of thumbnails
  * at once, and without care the same file could be downloaded concurrently several
  * times. Active renders are deduplicated by key, so a burst for one thumbnail triggers
- * only one Drive download.
+ * only one download from the storage.
  */
 export class MediaRenderer {
   private readonly inFlight = new Map<string, Promise<Rendered>>();
   private readonly places: Semaphore;
 
   constructor(
-    private readonly drive: DriveService,
+    private readonly storage: StorageProvider,
     private readonly cache: MediaCache,
     private readonly log: Logger,
     concurrency = renderConcurrencyFor(cpus().length),
@@ -180,9 +181,9 @@ export class MediaRenderer {
    * actually produced — zero if everything was cached.
    *
    * A separate path from `render()` for a measured reason: producing a derivative
-   * costs around two seconds of Drive download for fifty milliseconds of rendering.
-   * Three `render()` calls for one photo's sizes would download the same original
-   * three times — three times the traffic and pass duration — when one download suffices.
+   * costs around two seconds of download for fifty milliseconds of rendering. Three
+   * `render()` calls for one photo's sizes would download the same original three
+   * times — three times the traffic and pass duration — when one download suffices.
    *
    * One limiter slot covers the set: the in-memory original is the expensive part and
    * is shared by all variants. These renders bypass `inFlight`: deduplication serves
@@ -194,7 +195,7 @@ export class MediaRenderer {
     md5: string | null = null,
     origin: RenderOrigin = 'original',
   ): Promise<number> {
-    // Largest to smallest: the first variant is the template for the Drive-preview
+    // Largest to smallest: the first variant is the template for the backend-preview
     // fallback, and starting smallest would make `withoutEnlargement` fix all later
     // variants at that size.
     const manquantes = variants
@@ -209,20 +210,20 @@ export class MediaRenderer {
       try {
         source =
           origin === 'poster'
-            ? await this.downloadDriveThumbnail(fileId, premiere)
+            ? await this.providerPreview(fileId, premiere)
             : await this.download(fileId);
         // The first conversion doubles as a decode test: it switches formats bundled
-        // libvips cannot read to the Drive preview, exactly like a requested render.
+        // libvips cannot read to the backend preview, exactly like a requested render.
         await this.store(fileId, premiere, md5, source);
       } catch (error) {
-        // In `poster`, the Drive preview **is** the fallback; requesting it again after
-        // failure would only repeat the same call.
+        // In `poster`, the backend preview **is** the fallback; requesting it again
+        // after failure would only repeat the same call.
         if (origin === 'poster') throw error;
         this.log.warn(
           `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
-            'falling back to the Drive thumbnail',
+            'falling back to the preview held by the storage',
         );
-        source = await this.downloadDriveThumbnail(fileId, premiere);
+        source = await this.providerPreview(fileId, premiere);
         await this.store(fileId, premiere, md5, source);
       }
 
@@ -267,22 +268,22 @@ export class MediaRenderer {
     try {
       const source =
         origin === 'poster'
-          ? await this.downloadDriveThumbnail(fileId, variant)
+          ? await this.providerPreview(fileId, variant)
           : await this.download(fileId);
       output = await this.transform(source, variant);
     } catch (error) {
-      // In `poster`, the Drive preview **is** the source: there is no original behind
+      // In `poster`, the backend preview **is** the source: there is no original behind
       // it to decode and nothing more for fallback to attempt.
       if (origin === 'poster') throw error;
       // Formats bundled libvips cannot decode (some HEIC and proprietary RAW), and
-      // files too large for memory: Drive can produce a JPEG preview, so restart there.
-      // Downloading is inside `try` so the second case takes this path — otherwise a
-      // photo Drive can display would only return an error.
+      // files too large for memory: a backend that holds a JPEG preview can serve it,
+      // so restart there. Downloading is inside `try` so the second case takes this
+      // path — otherwise a photo the storage can display would only return an error.
       this.log.warn(
         `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
-          'falling back to the Drive thumbnail',
+          'falling back to the preview held by the storage',
       );
-      const fallback = await this.downloadDriveThumbnail(fileId, variant);
+      const fallback = await this.providerPreview(fileId, variant);
       output = await this.transform(fallback, variant);
     }
 
@@ -313,11 +314,14 @@ export class MediaRenderer {
   /**
    * In-memory original, refused above `MAX_DECODE_BYTES`.
    *
-   * Drive's reported size is checked before reading the body to avoid allocation, but
-   * the body is measured too: a missing or false header must not crash the process.
+   * The size announced by the storage is checked before reading the body to avoid
+   * allocation, but the body is measured too: a missing or false header must not crash
+   * the process.
    */
   private async download(fileId: string): Promise<Buffer> {
-    const response = await this.drive.fetchFile(fileId);
+    // `guard` is what turns a withdrawn authorisation into a 503 the browser retries:
+    // without it, opening a photo after a revoked token produced a bare 500.
+    const response = await this.storage.guard(() => this.storage.fetch(fileId));
 
     const annoncee = Number(response.headers.get('content-length'));
     if (Number.isFinite(annoncee) && annoncee > MAX_DECODE_BYTES) {
@@ -333,27 +337,23 @@ export class MediaRenderer {
     return source;
   }
 
-  /** JPEG preview generated by Google at the requested render size. */
-  private async downloadDriveThumbnail(fileId: string, variant: Variant): Promise<Buffer> {
-    const { data } = await this.drive.guard(() =>
-      this.drive.api().files.get({
-        fileId,
-        fields: 'thumbnailLink',
-        supportsAllDrives: true,
-      }),
+  /**
+   * The preview the backend already holds, at the requested render size.
+   *
+   * A backend that holds none answers `null`, and that is a failure here: this path is
+   * only ever taken because the original could not be decoded, so there is nothing
+   * left to serve. The message says which file, because the alternative — a HEIC
+   * silently missing from the grid — is what makes it hard to diagnose.
+   */
+  private async providerPreview(fileId: string, variant: Variant): Promise<Buffer> {
+    const response = await this.storage.guard(() =>
+      this.storage.preview(fileId, encodingFor(variant).edge),
     );
 
-    if (!data.thumbnailLink) {
-      throw new Error(`No Drive thumbnail available for ${fileId}`);
+    if (!response) {
+      throw new Error(`The storage holds no preview for ${fileId}`);
     }
 
-    // The link ends with `=s220`: replace the size suffix to obtain the required
-    // resolution directly rather than a postage stamp.
-    const url = data.thumbnailLink.replace(/=s\d+(-[a-z]+)?$/i, `=s${encodingFor(variant).edge}`);
-
-    // The `thumbnailLink` of a non-public file — the normal case here — returns 401/403
-    // to anonymous `fetch`: the fallback intended for HEIC would fail exactly when needed.
-    const response = await this.drive.fetchAuthorized(url, `Drive thumbnail of ${fileId}`);
     return Buffer.from(await response.arrayBuffer());
   }
 }

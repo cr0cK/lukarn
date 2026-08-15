@@ -5,6 +5,20 @@ import { oauth2 } from '@googleapis/oauth2';
 import type { Db } from '../db.js';
 import { decryptSecret, encryptSecret } from '../crypto.js';
 import type { Env } from '../env.js';
+import { parseExifTime, toCoordinates, toNumber, toText } from '../sync/metadata.js';
+import {
+  StorageKeyMismatchError,
+  StorageNotConfiguredError,
+  StorageNotConnectedError,
+  StorageRevokedError,
+  StorageUnavailableError,
+  type ProviderMediaMetadata,
+  type StorageEntry,
+  type StorageKind,
+  type StoragePage,
+  type StorageProbe,
+  type StorageProvider,
+} from './provider.js';
 
 /**
  * `drive.readonly` grants read access to all of Drive: this is required to select any
@@ -18,6 +32,15 @@ const SCOPES = [
 
 const DRIVE_FILES_ENDPOINT = 'https://www.googleapis.com/drive/v3/files';
 
+/** Drive states that a file is a folder through its MIME type, not a separate flag. */
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+const FIELDS =
+  'nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum, hasThumbnail, ' +
+  'imageMediaMetadata, videoMediaMetadata)';
+
+const PAGE_SIZE = 1000;
+
 /** google-auth-library is not a direct dependency, so its type comes from here. */
 type OAuth2Client = InstanceType<typeof auth.OAuth2>;
 type JwtClient = InstanceType<typeof auth.JWT>;
@@ -28,64 +51,16 @@ type JwtClient = InstanceType<typeof auth.JWT>;
  */
 type AuthorizedClient = OAuth2Client | JwtClient;
 
-export class DriveNotConnectedError extends Error {
-  constructor() {
-    super('Google Drive is not connected. Go to /admin to authorise access.');
-    this.name = 'DriveNotConnectedError';
-  }
-}
+const NOT_CONNECTED = 'Google Drive is not connected. Go to /admin to authorise access.';
 
-/**
- * `TOKEN_KEY` cannot decrypt the stored token. A subclass of
- * `DriveNotConnectedError` to inherit its handling — the instance truly cannot read
- * Drive — while stating the one fact that matters: the token exists, but the key is
- * wrong. Deleting it would lose valid authorisation because of a mistyped environment
- * variable.
- */
-export class DriveKeyMismatchError extends DriveNotConnectedError {
-  constructor() {
-    super();
-    this.message =
-      'The stored refresh token does not decrypt with TOKEN_KEY. Restore the original ' +
-      'key, or reconnect Google Drive from /admin to obtain a new one.';
-    this.name = 'DriveKeyMismatchError';
-  }
-}
+const KEY_MISMATCH =
+  'The stored refresh token does not decrypt with TOKEN_KEY. Restore the original ' +
+  'key, or reconnect Google Drive from /admin.';
 
-export class DriveNotConfiguredError extends Error {
-  constructor() {
-    super('GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set in .env.');
-    this.name = 'DriveNotConfiguredError';
-  }
-}
+const NOT_CONFIGURED = 'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set in .env.';
 
-export class DriveRevokedError extends Error {
-  constructor() {
-    super(
-      'The Google authorisation was revoked or has expired. Reconnect Google Drive from /admin.',
-    );
-    this.name = 'DriveRevokedError';
-  }
-}
-
-/**
- * Drive did not respond in time or continued rate-limiting beyond our retries.
- *
- * **Transient, which is why the distinction matters**: a file in an unreadable format
- * will fail the same way in an hour; this will not. The client must be able to retry,
- * hence the 503 and `Retry-After` header produced by the route — a 500 would falsely
- * say "broken" and make it give up.
- */
-export class DriveUnavailableError extends Error {
-  constructor(
-    label: string,
-    readonly retryAfterSeconds: number,
-    cause: string,
-  ) {
-    super(`Drive could not serve ${label} (${cause}). Try again in a moment.`);
-    this.name = 'DriveUnavailableError';
-  }
-}
+const REVOKED =
+  'The Google authorisation was revoked or has expired. Reconnect Google Drive from /admin.';
 
 /**
  * Google returns `invalid_grant` when the refresh token can no longer be exchanged:
@@ -148,6 +123,21 @@ function isRateLimited(status: number, body: string): boolean {
 }
 
 /**
+ * A value placed inside the single quotes of a Drive query.
+ *
+ * **The backslash is escaped first, and the order is the whole point**: escaping
+ * the quote first would produce a `\'` whose backslash the second pass would then
+ * double into `\\'`, turning the escape back into a literal backslash followed by
+ * a closing quote. A folder identifier is typed by an administrator rather than a
+ * visitor, so this is not an injection an outsider reaches — but one unescaped
+ * backslash is enough for `files.list` to fail on a syntax error whose only
+ * visible symptom is an album that stays empty.
+ */
+function escapeQueryValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+/**
  * Delay before the next attempt. Google's `Retry-After` is authoritative when
  * present; otherwise the delay doubles on each attempt.
  */
@@ -175,11 +165,18 @@ export interface DriveConnection {
 }
 
 /**
- * Holds the application's sole OAuth connection and serves as its gateway to Drive:
- * the metadata API (`api()`) for indexing, and direct HTTP access (`fetchFile()`)
- * for content, allowing `Range` requests to be relayed unchanged to the browser.
+ * Google Drive as a `StorageProvider`, and the holder of the application's OAuth
+ * connection.
+ *
+ * The three interface operations map onto three Drive calls: `files.list` for
+ * `list()`, `alt=media` for `fetch()` and the `thumbnailLink` of `files.get` for
+ * `preview()`. Everything Drive-specific — consent, refresh, revocation detection,
+ * the service account — stays behind that surface, and nothing outside this file
+ * imports `@googleapis/*`.
  */
-export class DriveService {
+export class DriveService implements StorageProvider {
+  readonly kind: StorageKind = 'drive';
+
   private cachedClient: AuthorizedClient | null = null;
 
   /**
@@ -232,6 +229,24 @@ export class DriveService {
     if (this.unreadableToken) return false;
     const row = this.readToken();
     return row !== null && row.revoked_at === null;
+  }
+
+  /**
+   * Does Google still accept this connection?
+   *
+   * Forcing the refresh-token exchange is the cheapest proof: a cached access token
+   * would answer for an hour after authorisation was withdrawn, which is exactly the
+   * state /admin exists to reveal. A refusal passes through `guard`, so testing the
+   * connection also records its revocation.
+   */
+  async probe(): Promise<StorageProbe> {
+    const account = this.connection?.account ?? null;
+    try {
+      await this.accessToken(true);
+      return { ok: true, account, error: null };
+    } catch (error) {
+      return { ok: false, account, error: (error as Error).message };
+    }
   }
 
   /** Google consent URL. `state` protects the callback against CSRF. */
@@ -294,15 +309,34 @@ export class DriveService {
     this.log.info('Google Drive disconnected');
   }
 
-  /** Authenticated Drive client for metadata calls (files.list, ...). */
-  api(): drive_v3.Drive {
-    return drive({ version: 'v3', auth: this.authorizedClient() });
+  /**
+   * One page of a folder's direct children. The cursor is Drive's `nextPageToken`,
+   * returned as-is: what it contains is Drive's business, not the indexer's.
+   */
+  async list(container: string, cursor: string | null): Promise<StoragePage> {
+    const { data } = await this.api().files.list({
+      q: `'${escapeQueryValue(container)}' in parents and trashed = false`,
+      fields: FIELDS,
+      pageSize: PAGE_SIZE,
+      pageToken: cursor ?? undefined,
+      // Required for shared Drives to be visible.
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      orderBy: 'name',
+    });
+
+    const entries: StorageEntry[] = [];
+    for (const file of data.files ?? []) {
+      const entry = toEntry(file);
+      if (entry) entries.push(entry);
+    }
+    return { entries, cursor: data.nextPageToken ?? null };
   }
 
   /**
    * Runs a Drive call while monitoring refresh-token revocation. Use around everything
-   * that passes through `api()` — the returned client exchanges the refresh token
-   * itself, so the error arises in the caller's call, not here.
+   * that reaches Google — the authorised client exchanges the refresh token itself, so
+   * the error arises in the caller's call, not here.
    */
   async guard<T>(operation: () => Promise<T>): Promise<T> {
     // The token in place when the call starts. A request may still be in flight when
@@ -315,7 +349,7 @@ export class DriveService {
     } catch (error) {
       if (isRevocation(error)) {
         this.markRevoked(used);
-        throw new DriveRevokedError();
+        throw new StorageRevokedError(REVOKED);
       }
       throw error;
     }
@@ -356,18 +390,54 @@ export class DriveService {
    * headers: a supplied `Range` is forwarded to Google and the 206 response returned
    * to the browser without processing, enabling native video seeking without transcoding.
    */
-  async fetchFile(fileId: string, range?: string, signal?: AbortSignal): Promise<Response> {
-    const url = `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
-    return this.fetchAuthorized(url, fileId, range, signal);
+  async fetch(ref: string, range?: string, signal?: AbortSignal): Promise<Response> {
+    const url = `${DRIVE_FILES_ENDPOINT}/${encodeURIComponent(ref)}?alt=media&supportsAllDrives=true`;
+    return this.fetchAuthorized(url, ref, range, signal);
   }
 
   /**
-   * `fetch` carrying the current OAuth token for Google URLs served outside `api()` —
-   * the `thumbnailLink` of a non-public file returns 401/403 without an `Authorization`
-   * header, making the fallback fail precisely when needed. `label` appears only in
-   * error messages.
+   * The JPEG preview Google keeps for a file, at the requested size.
+   *
+   * `null` when Drive holds none — a video it could not read, a file uploaded moments
+   * ago. This is the answer the renderer needs to stop asking on every page load, and
+   * the reason the interface returns a nullable response rather than throwing.
    */
-  async fetchAuthorized(
+  async preview(ref: string, edge: number): Promise<Response | null> {
+    const { data } = await this.api().files.get({
+      fileId: ref,
+      fields: 'thumbnailLink',
+      supportsAllDrives: true,
+    });
+
+    if (!data.thumbnailLink) return null;
+
+    // The link ends with `=s220`: replace the size suffix to obtain the required
+    // resolution directly rather than a postage stamp.
+    const url = data.thumbnailLink.replace(/=s\d+(-[a-z]+)?$/i, `=s${edge}`);
+
+    // The `thumbnailLink` of a non-public file — the normal case here — returns 401/403
+    // to anonymous `fetch`: the fallback intended for HEIC would fail exactly when needed.
+    return this.fetchAuthorized(url, `Drive thumbnail of ${ref}`);
+  }
+
+  /**
+   * Authenticated Drive client for metadata calls (files.list, files.get).
+   *
+   * `protected` rather than `private` for the same reason as `accessToken`: it is a
+   * seam, and tests substitute the two calls made through it rather than reaching
+   * Google. Nothing outside this class hierarchy holds a Drive client — that is what
+   * keeps `@googleapis/*` confined to this file.
+   */
+  protected api(): drive_v3.Drive {
+    return drive({ version: 'v3', auth: this.authorizedClient() });
+  }
+
+  /**
+   * `fetch` carrying the current OAuth token, for every Google URL: the content
+   * endpoint and the `thumbnailLink` alike return 401/403 without an `Authorization`
+   * header. `label` appears only in error messages.
+   */
+  private async fetchAuthorized(
     url: string,
     label: string,
     range?: string,
@@ -396,7 +466,7 @@ export class DriveService {
       // is better than a 500 that makes the client give up. A large cold grid saturating
       // Drive quota is the typical case.
       if (isRateLimited(response.status, body)) {
-        throw new DriveUnavailableError(label, RETRY_AFTER_SECONDS, `Drive ${response.status}`);
+        throw new StorageUnavailableError(label, RETRY_AFTER_SECONDS, `Drive ${response.status}`);
       }
 
       throw new Error(`Drive answered ${response.status} for ${label}: ${body.slice(0, 200)}`);
@@ -453,7 +523,7 @@ export class DriveService {
       // `AbortSignal.timeout` rejects with `TimeoutError`; everything else is an
       // ordinary network failure with its own paths.
       if (error instanceof Error && error.name === 'TimeoutError') {
-        throw new DriveUnavailableError(url, RETRY_AFTER_SECONDS, 'timed out');
+        throw new StorageUnavailableError(url, RETRY_AFTER_SECONDS, 'timed out');
       }
       throw error;
     }
@@ -474,7 +544,7 @@ export class DriveService {
     // The refresh token is exchanged here as the access token nears expiry, so this
     // is where revocation first appears.
     const { token } = await this.guard(() => client.getAccessToken());
-    if (!token) throw new DriveNotConnectedError();
+    if (!token) throw new StorageNotConnectedError(NOT_CONNECTED);
     return token;
   }
 
@@ -495,10 +565,10 @@ export class DriveService {
     }
 
     const row = this.readToken();
-    if (!row) throw new DriveNotConnectedError();
+    if (!row) throw new StorageNotConnectedError(NOT_CONNECTED);
     // There is no point retrying a token Google already refused; fail immediately
     // with the message explaining what to do.
-    if (row.revoked_at !== null) throw new DriveRevokedError();
+    if (row.revoked_at !== null) throw new StorageRevokedError(REVOKED);
 
     let refreshToken: string;
     try {
@@ -515,7 +585,7 @@ export class DriveService {
         'The stored refresh token is unreadable (did TOKEN_KEY change?). It is kept: ' +
           'restore the original key, or reconnect Drive from /admin.',
       );
-      throw new DriveKeyMismatchError();
+      throw new StorageKeyMismatchError(KEY_MISMATCH);
     }
 
     this.unreadableToken = false;
@@ -527,7 +597,7 @@ export class DriveService {
   }
 
   private newClient(): OAuth2Client {
-    if (!this.env.google) throw new DriveNotConfiguredError();
+    if (!this.env.google) throw new StorageNotConfiguredError(NOT_CONFIGURED);
     return new auth.OAuth2(
       this.env.google.clientId,
       this.env.google.clientSecret,
@@ -551,4 +621,72 @@ export class DriveService {
       return null;
     }
   }
+}
+
+/** What a folder carries in place of a date it was not asked for. */
+const UNDATED = new Date(0).toISOString();
+
+/**
+ * A Drive file as the indexer sees it.
+ *
+ * `null` for anything the index could not address: without an identifier there is
+ * nothing to fetch later, and for a file without a modification date there is no
+ * fallback for ordering it. A **folder** is exempt from that second rule — it is
+ * traversed, never indexed, so its date is never read, and dropping one would
+ * silently hide everything below it.
+ */
+function toEntry(file: drive_v3.Schema$File): StorageEntry | null {
+  if (!file.id) return null;
+
+  const folder = file.mimeType === FOLDER_MIME;
+  if (!folder && !file.modifiedTime) return null;
+
+  return {
+    ref: file.id,
+    name: file.name ?? file.id,
+    folder,
+    mimeType: file.mimeType ?? null,
+    size: toNumber(file.size),
+    modifiedTime: file.modifiedTime ? new Date(file.modifiedTime).toISOString() : UNDATED,
+    version: toText(file.md5Checksum),
+    media: toMediaMetadata(file),
+    // Drive produces an image from a video's first second, but not always: an
+    // unreadable codec or newly uploaded file may lack one. Storing this prevents the
+    // grid requesting a non-existent preview on every page load (D92).
+    hasPreview: file.hasThumbnail === true,
+  };
+}
+
+/**
+ * What Drive already knows about the picture, so that indexing never downloads it (D3).
+ *
+ * `null` when Drive returned neither block — a format whose EXIF data it does not
+ * parse. The indexer then falls back exactly as it does for a backend that supplies
+ * nothing.
+ */
+function toMediaMetadata(file: drive_v3.Schema$File): ProviderMediaMetadata | null {
+  const image = file.imageMediaMetadata;
+  const video = file.videoMediaMetadata;
+  if (!image && !video) return null;
+
+  const { lat, lng } = toCoordinates(image?.location?.latitude, image?.location?.longitude);
+
+  return {
+    width: toNumber(image?.width) ?? toNumber(video?.width),
+    height: toNumber(image?.height) ?? toNumber(video?.height),
+    // Drive supplies sensor dimensions: on a portrait photo they are reversed and
+    // `rotation` (EXIF 5–8) restores the order.
+    rotated: typeof image?.rotation === 'number' && image.rotation % 2 === 1,
+    takenAt: parseExifTime(image?.time),
+    cameraMake: toText(image?.cameraMake),
+    cameraModel: toText(image?.cameraModel),
+    lens: toText(image?.lens),
+    isoSpeed: toNumber(image?.isoSpeed),
+    exposureTime: toNumber(image?.exposureTime),
+    aperture: toNumber(image?.aperture),
+    focalLength: toNumber(image?.focalLength),
+    lat,
+    lng,
+    durationMs: toNumber(video?.durationMillis),
+  };
 }

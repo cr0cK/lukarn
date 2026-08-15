@@ -5,8 +5,9 @@ import { join } from 'node:path';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
 import { encryptSecret } from '../src/crypto.js';
 import { openDb, type Db } from '../src/db.js';
-import { DriveKeyMismatchError, DriveRevokedError, DriveService } from '../src/drive/service.js';
 import { loadEnv, type Env } from '../src/env.js';
+import { DriveService } from '../src/storage/drive.js';
+import { StorageKeyMismatchError, StorageRevokedError } from '../src/storage/provider.js';
 
 /**
  * Refresh token revocation. Google returns `invalid_grant` once it can no longer
@@ -67,7 +68,7 @@ describe('invalid_grant detection', () => {
   it('marks the connection revoked and translates the error', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
-      DriveRevokedError,
+      StorageRevokedError,
     );
 
     assert.equal(service.connected, false);
@@ -80,7 +81,7 @@ describe('invalid_grant detection', () => {
     const nested = Object.assign(new Error('A generic error'), {
       response: { data: { error: 'invalid_grant' } },
     });
-    await assert.rejects(() => service.guard(() => Promise.reject(nested)), DriveRevokedError);
+    await assert.rejects(() => service.guard(() => Promise.reject(nested)), StorageRevokedError);
     assert.equal(service.connected, false);
   });
 
@@ -102,23 +103,23 @@ describe('invalid_grant detection', () => {
   it('fails immediately once revoked without calling Google again', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
-      DriveRevokedError,
+      StorageRevokedError,
     );
 
     let appels = 0;
     await assert.rejects(async () => {
       appels++;
-      await service.fetchFile('un-fichier');
-    }, DriveRevokedError);
+      await service.fetch('un-fichier');
+    }, StorageRevokedError);
 
-    // `fetchFile` must refuse before any network attempt.
+    // `fetch` must refuse before any network attempt.
     assert.equal(appels, 1);
   });
 
   it('retains revocation after restart', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
-      DriveRevokedError,
+      StorageRevokedError,
     );
 
     // New service on the same database: state lives in the database, not memory.
@@ -130,7 +131,7 @@ describe('invalid_grant detection', () => {
   it('starts clean after manual disconnection', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
-      DriveRevokedError,
+      StorageRevokedError,
     );
 
     service.disconnect();
@@ -149,7 +150,7 @@ describe('invalid_grant detection', () => {
           );
           return Promise.reject(invalidGrant());
         }),
-      DriveRevokedError,
+      StorageRevokedError,
     );
 
     // Google refused the old token. Marking the new one would make /admin ask
@@ -158,12 +159,12 @@ describe('invalid_grant detection', () => {
     assert.equal(service.connection?.revokedAt, null);
   });
 
-  it('retains a token TOKEN_KEY can no longer decrypt', () => {
+  it('retains a token TOKEN_KEY can no longer decrypt', async () => {
     const avecMauvaiseCle = new DriveService({ ...env, tokenKey: 'z'.repeat(48) }, db, silent);
 
     // The token is unreadable: the instance cannot use Drive and must say so,
     // allowing /admin to offer reconnection.
-    assert.throws(() => avecMauvaiseCle.api(), DriveKeyMismatchError);
+    await assert.rejects(() => avecMauvaiseCle.list('un-dossier', null), StorageKeyMismatchError);
     assert.equal(avecMauvaiseCle.connected, false);
 
     // But it remains. A deployment with a mistyped key must not lose Google
@@ -229,7 +230,7 @@ describe('download refused by Drive', () => {
       new Response('contenu', { status: 200 }),
     );
 
-    const response = await instrumente.fetchFile('une-photo');
+    const response = await instrumente.fetch('une-photo');
 
     assert.equal(response.status, 200);
     assert.deepEqual(jetonsPresentes, ['Bearer jeton-perime', 'Bearer jeton-neuf']);
@@ -243,7 +244,7 @@ describe('download refused by Drive', () => {
     instrumente.renouvellementRefuse = true;
     reponses(new Response(null, { status: 401 }));
 
-    await assert.rejects(() => instrumente.fetchFile('une-photo'), DriveRevokedError);
+    await assert.rejects(() => instrumente.fetch('une-photo'), StorageRevokedError);
 
     // Otherwise /admin would show "connected" while every image fails.
     assert.equal(instrumente.connected, false);
@@ -257,7 +258,7 @@ describe('download refused by Drive', () => {
       new Response('contenu', { status: 200 }),
     );
 
-    const response = await instrumente.fetchFile('une-photo');
+    const response = await instrumente.fetch('une-photo');
 
     // Without retry, every refusal becomes a broken thumbnail despite the next
     // second succeeding.
@@ -277,7 +278,7 @@ describe('download refused by Drive', () => {
       new Response('contenu', { status: 200 }),
     );
 
-    await instrumente.fetchFile('une-photo');
+    await instrumente.fetch('une-photo');
 
     assert.deepEqual(instrumente.attentes, [7000]);
   });
@@ -290,7 +291,7 @@ describe('download refused by Drive', () => {
 
     // A forbidden file remains forbidden: four attempts only delay failure, and
     // outside its body a permission 403 looks exactly like a rate-limit 403.
-    await assert.rejects(() => instrumente.fetchFile('une-photo'), /403/);
+    await assert.rejects(() => instrumente.fetch('une-photo'), /403/);
     assert.deepEqual(instrumente.attentes, []);
   });
 
@@ -300,7 +301,7 @@ describe('download refused by Drive', () => {
       new Response('{"error":{"errors":[{"reason":"downloadQuotaExceeded"}]}}', { status: 403 }),
     );
 
-    await assert.rejects(() => instrumente.fetchFile('une-photo'), /403/);
+    await assert.rejects(() => instrumente.fetch('une-photo'), /403/);
     assert.deepEqual(instrumente.attentes, []);
   });
 
@@ -310,7 +311,7 @@ describe('download refused by Drive', () => {
 
     // Requesting an offset beyond the end is part of the `Range` protocol: it
     // happens when a player changes video during a request.
-    const response = await instrumente.fetchFile('une-video', 'bytes=99999-');
+    const response = await instrumente.fetch('une-video', 'bytes=99999-');
 
     assert.equal(response.status, 416);
     assert.equal(response.headers.get('content-range'), 'bytes */4096');

@@ -90,7 +90,7 @@ One row per album: `album_id` (PK), `last_sync_at`, `status`
 (`never` \| `running` \| `ok` \| `error`), `error`, `notified_at`.
 
 `status` and `error` are overwritten on every attempt, but `last_sync_at` is
-updated only on success (`drive/sync.ts`): `/admin` can therefore display "error,
+updated only on success (`sync/sync.ts`): `/admin` can therefore display "error,
 last successful sync 3 hours ago".
 
 `notified_at` holds the date of the latest new-content announcement sent by email

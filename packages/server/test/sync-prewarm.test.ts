@@ -56,7 +56,7 @@ before(async () => {
 
   // The route refuses to synchronise without Drive: this is the only thing we
   // simulate; the rest of the path is real.
-  Object.defineProperty(context.drive, 'connected', { get: () => true });
+  Object.defineProperty(context.storage, 'connected', { get: () => true });
 
   const response = await server.inject({
     method: 'POST',

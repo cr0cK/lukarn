@@ -93,7 +93,8 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-and-deployment.md`, and the install in `README.md`         |
 | `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`                 |
 | `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                                  |
-| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                   | `specs/02-architecture.md` (sync flow)                                             |
+| `storage/provider.ts` (the interface, an error)                            | `specs/02-architecture.md` (the storage interface), `specs/05-api.md`              |
+| `storage/drive.ts`, `sync/sync.ts`, `sync/metadata.ts`                     | `specs/02-architecture.md` (sync flow)                                             |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                        |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                             |
 | `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                            |

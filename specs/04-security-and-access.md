@@ -369,9 +369,11 @@ The threat model is explicit: **a dump of `lukarn.db` must not be enough to acce
 `TOKEN_KEY` is also required; it lives in the process environment and is never written to the
 database. The VPS is not an HSM; someone who obtains a shell in the container has both.
 
-If `TOKEN_KEY` changes, decryption fails on the GCM tag. `DriveService.authorizedClient()` handles
-this by deleting the unrecoverable token and logging the advice to grant consent again from
-`/admin`.
+If `TOKEN_KEY` changes, decryption fails on the GCM tag. `DriveService.authorizedClient()` **keeps
+the row** and raises `StorageKeyMismatchError`, a `StorageNotConnectedError` whose message says the
+one thing that matters: the token exists, the key is wrong. Deleting it would destroy a still-valid
+authorisation over a mistyped environment variable; restoring the original key is enough, and
+`/admin` offers reconnection meanwhile.
 
 ## Detecting `invalid_grant`
 
@@ -379,15 +381,17 @@ Google returns `invalid_grant` when the refresh token can no longer be exchanged
 from `myaccount.google.com`, six months without use, or the application moved back to "Testing"
 status (see [06](./06-configuration-and-deployment.md)).
 
-`DriveService.guard(operation)` wraps every Drive call. `isRevocation` recognises the error in
-**two** places—`error.response.data.error` and the message—because its shape varies depending on
-whether it originates while refreshing the token or calling the API. When triggered:
+`StorageProvider.guard(operation)` wraps every call reaching a backend, and callers wrap rather
+than the provider wrapping itself—only the caller knows which unit of work to abandon. In the Drive
+implementation, `isRevocation` recognises the error in **two** places—`error.response.data.error`
+and the message—because its shape varies depending on whether it originates while refreshing the
+token or calling the API. When triggered:
 
 1. `revoked_at` is dated in `oauth_token` (the token and account are retained);
 2. the cached OAuth client is discarded;
-3. a `DriveRevokedError` is thrown instead of the original error.
+3. a `StorageRevokedError` is thrown instead of the original error.
 
-Afterwards, `authorizedClient()` fails immediately with `DriveRevokedError` without calling Google
+Afterwards, `authorizedClient()` fails immediately with `StorageRevokedError` without calling Google
 again: there is no point retrying an already rejected token. `Syncer.syncAll` stops the loop on this
 error. `/admin` displays "Authorisation revoked for <account>" rather than "No account
 connected", and offers "Reconnect Google Drive". New consent resets `revoked_at` to `NULL`.

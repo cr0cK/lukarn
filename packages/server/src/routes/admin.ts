@@ -218,13 +218,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     app.addHook('preHandler', requireAdmin);
 
     app.get('/status', async (_request, reply) => {
-      const connection = context.drive.connection;
+      const connection = context.storage.connection;
       const status: AdminStatus = {
-        driveMode: context.drive.mode,
-        driveConnected: context.drive.connected,
+        driveMode: context.storage.mode,
+        driveConnected: context.storage.connected,
         driveAccount: connection?.account ?? null,
         driveRevokedAt: connection?.revokedAt ?? null,
-        oauthConfigured: context.drive.configured,
+        oauthConfigured: context.storage.configured,
         albums: context.albums.map((album) => buildAlbum(album, context.media, context.syncState)),
         cache: context.cache.stats(),
         hiddenComments: context.comments.hiddenCount(),
@@ -683,13 +683,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
      * recording a token nothing would use and suggesting that consent is required.
      */
     app.get('/oauth/start', async (request, reply) => {
-      if (context.drive.mode === 'service_account') {
+      if (context.storage.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
           message: request.t('error.serviceAccountConsent'),
         });
       }
-      if (!context.drive.configured) {
+      if (!context.storage.configured) {
         return reply.code(400).send({
           error: 'oauth_not_configured',
           message: request.t('error.oauthNotConfigured'),
@@ -706,20 +706,20 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           maxAge: OAUTH_STATE_TTL_S,
           signed: true,
         })
-        .send({ url: context.drive.authUrl(state) });
+        .send({ url: context.storage.authUrl(state) });
     });
 
     app.post('/drive/disconnect', async (request, reply) => {
       // Nothing to disconnect: the key comes from configuration and access from Drive
       // sharing. Responding "done" would suggest the instance is disconnected while
       // it continues to read everything.
-      if (context.drive.mode === 'service_account') {
+      if (context.storage.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
           message: request.t('error.serviceAccountDisconnect'),
         });
       }
-      context.drive.disconnect();
+      context.storage.disconnect();
       return reply.send({ ok: true });
     });
 
@@ -731,7 +731,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'bad_request', message: request.t('error.invalidParameters') });
       }
 
-      if (!context.drive.connected) {
+      if (!context.storage.connected) {
         return reply.code(503).send({
           error: 'drive_disconnected',
           message: request.t('error.driveNotConnected'),
@@ -765,7 +765,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
   /** Background indexing, silent until Drive is connected. */
   function startSync(album: StoredAlbum, log: FastifyBaseLogger): void {
-    if (!context.drive.connected) return;
+    if (!context.storage.connected) return;
     void context.syncThenPrewarm([album]).catch((error: unknown) => {
       log.error({ err: error }, `Sync of album "${album.id}" failed`);
     });
@@ -802,7 +802,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api' });
 
       try {
-        await context.drive.completeAuth(query.code);
+        await context.storage.completeAuth(query.code);
       } catch (error) {
         request.log.error({ err: error }, 'Connecting Drive failed');
         return reply.redirect(`/admin/server?oauth=error`);

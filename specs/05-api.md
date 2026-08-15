@@ -595,9 +595,10 @@ arriving; they are cut off from `/api/comments/unsubscribe`.
 `authorize` responds `404 not_found` as soon as the user has no right to any
 album containing this media item.
 
-A local error handler translates Drive failures: `503 drive_revoked`
-(`DriveRevokedError`) and `503 drive_disconnected` (`DriveNotConnectedError`),
-rather than an opaque 500 repeated on every thumbnail in the grid.
+A local error handler translates storage failures: `503 storage_revoked`
+(`StorageRevokedError`) and `503 storage_disconnected`
+(`StorageNotConnectedError`), rather than an opaque 500 repeated on every
+thumbnail in the grid.
 
 | Method | Path                           | Access           | Response               |
 | ------ | ------------------------------ | ---------------- | ---------------------- |
@@ -623,7 +624,7 @@ All three respond:
 | 304  | `If-None-Match` matching the ETag                                                                                                                           |
 | 404  | Media item absent from the index, or album forbidden                                                                                                        |
 | 415  | `unsupported` — two cases, both specific to videos, detailed just below                                                                                     |
-| 503  | Drive disconnected or revoked                                                                                                                               |
+| 503  | Storage disconnected or revoked                                                                                                                             |
 
 A video **does** have a thumbnail: the preview Drive produces of its first
 second, served like any other WebP derivative and disk-cached the same way
@@ -654,16 +655,16 @@ disk cache.
   common when switching videos while a request is in flight — belongs to the
   normal `Range` protocol; turning it into a server error would give a 500
   where the player expects a code it knows how to interpret.
-- `502 bad_gateway` if Drive responds with no body; `404` if the media item is
-  not indexed; `503` on Drive disconnected or revoked.
-- **`503 drive_unavailable`, with `Retry-After`**, on a **transient** failure:
+- `502 bad_gateway` if the storage responds with no body; `404` if the media item
+  is not indexed; `503` on a storage disconnected or revoked.
+- **`503 storage_unavailable`, with `Retry-After`**, on a **transient** failure:
   download timeout exceeded, or throughput rate-limited by Google beyond the
   retries. Distinguished from a 500, which the browser treats as final: here
   the thumbnail must come back, and it does so on its own (D60). No cache
   header accompanies this response — a failure is never memorised.
 - A `401` from Drive is never relayed: the access token is refreshed and the
   request retried once. If Google also refuses the refresh, the connection is
-  marked revoked and the response is `503 drive_revoked`.
+  marked revoked and the response is `503 storage_revoked`.
 - Unlike the rendered variants, this route does not filter on `kind`: it serves
   a photo's original just as well as a video's stream.
 
