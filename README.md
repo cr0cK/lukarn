@@ -268,21 +268,9 @@ through its `dist/`, not its sources: on a fresh clone, `pnpm dev` and
 built. The same constraint fixes the order of the full build, `shared` → `web` →
 `server`.
 
-**Without a Drive account**, and in one command, with
-[`just`](https://github.com/casey/just):
-
-```bash
-just demo    # a stack already full of photographs, signed in as demo / demo1234
-```
-
-It builds a throwaway instance under `.demo/` — its own database, its own cache,
-so it never touches the `./data` you develop against — declares two albums, and
-fills them with locally generated media. `just demo-reset` forgets it, and
-`just dev` runs the sequence above against your own instance instead. It is a
-shortcut; no check or workflow depends on it.
-
-By hand, `seed-demo` fills albums that already exist, so declare one from
-`/admin` first — it needs no working Drive folder to be seeded:
+**Photographs without a Drive account.** `seed-demo` fills albums that already
+exist, so declare one from `/admin` first — its Drive folder never has to be
+reachable:
 
 ```bash
 pnpm --filter @lukarn/server seed-demo 300
@@ -294,6 +282,23 @@ the thumbnails just written stay invisible to a running process.
 Before proposing a change, `pnpm verify` — typecheck, lint, formatting, tests and
 the documentation checks, the same command CI runs.
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the rest.
+
+### The same, shorter, with just
+
+[`just`](https://github.com/casey/just) is a command runner you install
+separately — a package on your system, not a dependency of this repository.
+Nothing in the build, the checks or CI uses it: it only saves retyping the
+sequences above, each step skipped once it is already done.
+
+| Command             | Does                                                                                                             |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `just dev`          | `pnpm install`, a `.env` carrying two fresh secrets, the `shared` build, then `pnpm dev` — against your instance |
+| `just demo`         | The same against a throwaway instance in `.demo/`, albums declared and seeded, signed in as `demo` / `demo1234`  |
+| `just demo-reset`   | Forgets that instance; the next `just demo` rebuilds it                                                          |
+| `just admin <name>` | The first administrator of the `./data` instance, password prompted                                              |
+
+`.demo/` holds its own database and its own cache, so nothing there touches the
+`./data` you develop against.
 
 <details>
 <summary>Keyboard shortcuts — the application shows this list under <code>?</code></summary>
