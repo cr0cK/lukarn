@@ -13,6 +13,14 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### Hints stop shouting
+
+Placeholder text, the character counters under a description, and "never" in the
+visits table were all drawn at the full brightness of ordinary text. They asked
+for a shade the palette never defined, so the browser fell back to the colour
+they inherited — the loudest one available. They are quiet again, and "never"
+once more reads as fainter than a real date beside it.
+
 ### A light theme, for the rooms that have windows
 
 The gallery has only ever been dark. That is right for photographs and wrong for
