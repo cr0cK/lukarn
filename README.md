@@ -5,37 +5,26 @@
 
 A self-hosted gallery for browsing the photos and videos of a Google Drive
 account, in place of Drive's own preview: justified grid grouped by month,
-keyboard-driven fullscreen viewer, dark theme.
-
-Drive is the first storage it reads, and the only one it reads today. Others are
-meant to follow: the gallery is the point, and where the photos happen to sit is
-not.
-
-_Lukarn_ is Gothic for a lantern — the thing you pick up to go and look in the
-dark. It is also the word the linguists put forward, next to Irish _luacharn_,
-when they argued that French _lucarne_ came from Latin _lucerna_: the small
-opening in a roof that lets the light in and lets you see inside. Either reading
-suits an application whose whole job is to open one window onto photos that
-would otherwise stay in the dark of someone else's storage.
-
-The mark keeps both readings. Its dot sits high and to the right — where a
-dormer sits in a roof, and where the shutter release sits under a thumb: the
-opening that lets the light in is also the lens it came through.
+keyboard-driven fullscreen viewer, light or dark theme.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment.
 From `/admin`, the owner declares which Drive folders become albums and who may
 open them — enough to share one album without exposing the rest of the Drive.
 
-| Where to go                 |                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| Run it locally              | [Below](#run-it-locally)                                                       |
-| Connect it to a Drive       | [`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-the-drive) |
-| Deploy and operate a server | [`deploy/README.md`](./deploy/README.md)                                       |
-| Understand how it is built  | [`specs/README.md`](./specs/README.md)                                         |
-| Contribute                  | [`CONTRIBUTING.md`](./CONTRIBUTING.md)                                         |
-| Report a vulnerability      | [`SECURITY.md`](./SECURITY.md)                                                 |
-| See what changed            | [`CHANGELOG.md`](./CHANGELOG.md)                                               |
+Drive is the first storage it reads, and the only one it reads today. Others are
+meant to follow: the gallery is the point, and where the photos happen to sit is
+not.
+
+| I want to…                              |                                                           |
+| --------------------------------------- | --------------------------------------------------------- |
+| **Run it, and see my own photos in it** | [**Get started**](#get-started) — five steps, ten minutes |
+| Work on the code                        | [Run it from source](#run-it-from-source)                 |
+| Put it on a server and keep it running  | [`deploy/README.md`](./deploy/README.md)                  |
+| Understand how it is built              | [`specs/README.md`](./specs/README.md)                    |
+| Contribute                              | [`CONTRIBUTING.md`](./CONTRIBUTING.md)                    |
+| Report a vulnerability                  | [`SECURITY.md`](./SECURITY.md)                            |
+| See what changed                        | [`CHANGELOG.md`](./CHANGELOG.md)                          |
 
 ## What it looks like
 
@@ -61,36 +50,6 @@ Screenshots come from `seed-demo --photos`, on
 [public-domain and CC0 photographs](https://commons.wikimedia.org/) — no Drive
 account, and nobody's family in a public README.
 
-## Two authentications, not to be confused
-
-|                         | Who           | When                  | What it opens                  |
-| ----------------------- | ------------- | --------------------- | ------------------------------ |
-| **Access to the Drive** | The owner     | Once, at install time | The photos the server may read |
-| **Username / password** | Every visitor | Every session         | The albums assigned to them    |
-
-Visitors never see Google and need no Google account. The application holds a
-single credential — the owner's — and serves every photo through it.
-
-### Giving the server access to a Drive
-
-Two ways, and the choice is worth the thirty seconds because they age
-differently.
-
-A **service account** — the one to prefer — is a Google identity that owns
-nothing. You create one in the Google Cloud console, download its JSON key once,
-and then share album folders with its address the way you would share them with a
-person. No consent screen, nothing to renew, and the server never sees more of
-the Drive than the folders handed to it. The cost is one share per new album.
-
-**OAuth** connects the owner's own Google account instead. Nothing to share per
-album, but it grants read access to the **whole** Drive, shows Google's "hasn't
-verified this app" screen at every consent, and the refresh token expires after
-six months of inactivity.
-
-Both, step by step — creating the project, enabling the Drive API, the key, the
-share and the trap that turns a forgotten folder into a silently empty album:
-[**Give the server access to the Drive**](./deploy/README.md#3-give-the-server-access-to-the-drive).
-
 ## What it does
 
 - **Photos and videos**: JPEG, PNG, WebP, HEIC, MP4, MOV. Videos stream with
@@ -101,21 +60,246 @@ share and the trap that turns a forgotten folder into a silently empty album:
 - **EXIF**: capture date, camera, lens, aperture, shutter speed, ISO,
   geolocation. Chronological ordering on the real capture date. A day can carry a
   note and a place, the latter derived from coordinates.
-- **Per-photo comments**, with one level of reply. Since a credential may be
-  shared by a whole household, the writer declares a name and an address at write
-  time, and a code received by email confirms it. Administrators can hide and
-  restore comments from `/admin`.
-- **Email notifications** for new comments, replies, and an album's new photos.
-  Every message carries an unsubscribe link.
+- **Per-photo comments**, with one level of reply, and **email notifications**
+  for replies and an album's new photos. Every message carries an unsubscribe
+  link; administrators can hide and restore comments from `/admin`.
 - **Installable on a phone**: added to the home screen, it opens full-screen
-  with no address bar and no password to type again. The service worker caches
-  the application shell only — never a photo, never an API response.
+  with no address bar and no password to type again.
 - **Everything goes through the server**: no Google URL is ever exposed to the
   browser. Thumbnails are generated as WebP and cached on disk.
 
 Drive is only ever read: the requested scope is read-only.
 
-### Keyboard shortcuts
+## Get started
+
+Five steps, from nothing to your own photographs on screen. Nothing to clone and
+nothing to compile — the published image carries the application already built.
+Docker and a Google account are the two prerequisites, and about ten minutes.
+
+> The image is built for **`linux/amd64` only**. On arm64 — an Apple Silicon Mac,
+> a Raspberry Pi — build it from source instead:
+> [`deploy/README.md`](./deploy/README.md).
+
+### 1. Start it
+
+An empty directory holds the whole installation:
+
+```bash
+mkdir -p lukarn/config && cd lukarn
+```
+
+A `docker-compose.yml` in it:
+
+```yaml
+name: lukarn
+
+services:
+  app:
+    image: ghcr.io/cr0ck/lukarn:latest
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    env_file: .env
+    volumes:
+      # The Drive key, when there is one. Read-only: nothing is written here.
+      - ./config:/app/config:ro
+      # Accounts, index and the encrypted Google token — the only irreplaceable data.
+      - lukarn-data:/app/data
+      # Generated thumbnails: losing this volume costs a regeneration, nothing more.
+      - lukarn-cache:/app/cache
+
+volumes:
+  lukarn-data:
+    name: lukarn-data
+  lukarn-cache:
+    name: lukarn-cache
+```
+
+A `.env` beside it. The server refuses to start without the two secrets, and
+generating them is the whole of the configuration:
+
+```bash
+cat > .env <<EOF
+PUBLIC_URL=http://localhost:8080
+APP_NAME=Photos
+SESSION_SECRET=$(openssl rand -hex 32)
+TOKEN_KEY=$(openssl rand -hex 32)
+EOF
+```
+
+Then:
+
+```bash
+docker compose up -d
+```
+
+`http://localhost:8080` answers. It has no account yet, and no photographs.
+
+### 2. Create your account
+
+```bash
+docker compose exec app node packages/server/dist/scripts/create-admin.js alice
+```
+
+The password is prompted without being displayed. The command is spelt out in
+full because the image carries no pnpm — the script inside it is already
+compiled. Before the very first `up`, `docker compose run --rm app node …` does
+the same thing without a running container.
+
+**Sign in at `http://localhost:8080`.** That username and password are yours as a
+visitor; they have nothing to do with Google. Nobody who opens your gallery will
+ever see a Google screen — the application holds one Drive credential, yours, and
+serves every photograph through it.
+
+### 3. Give it an identity on Google
+
+The gallery signs in to Google as a **service account**: an identity that owns
+nothing, has an address of its own, and sees only what somebody shares with that
+address — exactly like a person you would add to a folder. No consent screen, no
+"Google hasn't verified this app", and nothing that expires.
+
+In the [Google Cloud console](https://console.cloud.google.com/):
+
+1. **Create a project**, then **APIs & Services → Library**: enable **Google
+   Drive API**.
+2. **IAM & Admin → Service Accounts → Create.** Give it a name and stop there —
+   no role to grant, since it touches nothing in the project.
+3. On the account you have just created: **Keys → Add key → Create → JSON**. The
+   file downloads once and only once.
+
+Back in the directory from step 1, the key goes in and the `.env` points at it:
+
+```bash
+mv ~/Downloads/my-project-1a2b3c.json config/service-account.json
+chmod 600 config/service-account.json   # it carries a private key
+echo 'GOOGLE_SERVICE_ACCOUNT_FILE=/app/config/service-account.json' >> .env
+docker compose up -d                    # re-reads the .env
+```
+
+That path is the one **the container sees**: `./config` on your machine is
+mounted at `/app/config` inside it.
+
+**Open `/admin`.** The Drive section now shows the account's address, of the form
+`lukarn@my-project.iam.gserviceaccount.com`. **Copy it** — the next step is what
+gives it something to read.
+
+### 4. Share a folder with that address
+
+In **Google Drive**, right-click the folder holding the photographs →
+**Share** → paste the address → leave the role at **Viewer** → untick "Notify
+people", since that mailbox does not exist → **Share**.
+
+That share _is_ the access: what you share, the gallery reads; the rest of your
+Drive stays invisible to it. And sharing is **inherited**, so one share at the top
+of a folder covers every subfolder in it, and every photograph added to it later.
+
+> **The one thing that fails silently.** A folder nobody shared produces no error
+> — not in `/admin`, not in the logs. Only an empty album. If an album stays at
+> zero items after a sync that reported "ok", check the share before anything
+> else.
+
+### 5. Declare the album
+
+Open that same folder in Drive and copy its identifier from the address bar — the
+segment after `/folders/`:
+
+```
+https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
+                                       ^--------- folderId ------^
+```
+
+A path (`/Holidays/2026-07-Germany`) will not do: the Drive API only handles
+identifiers. That one survives renames and moves.
+
+Then, in **`/admin` → Albums**, create the album: a title, that identifier as the
+folder ID, and who may open it. **Synchronisation starts on its own and the
+photographs appear within seconds** — indexing downloads nothing, it reads what
+Drive already knows about each file.
+
+**That is the install.** Every album after this one is two steps: share its
+folder, declare it. They resynchronise on their own at the interval set in
+`/admin`, **Resynchronise** forces a pass, and nothing is ever written to Drive.
+
+### Beyond that
+
+| To…                                   |                                                                                                                                                       |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Update                                | `docker compose pull && docker compose up -d`                                                                                                         |
+| Decide when to update                 | Replace `latest` with a release number: a `pull` then changes nothing until you raise it                                                              |
+| Enable comments                       | `SMTP_URL` and `MAIL_FROM` in the `.env` — without a mail server, nobody can confirm their address                                                    |
+| Reach it from a domain, over TLS      | [`deploy/README.md`](./deploy/README.md) — certificate, backups, a machine of its own                                                                 |
+| Put it behind a proxy you already run | `PUBLIC_URL=https://photos.example.com` in the `.env`, proxy to port 8080. Security headers come from the application, so nothing to add on that side |
+
+Every variable, with what it changes:
+[`specs/06`](./specs/06-configuration-and-deployment.md).
+
+<details>
+<summary>Connecting your own Google account instead, with OAuth</summary>
+
+Nothing to share per album, and that is the whole of its appeal. The price is
+paid three times: it grants read access to the **whole** Drive, Google shows its
+"hasn't verified this app" screen at every consent, and the refresh token expires
+after six months of inactivity — the gallery then quietly stops filling.
+
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` go in the `.env`, the redirect URI
+declared in the console must be exactly `PUBLIC_URL` followed by
+`/api/oauth/callback`, and consent is given once from `/admin` → **Connect Google
+Drive**. Step by step, including the publication status that otherwise expires the
+token every seven days:
+[`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-the-drive).
+
+</details>
+
+## Run it from source
+
+For development, or for a machine the published image does not fit. Node ≥ 22 and
+pnpm are all that is needed — no Google account, no domain, no server.
+
+```bash
+pnpm install
+pnpm --filter @lukarn/shared build   # not optional, see below
+cp .env.example .env
+openssl rand -hex 32                 # → SESSION_SECRET
+openssl rand -hex 32                 # → TOKEN_KEY
+pnpm create-admin alice              # password is prompted
+pnpm dev                             # API on :8080, front on :5173
+```
+
+**Building `shared` first is not a formality.** `@lukarn/shared` is exposed
+through its `dist/`, not its sources: on a fresh clone, `pnpm dev` and
+`pnpm create-admin` both fail with `ERR_MODULE_NOT_FOUND` until it has been
+built. The same constraint fixes the order of the full build, `shared` → `web` →
+`server`.
+
+**Without a Drive account**, and in one command, with
+[`just`](https://github.com/casey/just):
+
+```bash
+just demo    # a stack already full of photographs, signed in as demo / demo1234
+```
+
+It builds a throwaway instance under `.demo/` — its own database, its own cache,
+so it never touches the `./data` you develop against — declares two albums, and
+fills them with locally generated media. `just demo-reset` forgets it, and
+`just dev` runs the sequence above against your own instance instead. It is a
+shortcut; no check or workflow depends on it.
+
+By hand, `seed-demo` fills albums that already exist, so declare one from
+`/admin` first — it needs no working Drive folder to be seeded:
+
+```bash
+pnpm --filter @lukarn/server seed-demo 300
+```
+
+Restart the server afterwards: the disk cache is inventoried only at startup, so
+the thumbnails just written stay invisible to a running process.
+
+Before proposing a change, `pnpm verify` — typecheck, lint, formatting, tests and
+the documentation checks, the same command CI runs.
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) has the rest.
+
+<details>
+<summary>Keyboard shortcuts — the application shows this list under <code>?</code></summary>
 
 |                |                                     |
 | -------------- | ----------------------------------- |
@@ -133,70 +317,7 @@ Drive is only ever read: the requested scope is read-only.
 | Swipe          | Previous / next photo, by finger    |
 | `?`            | Show this list                      |
 
-## Run it locally
-
-For development, or to see the application running without a server, a domain
-name or a Google account. Node ≥ 22 and pnpm are all that is needed.
-
-```bash
-pnpm install
-pnpm --filter @lukarn/shared build   # before anything else — see below
-```
-
-**Building `shared` is not optional.** `@lukarn/shared` is exposed through its
-`dist/`, not through its sources: on a fresh clone, `pnpm dev` and
-`pnpm create-admin` both fail with
-`ERR_MODULE_NOT_FOUND … @lukarn/shared/dist/index.js` until it has been built. It is
-the same reason the full `pnpm build` imposes the order `shared` → `web` →
-`server`.
-
-Then the `.env`, which is required even locally:
-
-```bash
-cp .env.example .env
-openssl rand -hex 32   # → SESSION_SECRET
-openssl rand -hex 32   # → TOKEN_KEY
-```
-
-The server refuses to start without those two secrets. The rest of the file can
-stay as it is: the default `PUBLIC_URL` (`http://localhost:8080`) suits
-development, and without Google credentials the application starts and simply
-reports that Drive is not configured.
-
-```bash
-pnpm create-admin alice   # first account, password prompted
-pnpm dev                  # API on :8080, front on :5173 (proxying /api)
-```
-
-**Without a Drive account**, a demo dataset fills the index and the cache with
-locally generated media:
-
-```bash
-pnpm --filter @lukarn/server seed-demo 300
-```
-
-Restart the server afterwards: the disk cache is inventoried only at startup, so
-the thumbnails `seed-demo` has just written are invisible to it until then.
-
-Everything above is one word each for whoever has
-[`just`](https://github.com/casey/just):
-
-```bash
-just dev     # the stack, against your own instance
-just demo    # the stack, against an instance already full of photographs
-```
-
-`just demo` builds its instance under `.demo/` — its own database, its own cache
-— so it never touches the `./data` and `./cache` you develop against, and
-`just demo-reset` forgets it. It writes the bootstrap file, seeds sixty media per
-album (a minute, the first time) and signs in as `demo` / `demo1234`. Nothing in
-the build or in CI depends on `just`; it is a shortcut, not a prerequisite.
-
-Before proposing a change:
-
-```bash
-pnpm verify   # typecheck, lint, tests, and the spec drift check
-```
+</details>
 
 ## Architecture
 
@@ -210,48 +331,43 @@ packages/
 └─ web/      React · Vite · Tailwind
 ```
 
-A few choices that explain the rest:
+Two choices explain most of the rest. **The index lives in SQLite**, fed by a
+walk of the Drive folders that downloads nothing — `files.list` already returns
+dimensions and EXIF — so the grid is read locally, and knowing every proportion
+in advance lets it lay itself out before a single image loads. And **nothing
+reaches the browser from Google**: thumbnails are rendered to WebP and cached on
+disk with LRU eviction, videos are relayed `Range` by `Range` without
+transcoding.
 
-- **The index lives in SQLite**, fed by a walk of the Drive folders. The grid is
-  therefore read locally, with no network latency and no quota consumption.
-- **Nothing is downloaded during indexing**: `files.list` already returns
-  dimensions and EXIF data, which makes syncing an album of several thousand
-  photos near-instant.
-- **Because dimensions are known in advance**, the grid computes its layout
-  before any image loads: no reflow, and virtualisation keeps a few dozen DOM
-  nodes even on a 10,000-photo album.
-- **Thumbnails are cached on disk** with LRU eviction. Concurrent renders of the
-  same image are deduplicated, so an opening grid triggers exactly one download
-  per file.
-- **Videos are not transcoded**: `Range` requests are relayed as-is to Drive,
-  which gives native seeking at zero CPU cost.
-
-Design documents live in [`specs/`](./specs/), which explain **why** it is built
-this way. Start with [`specs/README.md`](./specs/README.md).
+Why it is built this way is in [`specs/`](./specs/) — start with
+[`specs/README.md`](./specs/README.md).
 
 ## Security
 
-- Passwords hashed with argon2id; login attempts rate-limited with progressive
-  backoff.
-- Sessions in the database, revocable immediately, signed `httpOnly` cookie.
-- Every media access checks that the user is entitled to an album containing it.
-  A forbidden album answers 404, never 403: its existence is not observable.
-- Google refresh token encrypted with AES-256-GCM using a key derived from
+- Passwords hashed with argon2id, login attempts rate-limited with progressive
+  backoff, sessions in the database and revocable immediately.
+- **A forbidden album answers 404, never 403**: its existence is not observable.
+  Every media access checks the album it belongs to.
+- The Google refresh token is encrypted with AES-256-GCM under a key derived from
   `TOKEN_KEY`, which is absent from the database.
-- OAuth consent protected by an anti-CSRF `state` and restricted to
-  administrators.
-- **Security headers on every response** — CSP with `script-src 'self'`, so a
-  `<script>` slipped into an album title or a comment does not execute, plus
-  `nosniff`, `frame-ancestors 'none'`, `no-referrer`, and HSTS as soon as
-  `PUBLIC_URL` is `https`. They come from the application, not the proxy, so they
-  hold in development and behind an unconfigured front end as well.
-- **Only the front end is reachable.** The application publishes no port on the
-  host. `X-Forwarded-For` is trusted only when it comes from a private network;
-  otherwise a client would forge its own on every attempt and never be slowed by
-  the login backoff.
+- **Security headers come from the application**, not from the proxy — CSP with
+  `script-src 'self'`, so a `<script>` slipped into an album title or a comment
+  does not execute. They hold in development and behind an unconfigured front end
+  as well.
 
 Details in [`specs/04`](./specs/04-security-and-access.md). Found a hole? Please
 report it privately — [`SECURITY.md`](./SECURITY.md) says how, and what counts.
+
+## The name
+
+_Lukarn_ is Gothic for a lantern — the thing you pick up to go and look in the
+dark. It is also the word the linguists put forward, next to Irish _luacharn_,
+when they argued that French _lucarne_ came from Latin _lucerna_: the small
+opening in a roof that lets the light in and lets you see inside. Either reading
+suits an application whose whole job is to open one window onto photos that would
+otherwise stay in the dark of someone else's storage. The mark keeps both: its
+dot sits high and to the right, where a dormer sits in a roof, and where the
+shutter release sits under a thumb.
 
 ## License
 
