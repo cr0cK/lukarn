@@ -261,7 +261,7 @@ export function SearchBox({
                       onMouseEnter={() => setActif(rang)}
                       // 48 px rows in the sheet, where a fingertip aims at them.
                       className={`cursor-pointer ${inSheet ? 'min-h-12 px-4 py-2.5' : 'px-3 py-2'} ${
-                        rang === actif && !inSheet ? 'bg-white/10' : 'hover:bg-white/5'
+                        rang === actif && !inSheet ? 'bg-tint-strong' : 'hover:bg-tint'
                       }`}
                     >
                       <p className="truncate text-sm text-ink-100">{hit.label}</p>

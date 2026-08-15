@@ -89,7 +89,7 @@ export function SectionHeader({
             // taller button would move every photo in the album. It grows 16 px
             // into the 20 px of `PAD_TOP` and 8 px into the 12 px below, so it
             // stays inside the header box either way.
-            className="relative -ml-1.5 flex h-6 min-w-0 items-baseline gap-1.5 rounded-lg px-1.5 text-left transition-colors after:absolute after:inset-x-0 after:-top-4 after:-bottom-2 after:content-[''] hover:bg-white/5 md:after:hidden"
+            className="relative -ml-1.5 flex h-6 min-w-0 items-baseline gap-1.5 rounded-lg px-1.5 text-left transition-colors after:absolute after:inset-x-0 after:-top-4 after:-bottom-2 after:content-[''] hover:bg-tint md:after:hidden"
           >
             <svg
               viewBox="0 0 24 24"
@@ -140,7 +140,7 @@ export function SectionHeader({
             // could annotate no day. `self-center`: without text, its baseline
             // is its bottom edge and it would hang below the title in an
             // `items-baseline` container.
-            className="self-center rounded p-1 text-ink-500 transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover/section:opacity-100 hover:bg-white/5 hover:text-ink-200 focus-visible:opacity-100"
+            className="self-center rounded p-1 text-ink-500 transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover/section:opacity-100 hover:bg-tint hover:text-ink-200 focus-visible:opacity-100"
           >
             <svg
               viewBox="0 0 24 24"
@@ -274,7 +274,7 @@ function DayEditor({ albumId, dayKey, label, day, onClose }: DayEditorProps): Re
             type="button"
             onClick={onClose}
             disabled={update.isPending}
-            className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+            className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-tint hover:text-ink-100"
           >
             {t('common.cancel')}
           </button>

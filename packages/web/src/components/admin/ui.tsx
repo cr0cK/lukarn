@@ -14,10 +14,10 @@ export interface Notice {
 export type Notify = (notice: Notice) => void;
 
 const BUTTON_VARIANTS = {
-  default: 'border border-ink-600 text-ink-200 hover:bg-white/5',
+  default: 'border border-ink-600 text-ink-200 hover:bg-tint',
   primary: 'bg-accent text-accent-ink hover:opacity-90',
   danger: 'border border-red-500/40 text-red-300 hover:bg-red-500/10',
-  ghost: 'text-ink-300 hover:bg-white/5 hover:text-ink-100',
+  ghost: 'text-ink-300 hover:bg-tint hover:text-ink-100',
 } as const;
 
 interface ButtonProps {
@@ -158,7 +158,7 @@ export function SettingRow({
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={shown}
-        className="flex min-h-12 w-full items-center gap-3 px-4 text-left transition-colors hover:bg-white/5"
+        className="flex min-h-12 w-full items-center gap-3 px-4 text-left transition-colors hover:bg-tint"
       >
         {/* The **label** keeps the room: it is what the eye scans down the list,
             and a truncated one no longer names anything. The value gives way

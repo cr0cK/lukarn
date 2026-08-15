@@ -57,7 +57,14 @@ export default tseslint.config(
   {
     // The service worker: neither Node nor a window. `self`, `caches` and
     // `clients` exist only in that context, and would otherwise be errors.
-    files: ['packages/web/public/*.js'],
+    files: ['packages/web/public/sw.js'],
     languageOptions: { globals: globals.serviceworker },
+  },
+  {
+    // The theme bootstrap is the other unbundled file, and it is the opposite
+    // context: it runs in the document, before anything else, and needs
+    // `window`, `document` and `localStorage`.
+    files: ['packages/web/public/theme.js'],
+    languageOptions: { globals: globals.browser },
   },
 );

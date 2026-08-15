@@ -45,7 +45,7 @@ interface ActionMenuProps {
 }
 
 const TRIGGER_PAR_DEFAUT =
-  'rounded-lg p-2 text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100';
+  'rounded-lg p-2 text-ink-300 transition-colors hover:bg-tint hover:text-ink-100';
 
 /** One stop, tall enough for the account menu and short enough to keep context. */
 const SHEET_STOPS = ['auto'] as const;
@@ -169,7 +169,7 @@ export function ActionMenu({
                 onClick={() => choisir(entree)}
                 // 48 px rows in the sheet, where the target is a fingertip; the
                 // dropdown keeps the 40 px a cursor aims at without effort.
-                className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-200 transition-colors hover:bg-white/5 hover:text-ink-100 md:min-h-0"
+                className="flex min-h-12 w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-ink-200 transition-colors hover:bg-tint hover:text-ink-100 md:min-h-0"
               >
                 <span className="shrink-0 text-ink-400">{entree.icon}</span>
                 {entree.label}

@@ -88,8 +88,10 @@ export const en = {
   'prefs.language': 'Language',
   'prefs.theme': 'Theme',
   'prefs.themeDark': 'Dark',
-  'prefs.themeLightSoon': 'Light (soon)',
-  'prefs.themeHint': 'Only the dark theme exists today; the light one is on its way.',
+  'prefs.themeLight': 'Light',
+  // Shown only while nothing has been chosen — afterwards it would describe a
+  // rule that no longer applies to this browser.
+  'prefs.themeHint': 'Following your device until you choose here.',
 
   /* ------------------------------------------------------------ Sheets */
 

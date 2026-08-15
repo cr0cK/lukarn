@@ -438,8 +438,8 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
         // The form no longer has a caption: the tooltip is the last place where
         // shortcut substitution can still be discovered.
         title={t('comments.emojiHint')}
-        className={`rounded p-1 text-base transition-colors hover:bg-white/10 ${
-          open ? 'bg-white/10' : ''
+        className={`rounded p-1 text-base transition-colors hover:bg-tint-strong ${
+          open ? 'bg-tint-strong' : ''
         }`}
       >
         <span aria-hidden="true">🙂</span>
@@ -463,7 +463,7 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
                 setOpen(false);
               }}
               aria-label={emoji}
-              className="rounded p-1 text-base transition-colors hover:bg-white/10"
+              className="rounded p-1 text-base transition-colors hover:bg-tint-strong"
             >
               <span aria-hidden="true">{emoji}</span>
             </button>

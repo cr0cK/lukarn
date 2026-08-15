@@ -32,7 +32,10 @@ describe('palette', () => {
     // `color-mix()` or `oklch()`, whatever colour it is given (D260813).
     for (const primary of ['#eb2020', '#7aa2ff', '#000000', '#ffffff', '#3fae2a']) {
       for (const [name, value] of Object.entries(derivePalette(primary))) {
-        assert.match(value, /^#[0-9a-f]{6}$/, `${name} for ${primary}`);
+        // Eight digits for `accentSoft` alone, which is translucent so that one
+        // value lands correctly on a dark panel and on a light one (D260815d).
+        // Chromium has read that form since 62.
+        assert.match(value, /^#[0-9a-f]{6}([0-9a-f]{2})?$/, `${name} for ${primary}`);
       }
     }
   });
@@ -45,11 +48,24 @@ describe('palette', () => {
   });
 
   it('keeps the soft tint close to the panel it sits on', () => {
-    // 16 % of the accent in `--color-ink-850`: a hovered row is tinted, not
-    // repainted. A value that drifted towards the accent would turn every menu
-    // row into a button.
-    assert.equal(derivePalette(DEFAULT_PRIMARY_COLOR).accentSoft, '#351417');
+    // A sixteenth of the accent, left to the browser to composite: a hovered row
+    // is tinted, not repainted. A value that drifted towards the accent would
+    // turn every menu row into a button.
+    assert.equal(derivePalette(DEFAULT_PRIMARY_COLOR).accentSoft, '#eb202029');
     assert.equal(derivePalette(DEFAULT_PRIMARY_COLOR).accentDim, '#a91717');
+  });
+
+  it('lands the soft tint where the opaque mix used to, on the dark panel', () => {
+    // The value this replaced was `#351417` — 16 % of the red mixed into
+    // `--color-ink-850` by hand. Compositing must not change what a hovered row
+    // looks like on the theme that already existed, only make it right on the
+    // one that did not (D260815d).
+    const INK_850 = [0x12, 0x12, 0x15];
+    const soft = derivePalette(DEFAULT_PRIMARY_COLOR).accentSoft;
+    const [r, g, b, a] = [1, 3, 5, 7].map((i) => Number.parseInt(soft.slice(i, i + 2), 16));
+    const over = [r!, g!, b!].map((v, i) => Math.round((v * a! + INK_850[i]! * (255 - a!)) / 255));
+
+    assert.deepEqual(over, [0x35, 0x14, 0x17]);
   });
 
   it('falls back to the default rather than throwing on a malformed colour', () => {

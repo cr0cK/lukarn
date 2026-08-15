@@ -81,7 +81,7 @@ function EditButton({ label, onClick }: { label: string; onClick: () => void }):
       aria-label={label}
       // `align-text-bottom`: placed after the last word, an inline button
       // otherwise sits on the baseline and extends below the paragraph.
-      className="ml-1.5 inline-flex rounded p-1 align-text-bottom text-ink-500 transition-colors hover:bg-white/5 hover:text-ink-200"
+      className="ml-1.5 inline-flex rounded p-1 align-text-bottom text-ink-500 transition-colors hover:bg-tint hover:text-ink-200"
     >
       <svg
         viewBox="0 0 24 24"
@@ -156,7 +156,7 @@ function DescriptionEditor({
             type="button"
             onClick={onClose}
             disabled={update.isPending}
-            className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+            className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-tint hover:text-ink-100"
           >
             {t('common.cancel')}
           </button>

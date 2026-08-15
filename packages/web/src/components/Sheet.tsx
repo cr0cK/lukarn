@@ -350,7 +350,7 @@ export function Sheet({
             }
             tapGrip();
           }}
-          className="flex h-11 w-full shrink-0 cursor-grab touch-none items-center justify-center transition-colors hover:bg-white/5"
+          className="flex h-11 w-full shrink-0 cursor-grab touch-none items-center justify-center transition-colors hover:bg-tint"
           onPointerDown={(event) => {
             dragMoved.current = false;
             if (settleMs > 0) return;

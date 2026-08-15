@@ -1714,10 +1714,10 @@ What the reader decides for themselves, at `/settings`. Guarded like every other
 screen but **not by `admin`**: nothing here touches the instance, only how this
 browser shows it.
 
-| Setting  | Values             | Kept in                                    |
-| -------- | ------------------ | ------------------------------------------ |
-| Language | English, Français  | `localStorage['lukarn:locale']`, see below |
-| Theme    | Dark; Light (soon) | nothing yet — there is one palette         |
+| Setting  | Values            | Kept in                                    |
+| -------- | ----------------- | ------------------------------------------ |
+| Language | English, Français | `localStorage['lukarn:locale']`, see below |
+| Theme    | Dark, Light       | `localStorage['lukarn:theme']`, see below  |
 
 It exists because the language had nowhere to live. It sat in the account menu,
 as a group below "Sign out" and "Install" — a setting among actions, reached by
@@ -1741,11 +1741,16 @@ today. The content column stops at 48 rem rather than administration's 90: that
 width exists for album rows and a moderation queue, and a dropdown alone at the
 end of a 1170 px line reads as a field somebody forgot to fill.
 
-**The theme is listed and refused, not hidden.** There is one `ink-*` scale and
-it is the dark one (see "Dark theme" below), so the second option is `disabled`
-and choosing it does nothing. A setting nobody can see coming is a setting people
-ask for; one that is greyed out with "(soon)" beside it answers the question
-where the answer will eventually be.
+**Both settings are resolved the same way**, and it is the way the language
+already worked: the stored choice, then what the device asks for, then the
+built-in default. `lib/theme.ts` weighs the three exactly as `lib/i18n/locale.ts`
+does. The theme row therefore carries a hint — "Following your device until you
+choose here" — and **only until somebody chooses**, after which it describes a
+rule that no longer applies to this browser.
+
+Choosing is final for this browser: a phone that turns itself dark at night must
+not undo a reader's decision every evening. See "Themes" below for the two ramps
+and for how one of them is applied before the first paint.
 
 ### `SelectField` — `components/admin/ui.tsx`
 
@@ -2489,7 +2494,7 @@ clock times.
   `created_at` values. Grouping in UTC would file a message written at 00:30
   in Paris under the previous day.
 
-## Dark theme — `styles.css`
+## Themes — `styles.css`, `lib/theme.ts`, `public/theme.js`
 
 Tailwind 4 with no configuration file: tokens are declared in an `@theme`
 block and become utilities (`--color-ink-850` → `bg-ink-850`).
@@ -2498,6 +2503,71 @@ The `ink-950 → ink-100` scale is neutral, slightly cool, and **deliberately
 low-contrast between background levels**: what needs to stand out is the
 photos, not the chrome.
 
+**The rungs name a role, not a brightness**, and that is what makes two themes
+possible without two interfaces. `ink-900` is the page, `ink-850` the panel raised
+above it, `ink-700` its edge, `ink-400` the muted text, `ink-100` the text —
+true in both themes. `styles.css` declares two blocks binding the same ten
+tokens, `.theme-dark` and `.theme-light`, one of which is on `<html>`; every
+`bg-ink-850` in the application resolves against whichever is in force, and **no
+component knows a theme exists**
+([D260815d](./08-decisions/D260815d-the-light-theme-is-a-second-ramp-not-a-second-interface.md)).
+
+The light ramp is not the dark one reversed value for value. Two rungs swap sides
+because their role is a relationship rather than a shade:
+
+| Rung      | Role                        | Dark      | Light                             |
+| --------- | --------------------------- | --------- | --------------------------------- |
+| `ink-900` | the page                    | `#0b0b0d` | `#f5f5f7`                         |
+| `ink-850` | the panel raised above it   | lighter   | **whiter** — light stacks upwards |
+| `ink-800` | a raised bar, and hairlines | lighter   | **darker** — a divider must show  |
+
+`--color-tint` and `--color-tint-strong` belong to the ramp too: the wash a
+borderless row shows under the pointer, white in the dark theme and black in the
+light one. They replaced some thirty `bg-white/5`, which say nothing on a white
+page — and which Tailwind compiles to `color-mix()`, dropped whole by Chromium 79,
+so that cue was already missing on the television behind D260809f.
+
+`color-scheme` is set on each ramp rather than as a `<meta>`: it decides the
+colour of the native scrollbar, of a `<select>` drop-down and of the space either
+side of a rubber-band scroll, and as a meta it could only ever say one thing.
+
+### Which ramp, and when — `lib/theme.ts`
+
+Three sources in this order, the same as the language and for the same reason:
+the choice stored in `localStorage['lukarn:theme']`, then `prefers-color-scheme`,
+then dark. Deliberately **not** an `@media (prefers-color-scheme)` rule in the
+stylesheet, which would make the device the rule instead of one of three answers.
+The query asks for `light` and not for `dark`, so an engine too old to answer
+either falls through to the dark this gallery has always been.
+
+**`public/theme.js` applies it before the first paint.** The stylesheet is
+render-blocking and the bundle is not: left to React, the page paints dark and
+then turns, and anyone reading in light watches it flash black on every cold
+load. So a classic script, in `<head>`, with neither `defer` nor `type="module"`
+— both would let the paint through first.
+
+A file rather than a few inline lines because the policy this server sends is
+`script-src 'self'` (`specs/04-security-and-access.md`): an inline script is
+refused, and relaxing that to save one small same-origin request would also make
+a `<script>` injected into an album title executable. It cannot import from
+`lib/theme.ts` either — one is served as written, the other is bundled — so it
+repeats two functions unbundled and `test/theme.test.ts` fails when the two files
+stop agreeing on the storage key, the class names or the browser-chrome colour.
+The same test compares the dark ramp against the copy `@theme` has to carry:
+Tailwind emits no `bg-ink-850` for a token it has never seen.
+
+### The one surface that does not follow — the photo stage
+
+A photograph is judged against what surrounds it, and a white ground shifts every
+exposure in it. The viewer's stage therefore carries `theme-dark` and `ink-950`
+whatever the reader chose, along with the gradients and white text painted
+directly over the image.
+
+Everything else in the viewer is chrome and turns light with the application: the
+side panel, the sheet a phone pulls up in its place, the menus above it. Anything
+larger would have leaked through `Sheet`'s portal and left the same content dark
+on a desktop and light on a phone.
+
 **The four accent tokens are not fixed values.** They are derived from one
 setting, `primaryColor`, by `derivePalette` in `packages/shared/src/branding.ts`:
 
@@ -2505,7 +2575,7 @@ setting, `primaryColor`, by `derivePalette` in `packages/shared/src/branding.ts`
 | --------------------- | ---------------------------------------- | ---------------------------------------------------------- |
 | `--color-accent`      | the colour itself                        | filled buttons, the selected admin section, the focus ring |
 | `--color-accent-dim`  | 28 % darker                              | `focus:border-accent-dim` on every field                   |
-| `--color-accent-soft` | 16 % of it mixed into `--color-ink-850`  | a hovered or selected row — tinted, not shouting           |
+| `--color-accent-soft` | it, at a sixteenth of its opacity        | a hovered or selected row — tinted, not shouting           |
 | `--color-accent-ink`  | white or `--color-ink-950`, by luminance | the label **on** a filled button                           |
 
 `--color-accent-ink` exists because the default is now red. `bg-accent
@@ -2527,16 +2597,13 @@ unparseable colour is dropped, not approximated, so a hovered row would lose its
 background rather than its tint. The full reasoning is in
 [D260813](./08-decisions/D260813-the-brand-colour-is-a-setting-and-its-palette-is.md).
 
-There is **no** light theme: `index.html` hardcodes `class="dark"` and
-`<meta name="color-scheme" content="dark">`. Adding one means doubling the
-`ink-*` scale, not flipping a variable.
-
-The toggle, on the other hand, exists — as a refusal. `/settings` lists Theme
-with "Light (soon)" `disabled` beside the dark it is serving, so the screen that
-will carry the choice already says it is coming. Nothing is stored for it: a
-remembered value with one palette to apply it to would be a preference that does
-nothing, and the day the second scale lands is the day it becomes worth writing
-down.
+**`--color-accent-soft` is the one translucent token**, written `#rrggbbaa`. It
+was an opaque colour mixed against `--color-ink-850` by hand, correct while there
+was one panel to mix into; there are two now and no single opaque value is right
+on both. Compositing says the same thing without naming a surface — over the dark
+panel it lands on exactly the value it replaces, which `branding.test.ts`
+verifies by performing the composite. Eight-digit hex, not `rgb(… / 16%)` and not
+`color-mix()`: Chromium has read that form since 62 (D260815d).
 
 **The type scale is 5 % larger below `md`.** The sizes were chosen at desk
 reading distance; a phone is held further from the eye and read in motion.

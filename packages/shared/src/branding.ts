@@ -6,12 +6,12 @@
  * has not been saved yet. Two implementations would drift, and the one that drifted
  * would be the preview — the only one nobody compares against anything.
  *
- * Everything here returns plain `#rrggbb`. The obvious alternative,
- * `color-mix(in srgb, …)`, would place the derivation in the stylesheet and cost
- * nothing to write, but it does not exist before Chromium 111 — and the television
- * this gallery is read on reports Chromium 79 (D260809f). A colour the browser
- * cannot parse falls back to *nothing*: buttons would lose their background rather
- * than merely look different.
+ * Everything here returns hexadecimal — `#rrggbb`, or `#rrggbbaa` for the one value
+ * that is translucent. The obvious alternative, `color-mix(in srgb, …)`, would place
+ * the derivation in the stylesheet and cost nothing to write, but it does not exist
+ * before Chromium 111 — and the television this gallery is read on reports Chromium
+ * 79 (D260809f). A colour the browser cannot parse falls back to *nothing*: buttons
+ * would lose their background rather than merely look different.
  */
 
 /** The red of the mark's dot, and the colour an instance uses until it picks one. */
@@ -88,7 +88,7 @@ export interface Palette {
   accent: string;
   /** Darker, for a border resting against the accent — a focused field. */
   accentDim: string;
-  /** The accent barely mixed into the panel background: a hovered row. */
+  /** The accent at a sixteenth of its opacity: a hovered row. `#rrggbbaa`. */
   accentSoft: string;
   /** Readable **on** `accent`: the label of a filled button. */
   accentInk: string;
@@ -123,8 +123,23 @@ export function normalizeHexColor(value: string): string | null {
   return HEX_COLOR_PATTERN.test(value) ? value.toLowerCase() : null;
 }
 
-/** Panel background the soft hover is mixed into — `--color-ink-850`. */
-const INK_850: [number, number, number] = [0x12, 0x12, 0x15];
+/**
+ * Alpha of the soft accent, as the two hex digits appended to it: `0x29 / 0xff`,
+ * a sixteenth and change.
+ *
+ * **The value is translucent rather than mixed into a background.** It used to be
+ * an opaque colour computed against `--color-ink-850`, which was the panel every
+ * hovered row sat on — until the light theme gave that row a second background and
+ * one opaque value could no longer be right on both (D260815d). Compositing says
+ * the same thing without naming a surface: over `ink-850` it lands on exactly the
+ * colour the mixed value produced, and over anything else it lands on what the mix
+ * would have produced there.
+ *
+ * `#rrggbbaa` and not `rgb(… / 16%)` or `color-mix()`: eight-digit hex is read by
+ * every engine back to Chromium 62, well inside the 79 this gallery is read on
+ * (D260809f), and an unparseable colour is dropped rather than approximated.
+ */
+const SOFT_ALPHA = '29';
 
 /** Near-black used as a foreground on a pale accent — `--color-ink-950`. */
 const INK_950 = '#08080a';
@@ -168,7 +183,7 @@ export function derivePalette(primary: string): Palette {
     // 28 % darker. Enough to read as a border against the accent it sits beside,
     // little enough to stay the same colour rather than become a second one.
     accentDim: toHex(rgb.map((v) => v * 0.72) as [number, number, number]),
-    accentSoft: toHex(rgb.map((v, i) => v * 0.16 + INK_850[i]! * 0.84) as [number, number, number]),
+    accentSoft: `${accent}${SOFT_ALPHA}`,
     accentInk: luminance(rgb) > INK_THRESHOLD ? INK_950 : '#ffffff',
   };
 }

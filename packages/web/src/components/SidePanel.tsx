@@ -63,9 +63,12 @@ export function SidePanel({
       // photo area shrinks accordingly, navigation arrows remain reachable, and
       // the panel can stay open between photos. Below that, it becomes an overlay
       // — taking 320 px from a phone screen would leave nothing to see.
-      // Use `ink-850`, not `ink-900`: the viewer is `ink-950`, and two blacks only
-      // three luminance points apart blended together — only the border revealed
-      // the open panel.
+      // Use `ink-850`, not `ink-900`: the panel is a raised surface and the stage
+      // beside it is `ink-950`, so on the dark theme two grounds three luminance
+      // points apart blended together — only the border revealed the open panel.
+      // The panel follows the reader's theme while that stage does not, which is
+      // deliberate: photographs are judged against what surrounds them, panels
+      // are chrome (D260815d).
       className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-850/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-850 md:backdrop-blur-none lg:w-96"
       aria-label={t('panel.label')}
     >
