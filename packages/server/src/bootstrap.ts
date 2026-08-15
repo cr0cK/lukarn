@@ -25,10 +25,17 @@ export function bootstrapFromYaml(config: ConfigRepo, env: Env, log: BootstrapLo
   if (config.userCount() > 0) return;
 
   if (!existsSync(env.configPath)) {
+    // Both forms, because this line cannot tell where it is being read. The
+    // image carries no pnpm, and a source checkout has no compiled `dist/` to
+    // point at: naming a single command sends half of its readers to one that
+    // does not exist on their machine — and this is the first thing a new
+    // installation is told (D260815e).
     log.warn(
       `No account in the database and no ${env.configPath} file: ` +
-        'create the first administrator with "pnpm create-admin <username>", ' +
-        'then sign in at /admin.',
+        'create the first administrator, then sign in at /admin. ' +
+        'From the image: docker compose exec app node ' +
+        'packages/server/dist/scripts/create-admin.js <username>. ' +
+        'From a source checkout: pnpm create-admin <username>.',
     );
     return;
   }

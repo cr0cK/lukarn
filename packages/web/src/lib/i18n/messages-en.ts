@@ -159,6 +159,7 @@ export const en = {
   'login.failed': 'Cannot sign in. Try again.',
   'login.noAccount': 'No account is configured yet.',
   'login.createAdmin': 'Create the first administrator on the server:',
+  'login.createAdminFromSource': 'Or, running from a source checkout:',
   'login.withPhone': 'Sign in with a phone',
 
   'password.show': 'Show the password',

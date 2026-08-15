@@ -79,44 +79,47 @@ If a reported omission is a false positive—a trivial component whose role is
 described without its name appearing—add it to `MODULES_TOLERES` in
 `tools/check-specs.mjs`, with the reason. A noisy check eventually gets disabled.
 
-| If you change…                                                             | Update…                                                                     |
-| -------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                           |
-| `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                            |
-| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-data-model.md`                                                    |
-| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-data-model.md`                                                    |
-| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-data-model.md`, `specs/04-security-and-access.md`                 |
-| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-data-model.md`, `specs/04-security-and-access.md`                 |
-| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-and-deployment.md`, and `08` if a trade-off changes |
-| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-and-deployment.md`                                  |
-| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-data-model.md`, `specs/04-security-and-access.md`                 |
-| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-and-deployment.md`                                  |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`          |
-| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                           |
-| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                   | `specs/02-architecture.md` (sync flow)                                      |
-| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                 |
-| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                      |
-| `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                     |
-| `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                   |
-| A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes          |
-| `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                   |
-| `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                      |
-| An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                |
-| The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                              |
+| If you change…                                                             | Update…                                                                            |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                                  |
+| `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                                   |
+| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-data-model.md`                                                           |
+| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-data-model.md`                                                           |
+| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-data-model.md`, `specs/04-security-and-access.md`                        |
+| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-data-model.md`, `specs/04-security-and-access.md`                        |
+| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-and-deployment.md`, and `08` if a trade-off changes        |
+| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-and-deployment.md`, and `README.md` if startup requires it |
+| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-data-model.md`, `specs/04-security-and-access.md`                        |
+| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-and-deployment.md`, and the install in `README.md`         |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`                 |
+| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                                  |
+| `drive/service.ts`, `drive/sync.ts`, `drive/metadata.ts`                   | `specs/02-architecture.md` (sync flow)                                             |
+| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                        |
+| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                             |
+| `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                            |
+| `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                          |
+| A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes                 |
+| `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                          |
+| `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                             |
+| An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                       |
+| The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                                     |
 
 Five documents, five readers, no duplication between them:
 
 | File               | Reader                          | Answers                                               |
 | ------------------ | ------------------------------- | ----------------------------------------------------- |
-| `README.md`        | Someone discovering the project | What it is and how to run it locally                  |
-| `deploy/README.md` | Someone operating a server      | How to install, update, back up and restore           |
+| `README.md`        | Someone discovering the project | What it is, how to install it, how to run it locally  |
+| `deploy/README.md` | Someone operating a server      | How to run it on a machine of its own, and keep it up |
 | `specs/`           | Someone taking over the code    | Why it is built this way                              |
 | `CONTRIBUTING.md`  | Someone proposing a patch       | How to work here and what will be rejected            |
 | `SECURITY.md`      | Someone finding a vulnerability | Where to report it and what counts as a vulnerability |
 
 The root `README.md` stays **short**: what the application is, what it does, how
-to run it locally and the link table. Every server procedure belongs in
-`deploy/README.md`, next to the scripts it describes (D64).
+to install it from the published image, how to connect it to a Drive, how to run
+it from source, and the link table. The boundary with `deploy/README.md` is not
+the tool but what the reader must already have: everything assuming a machine of
+its own—domain, certificate, firewall, backup—belongs beside the scripts that do
+it (D64, D260815e).
 
 ## Commands
 

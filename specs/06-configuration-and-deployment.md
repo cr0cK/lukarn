@@ -103,7 +103,7 @@ as no account exists in the database** (`bootstrap.ts`):
 | Database  | File    | What happens                                                                                                      |
 | --------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
 | empty     | present | Accounts, albums, permissions and settings are imported in a single transaction, then the file is no longer read. |
-| empty     | absent  | The server starts, logs `pnpm create-admin <identifier>`, and the login screen displays it.                       |
+| empty     | absent  | The server starts and logs how to create the first administrator; the login screen shows the same thing.          |
 | empty     | invalid | **Refuses to start**, with the validation error: starting without any account would be unusable.                  |
 | populated | any     | The file is ignored. Editing it no longer does anything — `/admin` administers from here on.                      |
 
