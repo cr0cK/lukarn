@@ -178,6 +178,20 @@ pnpm --filter @lukarn/server seed-demo 300
 Restart the server afterwards: the disk cache is inventoried only at startup, so
 the thumbnails `seed-demo` has just written are invisible to it until then.
 
+Everything above is one word each for whoever has
+[`just`](https://github.com/casey/just):
+
+```bash
+just dev     # the stack, against your own instance
+just demo    # the stack, against an instance already full of photographs
+```
+
+`just demo` builds its instance under `.demo/` — its own database, its own cache
+— so it never touches the `./data` and `./cache` you develop against, and
+`just demo-reset` forgets it. It writes the bootstrap file, seeds sixty media per
+album (a minute, the first time) and signs in as `demo` / `demo1234`. Nothing in
+the build or in CI depends on `just`; it is a shortcut, not a prerequisite.
+
 Before proposing a change:
 
 ```bash

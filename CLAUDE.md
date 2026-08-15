@@ -139,11 +139,23 @@ pnpm check:links                     # do references between documents lead anyw
 pnpm check:changelog                 # does a visible change say so in CHANGELOG.md?
 pnpm verify                          # all seven at once—the gate before publishing
 
+just dev                             # the stack, prerequisites checked first
+just demo [count]                    # the stack, against a seeded instance in .demo/
+just demo-reset                      # forget that instance
+just admin <identifier>              # first administrator, on the ./data instance
+
 pnpm create-admin <identifier>       # first administrator of an empty database
 pnpm reset-password <identifier>     # lost password: last resort outside /admin
 pnpm hash-password                   # argon2id hash for a bootstrap config/albums.yaml
 pnpm --filter @lukarn/server seed-demo 300   # demo dataset, no Drive account
 ```
+
+The `just` recipes wrap the `pnpm` ones and add what is easy to forget: `shared`
+built before anything imports it, a `.env` carrying the two secrets the server
+refuses to start without, and—for the demo—an instance that exists before there
+is anything to seed into it. `just demo` keeps that instance under `.demo/`, its
+own database and its own cache, so it never touches the `./data` a real one uses.
+`just` is a shortcut: no check, hook or workflow depends on it.
 
 Before declaring work complete, run **`pnpm verify`**—typecheck, lint,
 formatting, tests, spec checks and link checks. CI runs the same command, and the

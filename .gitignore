@@ -5,6 +5,10 @@ dist/
 # Local data — never committed
 data/
 cache/
+# The demo instance `just demo` builds: database, cache and bootstrap file. A
+# separate directory so forgetting it is a delete, and so it can never be
+# confused with the instance above.
+.demo/
 .env
 config/albums.yaml
 # Archives produced by deploy/backup.sh — they contain a copy of the .env.

@@ -32,6 +32,10 @@ index with locally generated media. Restart the server afterwards — the disk
 cache is inventoried only at startup, so freshly written thumbnails are invisible
 to a running process.
 
+With [`just`](https://github.com/casey/just), `just dev` runs that whole sequence
+and `just demo` runs it against a seeded instance kept in `.demo/`, away from
+your own. It is a shortcut; no check depends on it.
+
 ## Before you open a pull request
 
 ```bash
