@@ -453,6 +453,7 @@ export const en = {
   'albumForm.folder': 'Google Drive folder',
   'albumForm.container': 'Folder in the storage',
   'albumForm.containerHint': 'Path relative to the root this storage declares.',
+  'albumForm.containerPlaceholder': 'holidays/2026',
   'albumForm.storage': 'Storage',
   'albumForm.storageHint': 'Where this album’s files live.',
   'albumForm.storageEditHint':
@@ -629,6 +630,8 @@ export const en = {
   'storage.reconnect': 'Reconnect Google Drive',
   'storage.connectFailed': 'Connection failed.',
   'storage.disconnect': 'Disconnect',
+  'storage.disconnected': (label: string) => `“${label}” is disconnected.`,
+  'storage.disconnectFailed': 'Cannot disconnect this storage.',
   'storage.test': 'Test',
   'storage.testing': 'Testing…',
   'storage.testOk': (account: string) => `It answers — ${account}.`,

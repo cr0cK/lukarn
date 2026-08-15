@@ -260,12 +260,12 @@ export class ConfigRepo {
     return user.allAlbums || (snapshot.granted.get(key)?.has(albumId) ?? false);
   }
 
-  /** Accounts with explicit access to this album, excluding wildcard holders. */
   /** Albums reading this storage connection — what makes deleting it a 409. */
   albumsOn(connectionId: string): StoredAlbum[] {
     return this.read().albums.filter((album) => album.connectionId === connectionId);
   }
 
+  /** Accounts with explicit access to this album, excluding wildcard holders. */
   members(albumId: string): string[] {
     const snapshot = this.read();
     return [...snapshot.users.values()]

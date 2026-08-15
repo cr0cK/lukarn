@@ -437,6 +437,7 @@ export const fr: Messages = {
   'albumForm.folder': 'Dossier Google Drive',
   'albumForm.container': 'Dossier dans le stockage',
   'albumForm.containerHint': 'Chemin relatif à la racine que ce stockage déclare.',
+  'albumForm.containerPlaceholder': 'vacances/2026',
   'albumForm.storage': 'Stockage',
   'albumForm.storageHint': 'Où vivent les fichiers de cet album.',
   'albumForm.storageEditHint':
@@ -624,6 +625,8 @@ export const fr: Messages = {
   'storage.reconnect': 'Reconnecter Google Drive',
   'storage.connectFailed': 'La connexion a échoué.',
   'storage.disconnect': 'Déconnecter',
+  'storage.disconnected': (label: string) => `« ${label} » est déconnecté.`,
+  'storage.disconnectFailed': 'Impossible de déconnecter ce stockage.',
   'storage.test': 'Tester',
   'storage.testing': 'Test en cours…',
   'storage.testOk': (account: string) => `Il répond — ${account}.`,

@@ -351,6 +351,13 @@ export class DriveService implements StorageProvider {
     const row = this.connections.get(this.connectionId);
     if (!row || row.revokedAt !== null) return;
 
+    // Nothing was ever granted: the credentials come from the environment, and
+    // migration 17 creates this row for a service-account instance too. Google
+    // refusing a JWT exchange there is a clock skew or a bad key — saying "a
+    // reconnection happened during the request" would send its operator looking
+    // for a consent nobody gave.
+    if (!row.ciphertext) return;
+
     if (!this.connections.markRevoked(this.connectionId, used)) {
       this.log.warn(
         'Google rejected a token that is no longer the stored one: a reconnection ' +

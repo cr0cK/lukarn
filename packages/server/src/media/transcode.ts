@@ -344,6 +344,12 @@ export interface TranscodePassDeps {
   transcoder: Transcoder;
   /** The storage an album reads. Resolved per album, once. */
   storage: (connectionId: string) => StorageProvider;
+  /**
+   * Can that storage serve anything right now? Per album, for the reason spelled
+   * out in `prewarm.ts`: a revoked connection resolves to a provider that fails on
+   * every file, and here each failure costs a download attempt.
+   */
+  connected: (connectionId: string) => boolean;
   /** Read for every video so disabling the setting stops the current pass. */
   enabled: () => boolean;
   log: Logger;
@@ -400,6 +406,8 @@ export class TranscodePass {
 
     try {
       for (const album of this.deps.albums()) {
+        if (!this.deps.connected(album.connectionId)) continue;
+
         let storage: StorageProvider;
         try {
           storage = this.deps.storage(album.connectionId);

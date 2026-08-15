@@ -187,7 +187,9 @@ export function AlbumForm({ album, storage, onClose, notify }: AlbumFormProps): 
         }}
         autoComplete="off"
         placeholder={
-          kind === 'drive' ? 'https://drive.google.com/drive/folders/…' : 'vacances/2026'
+          kind === 'drive'
+            ? 'https://drive.google.com/drive/folders/…'
+            : t('albumForm.containerPlaceholder')
         }
         disabled={pending}
         error={touched ? folderError : null}

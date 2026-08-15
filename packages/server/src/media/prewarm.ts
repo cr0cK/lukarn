@@ -64,6 +64,16 @@ export interface PrewarmDeps {
   renderer: MediaRenderer;
   /** The storage an album reads. Resolved per album, once. */
   storage: (connectionId: string) => StorageProvider;
+  /**
+   * Can that storage serve anything right now? Asked **per album**, not once for
+   * the instance: a registry resolves a revoked connection perfectly well — it
+   * only refuses an unknown one — so without this the failure surfaces photo by
+   * photo inside the loop below, each one still paying `PAUSE_MS`. One revoked
+   * connection among several would then waste a quarter of an hour per pass on an
+   * album of a thousand photos, which is the exact waste D61 added the
+   * instance-wide gate to prevent.
+   */
+  connected: (connectionId: string) => boolean;
   /** Read on every pass so disabling the setting stops the current pass. */
   enabled: () => boolean;
   log: Logger;
@@ -105,6 +115,8 @@ export class CachePrewarmer {
 
     try {
       for (const album of this.deps.albums()) {
+        if (!this.deps.connected(album.connectionId)) continue;
+
         let storage: StorageProvider;
         try {
           storage = this.deps.storage(album.connectionId);

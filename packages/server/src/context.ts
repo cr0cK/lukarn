@@ -196,6 +196,7 @@ export class AppContext {
       // photo by photo **with its one-second pause** — fifteen minutes of futile
       // looping per hour for an album of a thousand photos.
       storage: (connectionId) => this.storage.get(connectionId),
+      connected: (connectionId) => this.storage.isConnected(connectionId),
       enabled: () => this.settings.prewarmCache && this.storage.anyConnected(),
       log: logger,
     });
@@ -205,6 +206,7 @@ export class AppContext {
       media: this.media,
       store: this.videoStore,
       storage: (connectionId) => this.storage.get(connectionId),
+      connected: (connectionId) => this.storage.isConnected(connectionId),
       transcoder: new VideoTranscoder({
         store: this.videoStore,
         root: join(env.cacheDir, 'video'),
