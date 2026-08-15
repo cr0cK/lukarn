@@ -3,9 +3,9 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, beforeEach, describe, it } from 'node:test';
-import { encryptSecret } from '../src/crypto.js';
 import { openDb, type Db } from '../src/db.js';
 import { loadEnv, type Env } from '../src/env.js';
+import { DEFAULT_CONNECTION_ID, StorageConnectionRepo } from '../src/storage/connections.js';
 import { DriveService } from '../src/storage/drive.js';
 import { StorageKeyMismatchError, StorageRevokedError } from '../src/storage/provider.js';
 
@@ -36,18 +36,31 @@ const env: Env = loadEnv({
 const silent = { info: () => {}, warn: () => {} };
 
 let db: Db;
+let connections: StorageConnectionRepo;
 let service: DriveService;
+
+/** A Drive service reading the connection this database already carries. */
+function driveOn(environnement: Env = env): DriveService {
+  return new DriveService(
+    environnement,
+    new StorageConnectionRepo(db, environnement.tokenKey),
+    DEFAULT_CONNECTION_ID,
+    silent,
+  );
+}
 
 beforeEach(() => {
   db?.close();
   rmSync(join(root, 'data'), { recursive: true, force: true });
   db = openDb(join(root, 'data'));
-  service = new DriveService(env, db, silent);
+  connections = new StorageConnectionRepo(db, TOKEN_KEY);
+  service = new DriveService(env, connections, DEFAULT_CONNECTION_ID, silent);
 
-  db.prepare(
-    `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at, revoked_at)
-     VALUES (1, ?, 'photos@exemple.fr', 'drive.readonly', '2026-01-01T00:00:00.000Z', NULL)`,
-  ).run(encryptSecret('refresh-token-factice', TOKEN_KEY));
+  // Migration 17 creates the row; consent is what fills it.
+  connections.update(DEFAULT_CONNECTION_ID, {
+    secret: 'refresh-token-factice',
+    account: 'photos@exemple.fr',
+  });
 });
 
 after(() => db?.close());
@@ -123,20 +136,23 @@ describe('invalid_grant detection', () => {
     );
 
     // New service on the same database: state lives in the database, not memory.
-    const rechargé = new DriveService(env, db, silent);
+    const rechargé = driveOn();
     assert.equal(rechargé.connected, false);
     assert.notEqual(rechargé.connection?.revokedAt, null);
   });
 
-  it('starts clean after manual disconnection', async () => {
+  it('forgets the token on manual disconnection, keeping the connection', async () => {
     await assert.rejects(
       () => service.guard(() => Promise.reject(invalidGrant())),
       StorageRevokedError,
     );
 
     service.disconnect();
+    // The row stays: the albums reading this storage name it by id, and taking it
+    // away with the token would leave them pointing at nothing.
     assert.equal(service.connection, null);
     assert.equal(service.connected, false);
+    assert.ok(connections.get(DEFAULT_CONNECTION_ID));
   });
 
   it('does not revoke a token saved while the request was in flight', async () => {
@@ -145,9 +161,7 @@ describe('invalid_grant detection', () => {
         service.guard(() => {
           // The owner reauthorises access from /admin while an earlier request
           // is still in flight.
-          db.prepare('UPDATE oauth_token SET ciphertext = ? WHERE id = 1').run(
-            encryptSecret('refresh-token-tout-neuf', TOKEN_KEY),
-          );
+          connections.update(DEFAULT_CONNECTION_ID, { secret: 'refresh-token-tout-neuf' });
           return Promise.reject(invalidGrant());
         }),
       StorageRevokedError,
@@ -160,7 +174,7 @@ describe('invalid_grant detection', () => {
   });
 
   it('retains a token TOKEN_KEY can no longer decrypt', async () => {
-    const avecMauvaiseCle = new DriveService({ ...env, tokenKey: 'z'.repeat(48) }, db, silent);
+    const avecMauvaiseCle = driveOn({ ...env, tokenKey: 'z'.repeat(48) });
 
     // The token is unreadable: the instance cannot use Drive and must say so,
     // allowing /admin to offer reconnection.
@@ -170,7 +184,7 @@ describe('invalid_grant detection', () => {
     // But it remains. A deployment with a mistyped key must not lose Google
     // authorisation itself: restoring the key is enough.
     assert.equal(service.connected, true);
-    assert.ok(db.prepare('SELECT ciphertext FROM oauth_token WHERE id = 1').get());
+    assert.ok(connections.get(DEFAULT_CONNECTION_ID)?.ciphertext);
     assert.equal(service.connection?.account, 'photos@exemple.fr');
   });
 });
@@ -224,7 +238,7 @@ describe('download refused by Drive', () => {
   }
 
   it('refreshes the token and retries only once after a 401', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     const { jetonsPresentes } = reponses(
       new Response(null, { status: 401 }),
       new Response('contenu', { status: 200 }),
@@ -240,7 +254,7 @@ describe('download refused by Drive', () => {
   });
 
   it('records revocation when refresh is also refused', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     instrumente.renouvellementRefuse = true;
     reponses(new Response(null, { status: 401 }));
 
@@ -251,7 +265,7 @@ describe('download refused by Drive', () => {
   });
 
   it('waits and retries when Drive rate-limits', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}', { status: 403 }),
       new Response('{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}', { status: 429 }),
@@ -269,7 +283,7 @@ describe('download refused by Drive', () => {
   });
 
   it('respects Retry-After reported by Google', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}', {
         status: 429,
@@ -284,7 +298,7 @@ describe('download refused by Drive', () => {
   });
 
   it('does not retry a 403 that denies access', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"insufficientPermissions"}]}}', { status: 403 }),
     );
@@ -296,7 +310,7 @@ describe('download refused by Drive', () => {
   });
 
   it('gives up on a download quota that will not clear in thirty seconds', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     reponses(
       new Response('{"error":{"errors":[{"reason":"downloadQuotaExceeded"}]}}', { status: 403 }),
     );
@@ -306,7 +320,7 @@ describe('download refused by Drive', () => {
   });
 
   it('relays an unsatisfiable range instead of throwing', async () => {
-    const instrumente = new ServiceInstrumente(env, db, silent);
+    const instrumente = new ServiceInstrumente(env, connections, DEFAULT_CONNECTION_ID, silent);
     reponses(new Response(null, { status: 416, headers: { 'content-range': 'bytes */4096' } }));
 
     // Requesting an offset beyond the end is part of the `Range` protocol: it

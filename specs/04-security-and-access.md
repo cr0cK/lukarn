@@ -21,16 +21,16 @@ The server accesses Drive through one of **two** mutually exclusive paths: when
 table below describes OAuth, which remains the default; the service account has its own section
 below.
 
-|                    | Google OAuth                           | Username/password                   |
-| ------------------ | -------------------------------------- | ----------------------------------- |
-| Who                | The Drive owner, one person            | Every visitor                       |
-| When               | Once, during installation              | For each session (one year)         |
-| What it grants     | Drive read access **for the server**   | The albums assigned to this account |
-| Where it is stored | `oauth_token`, encrypted refresh token | `users` table, argon2id hash        |
-| Who initiates it   | `/admin` → "Connect Google Drive"      | The `/login` form                   |
+|                    | Google OAuth                                | Username/password                   |
+| ------------------ | ------------------------------------------- | ----------------------------------- |
+| Who                | The Drive owner, one person                 | Every visitor                       |
+| When               | Once, during installation                   | For each session (one year)         |
+| What it grants     | Drive read access **for the server**        | The albums assigned to this account |
+| Where it is stored | `storage_connections.ciphertext`, encrypted | `users` table, argon2id hash        |
+| Who initiates it   | `/admin` → "Connect Google Drive"           | The `/login` form                   |
 
 A visitor never sees Google, needs no Google account, and never receives a `googleapis.com` URL.
-The application holds a single token—the owner's—and serves all content through it.
+Every token the application holds is the owner's, and all content is served through them.
 
 ## Passwords
 
@@ -356,24 +356,33 @@ wants to stop being disturbed to a login screen. What it grants is harmless—di
 notifications—and can be restored from /admin. Changing `SESSION_SECRET` invalidates previously
 sent links, just as it invalidates sessions.
 
-## Refresh token encryption
+## One encrypted secret per storage connection
 
 `packages/server/src/crypto.ts`. AES-256-GCM, with a key derived by `scryptSync` from a salt
 generated for each encryption. Stored format:
 `base64( salt(16) | iv(12) | tag(16) | ciphertext )`.
 
-Because the salt is random, encrypting the same token twice produces two different strings—a
-database observer cannot infer that the token has not changed.
+Because the salt is random, encrypting the same secret twice produces two different strings—a
+database observer cannot infer that it has not changed.
 
-The threat model is explicit: **a dump of `lukarn.db` must not be enough to access Drive.**
+**Every connection carries its own.** `storage_connections.ciphertext` holds whatever its kind
+needs to authenticate — Drive's refresh token, and later a bucket's key pair — and
+`StorageConnectionRepo` (`storage/connections.ts`) is the only thing that encrypts or decrypts it.
+The rest of the application handles a `StorageProvider` and never a secret: the registry builds
+one from a row, the provider uses it, and nothing else sees either. `settings` sits beside it in
+plain JSON and is deliberately readable — an endpoint or a bucket name gives access to nothing.
+
+The threat model is explicit: **a dump of `lukarn.db` must not be enough to reach any storage.**
 `TOKEN_KEY` is also required; it lives in the process environment and is never written to the
 database. The VPS is not an HSM; someone who obtains a shell in the container has both.
 
-If `TOKEN_KEY` changes, decryption fails on the GCM tag. `DriveService.authorizedClient()` **keeps
+If `TOKEN_KEY` changes, decryption fails on the GCM tag. `StorageConnectionRepo.secret()` **keeps
 the row** and raises `StorageKeyMismatchError`, a `StorageNotConnectedError` whose message says the
-one thing that matters: the token exists, the key is wrong. Deleting it would destroy a still-valid
+one thing that matters: the secret exists, the key is wrong. Deleting it would destroy a still-valid
 authorisation over a mistyped environment variable; restoring the original key is enough, and
-`/admin` offers reconnection meanwhile.
+`/admin` offers reconnection meanwhile. The same distinction is why **disconnecting clears the
+secret without deleting the connection**: the albums reading it name it by id, and removing the row
+would leave them pointing at nothing.
 
 ## Detecting `invalid_grant`
 
@@ -387,14 +396,16 @@ implementation, `isRevocation` recognises the error in **two** places—`error.r
 and the message—because its shape varies depending on whether it originates while refreshing the
 token or calling the API. When triggered:
 
-1. `revoked_at` is dated in `oauth_token` (the token and account are retained);
+1. `revoked_at` is dated on that connection (the token and account are retained);
 2. the cached OAuth client is discarded;
 3. a `StorageRevokedError` is thrown instead of the original error.
 
 Afterwards, `authorizedClient()` fails immediately with `StorageRevokedError` without calling Google
 again: there is no point retrying an already rejected token. `Syncer.syncAll` stops the loop on this
-error. `/admin` displays "Authorisation revoked for <account>" rather than "No account
-connected", and offers "Reconnect Google Drive". New consent resets `revoked_at` to `NULL`.
+error **for the albums on that connection**, and continues with the albums on the others: a token
+Google refused says nothing about a bucket. `/admin` displays "Authorisation revoked for <account>"
+on that row rather than "No account connected", and offers "Reconnect Google Drive". New consent
+resets `revoked_at` to `NULL`.
 
 A network outage or a Google 500 **does not** trigger revocation:
 `packages/server/test/revocation.test.ts` verifies this explicitly. Invalidating the connection on
@@ -418,7 +429,8 @@ which concentrates downloads instead of spreading them across clicks.
 ## Service account as an alternative to consent
 
 `GOOGLE_SERVICE_ACCOUNT_FILE` points to a service account's JSON key. When present,
-`DriveService.mode` is `service_account` and **nothing else is read**: neither `oauth_token`, nor
+`DriveService.mode` is `service_account` and **nothing else is read**: neither the connection's
+stored secret, nor
 `TOKEN_KEY`, nor `GOOGLE_CLIENT_*`. `auth.JWT` exchanges the key for an access token and renews it
 automatically.
 

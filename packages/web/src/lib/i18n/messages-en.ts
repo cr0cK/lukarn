@@ -407,7 +407,7 @@ export const en = {
   'adminAlbums.description':
     'One album = one indexed Google Drive folder. Its cover is chosen on the photo, from the album.',
   'adminAlbums.resyncAll': 'Resync everything',
-  'adminAlbums.noDrive': 'No Google Drive account connected.',
+  'adminAlbums.noStorage': 'No storage connected.',
   'adminAlbums.new': 'New album',
   'adminAlbums.none': 'No album. Create one from a folder of your Drive.',
   'adminAlbums.syncStarted': (albums: string) => `Sync started: ${albums}`,
@@ -451,6 +451,12 @@ export const en = {
   'albumForm.idHint': 'Appears in the URL of the album. Suggested from the title.',
   'albumForm.description': 'Description (optional)',
   'albumForm.folder': 'Google Drive folder',
+  'albumForm.container': 'Folder in the storage',
+  'albumForm.containerHint': 'Path relative to the root this storage declares.',
+  'albumForm.storage': 'Storage',
+  'albumForm.storageHint': 'Where this album’s files live.',
+  'albumForm.storageEditHint':
+    'Changing it empties the album index and reindexes it: the same path elsewhere is another set of files.',
   'albumForm.folderExtracted': 'Identifier used:',
   'albumForm.folderHint': 'Paste the folder URL: the identifier is the segment after /folders/.',
   'albumForm.recursive': 'Include subfolders',
@@ -532,6 +538,9 @@ export const en = {
   'validate.folder': 'Enter the Drive folder.',
   'validate.folderPattern':
     'Paste the Drive folder URL or its identifier — the segment after /folders/.',
+  'validate.container': 'Enter the folder to read.',
+  'validate.containerPattern': 'A path relative to the storage root, without a parent segment.',
+  'validate.storageLabel': 'Give this storage a name.',
   'validate.interval': 'Give a whole number of minutes (0 to disable).',
   'validate.cacheSize': 'Give a size in gigabytes.',
   'validate.cacheSizePositive': 'The cache size must be greater than 0.',
@@ -587,26 +596,51 @@ export const en = {
     `${count} message${count > 1 ? 's' : ''} ${restored ? 'restored' : 'hidden'}.`,
   'moderation.bulkFailed': 'Bulk moderation failed.',
 
-  /* -------------------------------------------------------- Administration: Drive */
+  /* ------------------------------------------------------ Administration: storage */
 
-  'drive.title': 'Google Drive connection',
-  'drive.serviceAccount': 'Service account',
-  'drive.serviceAccountHint':
+  'storage.title': 'Storage',
+  'storage.description': 'Where the albums live. An instance can read several.',
+  'storage.loadFailed': 'Cannot load the storage connections.',
+  'storage.add': 'Add a storage',
+  'storage.create': 'Add',
+  'storage.created': (label: string) => `Storage "${label}" added.`,
+  'storage.label': 'Name',
+  'storage.identifier': 'Identifier',
+  'storage.identifierHint': 'Written into every album that reads this storage. It cannot change.',
+  'storage.kind': 'Kind',
+  'storage.kindHint': 'What this connection speaks to. It cannot change afterwards.',
+  'storage.kindDrive': 'Google Drive',
+  'storage.kindLocal': 'Local folder',
+  'storage.kindS3': 'S3-compatible bucket',
+  'storage.kindWebdav': 'WebDAV server',
+  'storage.albumCount': (count: number) =>
+    count === 0 ? 'No album reads it yet.' : `${count} album${count > 1 ? 's' : ''} read it.`,
+  'storage.serviceAccountHint':
     'No consent to give, no token to renew. Every album folder has to be shared read-only with this address from Google Drive — otherwise it stays invisible, and its synchronisation finds nothing.',
-  'drive.notConfigured': 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set in the',
-  'drive.notConfiguredEnd': 'file.',
-  'drive.revoked': 'Authorisation revoked',
-  'drive.revokedFor': (account: string) => `for ${account}`,
-  'drive.revokedHint':
+  'storage.notConfigured': 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set in the',
+  'storage.notConfiguredEnd': 'file.',
+  'storage.revoked': 'Authorisation revoked',
+  'storage.revokedFor': (account: string) => `for ${account}`,
+  'storage.revokedHint':
     'Access was withdrawn on the Google side, or the token expired. The albums stay viewable as long as thumbnails remain cached. Reconnect to resume synchronisation.',
-  'drive.connected': 'Connected',
-  'drive.notConnected': 'No account connected. Authorise read access to your Drive.',
-  'drive.disconnect': 'Disconnect',
-  'drive.connect': 'Connect Google Drive',
-  'drive.reconnect': 'Reconnect Google Drive',
-  'drive.connectFailed': 'Connection failed.',
-  'drive.disconnected': 'Google Drive disconnected.',
-  'drive.disconnectFailed': 'Cannot disconnect.',
+  'storage.connected': 'Connected',
+  'storage.notConnected': 'Not connected. Nothing can be indexed or served from it.',
+  'storage.connect': 'Connect Google Drive',
+  'storage.reconnect': 'Reconnect Google Drive',
+  'storage.connectFailed': 'Connection failed.',
+  'storage.disconnect': 'Disconnect',
+  'storage.test': 'Test',
+  'storage.testing': 'Testing…',
+  'storage.testOk': (account: string) => `It answers — ${account}.`,
+  'storage.testFailed': 'This storage did not answer.',
+  'storage.delete': 'Delete',
+  'storage.deleteOne': (label: string) => `Delete the storage ${label}`,
+  'storage.deleted': (label: string) => `Storage "${label}" deleted.`,
+  'storage.deleteFailed': 'Cannot delete this storage.',
+  'storage.confirmTitle': (label: string) => `Delete "${label}"?`,
+  'storage.confirmButton': 'Delete',
+  'storage.confirmNothingDeleted':
+    'Nothing is deleted on the storage itself: this removes how this gallery reaches it. An album still reading it has to be moved or deleted first.',
 
   /* ----------------------------------------------------- Administration: settings */
 

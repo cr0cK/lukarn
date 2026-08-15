@@ -19,6 +19,9 @@ import {
   type AdminAlbum,
   type AdminStatus,
   type AppSettings,
+  type StorageAuthorization,
+  type StorageConnectionStatus,
+  type StorageProbeResult,
   type VisitsOverview,
 } from '@lukarn/shared';
 import argon2 from 'argon2';
@@ -30,6 +33,8 @@ import type { AppContext } from '../context.js';
 import type { Translate } from '../i18n/index.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { buildAlbum } from '../repo.js';
+import type { StorageConnection } from '../storage/connections.js';
+import { SUPPORTED_KINDS } from '../storage/registry.js';
 
 const OAUTH_STATE_COOKIE = 'lukarn_oauth_state';
 const OAUTH_STATE_TTL_S = 600;
@@ -103,10 +108,42 @@ const visitsQuerySchema = z.object({
 const groupBy = z.enum(['month', 'day']);
 const sortOrder = z.enum(['desc', 'asc']);
 
+/** A connection slug, bounded and shaped like an album id — both appear in logs. */
+const connectionId = z
+  .string()
+  .min(1)
+  .max(USERNAME_MAX_LENGTH)
+  .regex(ALBUM_ID_PATTERN, 'letters, digits, dot, hyphen and underscore only');
+
+/**
+ * Settings are a flat map of strings: an endpoint, a bucket, a prefix. Bounded
+ * because they are written to the database and read back into a form, and nothing a
+ * backend needs is a paragraph.
+ */
+const storageSettings = z.record(z.string().max(1024));
+
+/** A secret bounded well above a service-account key, the longest one in practice. */
+const storageSecret = z.string().min(1).max(8192);
+
+const createStorageSchema = z.object({
+  id: connectionId,
+  kind: z.enum(['drive', 'local', 's3', 'webdav']),
+  label: z.string().trim().min(1).max(100),
+  settings: storageSettings.optional(),
+  secret: storageSecret.optional(),
+});
+
+const updateStorageSchema = z.object({
+  label: z.string().trim().min(1).max(100).optional(),
+  settings: storageSettings.optional(),
+  secret: storageSecret.nullable().optional(),
+});
+
 const createAlbumSchema = z.object({
   id: albumId,
   title: z.string().min(1).max(200),
   description: z.string().max(ALBUM_DESCRIPTION_MAX_LENGTH).optional(),
+  connectionId: connectionId.optional(),
   folderId: z.string().min(1).max(256),
   recursive: z.boolean().default(true),
   groupBy: groupBy.default(DEFAULT_GROUP_BY),
@@ -116,6 +153,7 @@ const createAlbumSchema = z.object({
 const updateAlbumSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(ALBUM_DESCRIPTION_MAX_LENGTH).nullable().optional(),
+  connectionId: connectionId.optional(),
   folderId: z.string().min(1).max(256).optional(),
   recursive: z.boolean().optional(),
   groupBy: groupBy.optional(),
@@ -191,6 +229,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       id: album.id,
       title: album.title,
       description: album.description,
+      connectionId: album.connectionId,
       folderId: album.folderId,
       recursive: album.recursive,
       groupBy: album.groupBy,
@@ -214,17 +253,44 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     return albums.find((id) => id !== ALL_ALBUMS && !context.findAlbum(id)) ?? null;
   }
 
+  /**
+   * How this connection is authorised, which decides the controls /admin offers.
+   *
+   * A service account is the one case where a Drive connection has no button: its key
+   * is in the environment, and what the administrator needs instead is the address to
+   * share the folder with (D46).
+   */
+  function authorizationOf(connection: StorageConnection): StorageAuthorization {
+    if (connection.kind !== 'drive') return 'settings';
+    return context.env.serviceAccount ? 'key' : 'consent';
+  }
+
+  /** A connection as /admin reads it. Never carries the secret, under any key. */
+  function toStorageStatus(connection: StorageConnection): StorageConnectionStatus {
+    const drive = context.storage.drive(connection.id);
+    return {
+      id: connection.id,
+      kind: connection.kind,
+      label: connection.label,
+      // The Drive service answers for both modes: with a service account the address
+      // comes from the key rather than from a stored consent.
+      account: drive ? (drive.connection?.account ?? null) : connection.account,
+      connected: context.storage.isConnected(connection.id),
+      revokedAt: connection.revokedAt,
+      authorization: authorizationOf(connection),
+      albumCount: context.config.albumsOn(connection.id).length,
+      createdAt: connection.createdAt,
+    };
+  }
+
   return async (app) => {
     app.addHook('preHandler', requireAdmin);
 
     app.get('/status', async (_request, reply) => {
-      const connection = context.storage.connection;
       const status: AdminStatus = {
-        driveMode: context.storage.mode,
-        driveConnected: context.storage.connected,
-        driveAccount: connection?.account ?? null,
-        driveRevokedAt: connection?.revokedAt ?? null,
-        oauthConfigured: context.storage.configured,
+        storage: context.connections.list().map(toStorageStatus),
+        storageKinds: SUPPORTED_KINDS,
+        oauthConfigured: context.env.serviceAccount !== null || context.env.google !== null,
         albums: context.albums.map((album) => buildAlbum(album, context.media, context.syncState)),
         cache: context.cache.stats(),
         hiddenComments: context.comments.hiddenCount(),
@@ -503,10 +569,19 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'conflict', message: request.t('error.albumExists', input.id) });
       }
 
+      const connection = input.connectionId ?? context.connections.list()[0]?.id;
+      if (!connection || !context.connections.get(connection)) {
+        return reply.code(400).send({
+          error: 'unknown_storage',
+          message: request.t('error.storageNotFound'),
+        });
+      }
+
       const album = context.config.createAlbum({
         id: input.id,
         title: input.title,
         description: input.description ?? null,
+        connectionId: connection,
         folderId: input.folderId,
         recursive: input.recursive,
         groupBy: input.groupBy,
@@ -547,6 +622,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         }
       }
 
+      if (patch.connectionId && !context.connections.get(patch.connectionId)) {
+        return reply.code(400).send({
+          error: 'unknown_storage',
+          message: request.t('error.storageNotFound'),
+        });
+      }
+
       const album = context.config.updateAlbum(id, { ...patch, coverMediaId: coverId });
 
       /**
@@ -559,18 +641,19 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
        *
        * `recursive` matters as much as `folderId`: setting it back to `false` must
        * remove subfolders immediately, not at the next periodic sync — which is never
-       * on an instance with automatic sync disabled.
+       * on an instance with automatic sync disabled. So does `connectionId`: the same
+       * container path on another storage is another album's worth of files, and the
+       * identifiers of the old one address nothing there.
        */
       const perimetreChange =
+        (patch.connectionId !== undefined && patch.connectionId !== stored.connectionId) ||
         (patch.folderId !== undefined && patch.folderId !== stored.folderId) ||
         (patch.recursive !== undefined && patch.recursive !== stored.recursive);
 
       if (perimetreChange) {
         const removed = context.media.clearAlbum(id);
         context.syncState.set(id, { lastSyncAt: null, status: 'never', error: null });
-        request.log.info(
-          `Album "${id}": Drive scope changed, ${removed} media removed from the index`,
-        );
+        request.log.info(`Album "${id}": scope changed, ${removed} media removed from the index`);
         startSync(album, request.log);
       }
 
@@ -669,27 +752,152 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       return reply.send(settings);
     });
 
-    /* --------------------------------------------------------------- Drive */
+    /* ------------------------------------------------------------- storage */
+
+    app.get('/storage', async (_request, reply) =>
+      reply.send(context.connections.list().map(toStorageStatus)),
+    );
+
+    app.post('/storage', async (request, reply) => {
+      const parsed = createStorageSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
+      const input = parsed.data;
+
+      if (context.connections.get(input.id)) {
+        return reply.code(409).send({
+          error: 'conflict',
+          message: request.t('error.storageExists', input.id),
+        });
+      }
+
+      // A kind this build cannot read would produce a connection nothing can serve
+      // from, discovered only when an album on it stays empty.
+      if (!SUPPORTED_KINDS.includes(input.kind)) {
+        return reply.code(400).send({
+          error: 'unsupported_kind',
+          message: request.t('error.storageKindUnsupported', input.kind),
+        });
+      }
+
+      const connection = context.connections.create(input);
+      context.storage.invalidate();
+      request.log.info(`Storage "${connection.id}" (${connection.kind}) created`);
+
+      return reply.code(201).send(toStorageStatus(connection));
+    });
+
+    app.patch('/storage/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!context.connections.get(id)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.storageNotFound') });
+      }
+
+      const parsed = updateStorageSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
+
+      const connection = context.connections.update(id, parsed.data);
+      // The cached provider was built from the previous settings: without this, a
+      // corrected endpoint would keep reaching the old one until restart.
+      context.storage.invalidate();
+
+      return reply.send(toStorageStatus(connection));
+    });
 
     /**
-     * Starts Google consent. `state` is generated randomly, stored in a signed cookie
-     * and compared again on return: without this, a third party could complete a
-     * callback with a code obtained elsewhere and connect someone else's Drive to
-     * this instance.
+     * Deleting a connection is refused while an album reads it.
+     *
+     * The album would otherwise point at nothing: its media would stay indexed and
+     * every thumbnail would fail with a message about a connection nobody can see any
+     * more. Saying which albums is the point of the refusal — that is the list the
+     * administrator has to move or delete first.
      */
+    app.delete('/storage/:id', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!context.connections.get(id)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.storageNotFound') });
+      }
+
+      const albums = context.config.albumsOn(id);
+      if (albums.length > 0) {
+        return reply.code(409).send({
+          error: 'storage_in_use',
+          message: request.t('error.storageInUse', albums.map((album) => album.title).join(', ')),
+        });
+      }
+
+      context.connections.delete(id);
+      context.storage.invalidate();
+      request.log.info(`Storage "${id}" deleted`);
+
+      return reply.send({ ok: true });
+    });
+
     /**
+     * Does this connection work, in the backend's own words?
+     *
+     * The one control that turns "the album is empty" into a sentence: a wrong key, an
+     * unreachable host or a withdrawn authorisation each answer differently, and none
+     * of them is visible from a listing that simply returned nothing.
+     */
+    app.post('/storage/:id/test', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (!context.connections.get(id)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.storageNotFound') });
+      }
+
+      try {
+        const probe = await context.storage.get(id).probe();
+        const result: StorageProbeResult = probe;
+        return reply.send(result);
+      } catch (error) {
+        // A probe reports rather than throws: "it does not work, here is why" is the
+        // answer to the question asked, and a 500 would only say the button failed.
+        const result: StorageProbeResult = {
+          ok: false,
+          account: null,
+          error: (error as Error).message,
+        };
+        return reply.send(result);
+      }
+    });
+
+    /**
+     * Starts Google consent for one connection. `state` is generated randomly, stored
+     * in a signed cookie and compared again on return: without this, a third party
+     * could complete a callback with a code obtained elsewhere and connect someone
+     * else's Drive to this instance.
+     *
+     * The cookie also carries **which connection** the consent belongs to. Google's
+     * callback URL is fixed in its console and cannot name it, and with several Drive
+     * connections the returned token would otherwise land on whichever one the server
+     * guessed.
+     *
      * Consent is meaningless with a service account: authorisation comes from sharing
      * the folder in Drive. Refusing it here rather than allowing completion avoids
      * recording a token nothing would use and suggesting that consent is required.
      */
-    app.get('/oauth/start', async (request, reply) => {
-      if (context.storage.mode === 'service_account') {
+    app.get('/storage/:id/oauth/start', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const drive = context.storage.drive(id);
+      if (!drive) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.storageNotFound') });
+      }
+
+      if (drive.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
           message: request.t('error.serviceAccountConsent'),
         });
       }
-      if (!context.storage.configured) {
+      if (!drive.configured) {
         return reply.code(400).send({
           error: 'oauth_not_configured',
           message: request.t('error.oauthNotConfigured'),
@@ -698,7 +906,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       const state = randomBytes(24).toString('base64url');
       return reply
-        .setCookie(OAUTH_STATE_COOKIE, state, {
+        .setCookie(OAUTH_STATE_COOKIE, `${id}:${state}`, {
           path: '/api',
           httpOnly: true,
           sameSite: 'lax',
@@ -706,20 +914,30 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           maxAge: OAUTH_STATE_TTL_S,
           signed: true,
         })
-        .send({ url: context.storage.authUrl(state) });
+        .send({ url: drive.authUrl(state) });
     });
 
-    app.post('/drive/disconnect', async (request, reply) => {
+    app.post('/storage/:id/disconnect', async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const drive = context.storage.drive(id);
+      if (!drive) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.storageNotFound') });
+      }
+
       // Nothing to disconnect: the key comes from configuration and access from Drive
       // sharing. Responding "done" would suggest the instance is disconnected while
       // it continues to read everything.
-      if (context.storage.mode === 'service_account') {
+      if (drive.mode === 'service_account') {
         return reply.code(409).send({
           error: 'service_account_mode',
           message: request.t('error.serviceAccountDisconnect'),
         });
       }
-      context.storage.disconnect();
+
+      drive.disconnect();
+      context.storage.invalidate();
       return reply.send({ ok: true });
     });
 
@@ -731,10 +949,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'bad_request', message: request.t('error.invalidParameters') });
       }
 
-      if (!context.storage.connected) {
+      if (!context.storage.anyConnected()) {
         return reply.code(503).send({
-          error: 'drive_disconnected',
-          message: request.t('error.driveNotConnected'),
+          error: 'storage_disconnected',
+          message: request.t('error.storageNotConnected'),
         });
       }
 
@@ -763,9 +981,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
   };
 
-  /** Background indexing, silent until Drive is connected. */
+  /** Background indexing, silent until this album's storage is connected. */
   function startSync(album: StoredAlbum, log: FastifyBaseLogger): void {
-    if (!context.storage.connected) return;
+    if (!context.storage.isConnected(album.connectionId)) return;
     void context.syncThenPrewarm([album]).catch((error: unknown) => {
       log.error({ err: error }, `Sync of album "${album.id}" failed`);
     });
@@ -794,23 +1012,38 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
 
       const cookie = request.cookies[OAUTH_STATE_COOKIE];
       const unsigned = cookie ? request.unsignCookie(cookie) : null;
-      if (!unsigned?.valid || unsigned.value !== query.state) {
+      // The cookie is `<connectionId>:<state>`: Google's callback URL is fixed in its
+      // console and says nothing about which connection consent was started for.
+      const separator = unsigned?.value?.lastIndexOf(':') ?? -1;
+      const connectionId = separator > 0 ? unsigned!.value!.slice(0, separator) : null;
+      const state = separator > 0 ? unsigned!.value!.slice(separator + 1) : null;
+
+      if (!unsigned?.valid || connectionId === null || state !== query.state) {
         request.log.warn('Invalid OAuth state, callback rejected');
         return reply.redirect(`/admin/server?oauth=state_mismatch`);
       }
 
       reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api' });
 
+      const drive = context.storage.drive(connectionId);
+      if (!drive) {
+        request.log.warn(`OAuth callback for unknown storage "${connectionId}"`);
+        return reply.redirect(`/admin/server?oauth=invalid`);
+      }
+
       try {
-        await context.storage.completeAuth(query.code);
+        await drive.completeAuth(query.code);
+        context.storage.invalidate();
       } catch (error) {
         request.log.error({ err: error }, 'Connecting Drive failed');
         return reply.redirect(`/admin/server?oauth=error`);
       }
 
-      // First connection: the index is empty, so fill it without waiting for the
-      // administrator to click "resynchronise".
-      void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
+      // First connection: the index is empty for the albums on this storage, so fill
+      // them without waiting for the administrator to click "resynchronise". Albums on
+      // another connection are left alone — nothing about them just changed.
+      const albums = context.config.albumsOn(connectionId);
+      void context.syncThenPrewarm(albums).catch((error: unknown) => {
         request.log.error({ err: error }, 'Initial sync failed');
       });
 

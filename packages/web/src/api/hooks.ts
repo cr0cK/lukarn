@@ -3,6 +3,7 @@ import {
   SEARCH_MIN_LENGTH,
   type AlbumDay,
   type CreateAlbumRequest,
+  type CreateStorageRequest,
   type CreateCommentRequest,
   type FeedComment,
   type IdentityRequest,
@@ -13,6 +14,7 @@ import {
   type SortOrder,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
+  type UpdateStorageRequest,
   type UpdateMediaRequest,
   type UpdateSettingsRequest,
   type UpdateUserRequest,
@@ -64,6 +66,7 @@ export const queryKeys = {
   // entries, and deleting one character restores its list without a request.
   search: (q: string) => ['search', q] as const,
   adminStatus: ['admin', 'status'] as const,
+  adminStorage: ['admin', 'storage'] as const,
   // The window belongs in the key: returning to "7 days" after "90" restores
   // its page without a request, and all three coexist in the cache.
   visits: (days: number) => ['admin', 'visits', days] as const,
@@ -556,6 +559,67 @@ function invalidateModeration(queryClient: QueryClient): void {
   void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
   // The gallery thread changes too: a hidden comment disappears from it.
   void queryClient.invalidateQueries({ queryKey: ['comments'] });
+}
+
+/* --------------------------------------------------------------------------
+ * Storage connections
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Every write invalidates the status as well as the list: an album row shows
+ * whether its storage can serve anything, and a connection that just changed
+ * state would leave the rest of the screen contradicting it.
+ */
+function invalidateStorage(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminStorage });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminAlbums });
+}
+
+export function useAdminStorage() {
+  return useQuery({ queryKey: queryKeys.adminStorage, queryFn: api.adminStorage });
+}
+
+export function useCreateStorage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateStorageRequest) => api.createStorage(body),
+    onSuccess: () => invalidateStorage(queryClient),
+  });
+}
+
+export function useUpdateStorage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateStorageRequest }) =>
+      api.updateStorage(id, body),
+    onSuccess: () => invalidateStorage(queryClient),
+  });
+}
+
+export function useDeleteStorage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteStorage(id),
+    onSuccess: () => invalidateStorage(queryClient),
+  });
+}
+
+/**
+ * Asks the backend whether it answers. Deliberately **not** a query: it costs a
+ * round trip to the storage itself, and it answers a question somebody asked by
+ * pressing a button rather than one a screen asks by opening.
+ */
+export function useTestStorage() {
+  return useMutation({ mutationFn: (id: string) => api.testStorage(id) });
+}
+
+export function useDisconnectStorage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.storageDisconnect(id),
+    onSuccess: () => invalidateStorage(queryClient),
+  });
 }
 
 export function useAdminStatus() {

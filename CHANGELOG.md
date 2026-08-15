@@ -13,6 +13,32 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### Added
+
+- **An instance can now read more than one storage.** `/admin` gained a
+  **Storage** section listing every connection it reads, with what state each is
+  in and a **Test** button that asks the backend itself and repeats what it said —
+  a wrong key or an unreachable host, instead of an album that stays empty for no
+  stated reason. An album names the storage it belongs to, so a second Google
+  account can serve some albums while the first serves the others.
+- **A connection can be disconnected without being forgotten.** Signing an account
+  out clears its credentials and keeps the connection, so the albums reading it
+  keep pointing somewhere and reconnecting is one button.
+
+### Changed
+
+- **Deleting a storage is refused while an album still reads it**, naming the
+  albums to move first. Removing it would leave every one of their photos failing
+  to load, with nothing on the screen explaining why.
+
+### Migration notes
+
+Nothing to do. The update moves the stored Google authorisation into the new
+connections table **without re-encrypting it**, and every existing album keeps
+reading exactly what it was reading. An instance authenticating with a service
+account is covered too: its connection appears even though it never had a token
+to move.
+
 ### Fixed
 
 - **The very first thing a new installation is told now names a command that

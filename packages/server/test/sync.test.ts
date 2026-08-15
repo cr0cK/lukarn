@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
 import { openDb } from '../src/db.js';
 import type { StorageEntry, StorageProvider } from '../src/storage/provider.js';
+import type { ProviderSource } from '../src/sync/sync.js';
 import { Syncer } from '../src/sync/sync.js';
 import { MediaRepo, SyncStateRepo } from '../src/repo.js';
 
@@ -48,14 +49,16 @@ function fichier(ref: string): StorageEntry {
 function fauxStockage(
   contenu: Record<string, string[]>,
   barrieres: Record<string, Promise<void>> = {},
-): StorageProvider {
-  return {
+): ProviderSource {
+  const provider = {
     guard: <T>(operation: () => Promise<T>) => operation(),
     list: async (container: string) => {
       await barrieres[container];
       return { entries: (contenu[container] ?? []).map(fichier), cursor: null };
     },
   } as unknown as StorageProvider;
+
+  return { get: () => provider };
 }
 
 function contenuIndexe(albumId: string): string[] {
@@ -68,7 +71,7 @@ function contenuIndexe(albumId: string): string[] {
 describe('synchronisation deduplication', () => {
   it('shares work between two identical requests', async () => {
     const syncer = new Syncer(fauxStockage({ 'dossier-a': ['a1'] }), media, syncState, silencieux);
-    const album = { id: 'stable', folderId: 'dossier-a', recursive: true };
+    const album = { id: 'stable', connectionId: 'drive', folderId: 'dossier-a', recursive: true };
 
     const premiere = syncer.sync(album);
     const seconde = syncer.sync(album);
@@ -90,9 +93,19 @@ describe('synchronisation deduplication', () => {
       silencieux,
     );
 
-    const premiere = syncer.sync({ id: 'demenage', folderId: 'dossier-a', recursive: true });
+    const premiere = syncer.sync({
+      id: 'demenage',
+      connectionId: 'drive',
+      folderId: 'dossier-a',
+      recursive: true,
+    });
     // The owner corrects the folder while the first run is in progress.
-    const seconde = syncer.sync({ id: 'demenage', folderId: 'dossier-b', recursive: true });
+    const seconde = syncer.sync({
+      id: 'demenage',
+      connectionId: 'drive',
+      folderId: 'dossier-b',
+      recursive: true,
+    });
 
     assert.notEqual(premiere, seconde, 'the new folder synchronisation cannot be the old one');
 
@@ -111,8 +124,18 @@ describe('synchronisation deduplication', () => {
   it('also distinguishes a change in traversal depth', async () => {
     const syncer = new Syncer(fauxStockage({ 'dossier-c': ['c1'] }), media, syncState, silencieux);
 
-    const recursive = syncer.sync({ id: 'profondeur', folderId: 'dossier-c', recursive: true });
-    const plat = syncer.sync({ id: 'profondeur', folderId: 'dossier-c', recursive: false });
+    const recursive = syncer.sync({
+      id: 'profondeur',
+      connectionId: 'drive',
+      folderId: 'dossier-c',
+      recursive: true,
+    });
+    const plat = syncer.sync({
+      id: 'profondeur',
+      connectionId: 'drive',
+      folderId: 'dossier-c',
+      recursive: false,
+    });
 
     assert.notEqual(recursive, plat);
     await recursive;
@@ -139,8 +162,18 @@ describe('synchronisation deduplication', () => {
       silencieux,
     );
 
-    const premiere = syncer.sync({ id: 'perime', folderId: 'dossier-d', recursive: true });
-    const seconde = syncer.sync({ id: 'perime', folderId: 'dossier-e', recursive: true });
+    const premiere = syncer.sync({
+      id: 'perime',
+      connectionId: 'drive',
+      folderId: 'dossier-d',
+      recursive: true,
+    });
+    const seconde = syncer.sync({
+      id: 'perime',
+      connectionId: 'drive',
+      folderId: 'dossier-e',
+      recursive: true,
+    });
 
     // This is what the PATCH route does when the folder changes: it clears the
     // index immediately so the album stops showing old content. The stale run

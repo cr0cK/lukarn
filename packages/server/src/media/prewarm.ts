@@ -1,18 +1,19 @@
 import { THUMB_SIZES } from '@lukarn/shared';
 import type { MediaRepo } from '../repo.js';
+import type { StorageProvider } from '../storage/provider.js';
 import type { MediaCache } from './cache.js';
 import type { MediaRenderer, Variant } from './renderer.js';
 
 /**
- * Prepares thumbnails before the album is opened — photos and videos for which Drive
- * provides a preview.
+ * Prepares thumbnails before the album is opened — photos and videos for which the
+ * storage provides a preview.
  *
  * The observation behind it: a never-rendered photo costs around two seconds on first
- * display — almost all spent downloading the original from Drive, since thumbnail
- * rendering is negligible — versus five milliseconds once cached. A cold grid requests
- * dozens at once, while the limiter serves only two to four depending on core count,
- * making the album take tens of seconds to appear. Prewarming moves this wait away
- * from a viewer; it consumes Drive quota earlier, not more of it.
+ * display — almost all spent downloading the original, since thumbnail rendering is
+ * negligible — versus five milliseconds once cached. A cold grid requests dozens at
+ * once, while the limiter serves only two to four depending on core count, making the
+ * album take tens of seconds to appear. Prewarming moves this wait away from a viewer;
+ * it consumes a storage's quota earlier, not more of it.
  *
  * The precautions that make it acceptable explain its deliberate slowness — see D45.
  */
@@ -57,10 +58,12 @@ interface Logger {
 
 export interface PrewarmDeps {
   /** Read again on every pass so an album created since startup is included too. */
-  albums: () => { id: string }[];
+  albums: () => { id: string; connectionId: string }[];
   media: MediaRepo;
   cache: MediaCache;
   renderer: MediaRenderer;
+  /** The storage an album reads. Resolved per album, once. */
+  storage: (connectionId: string) => StorageProvider;
   /** Read on every pass so disabling the setting stops the current pass. */
   enabled: () => boolean;
   log: Logger;
@@ -94,7 +97,7 @@ export class CachePrewarmer {
   async run(): Promise<PrewarmResult> {
     const result: PrewarmResult = { rendered: 0, skipped: 0, failed: 0, stopped: 'finished' };
 
-    // Two concurrent passes would double limiter occupancy and Drive traffic, exactly
+    // Two concurrent passes would double limiter occupancy and storage traffic, exactly
     // what the design avoids.
     if (this.running || !this.deps.enabled()) return result;
     this.running = true;
@@ -102,6 +105,16 @@ export class CachePrewarmer {
 
     try {
       for (const album of this.deps.albums()) {
+        let storage: StorageProvider;
+        try {
+          storage = this.deps.storage(album.connectionId);
+        } catch (error) {
+          // A connection this version cannot build, or one an album still names after
+          // a hand-edited database: the other albums have nothing to do with it.
+          this.deps.log.warn(`Prewarming skips "${album.id}": ${(error as Error).message}`);
+          continue;
+        }
+
         let cursor: string | null = null;
 
         do {
@@ -116,18 +129,20 @@ export class CachePrewarmer {
             const { bytes, maxBytes } = this.deps.cache.stats();
             if (bytes >= maxBytes * BUDGET_RATIO) return { ...result, stopped: 'budget' };
 
-            // A video without a Drive preview has no image to prepare — the route
-            // returns 415. `hasPreview` is always true for photos, so none are excluded.
+            // A video whose storage holds no preview has no image to prepare — the
+            // route returns 415. `hasPreview` is always true for photos, so none are
+            // excluded.
             if (!item.hasPreview) continue;
 
             const md5 = this.deps.media.getFileMeta(item.id)?.md5 ?? null;
 
             try {
               // All three sizes from one download: downloading is expensive, and doing
-              // it per variant would triple Drive traffic and pass duration. A video
-              // costs less than a photo: its Drive preview weighs tens of KB, versus
-              // several MB for an original.
+              // it per variant would triple the traffic and the pass duration. A video
+              // costs less than a photo: the preview its storage holds weighs tens of
+              // KB, versus several MB for an original.
               const produits = await this.deps.renderer.prepare(
+                storage,
                 item.id,
                 VARIANTS,
                 md5,
@@ -142,8 +157,8 @@ export class CachePrewarmer {
               }
               result.rendered++;
             } catch (error) {
-              // An unreadable file or Drive refusal must not stop the pass: subsequent
-              // photos are unrelated, and the next pass retries this one.
+              // An unreadable file or a refusal from the storage must not stop the
+              // pass: subsequent photos are unrelated, and the next pass retries this one.
               result.failed++;
               this.deps.log.debug(`Prewarming ${item.id} failed: ${(error as Error).message}`);
             }

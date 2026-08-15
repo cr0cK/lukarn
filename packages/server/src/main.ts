@@ -94,7 +94,7 @@ function startScheduler(context: AppContext): () => void {
 
     periodic = setInterval(
       () => {
-        if (!context.storage.connected) return;
+        if (!context.storage.anyConnected()) return;
         void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
           context.log.error({ err: error }, 'Periodic sync failed');
         });
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   //
   // No `await`: the server must accept requests while the index fills, with the old
   // index continuing to be served in the meantime.
-  if (context.settings.syncOnStartup && context.storage.connected) {
+  if (context.settings.syncOnStartup && context.storage.anyConnected()) {
     void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
       context.log.error({ err: error }, 'Startup sync failed');
     });
@@ -188,12 +188,22 @@ async function main(): Promise<void> {
       `${context.renderer.load.limit}`,
   );
 
-  if (!context.storage.configured) {
+  // The environment fact first: without it, no Drive connection can ever be
+  // authorised, and the per-connection line below would send the reader to a screen
+  // that can only repeat the same thing.
+  if (!env.google && !env.serviceAccount) {
     server.log.warn(
       'Google OAuth not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env',
     );
-  } else if (!context.storage.connected) {
-    server.log.warn(`Google Drive not connected: open ${env.publicUrl}/admin to authorise`);
+  }
+
+  // Named per connection rather than once for the instance: with several storages,
+  // "not connected" without saying which one sends the reader to the wrong screen.
+  for (const { connection } of context.storage.all()) {
+    if (context.storage.isConnected(connection.id)) continue;
+    server.log.warn(
+      `Storage "${connection.label}" is not connected: open ${env.publicUrl}/admin to authorise it`,
+    );
   }
 }
 

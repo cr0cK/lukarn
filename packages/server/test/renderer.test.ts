@@ -53,15 +53,25 @@ describe('rendering from cache', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
-    const premier = await renderer.render('photo', { kind: 'thumb', size: 320 }, 'empreinte');
+    const renderer = new MediaRenderer(cache, silencieux);
+    const premier = await renderer.render(
+      storage,
+      'photo',
+      { kind: 'thumb', size: 320 },
+      'empreinte',
+    );
     assert.equal(telechargements, 1);
 
     // "Clear cache" from /admin, or manual cleanup on the volume: the in-memory
     // inventory then points to a file that no longer exists.
     rmSync(premier.path);
 
-    const second = await renderer.render('photo', { kind: 'thumb', size: 320 }, 'empreinte');
+    const second = await renderer.render(
+      storage,
+      'photo',
+      { kind: 'thumb', size: 320 },
+      'empreinte',
+    );
 
     assert.equal(telechargements, 2, 'the missing derivative must be rebuilt');
     assert.ok(existsSync(second.path), 'the returned path must be readable');
@@ -81,8 +91,9 @@ describe('preparing multiple variants', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
+    const renderer = new MediaRenderer(cache, silencieux);
     const produits = await renderer.prepare(
+      storage,
       'photo',
       [
         { kind: 'thumb', size: 320 },
@@ -115,14 +126,14 @@ describe('preparing multiple variants', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
+    const renderer = new MediaRenderer(cache, silencieux);
     const variants = [
       { kind: 'thumb', size: 320 },
       { kind: 'thumb', size: 640 },
     ] as const;
 
-    await renderer.prepare('photo', [...variants], null);
-    const seconde = await renderer.prepare('photo', [...variants], null);
+    await renderer.prepare(storage, 'photo', [...variants], null);
+    const seconde = await renderer.prepare(storage, 'photo', [...variants], null);
 
     // A prewarming pass revisits the same albums hour after hour: without this
     // short circuit, it would redownload the entire library on every pass.
@@ -143,8 +154,9 @@ describe('preparing multiple variants', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
+    const renderer = new MediaRenderer(cache, silencieux);
     const produits = await renderer.prepare(
+      storage,
       'heic',
       [
         { kind: 'thumb', size: 320 },
@@ -177,8 +189,9 @@ describe('video preview', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
+    const renderer = new MediaRenderer(cache, silencieux);
     const produits = await renderer.prepare(
+      storage,
       'clip',
       [
         { kind: 'thumb', size: 320 },
@@ -215,8 +228,14 @@ describe('video preview', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
-    const rendu = await renderer.render('clip', { kind: 'thumb', size: 320 }, null, 'poster');
+    const renderer = new MediaRenderer(cache, silencieux);
+    const rendu = await renderer.render(
+      storage,
+      'clip',
+      { kind: 'thumb', size: 320 },
+      null,
+      'poster',
+    );
 
     assert.ok(existsSync(rendu.path));
     // The backend preview **is** the source: the photo path fallback has nothing
@@ -250,8 +269,8 @@ describe('fallback to the backend preview', () => {
     };
 
     try {
-      const renderer = new MediaRenderer(storage, cache, silencieux);
-      const rendu = await renderer.render('heic', { kind: 'thumb', size: 320 }, null);
+      const renderer = new MediaRenderer(cache, silencieux);
+      const rendu = await renderer.render(storage, 'heic', { kind: 'thumb', size: 320 }, null);
 
       assert.ok(existsSync(rendu.path));
       assert.equal(apercus, 1);
@@ -272,9 +291,9 @@ describe('fallback to the backend preview', () => {
       preview: () => Promise.resolve(null),
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
+    const renderer = new MediaRenderer(cache, silencieux);
     await assert.rejects(
-      () => renderer.render('brut', { kind: 'thumb', size: 320 }, null),
+      () => renderer.render(storage, 'brut', { kind: 'thumb', size: 320 }, null),
       /no preview for brut/,
     );
   });
@@ -300,8 +319,8 @@ describe('oversized original', () => {
       },
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
-    const rendu = await renderer.render('panorama', { kind: 'full' }, null);
+    const renderer = new MediaRenderer(cache, silencieux);
+    const rendu = await renderer.render(storage, 'panorama', { kind: 'full' }, null);
 
     // The photo is still served — as the backend preview, not a failure: refusing
     // would show a broken grid cell for a valid file.
@@ -324,10 +343,10 @@ describe('transient storage failure', () => {
       preview: () => Promise.reject(new StorageUnavailableError('preview', 5, 'Drive 429')),
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
+    const renderer = new MediaRenderer(cache, silencieux);
 
     await assert.rejects(
-      () => renderer.render('lent', { kind: 'thumb', size: 320 }, null),
+      () => renderer.render(storage, 'lent', { kind: 'thumb', size: 320 }, null),
       StorageUnavailableError,
     );
   });
@@ -343,8 +362,10 @@ describe('transient storage failure', () => {
       preview: () => Promise.reject(new Error('no preview')),
     });
 
-    const renderer = new MediaRenderer(storage, cache, silencieux);
-    await assert.rejects(() => renderer.render('lent', { kind: 'thumb', size: 320 }, null));
+    const renderer = new MediaRenderer(cache, silencieux);
+    await assert.rejects(() =>
+      renderer.render(storage, 'lent', { kind: 'thumb', size: 320 }, null),
+    );
 
     assert.equal(cache.stats().entryCount, 0);
   });

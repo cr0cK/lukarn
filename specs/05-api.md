@@ -698,30 +698,39 @@ produces a new store key, hence a new derivative.
 
 `requireAdmin` as a `preHandler` on the whole `/api/admin` prefix.
 
-| Method | Path                              | Response                                                       |
-| ------ | --------------------------------- | -------------------------------------------------------------- |
-| GET    | `/api/admin/status`               | `200 AdminStatus`                                              |
-| GET    | `/api/admin/visits`               | `200 VisitsOverview` · `400`                                   |
-| GET    | `/api/admin/users`                | `200 AdminUser[]`                                              |
-| POST   | `/api/admin/users`                | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
-| PATCH  | `/api/admin/users/:username`      | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
-| DELETE | `/api/admin/users/:username`      | `200 { ok: true }` · `404` · `409 last_admin`                  |
-| GET    | `/api/admin/albums`               | `200 AdminAlbum[]`                                             |
-| POST   | `/api/admin/albums`               | `201 AdminAlbum` · `400` · `409 conflict`                      |
-| PATCH  | `/api/admin/albums/:id`           | `200 AdminAlbum` · `400` · `404`                               |
-| DELETE | `/api/admin/albums/:id`           | `200 { ok: true }` · `404`                                     |
-| PATCH  | `/api/admin/albums/:id/days/:day` | `200 AlbumDay` · `400` · `404`                                 |
-| GET    | `/api/admin/settings`             | `200 AppSettings`                                              |
-| PATCH  | `/api/admin/settings`             | `200 AppSettings` · `400`                                      |
-| GET    | `/api/admin/oauth/start`          | `200 { url }` · `400 oauth_not_configured`                     |
-| POST   | `/api/admin/drive/disconnect`     | `200 { ok: true }`                                             |
-| POST   | `/api/admin/resync`               | `202 { started: string[] }` · `400` · `404` · `503`            |
-| POST   | `/api/admin/cache/clear`          | `200 { ok: true }`                                             |
+| Method | Path                                 | Response                                                       |
+| ------ | ------------------------------------ | -------------------------------------------------------------- |
+| GET    | `/api/admin/status`                  | `200 AdminStatus`                                              |
+| GET    | `/api/admin/visits`                  | `200 VisitsOverview` · `400`                                   |
+| GET    | `/api/admin/users`                   | `200 AdminUser[]`                                              |
+| POST   | `/api/admin/users`                   | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
+| PATCH  | `/api/admin/users/:username`         | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
+| DELETE | `/api/admin/users/:username`         | `200 { ok: true }` · `404` · `409 last_admin`                  |
+| GET    | `/api/admin/albums`                  | `200 AdminAlbum[]`                                             |
+| POST   | `/api/admin/albums`                  | `201 AdminAlbum` · `400` · `409 conflict`                      |
+| PATCH  | `/api/admin/albums/:id`              | `200 AdminAlbum` · `400` · `404`                               |
+| DELETE | `/api/admin/albums/:id`              | `200 { ok: true }` · `404`                                     |
+| PATCH  | `/api/admin/albums/:id/days/:day`    | `200 AlbumDay` · `400` · `404`                                 |
+| GET    | `/api/admin/settings`                | `200 AppSettings`                                              |
+| PATCH  | `/api/admin/settings`                | `200 AppSettings` · `400`                                      |
+| GET    | `/api/admin/storage`                 | `200 StorageConnectionStatus[]`                                |
+| POST   | `/api/admin/storage`                 | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409` |
+| PATCH  | `/api/admin/storage/:id`             | `200 StorageConnectionStatus` · `400` · `404`                  |
+| DELETE | `/api/admin/storage/:id`             | `200 { ok: true }` · `404` · `409 storage_in_use`              |
+| POST   | `/api/admin/storage/:id/test`        | `200 StorageProbeResult` · `404`                               |
+| GET    | `/api/admin/storage/:id/oauth/start` | `200 { url }` · `400 oauth_not_configured` · `404` · `409`     |
+| POST   | `/api/admin/storage/:id/disconnect`  | `200 { ok: true }` · `404` · `409 service_account_mode`        |
+| POST   | `/api/admin/resync`                  | `202 { started: string[] }` · `400` · `404` · `503`            |
+| POST   | `/api/admin/cache/clear`             | `200 { ok: true }`                                             |
 
-**`status`** — `AdminStatus`: `driveConnected`, `driveAccount`,
-`driveRevokedAt`, `oauthConfigured`, `albums` (**all** declared albums, not just
-the administrator's), `cache: { entryCount, bytes, maxBytes }`. The front end
-polls it again every 2 s while an album is `syncStatus: 'running'`.
+**`status`** — `AdminStatus`: `storage` (every connection, see below),
+`storageKinds` (the kinds this build can create), `oauthConfigured`, `albums`
+(**all** declared albums, not just the administrator's),
+`cache: { entryCount, bytes, maxBytes }`. The front end polls it again every 2 s
+while an album is `syncStatus: 'running'`.
+
+The four `drive*` fields of 1.1 are gone: an instance may read several storages,
+and an album names which one (D260815g).
 
 **`visits`** — `?days=` (default 30, integer from 1 to 365) bounds the window.
 Renders a `VisitsOverview` = `{ days, since, visitors, albums }`, where `since`
@@ -748,16 +757,51 @@ Three points worth reading:
 The counters come from `album_visits`, aggregated on write: the route only does
 three bounded reads, with no scan (see [03](./03-data-model.md)).
 
-**`oauth/start`** — `400 oauth_not_configured` if `GOOGLE_CLIENT_ID` /
-`GOOGLE_CLIENT_SECRET` are missing. Otherwise sets the signed
-`lukarn_oauth_state` cookie and returns the consent URL, which the front end
-follows as a full-page redirect.
+### Storage connections
 
-**`drive/disconnect`** — deletes the `oauth_token` row. The index and cache
-remain; albums stay browsable as long as thumbnails are cached.
+`StorageConnectionStatus` = `{ id, kind, label, account, connected, revokedAt,
+authorization, albumCount, createdAt }`. It never carries a secret, under any
+key: `settings` is not exposed either, and the secret half is only ever written.
+
+`authorization` says which controls this connection has, and is what the front
+end branches on instead of the kind:
+
+| Value      | Meaning                                                                               |
+| ---------- | ------------------------------------------------------------------------------------- |
+| `consent`  | A button starts an OAuth flow and the backend hands back a token — Drive.             |
+| `key`      | The environment already holds it: nothing to connect, only an address to share (D46). |
+| `settings` | An endpoint and a secret typed into the form itself.                                  |
+
+`POST` body: `CreateStorageRequest` = `{ id, kind, label, settings?, secret? }`.
+`id` follows `ALBUM_ID_PATTERN` and never changes afterwards — every album that
+reads this storage names it. A kind outside `AdminStatus.storageKinds` responds
+`400 unsupported_kind`: accepting it would create a connection nothing can serve
+from, discovered only once an album on it stays empty.
+
+`PATCH`: `UpdateStorageRequest` = `{ label?, settings?, secret? }`, where
+`secret: null` forgets the stored one. `DELETE` responds **`409 storage_in_use`**
+while an album reads it, naming the albums to move first — the album would
+otherwise point at nothing, and every one of its thumbnails would fail.
+
+**`storage/:id/test`** — asks the backend itself and relays what it said:
+`StorageProbeResult` = `{ ok, account, error }`, **always 200**. A connection that
+does not work is the answer to the question, not a failure of the route, and the
+`error` is the backend's own words — a wrong key, an unreachable host, a
+withdrawn authorisation.
+
+**`storage/:id/oauth/start`** — `400 oauth_not_configured` if `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` are missing, `409 service_account_mode` when the
+environment already holds the credentials. Otherwise sets the signed
+`lukarn_oauth_state` cookie — carrying `<connectionId>:<state>`, because Google's
+callback URL is fixed in its console and cannot name the connection — and returns
+the consent URL, which the front end follows as a full-page redirect.
+
+**`storage/:id/disconnect`** — clears the stored secret and **keeps the
+connection**: its albums name it by id. The index and cache remain; albums stay
+browsable as long as thumbnails are cached.
 
 **`resync`** — optional body `{ albumId }`. Without it, every album.
-`503 drive_disconnected` if Drive is not connected, `404 not_found` if the
+`503 storage_disconnected` if no storage is connected, `404 not_found` if the
 supplied `albumId` does not exist. Responds **202** immediately: the
 synchronisation runs as a background task, since it would exceed an HTTP
 request's timeout on a large album. Progress is tracked through `status`.
@@ -788,11 +832,12 @@ notified of new comments is the `moderationEmail` setting.
 
 ### Albums
 
-`POST`: `CreateAlbumRequest` = `{ id, title, description?, folderId,
-recursive?, groupBy?, sortOrder? }` (`recursive` defaults to `true`, `groupBy`
-defaults to `month`, `sortOrder` defaults to `asc`). `PATCH`:
-`UpdateAlbumRequest`, where `description: null` clears the description.
-`409 conflict` on an id already taken.
+`POST`: `CreateAlbumRequest` = `{ id, title, description?, connectionId?,
+folderId, recursive?, groupBy?, sortOrder? }` (`recursive` defaults to `true`,
+`groupBy` defaults to `month`, `sortOrder` defaults to `asc`, and `connectionId`
+to the instance's first connection). `PATCH`: `UpdateAlbumRequest`, where
+`description: null` clears the description. `409 conflict` on an id already
+taken, `400 unknown_storage` on a `connectionId` naming no connection.
 
 `groupBy` is the split applied when the album is opened, `sortOrder` its
 reading direction — two preferences, which `?group=` and `?order=` override.
@@ -816,10 +861,13 @@ cleared (D80).
 
 Two deliberate side effects:
 
-- **Changing `folderId` empties the album's index** and resets its sync state to
-  `never`; a resynchronisation starts in the background if Drive is connected.
-  The indexed media items named the old folder: leaving them in place would
-  keep them browsable until the next sync.
+- **Changing `folderId`, `recursive` or `connectionId` empties the album's
+  index** and resets its sync state to `never`; a resynchronisation starts in the
+  background if that album's storage is connected. The indexed media items named
+  the old scope: leaving them in place would keep them browsable until the next
+  sync. `connectionId` belongs in that list for the same reason — the same path
+  on another storage is another set of files, and the identifiers of the old one
+  address nothing there.
 - **Deleting an album removes its media items from the index.** A file present
   in another album keeps its row there (primary key `(album_id, id)`). Cached
   disk derivatives are left alone: they are indexed by file id, so shared
@@ -1034,13 +1082,16 @@ Cloud console, but protected by the same `requireAdmin`. Parameters `code`,
 Never returns JSON: always redirects to `/admin/server?oauth=<reason>`
 — the section carrying the connect button (D66).
 
-| `oauth=`         | Cause                                          |
-| ---------------- | ---------------------------------------------- |
-| `connected`      | Success. A first synchronisation starts.       |
-| `denied`         | Google returned `error` (consent refused).     |
-| `invalid`        | Missing `code` or `state`.                     |
-| `state_mismatch` | The anti-CSRF cookie does not match.           |
-| `error`          | The code exchange failed (detail in the logs). |
+| `oauth=`         | Cause                                                                    |
+| ---------------- | ------------------------------------------------------------------------ |
+| `connected`      | Success. The albums **on that connection** synchronise.                  |
+| `denied`         | Google returned `error` (consent refused).                               |
+| `invalid`        | Missing `code` or `state`, or a cookie naming a connection that is gone. |
+| `state_mismatch` | The anti-CSRF cookie does not match.                                     |
+| `error`          | The code exchange failed (detail in the logs).                           |
+
+The cookie carries `<connectionId>:<state>`: with several Drive connections, the
+returned token would otherwise land on whichever one the server guessed.
 
 ## Non-API routes
 

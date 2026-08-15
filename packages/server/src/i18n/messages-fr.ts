@@ -73,9 +73,15 @@ export const fr: Messages = {
     'Cette instance s’authentifie avec un compte de service : il n’y a aucun consentement à donner. Partager le dossier avec son adresse depuis Google Drive.',
   'error.serviceAccountDisconnect':
     'Cette instance s’authentifie avec un compte de service : retirer GOOGLE_SERVICE_ACCOUNT_FILE, ou le partage du dossier côté Drive.',
-  'error.driveNotConnected': 'Connecter Google Drive avant de lancer une synchronisation.',
+  'error.storageNotConnected': 'Connecter un stockage avant de lancer une synchronisation.',
   'error.oauthNotConfigured':
     'Google Drive n’est pas configuré : GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET sont absents.',
+  'error.storageNotFound': 'Aucune connexion de stockage avec cet identifiant.',
+  'error.storageExists': (id: string) => `Une connexion de stockage nommée « ${id} » existe déjà.`,
+  'error.storageKindUnsupported': (kind: string) =>
+    `Cette version ne sait pas lire un stockage de type « ${kind} ».`,
+  'error.storageInUse': (albums: string) =>
+    `Ce stockage porte encore des albums (${albums}). Les déplacer ou les supprimer d’abord — ils ne pointeraient plus vers rien.`,
 
   /* ---------------------------------------------------------------- Emails */
 

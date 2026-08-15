@@ -52,11 +52,16 @@ before(async () => {
     admin: true,
     albums: ['*'],
   });
-  context.config.createAlbum({ id: 'vacances', title: 'Vacances', folderId: 'dossier-1' });
+  context.config.createAlbum({
+    id: 'vacances',
+    title: 'Vacances',
+    folderId: 'dossier-1',
+    recursive: true,
+  });
 
-  // The route refuses to synchronise without Drive: this is the only thing we
-  // simulate; the rest of the path is real.
-  Object.defineProperty(context.storage, 'connected', { get: () => true });
+  // The route refuses to synchronise without a connected storage: this is the only
+  // thing we simulate; the rest of the path is real.
+  context.storage.anyConnected = () => true;
 
   const response = await server.inject({
     method: 'POST',
