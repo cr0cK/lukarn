@@ -98,7 +98,11 @@ services:
     image: ghcr.io/cr0ck/lukarn:latest
     restart: unless-stopped
     ports:
-      - '8080:8080'
+      # Loopback only. Published on every interface, the gallery would answer
+      # anyone on the network over plain HTTP — cookies are not `secure` outside
+      # https, and a forged X-Forwarded-For from a private address defeats the
+      # login backoff. Reaching it from elsewhere goes through a TLS front end.
+      - '127.0.0.1:8080:8080'
     env_file: .env
     volumes:
       # The Drive key, when there is one. Read-only: nothing is written here.
@@ -219,13 +223,13 @@ folder, declare it. They resynchronise on their own at the interval set in
 
 ### Beyond that
 
-| To…                                   |                                                                                                                                                       |
-| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Update                                | `docker compose pull && docker compose up -d`                                                                                                         |
-| Decide when to update                 | Replace `latest` with a release number: a `pull` then changes nothing until you raise it                                                              |
-| Enable comments                       | `SMTP_URL` and `MAIL_FROM` in the `.env` — without a mail server, nobody can confirm their address                                                    |
-| Reach it from a domain, over TLS      | [`deploy/README.md`](./deploy/README.md) — certificate, backups, a machine of its own                                                                 |
-| Put it behind a proxy you already run | `PUBLIC_URL=https://photos.example.com` in the `.env`, proxy to port 8080. Security headers come from the application, so nothing to add on that side |
+| To…                                   |                                                                                                                                                                                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Update                                | `docker compose pull && docker compose up -d`                                                                                                                                                                               |
+| Decide when to update                 | Replace `latest` with a release number: a `pull` then changes nothing until you raise it                                                                                                                                    |
+| Enable comments                       | `SMTP_URL` and `MAIL_FROM` in the `.env` — without a mail server, nobody can confirm their address                                                                                                                          |
+| Reach it from a domain, over TLS      | [`deploy/README.md`](./deploy/README.md) — certificate, backups, a machine of its own                                                                                                                                       |
+| Put it behind a proxy you already run | `PUBLIC_URL=https://photos.example.com` in the `.env`, proxy to port 8080, and leave the binding on `127.0.0.1` so the proxy is the only way in. Security headers come from the application, so nothing to add on that side |
 
 Every variable, with what it changes:
 [`specs/06`](./specs/06-configuration-and-deployment.md).
@@ -255,9 +259,12 @@ pnpm are all that is needed — no Google account, no domain, no server.
 ```bash
 pnpm install
 pnpm --filter @lukarn/shared build   # not optional, see below
-cp .env.example .env
-openssl rand -hex 32                 # → SESSION_SECRET
-openssl rand -hex 32                 # → TOKEN_KEY
+
+# .env.example, with the two secrets the server refuses to start without
+sed -e "s|^SESSION_SECRET=.*|SESSION_SECRET=$(openssl rand -hex 32)|" \
+    -e "s|^TOKEN_KEY=.*|TOKEN_KEY=$(openssl rand -hex 32)|" \
+    .env.example > .env
+
 pnpm create-admin alice              # password is prompted
 pnpm dev                             # API on :8080, front on :5173
 ```
