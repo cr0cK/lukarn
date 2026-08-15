@@ -1,7 +1,7 @@
 import { type ReactElement, type ReactNode, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useT, type Translate } from '../lib/i18n';
-import { AccountMenu } from './AccountMenu';
+import { AccountIcon, AccountMenu } from './AccountMenu';
 import type { ActivityFeed } from './CommentsFeed';
 import { SearchBox } from './SearchBox';
 import { Sheet, type SheetStop } from './Sheet';
@@ -119,7 +119,10 @@ export function BottomTabs({ current, activity }: BottomTabsProps): ReactElement
           triggerClassName={TAB_INACTIVE}
           trigger={
             <>
-              <IconeCompte />
+              {/* `stroke-[1.75]` to match the three icons beside it: the shared
+                  glyph carries the menu's weight, since that is where it is
+                  smallest. */}
+              <AccountIcon className="size-6 stroke-[1.75]" />
               {t('tabs.account')}
             </>
           }
@@ -191,15 +194,6 @@ function IconeActivite(): ReactElement {
   return (
     <Icone>
       <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-    </Icone>
-  );
-}
-
-function IconeCompte(): ReactElement {
-  return (
-    <Icone>
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21a8 8 0 0 1 16 0" />
     </Icone>
   );
 }

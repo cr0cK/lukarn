@@ -26,6 +26,11 @@ interface ActionMenuProps {
    */
   entete?: string[];
   /**
+   * Glyph beside the header, on the gutter the entries draw theirs in. Given
+   * one, the header lines start where every label below them starts.
+   */
+  headerIcon?: ReactNode;
+  /**
    * Non-clickable content under the entries, separated by the same rule. The
    * account menu ends on what runs the gallery — a footnote, deliberately below
    * everything that acts.
@@ -64,6 +69,7 @@ const SHEET_STOPS = ['auto'] as const;
 export function ActionMenu({
   groupes,
   entete,
+  headerIcon,
   pied,
   label,
   trigger,
@@ -127,18 +133,25 @@ export function ActionMenu({
           address is truncated rather than widening the menu. */}
       {entete && entete.length > 0 && (
         <>
-          <div className="px-4 py-2">
-            {entete.map((ligne, rang) => (
-              <p
-                key={ligne}
-                title={ligne}
-                className={
-                  rang === 0 ? 'truncate text-sm text-ink-200' : 'truncate text-xs text-ink-400'
-                }
-              >
-                {ligne}
-              </p>
-            ))}
+          {/* The same gutter and gap as an entry, so an icon here puts the
+              lines on the column the labels below already sit on. `min-w-0` on
+              the text: without it a long address widens the flex item instead
+              of truncating inside it. */}
+          <div className="flex items-center gap-3 px-4 py-2">
+            {headerIcon && <span className="shrink-0 text-ink-400">{headerIcon}</span>}
+            <div className="min-w-0">
+              {entete.map((ligne, rang) => (
+                <p
+                  key={ligne}
+                  title={ligne}
+                  className={
+                    rang === 0 ? 'truncate text-sm text-ink-200' : 'truncate text-xs text-ink-400'
+                  }
+                >
+                  {ligne}
+                </p>
+              ))}
+            </div>
           </div>
           <div className="mb-1 h-px bg-ink-700" />
         </>
