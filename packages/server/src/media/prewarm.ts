@@ -1,6 +1,6 @@
 import { THUMB_SIZES } from '@lukarn/shared';
 import type { MediaRepo } from '../repo.js';
-import type { StorageProvider } from '../storage/provider.js';
+import { mediaRef, type StorageProvider } from '../storage/provider.js';
 import type { MediaCache } from './cache.js';
 import type { MediaRenderer, Variant } from './renderer.js';
 
@@ -76,6 +76,12 @@ export interface PrewarmDeps {
   connected: (connectionId: string) => boolean;
   /** Read on every pass so disabling the setting stops the current pass. */
   enabled: () => boolean;
+  /**
+   * Can a still be cut from a video whose storage holds no preview? A function because
+   * the answer — whether ffmpeg is in the image — is discovered while the server
+   * starts, after this pass has been built.
+   */
+  stills: () => boolean;
   log: Logger;
 }
 
@@ -141,12 +147,13 @@ export class CachePrewarmer {
             const { bytes, maxBytes } = this.deps.cache.stats();
             if (bytes >= maxBytes * BUDGET_RATIO) return { ...result, stopped: 'budget' };
 
-            // A video whose storage holds no preview has no image to prepare — the
-            // route returns 415. `hasPreview` is always true for photos, so none are
-            // excluded.
-            if (!item.hasPreview) continue;
+            // A video whose storage holds no preview and for which no still can be cut
+            // has no image to prepare at all. Without this, every pass would download
+            // each original once an hour to fail on the same missing binary.
+            if (item.kind === 'video' && !item.hasPreview && !this.deps.stills()) continue;
 
-            const md5 = this.deps.media.getFileMeta(item.id)?.md5 ?? null;
+            const meta = this.deps.media.getFileMeta(item.id);
+            const md5 = meta?.md5 ?? null;
 
             try {
               // All three sizes from one download: downloading is expensive, and doing
@@ -155,7 +162,7 @@ export class CachePrewarmer {
               // KB, versus several MB for an original.
               const produits = await this.deps.renderer.prepare(
                 storage,
-                item.id,
+                mediaRef(item.id, meta?.sourcePath ?? null),
                 VARIANTS,
                 md5,
                 item.kind === 'video' ? 'poster' : 'original',

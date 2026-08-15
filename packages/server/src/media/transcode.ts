@@ -5,8 +5,9 @@ import { setPriority } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { readFile } from 'node:fs/promises';
 import type { MediaRepo } from '../repo.js';
-import type { StorageProvider } from '../storage/provider.js';
+import { mediaRef, type MediaRef, type StorageProvider } from '../storage/provider.js';
 import type { MediaCache } from './cache.js';
 
 /**
@@ -204,6 +205,65 @@ export function ffmpegArgs(fichiers: {
 }
 
 /**
+ * Where in a video the poster frame is taken.
+ *
+ * Not frame zero: recordings routinely open on a black or half-exposed frame while the
+ * sensor settles, and a grid of black tiles is what makes an album unusable. One second
+ * in is past that on every device observed, and short enough that a two-second clip
+ * still yields something — `-ss` beyond the end produces no frame at all.
+ */
+const POSTER_SEEK_S = 1;
+
+/**
+ * How long a poster may take, download included.
+ *
+ * A ceiling exists at all because this runs inside a render slot: without one, a stalled
+ * storage would hold one of the four slots indefinitely and a grid of photos would stop
+ * loading behind a single video. Generous enough for a large file over a slow link, and
+ * the browser retries — a missing poster is not a permanent state.
+ */
+const POSTER_TIMEOUT_MS = 120_000;
+
+/**
+ * Poster command line. Pure and tested, for the same reason as `ffmpegArgs`.
+ *
+ * - `-ss` **before** `-i` — ffmpeg then seeks by keyframe instead of decoding a second
+ *   of video to throw it away; on a 4K clip that is the difference between milliseconds
+ *   and several seconds.
+ * - `-frames:v 1` — one image, not a stream of them.
+ * - `-f image2 -c:v mjpeg` — the encoder and container are **stated**: the target is a
+ *   `.tmp` file, and ffmpeg infers both from the extension. The same omission that
+ *   produced "Error opening output files" for the transcoder produces it here.
+ * - `-q:v 3` — a JPEG sharp enough that sharp's resize has detail to work from; this
+ *   image is never served directly, only re-encoded to WebP.
+ */
+export function ffmpegPosterArgs(fichiers: { source: string; cible: string }): string[] {
+  return [
+    '-nostdin',
+    '-loglevel',
+    'error',
+    '-y',
+    '-ss',
+    String(POSTER_SEEK_S),
+    '-i',
+    fichiers.source,
+    '-map',
+    '0:v:0',
+    '-frames:v',
+    '1',
+    '-q:v',
+    '3',
+    '-threads',
+    '1',
+    '-f',
+    'image2',
+    '-c:v',
+    'mjpeg',
+    fichiers.cible,
+  ];
+}
+
+/**
  * Runs ffmpeg. This is the module seam: tests provide their own and never call the
  * binary — CI need not depend on it, and encoding one video outlasts all other tests.
  */
@@ -259,7 +319,7 @@ export interface Transcoder {
    */
   transcode(
     storage: StorageProvider,
-    fileId: string,
+    file: MediaRef,
     md5: string | null,
     durationMs: number | null,
     signal: AbortSignal,
@@ -291,7 +351,7 @@ export class VideoTranscoder implements Transcoder {
 
   async transcode(
     storage: StorageProvider,
-    fileId: string,
+    file: MediaRef,
     md5: string | null,
     durationMs: number | null,
     signal: AbortSignal,
@@ -303,14 +363,14 @@ export class VideoTranscoder implements Transcoder {
     const cible = `${prefixe}.sortie.tmp`;
 
     try {
-      await this.download(storage, fileId, source, signal);
+      await this.download(storage, file.ref, source, signal);
       // Size is measured from the received file rather than the index: this is what
       // ffmpeg encodes, and a storage may report a missing or stale size that would cap
       // the wrong bitrate.
       const { size } = await stat(source);
       const plafondKbps = plafondDebit(size, durationMs);
       await this.deps.run(ffmpegArgs({ source, cible, plafondKbps }), signal);
-      await this.deps.store.putFile(playableKey(fileId, md5), cible);
+      await this.deps.store.putFile(playableKey(file.id, md5), cible);
     } finally {
       // Even on failure, especially on failure: a 150 MB original left after every
       // attempt would fill the disk without appearing in store inventory.
@@ -319,15 +379,46 @@ export class VideoTranscoder implements Transcoder {
     }
   }
 
+  /**
+   * One frame of a video, for a backend holding no preview of its own.
+   *
+   * The whole file is downloaded, exactly as for transcoding and for the same reason:
+   * `moov` may sit at the end, and a partial file yields nothing. The still itself
+   * weighs tens of kilobytes and is returned in memory — this is what `MediaRenderer`
+   * resizes and caches, so it happens once per video.
+   *
+   * Nothing is stored here: the poster's home is the image cache, keyed and evicted
+   * with every other derivative, not the bounded store of playable videos.
+   */
+  async still(storage: StorageProvider, file: MediaRef): Promise<Buffer> {
+    await mkdir(this.deps.root, { recursive: true });
+
+    const prefixe = join(this.deps.root, `${process.pid}-${++this.serial}`);
+    const source = `${prefixe}.affiche.tmp`;
+    const cible = `${prefixe}.affiche.jpg.tmp`;
+
+    try {
+      await this.download(storage, file.ref, source, AbortSignal.timeout(POSTER_TIMEOUT_MS));
+      await this.deps.run(
+        ffmpegPosterArgs({ source, cible }),
+        AbortSignal.timeout(POSTER_TIMEOUT_MS),
+      );
+      return await readFile(cible);
+    } finally {
+      await rm(source, { force: true });
+      await rm(cible, { force: true });
+    }
+  }
+
   private async download(
     storage: StorageProvider,
-    fileId: string,
+    ref: string,
     path: string,
     signal: AbortSignal,
   ): Promise<void> {
-    const response = await storage.guard(() => storage.fetch(fileId, undefined, signal));
+    const response = await storage.guard(() => storage.fetch(ref, undefined, signal));
     if (!response.ok || !response.body) {
-      throw new Error(`The storage answered ${response.status} for ${fileId}`);
+      throw new Error(`The storage answered ${response.status} for ${ref}`);
     }
     await pipeline(
       Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),
@@ -436,7 +527,8 @@ export class TranscodePass {
 
             if (item.kind !== 'video' || !needsTranscoding(item.videoCodec)) continue;
 
-            const md5 = this.deps.media.getFileMeta(item.id)?.md5 ?? null;
+            const meta = this.deps.media.getFileMeta(item.id);
+            const md5 = meta?.md5 ?? null;
             // `has`, not `hit`: checking the store must not delay eviction order,
             // otherwise the pass would protect content nobody viewed.
             if (this.deps.store.has(playableKey(item.id, md5))) {
@@ -447,7 +539,7 @@ export class TranscodePass {
             try {
               await this.deps.transcoder.transcode(
                 storage,
-                item.id,
+                mediaRef(item.id, meta?.sourcePath ?? null),
                 md5,
                 item.durationMs,
                 this.controller.signal,

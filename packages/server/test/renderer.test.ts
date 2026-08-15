@@ -5,8 +5,12 @@ import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import sharp from 'sharp';
 import { MediaCache } from '../src/media/cache.js';
-import { MediaRenderer } from '../src/media/renderer.js';
-import { StorageUnavailableError, type StorageProvider } from '../src/storage/provider.js';
+import { MediaRenderer, NoPreviewError } from '../src/media/renderer.js';
+import {
+  mediaRef,
+  StorageUnavailableError,
+  type StorageProvider,
+} from '../src/storage/provider.js';
 
 /**
  * WebP derivative production. Both scenarios covered here require rendering to
@@ -56,7 +60,7 @@ describe('rendering from cache', () => {
     const renderer = new MediaRenderer(cache, silencieux);
     const premier = await renderer.render(
       storage,
-      'photo',
+      mediaRef('photo', null),
       { kind: 'thumb', size: 320 },
       'empreinte',
     );
@@ -68,7 +72,7 @@ describe('rendering from cache', () => {
 
     const second = await renderer.render(
       storage,
-      'photo',
+      mediaRef('photo', null),
       { kind: 'thumb', size: 320 },
       'empreinte',
     );
@@ -94,7 +98,7 @@ describe('preparing multiple variants', () => {
     const renderer = new MediaRenderer(cache, silencieux);
     const produits = await renderer.prepare(
       storage,
-      'photo',
+      mediaRef('photo', null),
       [
         { kind: 'thumb', size: 320 },
         { kind: 'thumb', size: 640 },
@@ -132,8 +136,8 @@ describe('preparing multiple variants', () => {
       { kind: 'thumb', size: 640 },
     ] as const;
 
-    await renderer.prepare(storage, 'photo', [...variants], null);
-    const seconde = await renderer.prepare(storage, 'photo', [...variants], null);
+    await renderer.prepare(storage, mediaRef('photo', null), [...variants], null);
+    const seconde = await renderer.prepare(storage, mediaRef('photo', null), [...variants], null);
 
     // A prewarming pass revisits the same albums hour after hour: without this
     // short circuit, it would redownload the entire library on every pass.
@@ -157,7 +161,7 @@ describe('preparing multiple variants', () => {
     const renderer = new MediaRenderer(cache, silencieux);
     const produits = await renderer.prepare(
       storage,
-      'heic',
+      mediaRef('heic', null),
       [
         { kind: 'thumb', size: 320 },
         { kind: 'thumb', size: 1280 },
@@ -192,7 +196,7 @@ describe('video preview', () => {
     const renderer = new MediaRenderer(cache, silencieux);
     const produits = await renderer.prepare(
       storage,
-      'clip',
+      mediaRef('clip', null),
       [
         { kind: 'thumb', size: 320 },
         { kind: 'thumb', size: 640 },
@@ -231,7 +235,7 @@ describe('video preview', () => {
     const renderer = new MediaRenderer(cache, silencieux);
     const rendu = await renderer.render(
       storage,
-      'clip',
+      mediaRef('clip', null),
       { kind: 'thumb', size: 320 },
       null,
       'poster',
@@ -241,6 +245,86 @@ describe('video preview', () => {
     // The backend preview **is** the source: the photo path fallback has nothing
     // else to try, and requesting it again would only repeat the same call.
     assert.equal(apercus, 1);
+  });
+});
+
+describe('a video poster the backend does not hold', () => {
+  it('cuts a still from the video itself', async () => {
+    const cache = new MediaCache(join(root, 'affiche-ffmpeg'), 1024 * 1024);
+    await cache.load();
+
+    // What every backend except Drive answers: it stores files, not previews of them.
+    const storage = stockage({
+      preview: () => Promise.resolve(null),
+    });
+
+    let coupes = 0;
+    const renderer = new MediaRenderer(cache, silencieux, {
+      still: () => {
+        coupes++;
+        return Promise.resolve(jpeg);
+      },
+    });
+    const rendu = await renderer.render(
+      storage,
+      mediaRef('clip', '2026/soiree.mp4'),
+      { kind: 'thumb', size: 320 },
+      null,
+      'poster',
+    );
+
+    assert.ok(existsSync(rendu.path));
+    assert.equal(coupes, 1, 'the still replaces the preview the backend does not hold');
+  });
+
+  it('asks for the still by the path its storage understands', async () => {
+    const cache = new MediaCache(join(root, 'affiche-chemin'), 1024 * 1024);
+    await cache.load();
+
+    const storage = stockage({ preview: () => Promise.resolve(null) });
+
+    let demande: string | null = null;
+    const renderer = new MediaRenderer(cache, silencieux, {
+      still: (_storage, file) => {
+        demande = file.ref;
+        return Promise.resolve(jpeg);
+      },
+    });
+    await renderer.render(
+      storage,
+      mediaRef('a1b2c3', '2026/soiree.mp4'),
+      { kind: 'thumb', size: 320 },
+      null,
+      'poster',
+    );
+
+    // The identifier is a hash on a path-based backend, and ffmpeg cannot open a
+    // hash: only `source_path` names something the storage can resolve.
+    assert.equal(demande, '2026/soiree.mp4');
+  });
+
+  it('reports that no preview exists when none can be produced', async () => {
+    const cache = new MediaCache(join(root, 'affiche-sans'), 1024 * 1024);
+    await cache.load();
+
+    const storage = stockage({ preview: () => Promise.resolve(null) });
+
+    // ffmpeg absent from the image: the one remaining case where a video genuinely
+    // has no thumbnail. The route turns this into 415, not the 500 a bare Error
+    // would become.
+    const renderer = new MediaRenderer(cache, silencieux, { still: () => Promise.resolve(null) });
+    await assert.rejects(
+      () =>
+        renderer.render(
+          storage,
+          mediaRef('clip', null),
+          { kind: 'thumb', size: 320 },
+          null,
+          'poster',
+        ),
+      NoPreviewError,
+    );
+    assert.equal(cache.stats().entryCount, 0);
   });
 });
 
@@ -270,7 +354,12 @@ describe('fallback to the backend preview', () => {
 
     try {
       const renderer = new MediaRenderer(cache, silencieux);
-      const rendu = await renderer.render(storage, 'heic', { kind: 'thumb', size: 320 }, null);
+      const rendu = await renderer.render(
+        storage,
+        mediaRef('heic', null),
+        { kind: 'thumb', size: 320 },
+        null,
+      );
 
       assert.ok(existsSync(rendu.path));
       assert.equal(apercus, 1);
@@ -293,7 +382,7 @@ describe('fallback to the backend preview', () => {
 
     const renderer = new MediaRenderer(cache, silencieux);
     await assert.rejects(
-      () => renderer.render(storage, 'brut', { kind: 'thumb', size: 320 }, null),
+      () => renderer.render(storage, mediaRef('brut', null), { kind: 'thumb', size: 320 }, null),
       /no preview for brut/,
     );
   });
@@ -320,7 +409,12 @@ describe('oversized original', () => {
     });
 
     const renderer = new MediaRenderer(cache, silencieux);
-    const rendu = await renderer.render(storage, 'panorama', { kind: 'full' }, null);
+    const rendu = await renderer.render(
+      storage,
+      mediaRef('panorama', null),
+      { kind: 'full' },
+      null,
+    );
 
     // The photo is still served — as the backend preview, not a failure: refusing
     // would show a broken grid cell for a valid file.
@@ -346,7 +440,7 @@ describe('transient storage failure', () => {
     const renderer = new MediaRenderer(cache, silencieux);
 
     await assert.rejects(
-      () => renderer.render(storage, 'lent', { kind: 'thumb', size: 320 }, null),
+      () => renderer.render(storage, mediaRef('lent', null), { kind: 'thumb', size: 320 }, null),
       StorageUnavailableError,
     );
   });
@@ -364,7 +458,7 @@ describe('transient storage failure', () => {
 
     const renderer = new MediaRenderer(cache, silencieux);
     await assert.rejects(() =>
-      renderer.render(storage, 'lent', { kind: 'thumb', size: 320 }, null),
+      renderer.render(storage, mediaRef('lent', null), { kind: 'thumb', size: 320 }, null),
     );
 
     assert.equal(cache.stats().entryCount, 0);

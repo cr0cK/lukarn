@@ -154,7 +154,19 @@ export class AppContext {
       this.settings.videoCacheMaxSizeGB * GIB,
       logger,
     );
-    this.renderer = new MediaRenderer(this.cache, logger);
+    // The transcoder is built here rather than inside `TranscodePass` because two
+    // consumers now need it: the hourly pass, and the renderer, which asks it for the
+    // one frame that becomes a video's poster when its storage holds no preview.
+    const videos = new VideoTranscoder({
+      store: this.videoStore,
+      root: join(env.cacheDir, 'video'),
+      run: spawnFfmpeg,
+    });
+    this.renderer = new MediaRenderer(this.cache, logger, {
+      // Read at render time, not here: `checkFfmpeg` runs once the server is built, so
+      // deciding now would fix the answer to "no" on every instance.
+      still: async (storage, file) => (this.ffmpeg ? videos.still(storage, file) : null),
+    });
     this.syncer = new Syncer(this.storage, this.media, this.syncState, logger);
     this.updates = new UpdateChecker({
       currentVersion: env.appVersion,
@@ -198,6 +210,7 @@ export class AppContext {
       storage: (connectionId) => this.storage.get(connectionId),
       connected: (connectionId) => this.storage.isConnected(connectionId),
       enabled: () => this.settings.prewarmCache && this.storage.anyConnected(),
+      stills: () => this.ffmpeg,
       log: logger,
     });
 
@@ -207,11 +220,7 @@ export class AppContext {
       store: this.videoStore,
       storage: (connectionId) => this.storage.get(connectionId),
       connected: (connectionId) => this.storage.isConnected(connectionId),
-      transcoder: new VideoTranscoder({
-        store: this.videoStore,
-        root: join(env.cacheDir, 'video'),
-        run: spawnFfmpeg,
-      }),
+      transcoder: videos,
       // Three conditions in the same predicate, re-evaluated for every video, for
       // the same reason as prewarming: without a usable storage, the pass would
       // traverse the album failing file by file; without ffmpeg, it would fail after

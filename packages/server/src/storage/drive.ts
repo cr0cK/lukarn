@@ -163,6 +163,12 @@ export interface DriveConnection {
  */
 export class DriveService implements StorageProvider {
   readonly kind: StorageKind = 'drive';
+  /**
+   * A Drive file id outlives its name and its folder, so the index stores it directly.
+   * It is also the reason comments survive a photo being reorganised — an invariant no
+   * path-based backend can offer.
+   */
+  readonly refKind = 'identity' as const;
 
   private cachedClient: AuthorizedClient | null = null;
 

@@ -68,6 +68,41 @@ export interface StorageEntry {
   hasPreview: boolean;
 }
 
+/**
+ * How a backend names a file, which is what decides the identifier the index stores.
+ *
+ * `identity` — the reference is opaque, unique across every connection, and survives a
+ * rename: a Drive file id. The index keeps it as-is, which is what keeps a comment
+ * attached to a photo dragged into another folder.
+ *
+ * `path` — the reference **is** the location. Two connections may hold the same one, so
+ * it cannot be an identifier on its own, and it changes the day the file is renamed. The
+ * index hashes it with the connection and keeps the location in `media.source_path`,
+ * which is the only thing `fetch` and `preview` understand.
+ */
+export type StorageRefKind = 'identity' | 'path';
+
+/**
+ * A file as the index knows it, paired with what its storage takes.
+ *
+ * One string for a Drive, two for every backend that names files by path. They are kept
+ * apart because they answer different questions: `id` keys the disk cache and the
+ * comment thread, so it must not move when a connection is renamed, while `ref` is the
+ * only form a provider can resolve.
+ */
+export interface MediaRef {
+  id: string;
+  ref: string;
+}
+
+/**
+ * The pair for a file the index already holds. `sourcePath` is `null` for a backend
+ * whose references are identities, and the two collapse back into one string.
+ */
+export function mediaRef(id: string, sourcePath: string | null): MediaRef {
+  return { id, ref: sourcePath ?? id };
+}
+
 /** One page of a listing. `cursor` is opaque to the caller. */
 export interface StoragePage {
   entries: StorageEntry[];
@@ -87,6 +122,8 @@ export interface StorageProbe {
 /** The three operations that actually reach a storage, plus what /admin needs. */
 export interface StorageProvider {
   readonly kind: StorageKind;
+  /** Whether a reference is an identity or a location — see `StorageRefKind`. */
+  readonly refKind: StorageRefKind;
   /** Whether the connection is usable and what it points at, for /admin. */
   probe(): Promise<StorageProbe>;
   /** One page of a container's direct children, folders included. */

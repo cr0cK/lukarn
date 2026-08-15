@@ -15,7 +15,7 @@ import {
   VideoTranscoder,
 } from '../src/media/transcode.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
-import type { StorageProvider } from '../src/storage/provider.js';
+import { mediaRef, type StorageProvider } from '../src/storage/provider.js';
 
 /**
  * Preparing unplayable videos.
@@ -93,7 +93,8 @@ function fauxTranscodeur(
     durees: [],
     simultanes: 0,
     maxSimultanes: 0,
-    async transcode(_storage, fileId, md5, durationMs) {
+    async transcode(_storage, file, md5, durationMs) {
+      const fileId = file.id;
       faux.durees.push(durationMs);
       faux.simultanes++;
       faux.maxSimultanes = Math.max(faux.maxSimultanes, faux.simultanes);
@@ -389,7 +390,7 @@ describe('derivative production', () => {
 
     await transcodeur.transcode(
       stockage('des octets de film'),
-      'clip',
+      mediaRef('clip', null),
       'empreinte',
       60_000,
       AbortSignal.timeout(5_000),
@@ -418,7 +419,7 @@ describe('derivative production', () => {
     await assert.rejects(() =>
       transcodeur.transcode(
         stockage('des octets de film'),
-        'casse',
+        mediaRef('casse', null),
         null,
         60_000,
         AbortSignal.timeout(5_000),
