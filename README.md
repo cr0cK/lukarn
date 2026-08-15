@@ -141,10 +141,7 @@ docker compose up -d
 docker compose exec app node packages/server/dist/scripts/create-admin.js alice
 ```
 
-The password is prompted without being displayed. The command is spelt out in
-full because the image carries no pnpm — the script inside it is already
-compiled. Before the very first `up`, `docker compose run --rm app node …` does
-the same thing without a running container.
+The password is prompted without being displayed.
 
 **Sign in at `http://localhost:8080`.** That username and password are yours as a
 visitor; they have nothing to do with Google. Nobody who opens your gallery will
