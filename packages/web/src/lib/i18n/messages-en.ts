@@ -77,6 +77,20 @@ export const en = {
   'tabs.activity': 'Activity',
   'tabs.account': 'Account',
 
+  /* ------------------------------------------- The reader's own settings */
+
+  // `prefs.` rather than `settings.`, which already names the server settings in
+  // administration: these are the reader's, remembered by their browser, and the
+  // two catalogues would otherwise collide on the shorter key.
+  'prefs.title': 'Settings',
+  'prefs.section': 'Preferences',
+  'prefs.scope': 'Remembered by this browser, not by the account.',
+  'prefs.language': 'Language',
+  'prefs.theme': 'Theme',
+  'prefs.themeDark': 'Dark',
+  'prefs.themeLightSoon': 'Light (soon)',
+  'prefs.themeHint': 'Only the dark theme exists today; the light one is on its way.',
+
   /* ------------------------------------------------------------ Sheets */
 
   'sheet.expand': 'Expand',

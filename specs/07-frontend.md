@@ -6,7 +6,7 @@ the view lives in the URL, the rest is local `useState`.
 
 ## Routing
 
-`App.tsx`, six routes plus a catch-all.
+`App.tsx`, seven routes plus a catch-all.
 
 | Path              | Page             | Guard                                 |
 | ----------------- | ---------------- | ------------------------------------- |
@@ -15,6 +15,7 @@ the view lives in the URL, the rest is local `useState`.
 | `/pair`           | `PairPage`       | `RequireAuth`                         |
 | `/`               | `AlbumsPage`     | `RequireAuth`                         |
 | `/album/:albumId` | `AlbumPage`      | `RequireAuth`                         |
+| `/settings`       | `SettingsPage`   | `RequireAuth`                         |
 | `/admin`          | —                | `Navigate to="/admin/albums"`         |
 | `/admin/:tab`     | `AdminPage`      | `RequireAuth admin`                   |
 | `*`               | —                | `Navigate to="/"`                     |
@@ -419,10 +420,16 @@ there rather than fight it.
 
 **What the menu contains lives in `components/AccountMenu.tsx`**, not in the
 bar. Two surfaces open the same list: the badge above `md` and the Account tab
-below it. Written in `TopBar`, a second copy would have drifted the day a
-language or an action was added, and the divergence would have shown on only one
-of the two screens. `AccountMenu` also owns the `InstallInstructions` dialog,
-which the Install entry opens.
+below it. Written in `TopBar`, a second copy would have drifted the day an action
+was added, and the divergence would have shown on only one of the two screens.
+`AccountMenu` also owns the `InstallInstructions` dialog, which the Install entry
+opens.
+
+Its entries are Settings, Administration for an administrator, Sign out, then
+Install where the browser offers it. **Settings comes first and is offered to
+everybody**: it is the one entry here an account without the administrator flag
+can act on beyond leaving. The languages that used to follow Sign out have gone
+with it, to `/settings`.
 
 ### What runs this gallery — `components/PoweredBy.tsx`
 
@@ -1701,6 +1708,63 @@ frame would jump under the cursor. The `pointerdown` stops its propagation,
 otherwise the container would additionally start its own pan and the image
 would move in the direction of the drag while the marker pulls it elsewhere.
 
+## Settings — `pages/SettingsPage.tsx`
+
+What the reader decides for themselves, at `/settings`. Guarded like every other
+screen but **not by `admin`**: nothing here touches the instance, only how this
+browser shows it.
+
+| Setting  | Values             | Kept in                                    |
+| -------- | ------------------ | ------------------------------------------ |
+| Language | English, Français  | `localStorage['lukarn:locale']`, see below |
+| Theme    | Dark; Light (soon) | nothing yet — there is one palette         |
+
+It exists because the language had nowhere to live. It sat in the account menu,
+as a group below "Sign out" and "Install" — a setting among actions, reached by
+scrolling past them, with no room for a second one. The theme is that second one,
+and the thumbnail size and grid density that follow it would each have made the
+menu longer than the page behind it
+([D260815c](./08-decisions/D260815c-the-reader-gets-a-screen-of-their-own.md)).
+
+**It borrows administration's shape rather than inventing a second one**: the
+same top bar, the same `Section` box, the same `ui.tsx` fields — which means the
+same rows on a phone, value on the right and a chevron opening the control. Two
+screens of settings that were read differently would be the defect, and
+`components/admin/ui.tsx` is now shared by both rather than being administration's
+alone.
+
+What it does not borrow is the **sidebar**. `AdminNav` earns its column by
+listing six sections; two settings do not need a column naming the screen they
+are already on. Sections can be split out the day there are enough of them
+without moving the address, which is why `/settings` carries no `:tab` segment
+today. The content column stops at 48 rem rather than administration's 90: that
+width exists for album rows and a moderation queue, and a dropdown alone at the
+end of a 1170 px line reads as a field somebody forgot to fill.
+
+**The theme is listed and refused, not hidden.** There is one `ink-*` scale and
+it is the dark one (see "Dark theme" below), so the second option is `disabled`
+and choosing it does nothing. A setting nobody can see coming is a setting people
+ask for; one that is greyed out with "(soon)" beside it answers the question
+where the answer will eventually be.
+
+### `SelectField` — `components/admin/ui.tsx`
+
+A closed list of values, shaped like `TextField` and for the same reason: label
+above the control from `md`, `SettingRow` below it. A bare `<select>` beside two
+`TextField`s would be the one control on the screen whose name sits somewhere
+else.
+
+Two differences from `TextField`, both about what a select is:
+
+- **The row shows the option's label, never its value.** `fr` names nothing to
+  whoever is reading the list.
+- **It is capped at 20 rem from `sm`** rather than filling the column. A text
+  field is as wide as what may be typed into it; a closed list is as wide as its
+  longest option.
+
+`CommentsSection`'s album filter stays a plain `<select>`: it is a header control,
+named by `aria-label` and sized to the space beside a title, not a form row.
+
 ## Administration — `pages/AdminPage.tsx` and `components/admin/`
 
 Accounts, albums and settings are administered from `/admin`:
@@ -2364,10 +2428,13 @@ backends — would be configuration to maintain for behaviour nobody would use
 not of the account: one access key may be shared by a household, and one member
 reading French must not switch the television in the living room.
 
-The account menu carries it, as its own group below the account actions: every
-language listed, with a tick on the active one and `aria-checked` for what the
-tick shows. One entry toggling between two would have nowhere to put a third, and
-never says what it is about to switch to.
+**`/settings` carries it**, as a `SelectField` listing every language — one entry
+toggling between two would have nowhere to put a third, and never says what it is
+about to switch to. It used to be a group of ticked entries in the account menu,
+below "Sign out"; it moved when the theme needed somewhere to go and the menu had
+no room for a second setting (see "Settings" above). `MenuEntry` lost its
+`checked` field with it: every entry in that menu is now an action, and none of
+them carries a selected state.
 
 **A message is a sentence, or a function of what varies within it.** Assembling
 one from fragments at the call site — "3" then "items" — cannot be translated
@@ -2460,9 +2527,16 @@ unparseable colour is dropped, not approximated, so a hovered row would lose its
 background rather than its tint. The full reasoning is in
 [D260813](./08-decisions/D260813-the-brand-colour-is-a-setting-and-its-palette-is.md).
 
-There is **no** light theme and no toggle: `index.html` hardcodes
-`class="dark"` and `<meta name="color-scheme" content="dark">`. Adding a
-light theme means doubling the `ink-*` scale, not flipping a variable.
+There is **no** light theme: `index.html` hardcodes `class="dark"` and
+`<meta name="color-scheme" content="dark">`. Adding one means doubling the
+`ink-*` scale, not flipping a variable.
+
+The toggle, on the other hand, exists — as a refusal. `/settings` lists Theme
+with "Light (soon)" `disabled` beside the dark it is serving, so the screen that
+will carry the choice already says it is coming. Nothing is stored for it: a
+remembered value with one palette to apply it to would be a preference that does
+nothing, and the day the second scale lands is the day it becomes worth writing
+down.
 
 **The type scale is 5 % larger below `md`.** The sizes were chosen at desk
 reading distance; a phone is held further from the eye and read in motion.
@@ -2798,8 +2872,9 @@ against the **built** server serving the **built** front end, on two projects:
 the tab bar has four tabs and 48 px targets, that the top bar retracts on the way
 down, that a sheet arrives from the bottom edge and leaves by the same drag, that
 the viewer opens with nothing over the photo, that a pinch requests the `hd`
-variant, that `/admin` is a list of sections whose settings are rows — and, on
-the desktop side, that none of that happened above 768 px.
+variant, that `/admin` is a list of sections whose settings are rows, that
+`/settings` is read the same way — and, on the desktop side, that none of that
+happened above 768 px.
 
 | Spec               | What it holds to account                                                                                 |
 | ------------------ | -------------------------------------------------------------------------------------------------------- |
@@ -2808,6 +2883,7 @@ the desktop side, that none of that happened above 768 px.
 | `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                             |
 | `search.spec.ts`   | The field opens where the button is, focused                                                             |
 | `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field                                         |
+| `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused     |
 | `comments.spec.ts` | Address → code → comment → thread → activity feed                                                        |
 | `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes |
 | `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                   |

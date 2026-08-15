@@ -13,6 +13,24 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### Your own settings, on a page instead of at the bottom of a menu
+
+Choosing the language meant opening the account menu and scrolling past "Sign
+out" — a preference filed among the things you do to a session, one click away
+from leaving.
+
+- **A Settings page, at the top of the account menu and open to everybody.** The
+  language lives there now, as a list showing which one is in force. On a phone
+  each setting is a row you tap to open, the same way administration reads.
+- **The light theme is announced where it will appear.** It is listed beside the
+  dark one, greyed and marked "soon", so the place to look for it is already the
+  right one. It does nothing yet: the gallery still has a single dark palette.
+
+Whatever comes next — the size of the thumbnails, how many fit across the grid —
+lands on that page rather than lengthening the menu. As before, these choices
+belong to the browser you are reading on and not to the account, so a shared key
+can be read in two languages at once.
+
 ### The account is a person everywhere
 
 The corner of the bar used to hold the first letter of your username, the phone's
@@ -20,8 +38,8 @@ Account tab a little drawing of somebody, and the menu they both open began with
 your name pushed out of line with everything under it.
 
 - **The same person is drawn in all three places**, so the mark you press is the
-  mark you land on, and your name now lines up with Administration and Sign out
-  as what those actions apply to.
+  mark you land on, and your name now lines up with Settings, Administration and
+  Sign out as what those actions apply to.
 - Nothing is fetched from anywhere for it: no photo, no avatar service, no
   address handed to a third party — the drawing comes with the page, as the
   letter did.

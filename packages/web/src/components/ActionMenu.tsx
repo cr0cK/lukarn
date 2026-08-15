@@ -3,18 +3,18 @@ import { useT } from '../lib/i18n';
 import { PHONE_QUERY, useMediaQuery } from '../lib/useMediaQuery';
 import { Sheet } from './Sheet';
 
-/** What a menu entry displays: a label, an icon and an action. */
+/**
+ * What a menu entry displays: a label, an icon and an action.
+ *
+ * Every entry is an **action**, which is why none of them carries a selected
+ * state. The one group that did — the languages, ticked and announced as
+ * `menuitemradio` — has moved to `/settings`, where a choice among values is
+ * read as a list of settings rather than as a run of things to do.
+ */
 export interface MenuEntry {
   label: string;
   icon: ReactNode;
   onSelect: () => void;
-  /**
-   * Present when the entry is one choice among several — the language list.
-   * The tick beside the active entry is visual only; this is what a screen
-   * reader announces, and it also turns the group into a set of alternatives
-   * rather than a series of independent actions.
-   */
-  checked?: boolean;
 }
 
 interface ActionMenuProps {
@@ -165,8 +165,7 @@ export function ActionMenu({
               <button
                 key={entree.label}
                 type="button"
-                role={entree.checked === undefined ? 'menuitem' : 'menuitemradio'}
-                aria-checked={entree.checked}
+                role="menuitem"
                 onClick={() => choisir(entree)}
                 // 48 px rows in the sheet, where the target is a fingertip; the
                 // dropdown keeps the 40 px a cursor aims at without effort.

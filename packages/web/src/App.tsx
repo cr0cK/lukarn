@@ -8,6 +8,7 @@ import AlbumsPage from './pages/AlbumsPage';
 import DiagnosticPage from './pages/DiagnosticPage';
 import LoginPage from './pages/LoginPage';
 import PairPage from './pages/PairPage';
+import SettingsPage from './pages/SettingsPage';
 
 function FullPageSpinner(): ReactElement {
   return (
@@ -75,6 +76,16 @@ export default function App(): ReactElement {
         element={
           <RequireAuth>
             <AlbumPage />
+          </RequireAuth>
+        }
+      />
+      {/* Guarded, but **not** by `admin`: nothing here acts on the instance, only
+          on how this browser shows it. */}
+      <Route
+        path="/settings"
+        element={
+          <RequireAuth>
+            <SettingsPage />
           </RequireAuth>
         }
       />
