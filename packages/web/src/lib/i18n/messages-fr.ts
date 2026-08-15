@@ -655,6 +655,13 @@ export const fr: Messages = {
   'maintenance.cleared': 'Cache vidé. Les vignettes seront régénérées à la demande.',
   'maintenance.clearFailed': 'Impossible de vider le cache.',
 
+  /* ----------------------------------------------------- What runs this gallery */
+
+  'version.title': 'Version',
+  'version.poweredBy': (version: string) => `Propulsé par Lukarn ${version}`,
+  'version.changelog': 'Journal des modifications',
+  'version.update': (version: string) => `Passer en ${version}`,
+
   /* ------------------------------------------------------ Administration: visits */
 
   'visits.title': 'Visites',

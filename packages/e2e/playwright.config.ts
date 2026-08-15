@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { BASE_URL, SINK_URL } from './fixtures/instance.js';
+import { BASE_URL, FEED_URL, SINK_URL } from './fixtures/instance.js';
 
 /**
  * The browser gate.
@@ -75,6 +75,16 @@ export default defineConfig({
       url: `${SINK_URL}/messages`,
       // Never reuse: a sink left running from an earlier run still holds that
       // run's messages, and the identity flow would read a stale code.
+      reuseExistingServer: false,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      // Started before the server, like the sink: the instance reads its address
+      // from the environment at startup, and a feed that is not listening yet
+      // would make the first check fail and cache that failure for half an hour.
+      command: 'node --import tsx fixtures/release-feed.ts',
+      url: `${FEED_URL}/releases/latest`,
       reuseExistingServer: false,
       stdout: 'pipe',
       stderr: 'pipe',

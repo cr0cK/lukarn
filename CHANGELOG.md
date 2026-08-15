@@ -13,6 +13,28 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### The gallery says what it runs, and when something newer exists
+
+Until now, an instance could not tell you which version it was: the number lived
+in the tag, in the image's labels and in these notes, and nowhere the application
+could read. Finding out meant going to the machine.
+
+- **"Powered by Lukarn v1.2.3" sits at the foot of the account menu**, on a phone
+  and on a desktop, next to a link to this file — what changed, in every version,
+  where the version is displayed.
+- **An administrator is told when a newer release is published**, as a badge
+  giving its number and linking to its notes. Nothing updates itself and nothing
+  offers to: replacing the image is still `./deploy/backup.sh` then
+  `./deploy/deploy.sh`, taken deliberately, on the machine.
+- **The instance asks at most once every six hours, and only while an
+  administrator is looking at the answer.** Nobody else's visit costs a request,
+  and `UPDATE_CHECK_URL=` in the `.env` switches it off entirely — then nothing
+  leaves the machine for it. An instance built from source reports `dev` and
+  contacts nobody at all.
+
+The startup log now opens on the version too, which is the first thing worth
+knowing when one instance behaves unlike another.
+
 ### The phone stops being a narrow desktop
 
 The interface was a desktop layout degraded downwards: every control lived in a

@@ -574,6 +574,35 @@ export function remainingEditMs(createdAt: string, now: number): number {
 /** Maximum comment length, checked identically on both sides. */
 export const COMMENT_MAX_LENGTH = 2000;
 
+/* --------------------------------------------------------------------------
+ * What this instance runs, and whether something newer exists
+ * ------------------------------------------------------------------------ */
+
+/** A published release: the version it carries, and the page announcing it. */
+export interface ReleaseRef {
+  /** Version without its `v` prefix, as `1.2.3`. */
+  version: string;
+  /** Release page, where its notes are published. */
+  url: string;
+}
+
+/**
+ * What `/api/version` answers: what is running, where to read what changed, and —
+ * for an administrator — whether a newer release exists.
+ *
+ * `update` is deliberately the **only** field that costs a network call, and it is
+ * `null` for everyone who could do nothing with it: an access key cannot update the
+ * machine, so nothing asks GitHub on its behalf (D260815).
+ */
+export interface VersionInfo {
+  /** Version this instance runs. `dev` for anything built outside a release. */
+  version: string;
+  /** The whole changelog, every version, including the one being offered. */
+  changelogUrl: string;
+  /** A newer release, or `null` — up to date, check disabled, unknown, not an admin. */
+  update: ReleaseRef | null;
+}
+
 export interface AdminStatus {
   /**
    * How the instance authenticates with Drive. `service_account`: a configuration key,

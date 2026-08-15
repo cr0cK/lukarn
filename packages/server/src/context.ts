@@ -25,6 +25,7 @@ import { SessionStore } from './sessions.js';
 import { SubscriptionRepo } from './subscriptions.js';
 import { VisitLog } from './telemetry.js';
 import { LoginThrottle } from './throttle.js';
+import { UpdateChecker } from './updates.js';
 
 const GIB = 1024 ** 3;
 
@@ -95,6 +96,12 @@ export class AppContext {
   readonly videoStore: MediaCache;
   readonly renderer: MediaRenderer;
   readonly syncer: Syncer;
+  /**
+   * Whether a newer release exists. Held here so its cache spans the process rather
+   * than a request: it is asked from two screens, and the answer changes a few times
+   * a year (D260815).
+   */
+  readonly updates: UpdateChecker;
 
   private readonly settingsListeners: SettingsListener[] = [];
   /** False until `checkFfmpeg` finds the binary. */
@@ -140,6 +147,11 @@ export class AppContext {
     );
     this.renderer = new MediaRenderer(this.drive, this.cache, logger);
     this.syncer = new Syncer(this.drive, this.media, this.syncState, logger);
+    this.updates = new UpdateChecker({
+      currentVersion: env.appVersion,
+      url: env.updateCheckUrl,
+      log: logger,
+    });
     this.notifier = new AlbumNotifier({
       // A function rather than the list, so an album created from /admin joins the
       // watch cycle without a restart.

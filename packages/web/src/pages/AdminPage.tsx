@@ -18,7 +18,8 @@ import { MaintenanceSection } from '../components/admin/MaintenanceSection';
 import { SettingsSection } from '../components/admin/SettingsSection';
 import { UsersSection } from '../components/admin/UsersSection';
 import { VisitsSection } from '../components/admin/VisitsSection';
-import { FormError, type Notice } from '../components/admin/ui';
+import { PoweredBy } from '../components/PoweredBy';
+import { FormError, Section, type Notice } from '../components/admin/ui';
 
 /** Messages from the Google consent return, passed in `?oauth=`. */
 const OAUTH_MESSAGES: Record<string, { tone: Notice['tone']; text: MessageKey }> = {
@@ -91,6 +92,14 @@ export default function AdminPage(): ReactElement {
             {status.data && <DriveSection status={status.data} notify={setNotice} />}
             <SettingsSection notify={setNotice} />
             {status.data && <MaintenanceSection status={status.data} notify={setNotice} />}
+            {/* Last, and its own section: whoever operates the instance is here,
+                not in the account menu, and an available release is the one thing
+                on this page that comes from outside the machine. */}
+            <Section title={t('version.title')}>
+              <div className="px-4 py-4">
+                <PoweredBy />
+              </div>
+            </Section>
           </>
         );
       case 'visits':

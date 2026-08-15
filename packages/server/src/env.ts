@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { DEFAULT_INSTANCE_NAME, type Locale } from '@lukarn/shared';
 import { z } from 'zod';
 import { defaultLocale } from './i18n/index.js';
+import { DEFAULT_UPDATE_CHECK_URL } from './updates.js';
 
 /**
  * Built front end, next to the server in the monorepo. The path is calculated
@@ -35,6 +36,25 @@ const schema = z.object({
    * changed is where it is edited afterwards — /admin, not a shell (D260813c).
    */
   APP_NAME: z.string().trim().min(1).default(DEFAULT_INSTANCE_NAME),
+
+  /**
+   * Version this instance runs, written into the image by the release workflow from
+   * the tag that produced it — the same single source the published image and the
+   * GitHub release already use.
+   *
+   * `dev` for everything else: a local build, `pnpm dev`, a compose overlay building
+   * from source. That default is load-bearing rather than cosmetic — a version that
+   * cannot be read is never compared to anything, so no such build is ever told it
+   * is out of date (D260815).
+   */
+  APP_VERSION: z.string().trim().min(1).default('dev'),
+
+  /**
+   * Where "does a newer version exist?" is asked. Empty disables it: the instance
+   * then contacts nobody, and the interface shows the version it runs without
+   * offering anything.
+   */
+  UPDATE_CHECK_URL: z.string().default(DEFAULT_UPDATE_CHECK_URL),
 
   /**
    * Language used when nothing else answers: an email to the moderation address,
@@ -94,6 +114,13 @@ export interface Env {
   publicUrl: string;
   /** Instance name seeded into settings on a database that has none yet. */
   appName: string;
+  /** Version this instance runs, `dev` for a build made outside a release. */
+  appVersion: string;
+  /**
+   * `null` when `UPDATE_CHECK_URL` is empty: the instance never asks whether a newer
+   * version exists, and nothing leaves the machine for it.
+   */
+  updateCheckUrl: string | null;
   /** Fallback language for what the server writes without knowing its reader. */
   defaultLocale: Locale;
   sessionSecret: string;
@@ -286,12 +313,25 @@ export function loadEnv(
     );
   }
 
+  // Same treatment as geocoding, and for the same reason: a typo here would be
+  // silent — an instance that simply never reports an update looks exactly like one
+  // that is up to date.
+  const updateCheckUrl = env.UPDATE_CHECK_URL.trim();
+  if (updateCheckUrl && !URL.canParse(updateCheckUrl)) {
+    throw new Error(
+      `UPDATE_CHECK_URL is not a valid URL: "${updateCheckUrl}". Leave the variable ` +
+        'empty for an instance that checks nothing.',
+    );
+  }
+
   return {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
     host: env.HOST,
     publicUrl,
     appName: env.APP_NAME,
+    appVersion: env.APP_VERSION,
+    updateCheckUrl: updateCheckUrl || null,
     defaultLocale: defaultLocale(env.DEFAULT_LOCALE),
     sessionSecret: env.SESSION_SECRET,
     tokenKey: env.TOKEN_KEY,

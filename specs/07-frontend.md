@@ -419,6 +419,34 @@ language or an action was added, and the divergence would have shown on only one
 of the two screens. `AccountMenu` also owns the `InstallInstructions` dialog,
 which the Install entry opens.
 
+### What runs this gallery — `components/PoweredBy.tsx`
+
+`ActionMenu` takes a `pied`, a non-clickable block under the entries and below
+the rule that separates them, mirroring the `entete` above them. The account menu
+fills it with `PoweredBy`: **"Powered by Lukarn v1.2.3"**, a link to the
+changelog, and — for an administrator with a newer release published — a badge
+reading "Update to 1.2.4" linking to that release.
+
+Two surfaces mount the same component, for the reason `AccountMenu` itself
+exists: this menu, reachable from every page on both shapes of the interface, and
+the **Server** section of `/admin`, where whoever operates the instance already
+is.
+
+It renders **nothing** until `/api/version` answers, and nothing at all if that
+call fails. The line is a footnote; a footnote showing a skeleton or an error is
+worth less than an absent one. The version is prefixed with `v` only when it
+reads as three numbers — `dev` with a `v` in front would look like something one
+could go and download.
+
+**The badge is a link, never a button that updates anything.** Nothing in the
+application can replace the image it runs on, and nothing should: an update is
+taken on the machine, with a backup first (D260815, and `deploy/README.md`). The
+version comes from the product, not the instance — an album named "Chez nous" is
+not what powers itself, and the changelog behind the link is about Lukarn.
+
+The name and both message keys live in the catalogues like every other visible
+sentence (`version.poweredBy`, `version.changelog`, `version.update`).
+
 ## Bottom tabs — `components/BottomTabs.tsx`
 
 Below `md` only. Albums, Search, Activity, Account: a 56 px row of four equal
@@ -2767,15 +2795,16 @@ the viewer opens with nothing over the photo, that a pinch requests the `hd`
 variant, that `/admin` is a list of sections whose settings are rows — and, on
 the desktop side, that none of that happened above 768 px.
 
-| Spec               | What it holds to account                                                                       |
-| ------------------ | ---------------------------------------------------------------------------------------------- |
-| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                               |
-| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals |
-| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                   |
-| `search.spec.ts`   | The field opens where the button is, focused                                                   |
-| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field                               |
-| `comments.spec.ts` | Address → code → comment → thread → activity feed                                              |
-| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                         |
+| Spec               | What it holds to account                                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                                         |
+| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals           |
+| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                             |
+| `search.spec.ts`   | The field opens where the button is, focused                                                             |
+| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field                                         |
+| `comments.spec.ts` | Address → code → comment → thread → activity feed                                                        |
+| `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes |
+| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                   |
 
 It runs as `pnpm test:e2e`, on its own CI job and again before a release image is
 pushed, and stays out of `pnpm verify` on purpose — see

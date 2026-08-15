@@ -25,6 +25,12 @@ interface ActionMenuProps {
    * the following ones clarify it — an identifier, then its signing address.
    */
   entete?: string[];
+  /**
+   * Non-clickable content under the entries, separated by the same rule. The
+   * account menu ends on what runs the gallery — a footnote, deliberately below
+   * everything that acts.
+   */
+  pied?: ReactNode;
   /** Accessible button name when several menus share a page. */
   label?: string | undefined;
   /** Button content. Three dots by default, an account badge when needed. */
@@ -58,6 +64,7 @@ const SHEET_STOPS = ['auto'] as const;
 export function ActionMenu({
   groupes,
   entete,
+  pied,
   label,
   trigger,
   triggerClassName = TRIGGER_PAR_DEFAUT,
@@ -159,6 +166,15 @@ export function ActionMenu({
           </Fragment>
         ))}
       </div>
+
+      {/* Outside `role="menu"` like the header, and for the same reason: it is
+          read, not selected. */}
+      {pied && (
+        <>
+          <div className="mt-1 h-px bg-ink-700" />
+          <div className="px-4 py-3">{pied}</div>
+        </>
+      )}
     </>
   );
 
