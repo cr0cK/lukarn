@@ -16,6 +16,7 @@ so that a developer who was not involved in its design can take it over.
 | [06 — Configuration and deployment](./06-configuration-and-deployment.md) | Environment variables, bootstrapping, Docker, `deploy/`, and the Google Cloud console |
 | [07 — Frontend](./07-frontend.md)                                         | Routing, state, justified layout, virtualisation, keyboard, and theme                 |
 | [08 — Decisions](./08-decisions/)                                         | Log of technical decisions and rejected alternatives, one per file                    |
+| [09 — Plans](./09-plans/)                                                 | Work decided and not finished, one file per release. Deleted when it lands            |
 
 ## Where to start
 
@@ -27,6 +28,7 @@ so that a developer who was not involved in its design can take it over.
 | Work on the grid or viewer          | 07 → 02                           |
 | Deploy or diagnose an OAuth failure | 06 → 04                           |
 | Change a technical decision         | 08 → the relevant domain document |
+| Continue work already under way     | 09 → the relevant domain document |
 
 ## Keeping these documents up to date
 

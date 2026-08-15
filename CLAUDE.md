@@ -104,7 +104,15 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                          |
 | `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                             |
 | An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                       |
+| Work spanning several pull requests, between two of them                   | `specs/09-plans/`—the plan; the request that finishes it deletes it                |
 | The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                                     |
+
+`specs/09-plans/` is the one directory that describes what does not exist yet: a
+piece of work spanning several pull requests, so the next session starts from the
+branch and the open questions rather than from the beginning. It is **deleted by
+the pull request that finishes it**, and `check:specs` does not read it when
+looking for module mentions — a plan naming a file before it exists would
+otherwise satisfy the check the day it is created.
 
 Five documents, five readers, no duplication between them:
 

@@ -45,7 +45,20 @@ function fichiers(repertoire, filtre, acc = []) {
   return acc;
 }
 
+/**
+ * Plans describe what the application is about to become, and are deleted by the
+ * pull request that finishes them — see `specs/09-plans/`. They are therefore
+ * excluded from the text the module check reads: a plan naming a file before it
+ * exists would satisfy the check the day it is created, and the module would ship
+ * documented by a page about to disappear.
+ *
+ * Everything else still applies to them: they are read for `(Dxx)` references and
+ * for cited spec files below.
+ */
+const PLANS = join(SPECS, '09-plans');
+
 const texteSpecs = fichiers(SPECS, (n) => n.endsWith('.md'))
+  .filter((chemin) => !chemin.startsWith(`${PLANS}/`))
   .map(lire)
   .join('\n');
 const specApi = lire(join(SPECS, '05-api.md'));
