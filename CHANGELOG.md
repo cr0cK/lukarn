@@ -11,15 +11,40 @@ in this application migrates volumes or renames files on its own.
 
 [semantic versioning]: https://semver.org
 
-## [Unreleased]
+## [1.1.0] — 2026-08-15
 
-### Hints stop shouting
+### The phone stops being a narrow desktop
 
-Placeholder text, the character counters under a description, and "never" in the
-visits table were all drawn at the full brightness of ordinary text. They asked
-for a shade the palette never defined, so the browser fell back to the colour
-they inherited — the loudest one available. They are quiet again, and "never"
-once more reads as fainter than a real date beside it.
+The interface was a desktop layout degraded downwards: every control lived in a
+top bar, out of reach of the thumb holding the device. It is now laid out from
+the phone up, and **nothing changes above 768 px** — the desktop keeps its bar,
+its side panel and its keyboard navigation.
+
+- **A bottom tab bar** — Albums, Search, Activity, Account — carries what moves
+  between pages, and the top bar keeps only what describes the page it is on.
+  The bar retracts while scrolling down and returns on the first upward
+  movement: 65 px permanently reserved was the largest single thing taking room
+  from the photos.
+- **Panels and menus arrive from the bottom edge.** A side panel that covered
+  the screen from the top and a menu pinned to the upper right corner are now
+  sheets, dismissed by the same drag that opens them, or by a tap on their grip.
+  In the viewer, one sheet carries both: the photo's details at rest, the
+  conversation and the technical data when pulled up.
+- **The viewer opens on the photo**, without a header, arrows or caption over
+  it. A tap brings them back, as in any phone gallery. What was written about
+  the photo joins the album and the date at the top; the bottom carries the
+  actions — information, comments, download.
+- **Pinching a photo enlarges the photo.** Two fingers used to reach the
+  browser's page zoom, which magnifies pixels already rendered; the gesture now
+  requests the 4096 px variant, like every other way of zooming here.
+- **Searching happens where the search button is**, in a sheet with the keyboard
+  raised, instead of moving the focus to a field at the opposite end of the
+  screen.
+- **Administration is a list of sections** rather than six tabs scrolling
+  sideways two at a time, and each setting is a row showing its current value,
+  opening onto its field.
+- **Touch targets are 48 px**, against the 36 px a cursor was aimed at, and text
+  is 5 % larger — a phone is held further from the eye than a screen on a desk.
 
 ### A light theme, for the rooms that have windows
 
@@ -93,39 +118,6 @@ could read. Finding out meant going to the machine.
 The startup log now opens on the version too, which is the first thing worth
 knowing when one instance behaves unlike another.
 
-### The phone stops being a narrow desktop
-
-The interface was a desktop layout degraded downwards: every control lived in a
-top bar, out of reach of the thumb holding the device. It is now laid out from
-the phone up, and **nothing changes above 768 px** — the desktop keeps its bar,
-its side panel and its keyboard navigation.
-
-- **A bottom tab bar** — Albums, Search, Activity, Account — carries what moves
-  between pages, and the top bar keeps only what describes the page it is on.
-  The bar retracts while scrolling down and returns on the first upward
-  movement: 65 px permanently reserved was the largest single thing taking room
-  from the photos.
-- **Panels and menus arrive from the bottom edge.** A side panel that covered
-  the screen from the top and a menu pinned to the upper right corner are now
-  sheets, dismissed by the same drag that opens them, or by a tap on their grip.
-  In the viewer, one sheet carries both: the photo's details at rest, the
-  conversation and the technical data when pulled up.
-- **The viewer opens on the photo**, without a header, arrows or caption over
-  it. A tap brings them back, as in any phone gallery. What was written about
-  the photo joins the album and the date at the top; the bottom carries the
-  actions — information, comments, download.
-- **Pinching a photo enlarges the photo.** Two fingers used to reach the
-  browser's page zoom, which magnifies pixels already rendered; the gesture now
-  requests the 4096 px variant, like every other way of zooming here.
-- **Searching happens where the search button is**, in a sheet with the keyboard
-  raised, instead of moving the focus to a field at the opposite end of the
-  screen.
-- **Administration is a list of sections** rather than six tabs scrolling
-  sideways two at a time, and each setting is a row showing its current value,
-  opening onto its field.
-- **Touch targets are 48 px**, against the 36 px a cursor was aimed at, and text
-  is 5 % larger — a phone is held further from the eye than a screen on a desk.
-
 ### Fixed
 
 - **An installed application no longer draws under the notch or the home bar.**
@@ -133,6 +125,11 @@ its side panel and its keyboard navigation.
   `env(safe-area-inset-*)`, so the top row sat beneath the clock. On iOS the
   status bar was already excluded by choice, so what this returns there is the
   space above the home indicator.
+- **Hints, counters and "never" are quiet again.** Placeholder text, the
+  character counters under a description and "never" in the visits table asked
+  for a shade the palette never defined, so each fell back to the colour it
+  inherited — the loudest one available. "never" once more reads as fainter than
+  a real date beside it.
 - Opening a photo carries its thumbnail into place instead of cutting to a
   full-screen image, on browsers that support view transitions.
 - The magnifier now sits on the middle of the search field in the phone's search
