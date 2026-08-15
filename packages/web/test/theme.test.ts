@@ -70,6 +70,31 @@ describe('the ramps in styles.css', () => {
     assert.ok(dark.get('--color-ink-850')! > dark.get('--color-ink-900')!);
     assert.ok(light.get('--color-ink-850')! > light.get('--color-ink-900')!);
   });
+
+  it('keeps the text rungs in order, each one quieter than the last', () => {
+    // `ink-100` is the text, and every rung below it is a step further back:
+    // `ink-300` a secondary line, `ink-400` a muted one, `ink-500` a placeholder
+    // or a counter. Call sites are written on that order alone — `VisitsSection`
+    // puts "never" at `ink-500` beside a real date at `ink-400`, in the same
+    // table — so a rung that overtook its neighbour would silently reverse a
+    // dozen deliberate distinctions rather than break anything.
+    const rungs = [100, 200, 300, 400, 500].map((n) => `--color-ink-${n}`);
+
+    for (const [ramp, order] of [
+      ['.theme-dark {', 'descending'],
+      ['.theme-light {', 'ascending'],
+    ] as const) {
+      const values = rungs.map((name) => tokens(css, ramp).get(name)!);
+      const sorted = [...values].sort();
+      // Dark stacks downwards and light upwards, so the direction inverts while
+      // "each step is quieter" does not.
+      assert.deepEqual(
+        values,
+        order === 'ascending' ? sorted : sorted.reverse(),
+        `${ramp}${order}`,
+      );
+    }
+  });
 });
 
 describe('the pre-paint bootstrap', () => {

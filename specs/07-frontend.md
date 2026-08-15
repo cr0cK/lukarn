@@ -2506,7 +2506,7 @@ photos, not the chrome.
 **The rungs name a role, not a brightness**, and that is what makes two themes
 possible without two interfaces. `ink-900` is the page, `ink-850` the panel raised
 above it, `ink-700` its edge, `ink-400` the muted text, `ink-100` the text —
-true in both themes. `styles.css` declares two blocks binding the same ten
+true in both themes. `styles.css` declares two blocks binding the same eleven
 tokens, `.theme-dark` and `.theme-light`, one of which is on `<html>`; every
 `bg-ink-850` in the application resolves against whichever is in force, and **no
 component knows a theme exists**
@@ -2520,6 +2520,19 @@ because their role is a relationship rather than a shade:
 | `ink-900` | the page                    | `#0b0b0d` | `#f5f5f7`                         |
 | `ink-850` | the panel raised above it   | lighter   | **whiter** — light stacks upwards |
 | `ink-800` | a raised bar, and hairlines | lighter   | **darker** — a divider must show  |
+
+**The text rungs run `ink-100` to `ink-500`, each one a step further back**:
+the text, a secondary line, a muted one, then `ink-500` — a placeholder, a
+character counter, "never" beside a real date. Call sites are written on that
+order alone, so `theme.test.ts` asserts it in both directions: a rung that
+overtook its neighbour would reverse a dozen deliberate distinctions rather than
+break anything visible.
+
+`ink-500` is the one rung not placed between its neighbours. It sits nearer to
+`ink-400` in the light ramp, because the geometric middle put a counter at 2.9:1
+on white — dimmer than dim. At `#82828e` it reads 3.8:1 against the panel and
+stays plainly quieter than the muted text beside it, which is the only thing it
+is asked to do.
 
 `--color-tint` and `--color-tint-strong` belong to the ramp too: the wash a
 borderless row shows under the pointer, white in the dark theme and black in the

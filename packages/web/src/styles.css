@@ -23,6 +23,7 @@
   --color-ink-800: #17171b;
   --color-ink-700: #232329;
   --color-ink-600: #33333b;
+  --color-ink-500: #4f4f59;
   --color-ink-400: #6b6b77;
   --color-ink-300: #9a9aa6;
   --color-ink-200: #c6c6d0;
@@ -94,6 +95,7 @@
     --color-ink-800: #17171b;
     --color-ink-700: #232329;
     --color-ink-600: #33333b;
+    --color-ink-500: #4f4f59;
     --color-ink-400: #6b6b77;
     --color-ink-300: #9a9aa6;
     --color-ink-200: #c6c6d0;
@@ -126,6 +128,12 @@
     --color-ink-800: #ebebef;
     --color-ink-700: #dcdce3;
     --color-ink-600: #c2c2cc;
+    /* Nearer to `ink-400` than the midpoint between its neighbours. It has to
+       read as the dimmer of the two — that is its whole job — and on white the
+       geometric middle put a character counter at 2.9:1, which is dimmer than
+       dim. Here it is 3.8:1 against the panel and still plainly quieter than the
+       4.6:1 of the muted text beside it. */
+    --color-ink-500: #82828e;
     --color-ink-400: #6a6a76;
     --color-ink-300: #55555f;
     --color-ink-200: #33333c;
