@@ -99,6 +99,17 @@ const schema = z.object({
    */
   GEOCODING_URL: z.string().default('https://nominatim.openstreetmap.org'),
 
+  /**
+   * The one directory a local-folder storage may read, declared by whoever runs
+   * the container. Empty — the default — means the kind is unavailable: /admin
+   * offers no folder to connect, because there is none it is allowed to reach.
+   *
+   * A connection chooses a **subpath** under it and never an absolute path, so the
+   * fence stays where the volume is mounted rather than moving with whoever holds
+   * an administrator password (D260816d).
+   */
+  STORAGE_LOCAL_ROOT: z.string().default(''),
+
   CONFIG_PATH: z.string().default('./config/albums.yaml'),
   DATA_DIR: z.string().default('./data'),
   CACHE_DIR: z.string().default('./cache'),
@@ -145,6 +156,11 @@ export interface Env {
    * longer named, while the rest of the application is unchanged.
    */
   geocoding: { baseUrl: string; userAgent: string } | null;
+  /**
+   * `null` when `STORAGE_LOCAL_ROOT` is empty: no local folder can be connected at
+   * all, which is the default for an instance that only reads a Drive.
+   */
+  storageLocalRoot: string | null;
   configPath: string;
   dataDir: string;
   cacheDir: string;
@@ -324,6 +340,8 @@ export function loadEnv(
     );
   }
 
+  const localRoot = env.STORAGE_LOCAL_ROOT.trim();
+
   return {
     nodeEnv: env.NODE_ENV,
     port: env.PORT,
@@ -348,6 +366,10 @@ export function loadEnv(
     // the public instance blocks anonymous agents, and a generic `node-fetch` would
     // be cut off without making the reason clear.
     geocoding: geocodingUrl ? { baseUrl: geocodingUrl, userAgent: `lukarn (+${publicUrl})` } : null,
+    // Resolved like every other path, and against the same base: a relative root
+    // must name the same directory whether the server was started from the
+    // repository root or from `packages/server`.
+    storageLocalRoot: localRoot ? resolve(baseDir, localRoot) : null,
     configPath: resolve(baseDir, env.CONFIG_PATH),
     dataDir: resolve(baseDir, env.DATA_DIR),
     cacheDir: resolve(baseDir, env.CACHE_DIR),

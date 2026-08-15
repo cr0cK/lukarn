@@ -384,6 +384,52 @@ authorisation over a mistyped environment variable; restoring the original key i
 secret without deleting the connection**: the albums reading it name it by id, and removing the row
 would leave them pointing at nothing.
 
+## A local folder: the root is a fence, and `realpath` is what enforces it
+
+`packages/server/src/storage/local.ts`. A folder on the machine is the one storage
+whose references are paths the server itself resolves, so it is the one that can be
+talked into opening a file nobody meant to publish. Two mechanisms answer that, and
+they answer different attacks.
+
+**The root is declared by the environment.** `STORAGE_LOCAL_ROOT` names one
+directory, and it is empty by default — the kind is then not offered at all. A
+connection chooses a **subpath under it**; an absolute path is refused rather than
+reinterpreted, and so is one containing `..`. This is deliberately not an /admin
+decision: the account that administers albums is not the account that runs the
+container, and letting the first name `/etc` or `/app/data` would turn an
+administrator password into a file-read primitive over the whole machine (D260816d).
+
+**Every resolved path goes through `realpath`, then is checked to still sit under
+that root.** `path.resolve` normalises `..` away and knows nothing about links: a
+symlink named `holidays` pointing at `/etc` survives it untouched. `realpath` is
+what turns a request into the file that would actually be opened, and only then is
+the comparison meaningful. The comparison itself includes the separator —
+`/photos-private` must not count as inside `/photos`.
+
+The check covers three moments, because each is a separate way in:
+
+| Moment                | What is checked                                                       |
+| --------------------- | --------------------------------------------------------------------- |
+| Resolving the subpath | The connection's folder is really under the root, links followed      |
+| Listing a folder      | An escaping entry is **dropped**, so it never enters the index at all |
+| Fetching bytes        | The reference resolves under the root, or the request is refused      |
+
+Dropping an escaping link at listing time is the load-bearing half: an entry that
+reaches the index acquires a media id, and every later request for it arrives
+looking legitimate. Refusing it at `fetch` alone would be a check on the wrong side
+of the database.
+
+The fence is recomputed on every call rather than cached at startup, for the same
+reason a session is revalidated per request: a root replaced by a link afterwards
+must be caught the next time it is used, not remembered from when it was valid.
+
+Two things are deliberately **not** claimed. A hard link inside the root to a file
+outside it is indistinguishable from the file itself and is not detected — the
+mount is the boundary there, which is why `docker-compose.yml` mounts the folder
+`:ro` and the volume is what the operator controls. And the application never
+writes to a storage: the interface has no write operation, and the read-only mount
+makes that a property of the deployment rather than a promise of the code.
+
 ## Detecting `invalid_grant`
 
 Google returns `invalid_grant` when the refresh token can no longer be exchanged: access revoked

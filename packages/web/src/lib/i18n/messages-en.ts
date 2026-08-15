@@ -542,6 +542,7 @@ export const en = {
   'validate.container': 'Enter the folder to read.',
   'validate.containerPattern': 'A path relative to the storage root, without a parent segment.',
   'validate.storageLabel': 'Give this storage a name.',
+  'validate.storagePath': 'A folder inside the root, without a parent segment.',
   'validate.interval': 'Give a whole number of minutes (0 to disable).',
   'validate.cacheSize': 'Give a size in gigabytes.',
   'validate.cacheSizePositive': 'The cache size must be greater than 0.',
@@ -610,6 +611,10 @@ export const en = {
   'storage.identifierHint': 'Written into every album that reads this storage. It cannot change.',
   'storage.kind': 'Kind',
   'storage.kindHint': 'What this connection speaks to. It cannot change afterwards.',
+  'storage.path': 'Folder',
+  'storage.pathHint':
+    'A folder inside the one this server was given, named relative to it. Leave empty to ' +
+    'read all of it. Set STORAGE_LOCAL_ROOT to choose which folder that is.',
   'storage.kindDrive': 'Google Drive',
   'storage.kindLocal': 'Local folder',
   'storage.kindS3': 'S3-compatible bucket',

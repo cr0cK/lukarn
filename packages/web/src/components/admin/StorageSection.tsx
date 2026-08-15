@@ -9,7 +9,7 @@ import {
   useDisconnectStorage,
   useTestStorage,
 } from '../../api/hooks';
-import { slugifyAlbumId, validateAlbumId } from '../../lib/adminForm';
+import { extractContainer, slugifyAlbumId, validateAlbumId } from '../../lib/adminForm';
 import { formatRelative } from '../../lib/format';
 import { useT, type MessageKey } from '../../lib/i18n';
 import { Spinner } from '../Spinner';
@@ -272,21 +272,38 @@ function StorageForm({
   const [kind, setKind] = useState<StorageKind>(kinds[0] ?? 'drive');
   const [label, setLabel] = useState('');
   const [id, setId] = useState('');
+  const [path, setPath] = useState('');
   // Until the identifier is touched, follow the label: it is written into every
   // album that reads this storage, so keep it readable.
   const [idTouched, setIdTouched] = useState(false);
   const [touched, setTouched] = useState(false);
 
+  // A local folder is authorised by its settings rather than by consent: the one
+  // thing to choose is which folder **under `STORAGE_LOCAL_ROOT`** it reads. The
+  // root itself is never typed here — it is the fence the container declares, and
+  // an administrator cannot move it (D260816d).
+  const needsPath = kind === 'local';
   const labelError = label.trim() ? null : t('validate.storageLabel');
   const idError = validateAlbumId(id, t);
+  const pathError =
+    needsPath && path.trim() && extractContainer(path, kind) === null
+      ? t('validate.storagePath')
+      : null;
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     setTouched(true);
-    if (labelError || idError) return;
+    if (labelError || idError || pathError) return;
 
     create.mutate(
-      { id: id.trim(), kind, label: label.trim() },
+      {
+        id: id.trim(),
+        kind,
+        label: label.trim(),
+        // Empty means the root itself, so the setting is sent either way: a
+        // connection with no `path` at all reads what the container declared.
+        ...(needsPath ? { settings: { path: extractContainer(path, kind) ?? '' } } : {}),
+      },
       {
         onSuccess: (created) => {
           notify({ tone: 'ok', text: t('storage.created', created.label) });
@@ -338,6 +355,19 @@ function StorageForm({
         onChange={(value) => setKind(value as StorageKind)}
         hint={t('storage.kindHint')}
       />
+
+      {needsPath && (
+        <TextField
+          id={`${fieldId}-path`}
+          label={t('storage.path')}
+          value={path}
+          onChange={setPath}
+          autoComplete="off"
+          disabled={create.isPending}
+          error={touched ? pathError : null}
+          hint={t('storage.pathHint')}
+        />
+      )}
 
       <FormError message={create.error ? errorText(create.error, t('common.saveFailed')) : null} />
 

@@ -131,7 +131,7 @@ describe('the storage list', () => {
       url: '/api/admin/status',
       headers: { cookie },
     });
-    assert.deepEqual(status.json<AdminStatus>().storageKinds, ['drive']);
+    assert.deepEqual(status.json<AdminStatus>().storageKinds, ['drive', 'local']);
 
     const refused = await server.inject({
       method: 'POST',

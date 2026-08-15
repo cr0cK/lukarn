@@ -533,6 +533,7 @@ export const fr: Messages = {
   'validate.container': 'Indiquer le dossier à lire.',
   'validate.containerPattern': 'Un chemin relatif à la racine du stockage, sans segment parent.',
   'validate.storageLabel': 'Donner un nom à ce stockage.',
+  'validate.storagePath': 'Un dossier situé dans la racine, sans segment parent.',
   'validate.interval': 'Indiquer un nombre entier de minutes (0 pour désactiver).',
   'validate.cacheSize': 'Indiquer une taille en gigaoctets.',
   'validate.cacheSizePositive': 'La taille du cache doit être supérieure à 0.',
@@ -602,6 +603,10 @@ export const fr: Messages = {
     'Inscrit dans chaque album qui lit ce stockage. Il ne peut plus changer.',
   'storage.kind': 'Type',
   'storage.kindHint': 'Ce à quoi cette connexion parle. Il ne peut plus changer ensuite.',
+  'storage.path': 'Dossier',
+  'storage.pathHint':
+    'Un dossier situé dans celui confié à ce serveur, nommé relativement à lui. Laisser ' +
+    'vide pour le lire en entier. STORAGE_LOCAL_ROOT décide duquel il s’agit.',
   'storage.kindDrive': 'Google Drive',
   'storage.kindLocal': 'Dossier local',
   'storage.kindS3': 'Bucket compatible S3',

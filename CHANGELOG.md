@@ -30,6 +30,16 @@ in this application migrates volumes or renames files on its own.
   from the video itself, one second in — past the black frame recordings tend to
   open on — and cached like any other thumbnail. It needs ffmpeg, which the
   container image already carries; without it, nothing changes.
+- **An album can be served from a folder on the machine**, with no Google account
+  anywhere in the picture. Photographs already sitting on a disk — or on a NAS
+  mounted beside the container — are read where they are, never uploaded and never
+  copied, and videos still seek because the folder answers `Range` requests the way
+  a web server does. Point `STORAGE_LOCAL_ROOT` at the directory the server may
+  read, mount it read-only, then add a **Local folder** storage in `/admin`.
+  Choosing that directory stays with whoever runs the server: `/admin` only picks a
+  folder inside it, so an administrator password never becomes a way to read the
+  rest of the machine, and a shortcut leading out of the folder is refused rather
+  than followed.
 
 ### Changed
 

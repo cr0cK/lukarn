@@ -2,6 +2,7 @@ import type { StorageKind } from '@lukarn/shared';
 import type { Env } from '../env.js';
 import type { StorageConnection, StorageConnectionRepo } from './connections.js';
 import { DriveService } from './drive.js';
+import { LocalFolderService } from './local.js';
 import { StorageNotConfiguredError, type StorageProvider } from './provider.js';
 
 /**
@@ -11,7 +12,7 @@ import { StorageNotConfiguredError, type StorageProvider } from './provider.js';
  * offered in a form and refused by the factory is a promise the application breaks
  * after the administrator has typed a bucket name.
  */
-export const SUPPORTED_KINDS: StorageKind[] = ['drive'];
+export const SUPPORTED_KINDS: StorageKind[] = ['drive', 'local'];
 
 interface Logger {
   info: (msg: string) => void;
@@ -35,6 +36,8 @@ export function createProvider(
   switch (connection.kind) {
     case 'drive':
       return new DriveService(env, connections, connection.id, log);
+    case 'local':
+      return new LocalFolderService(env, connection.settings, log);
     default:
       throw new StorageNotConfiguredError(
         `Storage of kind "${connection.kind}" is declared but this version cannot read it.`,

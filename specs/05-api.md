@@ -778,6 +778,14 @@ reads this storage names it. A kind outside `AdminStatus.storageKinds` responds
 `400 unsupported_kind`: accepting it would create a connection nothing can serve
 from, discovered only once an album on it stays empty.
 
+`settings` is read by the provider, not by the route, so each kind names its own
+keys. `local` takes one: **`path`**, the folder it reads **relative to
+`STORAGE_LOCAL_ROOT`**, empty for the root itself. An absolute path or one
+climbing out with `..` is refused by the provider — the route stores what it is
+given, and the fence belongs to whoever declared the root (D260816d). It is a
+setting rather than a secret because there is nothing secret about a folder name;
+`settings` is nevertheless never read back, like every other one.
+
 `PATCH`: `UpdateStorageRequest` = `{ label?, settings?, secret? }`, where
 `secret: null` forgets the stored one. `DELETE` responds **`409 storage_in_use`**
 while an album reads it, naming the albums to move first — the album would
