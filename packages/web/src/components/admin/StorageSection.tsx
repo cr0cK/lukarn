@@ -216,7 +216,17 @@ function StorageRow({
           (connection.connected ? (
             <Button
               variant="danger"
-              onClick={() => disconnect.mutate(connection.id)}
+              onClick={() =>
+                disconnect.mutate(connection.id, {
+                  onSuccess: () =>
+                    notify({ tone: 'ok', text: t('storage.disconnected', connection.label) }),
+                  onError: (error) =>
+                    notify({
+                      tone: 'error',
+                      text: errorText(error, t('storage.disconnectFailed')),
+                    }),
+                })
+              }
               disabled={disconnect.isPending}
             >
               {t('storage.disconnect')}

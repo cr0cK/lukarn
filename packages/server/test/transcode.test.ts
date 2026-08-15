@@ -120,6 +120,7 @@ function deps(
     store: new MediaCache(join(dir, `magasin-${albumId}`), 10_000_000, silencieux),
     transcoder,
     storage: () => ({}) as never,
+    connected: () => true,
     enabled: () => true,
     log: silencieux,
     ...overrides,
