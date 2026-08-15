@@ -1,4 +1,4 @@
-import type { AdminAlbum, SyncStatus } from '@lukarn/shared';
+import type { AdminAlbum, StorageConnectionStatus, SyncStatus } from '@lukarn/shared';
 import { type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useDeleteAlbum, useResync, useUpdateAlbum } from '../../api/hooks';
@@ -17,21 +17,26 @@ const SYNC_LABELS: Record<SyncStatus, { text: Parameters<Translate>[0]; classNam
 
 interface AlbumsSectionProps {
   albums: AdminAlbum[];
-  /** No sync can start without a connected Drive account. */
-  driveConnected: boolean;
+  /**
+   * The instance's storages. An album can only resynchronise if **its own** is
+   * connected: with several, one revoked Drive must not grey out the button of an
+   * album reading a bucket that answers perfectly well.
+   */
+  storage: StorageConnectionStatus[];
   notify: Notify;
 }
 
 /** "Albums" section: list, create, edit, delete and resynchronise. */
-export function AlbumsSection({
-  albums,
-  driveConnected,
-  notify,
-}: AlbumsSectionProps): ReactElement {
+export function AlbumsSection({ albums, storage, notify }: AlbumsSectionProps): ReactElement {
   const t = useT();
   const resync = useResync();
   const remove = useDeleteAlbum();
   const update = useUpdateAlbum();
+
+  const connected = new Set(
+    storage.filter((connection) => connection.connected).map((connection) => connection.id),
+  );
+  const anyConnected = connected.size > 0;
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -88,8 +93,8 @@ export function AlbumsSection({
         <div className="flex gap-2">
           <Button
             onClick={() => startResync(undefined)}
-            disabled={!driveConnected || resync.isPending}
-            title={driveConnected ? undefined : t('adminAlbums.noDrive')}
+            disabled={!anyConnected || resync.isPending}
+            title={anyConnected ? undefined : t('adminAlbums.noStorage')}
           >
             {t('adminAlbums.resyncAll')}
           </Button>
@@ -106,7 +111,9 @@ export function AlbumsSection({
         </div>
       }
     >
-      {creating && <AlbumForm onClose={() => setCreating(false)} notify={notify} />}
+      {creating && (
+        <AlbumForm storage={storage} onClose={() => setCreating(false)} notify={notify} />
+      )}
 
       {albums.length === 0 && !creating && (
         <p className="px-4 py-6 text-sm text-ink-400">{t('adminAlbums.none')}</p>
@@ -117,6 +124,7 @@ export function AlbumsSection({
           <AlbumForm
             key={album.id}
             album={album}
+            storage={storage}
             onClose={() => setEditing(null)}
             notify={notify}
           />
@@ -129,6 +137,11 @@ export function AlbumsSection({
               <p className="truncate text-sm font-medium text-ink-100">{album.title}</p>
               <p className="truncate text-xs text-ink-400">
                 <code>{album.id}</code> · {t('adminAlbums.itemCount', album.itemCount)}
+                {/* Named only when there is a choice: on a single-storage instance
+                    it would be the same word under every album. */}
+                {storage.length > 1
+                  ? ` · ${storage.find((c) => c.id === album.connectionId)?.label ?? album.connectionId}`
+                  : ''}
                 {album.recursive ? ` · ${t('adminAlbums.recursive')}` : ''}
                 {formatRelative(album.lastSyncAt, t)
                   ? ` · ${t('adminAlbums.syncedAgo', formatRelative(album.lastSyncAt, t)!)}`
@@ -154,7 +167,7 @@ export function AlbumsSection({
 
               <Button
                 onClick={() => startResync(album.id)}
-                disabled={album.syncStatus === 'running' || !driveConnected}
+                disabled={album.syncStatus === 'running' || !connected.has(album.connectionId)}
                 ariaLabel={t('adminAlbums.resyncAlbum', album.title)}
               >
                 {t('adminAlbums.resync')}

@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, it } from 'node:test';
 import type { drive_v3 } from '@googleapis/drive';
-import { encryptSecret } from '../src/crypto.js';
 import { openDb } from '../src/db.js';
 import { loadEnv } from '../src/env.js';
+import { DEFAULT_CONNECTION_ID, StorageConnectionRepo } from '../src/storage/connections.js';
 import { DriveService } from '../src/storage/drive.js';
 
 /**
@@ -41,10 +41,11 @@ const silent = { info: () => {}, warn: () => {} };
 const db = openDb(join(root, 'data'));
 after(() => db.close());
 
-db.prepare(
-  `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at, revoked_at)
-   VALUES (1, ?, 'photos@exemple.fr', 'drive.readonly', '2026-01-01T00:00:00.000Z', NULL)`,
-).run(encryptSecret('refresh-token-factice', TOKEN_KEY));
+const connections = new StorageConnectionRepo(db, TOKEN_KEY);
+connections.update(DEFAULT_CONNECTION_ID, {
+  secret: 'refresh-token-factice',
+  account: 'photos@exemple.fr',
+});
 
 /**
  * Drive with its two metadata calls stubbed. The access token is stubbed too:
@@ -77,7 +78,7 @@ class DriveStub extends DriveService {
 }
 
 function service(): DriveStub {
-  return new DriveStub(env, db, silent);
+  return new DriveStub(env, connections, DEFAULT_CONNECTION_ID, silent);
 }
 
 describe('listing translated into storage entries', () => {

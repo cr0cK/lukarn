@@ -15,6 +15,7 @@ import {
   PASSWORD_MIN_LENGTH,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
+  type StorageKind,
 } from '@lukarn/shared';
 import type { Translate } from './i18n/translate';
 
@@ -40,6 +41,29 @@ export function extractFolderId(input: string): string | null {
   // What remains is either a bare identifier or an unreadable path or URL.
   if (/[/\\\s]/.test(value)) return null;
   return value;
+}
+
+/**
+ * The container an album reads, as the storage addresses it.
+ *
+ * Drive names a folder with an opaque identifier, pasted from a URL more often
+ * than typed; every other backend names one with a path. The same field therefore
+ * means two different things, and the difference is what this function holds:
+ * validating a bucket prefix as a Drive identifier would refuse `vacances/2026`
+ * for containing a slash.
+ */
+export function extractContainer(input: string, kind: StorageKind): string | null {
+  if (kind === 'drive') return extractFolderId(input);
+
+  const value = input.trim();
+  if (!value) return null;
+  // Leading and trailing separators are noise the backend does not want: a path
+  // is relative to the root the connection already declares.
+  const path = value.replace(/^\/+|\/+$/g, '');
+  // `..` would climb out of that root. The server refuses it too, and says so
+  // less helpfully than a field that never sends it.
+  if (path.split('/').includes('..')) return null;
+  return path;
 }
 
 /** Error message, or `null` when the value is acceptable. */
@@ -103,6 +127,18 @@ export function validatePrimaryColor(value: string, t: Translate): string | null
 export function validateFolderInput(value: string, t: Translate): string | null {
   if (!value.trim()) return t('validate.folder');
   if (extractFolderId(value) === null) return t('validate.folderPattern');
+  return null;
+}
+
+/** Error message for the container field, in the terms of this storage's kind. */
+export function validateContainerInput(
+  value: string,
+  kind: StorageKind,
+  t: Translate,
+): string | null {
+  if (kind === 'drive') return validateFolderInput(value, t);
+  if (!value.trim()) return t('validate.container');
+  if (extractContainer(value, kind) === null) return t('validate.containerPattern');
   return null;
 }
 

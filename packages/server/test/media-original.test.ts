@@ -10,10 +10,11 @@ import { buildApp } from '../src/app.js';
 import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
+import type { StorageProvider } from '../src/storage/provider.js';
 
 /**
  * Original file relay. The route transforms nothing: it copies the status and
- * range headers from Drive because the browser player knows how to use them.
+ * range headers from the storage because the browser player knows how to use them.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -22,6 +23,16 @@ const root = mkdtempSync(join(tmpdir(), 'lukarn-original-'));
 let server: FastifyInstance;
 let context: AppContext;
 let cookie: string;
+
+/**
+ * The storage the album reads, replaced wholesale. The registry resolves it from
+ * `albums.connection_id` on every request, so a test can answer for any connection
+ * with one function.
+ */
+const stockage = {
+  guard: <T>(operation: () => Promise<T>) => operation(),
+  fetch: () => Promise.resolve(new Response('des octets')),
+} as unknown as StorageProvider & { fetch: () => Promise<Response> };
 
 before(async () => {
   const env = loadEnv({
@@ -80,6 +91,8 @@ before(async () => {
   };
   context.media.upsertMany([video], '2026-01-01T00:00:00.000Z');
 
+  context.storage.get = () => stockage;
+
   const login = await server.inject({
     method: 'POST',
     url: '/api/auth/login',
@@ -98,7 +111,7 @@ after(async () => {
 
 describe('original file relay', () => {
   it('copies a 206 fragment and its headers', async () => {
-    context.storage.fetch = () =>
+    stockage.fetch = () =>
       Promise.resolve(
         new Response('abc', {
           status: 206,
@@ -118,7 +131,7 @@ describe('original file relay', () => {
   });
 
   it('relays a 416 rather than turning it into a server error', async () => {
-    context.storage.fetch = () =>
+    stockage.fetch = () =>
       Promise.resolve(
         new Response(null, { status: 416, headers: { 'content-range': 'bytes */4096' } }),
       );
@@ -139,7 +152,7 @@ describe('original file relay', () => {
 
 describe('browser cache for protected media', () => {
   it('keys the entry by the session that obtained it', async () => {
-    context.storage.fetch = () => Promise.resolve(new Response('des octets'));
+    stockage.fetch = () => Promise.resolve(new Response('des octets'));
 
     const response = await server.inject({
       method: 'GET',

@@ -9,11 +9,14 @@ export type Db = Database.Database;
  * not remove them — SQLite can only drop a column by recreating the table, not worth
  * the gain on a live database:
  *
- * - `media.modified_time` — Drive modification date, the only chronological reference
- *   without EXIF. `takenAt` derives from it during sync; retaining it permits
- *   recalculation without reindexing and diagnosis of surprising `taken_at` values.
- * - `oauth_token.scope` — scope requested at consent. When `SCOPES` changes, it shows
- *   whether the stored token still covers the application or consent must be repeated.
+ * - `media.modified_time` — modification date reported by the storage, the only
+ *   chronological reference without EXIF. `takenAt` derives from it during sync;
+ *   retaining it permits recalculation without reindexing and diagnosis of surprising
+ *   `taken_at` values.
+ * - `storage_connections.settings.scope` — for a Drive connection, the scope requested
+ *   at consent. When `SCOPES` changes, it shows whether the stored token still covers
+ *   the application or consent must be repeated. It was `oauth_token.scope` until
+ *   migration 17.
  * - `sessions.created_at` — opening date. `expires_at` suffices for cleanup, but this
  *   is the only trace of how long a session has lingered, the first question after
  *   suspicious access.
@@ -567,6 +570,77 @@ export const MIGRATIONS: string[] = [
   // then applies, rather than a value invented at migration time.
   `
   ALTER TABLE commenters ADD COLUMN locale TEXT;
+  `,
+
+  // 17 — the single Google connection becomes a table of storages, and an album says
+  // which one it reads.
+  //
+  // `oauth_token` carried `CHECK (id = 1)`: one instance, one Drive. That constraint
+  // was the schema stating a scope decision, and the decision changed — an instance
+  // may now serve one album from a Drive and another from a bucket, which requires a
+  // row per connection and a column on `albums` (D260815g).
+  //
+  // **The `ciphertext` column is copied, never re-encrypted.** Re-encrypting would
+  // mean decrypting with `TOKEN_KEY` during a migration, where a wrong or missing key
+  // destroys an authorisation that only new Google consent can restore. What the
+  // encrypted string contains therefore belongs to the kind: Drive's is the refresh
+  // token itself, exactly as `oauth_token` stored it.
+  `
+  CREATE TABLE storage_connections (
+    -- A slug chosen by whoever adds the connection — 'drive', 'archives-minio'. It is
+    -- written into albums.connection_id and appears in logs, so it is a name rather
+    -- than a number.
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    label       TEXT NOT NULL,
+    -- JSON, and nothing secret: an endpoint, a bucket, a prefix, a scope. Readable in
+    -- a dump without giving access to anything.
+    settings    TEXT NOT NULL DEFAULT '{}',
+    -- The secret half, encrypted with TOKEN_KEY as the refresh token already was.
+    ciphertext  TEXT,
+    -- What /admin displays to name the connection: an address, a bucket, a URL.
+    account     TEXT,
+    granted_at  TEXT,
+    revoked_at  TEXT,
+    created_at  TEXT NOT NULL,
+    -- Display rank, like albums.position: the order connections were added is the
+    -- order they are read in, and creation dates collide on a seeded instance.
+    position    INTEGER NOT NULL DEFAULT 0
+  );
+
+  -- The 'drive' row exists whether or not anything was ever connected. Two
+  -- installations depend on it: a fresh database, whose albums default to it, and a
+  -- service-account installation, which never had an oauth_token row at all because
+  -- its key lives in the environment.
+  INSERT INTO storage_connections
+    (id, kind, label, settings, ciphertext, account, granted_at, revoked_at, created_at, position)
+  VALUES ('drive', 'drive', 'Google Drive',
+    COALESCE((SELECT json_object('scope', scope) FROM oauth_token WHERE id = 1), '{}'),
+    (SELECT ciphertext FROM oauth_token WHERE id = 1),
+    (SELECT account    FROM oauth_token WHERE id = 1),
+    (SELECT granted_at FROM oauth_token WHERE id = 1),
+    (SELECT revoked_at FROM oauth_token WHERE id = 1),
+    COALESCE(
+      (SELECT granted_at FROM oauth_token WHERE id = 1),
+      strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+    ),
+    0);
+
+  DROP TABLE oauth_token;
+
+  -- Which storage an album reads. DEFAULT 'drive' names the row inserted above, so
+  -- every existing album keeps reading exactly what it was reading.
+  --
+  -- **No REFERENCES clause**: SQLite refuses to add a column carrying a foreign key
+  -- unless its default is NULL, and a nullable connection would mean an album pointing
+  -- nowhere. StorageConnectionRepo refuses to delete a connection an album still
+  -- names, which is the same guarantee stated where its message can be read.
+  ALTER TABLE albums ADD COLUMN connection_id TEXT NOT NULL DEFAULT 'drive';
+
+  -- Readable path of the file inside its container, for a backend whose reference is
+  -- a path rather than an opaque identifier. NULL for Drive, whose file id already
+  -- survives a rename.
+  ALTER TABLE media ADD COLUMN source_path TEXT;
   `,
 ];
 

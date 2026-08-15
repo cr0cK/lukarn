@@ -14,6 +14,7 @@ import {
 } from '@lukarn/shared';
 import { z } from 'zod';
 import type { Db } from './db.js';
+import { DEFAULT_CONNECTION_ID } from './storage/connections.js';
 
 /**
  * Repository of accounts, albums and settings — the application configuration,
@@ -33,6 +34,8 @@ export interface StoredAlbum {
   id: string;
   title: string;
   description: string | null;
+  /** Which storage connection this album reads. Never empty — see migration 17. */
+  connectionId: string;
   folderId: string;
   recursive: boolean;
   /** Grid grouping on opening. A preference, not a constraint. */
@@ -83,6 +86,8 @@ export interface CreateAlbumInput {
   id: string;
   title: string;
   description?: string | null;
+  /** When omitted, the connection every album read before there were several. */
+  connectionId?: string;
   folderId: string;
   recursive: boolean;
   /** When omitted, uses the shared default — month. */
@@ -94,6 +99,7 @@ export interface CreateAlbumInput {
 export interface UpdateAlbumInput {
   title?: string;
   description?: string | null;
+  connectionId?: string;
   folderId?: string;
   recursive?: boolean;
   groupBy?: GroupBy;
@@ -143,6 +149,7 @@ interface AlbumRow {
   id: string;
   title: string;
   description: string | null;
+  connection_id: string;
   folder_id: string;
   recursive: number;
   group_by: GroupBy;
@@ -177,6 +184,7 @@ function toAlbum(row: AlbumRow): StoredAlbum {
     id: row.id,
     title: row.title,
     description: row.description,
+    connectionId: row.connection_id,
     folderId: row.folder_id,
     recursive: row.recursive === 1,
     groupBy: row.group_by,
@@ -253,6 +261,11 @@ export class ConfigRepo {
   }
 
   /** Accounts with explicit access to this album, excluding wildcard holders. */
+  /** Albums reading this storage connection — what makes deleting it a 409. */
+  albumsOn(connectionId: string): StoredAlbum[] {
+    return this.read().albums.filter((album) => album.connectionId === connectionId);
+  }
+
   members(albumId: string): string[] {
     const snapshot = this.read();
     return [...snapshot.users.values()]
@@ -343,13 +356,14 @@ export class ConfigRepo {
 
     this.db
       .prepare(
-        `INSERT INTO albums (id, title, description, folder_id, recursive, group_by, sort_order, position, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO albums (id, title, description, connection_id, folder_id, recursive, group_by, sort_order, position, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
         input.title,
         input.description ?? null,
+        input.connectionId ?? DEFAULT_CONNECTION_ID,
         input.folderId,
         input.recursive ? 1 : 0,
         input.groupBy ?? DEFAULT_GROUP_BY,
@@ -371,6 +385,7 @@ export class ConfigRepo {
       ...stored,
       title: patch.title ?? stored.title,
       description: patch.description === undefined ? stored.description : patch.description,
+      connectionId: patch.connectionId ?? stored.connectionId,
       folderId: patch.folderId ?? stored.folderId,
       recursive: patch.recursive ?? stored.recursive,
       groupBy: patch.groupBy ?? stored.groupBy,
@@ -382,13 +397,14 @@ export class ConfigRepo {
     this.db
       .prepare(
         `UPDATE albums
-            SET title = ?, description = ?, folder_id = ?, recursive = ?, group_by = ?,
-                sort_order = ?, cover_media_id = ?, updated_at = ?
+            SET title = ?, description = ?, connection_id = ?, folder_id = ?, recursive = ?,
+                group_by = ?, sort_order = ?, cover_media_id = ?, updated_at = ?
           WHERE id = ?`,
       )
       .run(
         next.title,
         next.description,
+        next.connectionId,
         next.folderId,
         next.recursive ? 1 : 0,
         next.groupBy,
@@ -488,8 +504,8 @@ export class ConfigRepo {
   private build(): Snapshot {
     const albumRows = this.db
       .prepare(
-        `SELECT id, title, description, folder_id, recursive, group_by, sort_order,
-                cover_media_id, created_at, updated_at
+        `SELECT id, title, description, connection_id, folder_id, recursive, group_by,
+                sort_order, cover_media_id, created_at, updated_at
            FROM albums ORDER BY position, id`,
       )
       .all() as AlbumRow[];

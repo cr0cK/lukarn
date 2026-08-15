@@ -1,26 +1,28 @@
-import type { AdminAlbum, UpdateAlbumRequest } from '@lukarn/shared';
+import type { AdminAlbum, StorageConnectionStatus, UpdateAlbumRequest } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateAlbum, useUpdateAlbum } from '../../api/hooks';
 import {
-  extractFolderId,
+  extractContainer,
   slugifyAlbumId,
   validateAlbumId,
-  validateFolderInput,
+  validateContainerInput,
   validateTitle,
 } from '../../lib/adminForm';
 import { useT } from '../../lib/i18n';
-import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
+import { Button, Checkbox, FormError, SelectField, TextField, type Notify } from './ui';
 
 interface AlbumFormProps {
   /** Absent means creating an album. */
   album?: AdminAlbum;
+  /** The storages to choose between. The first one is the default for a new album. */
+  storage: StorageConnectionStatus[];
   onClose: () => void;
   notify: Notify;
 }
 
 /** Form for creating and editing an album. */
-export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElement {
+export function AlbumForm({ album, storage, onClose, notify }: AlbumFormProps): ReactElement {
   const t = useT();
   const fieldId = useId();
   const create = useCreateAlbum();
@@ -33,19 +35,27 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
   const [idTouchedByUser, setIdTouchedByUser] = useState(editing);
   const [title, setTitle] = useState(album?.title ?? '');
   const [description, setDescription] = useState(album?.description ?? '');
+  const [connectionId, setConnectionId] = useState(
+    album?.connectionId ?? storage[0]?.id ?? 'drive',
+  );
   const [folder, setFolder] = useState(album?.folderId ?? '');
   const [recursive, setRecursive] = useState(album?.recursive ?? true);
   const [byDay, setByDay] = useState(album?.groupBy === 'day');
   const [newestFirst, setNewestFirst] = useState(album?.sortOrder === 'desc');
   const [touched, setTouched] = useState(false);
 
+  // What the container field means depends on the storage: Drive addresses a folder
+  // by an opaque identifier pasted from a URL, while every other backend addresses
+  // one by path. Validating the wrong one would refuse a perfectly good path.
+  const kind = storage.find((connection) => connection.id === connectionId)?.kind ?? 'drive';
+
   const idError = editing ? null : validateAlbumId(albumId, t);
   const titleError = validateTitle(title, t);
-  const folderError = validateFolderInput(folder, t);
+  const folderError = validateContainerInput(folder, kind, t);
   const pending = create.isPending || update.isPending;
   const serverError = create.error ?? update.error;
 
-  const folderId = extractFolderId(folder);
+  const folderId = extractContainer(folder, kind);
   const extracted = folderId !== null && folderId !== folder.trim();
 
   const changeTitle = (value: string): void => {
@@ -64,6 +74,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           id: albumId.trim(),
           title: title.trim(),
           description: description.trim() || undefined,
+          connectionId,
           folderId,
           recursive,
           groupBy: byDay ? 'day' : 'month',
@@ -86,6 +97,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
     if ((description.trim() || null) !== album.description) {
       body.description = description.trim() || null;
     }
+    if (connectionId !== album.connectionId) body.connectionId = connectionId;
     if (folderId !== album.folderId) body.folderId = folderId;
     if (recursive !== album.recursive) body.recursive = recursive;
     if ((byDay ? 'day' : 'month') !== album.groupBy) body.groupBy = byDay ? 'day' : 'month';
@@ -147,9 +159,26 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
         multiline
       />
 
+      {/* Only offered when there is a choice: one storage means one possible
+          answer, and a select with a single option is a control that decides
+          nothing. Changing it purges the album index, like changing the folder. */}
+      {storage.length > 1 && (
+        <SelectField
+          id={`${fieldId}-connection`}
+          label={t('albumForm.storage')}
+          value={connectionId}
+          options={storage.map((connection) => ({
+            value: connection.id,
+            label: connection.label,
+          }))}
+          onChange={setConnectionId}
+          hint={t(editing ? 'albumForm.storageEditHint' : 'albumForm.storageHint')}
+        />
+      )}
+
       <TextField
         id={`${fieldId}-folder`}
-        label={t('albumForm.folder')}
+        label={t(kind === 'drive' ? 'albumForm.folder' : 'albumForm.container')}
         value={folder}
         onChange={setFolder}
         onBlur={() => {
@@ -157,7 +186,9 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
           if (folderId !== null) setFolder(folderId);
         }}
         autoComplete="off"
-        placeholder="https://drive.google.com/drive/folders/…"
+        placeholder={
+          kind === 'drive' ? 'https://drive.google.com/drive/folders/…' : 'vacances/2026'
+        }
         disabled={pending}
         error={touched ? folderError : null}
         hint={
@@ -166,7 +197,7 @@ export function AlbumForm({ album, onClose, notify }: AlbumFormProps): ReactElem
               {t('albumForm.folderExtracted')} <code className="text-ink-300">{folderId}</code>
             </>
           ) : (
-            t('albumForm.folderHint')
+            t(kind === 'drive' ? 'albumForm.folderHint' : 'albumForm.containerHint')
           )
         }
       />

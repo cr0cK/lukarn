@@ -94,6 +94,7 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`                 |
 | `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                                  |
 | `storage/provider.ts` (the interface, an error)                            | `specs/02-architecture.md` (the storage interface), `specs/05-api.md`              |
+| `storage/connections.ts`, `storage/registry.ts` (a connection, a kind)     | `specs/03-data-model.md`, `specs/04-security-and-access.md`, `specs/05-api.md`     |
 | `storage/drive.ts`, `sync/sync.ts`, `sync/metadata.ts`                     | `specs/02-architecture.md` (sync flow)                                             |
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                        |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                             |

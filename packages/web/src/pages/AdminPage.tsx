@@ -12,7 +12,7 @@ import { TopBar } from '../components/TopBar';
 import { AdminMenu, AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
 import { CommentsSection } from '../components/admin/CommentsSection';
-import { DriveSection } from '../components/admin/DriveSection';
+import { StorageSection } from '../components/admin/StorageSection';
 import { IdentitySection } from '../components/admin/IdentitySection';
 import { MaintenanceSection } from '../components/admin/MaintenanceSection';
 import { SettingsSection } from '../components/admin/SettingsSection';
@@ -70,11 +70,7 @@ export default function AdminPage(): ReactElement {
     switch (courante) {
       case 'albums':
         return avecAlbums((liste) => (
-          <AlbumsSection
-            albums={liste}
-            driveConnected={status.data?.driveConnected ?? false}
-            notify={setNotice}
-          />
+          <AlbumsSection albums={liste} storage={status.data?.storage ?? []} notify={setNotice} />
         ));
       case 'accounts':
         return avecAlbums((liste) => <UsersSection albums={liste} notify={setNotice} />);
@@ -89,7 +85,7 @@ export default function AdminPage(): ReactElement {
             {status.error && (
               <FormError message={errorText(status.error, t('admin.statusFailed'))} />
             )}
-            {status.data && <DriveSection status={status.data} notify={setNotice} />}
+            {status.data && <StorageSection status={status.data} notify={setNotice} />}
             <SettingsSection notify={setNotice} />
             {status.data && <MaintenanceSection status={status.data} notify={setNotice} />}
             {/* Last, and its own section: whoever operates the instance is here,

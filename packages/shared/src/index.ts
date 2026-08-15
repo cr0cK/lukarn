@@ -603,23 +603,89 @@ export interface VersionInfo {
   update: ReleaseRef | null;
 }
 
+/* --------------------------------------------------------------------------
+ * Storage connections
+ *
+ * Where the albums live. One instance may read several — a Drive and a bucket —
+ * and every album names the one it belongs to.
+ * ------------------------------------------------------------------------ */
+
+/** A backend this application knows how to read. */
+export type StorageKind = 'drive' | 'local' | 's3' | 'webdav';
+
+/**
+ * How a connection is authorised, which is what decides the controls /admin offers.
+ *
+ * - `consent` — a button starts an OAuth flow and the backend hands back a token.
+ * - `key` — the environment already holds it; there is nothing to connect or revoke,
+ *   only an address to share the folder with (D46).
+ * - `settings` — an endpoint and a secret typed into the form itself.
+ */
+export type StorageAuthorization = 'consent' | 'key' | 'settings';
+
+/** A connection as /admin displays it. Never carries a secret, under any key. */
+export interface StorageConnectionStatus {
+  /** Slug, written into every album that reads this storage. */
+  id: string;
+  kind: StorageKind;
+  label: string;
+  /** What names it to a person: an address, a bucket, a URL. */
+  account: string | null;
+  /** `true` when this storage can serve bytes right now. */
+  connected: boolean;
+  /**
+   * ISO 8601 if the backend stopped accepting the stored secret, otherwise `null`.
+   * Distinct from never connected: authorisation existed and is no longer valid.
+   */
+  revokedAt: string | null;
+  authorization: StorageAuthorization;
+  /** Albums reading it. A connection with albums cannot be deleted. */
+  albumCount: number;
+  createdAt: string;
+}
+
+export interface CreateStorageRequest {
+  id: string;
+  kind: StorageKind;
+  label: string;
+  /** Backend settings, nothing secret: an endpoint, a bucket, a root. */
+  settings?: Record<string, string>;
+  /** The secret half, encrypted before it is stored. */
+  secret?: string;
+}
+
+export interface UpdateStorageRequest {
+  label?: string;
+  settings?: Record<string, string>;
+  /** `null` forgets the stored secret; absent leaves it untouched. */
+  secret?: string | null;
+}
+
+/** What `POST /api/admin/storage/:id/test` answers: does this connection work? */
+export interface StorageProbeResult {
+  ok: boolean;
+  account: string | null;
+  /** The backend's own words when it does not — a wrong key, an unreachable host. */
+  error: string | null;
+}
+
 export interface AdminStatus {
   /**
-   * How the instance authenticates with Drive. `service_account`: a configuration key,
-   * nothing to connect or renew, with access from Drive folder sharing. `oauth`: owner
-   * consent granted from /admin.
+   * Every storage this instance reads, in the order they were added. Replaces the four
+   * `drive*` fields of 1.1: an instance may now read several, and an album names which.
    */
-  driveMode: 'service_account' | 'oauth';
-  /** `true` if a usable Google refresh token is stored. */
-  driveConnected: boolean;
-  driveAccount: string | null;
+  storage: StorageConnectionStatus[];
   /**
-   * ISO 8601 if Google stopped accepting the refresh token (removed access, expired
-   * token), otherwise `null`. Distinct from no connection: authorisation existed but
-   * is no longer valid.
+   * Kinds this build can create, in the order the form offers them. Reported rather
+   * than hard-coded in the interface: a kind the server cannot build must not be
+   * offered in a form, and the two lists would drift the day one arrives.
    */
-  driveRevokedAt: string | null;
-  /** `true` if either authentication path is configured. */
+  storageKinds: StorageKind[];
+  /**
+   * `true` if either Google authentication path is configured. An environment fact
+   * rather than a per-connection one: without it, no Drive connection can be
+   * authorised at all, and /admin says so once instead of on every row.
+   */
   oauthConfigured: boolean;
   albums: Album[];
   cache: {
@@ -691,6 +757,8 @@ export interface AdminAlbum {
   id: string;
   title: string;
   description: string | null;
+  /** The storage connection this album reads. */
+  connectionId: string;
   folderId: string;
   recursive: boolean;
   /** Grouping applied when the album opens. See `Album.groupBy`. */
@@ -718,6 +786,8 @@ export interface CreateAlbumRequest {
   id: string;
   title: string;
   description?: string;
+  /** Omitted means the instance's first connection — what a single-storage instance has. */
+  connectionId?: string;
   folderId: string;
   recursive?: boolean;
   groupBy?: GroupBy;
@@ -727,6 +797,8 @@ export interface CreateAlbumRequest {
 export interface UpdateAlbumRequest {
   title?: string;
   description?: string | null;
+  /** Changing it purges the index, exactly like changing the container (D26). */
+  connectionId?: string;
   folderId?: string;
   recursive?: boolean;
   groupBy?: GroupBy;

@@ -6,6 +6,7 @@ import { after, describe, it } from 'node:test';
 import argon2 from 'argon2';
 import { buildApp } from '../src/app.js';
 import { openDb, type Db } from '../src/db.js';
+import { StorageConnectionRepo, DEFAULT_CONNECTION_ID } from '../src/storage/connections.js';
 import { DriveService } from '../src/storage/drive.js';
 import { loadEnv } from '../src/env.js';
 
@@ -86,7 +87,9 @@ describe('Drive service with a service account', () => {
     db?.close();
     rmSync(join(root, 'data'), { recursive: true, force: true });
     db = openDb(join(root, 'data'));
-    return new DriveService(loadEnv(env(surcharges)), db, silencieux);
+    const environnement = loadEnv(env(surcharges));
+    const connections = new StorageConnectionRepo(db, environnement.tokenKey);
+    return new DriveService(environnement, connections, DEFAULT_CONNECTION_ID, silencieux);
   }
 
   it('takes precedence over OAuth when both are configured', () => {
@@ -113,8 +116,16 @@ describe('Drive service with a service account', () => {
     const drive = service({ GOOGLE_SERVICE_ACCOUNT_FILE: chemin });
 
     // This is the point: nothing to store, nothing to decrypt and nothing that
-    // expires after six months of inactivity.
-    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM oauth_token').get() as { n: number }).n, 0);
+    // expires after six months of inactivity. The connection row exists — migration
+    // 17 creates it either way — and carries no secret.
+    assert.equal(
+      (
+        db.prepare("SELECT ciphertext FROM storage_connections WHERE id = 'drive'").get() as {
+          ciphertext: string | null;
+        }
+      ).ciphertext,
+      null,
+    );
     assert.equal(drive.connected, true);
     assert.equal(drive.configured, true);
   });
@@ -167,21 +178,27 @@ describe('administration with a service account', () => {
         url: '/api/admin/status',
         headers: { cookie },
       });
-      assert.equal(statut.json<{ driveMode: string }>().driveMode, 'service_account');
+      const storages = statut.json<{ storage: { id: string; authorization: string }[] }>().storage;
+      // `key`: the environment holds the credentials, so this connection offers no
+      // consent button and no disconnection — only an address to share with.
+      assert.deepEqual(
+        storages.map((connexion) => [connexion.id, connexion.authorization]),
+        [['drive', 'key']],
+      );
 
       // Allowing either action would store a token that nothing uses, while
       // "Disconnect" would suggest the instance is disconnected even though
       // it can still read everything.
       const consentement = await server.inject({
         method: 'GET',
-        url: '/api/admin/oauth/start',
+        url: '/api/admin/storage/drive/oauth/start',
         headers: { cookie },
       });
       assert.equal(consentement.statusCode, 409);
 
       const deconnexion = await server.inject({
         method: 'POST',
-        url: '/api/admin/drive/disconnect',
+        url: '/api/admin/storage/drive/disconnect',
         headers: { cookie },
       });
       assert.equal(deconnexion.statusCode, 409);

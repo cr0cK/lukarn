@@ -65,3 +65,76 @@ test.describe('Administration, on a phone', () => {
     await expect(field).toHaveValue('0');
   });
 });
+
+/**
+ * Where the albums live, listed and administered.
+ *
+ * This fixture has no Google credentials, which is the state that matters here:
+ * an instance whose storage is declared and not connected is what an operator
+ * sees on their first afternoon, and every message on this screen exists to say
+ * what to do about it.
+ */
+test.describe('Storage, on a phone', () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+    await page.goto('/admin/server');
+  });
+
+  test('the instance lists what it reads, and how many albums read it', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'Storage' })).toBeVisible();
+
+    // The connection migration 17 creates for every instance. This one carries
+    // no Google credentials, so the row says the one thing that would otherwise
+    // be looked for in the logs.
+    await expect(
+      page.getByText('GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are not set'),
+    ).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Connect Google Drive' })).toBeDisabled();
+    // Both fixture albums point at it, which is what makes it undeletable.
+    await expect(page.getByText('2 albums read it.')).toBeVisible();
+  });
+
+  test('a second storage can be added, and deleting an occupied one is refused', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('Drive professionnel');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+    // A second Drive is exactly what the single-row `oauth_token` table forbade.
+    await expect(
+      page.getByRole('button', { name: 'Delete the storage Drive professionnel' }),
+    ).toBeVisible();
+
+    await page.getByRole('button', { name: 'Delete the storage Google Drive' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+
+    // Removing it would leave every thumbnail of those two albums failing, with
+    // nothing on the screen explaining why.
+    await expect(page.getByRole('status')).toContainText('still holds albums');
+  });
+
+  test('an album names the storage it reads once there is a choice', async ({ page }) => {
+    // Its own connection: this instance is shared by every test in the file, and
+    // adding one that another test already added would only prove the conflict.
+    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('Archives');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Delete the storage Archives' })).toBeVisible();
+
+    await page.goto('/admin/albums');
+    await page
+      .getByRole('button', { name: /^Edit album/ })
+      .first()
+      .click();
+
+    // Offered only now: with one storage the select would decide nothing. On a
+    // phone it is a row showing its value, like every other closed list here.
+    const row = page.getByRole('button', { name: /^Storage/ });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText('Google Drive');
+
+    await row.click();
+    await expect(page.getByLabel('Storage', { exact: true })).toHaveValue('drive');
+  });
+});

@@ -123,7 +123,6 @@ export class MediaRenderer {
   private readonly places: Semaphore;
 
   constructor(
-    private readonly storage: StorageProvider,
     private readonly cache: MediaCache,
     private readonly log: Logger,
     concurrency = renderConcurrencyFor(cpus().length),
@@ -150,8 +149,16 @@ export class MediaRenderer {
     return this.cache.has(variantKey(fileId, variant, md5));
   }
 
-  /** `md5` comes from the index and identifies the file version. */
+  /**
+   * `md5` comes from the index and identifies the file version.
+   *
+   * The provider is an argument rather than a dependency: one instance serves every
+   * album, and albums no longer all read the same storage. The cache key deliberately
+   * ignores it — a file identifier already belongs to one connection, and mixing the
+   * two would rebuild every derivative the day a connection is renamed.
+   */
   async render(
+    storage: StorageProvider,
     fileId: string,
     variant: Variant,
     md5: string | null = null,
@@ -169,7 +176,7 @@ export class MediaRenderer {
     const pending = this.inFlight.get(key);
     if (pending) return pending;
 
-    const task = this.produce(fileId, variant, key, origin).finally(() =>
+    const task = this.produce(storage, fileId, variant, key, origin).finally(() =>
       this.inFlight.delete(key),
     );
     this.inFlight.set(key, task);
@@ -190,6 +197,7 @@ export class MediaRenderer {
    * grid bursts for one thumbnail, not a background pass visiting each photo once.
    */
   async prepare(
+    storage: StorageProvider,
     fileId: string,
     variants: Variant[],
     md5: string | null = null,
@@ -210,8 +218,8 @@ export class MediaRenderer {
       try {
         source =
           origin === 'poster'
-            ? await this.providerPreview(fileId, premiere)
-            : await this.download(fileId);
+            ? await this.providerPreview(storage, fileId, premiere)
+            : await this.download(storage, fileId);
         // The first conversion doubles as a decode test: it switches formats bundled
         // libvips cannot read to the backend preview, exactly like a requested render.
         await this.store(fileId, premiere, md5, source);
@@ -223,7 +231,7 @@ export class MediaRenderer {
           `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
             'falling back to the preview held by the storage',
         );
-        source = await this.providerPreview(fileId, premiere);
+        source = await this.providerPreview(storage, fileId, premiere);
         await this.store(fileId, premiere, md5, source);
       }
 
@@ -240,12 +248,13 @@ export class MediaRenderer {
    * nothing.
    */
   private produce(
+    storage: StorageProvider,
     fileId: string,
     variant: Variant,
     key: string,
     origin: RenderOrigin,
   ): Promise<Rendered> {
-    return this.places.run(() => this.build(fileId, variant, key, origin));
+    return this.places.run(() => this.build(storage, fileId, variant, key, origin));
   }
 
   private async store(
@@ -258,6 +267,7 @@ export class MediaRenderer {
   }
 
   private async build(
+    storage: StorageProvider,
     fileId: string,
     variant: Variant,
     key: string,
@@ -268,8 +278,8 @@ export class MediaRenderer {
     try {
       const source =
         origin === 'poster'
-          ? await this.providerPreview(fileId, variant)
-          : await this.download(fileId);
+          ? await this.providerPreview(storage, fileId, variant)
+          : await this.download(storage, fileId);
       output = await this.transform(source, variant);
     } catch (error) {
       // In `poster`, the backend preview **is** the source: there is no original behind
@@ -283,7 +293,7 @@ export class MediaRenderer {
         `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
           'falling back to the preview held by the storage',
       );
-      const fallback = await this.providerPreview(fileId, variant);
+      const fallback = await this.providerPreview(storage, fileId, variant);
       output = await this.transform(fallback, variant);
     }
 
@@ -318,10 +328,10 @@ export class MediaRenderer {
    * allocation, but the body is measured too: a missing or false header must not crash
    * the process.
    */
-  private async download(fileId: string): Promise<Buffer> {
+  private async download(storage: StorageProvider, fileId: string): Promise<Buffer> {
     // `guard` is what turns a withdrawn authorisation into a 503 the browser retries:
     // without it, opening a photo after a revoked token produced a bare 500.
-    const response = await this.storage.guard(() => this.storage.fetch(fileId));
+    const response = await storage.guard(() => storage.fetch(fileId));
 
     const annoncee = Number(response.headers.get('content-length'));
     if (Number.isFinite(annoncee) && annoncee > MAX_DECODE_BYTES) {
@@ -345,10 +355,12 @@ export class MediaRenderer {
    * left to serve. The message says which file, because the alternative — a HEIC
    * silently missing from the grid — is what makes it hard to diagnose.
    */
-  private async providerPreview(fileId: string, variant: Variant): Promise<Buffer> {
-    const response = await this.storage.guard(() =>
-      this.storage.preview(fileId, encodingFor(variant).edge),
-    );
+  private async providerPreview(
+    storage: StorageProvider,
+    fileId: string,
+    variant: Variant,
+  ): Promise<Buffer> {
+    const response = await storage.guard(() => storage.preview(fileId, encodingFor(variant).edge));
 
     if (!response) {
       throw new Error(`The storage holds no preview for ${fileId}`);

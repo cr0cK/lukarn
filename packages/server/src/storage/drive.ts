@@ -2,12 +2,10 @@
 // Google API (~110 MB), while only Drive and OAuth2 are used here.
 import { auth, drive, type drive_v3 } from '@googleapis/drive';
 import { oauth2 } from '@googleapis/oauth2';
-import type { Db } from '../db.js';
-import { decryptSecret, encryptSecret } from '../crypto.js';
 import type { Env } from '../env.js';
 import { parseExifTime, toCoordinates, toNumber, toText } from '../sync/metadata.js';
+import type { StorageConnectionRepo } from './connections.js';
 import {
-  StorageKeyMismatchError,
   StorageNotConfiguredError,
   StorageNotConnectedError,
   StorageRevokedError,
@@ -52,10 +50,6 @@ type JwtClient = InstanceType<typeof auth.JWT>;
 type AuthorizedClient = OAuth2Client | JwtClient;
 
 const NOT_CONNECTED = 'Google Drive is not connected. Go to /admin to authorise access.';
-
-const KEY_MISMATCH =
-  'The stored refresh token does not decrypt with TOKEN_KEY. Restore the original ' +
-  'key, or reconnect Google Drive from /admin.';
 
 const NOT_CONFIGURED = 'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set in .env.';
 
@@ -134,13 +128,6 @@ function retryDelayMs(retryAfter: string | null, attempt: number): number {
   return Math.min(RATE_LIMIT_BASE_MS * 2 ** attempt, RATE_LIMIT_MAX_MS);
 }
 
-interface TokenRow {
-  ciphertext: string;
-  account: string | null;
-  granted_at: string;
-  revoked_at: string | null;
-}
-
 export interface DriveConnection {
   account: string | null;
   /** `null` for a service account: there was no consent to date. */
@@ -173,7 +160,9 @@ export class DriveService implements StorageProvider {
 
   constructor(
     private readonly env: Env,
-    private readonly db: Db,
+    private readonly connections: StorageConnectionRepo,
+    /** Which row of `storage_connections` this instance reads and writes. */
+    readonly connectionId: string,
     private readonly log: { info: (msg: string) => void; warn: (msg: string) => void },
   ) {}
 
@@ -199,10 +188,9 @@ export class DriveService implements StorageProvider {
       return { account: this.env.serviceAccount.email, grantedAt: null, revokedAt: null };
     }
 
-    const row = this.readToken();
-    return row
-      ? { account: row.account, grantedAt: row.granted_at, revokedAt: row.revoked_at }
-      : null;
+    const row = this.connections.get(this.connectionId);
+    if (!row?.ciphertext) return null;
+    return { account: row.account, grantedAt: row.grantedAt, revokedAt: row.revokedAt };
   }
 
   /**
@@ -212,8 +200,8 @@ export class DriveService implements StorageProvider {
   get connected(): boolean {
     if (this.env.serviceAccount) return true;
     if (this.unreadableToken) return false;
-    const row = this.readToken();
-    return row !== null && row.revoked_at === null;
+    const row = this.connections.get(this.connectionId);
+    return row?.ciphertext != null && row.revokedAt === null;
   }
 
   /**
@@ -263,32 +251,27 @@ export class DriveService implements StorageProvider {
     client.setCredentials(tokens);
     const account = await this.fetchAccountEmail(client);
 
-    this.db
-      .prepare(
-        `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at, revoked_at)
-         VALUES (1, ?, ?, ?, ?, NULL)
-         ON CONFLICT (id) DO UPDATE SET
-           ciphertext = excluded.ciphertext,
-           account = excluded.account,
-           scope = excluded.scope,
-           granted_at = excluded.granted_at,
-           -- New consent clears the previous revocation.
-           revoked_at = NULL`,
-      )
-      .run(
-        encryptSecret(tokens.refresh_token, this.env.tokenKey),
-        account,
-        SCOPES.join(' '),
-        new Date().toISOString(),
-      );
+    // `secret` is the refresh token itself, not a JSON envelope around it: that is
+    // what migration 17 copied out of `oauth_token`, and re-encrypting it there would
+    // have required a key the migration cannot be sure of.
+    this.connections.update(this.connectionId, {
+      secret: tokens.refresh_token,
+      account,
+      settings: { scope: SCOPES.join(' ') },
+    });
 
     this.cachedClient = null;
     this.unreadableToken = false;
     this.log.info(`Google Drive connected${account ? ` (${account})` : ''}`);
   }
 
+  /**
+   * Forgets the refresh token, keeping the connection. Deleting the row instead would
+   * take its albums' storage with it — they name it by id — for what a person means as
+   * "sign this account out".
+   */
   disconnect(): void {
-    this.db.prepare('DELETE FROM oauth_token').run();
+    this.connections.clearSecret(this.connectionId);
     this.cachedClient = null;
     this.unreadableToken = false;
     this.log.info('Google Drive disconnected');
@@ -327,7 +310,7 @@ export class DriveService implements StorageProvider {
     // The token in place when the call starts. A request may still be in flight when
     // new consent records another token: without this snapshot, its failure would mark
     // a brand-new token as revoked and /admin would request a reconnection just made.
-    const used = this.readToken()?.ciphertext ?? null;
+    const used = this.connections.get(this.connectionId)?.ciphertext ?? null;
 
     try {
       return await operation();
@@ -350,10 +333,10 @@ export class DriveService implements StorageProvider {
    * text with a new salt and IV, enough to detect an intervening reconnection.
    */
   private markRevoked(used: string | null): void {
-    const row = this.readToken();
-    if (!row || row.revoked_at !== null) return;
+    const row = this.connections.get(this.connectionId);
+    if (!row || row.revokedAt !== null) return;
 
-    if (used === null || row.ciphertext !== used) {
+    if (!this.connections.markRevoked(this.connectionId, used)) {
       this.log.warn(
         'Google rejected a token that is no longer the stored one: a reconnection ' +
           'happened during the request, so the current connection is left intact.',
@@ -361,9 +344,6 @@ export class DriveService implements StorageProvider {
       return;
     }
 
-    this.db
-      .prepare('UPDATE oauth_token SET revoked_at = ? WHERE id = 1')
-      .run(new Date().toISOString());
     this.cachedClient = null;
     this.log.warn(
       'Google rejected the refresh token (invalid_grant). Reconnect Google Drive from /admin.',
@@ -549,28 +529,29 @@ export class DriveService implements StorageProvider {
       return client;
     }
 
-    const row = this.readToken();
-    if (!row) throw new StorageNotConnectedError(NOT_CONNECTED);
+    const row = this.connections.get(this.connectionId);
+    if (!row?.ciphertext) throw new StorageNotConnectedError(NOT_CONNECTED);
     // There is no point retrying a token Google already refused; fail immediately
     // with the message explaining what to do.
-    if (row.revoked_at !== null) throw new StorageRevokedError(REVOKED);
+    if (row.revokedAt !== null) throw new StorageRevokedError(REVOKED);
 
     let refreshToken: string;
     try {
-      refreshToken = decryptSecret(row.ciphertext, this.env.tokenKey);
-    } catch {
       /**
-       * The row is **retained**. An unreadable token is not an invalid token: a
-       * mistyped `TOKEN_KEY` in a deployment or a missing variable is enough to cause
-       * this error, and deleting it would destroy still-valid authorisation recoverable
-       * only through new Google consent. Restoring the correct key must be sufficient.
+       * The row is **retained** when this throws. An unreadable token is not an
+       * invalid token: a mistyped `TOKEN_KEY` in a deployment or a missing variable is
+       * enough to cause it, and deleting the row would destroy a still-valid
+       * authorisation recoverable only through new Google consent. Restoring the
+       * correct key must be sufficient (D14).
        */
+      refreshToken = this.connections.secret(this.connectionId)!;
+    } catch (error) {
       this.unreadableToken = true;
       this.log.warn(
         'The stored refresh token is unreadable (did TOKEN_KEY change?). It is kept: ' +
           'restore the original key, or reconnect Drive from /admin.',
       );
-      throw new StorageKeyMismatchError(KEY_MISMATCH);
+      throw error;
     }
 
     this.unreadableToken = false;
@@ -588,13 +569,6 @@ export class DriveService implements StorageProvider {
       this.env.google.clientSecret,
       this.env.oauthRedirectUri,
     );
-  }
-
-  private readToken(): TokenRow | null {
-    const row = this.db
-      .prepare('SELECT ciphertext, account, granted_at, revoked_at FROM oauth_token WHERE id = 1')
-      .get() as TokenRow | undefined;
-    return row ?? null;
   }
 
   private async fetchAccountEmail(client: OAuth2Client): Promise<string | null> {

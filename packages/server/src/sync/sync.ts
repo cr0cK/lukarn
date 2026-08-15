@@ -52,8 +52,18 @@ type VideoHeader = VideoTakenAt & { videoCodec: string | null };
  */
 export interface SyncAlbum {
   id: string;
+  /** Which storage connection holds this album's container. */
+  connectionId: string;
   folderId: string;
   recursive: boolean;
+}
+
+/**
+ * What the syncer needs from the registry, and nothing more: the provider an album
+ * reads. Declared here rather than imported so a test can hand over one function.
+ */
+export interface ProviderSource {
+  get(connectionId: string): StorageProvider;
 }
 
 export interface SyncResult {
@@ -92,7 +102,7 @@ function noop(): void {}
  * only when they target the same folder at the same depth.
  */
 function fingerprint(album: SyncAlbum): string {
-  return `${album.folderId}:${album.recursive ? 'recursif' : 'plat'}`;
+  return `${album.connectionId}:${album.folderId}:${album.recursive ? 'recursif' : 'plat'}`;
 }
 
 /**
@@ -118,7 +128,7 @@ export class Syncer {
   private generations = 0;
 
   constructor(
-    private readonly storage: StorageProvider,
+    private readonly storage: ProviderSource,
     private readonly media: MediaRepo,
     private readonly syncState: SyncStateRepo,
     private readonly log: Logger,
@@ -155,17 +165,26 @@ export class Syncer {
     return task;
   }
 
-  /** Sequential sync of all albums to conserve the storage's quota. */
+  /**
+   * Sequential sync of all albums, to conserve whatever quota each storage counts.
+   *
+   * A withdrawn authorisation skips the **rest of that connection** rather than
+   * stopping everything: every following album on it would fail identically, but an
+   * album on another storage has nothing to do with the token Google refused. Before
+   * there were several connections this was a `break`, which is now the wrong answer.
+   */
   async syncAll(albums: SyncAlbum[]): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
+    const revoked = new Set<string>();
+
     for (const album of albums) {
+      if (revoked.has(album.connectionId)) continue;
       try {
         results.push(await this.sync(album));
       } catch (error) {
         this.log.error(`Sync of "${album.id}" failed: ${(error as Error).message}`);
-        // Authorisation revoked: every following album would fail identically. Stop;
-        // the error already written to `sync_state` explains what happened.
-        if (error instanceof StorageRevokedError) break;
+        // The error already written to `sync_state` explains what happened.
+        if (error instanceof StorageRevokedError) revoked.add(album.connectionId);
       }
     }
     return results;
@@ -194,6 +213,10 @@ export class Syncer {
     const visited = new Set<string>();
 
     try {
+      // Resolved once per pass: the provider holds an authorised client, and asking
+      // the registry per folder would rebuild nothing but would hide where the
+      // album's storage is decided.
+      const storage = this.storage.get(album.connectionId);
       const pending = [album.folderId];
       let indexed = 0;
       let batch: MediaUpsert[] = [];
@@ -211,13 +234,13 @@ export class Syncer {
           );
         }
 
-        for await (const entry of this.listFolder(container)) {
+        for await (const entry of this.listFolder(storage, container)) {
           if (entry.folder) {
             if (album.recursive) pending.push(entry.ref);
             continue;
           }
 
-          const item = await this.toUpsert(album.id, entry);
+          const item = await this.toUpsert(storage, album.id, entry);
           if (!item) continue;
 
           batch.push(item);
@@ -291,16 +314,17 @@ export class Syncer {
     }
   }
 
-  private async *listFolder(container: string): AsyncGenerator<StorageEntry> {
+  private async *listFolder(
+    storage: StorageProvider,
+    container: string,
+  ): AsyncGenerator<StorageEntry> {
     let cursor: string | null = null;
 
     do {
       // `guard` translates a withdrawn authorisation into StorageRevokedError and marks
       // the connection revoked; otherwise every album would fail with a technical
       // message that never says access must be reauthorised.
-      const page: StoragePage = await this.storage.guard(() =>
-        this.storage.list(container, cursor),
-      );
+      const page: StoragePage = await storage.guard(() => storage.list(container, cursor));
 
       for (const entry of page.entries) {
         yield entry;
@@ -309,7 +333,11 @@ export class Syncer {
     } while (cursor !== null);
   }
 
-  private async toUpsert(albumId: string, entry: StorageEntry): Promise<MediaUpsert | null> {
+  private async toUpsert(
+    storage: StorageProvider,
+    albumId: string,
+    entry: StorageEntry,
+  ): Promise<MediaUpsert | null> {
     const kind = classify(entry.mimeType);
     if (!kind) return null;
 
@@ -321,7 +349,7 @@ export class Syncer {
     // (D260809b).
     const { takenAt, fromFile, videoCodec } =
       kind === 'video'
-        ? await this.videoHeader(albumId, entry)
+        ? await this.videoHeader(storage, albumId, entry)
         : {
             takenAt: media?.takenAt ?? entry.modifiedTime,
             fromFile: media?.takenAt != null,
@@ -375,7 +403,11 @@ export class Syncer {
    * migration: older rows have a file-derived date but no codec, so they are reread
    * **once** and then shortcut like the others.
    */
-  private async videoHeader(albumId: string, entry: StorageEntry): Promise<VideoHeader> {
+  private async videoHeader(
+    storage: StorageProvider,
+    albumId: string,
+    entry: StorageEntry,
+  ): Promise<VideoHeader> {
     const version = entry.version;
     const known = this.media.fileTakenAt(albumId, entry.ref);
     if (
@@ -387,7 +419,7 @@ export class Syncer {
       return { takenAt: known.takenAt, fromFile: true, videoCodec: known.videoCodec };
     }
 
-    const header = await this.containerHeader(entry.ref, entry.size);
+    const header = await this.containerHeader(storage, entry.ref, entry.size);
     return {
       ...resolveVideoTakenAt({
         name: entry.name,
@@ -407,7 +439,11 @@ export class Syncer {
    * Both reads share a window because they share a box: separating them would double
    * `Range` requests for a video-album sync to reread the same bytes.
    */
-  private async containerHeader(ref: string, fileSize: number | null): Promise<ContainerHeader> {
+  private async containerHeader(
+    storage: StorageProvider,
+    ref: string,
+    fileSize: number | null,
+  ): Promise<ContainerHeader> {
     const absent: ContainerHeader = { time: null, codec: null };
 
     // Without a reported size the chain cannot be bounded: a zero-size box runs "to
@@ -417,7 +453,7 @@ export class Syncer {
     let start = 0;
 
     for (let fenetre = 0; fenetre < HEADER_MAX_WINDOWS; fenetre++) {
-      const buffer = await this.readWindow(ref, start, fileSize);
+      const buffer = await this.readWindow(storage, ref, start, fileSize);
       if (buffer === null) return absent;
 
       const { moovOffset, nextOffset } = findMoovOffset(buffer, start, fileSize);
@@ -443,13 +479,18 @@ export class Syncer {
   }
 
   /** One header window, or `null` if the storage did not return it. */
-  private async readWindow(ref: string, start: number, fileSize: number): Promise<Buffer | null> {
+  private async readWindow(
+    storage: StorageProvider,
+    ref: string,
+    start: number,
+    fileSize: number,
+  ): Promise<Buffer | null> {
     const end = Math.min(start + HEADER_WINDOW_BYTES, fileSize) - 1;
     if (end < start) return null;
 
     try {
-      const response = await this.storage.guard(() =>
-        this.storage.fetch(ref, `bytes=${start}-${end}`, AbortSignal.timeout(HEADER_TIMEOUT_MS)),
+      const response = await storage.guard(() =>
+        storage.fetch(ref, `bytes=${start}-${end}`, AbortSignal.timeout(HEADER_TIMEOUT_MS)),
       );
       if (!response.ok && response.status !== 206) return null;
       return Buffer.from(await response.arrayBuffer());

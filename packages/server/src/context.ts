@@ -20,7 +20,8 @@ import { ffmpegAvailable, spawnFfmpeg, TranscodePass, VideoTranscoder } from './
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SearchRepo } from './search.js';
 import { SessionStore } from './sessions.js';
-import { DriveService } from './storage/drive.js';
+import { StorageConnectionRepo } from './storage/connections.js';
+import { StorageRegistry } from './storage/registry.js';
 import { Syncer } from './sync/sync.js';
 import { SubscriptionRepo } from './subscriptions.js';
 import { VisitLog } from './telemetry.js';
@@ -78,13 +79,14 @@ export class AppContext {
    * hourly housekeeping in `main.ts`, which cannot access a route factory's closures.
    */
   readonly throttle = new LoginThrottle();
+  /** The connections themselves: what /admin lists, creates and deletes. */
+  readonly connections: StorageConnectionRepo;
   /**
-   * Where the albums live. Typed as the Drive implementation rather than the interface
-   * because /admin still drives an OAuth consent that belongs to this backend alone;
-   * everything downstream — indexing, rendering, transcoding — sees only a
-   * `StorageProvider`.
+   * Where the albums live, one live provider per connection. Everything downstream —
+   * indexing, rendering, transcoding, the media proxy — asks it for a `StorageProvider`
+   * and learns nothing else about the backend.
    */
-  readonly storage: DriveService;
+  readonly storage: StorageRegistry;
   /**
    * The instance's logo, and the icons derived from it. Under `DATA_DIR` rather than
    * `CACHE_DIR`: an uploaded logo is not recomputable from anything (D260813b).
@@ -143,7 +145,8 @@ export class AppContext {
     };
 
     this.mailer = Mailer.fromEnv(env, logger);
-    this.storage = new DriveService(env, this.db, logger);
+    this.connections = new StorageConnectionRepo(this.db, env.tokenKey);
+    this.storage = new StorageRegistry(this.connections, env, logger);
     this.branding = new BrandingStore(join(env.dataDir, 'branding'), logger);
     this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
     this.videoStore = new MediaCache(
@@ -151,7 +154,7 @@ export class AppContext {
       this.settings.videoCacheMaxSizeGB * GIB,
       logger,
     );
-    this.renderer = new MediaRenderer(this.storage, this.cache, logger);
+    this.renderer = new MediaRenderer(this.cache, logger);
     this.syncer = new Syncer(this.storage, this.media, this.syncState, logger);
     this.updates = new UpdateChecker({
       currentVersion: env.appVersion,
@@ -188,11 +191,12 @@ export class AppContext {
       // current pass, not just the next one — that is what is expected of a switch
       // after noticing that it saturates the connection.
       //
-      // The Drive connection belongs in the same predicate rather than another
-      // dependency: without it, the pass would traverse the whole album, failing
+      // Having a usable storage belongs in the same predicate rather than another
+      // dependency: without one, the pass would traverse the whole album, failing
       // photo by photo **with its one-second pause** — fifteen minutes of futile
       // looping per hour for an album of a thousand photos.
-      enabled: () => this.settings.prewarmCache && this.storage.connected,
+      storage: (connectionId) => this.storage.get(connectionId),
+      enabled: () => this.settings.prewarmCache && this.storage.anyConnected(),
       log: logger,
     });
 
@@ -200,18 +204,18 @@ export class AppContext {
       albums: () => this.albums,
       media: this.media,
       store: this.videoStore,
+      storage: (connectionId) => this.storage.get(connectionId),
       transcoder: new VideoTranscoder({
-        storage: this.storage,
         store: this.videoStore,
         root: join(env.cacheDir, 'video'),
         run: spawnFfmpeg,
       }),
       // Three conditions in the same predicate, re-evaluated for every video, for
-      // the same reason as prewarming: without Drive, the pass would traverse the
-      // album failing file by file; without ffmpeg, it would fail after downloading
-      // each original — one hundred and fifty megabytes fetched for nothing, per
-      // video and per hour.
-      enabled: () => this.settings.transcodeVideos && this.storage.connected && this.ffmpeg,
+      // the same reason as prewarming: without a usable storage, the pass would
+      // traverse the album failing file by file; without ffmpeg, it would fail after
+      // downloading each original — one hundred and fifty megabytes fetched for
+      // nothing, per video and per hour.
+      enabled: () => this.settings.transcodeVideos && this.storage.anyConnected() && this.ffmpeg,
       log: logger,
     });
 

@@ -6,6 +6,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import {
+  StorageNotConfiguredError,
   StorageNotConnectedError,
   StorageRevokedError,
   StorageUnavailableError,
@@ -53,9 +54,9 @@ function resolveRange(range: ByteRange, size: number): { start: number; end: num
 
 export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
   /**
-   * Access control for the entire media pipeline. The same Drive file may be indexed
-   * in several albums (nested folders): access is granted as soon as one of those
-   * albums is visible to the user.
+   * Access control for the entire media pipeline. The same file may be indexed in
+   * several albums (nested folders): access is granted as soon as one of those albums
+   * is visible to the user.
    *
    * A refusal returns 404 rather than 403 — the existence of media in an unauthorised
    * album must not be observable.
@@ -124,6 +125,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     }
 
     const rendered = await context.renderer.render(
+      context.storage.get(meta.connectionId),
       mediaId,
       variant,
       meta.md5,
@@ -150,7 +152,10 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (error instanceof StorageRevokedError) {
         return reply.code(503).send({ error: 'storage_revoked', message: error.message });
       }
-      if (error instanceof StorageNotConnectedError) {
+      // Not connected and not configured land on the same code deliberately: from a
+      // grid, both mean "this storage cannot serve anything, and /admin is where it is
+      // fixed". The message says which of the two it is.
+      if (error instanceof StorageNotConnectedError || error instanceof StorageNotConfiguredError) {
         return reply.code(503).send({ error: 'storage_disconnected', message: error.message });
       }
       // Timeout or rate limit: **transient**. The 503 and `Retry-After` tell the client
@@ -279,10 +284,13 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
 
       const wantsDownload = (request.query as { download?: string }).download === '1';
       const range = parseRange(request.headers.range);
+      // Which storage holds this file comes from its album, resolved once per request:
+      // one instance now serves a photo from a Drive and the next from a bucket.
+      const storage = context.storage.get(meta.connectionId);
       // Through `guard`, like every other read: a revoked authorisation must become the
       // 503 the error handler below already knows how to phrase, not a bare 500.
-      const upstream = await context.storage.guard(() =>
-        context.storage.fetch(mediaId, range ? formatRange(range) : undefined),
+      const upstream = await storage.guard(() =>
+        storage.fetch(mediaId, range ? formatRange(range) : undefined),
       );
 
       /**

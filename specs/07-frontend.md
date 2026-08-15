@@ -1779,14 +1779,14 @@ Accounts, albums and settings are administered from `/admin`:
 
 Administration is navigated by **sections, one per URL** (D66):
 
-| Section  | URL               | Content                                                 |
-| -------- | ----------------- | ------------------------------------------------------- |
-| Albums   | `/admin/albums`   | `AlbumsSection`                                         |
-| Accounts | `/admin/accounts` | `UsersSection`                                          |
-| Comments | `/admin/comments` | `CommentsSection`                                       |
-| Identity | `/admin/identity` | `IdentitySection`                                       |
-| Server   | `/admin/server`   | `DriveSection`, `SettingsSection`, `MaintenanceSection` |
-| Visits   | `/admin/visits`   | `VisitsSection`                                         |
+| Section  | URL               | Content                                                   |
+| -------- | ----------------- | --------------------------------------------------------- |
+| Albums   | `/admin/albums`   | `AlbumsSection`                                           |
+| Accounts | `/admin/accounts` | `UsersSection`                                            |
+| Comments | `/admin/comments` | `CommentsSection`                                         |
+| Identity | `/admin/identity` | `IdentitySection`                                         |
+| Server   | `/admin/server`   | `StorageSection`, `SettingsSection`, `MaintenanceSection` |
+| Visits   | `/admin/visits`   | `VisitsSection`                                           |
 
 `ADMIN_TABS`, in `AdminNav`, is the single source: navigation renders it, and
 `AdminPage` validates the `:tab` parameter against it. An unknown section
@@ -1834,23 +1834,56 @@ The message banner stays in the content column, stuck under the top bar: the
 comments section always scrolls, and a message shown at the very top would go
 unnoticed from the bottom of the queue.
 
-| Component                     | Role                                                                                    |
-| ----------------------------- | --------------------------------------------------------------------------------------- |
-| `AdminNav`                    | Navigation between the six sections, as `NavLink`                                       |
-| `DriveSection`                | OAuth connection status, consent, disconnect                                            |
-| `UsersSection` / `UserForm`   | Account list, creation, editing, confirmed deletion                                     |
-| `AlbumsSection` / `AlbumForm` | Album list, sync status, default grouping, revert to automatic cover, creation, editing |
-| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                |
-| `SettingsSection`             | Sync interval, sync on startup, cache                                                   |
-| `MaintenanceSection`          | Cache usage and purge                                                                   |
-| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                          |
-| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                              |
-| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                          |
-| `AdminMenu`                   | The same six sections as a grouped list, below `md`, filling `/admin`                   |
-| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry, `SettingRow`     |
+| Component                     | Role                                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `AdminNav`                    | Navigation between the six sections, as `NavLink`                                                    |
+| `StorageSection`              | The storages this instance reads: state, test, consent, disconnect, add, delete                      |
+| `UsersSection` / `UserForm`   | Account list, creation, editing, confirmed deletion                                                  |
+| `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing |
+| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                             |
+| `SettingsSection`             | Sync interval, sync on startup, cache                                                                |
+| `MaintenanceSection`          | Cache usage and purge                                                                                |
+| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                       |
+| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                           |
+| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                       |
+| `AdminMenu`                   | The same six sections as a grouped list, below `md`, filling `/admin`                                |
+| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry, `SettingRow`                  |
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
+
+### Storage — `components/admin/StorageSection.tsx`
+
+A **list**, not a panel: an instance may read a Drive for the family album and a
+bucket for the archives, so every connection gets a row saying the one thing that
+decides whether its albums work — can this storage serve bytes right now, and if
+not, what has to be done about it.
+
+Each row branches on `authorization`, never on the kind. `consent` shows Connect,
+Reconnect or Disconnect; `key` shows no button at all and the address to share the
+folder with, because a service account is authorised in Drive rather than here
+(D46); `settings` will show the endpoint typed into the form. Reading the kind
+instead would mean a new branch for every backend, in a component whose job is not
+to know them apart.
+
+**Test is a button and not a screen state.** It costs a round trip to the storage
+itself and answers a question somebody asked by pressing it, so it is a mutation
+rather than a query, and it renders what the backend said — a wrong key, an
+unreachable host — in the message banner. "The album is empty" is what this
+replaces.
+
+Deletion goes through `ConfirmDialog` and is refused server-side while an album
+reads the connection. The row already shows how many do, which is why the button
+stays enabled rather than silently disabled: the refusal names the albums to move
+first, and a disabled button would name nothing.
+
+`AlbumForm` gains the other half: a storage selector, **offered only when there is
+more than one** — with a single connection the control would decide nothing — and
+a container field whose label, placeholder and validation follow the kind. Drive
+addresses a folder by an opaque identifier pasted from a URL, every other backend
+by a path, so `lib/adminForm.ts` has `extractContainer` beside `extractFolderId`:
+validating a bucket prefix as a Drive identifier would refuse `vacances/2026` for
+containing a slash.
 
 ### A setting is a row on a phone — `SettingRow`
 

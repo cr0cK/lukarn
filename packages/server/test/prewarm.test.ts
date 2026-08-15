@@ -95,6 +95,7 @@ function fauxRenderer(options: { echoue?: Set<string> } = {}): FauxRenderer {
     // `prepare` owns the cache short circuit because the variant key lives
     // there; prewarming need not know it.
     prepare: (
+      _storage: unknown,
       fileId: string,
       variants: Variant[],
       _md5: string | null,
@@ -118,10 +119,11 @@ function deps(
   overrides: Partial<PrewarmDeps> = {},
 ): PrewarmDeps {
   return {
-    albums: () => [{ id: albumId }],
+    albums: () => [{ id: albumId, connectionId: 'drive' }],
     media,
     cache: new MediaCache(join(dir, `cache-${albumId}`), 10_000_000, silencieux),
     renderer,
+    storage: () => ({}) as never,
     enabled: () => true,
     log: silencieux,
     ...overrides,

@@ -258,6 +258,7 @@ export interface Transcoder {
    * bound bitrate (D260809g); `null` abandons the cap.
    */
   transcode(
+    storage: StorageProvider,
     fileId: string,
     md5: string | null,
     durationMs: number | null,
@@ -266,7 +267,6 @@ export interface Transcoder {
 }
 
 export interface VideoTranscoderDeps {
-  storage: StorageProvider;
   /** Store of playable versions — a `MediaCache` mounted on `root`. */
   store: MediaCache;
   /**
@@ -290,6 +290,7 @@ export class VideoTranscoder implements Transcoder {
   constructor(private readonly deps: VideoTranscoderDeps) {}
 
   async transcode(
+    storage: StorageProvider,
     fileId: string,
     md5: string | null,
     durationMs: number | null,
@@ -302,7 +303,7 @@ export class VideoTranscoder implements Transcoder {
     const cible = `${prefixe}.sortie.tmp`;
 
     try {
-      await this.download(fileId, source, signal);
+      await this.download(storage, fileId, source, signal);
       // Size is measured from the received file rather than the index: this is what
       // ffmpeg encodes, and a storage may report a missing or stale size that would cap
       // the wrong bitrate.
@@ -318,10 +319,13 @@ export class VideoTranscoder implements Transcoder {
     }
   }
 
-  private async download(fileId: string, path: string, signal: AbortSignal): Promise<void> {
-    const response = await this.deps.storage.guard(() =>
-      this.deps.storage.fetch(fileId, undefined, signal),
-    );
+  private async download(
+    storage: StorageProvider,
+    fileId: string,
+    path: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const response = await storage.guard(() => storage.fetch(fileId, undefined, signal));
     if (!response.ok || !response.body) {
       throw new Error(`The storage answered ${response.status} for ${fileId}`);
     }
@@ -334,10 +338,12 @@ export class VideoTranscoder implements Transcoder {
 
 export interface TranscodePassDeps {
   /** Read again on every pass so albums created since startup are included. */
-  albums: () => { id: string }[];
+  albums: () => { id: string; connectionId: string }[];
   media: MediaRepo;
   store: MediaCache;
   transcoder: Transcoder;
+  /** The storage an album reads. Resolved per album, once. */
+  storage: (connectionId: string) => StorageProvider;
   /** Read for every video so disabling the setting stops the current pass. */
   enabled: () => boolean;
   log: Logger;
@@ -394,6 +400,16 @@ export class TranscodePass {
 
     try {
       for (const album of this.deps.albums()) {
+        let storage: StorageProvider;
+        try {
+          storage = this.deps.storage(album.connectionId);
+        } catch (error) {
+          // Same reasoning as prewarming: one unreadable connection is not a reason to
+          // leave every other album's videos unplayable.
+          this.deps.log.warn(`Transcoding skips "${album.id}": ${(error as Error).message}`);
+          continue;
+        }
+
         let cursor: string | null = null;
 
         do {
@@ -422,6 +438,7 @@ export class TranscodePass {
 
             try {
               await this.deps.transcoder.transcode(
+                storage,
                 item.id,
                 md5,
                 item.durationMs,

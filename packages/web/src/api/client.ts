@@ -14,6 +14,7 @@ import {
   type CommentsPage,
   type CreateAlbumRequest,
   type CreateCommentRequest,
+  type CreateStorageRequest,
   type CreateUserRequest,
   type DevicePairingStart,
   type DevicePairingState,
@@ -26,12 +27,15 @@ import {
   type SearchHit,
   type SessionUser,
   type SortOrder,
+  type StorageConnectionStatus,
+  type StorageProbeResult,
   type ThumbSize,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
   type UpdateCommentRequest,
   type UpdateMediaRequest,
   type UpdateSettingsRequest,
+  type UpdateStorageRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
   type VersionInfo,
@@ -258,9 +262,36 @@ export const api = {
   visits: (days: number) =>
     request<VisitsOverview>(`/admin/visits?${new URLSearchParams({ days: String(days) })}`),
 
-  oauthStart: () => request<{ url: string }>('/admin/oauth/start'),
+  adminStorage: () => request<StorageConnectionStatus[]>('/admin/storage'),
 
-  driveDisconnect: () => request<{ ok: true }>('/admin/drive/disconnect', { method: 'POST' }),
+  createStorage: (body: CreateStorageRequest) =>
+    request<StorageConnectionStatus>('/admin/storage', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateStorage: (id: string, body: UpdateStorageRequest) =>
+    request<StorageConnectionStatus>(`/admin/storage/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  deleteStorage: (id: string) =>
+    request<{ ok: true }>(`/admin/storage/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** Asks the backend itself whether it answers, and returns what it said. */
+  testStorage: (id: string) =>
+    request<StorageProbeResult>(`/admin/storage/${encodeURIComponent(id)}/test`, {
+      method: 'POST',
+    }),
+
+  oauthStart: (id: string) =>
+    request<{ url: string }>(`/admin/storage/${encodeURIComponent(id)}/oauth/start`),
+
+  storageDisconnect: (id: string) =>
+    request<{ ok: true }>(`/admin/storage/${encodeURIComponent(id)}/disconnect`, {
+      method: 'POST',
+    }),
 
   resync: (albumId?: string) =>
     request<{ started: string[] }>('/admin/resync', {
