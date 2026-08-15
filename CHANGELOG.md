@@ -11,6 +11,17 @@ in this application migrates volumes or renames files on its own.
 
 [semantic versioning]: https://semver.org
 
+## [Unreleased]
+
+### Fixed
+
+- **The very first message a new installation gets now names a command that
+  exists on the machine reading it.** An instance started from the image with no
+  account yet told its operator to run `pnpm create-admin` — the image carries no
+  pnpm, and that line is the only guidance offered at the one moment nothing else
+  works yet. It now gives the form for the image alongside the one for a source
+  checkout.
+
 ## [1.1.0] — 2026-08-15
 
 ### The phone stops being a narrow desktop
