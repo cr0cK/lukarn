@@ -9,7 +9,19 @@ export default tseslint.config(
     // arbitrary state, which is enough to fail `pnpm lint`, and therefore
     // `pnpm verify` and the `pre-push` hook, without a single tracked file being
     // at fault.
-    ignores: ['**/dist/**', '**/node_modules/**', '.claude/worktrees/**'],
+    //
+    // The two Playwright directories are the same trap from the other side: a
+    // failing `pnpm test:e2e` leaves a bundled HTML report behind, and the next
+    // `pnpm verify` lints somebody else's minified viewer — thousands of errors
+    // in files `.gitignore` already refuses to track. They only appear after a
+    // failure, so the run that reports them is never the run that caused them.
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '.claude/worktrees/**',
+      'packages/e2e/playwright-report/**',
+      'packages/e2e/test-results/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
