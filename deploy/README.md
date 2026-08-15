@@ -599,22 +599,24 @@ Google.
 
 ## Operating
 
-| Action                         | How                                                                                                                                                                           |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Add an album or a user         | `/admin`, effective immediately                                                                                                                                               |
-| Add an album (service account) | `/admin`, **then share its Drive folder** with the account address — otherwise the album stays empty, with no error                                                           |
-| Change an interval or a limit  | `/admin`, applied without restart                                                                                                                                             |
-| Force a sync                   | **Resynchronise** in `/admin`                                                                                                                                                 |
-| See sync status                | `/admin`                                                                                                                                                                      |
-| Moderate a comment             | `/admin`, **Comments** section: hide, or make visible again                                                                                                                   |
-| Enable comments                | `SMTP_URL` and `MAIL_FROM` in `.env` (see step 6) — without a sending server nobody can identify themselves                                                                   |
-| Get notified of comments       | Set the moderation address in `/admin`                                                                                                                                        |
-| Annotate a day                 | Open the album **grouped by day**, hover the date, click the pencil. The default grouping is set per album in `/admin`                                                        |
-| Turn off place geocoding       | `GEOCODING_URL=` (empty) in `.env`. By default, coordinates rounded to the kilometre go to Nominatim/OSM to name days; a private Nominatim instance goes in the same variable |
-| Administrator password lost    | `docker compose exec app node packages/server/dist/scripts/reset-password.js <username>` — also closes that account's open sessions                                           |
-| Update                         | `./deploy/deploy.sh` — backs up, rebuilds, and **waits** for the health check to go green again                                                                               |
-| Back up                        | `./deploy/backup.sh` — the `lukarn-data` volume **and** the `.env`, see below. `lukarn-cache` is regenerable                                                                  |
-| Read the logs                  | `docker compose logs -f` (or `logs -f caddy` for the certificate)                                                                                                             |
+| Action                         | How                                                                                                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Add an album or a user         | `/admin`, effective immediately                                                                                                                                                  |
+| Add an album (service account) | `/admin`, **then share its Drive folder** with the account address — otherwise the album stays empty, with no error                                                              |
+| Change an interval or a limit  | `/admin`, applied without restart                                                                                                                                                |
+| Force a sync                   | **Resynchronise** in `/admin`                                                                                                                                                    |
+| See sync status                | `/admin`                                                                                                                                                                         |
+| Moderate a comment             | `/admin`, **Comments** section: hide, or make visible again                                                                                                                      |
+| Enable comments                | `SMTP_URL` and `MAIL_FROM` in `.env` (see step 6) — without a sending server nobody can identify themselves                                                                      |
+| Get notified of comments       | Set the moderation address in `/admin`                                                                                                                                           |
+| Annotate a day                 | Open the album **grouped by day**, hover the date, click the pencil. The default grouping is set per album in `/admin`                                                           |
+| Turn off place geocoding       | `GEOCODING_URL=` (empty) in `.env`. By default, coordinates rounded to the kilometre go to Nominatim/OSM to name days; a private Nominatim instance goes in the same variable    |
+| Administrator password lost    | `docker compose exec app node packages/server/dist/scripts/reset-password.js <username>` — also closes that account's open sessions                                              |
+| Know which version is running  | `/admin`, **Server** section, or the foot of the account menu: "Powered by Lukarn v1.2.3". It also opens the startup log                                                         |
+| Learn that a newer one exists  | Nothing to set up: `/admin` shows a badge carrying its number and linking to its notes. Administrators only, asked at most once every six hours; `UPDATE_CHECK_URL=` disables it |
+| Update                         | `./deploy/deploy.sh` — backs up, rebuilds, and **waits** for the health check to go green again                                                                                  |
+| Back up                        | `./deploy/backup.sh` — the `lukarn-data` volume **and** the `.env`, see below. `lukarn-cache` is regenerable                                                                     |
+| Read the logs                  | `docker compose logs -f` (or `logs -f caddy` for the certificate)                                                                                                                |
 
 Updating an instance that was running on `config/albums.yaml`: nothing to do. At
 first startup its accounts, albums, rights and settings are imported into the

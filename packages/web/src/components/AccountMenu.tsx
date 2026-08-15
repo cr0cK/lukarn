@@ -6,6 +6,7 @@ import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT } from '../lib/i18n';
 import { useInstallPrompt } from '../lib/useInstallPrompt';
 import { ActionMenu, type MenuEntry } from './ActionMenu';
 import { InstallInstructions } from './InstallInstructions';
+import { PoweredBy } from './PoweredBy';
 
 /**
  * Account initial when there is no photo to display.
@@ -92,6 +93,10 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
         // when someone wonders which name they write under.
         entete={user ? [user.username, ...(user.identity ? [user.identity.email] : [])] : undefined}
         groupes={[compte, langues]}
+        // The one place reachable from every page, on both shapes of the
+        // interface: what runs this gallery belongs at the bottom of it, under
+        // everything somebody opened the menu to do.
+        pied={<PoweredBy />}
       />
 
       {modeEmploi && <InstallInstructions onClose={() => setModeEmploi(false)} />}

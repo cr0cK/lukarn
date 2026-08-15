@@ -45,6 +45,21 @@ export const SMTP_PORT = 1025;
 export const SINK_PORT = 1080;
 export const SINK_URL = `http://127.0.0.1:${SINK_PORT}`;
 
+/** The release feed the update check asks. Its own process, like the sink. */
+export const FEED_PORT = 1081;
+export const FEED_URL = `http://127.0.0.1:${FEED_PORT}`;
+
+/**
+ * What this instance claims to be, and what the feed answers.
+ *
+ * Both are needed for the badge to exist at all: the check compares two versions
+ * and reports nothing unless it can read both, which is what keeps every build
+ * outside a release quiet (D260815). `1.0.0` rather than the tag of the day, so
+ * the assertion does not have to be edited on every release.
+ */
+export const RUNNING_VERSION = '1.0.0';
+export const PUBLISHED_VERSION = '1.1.0';
+
 /** The one account. Administrator, because half the suite is `/admin`. */
 export const ADMIN = { username: 'alice', password: 'e2e-password-alice' };
 
@@ -91,6 +106,11 @@ export function instanceEnv(): NodeJS.ProcessEnv {
     HOST: '127.0.0.1',
     PUBLIC_URL: BASE_URL,
     APP_NAME: 'Lukarn e2e',
+    APP_VERSION: RUNNING_VERSION,
+    // The local feed, never GitHub: this is the one setting that would make the
+    // suite call out to a third party, and the badge is only assertable if the
+    // answer is known in advance. Same reason `GEOCODING_URL` is empty below.
+    UPDATE_CHECK_URL: `${FEED_URL}/releases/latest`,
     DEFAULT_LOCALE: 'en',
     // Long enough for the 32-character minimum, and fixed rather than random:
     // a session survives a `serve.ts` restart, which is what makes the suite

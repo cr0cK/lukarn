@@ -33,6 +33,7 @@ import { ApiError, api, type AdminCommentsQuery } from './client';
 
 export const queryKeys = {
   me: ['me'] as const,
+  version: ['version'] as const,
   albums: ['albums'] as const,
   album: (id: string) => ['album', id] as const,
   // Sort order is part of the key: without it, TanStack Query would reuse pages
@@ -79,6 +80,24 @@ export function useMe() {
     // retrying would only delay the form.
     retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 2,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * What this instance runs, and whether a newer release exists.
+ *
+ * An hour of `staleTime` because the answer is a published release: it changes a
+ * few times a year, and the server caches its own question for six hours anyway.
+ * `retry: false` for the same reason the server logs its failure rather than
+ * raising it — the line at the bottom of a menu is not worth three attempts, and
+ * an instance cut off from the outside would retry on every mount.
+ */
+export function useVersion() {
+  return useQuery({
+    queryKey: queryKeys.version,
+    queryFn: api.version,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
   });
 }
 

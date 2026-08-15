@@ -51,6 +51,11 @@ services:
       # without a label. This is the application's only privacy setting: it has to
       # reach the container in order to exist.
       GEOCODING_URL: ${GEOCODING_URL-https://nominatim.openstreetmap.org}
+      # Same `-` as the two above, and the same reason: empty means "ask nobody
+      # whether a newer version exists", and the instance then contacts nothing at
+      # all. `APP_VERSION` is deliberately absent — the image carries the version
+      # it was built from, and an instance must not be able to claim another one.
+      UPDATE_CHECK_URL: ${UPDATE_CHECK_URL-https://api.github.com/repos/cr0cK/lukarn/releases/latest}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       # Configuration, read-only: the application never modifies it.

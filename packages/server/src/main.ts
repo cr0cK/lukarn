@@ -181,8 +181,11 @@ async function main(): Promise<void> {
 
   await server.listen({ port: env.port, host: env.host });
 
+  // The version leads the line: it is the first thing asked of a log when an
+  // instance behaves unlike the one somebody else is running.
   server.log.info(
-    `Thread pool: ${threadPoolSize} · concurrent renders: ${context.renderer.load.limit}`,
+    `lukarn ${env.appVersion} · thread pool: ${threadPoolSize} · concurrent renders: ` +
+      `${context.renderer.load.limit}`,
   );
 
   if (!context.drive.configured) {

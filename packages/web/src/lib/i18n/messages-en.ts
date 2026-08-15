@@ -654,6 +654,18 @@ export const en = {
   'maintenance.cleared': 'Cache cleared. Thumbnails will be regenerated on demand.',
   'maintenance.clearFailed': 'Cannot clear cache.',
 
+  /* ----------------------------------------------------- What runs this gallery */
+
+  'version.title': 'Version',
+  // The product's name, not the instance's: an album called "Chez nous" is not
+  // what powers itself, and the name of the software is what the changelog and
+  // the release this line links to are about.
+  'version.poweredBy': (version: string) => `Powered by Lukarn ${version}`,
+  'version.changelog': 'Changelog',
+  // Names the version rather than saying "update available": the number is what
+  // tells an operator whether this is the release they already read about.
+  'version.update': (version: string) => `Update to ${version}`,
+
   /* ------------------------------------------------------ Administration: visits */
 
   'visits.title': 'Visits',

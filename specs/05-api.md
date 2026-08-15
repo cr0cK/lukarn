@@ -47,6 +47,45 @@ actual message otherwise.
 
 Used by the Dockerfile's `HEALTHCHECK`.
 
+## Version — `routes/version.ts` and `updates.ts`
+
+| Method | Path           | Access    | Response      |
+| ------ | -------------- | --------- | ------------- |
+| GET    | `/api/version` | signed in | `VersionInfo` |
+
+```ts
+{
+  version: string;          // '1.2.3', or 'dev' outside a release
+  changelogUrl: string;     // every version, including the one being offered
+  update: { version: string; url: string } | null;
+}
+```
+
+**Signed in rather than public.** The version an instance runs is what a scanner
+collects, and a visitor at the sign-in screen has no use for it. Everyone who has
+signed in sees it, because an AGPL interface naming the software that serves it is
+the point of the line (D260815).
+
+**`update` is only ever filled for an administrator**, and only their request can
+cause the release feed to be called. An access key cannot move the instance from
+one image to another, so announcing a release to it would be an interruption with
+no action behind it. It is also `null` when the instance is up to date, when
+`UPDATE_CHECK_URL` is empty, when the feed could not be reached, and when
+`APP_VERSION` is not three numbers — every local build, which therefore contacts
+nobody at all.
+
+`updates.ts` holds the question and its answer: **at most one call every six
+hours**, half an hour after a failure, one shared request when two screens ask at
+once, and nothing persisted — the cache lives in the process, since a table for
+one row would be a migration for it. Five-second timeout, because an administrator
+is waiting on the response. A failure is logged and answered as "nothing to
+report": not knowing whether an update exists changes nothing about serving
+photos.
+
+Nothing here updates anything. See [07](./07-frontend.md) for where the line and
+its badge are shown, and [06](./06-configuration-and-deployment.md) for the two
+variables.
+
 ## Authentication — `routes/auth.ts`
 
 | Method | Path                                 | Access  |

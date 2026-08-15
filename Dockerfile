@@ -83,6 +83,11 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
+# The same build argument the labels carry, handed to the process this time: it is
+# what the interface prints under "Powered by" and what the update check compares
+# against. A local build leaves it at `dev`, which is never compared to anything —
+# no build outside a release is ever told it is out of date (D260815).
+ENV APP_VERSION=${VERSION}
 ENV CONFIG_PATH=/app/config/albums.yaml
 ENV DATA_DIR=/app/data
 ENV CACHE_DIR=/app/cache

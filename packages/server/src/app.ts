@@ -17,6 +17,7 @@ import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
 import { createSearchRoutes } from './routes/search.js';
 import { createSubscriptionRoutes } from './routes/subscriptions.js';
+import { createVersionRoutes } from './routes/version.js';
 import { renderManifest, renderShell } from './shell.js';
 
 export interface BuiltApp {
@@ -69,6 +70,9 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
   await server.register(
     async (api) => {
       api.get('/health', async () => ({ status: 'ok' }));
+      // No prefix: it is a single route, and `/api/version/` would suggest a family
+      // of them that does not exist.
+      await api.register(createVersionRoutes(context));
       await api.register(createAuthRoutes(context), { prefix: '/auth' });
       await api.register(createAlbumRoutes(context), { prefix: '/albums' });
       await api.register(createSearchRoutes(context), { prefix: '/search' });

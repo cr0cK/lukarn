@@ -34,6 +34,7 @@ import {
   type UpdateSettingsRequest,
   type UpdateUserRequest,
   type VerifyIdentityRequest,
+  type VersionInfo,
   type VisitsOverview,
 } from '@lukarn/shared';
 import { activeLocale } from '../lib/i18n/locale';
@@ -102,6 +103,12 @@ export interface AdminCommentsQuery {
 
 export const api = {
   me: () => request<SessionUser>('/auth/me'),
+
+  /**
+   * What this instance runs, and whether something newer exists. `update` only ever
+   * arrives for an administrator — the server decides that, not the caller.
+   */
+  version: () => request<VersionInfo>('/version'),
 
   /** Public: reports whether the instance still has no account. */
   setupState: () => request<{ needsSetup: boolean }>('/auth/setup-state'),
