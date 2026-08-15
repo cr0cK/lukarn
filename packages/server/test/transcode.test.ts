@@ -62,6 +62,7 @@ function video(albumId: string, id: string, jour: number, codec: string | null):
     md5: `empreinte-${id}`,
     hasThumbnail: true,
     videoCodec: codec,
+    sourcePath: null,
   };
 }
 

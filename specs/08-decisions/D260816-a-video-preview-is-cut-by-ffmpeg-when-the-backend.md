@@ -8,7 +8,7 @@ of [D6](./D6-no-video-transcoding.md) — a modest VPS has no CPU to spare.
 Three of that decision's four load-bearing facts have since changed.
 
 - **ffmpeg is already in the image and already runs.** D6 was reopened by
-  [D260809b](./D260809b-videos-the-browser-cannot-read-are-prepared-in-the.md),
+  [D260809b](./D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md),
   which transcodes HEVC videos in the background, reniced, one at a time. The
   binary is installed, the seam that runs it exists, and the cost of one still is
   a rounding error beside the ten CPU minutes a transcode already spends.

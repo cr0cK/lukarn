@@ -55,6 +55,7 @@ function photo(id: string, takenAt: string, point?: { lat: number; lng: number }
     md5: null,
     hasThumbnail: true,
     videoCodec: null,
+    sourcePath: null,
   };
 }
 

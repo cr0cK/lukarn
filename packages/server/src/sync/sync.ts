@@ -1,11 +1,19 @@
 import type { MediaRepo, MediaUpsert, SyncStateRepo } from '../repo.js';
 import {
   StorageRevokedError,
+  type ProviderMediaMetadata,
   type StorageEntry,
   type StoragePage,
   type StorageProvider,
 } from '../storage/provider.js';
-import { classify, resolveVideoTakenAt, type VideoTakenAt } from './metadata.js';
+import { findExifSegment } from './exif.js';
+import {
+  classify,
+  fromExifBlock,
+  mediaId,
+  resolveVideoTakenAt,
+  type VideoTakenAt,
+} from './metadata.js';
 import { findMoovOffset, readCreationTime, readVideoCodec } from './mp4.js';
 
 /** Guard against a folder pointing to an entire, enormous tree. */
@@ -240,7 +248,7 @@ export class Syncer {
             continue;
           }
 
-          const item = await this.toUpsert(storage, album.id, entry);
+          const item = await this.toUpsert(storage, album, entry);
           if (!item) continue;
 
           batch.push(item);
@@ -335,13 +343,23 @@ export class Syncer {
 
   private async toUpsert(
     storage: StorageProvider,
-    albumId: string,
+    album: SyncAlbum,
     entry: StorageEntry,
   ): Promise<MediaUpsert | null> {
     const kind = classify(entry.mimeType);
     if (!kind) return null;
 
-    const media = entry.media;
+    // A backend whose references are locations cannot use one as an identifier: two
+    // connections may hold the same path, and it changes the day the file is renamed.
+    // The path is kept so the media routes can still ask for the bytes.
+    const path = storage.refKind === 'path';
+    const id = path ? mediaId(album.connectionId, entry.ref) : entry.ref;
+
+    // Drive delivers this in the listing itself; every other backend hands over bytes
+    // and the EXIF block is read from the front of the file (D260816b).
+    const media =
+      entry.media ??
+      (kind === 'photo' ? await this.photoMetadata(storage, album.id, id, entry) : null);
 
     // Without a capture date (screenshots, re-encoded photos), the file's modification
     // time is the only chronological reference. Videos never carry one and are dated
@@ -349,7 +367,7 @@ export class Syncer {
     // (D260809b).
     const { takenAt, fromFile, videoCodec } =
       kind === 'video'
-        ? await this.videoHeader(storage, albumId, entry)
+        ? await this.videoHeader(storage, album.id, id, entry)
         : {
             takenAt: media?.takenAt ?? entry.modifiedTime,
             fromFile: media?.takenAt != null,
@@ -363,8 +381,9 @@ export class Syncer {
     const height = media?.height ?? null;
 
     return {
-      albumId,
-      id: entry.ref,
+      albumId: album.id,
+      id,
+      sourcePath: path ? entry.ref : null,
       name: entry.name,
       mimeType: entry.mimeType ?? 'application/octet-stream',
       kind,
@@ -391,6 +410,35 @@ export class Syncer {
   }
 
   /**
+   * A photograph's metadata, read out of the first bytes of the file.
+   *
+   * One ranged request per **new** photograph, and none afterwards: while the version
+   * the backend reports is unchanged the bytes are unchanged, so rereading them would
+   * return exactly what the index already holds. Without that shortcut, resyncing a
+   * library of five thousand photographs would fetch three hundred megabytes an hour to
+   * learn nothing.
+   *
+   * `null` is the ordinary answer for a screenshot or a re-encoded photograph, and for
+   * a window that did not reach the block. The caller then dates the file by its
+   * modification time, exactly as before any of this existed.
+   */
+  private async photoMetadata(
+    storage: StorageProvider,
+    albumId: string,
+    id: string,
+    entry: StorageEntry,
+  ): Promise<ProviderMediaMetadata | null> {
+    const known = this.media.indexedMedia(albumId, id);
+    if (known && entry.version !== null && known.md5 === entry.version) return known.media;
+
+    const window = await this.readWindow(storage, entry.ref, 0, entry.size ?? HEADER_WINDOW_BYTES);
+    if (window === null) return null;
+
+    const block = findExifSegment(window);
+    return block ? fromExifBlock(block) : null;
+  }
+
+  /**
    * Video capture date (D97) and video-track codec (D260809b), reconstructed from the
    * file in one read.
    *
@@ -406,10 +454,14 @@ export class Syncer {
   private async videoHeader(
     storage: StorageProvider,
     albumId: string,
+    id: string,
     entry: StorageEntry,
   ): Promise<VideoHeader> {
     const version = entry.version;
-    const known = this.media.fileTakenAt(albumId, entry.ref);
+    // The index is keyed by identifier, the storage by reference: on a path-based
+    // backend they differ, and asking the index for `entry.ref` would find nothing and
+    // reread every video header on every pass.
+    const known = this.media.fileTakenAt(albumId, id);
     if (
       known?.takenAtFromExif &&
       version !== null &&
@@ -499,7 +551,7 @@ export class Syncer {
       // videos by upload time before noticing.
       if (error instanceof StorageRevokedError) throw error;
       this.log.warn(
-        `Header of video ${ref} unreadable: ${(error as Error).message} — ` +
+        `Header of ${ref} unreadable: ${(error as Error).message} — ` +
           'the date comes from the file name or its modification date.',
       );
       return null;

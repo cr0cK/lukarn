@@ -24,6 +24,12 @@ in this application migrates volumes or renames files on its own.
 - **A connection can be disconnected without being forgotten.** Signing an account
   out clears its credentials and keeps the connection, so the albums reading it
   keep pointing somewhere and reconnecting is one button.
+- **Videos with no preview now get one.** Until now a video whose storage held no
+  image of it showed a grey tile with a play icon, and there was no way to tell a
+  holiday clip from a screen recording without opening it. A frame is now taken
+  from the video itself, one second in — past the black frame recordings tend to
+  open on — and cached like any other thumbnail. It needs ffmpeg, which the
+  container image already carries; without it, nothing changes.
 
 ### Changed
 

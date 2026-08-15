@@ -279,6 +279,8 @@ async function main(): Promise<void> {
       items.push({
         albumId: album.id,
         id,
+        // The demo has no storage behind it, so nothing ever asks for the bytes.
+        sourcePath: null,
         name: isVideo ? `VID_${index}.mp4` : `IMG_${String(index).padStart(4, '0')}.jpg`,
         mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
         kind: isVideo ? 'video' : 'photo',

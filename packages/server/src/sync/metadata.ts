@@ -1,4 +1,35 @@
+import { createHash } from 'node:crypto';
 import type { MediaKind } from '@lukarn/shared';
+import exifReader from 'exif-reader';
+import type { ProviderMediaMetadata } from '../storage/provider.js';
+
+/**
+ * Length of a derived identifier, in hexadecimal characters.
+ *
+ * 128 bits: a library of a million files sits some twenty orders of magnitude below an
+ * even chance of one collision, and the identifier appears in every media URL, so the
+ * full forty characters would be paid on every request for nothing.
+ */
+const ID_LENGTH = 32;
+
+/**
+ * A media identifier for a backend that names files by path.
+ *
+ * The path alone will not do, twice over: two connections may hold the same one, and
+ * the identifier is what a comment thread, an album cover and the disk cache are keyed
+ * on. Hashing it with the connection makes it unique across an instance and stable for
+ * as long as the file keeps its name.
+ *
+ * The accepted cost: **renaming a file gives it a new identifier, orphaning its
+ * comments.** Drive is the only backend whose reference survives a rename, and no
+ * amount of hashing recovers that — a folder gives us nothing else that identifies the
+ * bytes. The path is kept in `media.source_path` so the file can still be fetched.
+ */
+export function mediaId(connectionId: string, path: string): string {
+  // The separator cannot appear in a connection id — a slug — so no pair of different
+  // inputs concatenates into the same string.
+  return createHash('sha1').update(`${connectionId}|${path}`).digest('hex').slice(0, ID_LENGTH);
+}
 
 /**
  * Only types the browser or sharp can display enter the index — the rest of the
@@ -172,6 +203,98 @@ export function toText(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Signed degrees from the three rationals EXIF writes and the hemisphere beside them.
+ *
+ * The reference letter is not decoration: EXIF stores degrees, minutes and seconds as
+ * unsigned values, so a photograph taken in Chile and one taken in Poland carry the
+ * same numbers and differ only by an `S` and a `W`. Dropping it puts half the world in
+ * the wrong hemisphere.
+ */
+function toDegrees(parts: unknown, reference: unknown): number | null {
+  if (!Array.isArray(parts) || parts.length < 3) return null;
+
+  const [degrees, minutes, seconds] = parts.map(toNumber);
+  if (degrees == null || minutes == null || seconds == null) return null;
+
+  const value = degrees + minutes / 60 + seconds / 3600;
+  if (!Number.isFinite(value) || value > 180) return null;
+
+  const letter = typeof reference === 'string' ? reference.trim().toUpperCase()[0] : null;
+  return letter === 'S' || letter === 'W' ? -value : value;
+}
+
+/**
+ * `ProviderMediaMetadata` from the EXIF block of a photograph.
+ *
+ * The counterpart of what Drive returns pre-parsed in `imageMediaMetadata`: every other
+ * backend hands over bytes, and this is what turns them into the same shape, so nothing
+ * downstream learns which backend a photograph came from.
+ *
+ * Returns `null` for a block that is not readable at all. A block that is readable but
+ * carries no date is **not** null — dimensions, camera and position are worth having on
+ * their own, and the caller falls back to the modification date for the date alone.
+ */
+export function fromExifBlock(block: Buffer): ProviderMediaMetadata | null {
+  let exif: ReturnType<typeof exifReader>;
+  try {
+    exif = exifReader(block);
+  } catch {
+    // A truncated window, a block that is not TIFF, a byte order marker that is not
+    // one: all of them mean the same thing here, and the file's date remains.
+    return null;
+  }
+
+  const image = exif.Image ?? {};
+  const photo = exif.Photo ?? {};
+  const gps = exif.GPSInfo ?? {};
+
+  // `PixelXDimension` is the decoded image, which is what a viewer sees; `ImageWidth` in
+  // IFD0 describes the embedded thumbnail on some cameras and would produce a 160×120
+  // grid tile.
+  const width = toNumber(photo.PixelXDimension) ?? toNumber(image.ImageWidth);
+  const height = toNumber(photo.PixelYDimension) ?? toNumber(image.ImageLength);
+
+  const orientation = toNumber(image.Orientation);
+
+  // `DateTimeOriginal` is when the shutter opened; `DateTime` is when the file was last
+  // written, which an edit moves. `exif-reader` reads all three as UTC, which is the
+  // convention this application stores and displays in.
+  const taken = photo.DateTimeOriginal ?? photo.DateTimeDigitized ?? image.DateTime;
+
+  return {
+    width,
+    height,
+    // 5 to 8 are the orientations that exchange the two axes. The grid computes its rows
+    // from these numbers before a single thumbnail is loaded.
+    rotated: orientation !== null && orientation >= 5 && orientation <= 8,
+    takenAt: taken instanceof Date && !Number.isNaN(taken.getTime()) ? taken.toISOString() : null,
+    cameraMake: toText(image.Make),
+    cameraModel: toText(image.Model),
+    lens: toText(photo.LensModel),
+    isoSpeed: toNumber(photo.ISOSpeedRatings) ?? toNumber(photo.PhotographicSensitivity),
+    exposureTime: toNumber(photo.ExposureTime),
+    aperture: toNumber(photo.FNumber),
+    focalLength: toNumber(photo.FocalLength),
+    ...position(
+      toDegrees(gps.GPSLatitude, gps.GPSLatitudeRef),
+      toDegrees(gps.GPSLongitude, gps.GPSLongitudeRef),
+    ),
+    // A photograph has no duration, and a video never reaches this function.
+    durationMs: null,
+  };
+}
+
+/** Both or neither, for the reason given on `toCoordinates`. */
+function position(
+  lat: number | null,
+  lng: number | null,
+): { lat: number | null; lng: number | null } {
+  if (lat === null || lng === null) return { lat: null, lng: null };
+  if (lat === 0 && lng === 0) return { lat: null, lng: null };
+  return { lat, lng };
 }
 
 /**

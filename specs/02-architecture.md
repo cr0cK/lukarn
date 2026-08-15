@@ -47,8 +47,9 @@ flowchart LR
 | `src/storage/registry.ts`    | `StorageRegistry`: turns a connection row into a live `StorageProvider`, one cached per connection and dropped on any write.                                                 |
 | `src/storage/drive.ts`       | Google Drive behind that interface: consent, refresh, revocation detection, and the mapping from `Schema$File` to `StorageEntry`. The only file importing `@googleapis/*`.   |
 | `src/sync/sync.ts`           | Container traversal and index population, driven by a `StorageProvider`.                                                                                                     |
-| `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), and video capture date.                                                                 |
+| `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), video capture date, and the identifier derived for a path-based backend.                |
 | `src/sync/mp4.ts`            | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                                         |
+| `src/sync/exif.ts`           | Locating the EXIF block in the first bytes of a photograph: a JPEG's `APP1` marker, and a HEIC's `meta → iinf → iloc` indirection. Pure, and never reaches the network.      |
 | `src/media/renderer.ts`      | WebP rendering with sharp, concurrent-render deduplication, fallback to the preview the backend holds. `prepare` prepares several variants from one download for prewarming. |
 | `src/media/cache.ts`         | Disk cache with an in-memory inventory and LRU eviction. Two instances: image derivatives and prepared video storage.                                                        |
 | `src/media/transcode.ts`     | `VideoTranscoder` and `TranscodePass`: background H.264 versions of videos whose codec no common browser decodes, one at a time.                                             |
@@ -211,7 +212,21 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    backend-specific part happens earlier, in the provider: `storage/drive.ts` is
    where `imageMediaMetadata.time` goes through `parseExifTime` and `rotation`
    becomes `rotated`.
-7. **A video is the only exception to "no content is downloaded"**: no backend
+7. **A photograph whose backend supplies no metadata is read from its own bytes.**
+   `StorageEntry.media` is `null` for everything except Drive, and capture date,
+   camera, ISO and position then come from the EXIF block — which sits at the
+   **front** of both formats that carry one, so a single 64 KB window reaches it.
+   `sync/exif.ts` locates it: the `APP1` marker for a JPEG, and for a HEIC the
+   `meta → iinf → iloc` indirection that stores EXIF as an addressed item.
+   `fromExifBlock` in `sync/metadata.ts` turns it into the same
+   `ProviderMediaMetadata` Drive delivers pre-parsed, so nothing downstream learns
+   which backend a photograph came from. **One window per new photograph and none
+   afterwards**: `MediaRepo.indexedMedia` returns what the last pass read, and
+   while the version the backend reports is unchanged the bytes are unchanged. A
+   file with no EXIF — a screenshot, a re-encoded photograph — is the ordinary
+   case and falls back to `modifiedTime`, exactly as before. See
+   [D260816b](./08-decisions/D260816b-exif-is-read-from-a-64-kb-window-not-from-the-file.md).
+8. **A video is the only exception to "no content is downloaded"**: no backend
    exposes a capture date for it, so the beginning of its file is read through
    `Range` requests (D97). `sync/mp4.ts` follows the chain of top-level boxes from offset
    0 to reach the `moov`, whose `mvhd` contains the recording date;
@@ -227,11 +242,11 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    14 are reread once, then bypassed like the others. A read failure does not fail
    the sync: the date falls back to the file name, then to `modifiedTime`, and the
    codec remains `NULL`, so it is retried.
-8. Rows are written in batches of 500 within a transaction. The album becomes
+9. Rows are written in batches of 500 within a transaction. The album becomes
    available during the sync.
-9. `deleteStale(albumId, seenAt)` removes anything not seen again — a file that
-   was moved, deleted, or moved to the bin.
-10. `sync_state` changes to `ok`. On failure, the status changes to `error` with
+10. `deleteStale(albumId, seenAt)` removes anything not seen again — a file that
+    was moved, deleted, or moved to the bin.
+11. `sync_state` changes to `ok`. On failure, the status changes to `error` with
     the message, **but `lastSyncAt` retains the value of the last successful
     sync**: /admin therefore reports the last genuinely complete pass. Note what
     this does **not** mean: the index has not been rolled back. Batches already
@@ -239,7 +254,7 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
     mixture of old and new content. It remains consistent — everything written
     does exist in the storage — but is simply incomplete (see
     [D27](./08-decisions/D27-an-interrupted-sync-leaves-a-mixed-index-and-that-is.md)).
-11. `syncAll` processes albums **sequentially** to preserve the quota, and stops
+12. `syncAll` processes albums **sequentially** to preserve the quota, and stops
     immediately on `StorageRevokedError` — subsequent albums would fail in the
     same way.
 
