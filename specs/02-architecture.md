@@ -47,6 +47,7 @@ flowchart LR
 | `src/storage/registry.ts`    | `StorageRegistry`: turns a connection row into a live `StorageProvider`, one cached per connection and dropped on any write.                                                         |
 | `src/storage/drive.ts`       | Google Drive behind that interface: consent, refresh, revocation detection, and the mapping from `Schema$File` to `StorageEntry`. The only file importing `@googleapis/*`.           |
 | `src/storage/local.ts`       | `LocalFolderService`: a folder on the machine behind that interface, fenced to `STORAGE_LOCAL_ROOT` by `realpath` on every path it resolves, and building its own `Range` responses. |
+| `src/storage/xml.ts`         | The element reader S3 listings and WebDAV `PROPFIND` replies share. Reads names and text; expands no doctype and no external entity, deliberately.                                   |
 | `src/sync/sync.ts`           | Container traversal and index population, driven by a `StorageProvider`.                                                                                                             |
 | `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), video capture date, and the identifier derived for a path-based backend.                        |
 | `src/sync/mp4.ts`            | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                                                 |
