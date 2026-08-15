@@ -54,7 +54,11 @@ export function Button({
   );
 }
 
-/** Administration page block: a title, an optional action and content. */
+/**
+ * Page block: a title, an optional description, an optional action and content.
+ * Administration is built from these, and so is `/settings` — the reader's own
+ * screen borrows the same primitives rather than growing a second look.
+ */
 export function Section({
   title,
   description,
@@ -302,6 +306,100 @@ export function TextField({
       </label>
       {control}
       {messages}
+    </div>
+  );
+}
+
+/** One choice offered by a `SelectField`. */
+export interface SelectOption {
+  value: string;
+  label: string;
+  /**
+   * Listed but not selectable. A setting whose second value is still being built
+   * says so where it will appear, rather than arriving one day unannounced.
+   */
+  disabled?: boolean;
+}
+
+/**
+ * Closed list of values, shaped like `TextField` and for the same reason.
+ *
+ * Every setting on a screen must be read the same way: a label above the control
+ * from `md`, a `SettingRow` below it. A bare `<select>` beside two `TextField`s
+ * would be the one control whose name sits somewhere else.
+ *
+ * The row shows the **label** of the current option, never its value: `fr` names
+ * nothing to whoever is reading the list.
+ */
+export function SelectField({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+  hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  options: readonly SelectOption[];
+  onChange: (value: string) => void;
+  hint?: ReactNode;
+}): ReactElement {
+  const phone = useMediaQuery(PHONE_QUERY);
+  const hintId = hint ? `${id}-hint` : undefined;
+  const current = options.find((option) => option.value === value);
+
+  const control = (
+    <select
+      id={id}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      aria-describedby={hintId}
+      // Capped rather than full-bleed like `TextField`, and the difference is
+      // the control: a text field is as wide as what may be typed into it,
+      // while a closed list is as wide as its longest option — "English" alone
+      // across a 700 px column reads as a field somebody forgot to fill.
+      //
+      // `truncate` all the same: a select asks for the width of its longest
+      // option, and a long one would push the field past the section on a phone.
+      className={`${CONTROL_CLASS} truncate sm:max-w-xs`}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value} disabled={option.disabled}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+
+  const message = hint && (
+    <p id={hintId} className="mt-1 text-xs text-ink-400">
+      {hint}
+    </p>
+  );
+
+  if (phone) {
+    return (
+      // `startOpen` is never set: a select always has a value, so the row always
+      // has something to read, and opening every one of them would undo the list.
+      <SettingRow label={label} value={current?.label ?? ''}>
+        <label htmlFor={id} className="sr-only">
+          {label}
+        </label>
+        {control}
+        {message}
+      </SettingRow>
+    );
+  }
+
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-sm text-ink-300">
+        {label}
+      </label>
+      {control}
+      {message}
     </div>
   );
 }

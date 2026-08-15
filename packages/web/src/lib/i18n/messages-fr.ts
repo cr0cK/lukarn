@@ -67,6 +67,17 @@ export const fr: Messages = {
   'tabs.activity': 'Activité',
   'tabs.account': 'Compte',
 
+  /* ------------------------------------------------- Réglages du lecteur */
+
+  'prefs.title': 'Réglages',
+  'prefs.section': 'Préférences',
+  'prefs.scope': 'Retenu par ce navigateur, pas par le compte.',
+  'prefs.language': 'Langue',
+  'prefs.theme': 'Thème',
+  'prefs.themeDark': 'Sombre',
+  'prefs.themeLightSoon': 'Clair (bientôt)',
+  'prefs.themeHint': "Seul le thème sombre existe aujourd'hui ; le clair arrive.",
+
   /* ------------------------------------------------------------ Sheets */
 
   'sheet.expand': 'Déplier',

@@ -197,10 +197,11 @@ function useDeferredSearch(search: string): string | null {
 /**
  * Queue album selector.
  *
- * Use a plain `<select>` rather than a `ui.tsx` primitive: it is the only one in
- * the application, so extracting one for a single use would be speculative. The
- * queue does not wait for it — it appears while albums load and the selector
- * fills when they arrive.
+ * Use a plain `<select>` rather than `ui.tsx`'s `SelectField`: that one is a form
+ * row — a label above the control, a `SettingRow` on a phone — and this is a
+ * header control, named by `aria-label` and sized to the space beside a title.
+ * The queue does not wait for it either: it appears while albums load and fills
+ * when they arrive.
  */
 function AlbumFilter({
   albums,

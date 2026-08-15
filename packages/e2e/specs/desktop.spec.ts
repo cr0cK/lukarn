@@ -34,6 +34,17 @@ test.describe('Above the breakpoint', () => {
     await expect(page.getByRole('heading', { name: 'Albums', exact: true })).toBeVisible();
   });
 
+  test('settings are a labelled form, not a list of rows', async ({ page }) => {
+    await signIn(page);
+    await page.goto('/settings');
+
+    // The row with its value on the right belongs to the phone. Here every
+    // setting carries its label above the control, like every other form.
+    await expect(page.getByRole('button', { name: /^Language/ })).toBeHidden();
+    await expect(page.getByLabel('Language')).toHaveValue('en');
+    await expect(page.getByLabel('Theme')).toHaveValue('dark');
+  });
+
   test('the viewer opens with its chrome, and the keyboard drives it', async ({ page }) => {
     await openDayAlbum(page);
     await page.getByRole('button', { name: 'IMG_0000.jpg' }).click();

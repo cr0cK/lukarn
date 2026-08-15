@@ -1,8 +1,7 @@
-import type { Locale } from '@lukarn/shared';
 import { type ReactElement, type ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLogout, useMe } from '../api/hooks';
-import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT } from '../lib/i18n';
+import { useT } from '../lib/i18n';
 import { useInstallPrompt } from '../lib/useInstallPrompt';
 import { ActionMenu, type MenuEntry } from './ActionMenu';
 import { InstallInstructions } from './InstallInstructions';
@@ -46,9 +45,14 @@ interface AccountMenuProps {
  *
  * It exists as its own component because **two** surfaces open it: the top bar's
  * badge above `md`, and the Account tab below it. The entries — identifier and
- * signing address, Administration, Sign out, Install, then the languages — are
- * written once; a second copy would drift the day a language or an action is
- * added, and the divergence would be visible only on one of the two screens.
+ * signing address, Settings, Administration, Sign out, Install — are written
+ * once; a second copy would drift the day an action is added, and the divergence
+ * would be visible only on one of the two screens.
+ *
+ * The language used to be listed here, as a group of its own below the actions.
+ * It has moved to `/settings`, where the theme and what follows it join it: a
+ * menu is where you act on the session, and a setting reached by scrolling past
+ * "Sign out" has nowhere to put the second one.
  */
 export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): ReactElement {
   const { data: user } = useMe();
@@ -56,7 +60,6 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
   const navigate = useNavigate();
   const install = useInstallPrompt();
   const t = useT();
-  const { locale, setLocale } = useLocale();
   const [modeEmploi, setModeEmploi] = useState(false);
 
   const seDeconnecter = (): void => {
@@ -71,6 +74,13 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
   // by browser and installation status, and placing it elsewhere would shift
   // permanent controls between visits.
   const compte: MenuEntry[] = [
+    // First, and offered to everybody: it is the one entry here that an account
+    // without the administrator flag can act on beyond leaving.
+    {
+      label: t('prefs.title'),
+      icon: <IconeReglages />,
+      onSelect: () => void navigate('/settings'),
+    },
     ...(user?.admin
       ? [
           {
@@ -85,18 +95,6 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
       ? [{ label: t('topbar.install'), icon: <IconeInstaller />, onSelect: proposerInstallation }]
       : []),
   ];
-
-  // Its own group, below the account actions: changing language is a setting,
-  // not an action on the session, and the rule separating them says so without a
-  // heading. Every language is listed with a tick on the current one rather than
-  // one entry toggling between two — a third language would otherwise have
-  // nowhere to go, and a toggle never says what it will switch to.
-  const langues: MenuEntry[] = AVAILABLE_LOCALES.map((code: Locale) => ({
-    label: LOCALE_NAMES[code],
-    icon: code === locale ? <IconeCoche /> : <span className="block size-4" aria-hidden="true" />,
-    checked: code === locale,
-    onSelect: () => setLocale(code),
-  }));
 
   return (
     <>
@@ -113,7 +111,7 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
         // action it applies to, and read as a stray label rather than the head
         // of the list.
         headerIcon={<AccountIcon className="size-4" />}
-        groupes={[compte, langues]}
+        groupes={[compte]}
         // The one place reachable from every page, on both shapes of the
         // interface: what runs this gallery belongs at the bottom of it, under
         // everything somebody opened the menu to do.
@@ -125,20 +123,20 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
   );
 }
 
-/** Tick beside the active language. Purely visual: `aria-checked` says it. */
-function IconeCoche(): ReactElement {
+function IconeReglages(): ReactElement {
   return (
     <svg
       viewBox="0 0 24 24"
       className="size-4"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <path d="m5 13 4 4 10-10" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.08A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
     </svg>
   );
 }

@@ -163,12 +163,18 @@ two documentation checks also run on `pre-push`: divergence blocks publication
 before it reaches the remote repository.
 
 **A change under `packages/web/src` is not finished until `pnpm test:e2e` has
-passed too.** `verify` compiles the front end and never loads it: the whole of
-1.1.0—a tab bar, sheets, a bare viewer, a pinch—lived in that gap. The suite
-(`packages/e2e`) builds a throwaway instance, starts the **built** server on it
-and drives the real page on a phone (WebKit) and a desktop (Chromium). Reckon two
-minutes, most of it seeding, and `pnpm exec playwright install chromium webkit`
-once.
+also passed, and a new screen or control is not finished until a spec in
+`packages/e2e/specs/` holds it to account.** Both halves are the gate, not
+advice: the command proves nothing regressed, the new spec is what will prove it
+again next month. Report the work as done only after quoting the run—`pnpm
+verify` **and** `pnpm test:e2e`, both green. "It compiles" is not the claim being
+made.
+
+`verify` compiles the front end and never loads it: the whole of 1.1.0—a tab bar,
+sheets, a bare viewer, a pinch—lived in that gap. The suite (`packages/e2e`)
+builds a throwaway instance, starts the **built** server on it and drives the
+real page on a phone (WebKit) and a desktop (Chromium). Reckon two minutes, most
+of it seeding, and `pnpm exec playwright install chromium webkit` once.
 
 It is **not** part of `verify`, and must not be added to it: `verify` runs on the
 22/24 matrix and on `pre-push`, and a gate that downloads two browsers is a gate
