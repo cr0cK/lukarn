@@ -95,19 +95,13 @@ before(async () => {
     .jpeg()
     .toBuffer();
 
-  // Drive as it responds for a video: no downloadable original here, only the
-  // `thumbnailLink` from `files.get`. Fetching the original is the anomaly this
+  // A storage as it answers for a video: no downloadable original here, only the
+  // preview it already holds. Fetching the original is the anomaly this
   // arrangement would expose.
-  context.drive.fetchFile = () => {
+  context.storage.fetch = () => {
     throw new Error('a video original must never be downloaded for a thumbnail');
   };
-  context.drive.api = () =>
-    ({
-      files: {
-        get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Vid=s220' } }),
-      },
-    }) as unknown as ReturnType<AppContext['drive']['api']>;
-  context.drive.fetchAuthorized = () => Promise.resolve(new Response(jpeg));
+  context.storage.preview = () => Promise.resolve(new Response(jpeg));
 
   const login = await server.inject({
     method: 'POST',

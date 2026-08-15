@@ -6,10 +6,10 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import {
-  DriveNotConnectedError,
-  DriveRevokedError,
-  DriveUnavailableError,
-} from '../drive/service.js';
+  StorageNotConnectedError,
+  StorageRevokedError,
+  StorageUnavailableError,
+} from '../storage/provider.js';
 import { formatRange, parseRange, type ByteRange } from '../media/range.js';
 import type { Variant } from '../media/renderer.js';
 import { playableKey } from '../media/transcode.js';
@@ -143,25 +143,25 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       await authorize(request, reply);
     });
 
-    // Drive unavailable: an explicit message rather than an opaque 500 repeated for
+    // Storage unavailable: an explicit message rather than an opaque 500 repeated for
     // every grid thumbnail. The two cases are distinguished so the administrator
     // knows whether to connect or reconnect.
     app.setErrorHandler(async (error, _request, reply) => {
-      if (error instanceof DriveRevokedError) {
-        return reply.code(503).send({ error: 'drive_revoked', message: error.message });
+      if (error instanceof StorageRevokedError) {
+        return reply.code(503).send({ error: 'storage_revoked', message: error.message });
       }
-      if (error instanceof DriveNotConnectedError) {
-        return reply.code(503).send({ error: 'drive_disconnected', message: error.message });
+      if (error instanceof StorageNotConnectedError) {
+        return reply.code(503).send({ error: 'storage_disconnected', message: error.message });
       }
       // Timeout or rate limit: **transient**. The 503 and `Retry-After` tell the client
       // to return, whereas a default 500 would make it abandon the thumbnail until
       // the next page reload. No cache header is set because a failure must never be
       // retained.
-      if (error instanceof DriveUnavailableError) {
+      if (error instanceof StorageUnavailableError) {
         return reply
           .code(503)
           .header('Retry-After', String(error.retryAfterSeconds))
-          .send({ error: 'drive_unavailable', message: error.message });
+          .send({ error: 'storage_unavailable', message: error.message });
       }
       throw error;
     });
@@ -279,9 +279,10 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
 
       const wantsDownload = (request.query as { download?: string }).download === '1';
       const range = parseRange(request.headers.range);
-      const upstream = await context.drive.fetchFile(
-        mediaId,
-        range ? formatRange(range) : undefined,
+      // Through `guard`, like every other read: a revoked authorisation must become the
+      // 503 the error handler below already knows how to phrase, not a bare 500.
+      const upstream = await context.storage.guard(() =>
+        context.storage.fetch(mediaId, range ? formatRange(range) : undefined),
       );
 
       /**
@@ -300,7 +301,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       if (!upstream.body) {
         return reply
           .code(502)
-          .send({ error: 'bad_gateway', message: request.t('error.emptyFromDrive') });
+          .send({ error: 'bad_gateway', message: request.t('error.emptyFromStorage') });
       }
 
       reply

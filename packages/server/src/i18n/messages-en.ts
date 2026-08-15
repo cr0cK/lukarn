@@ -63,7 +63,7 @@ export const en = {
   'error.noVideoPreview': 'No preview available for this video',
   'error.unsupportedThumbSize': 'Unsupported thumbnail size',
   'error.videoNotReady': 'Playable version not prepared yet',
-  'error.emptyFromDrive': 'Empty response from Drive',
+  'error.emptyFromStorage': 'Empty response from the storage',
 
   'error.usernameTaken': (username: string) => `The username "${username}" is already taken.`,
   'error.unknownAlbum': (albumId: string) => `Unknown album: "${albumId}"`,

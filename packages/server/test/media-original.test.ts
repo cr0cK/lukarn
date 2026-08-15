@@ -98,7 +98,7 @@ after(async () => {
 
 describe('original file relay', () => {
   it('copies a 206 fragment and its headers', async () => {
-    context.drive.fetchFile = () =>
+    context.storage.fetch = () =>
       Promise.resolve(
         new Response('abc', {
           status: 206,
@@ -118,7 +118,7 @@ describe('original file relay', () => {
   });
 
   it('relays a 416 rather than turning it into a server error', async () => {
-    context.drive.fetchFile = () =>
+    context.storage.fetch = () =>
       Promise.resolve(
         new Response(null, { status: 416, headers: { 'content-range': 'bytes */4096' } }),
       );
@@ -139,7 +139,7 @@ describe('original file relay', () => {
 
 describe('browser cache for protected media', () => {
   it('keys the entry by the session that obtained it', async () => {
-    context.drive.fetchFile = () => Promise.resolve(new Response('des octets'));
+    context.storage.fetch = () => Promise.resolve(new Response('des octets'));
 
     const response = await server.inject({
       method: 'GET',

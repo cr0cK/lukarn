@@ -5,8 +5,8 @@ import { setPriority } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import type { DriveService } from '../drive/service.js';
 import type { MediaRepo } from '../repo.js';
+import type { StorageProvider } from '../storage/provider.js';
 import type { MediaCache } from './cache.js';
 
 /**
@@ -113,9 +113,9 @@ interface Logger {
 /**
  * Derivative key in the store.
  *
- * The content fingerprint is included for the same reason as in the image cache:
- * Drive retains a file ID when content is replaced, and without it the new version
- * would forever play through the old transcoded video.
+ * The content fingerprint is included for the same reason as in the image cache: a
+ * storage retains a file's identifier when content is replaced, and without it the new
+ * version would forever play through the old transcoded video.
  */
 export function playableKey(fileId: string, md5: string | null): string {
   return md5 ? `${fileId}:${md5}` : fileId;
@@ -266,7 +266,7 @@ export interface Transcoder {
 }
 
 export interface VideoTranscoderDeps {
-  drive: DriveService;
+  storage: StorageProvider;
   /** Store of playable versions — a `MediaCache` mounted on `root`. */
   store: MediaCache;
   /**
@@ -304,7 +304,7 @@ export class VideoTranscoder implements Transcoder {
     try {
       await this.download(fileId, source, signal);
       // Size is measured from the received file rather than the index: this is what
-      // ffmpeg encodes, and Drive may report a missing or stale size that would cap
+      // ffmpeg encodes, and a storage may report a missing or stale size that would cap
       // the wrong bitrate.
       const { size } = await stat(source);
       const plafondKbps = plafondDebit(size, durationMs);
@@ -319,11 +319,11 @@ export class VideoTranscoder implements Transcoder {
   }
 
   private async download(fileId: string, path: string, signal: AbortSignal): Promise<void> {
-    const response = await this.deps.drive.guard(() =>
-      this.deps.drive.fetchFile(fileId, undefined, signal),
+    const response = await this.deps.storage.guard(() =>
+      this.deps.storage.fetch(fileId, undefined, signal),
     );
     if (!response.ok || !response.body) {
-      throw new Error(`Drive answered ${response.status} for ${fileId}`);
+      throw new Error(`The storage answered ${response.status} for ${fileId}`);
     }
     await pipeline(
       Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]),

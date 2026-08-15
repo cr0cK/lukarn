@@ -360,10 +360,10 @@ describe('transcoding pass', () => {
 });
 
 describe('derivative production', () => {
-  /** Stubbed Drive: the response body is the downloaded "file". */
-  function drive(contenu: string): { fetchFile: unknown; guard: unknown } {
+  /** Stubbed storage: the response body is the downloaded "file". */
+  function stockage(contenu: string): { fetch: unknown; guard: unknown } {
     return {
-      fetchFile: () => Promise.resolve(new Response(contenu)),
+      fetch: () => Promise.resolve(new Response(contenu)),
       guard: <T>(operation: () => Promise<T>) => operation(),
     };
   }
@@ -374,7 +374,7 @@ describe('derivative production', () => {
     await store.load();
 
     const transcodeur = new VideoTranscoder({
-      drive: drive('des octets de film') as never,
+      storage: stockage('des octets de film') as never,
       store,
       root,
       // The runner writes the target in place of ffmpeg, exactly what the real
@@ -402,7 +402,7 @@ describe('derivative production', () => {
     await store.load();
 
     const transcodeur = new VideoTranscoder({
-      drive: drive('des octets de film') as never,
+      storage: stockage('des octets de film') as never,
       store,
       root,
       run: () => Promise.reject(new Error('ffmpeg exited with 1')),

@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import sharp from 'sharp';
-import { DriveUnavailableError, type DriveService } from '../src/drive/service.js';
 import { MediaCache } from '../src/media/cache.js';
 import { MediaRenderer } from '../src/media/renderer.js';
+import { StorageUnavailableError, type StorageProvider } from '../src/storage/provider.js';
 
 /**
  * WebP derivative production. Both scenarios covered here require rendering to
@@ -28,20 +28,32 @@ before(async () => {
     .toBuffer();
 });
 
+/**
+ * Fixture storage. Only three operations exist, so a fake is a couple of
+ * functions — `guard` runs the operation, translating a backend failure being the
+ * provider's business rather than what is under test here.
+ */
+function stockage(parts: Partial<StorageProvider>): StorageProvider {
+  return {
+    guard: <T>(operation: () => Promise<T>) => operation(),
+    ...parts,
+  } as unknown as StorageProvider;
+}
+
 describe('rendering from cache', () => {
   it('regenerates a derivative whose file disappeared from disk', async () => {
     const cache = new MediaCache(join(root, 'disparu'), 1024 * 1024);
     await cache.load();
 
     let telechargements = 0;
-    const drive = {
-      fetchFile: () => {
+    const storage = stockage({
+      fetch: () => {
         telechargements++;
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const premier = await renderer.render('photo', { kind: 'thumb', size: 320 }, 'empreinte');
     assert.equal(telechargements, 1);
 
@@ -62,14 +74,14 @@ describe('preparing multiple variants', () => {
     await cache.load();
 
     let telechargements = 0;
-    const drive = {
-      fetchFile: () => {
+    const storage = stockage({
+      fetch: () => {
         telechargements++;
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const produits = await renderer.prepare(
       'photo',
       [
@@ -82,7 +94,7 @@ describe('preparing multiple variants', () => {
 
     // This is the entire point of this path: downloading takes ~2 s while
     // rendering takes ~50 ms. Three successive `render()` calls would fetch the
-    // same file three times, tripling prewarming's Drive traffic.
+    // same file three times, tripling prewarming's traffic.
     assert.equal(telechargements, 1, 'one download for all three sizes');
     assert.equal(produits, 3);
 
@@ -96,14 +108,14 @@ describe('preparing multiple variants', () => {
     await cache.load();
 
     let telechargements = 0;
-    const drive = {
-      fetchFile: () => {
+    const storage = stockage({
+      fetch: () => {
         telechargements++;
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const variants = [
       { kind: 'thumb', size: 320 },
       { kind: 'thumb', size: 640 },
@@ -118,26 +130,20 @@ describe('preparing multiple variants', () => {
     assert.equal(telechargements, 1);
   });
 
-  it('requests the Drive preview at the largest required size', async () => {
+  it('asks for the backend preview at the largest required size', async () => {
     const cache = new MediaCache(join(root, 'prepare-repli'), 1024 * 1024);
     await cache.load();
 
-    const urls: string[] = [];
-    const drive = {
-      fetchFile: () => Promise.resolve(new Response(Buffer.from('ni JPEG ni HEIC lisible'))),
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({
-        files: {
-          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Q=s220' } }),
-        },
-      }),
-      fetchAuthorized: (url: string) => {
-        urls.push(url);
+    const bords: number[] = [];
+    const storage = stockage({
+      fetch: () => Promise.resolve(new Response(Buffer.from('ni JPEG ni HEIC lisible'))),
+      preview: (_ref: string, edge: number) => {
+        bords.push(edge);
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const produits = await renderer.prepare(
       'heic',
       [
@@ -150,34 +156,28 @@ describe('preparing multiple variants', () => {
     // The preview is the source for subsequent sizes, and `withoutEnlargement`
     // prevents scaling up: requesting 320 would store a 320 px thumbnail under
     // the 1280 key.
-    assert.deepEqual(urls, ['https://lh3.exemple/Q=s1280']);
+    assert.deepEqual(bords, [1280]);
     assert.equal(produits, 2);
   });
 });
 
 describe('video preview', () => {
-  it('starts from the Drive preview without ever touching the original', async () => {
+  it('starts from the backend preview without ever touching the original', async () => {
     const cache = new MediaCache(join(root, 'poster'), 1024 * 1024);
     await cache.load();
 
-    const urls: string[] = [];
-    const drive = {
-      fetchFile: () => {
+    const bords: number[] = [];
+    const storage = stockage({
+      fetch: () => {
         throw new Error('a video original must never be downloaded');
       },
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({
-        files: {
-          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Vid=s220' } }),
-        },
-      }),
-      fetchAuthorized: (url: string) => {
-        urls.push(url);
+      preview: (_ref: string, edge: number) => {
+        bords.push(edge);
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const produits = await renderer.prepare(
       'clip',
       [
@@ -192,7 +192,7 @@ describe('video preview', () => {
     // Fetching a 48 MB MP4 only for `MAX_DECODE_BYTES` to reject it on every
     // thumbnail is precisely what the short circuit avoids: no video byte is
     // transferred, and D6 (no transcoding) remains intact.
-    assert.deepEqual(urls, ['https://lh3.exemple/Vid=s1280'], 'one preview at the largest size');
+    assert.deepEqual(bords, [1280], 'one preview at the largest size');
     assert.equal(produits, 3);
 
     for (const size of [320, 640, 1280] as const) {
@@ -205,133 +205,130 @@ describe('video preview', () => {
     await cache.load();
 
     let apercus = 0;
-    const drive = {
-      fetchFile: () => {
+    const storage = stockage({
+      fetch: () => {
         throw new Error('a video original must never be downloaded');
       },
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({
-        files: {
-          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/Vid=s220' } }),
-        },
-      }),
-      fetchAuthorized: () => {
+      preview: () => {
         apercus++;
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const rendu = await renderer.render('clip', { kind: 'thumb', size: 320 }, null, 'poster');
 
     assert.ok(existsSync(rendu.path));
-    // The Drive preview **is** the source: the photo path fallback has nothing
+    // The backend preview **is** the source: the photo path fallback has nothing
     // else to try, and requesting it again would only repeat the same call.
     assert.equal(apercus, 1);
   });
 });
 
-describe('fallback to the Drive thumbnail', () => {
-  it('requests the thumbnail with the OAuth token rather than anonymously', async () => {
+describe('fallback to the backend preview', () => {
+  it('goes through the provider rather than fetching a URL itself', async () => {
     const cache = new MediaCache(join(root, 'repli'), 1024 * 1024);
     await cache.load();
 
-    const urlsAuthentifiees: string[] = [];
-    const drive = {
+    let apercus = 0;
+    const storage = stockage({
       // Content sharp cannot decode: the HEIC/RAW case.
-      fetchFile: () => Promise.resolve(new Response(Buffer.from('ceci n’est pas une image'))),
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({
-        files: {
-          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/AbC=s220' } }),
-        },
-      }),
-      fetchAuthorized: (url: string) => {
-        urlsAuthentifiees.push(url);
+      fetch: () => Promise.resolve(new Response(Buffer.from('ceci n’est pas une image'))),
+      preview: () => {
+        apercus++;
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    // A private file's `thumbnailLink` returns 401/403 without an Authorization
-    // header: an anonymous call must fail clearly.
+    // Whatever authentication a preview needs belongs to the backend holding it —
+    // a Drive `thumbnailLink` returns 401/403 without an `Authorization` header.
+    // The renderer knowing no URL is what keeps that guarantee in one place: an
+    // anonymous call from here must be impossible.
     const vraiFetch = globalThis.fetch;
     globalThis.fetch = () => {
-      throw new Error('anonymous call forbidden');
+      throw new Error('the renderer must not reach the network itself');
     };
 
     try {
-      const renderer = new MediaRenderer(drive, cache, silencieux);
+      const renderer = new MediaRenderer(storage, cache, silencieux);
       const rendu = await renderer.render('heic', { kind: 'thumb', size: 320 }, null);
 
       assert.ok(existsSync(rendu.path));
-      assert.deepEqual(urlsAuthentifiees, ['https://lh3.exemple/AbC=s320']);
+      assert.equal(apercus, 1);
     } finally {
       globalThis.fetch = vraiFetch;
     }
   });
+
+  it('says so when the backend holds no preview', async () => {
+    const cache = new MediaCache(join(root, 'sans-apercu'), 1024 * 1024);
+    await cache.load();
+
+    // A local folder or a bucket holds no preview: `null` is its answer, and the
+    // renderer has nothing left to serve. Naming the file is the whole point —
+    // the alternative is a HEIC missing from the grid for no stated reason.
+    const storage = stockage({
+      fetch: () => Promise.resolve(new Response(Buffer.from('ni JPEG ni HEIC lisible'))),
+      preview: () => Promise.resolve(null),
+    });
+
+    const renderer = new MediaRenderer(storage, cache, silencieux);
+    await assert.rejects(
+      () => renderer.render('brut', { kind: 'thumb', size: 320 }, null),
+      /no preview for brut/,
+    );
+  });
 });
 
 describe('oversized original', () => {
-  it('gives up based on the announced size and uses the Drive preview', async () => {
+  it('gives up based on the announced size and uses the backend preview', async () => {
     const cache = new MediaCache(join(root, 'enorme'), 1024 * 1024);
     await cache.load();
 
     let repliDemande = 0;
-    const drive = {
+    const storage = stockage({
       // The body is a perfectly decodable image: only the size header should
       // trigger giving up. Without this check, sharp would decode it and the
       // fallback would never run — distinguishing this from an unsupported format.
-      fetchFile: () =>
+      fetch: () =>
         Promise.resolve(
           new Response(jpeg, { headers: { 'content-length': String(500 * 1024 * 1024) } }),
         ),
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({
-        files: {
-          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/XyZ=s220' } }),
-        },
-      }),
-      fetchAuthorized: () => {
+      preview: () => {
         repliDemande++;
         return Promise.resolve(new Response(jpeg));
       },
-    } as unknown as DriveService;
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     const rendu = await renderer.render('panorama', { kind: 'full' }, null);
 
-    // The photo is still served — as the Drive preview, not a failure: refusing
+    // The photo is still served — as the backend preview, not a failure: refusing
     // would show a broken grid cell for a valid file.
     assert.equal(repliDemande, 1, 'an oversized original must not be decoded locally');
     assert.ok(existsSync(rendu.path));
   });
 });
 
-describe('transient Drive failure', () => {
+describe('transient storage failure', () => {
   it('reports unavailability when the fallback also fails', async () => {
     const cache = new MediaCache(join(root, 'transitoire'), 1024 * 1024);
     await cache.load();
 
-    // The original download times out and the Drive preview also fails: this is
-    // the only case where failure reaches the route, and it must remain
+    // The original download times out and the preview also fails: this is the
+    // only case where failure reaches the route, and it must remain
     // recognisably transient so the route returns 503 rather than 500 — a 500
     // would make the browser give up.
-    const drive = {
-      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'timed out')),
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({
-        files: {
-          get: () => Promise.resolve({ data: { thumbnailLink: 'https://lh3.exemple/AbC=s220' } }),
-        },
-      }),
-      fetchAuthorized: () => Promise.reject(new DriveUnavailableError('preview', 5, 'Drive 429')),
-    } as unknown as DriveService;
+    const storage = stockage({
+      fetch: () => Promise.reject(new StorageUnavailableError('original', 5, 'timed out')),
+      preview: () => Promise.reject(new StorageUnavailableError('preview', 5, 'Drive 429')),
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
 
     await assert.rejects(
       () => renderer.render('lent', { kind: 'thumb', size: 320 }, null),
-      DriveUnavailableError,
+      StorageUnavailableError,
     );
   });
 
@@ -341,14 +338,12 @@ describe('transient Drive failure', () => {
     const cache = new MediaCache(join(root, 'sans-trace'), 1024 * 1024);
     await cache.load();
 
-    const drive = {
-      fetchFile: () => Promise.reject(new DriveUnavailableError('original', 5, 'timed out')),
-      guard: <T>(operation: () => Promise<T>) => operation(),
-      api: () => ({ files: { get: () => Promise.resolve({ data: {} }) } }),
-      fetchAuthorized: () => Promise.reject(new Error('no preview')),
-    } as unknown as DriveService;
+    const storage = stockage({
+      fetch: () => Promise.reject(new StorageUnavailableError('original', 5, 'timed out')),
+      preview: () => Promise.reject(new Error('no preview')),
+    });
 
-    const renderer = new MediaRenderer(drive, cache, silencieux);
+    const renderer = new MediaRenderer(storage, cache, silencieux);
     await assert.rejects(() => renderer.render('lent', { kind: 'thumb', size: 320 }, null));
 
     assert.equal(cache.stats().entryCount, 0);

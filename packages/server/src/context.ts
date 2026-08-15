@@ -7,8 +7,6 @@ import { CommentRepo } from './comments.js';
 import { CommenterRepo } from './commenters.js';
 import { ConfigRepo, type StoredAlbum } from './config-repo.js';
 import { type Db, openDb } from './db.js';
-import { DriveService } from './drive/service.js';
-import { Syncer } from './drive/sync.js';
 import type { Env } from './env.js';
 import { Geocoder } from './geocoder.js';
 import { Mailer } from './mail.js';
@@ -22,6 +20,8 @@ import { ffmpegAvailable, spawnFfmpeg, TranscodePass, VideoTranscoder } from './
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SearchRepo } from './search.js';
 import { SessionStore } from './sessions.js';
+import { DriveService } from './storage/drive.js';
+import { Syncer } from './sync/sync.js';
 import { SubscriptionRepo } from './subscriptions.js';
 import { VisitLog } from './telemetry.js';
 import { LoginThrottle } from './throttle.js';
@@ -33,7 +33,7 @@ const GIB = 1024 ** 3;
 export type SettingsListener = (settings: AppSettings) => void;
 
 /**
- * Single object spanning the application: configuration, database, Drive services
+ * Single object spanning the application: configuration, database, storage services
  * and media pipeline. Routes construct nothing and draw their dependencies from here.
  */
 export class AppContext {
@@ -78,7 +78,13 @@ export class AppContext {
    * hourly housekeeping in `main.ts`, which cannot access a route factory's closures.
    */
   readonly throttle = new LoginThrottle();
-  readonly drive: DriveService;
+  /**
+   * Where the albums live. Typed as the Drive implementation rather than the interface
+   * because /admin still drives an OAuth consent that belongs to this backend alone;
+   * everything downstream — indexing, rendering, transcoding — sees only a
+   * `StorageProvider`.
+   */
+  readonly storage: DriveService;
   /**
    * The instance's logo, and the icons derived from it. Under `DATA_DIR` rather than
    * `CACHE_DIR`: an uploaded logo is not recomputable from anything (D260813b).
@@ -137,7 +143,7 @@ export class AppContext {
     };
 
     this.mailer = Mailer.fromEnv(env, logger);
-    this.drive = new DriveService(env, this.db, logger);
+    this.storage = new DriveService(env, this.db, logger);
     this.branding = new BrandingStore(join(env.dataDir, 'branding'), logger);
     this.cache = new MediaCache(env.cacheDir, this.settings.cacheMaxSizeGB * GIB, logger);
     this.videoStore = new MediaCache(
@@ -145,8 +151,8 @@ export class AppContext {
       this.settings.videoCacheMaxSizeGB * GIB,
       logger,
     );
-    this.renderer = new MediaRenderer(this.drive, this.cache, logger);
-    this.syncer = new Syncer(this.drive, this.media, this.syncState, logger);
+    this.renderer = new MediaRenderer(this.storage, this.cache, logger);
+    this.syncer = new Syncer(this.storage, this.media, this.syncState, logger);
     this.updates = new UpdateChecker({
       currentVersion: env.appVersion,
       url: env.updateCheckUrl,
@@ -186,7 +192,7 @@ export class AppContext {
       // dependency: without it, the pass would traverse the whole album, failing
       // photo by photo **with its one-second pause** — fifteen minutes of futile
       // looping per hour for an album of a thousand photos.
-      enabled: () => this.settings.prewarmCache && this.drive.connected,
+      enabled: () => this.settings.prewarmCache && this.storage.connected,
       log: logger,
     });
 
@@ -195,7 +201,7 @@ export class AppContext {
       media: this.media,
       store: this.videoStore,
       transcoder: new VideoTranscoder({
-        drive: this.drive,
+        storage: this.storage,
         store: this.videoStore,
         root: join(env.cacheDir, 'video'),
         run: spawnFfmpeg,
@@ -205,7 +211,7 @@ export class AppContext {
       // album failing file by file; without ffmpeg, it would fail after downloading
       // each original — one hundred and fifty megabytes fetched for nothing, per
       // video and per hour.
-      enabled: () => this.settings.transcodeVideos && this.drive.connected && this.ffmpeg,
+      enabled: () => this.settings.transcodeVideos && this.storage.connected && this.ffmpeg,
       log: logger,
     });
 

@@ -1,23 +1,13 @@
-import type { drive_v3 } from '@googleapis/drive';
 import type { MediaRepo, MediaUpsert, SyncStateRepo } from '../repo.js';
 import {
-  classify,
-  FOLDER_MIME,
-  parseExifTime,
-  resolveVideoTakenAt,
-  toCoordinates,
-  toNumber,
-  toText,
-  type VideoTakenAt,
-} from './metadata.js';
+  StorageRevokedError,
+  type StorageEntry,
+  type StoragePage,
+  type StorageProvider,
+} from '../storage/provider.js';
+import { classify, resolveVideoTakenAt, type VideoTakenAt } from './metadata.js';
 import { findMoovOffset, readCreationTime, readVideoCodec } from './mp4.js';
-import { DriveRevokedError, type DriveService } from './service.js';
 
-const FIELDS =
-  'nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum, hasThumbnail, ' +
-  'imageMediaMetadata, videoMediaMetadata)';
-
-const PAGE_SIZE = 1000;
 /** Guard against a folder pointing to an entire, enormous tree. */
 const MAX_FOLDERS = 5000;
 
@@ -35,9 +25,9 @@ const HEADER_WINDOW_BYTES = 64 * 1024;
 const HEADER_MAX_WINDOWS = 4;
 
 /**
- * Header-read timeout. `fetchFile` sets none for a `Range` request because it relays
- * video to a browser consuming at its own pace. Here, a silent connection would block
- * the whole sync and leave the album `running` indefinitely.
+ * Header-read timeout. `StorageProvider.fetch` sets none for a `Range` request because
+ * it relays video to a browser consuming at its own pace. Here, a silent connection
+ * would block the whole sync and leave the album `running` indefinitely.
  */
 const HEADER_TIMEOUT_MS = 20_000;
 
@@ -106,10 +96,12 @@ function fingerprint(album: SyncAlbum): string {
 }
 
 /**
- * Album indexing: traverses the Drive folder and copies metadata into the database.
- * Nothing is downloaded — `imageMediaMetadata` supplies dimensions, capture date and
- * EXIF data directly in the `files.list` response, making sync of several thousand
- * photos almost instantaneous and cheap in quota.
+ * Album indexing: traverses a storage container and copies metadata into the database.
+ *
+ * Nothing is downloaded when the backend already knows what the picture holds —
+ * Drive returns dimensions, capture date and EXIF data in the listing itself, making
+ * the sync of several thousand photos almost instantaneous and cheap in quota (D3).
+ * What the backend does not supply, `StorageEntry.media` reports as `null`.
  */
 export class Syncer {
   /** Albums currently syncing, preventing manual resync from duplicating work. */
@@ -126,7 +118,7 @@ export class Syncer {
   private generations = 0;
 
   constructor(
-    private readonly drive: DriveService,
+    private readonly storage: StorageProvider,
     private readonly media: MediaRepo,
     private readonly syncState: SyncStateRepo,
     private readonly log: Logger,
@@ -138,7 +130,7 @@ export class Syncer {
 
   /**
    * Starts sync or returns the one already running for this album **with the same
-   * configuration**. Changing the Drive folder during sync makes the old pass unusable:
+   * configuration**. Changing the folder during sync makes the old pass unusable:
    * returning it would give the caller a promise that repopulates the album from the
    * folder just left.
    */
@@ -163,7 +155,7 @@ export class Syncer {
     return task;
   }
 
-  /** Sequential sync of all albums to conserve Drive API quota. */
+  /** Sequential sync of all albums to conserve the storage's quota. */
   async syncAll(albums: SyncAlbum[]): Promise<SyncResult[]> {
     const results: SyncResult[] = [];
     for (const album of albums) {
@@ -173,7 +165,7 @@ export class Syncer {
         this.log.error(`Sync of "${album.id}" failed: ${(error as Error).message}`);
         // Authorisation revoked: every following album would fail identically. Stop;
         // the error already written to `sync_state` explains what happened.
-        if (error instanceof DriveRevokedError) break;
+        if (error instanceof StorageRevokedError) break;
       }
     }
     return results;
@@ -202,16 +194,15 @@ export class Syncer {
     const visited = new Set<string>();
 
     try {
-      const api = this.drive.api();
       const pending = [album.folderId];
       let indexed = 0;
       let batch: MediaUpsert[] = [];
 
       while (pending.length > 0) {
-        const folderId = pending.pop()!;
+        const container = pending.pop()!;
         // Drive shortcuts can form cycles; without this guard traversal would not end.
-        if (visited.has(folderId)) continue;
-        visited.add(folderId);
+        if (visited.has(container)) continue;
+        visited.add(container);
 
         if (visited.size > MAX_FOLDERS) {
           throw new Error(
@@ -220,13 +211,13 @@ export class Syncer {
           );
         }
 
-        for await (const file of this.listFolder(api, folderId)) {
-          if (file.mimeType === FOLDER_MIME) {
-            if (album.recursive && file.id) pending.push(file.id);
+        for await (const entry of this.listFolder(container)) {
+          if (entry.folder) {
+            if (album.recursive) pending.push(entry.ref);
             continue;
           }
 
-          const item = await this.toUpsert(album.id, file);
+          const item = await this.toUpsert(album.id, entry);
           if (!item) continue;
 
           batch.push(item);
@@ -284,7 +275,7 @@ export class Syncer {
        * Already written batches are committed — one transaction per batch of 500,
        * not for the whole sync — so the index mixes old and new content. Since
        * `deleteStale` did not run, nothing was removed, and newly written items exist
-       * in Drive. The album remains browsable and consistent, merely incomplete.
+       * in the storage. The album remains browsable and consistent, merely incomplete.
        *
        * `lastSyncAt` retains the last **successful** pass: this is what /admin shows,
        * and claiming sync happened now would hide that it did not complete.
@@ -300,93 +291,73 @@ export class Syncer {
     }
   }
 
-  private async *listFolder(
-    api: drive_v3.Drive,
-    folderId: string,
-  ): AsyncGenerator<drive_v3.Schema$File> {
-    let pageToken: string | undefined;
+  private async *listFolder(container: string): AsyncGenerator<StorageEntry> {
+    let cursor: string | null = null;
 
     do {
-      // `guard` translates `invalid_grant` into DriveRevokedError and marks the
-      // connection revoked; otherwise every album would fail with a technical message
-      // that never says access must be reauthorised.
-      const { data } = await this.drive.guard(() =>
-        api.files.list({
-          q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed = false`,
-          fields: FIELDS,
-          pageSize: PAGE_SIZE,
-          pageToken,
-          // Required for shared Drives to be visible.
-          supportsAllDrives: true,
-          includeItemsFromAllDrives: true,
-          orderBy: 'name',
-        }),
+      // `guard` translates a withdrawn authorisation into StorageRevokedError and marks
+      // the connection revoked; otherwise every album would fail with a technical
+      // message that never says access must be reauthorised.
+      const page: StoragePage = await this.storage.guard(() =>
+        this.storage.list(container, cursor),
       );
 
-      for (const file of data.files ?? []) {
-        yield file;
+      for (const entry of page.entries) {
+        yield entry;
       }
-      pageToken = data.nextPageToken ?? undefined;
-    } while (pageToken);
+      cursor = page.cursor;
+    } while (cursor !== null);
   }
 
-  private async toUpsert(albumId: string, file: drive_v3.Schema$File): Promise<MediaUpsert | null> {
-    const kind = classify(file.mimeType);
-    if (!kind || !file.id || !file.modifiedTime) return null;
+  private async toUpsert(albumId: string, entry: StorageEntry): Promise<MediaUpsert | null> {
+    const kind = classify(entry.mimeType);
+    if (!kind) return null;
 
-    const image = file.imageMediaMetadata;
-    const video = file.videoMediaMetadata;
+    const media = entry.media;
 
-    const exifTime = parseExifTime(image?.time);
-    // Without an EXIF date (screenshots, re-encoded photos), Drive modification time
-    // is the only chronological reference. Videos never have one and are dated from
-    // their file (D97), which also yields the codec in the same window pass (D260809b).
+    // Without a capture date (screenshots, re-encoded photos), the file's modification
+    // time is the only chronological reference. Videos never carry one and are dated
+    // from their file (D97), which also yields the codec in the same window pass
+    // (D260809b).
     const { takenAt, fromFile, videoCodec } =
       kind === 'video'
-        ? await this.videoHeader(albumId, file)
+        ? await this.videoHeader(albumId, entry)
         : {
-            takenAt: exifTime ?? new Date(file.modifiedTime).toISOString(),
-            fromFile: exifTime !== null,
+            takenAt: media?.takenAt ?? entry.modifiedTime,
+            fromFile: media?.takenAt != null,
             videoCodec: null,
           };
 
-    const width = toNumber(image?.width) ?? toNumber(video?.width);
-    const height = toNumber(image?.height) ?? toNumber(video?.height);
-
-    // Drive supplies sensor dimensions: on a portrait photo they are reversed and
-    // `rotation` (EXIF 5–8) restores the order. The grid calculates rows from these
-    // values, so correcting them here prevents distorted thumbnails before loading.
-    const rotated = typeof image?.rotation === 'number' && image.rotation % 2 === 1;
-
-    const { lat, lng } = toCoordinates(image?.location?.latitude, image?.location?.longitude);
+    // The grid calculates rows from these dimensions, so restoring the order of a
+    // rotated photo here prevents distorted thumbnails before loading.
+    const rotated = media?.rotated === true;
+    const width = media?.width ?? null;
+    const height = media?.height ?? null;
 
     return {
       albumId,
-      id: file.id,
-      name: file.name ?? file.id,
-      mimeType: file.mimeType ?? 'application/octet-stream',
+      id: entry.ref,
+      name: entry.name,
+      mimeType: entry.mimeType ?? 'application/octet-stream',
       kind,
-      size: toNumber(file.size),
+      size: entry.size,
       width: rotated ? height : width,
       height: rotated ? width : height,
       takenAt,
       takenAtFromExif: fromFile,
-      modifiedTime: new Date(file.modifiedTime).toISOString(),
-      durationMs: toNumber(video?.durationMillis),
-      cameraMake: toText(image?.cameraMake),
-      cameraModel: toText(image?.cameraModel),
-      lens: toText(image?.lens),
-      isoSpeed: toNumber(image?.isoSpeed),
-      exposureTime: toNumber(image?.exposureTime),
-      aperture: toNumber(image?.aperture),
-      focalLength: toNumber(image?.focalLength),
-      lat,
-      lng,
-      md5: toText(file.md5Checksum),
-      // Drive produces an image from a video's first second, but not always: an
-      // unreadable codec or newly uploaded file may lack one. Storing this prevents the
-      // grid requesting a non-existent preview on every page load (D92).
-      hasThumbnail: file.hasThumbnail === true,
+      modifiedTime: entry.modifiedTime,
+      durationMs: media?.durationMs ?? null,
+      cameraMake: media?.cameraMake ?? null,
+      cameraModel: media?.cameraModel ?? null,
+      lens: media?.lens ?? null,
+      isoSpeed: media?.isoSpeed ?? null,
+      exposureTime: media?.exposureTime ?? null,
+      aperture: media?.aperture ?? null,
+      focalLength: media?.focalLength ?? null,
+      lat: media?.lat ?? null,
+      lng: media?.lng ?? null,
+      md5: entry.version,
+      hasThumbnail: entry.hasPreview,
       videoCodec,
     };
   }
@@ -395,28 +366,34 @@ export class Syncer {
    * Video capture date (D97) and video-track codec (D260809b), reconstructed from the
    * file in one read.
    *
-   * The `md5` shortcut makes video-album sync repeatable: a video already dated from
+   * The version shortcut makes video-album sync repeatable: a video already dated from
    * its unchanged file keeps that date without rereading a byte. A video left on
-   * `modifiedTime` because its header or Drive was unavailable is retried next pass.
+   * `modifiedTime` because its header or the storage was unavailable is retried next
+   * pass.
    *
    * `videoCodec` participates in the condition, populating the column without a data
    * migration: older rows have a file-derived date but no codec, so they are reread
    * **once** and then shortcut like the others.
    */
-  private async videoHeader(albumId: string, file: drive_v3.Schema$File): Promise<VideoHeader> {
-    const md5 = toText(file.md5Checksum);
-    const known = this.media.fileTakenAt(albumId, file.id!);
-    if (known?.takenAtFromExif && md5 !== null && known.md5 === md5 && known.videoCodec !== null) {
+  private async videoHeader(albumId: string, entry: StorageEntry): Promise<VideoHeader> {
+    const version = entry.version;
+    const known = this.media.fileTakenAt(albumId, entry.ref);
+    if (
+      known?.takenAtFromExif &&
+      version !== null &&
+      known.md5 === version &&
+      known.videoCodec !== null
+    ) {
       return { takenAt: known.takenAt, fromFile: true, videoCodec: known.videoCodec };
     }
 
-    const header = await this.containerHeader(file.id!, toNumber(file.size));
+    const header = await this.containerHeader(entry.ref, entry.size);
     return {
       ...resolveVideoTakenAt({
-        name: file.name,
+        name: entry.name,
         containerTime: header.time,
-        durationMs: toNumber(file.videoMediaMetadata?.durationMillis),
-        modifiedTime: file.modifiedTime!,
+        durationMs: entry.media?.durationMs ?? null,
+        modifiedTime: entry.modifiedTime,
       }),
       videoCodec: header.codec,
     };
@@ -425,12 +402,12 @@ export class Syncer {
   /**
    * What `moov` carries, following top-level boxes across windows. Everything is
    * `null` when the file cannot be read — non-ISOBMFF, unreachable `moov`, unavailable
-   * Drive — so the caller falls back to name, then modification date.
+   * storage — so the caller falls back to name, then modification date.
    *
    * Both reads share a window because they share a box: separating them would double
    * `Range` requests for a video-album sync to reread the same bytes.
    */
-  private async containerHeader(fileId: string, fileSize: number | null): Promise<ContainerHeader> {
+  private async containerHeader(ref: string, fileSize: number | null): Promise<ContainerHeader> {
     const absent: ContainerHeader = { time: null, codec: null };
 
     // Without a reported size the chain cannot be bounded: a zero-size box runs "to
@@ -440,7 +417,7 @@ export class Syncer {
     let start = 0;
 
     for (let fenetre = 0; fenetre < HEADER_MAX_WINDOWS; fenetre++) {
-      const buffer = await this.readWindow(fileId, start, fileSize);
+      const buffer = await this.readWindow(ref, start, fileSize);
       if (buffer === null) return absent;
 
       const { moovOffset, nextOffset } = findMoovOffset(buffer, start, fileSize);
@@ -465,31 +442,23 @@ export class Syncer {
     return absent;
   }
 
-  /** One header window, or `null` if Drive did not return it. */
-  private async readWindow(
-    fileId: string,
-    start: number,
-    fileSize: number,
-  ): Promise<Buffer | null> {
+  /** One header window, or `null` if the storage did not return it. */
+  private async readWindow(ref: string, start: number, fileSize: number): Promise<Buffer | null> {
     const end = Math.min(start + HEADER_WINDOW_BYTES, fileSize) - 1;
     if (end < start) return null;
 
     try {
-      const response = await this.drive.guard(() =>
-        this.drive.fetchFile(
-          fileId,
-          `bytes=${start}-${end}`,
-          AbortSignal.timeout(HEADER_TIMEOUT_MS),
-        ),
+      const response = await this.storage.guard(() =>
+        this.storage.fetch(ref, `bytes=${start}-${end}`, AbortSignal.timeout(HEADER_TIMEOUT_MS)),
       );
       if (!response.ok && response.status !== 206) return null;
       return Buffer.from(await response.arrayBuffer());
     } catch (error) {
       // Revoked authorisation fails the rest of sync; propagating it avoids dating 300
       // videos by upload time before noticing.
-      if (error instanceof DriveRevokedError) throw error;
+      if (error instanceof StorageRevokedError) throw error;
       this.log.warn(
-        `Header of video ${fileId} unreadable: ${(error as Error).message} — ` +
+        `Header of video ${ref} unreadable: ${(error as Error).message} — ` +
           'the date comes from the file name or its modification date.',
       );
       return null;

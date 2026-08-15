@@ -3,16 +3,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, describe, it } from 'node:test';
-import type { drive_v3 } from '@googleapis/drive';
 import { openDb } from '../src/db.js';
-import type { DriveService } from '../src/drive/service.js';
-import { Syncer } from '../src/drive/sync.js';
+import type { StorageEntry, StorageProvider } from '../src/storage/provider.js';
+import { Syncer } from '../src/sync/sync.js';
 import { MediaRepo, SyncStateRepo } from '../src/repo.js';
 
 /**
  * Synchronisation deduplication. Two calls for the same album share the same
- * work — unless they target different Drive folders, in which case sharing
- * would index the folder the owner has just left.
+ * work — unless they target different folders, in which case sharing would
+ * index the folder the owner has just left.
  */
 
 const dir = mkdtempSync(join(tmpdir(), 'lukarn-sync-'));
@@ -25,32 +24,38 @@ const media = new MediaRepo(db);
 const syncState = new SyncStateRepo(db);
 const silencieux = { info: () => {}, warn: () => {}, error: () => {} };
 
-function fichier(id: string): drive_v3.Schema$File {
+function fichier(ref: string): StorageEntry {
   return {
-    id,
-    name: `${id}.jpg`,
+    ref,
+    name: `${ref}.jpg`,
+    folder: false,
     mimeType: 'image/jpeg',
+    size: 1024,
     modifiedTime: '2026-01-01T10:00:00.000Z',
+    version: null,
+    media: null,
+    hasPreview: true,
   };
 }
 
-/** Fixture Drive: a folder, its listing and an optional barrier. */
-function fauxDrive(
+/**
+ * Fixture storage: a container, its listing and an optional barrier.
+ *
+ * Faking a provider rather than `files.list` is the point of the interface: the
+ * whole fixture is one function returning entries, where reproducing Drive's
+ * behaviour required parsing a `q` clause with a regular expression.
+ */
+function fauxStockage(
   contenu: Record<string, string[]>,
   barrieres: Record<string, Promise<void>> = {},
-): DriveService {
+): StorageProvider {
   return {
     guard: <T>(operation: () => Promise<T>) => operation(),
-    api: () => ({
-      files: {
-        list: async ({ q }: { q?: string }) => {
-          const dossier = /'([^']+)' in parents/.exec(q ?? '')?.[1] ?? '';
-          await barrieres[dossier];
-          return { data: { files: (contenu[dossier] ?? []).map(fichier) } };
-        },
-      },
-    }),
-  } as unknown as DriveService;
+    list: async (container: string) => {
+      await barrieres[container];
+      return { entries: (contenu[container] ?? []).map(fichier), cursor: null };
+    },
+  } as unknown as StorageProvider;
 }
 
 function contenuIndexe(albumId: string): string[] {
@@ -62,7 +67,7 @@ function contenuIndexe(albumId: string): string[] {
 
 describe('synchronisation deduplication', () => {
   it('shares work between two identical requests', async () => {
-    const syncer = new Syncer(fauxDrive({ 'dossier-a': ['a1'] }), media, syncState, silencieux);
+    const syncer = new Syncer(fauxStockage({ 'dossier-a': ['a1'] }), media, syncState, silencieux);
     const album = { id: 'stable', folderId: 'dossier-a', recursive: true };
 
     const premiere = syncer.sync(album);
@@ -79,7 +84,7 @@ describe('synchronisation deduplication', () => {
     });
 
     const syncer = new Syncer(
-      fauxDrive({ 'dossier-a': ['a1', 'a2'], 'dossier-b': ['b1'] }, { 'dossier-a': barriere }),
+      fauxStockage({ 'dossier-a': ['a1', 'a2'], 'dossier-b': ['b1'] }, { 'dossier-a': barriere }),
       media,
       syncState,
       silencieux,
@@ -92,7 +97,7 @@ describe('synchronisation deduplication', () => {
     assert.notEqual(premiere, seconde, 'the new folder synchronisation cannot be the old one');
 
     // The first synchronisation takes a measurable time to return, like a real
-    // Drive traversal, so the two runs carry distinct timestamps.
+    // traversal, so the two runs carry distinct timestamps.
     await new Promise((resolve) => setTimeout(resolve, 10));
     ouvrir();
     await premiere;
@@ -104,7 +109,7 @@ describe('synchronisation deduplication', () => {
   });
 
   it('also distinguishes a change in traversal depth', async () => {
-    const syncer = new Syncer(fauxDrive({ 'dossier-c': ['c1'] }), media, syncState, silencieux);
+    const syncer = new Syncer(fauxStockage({ 'dossier-c': ['c1'] }), media, syncState, silencieux);
 
     const recursive = syncer.sync({ id: 'profondeur', folderId: 'dossier-c', recursive: true });
     const plat = syncer.sync({ id: 'profondeur', folderId: 'dossier-c', recursive: false });
@@ -125,7 +130,7 @@ describe('synchronisation deduplication', () => {
     });
 
     const syncer = new Syncer(
-      fauxDrive(
+      fauxStockage(
         { 'dossier-d': ['d1'], 'dossier-e': ['e1'] },
         { 'dossier-d': barriereD, 'dossier-e': barriereE },
       ),

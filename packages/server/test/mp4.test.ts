@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { findMoovOffset, readCreationTime, readVideoCodec } from '../src/drive/mp4.js';
+import { findMoovOffset, readCreationTime, readVideoCodec } from '../src/sync/mp4.js';
 
 /**
  * Reading an MP4 container header in windows.

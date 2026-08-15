@@ -94,7 +94,7 @@ function startScheduler(context: AppContext): () => void {
 
     periodic = setInterval(
       () => {
-        if (!context.drive.connected) return;
+        if (!context.storage.connected) return;
         void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
           context.log.error({ err: error }, 'Periodic sync failed');
         });
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
   //
   // No `await`: the server must accept requests while the index fills, with the old
   // index continuing to be served in the meantime.
-  if (context.settings.syncOnStartup && context.drive.connected) {
+  if (context.settings.syncOnStartup && context.storage.connected) {
     void context.syncThenPrewarm(context.albums).catch((error: unknown) => {
       context.log.error({ err: error }, 'Startup sync failed');
     });
@@ -188,11 +188,11 @@ async function main(): Promise<void> {
       `${context.renderer.load.limit}`,
   );
 
-  if (!context.drive.configured) {
+  if (!context.storage.configured) {
     server.log.warn(
       'Google OAuth not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env',
     );
-  } else if (!context.drive.connected) {
+  } else if (!context.storage.connected) {
     server.log.warn(`Google Drive not connected: open ${env.publicUrl}/admin to authorise`);
   }
 }

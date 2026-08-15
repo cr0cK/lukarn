@@ -13,13 +13,14 @@ owner's Drive and exposes it behind a username and password, one album at a time
 
 ## One storage today, not one by definition
 
-Google Drive is the **first** storage read, and the only one read today.
-`packages/server/src/drive/` speaks to the Drive API directly, with nothing
-abstracting it, and the administration screens that declare an album name Drive
-folders. Support for other backends is intended, and naming the work it implies
-is more useful than implying it: an interface where `drive/service.ts` sits
-today, a way for an album to record which storage it belongs to, and a migration
-for the single-row `oauth_token` table.
+Google Drive is the **first** storage read, and the only one read today — but no
+longer the only one the code can express. `packages/server/src/storage/` holds
+`StorageProvider`, the three operations that actually reach a storage, and Drive
+as its first implementation; everything downstream reads a `StorageEntry` and
+never a Drive field (D260815f). What remains before a second backend is usable:
+a way for an album to record which storage it belongs to, a migration for the
+single-row `oauth_token` table, and administration screens that stop naming Drive
+folders.
 
 This is a different question from the row excluding **multiple Drives** below.
 That one is about how many accounts a single instance serves — `oauth_token`
@@ -62,7 +63,7 @@ manageable.
 
 | Excluded                                                              | Why                                                                                                                                                                                                                        |
 | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Writing anything to Drive                                             | The requested scope is `drive.readonly` (`packages/server/src/drive/service.ts`). No app bug can destroy the originals.                                                                                                    |
+| Writing anything to Drive                                             | The requested scope is `drive.readonly` (`packages/server/src/storage/drive.ts`), and the interface every backend implements has no write operation. No app bug can destroy the originals.                                 |
 | Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                               |
 | Registration, forgotten passwords                                     | The owner creates accounts from `/admin`. There is no public form and no email to send.                                                                                                                                    |
 | Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                   |
@@ -85,7 +86,7 @@ rather than parallel synchronisation. `docker-compose.yml` has only one service.
 **The Drive API quota.** Every call counts, and a gallery that queries Drive on
 every scroll burns through it quickly. The solution is a local index populated by
 `files.list`, which already returns dimensions and EXIF without downloading a
-single byte of any photo (`packages/server/src/drive/sync.ts`). An album with
+single byte of any photo (`packages/server/src/sync/sync.ts`). An album with
 several thousand photos can be indexed in a handful of requests.
 
 **A single Drive owner.** There is only one encrypted refresh token in a

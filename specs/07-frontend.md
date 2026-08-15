@@ -789,7 +789,7 @@ single image byte arrives. Consequences:
 - virtualisation is possible, since what falls inside the viewport is known
   without measuring anything.
 
-This is also why `drive/sync.ts` corrects dimensions for EXIF rotation before
+This is also why `sync/sync.ts` corrects dimensions for EXIF rotation before
 writing them: a portrait photo stored as landscape would give a
 badly-proportioned box the image would never fill.
 

@@ -1,10 +1,8 @@
 import type { MediaKind } from '@lukarn/shared';
 
-export const FOLDER_MIME = 'application/vnd.google-apps.folder';
-
 /**
- * Only types the browser or sharp can display enter the index — the rest of the Drive
- * folder (PDFs, documents, archives) is ignored.
+ * Only types the browser or sharp can display enter the index — the rest of the
+ * container (PDFs, documents, archives) is ignored.
  */
 export function classify(mimeType: string | null | undefined): MediaKind | null {
   if (!mimeType) return null;
@@ -106,19 +104,19 @@ const NAME_TOLERANCE_MS = 26 * 60 * 60 * 1000;
 
 /** Inputs used to infer a video's date, in descending order of confidence. */
 export interface VideoTimeSources {
-  /** File name in Drive. */
+  /** File name as the storage reports it. */
   name: string | null | undefined;
   /** `creation_time` read from the container (ISO), or `null` if unreadable. */
   containerTime: string | null;
-  /** Duration reported by Drive, used to move from recording end back to its start. */
+  /** Duration known to the storage, used to move from recording end back to its start. */
   durationMs: number | null;
-  /** Drive modification date: upload date, the final fallback. */
+  /** Modification date: upload date, the final fallback. */
   modifiedTime: string;
 }
 
 export interface VideoTakenAt {
   takenAt: string;
-  /** False when only the Drive modification date remained — see `taken_at_from_exif`. */
+  /** False when only the modification date remained — see `taken_at_from_exif`. */
   fromFile: boolean;
 }
 
