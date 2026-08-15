@@ -547,6 +547,9 @@ export const en = {
   'validate.storageBucket': 'Enter the name of the bucket.',
   'validate.storageAccessKey': 'Enter the access key.',
   'validate.storageSecretKey': 'Enter the secret key.',
+  'validate.storageUrl': 'Enter the WebDAV address, starting with https://.',
+  'validate.storageUsername': 'Enter the username this instance connects with.',
+  'validate.storagePassword': 'Enter the app password.',
   'validate.interval': 'Give a whole number of minutes (0 to disable).',
   'validate.cacheSize': 'Give a size in gigabytes.',
   'validate.cacheSizePositive': 'The cache size must be greater than 0.',
@@ -640,6 +643,16 @@ export const en = {
   'storage.secretAccessKey': 'Secret key',
   'storage.secretAccessKeyHint':
     'Stored encrypted and never shown again. A read-only key is enough: nothing here ever writes to the bucket.',
+  'storage.webdavUrl': 'WebDAV address',
+  'storage.webdavUrlHint':
+    'The endpoint, not the page the files are browsed on. Nextcloud and ownCloud publish theirs as https://cloud.example.com/remote.php/dav/files/<username>.',
+  'storage.webdavRoot': 'Folder',
+  'storage.webdavRootHint':
+    'Optional. A folder under that address, which every album on this storage reads from.',
+  'storage.webdavUsername': 'Username',
+  'storage.webdavPassword': 'App password',
+  'storage.webdavPasswordHint':
+    'Create one in the account’s security settings. It grants file access alone, and revoking it costs nothing.',
   'storage.albumCount': (count: number) =>
     count === 0 ? 'No album reads it yet.' : `${count} album${count > 1 ? 's' : ''} read it.`,
   'storage.serviceAccountHint':

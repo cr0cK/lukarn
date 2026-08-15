@@ -126,11 +126,18 @@ Where the albums live. One row = one backend this instance reads, and
 | `created_at` | TEXT    | ISO 8601.                                                                                                |
 | `position`   | INTEGER | Display rank, like `albums.position`: creation dates collide on a seeded instance.                       |
 
-**What `ciphertext` contains belongs to the kind.** Drive stores its refresh token
-there, exactly as `oauth_token` did — which is what let migration 17 _copy_ the
-column instead of re-encrypting it. A backend needing more than one value stores
-JSON in it; `StorageConnectionRepo` encrypts and decrypts a string and knows
-nothing else about it.
+**What `settings` and `ciphertext` contain belongs to the kind.**
+`StorageConnectionRepo` encrypts and decrypts a string and knows nothing else about
+it; a backend needing more than one value puts JSON there.
+
+| Kind     | `settings`                                       | `ciphertext`                          |
+| -------- | ------------------------------------------------ | ------------------------------------- |
+| `drive`  | `scope`, the consented OAuth scopes              | the refresh token, on its own         |
+| `webdav` | `url`, the endpoint; `root`, a folder beneath it | `{"username":…,"password":…}` as JSON |
+
+Drive's is a bare token rather than an envelope because that is what `oauth_token`
+held — which is what let migration 17 _copy_ the column instead of re-encrypting
+it with a key the migration cannot be sure of.
 
 An `s3` connection is the first to need two values, and stores
 `{"accessKeyId":…,"secretAccessKey":…}` in that one string. Its `settings` hold

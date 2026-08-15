@@ -780,13 +780,16 @@ from, discovered only once an album on it stays empty.
 
 **`settings` and `secret` belong to the kind.** Both are opaque to the route,
 which stores whatever it is given: a map of strings in the clear, and one string
-encrypted with `TOKEN_KEY`. What each kind expects:
+encrypted with `TOKEN_KEY`. Neither is ever read back —
+`StorageConnectionStatus` exposes no `settings`, so /admin writes them and never
+displays them. What each kind expects:
 
-| Kind    | `settings`                                              | `secret`                                |
-| ------- | ------------------------------------------------------- | --------------------------------------- |
-| `drive` | `scope`, written by the OAuth callback, not by the form | The refresh token, obtained by consent  |
-| `local` | `path`, the folder read under `STORAGE_LOCAL_ROOT`      | None — a folder name is not a secret    |
-| `s3`    | `endpoint`, `region`, `bucket`, `prefix`, `pathStyle`   | `{"accessKeyId":…,"secretAccessKey":…}` |
+| Kind     | `settings`                                              | `secret`                                |
+| -------- | ------------------------------------------------------- | --------------------------------------- |
+| `drive`  | `scope`, written by the OAuth callback, not by the form | The refresh token, obtained by consent  |
+| `local`  | `path`, the folder read under `STORAGE_LOCAL_ROOT`      | None — a folder name is not a secret    |
+| `s3`     | `endpoint`, `region`, `bucket`, `prefix`, `pathStyle`   | `{"accessKeyId":…,"secretAccessKey":…}` |
+| `webdav` | `url`, the endpoint; `root`, a folder beneath it        | `{"username":…,"password":…}`           |
 
 `local`'s `path` is **relative to `STORAGE_LOCAL_ROOT`**, and empty means the root
 itself. An absolute path, or one climbing out with `..`, is refused by the
@@ -799,10 +802,14 @@ addressed as `host/bucket/key` rather than `bucket.host/key` — MinIO, and any
 bucket whose name is not a valid domain label. `region` defaults to `us-east-1`
 and `prefix` to the whole bucket.
 
-An `s3` connection is created **complete**: there is no consent screen to come
-back from, so the form sends its settings and its key pair with the same `POST`.
-One missing an endpoint or a bucket is still created rather than refused — unlike
-an unsupported kind, it explains itself immediately, as a row reading "not
+A WebDAV `url` is the DAV endpoint rather than the page files are browsed on —
+Nextcloud publishes its own as `/remote.php/dav/files/<username>` — and giving the
+wrong one produces a `405` that `storage/:id/test` reports in those words.
+
+An `s3` or `webdav` connection is created **complete**: there is no consent screen
+to come back from, so the form sends its settings and its secret with the same
+`POST`. One missing an endpoint or a bucket is still created rather than refused —
+unlike an unsupported kind, it explains itself immediately, as a row reading "not
 connected" whose Test button names what is absent.
 
 `PATCH`: `UpdateStorageRequest` = `{ label?, settings?, secret? }`, where

@@ -538,6 +538,10 @@ export const fr: Messages = {
   'validate.storageBucket': 'Indiquer le nom du bucket.',
   'validate.storageAccessKey': 'Indiquer la clé d’accès.',
   'validate.storageSecretKey': 'Indiquer la clé secrète.',
+  'validate.storageUrl': 'Indiquer l’adresse WebDAV, commençant par https://.',
+  'validate.storageUsername':
+    'Indiquer le nom d’utilisateur avec lequel cette instance se connecte.',
+  'validate.storagePassword': 'Indiquer le mot de passe d’application.',
   'validate.interval': 'Indiquer un nombre entier de minutes (0 pour désactiver).',
   'validate.cacheSize': 'Indiquer une taille en gigaoctets.',
   'validate.cacheSizePositive': 'La taille du cache doit être supérieure à 0.',
@@ -632,6 +636,16 @@ export const fr: Messages = {
   'storage.secretAccessKey': 'Clé secrète',
   'storage.secretAccessKeyHint':
     'Stockée chiffrée et jamais réaffichée. Une clé en lecture seule suffit : rien ici n’écrit jamais dans le bucket.',
+  'storage.webdavUrl': 'Adresse WebDAV',
+  'storage.webdavUrlHint':
+    'Le point d’accès, pas la page où l’on parcourt les fichiers. Nextcloud et ownCloud publient le leur sous la forme https://cloud.exemple.fr/remote.php/dav/files/<utilisateur>.',
+  'storage.webdavRoot': 'Dossier',
+  'storage.webdavRootHint':
+    'Facultatif. Un dossier sous cette adresse, dans lequel lisent tous les albums de ce stockage.',
+  'storage.webdavUsername': 'Nom d’utilisateur',
+  'storage.webdavPassword': 'Mot de passe d’application',
+  'storage.webdavPasswordHint':
+    'À créer dans les réglages de sécurité du compte. Il ne donne accès qu’aux fichiers, et le révoquer ne coûte rien.',
   'storage.albumCount': (count: number) =>
     count === 0
       ? 'Aucun album ne le lit pour l’instant.'

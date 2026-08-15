@@ -50,6 +50,7 @@ flowchart LR
 | `src/storage/xml.ts`         | The element reader S3 listings and WebDAV `PROPFIND` replies share. Reads names and text; expands no doctype and no external entity, deliberately.                                   |
 | `src/storage/sigv4.ts`       | AWS Signature Version 4 over `node:crypto`: a request description and a key pair in, headers out. Pure, so the published AWS vectors run against it (D260816e).                      |
 | `src/storage/s3.ts`          | An S3-compatible bucket behind the interface: `ListObjectsV2` for `list()`, a signed ranged `GET` for `fetch()`, and no preview. Adds no dependency.                                 |
+| `src/storage/webdav.ts`      | A WebDAV server behind that interface: a `PROPFIND` listing, Basic authentication, a ranged `GET`, and the href resolution that turns a server's URL back into a path.               |
 | `src/sync/sync.ts`           | Container traversal and index population, driven by a `StorageProvider`.                                                                                                             |
 | `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), video capture date, and the identifier derived for a path-based backend.                        |
 | `src/sync/mp4.ts`            | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                                                 |
@@ -142,6 +143,26 @@ Three properties of the S3 implementation are worth knowing before changing it:
   not indexed. RAW is deliberately absent — no backend but Drive holds a preview
   for one, and a grid of tiles that can never load is worse than an album that
   says a bucket held nothing it could show.
+
+A **WebDAV server** (`storage/webdav.ts`) differs from Drive in exactly the three
+ways the interface was shaped to absorb, and in no others:
+
+| Question                      | Drive                       | WebDAV                                       |
+| ----------------------------- | --------------------------- | -------------------------------------------- |
+| `refKind` — what names a file | `identity`, a file id       | `path`, kept in `media.source_path`          |
+| `media` in a listing          | EXIF data, parsed by Google | `null`; the indexer reads the bytes          |
+| A page of a listing           | `nextPageToken`             | none — a `PROPFIND` answers whole (D260816f) |
+
+`preview()` follows the second row: Drive holds a JPEG for anything it cannot
+otherwise show, a WebDAV server holds nothing, and a video poster is cut by ffmpeg
+instead (D260816).
+
+`storage/webdav.ts` asks for five properties with `Depth: 1` — `getcontenttype`,
+`getcontentlength`, `getlastmodified`, `getetag`, `resourcetype` — reads the reply
+with `storage/xml.ts`, drops the collection's own entry, and turns each remaining
+`<href>` back into a path relative to the connection's root. That last step is the
+one that differs by server, and [D260816f](./08-decisions/D260816f-a-webdav-listing-arrives-whole-and-is-read-by-its.md)
+records how it is done and what it costs.
 
 **An instance reads several storages, and an album names one.** Each is a row of
 `storage_connections`; `StorageRegistry` builds a provider from it and caches one

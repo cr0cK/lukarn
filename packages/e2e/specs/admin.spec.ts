@@ -171,4 +171,34 @@ test.describe('Storage, on a phone', () => {
     await row.click();
     await expect(page.getByLabel('Storage', { exact: true })).toHaveValue('drive');
   });
+
+  test('a WebDAV storage asks for its address and password before it is created', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('Nextcloud maison');
+
+    // The kind decides which fields exist at all: a Drive is authorised by a
+    // button afterwards, a WebDAV server by what is typed here and nowhere else.
+    await page.getByRole('button', { name: /^Kind/ }).click();
+    await page.getByLabel('Kind', { exact: true }).selectOption('webdav');
+
+    const address = page.getByRole('textbox', { name: 'WebDAV address' });
+    await expect(address).toBeVisible();
+
+    // Submitting without them says what is missing. Creating the connection
+    // anyway would move the failure to the first synchronisation, where it reads
+    // as "refused" and names nothing.
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByText('Enter the WebDAV address, starting with')).toBeVisible();
+
+    await address.fill('https://cloud.example.com/remote.php/dav/files/alexis');
+    await page.getByRole('textbox', { name: 'Username' }).fill('alexis');
+    await page.getByLabel('App password').fill('app-password');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+    await expect(
+      page.getByRole('button', { name: 'Delete the storage Nextcloud maison' }),
+    ).toBeVisible();
+  });
 });

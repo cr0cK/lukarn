@@ -15,6 +15,7 @@ import { buildApp } from '../src/app.js';
 import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
+import { SUPPORTED_KINDS } from '../src/storage/registry.js';
 
 /**
  * Administering several storages, and what an album does when it moves between
@@ -136,7 +137,11 @@ describe('the storage list', () => {
       url: '/api/admin/status',
       headers: { cookie },
     });
-    assert.deepEqual(status.json<AdminStatus>().storageKinds, ['drive', 'local', 's3']);
+    // The list the form offers is the list the factory can build, and the point is
+    // that it is the *same* list: naming the kinds here again would let the two drift
+    // the day one arrives, which is the drift this route exists to prevent.
+    assert.deepEqual(status.json<AdminStatus>().storageKinds, SUPPORTED_KINDS);
+    assert.ok(status.json<AdminStatus>().storageKinds.includes('drive'));
 
     const refused = await server.inject({
       method: 'POST',

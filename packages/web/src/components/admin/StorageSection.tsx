@@ -329,6 +329,7 @@ function StorageForm({
   const [idTouched, setIdTouched] = useState(false);
   const [touched, setTouched] = useState(false);
   const [s3, setS3] = useState<S3Draft>(EMPTY_S3);
+  const [webdav, setWebdav] = useState<WebdavForm>(EMPTY_WEBDAV);
 
   // A local folder is authorised by its settings rather than by consent: the one
   // thing to choose is which folder **under `STORAGE_LOCAL_ROOT`** it reads. The
@@ -343,6 +344,7 @@ function StorageForm({
       : null;
   // A bucket is unusable without all four: the connection would be created, every album
   // on it would stay empty, and the Test button would be the only thing saying so.
+  const webdavError = kind === 'webdav' ? webdavErrors(webdav, t) : null;
   const s3Errors =
     kind === 's3'
       ? {
@@ -358,6 +360,7 @@ function StorageForm({
     setTouched(true);
     if (labelError || idError || pathError) return;
     if (s3Errors && Object.values(s3Errors).some(Boolean)) return;
+    if (webdavError && Object.values(webdavError).some(Boolean)) return;
 
     create.mutate(
       {
@@ -369,6 +372,7 @@ function StorageForm({
         // its address alongside the one secret it encrypts.
         ...(needsPath ? { settings: { path: extractContainer(path, kind) ?? '' } } : {}),
         ...(kind === 's3' ? s3Payload(s3) : {}),
+        ...(kind === 'webdav' ? webdavRequest(webdav) : {}),
       },
       {
         onSuccess: (created) => {
@@ -437,6 +441,16 @@ function StorageForm({
 
       {/* A bucket is authorised by what is typed here and nowhere else: there is no
           consent screen to come back from, so the connection is created complete. */}
+      {kind === 'webdav' && (
+        <WebdavFields
+          fieldId={fieldId}
+          value={webdav}
+          onChange={setWebdav}
+          disabled={create.isPending}
+          errors={touched ? webdavError : null}
+        />
+      )}
+
       {s3Errors && (
         <S3Fields
           fieldId={fieldId}
@@ -459,6 +473,45 @@ function StorageForm({
       </div>
     </form>
   );
+}
+
+/** What a WebDAV connection needs before it can read anything. */
+interface WebdavForm {
+  url: string;
+  root: string;
+  username: string;
+  password: string;
+}
+
+const EMPTY_WEBDAV: WebdavForm = { url: '', root: '', username: '', password: '' };
+
+/**
+ * What is wrong with each field, `null` where nothing is.
+ *
+ * The server validates again and remains authoritative; this exists so that a missing
+ * password is reported beside the field rather than as a connection that answers
+ * "refused" the first time an album is synchronised.
+ */
+function webdavErrors(form: WebdavForm, t: Translate): Record<string, string | null> {
+  return {
+    url: /^https?:\/\/\S+$/i.test(form.url.trim()) ? null : t('validate.storageUrl'),
+    username: form.username.trim() ? null : t('validate.storageUsername'),
+    password: form.password ? null : t('validate.storagePassword'),
+  };
+}
+
+/**
+ * The two halves of a WebDAV connection, as the API takes them.
+ *
+ * The username and password travel together inside `secret` because a connection has
+ * exactly one encrypted string; the URL and the folder are `settings`, which is stored
+ * in the clear and deliberately so — neither gives access to anything on its own.
+ */
+function webdavRequest(form: WebdavForm): Partial<CreateStorageRequest> {
+  return {
+    settings: { url: form.url.trim(), root: form.root.trim() },
+    secret: JSON.stringify({ username: form.username.trim(), password: form.password }),
+  };
 }
 
 /**
@@ -562,6 +615,79 @@ function S3Fields({
         disabled={disabled}
         onChange={(checked) => onChange({ pathStyle: checked })}
       />
+    </div>
+  );
+}
+
+/**
+ * The address, the folder and the credentials of a WebDAV server.
+ *
+ * The address is the whole difficulty for whoever fills this in: Nextcloud's WebDAV
+ * endpoint is not the URL they browse the files at, and getting it wrong produces a
+ * 405 rather than anything readable — which is why the hint names the shape instead of
+ * describing it, and why "Test" reports what the server actually said.
+ */
+function WebdavFields({
+  fieldId,
+  value,
+  onChange,
+  disabled,
+  errors,
+}: {
+  fieldId: string;
+  value: WebdavForm;
+  onChange: (next: WebdavForm) => void;
+  disabled: boolean;
+  errors: Record<string, string | null> | null;
+}): ReactElement {
+  const t = useT();
+
+  return (
+    <div className="space-y-4">
+      <TextField
+        id={`${fieldId}-webdav-url`}
+        label={t('storage.webdavUrl')}
+        value={value.url}
+        onChange={(url) => onChange({ ...value, url })}
+        autoComplete="off"
+        disabled={disabled}
+        error={errors?.url ?? null}
+        hint={t('storage.webdavUrlHint')}
+      />
+
+      <TextField
+        id={`${fieldId}-webdav-root`}
+        label={t('storage.webdavRoot')}
+        value={value.root}
+        onChange={(root) => onChange({ ...value, root })}
+        autoComplete="off"
+        disabled={disabled}
+        hint={t('storage.webdavRootHint')}
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField
+          id={`${fieldId}-webdav-username`}
+          label={t('storage.webdavUsername')}
+          value={value.username}
+          onChange={(username) => onChange({ ...value, username })}
+          autoComplete="off"
+          disabled={disabled}
+          error={errors?.username ?? null}
+        />
+
+        <TextField
+          id={`${fieldId}-webdav-password`}
+          label={t('storage.webdavPassword')}
+          value={value.password}
+          onChange={(password) => onChange({ ...value, password })}
+          type="password"
+          autoComplete="new-password"
+          disabled={disabled}
+          error={errors?.password ?? null}
+          hint={t('storage.webdavPasswordHint')}
+        />
+      </div>
     </div>
   );
 }

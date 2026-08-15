@@ -18,20 +18,27 @@ Google Drive is the **first** storage read, and no longer the only kind.
 actually reach a storage; everything downstream reads a `StorageEntry` and never a
 Drive field (D260815f).
 
-**A folder on the machine is the second** — photographs already on a disk, or on a
-NAS mounted beside the container, served without being uploaded anywhere. That
-folder is chosen by whoever runs the server, not by whoever administers it:
-`STORAGE_LOCAL_ROOT` names one directory and `/admin` picks a subfolder under it
-(D260816d, and [04](./04-security-and-access.md)).
+**A folder on the machine** — photographs already on a disk, or on a NAS mounted
+beside the container, served without being uploaded anywhere. That folder is chosen
+by whoever runs the server, not by whoever administers it: `STORAGE_LOCAL_ROOT`
+names one directory and `/admin` picks a subfolder under it (D260816d, and
+[04](./04-security-and-access.md)).
 
-**An S3-compatible bucket is the third** — MinIO, Garage, Ceph, Backblaze and
-Amazon alike, declared from /admin with an endpoint, a bucket and a read-only key
-pair. It adds no dependency: the signature is computed here and the listing read
-by the element reader WebDAV shares (D260816e).
+**An S3-compatible bucket** — MinIO, Garage, Ceph, Backblaze and Amazon alike,
+declared from /admin with an endpoint, a bucket and a read-only key pair. It adds
+no dependency: the signature is computed here and the listing read by the element
+reader WebDAV shares (D260816e).
 
-Neither can do what only Drive can: they hold no preview and no parsed EXIF data,
-so a photograph's capture date and a video's poster are produced from the bytes
-(D260816, D260816b).
+**A WebDAV server** — Nextcloud, ownCloud, an Apache `mod_dav`, a Synology —
+declared with an address, a folder and an app password (D260816f).
+
+None of the three can do what only Drive can, and the difference is a scope
+statement rather than an omission. Drive names a file with an identifier that
+survives a rename, so a photograph dragged into another folder keeps its comments;
+everywhere else a file is named by its path, and renaming it makes it a new
+photograph (D260816c). Drive also returns EXIF data and holds a preview inside its
+listing, where the others hold neither — the indexer reads the bytes, and a video
+poster is cut by ffmpeg (D260816, D260816b).
 
 Reading **several accounts** was excluded for as long as `oauth_token` carried
 `CHECK (id = 1)`: one instance, one Drive. That was the schema stating a scope

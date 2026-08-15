@@ -49,6 +49,19 @@ in this application migrates volumes or renames files on its own.
   the bucket itself: a mistyped key, an address that answers nothing and a bucket
   name that does not exist now read differently, instead of all becoming an album
   that stays empty.
+- **Albums can now live on a WebDAV server** — Nextcloud, ownCloud, an Apache
+  `mod_dav`, a Synology — alongside a Google Drive or instead of one. Add it from
+  **Storage** with its address, a folder and an app password: no Google account is
+  involved, and the photos stay on a machine you already run. **Test** names what
+  is wrong when something is — a refused password, a host that never answered, or
+  an address that is not a WebDAV endpoint, which is the mistake everyone makes
+  first.
+
+  Two things behave differently there than on a Drive. Renaming a photo makes it a
+  new photo, so its comments stay behind with the old name; Drive is the only
+  backend whose identifiers survive a rename. And a WebDAV server holds no
+  previews of its own, so a video's poster is cut locally with ffmpeg, while a
+  HEIC or RAW file nothing here can decode has no thumbnail at all.
 
 ### Changed
 
