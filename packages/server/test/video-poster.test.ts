@@ -9,6 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
 import { buildApp } from '../src/app.js';
 import type { AppContext } from '../src/context.js';
+import type { StorageProvider } from '../src/storage/provider.js';
 import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
 
@@ -98,10 +99,14 @@ before(async () => {
   // A storage as it answers for a video: no downloadable original here, only the
   // preview it already holds. Fetching the original is the anomaly this
   // arrangement would expose.
-  context.storage.fetch = () => {
-    throw new Error('a video original must never be downloaded for a thumbnail');
-  };
-  context.storage.preview = () => Promise.resolve(new Response(jpeg));
+  const stockage = {
+    guard: <T>(operation: () => Promise<T>) => operation(),
+    fetch: () => {
+      throw new Error('a video original must never be downloaded for a thumbnail');
+    },
+    preview: () => Promise.resolve(new Response(jpeg)),
+  } as unknown as StorageProvider;
+  context.storage.get = () => stockage;
 
   const login = await server.inject({
     method: 'POST',

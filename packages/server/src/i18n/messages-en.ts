@@ -77,9 +77,15 @@ export const en = {
     'This instance authenticates with a service account: there is no consent to give. Share the folder with its address from Google Drive.',
   'error.serviceAccountDisconnect':
     'This instance authenticates with a service account: remove GOOGLE_SERVICE_ACCOUNT_FILE, or the folder share on the Drive side.',
-  'error.driveNotConnected': 'Connect Google Drive before starting a sync.',
+  'error.storageNotConnected': 'Connect a storage before starting a sync.',
   'error.oauthNotConfigured':
     'Google Drive is not configured: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are missing.',
+  'error.storageNotFound': 'No storage connection with this identifier.',
+  'error.storageExists': (id: string) => `A storage connection named "${id}" already exists.`,
+  'error.storageKindUnsupported': (kind: string) =>
+    `This version cannot read a storage of kind "${kind}".`,
+  'error.storageInUse': (albums: string) =>
+    `This storage still holds albums (${albums}). Move or delete them first — they would otherwise point at nothing.`,
 
   /* ---------------------------------------------------------------- Emails */
 

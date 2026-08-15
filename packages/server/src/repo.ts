@@ -11,6 +11,7 @@ import {
   type UpdateMediaRequest,
 } from '@lukarn/shared';
 import type { Db } from './db.js';
+import { DEFAULT_CONNECTION_ID } from './storage/connections.js';
 
 /** Raw `media` row with its joined description. */
 interface MediaRow {
@@ -295,10 +296,17 @@ export class MediaRepo {
    *
    * The same file indexed under two albums has two rows, which may diverge between
    * synchronisations. Sorting resolves them by `seen_at`: the most recently observed
-   * row carries the `md5` and current Drive file size. Without this sort, SQLite could
+   * row carries the `md5` and current file size. Without this sort, SQLite could
    * return the old row and the cache would serve a stale derivative under an ETag
    * declaring it immutable. `album_id` breaks ties so consecutive calls return the
    * same result.
+   *
+   * `connectionId` comes from the album and is what the media proxy resolves into a
+   * provider: with several storages, the identifier alone no longer says who holds the
+   * bytes. The join is **left**, falling back to the default connection: a row whose
+   * album has been deleted is already unreachable — `pruneAlbums` removes it and
+   * `authorize` refuses it — and turning that into a missing file here would change
+   * what this method means for a case that is not about storage.
    */
   getFileMeta(id: string): {
     name: string;
@@ -307,13 +315,21 @@ export class MediaRepo {
     size: number | null;
     md5: string | null;
     hasThumbnail: boolean;
+    /** Which storage connection holds this file. */
+    connectionId: string;
+    /** Readable path inside its container, `null` for a backend with opaque ids. */
+    sourcePath: string | null;
   } | null {
     const row = this.db
       .prepare(
-        `SELECT name, mime_type, kind, size, md5, has_thumbnail FROM media
-         WHERE id = ?
-         ORDER BY seen_at DESC, album_id ASC
-         LIMIT 1`,
+        `SELECT media.name, media.mime_type, media.kind, media.size, media.md5,
+                media.has_thumbnail, media.source_path,
+                COALESCE(albums.connection_id, '${DEFAULT_CONNECTION_ID}') AS connection_id
+           FROM media
+           LEFT JOIN albums ON albums.id = media.album_id
+          WHERE media.id = ?
+          ORDER BY media.seen_at DESC, media.album_id ASC
+          LIMIT 1`,
       )
       .get(id) as
       | {
@@ -323,6 +339,8 @@ export class MediaRepo {
           size: number | null;
           md5: string | null;
           has_thumbnail: number;
+          source_path: string | null;
+          connection_id: string;
         }
       | undefined;
     if (!row) return null;
@@ -333,6 +351,8 @@ export class MediaRepo {
       size: row.size,
       md5: row.md5,
       hasThumbnail: row.has_thumbnail === 1,
+      connectionId: row.connection_id,
+      sourcePath: row.source_path,
     };
   }
 

@@ -15,7 +15,9 @@ Single database: `${DATA_DIR}/lukarn.db`, opened by `packages/server/src/db.ts`.
 
 ### `media`
 
-The index. One row = one Drive file **in one album**.
+The index. One row = one file of one storage **in one album**. Which storage is
+not a column here: it comes from the album (`albums.connection_id`), and
+`getFileMeta` joins it so the media proxy can resolve a provider.
 
 | Column                                                                                                        | Type    | Note                                                                                                                                      |
 | ------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -34,6 +36,7 @@ The index. One row = one Drive file **in one album**.
 | `md5`                                                                                                         | TEXT    | Drive content fingerprint. Carries the URL and ETag version and forms part of the disk-cache key.                                         |
 | `has_thumbnail`                                                                                               | INTEGER | 0/1, Drive's `hasThumbnail`. Determines whether a **video** has a thumbnail — see below.                                                  |
 | `video_codec`                                                                                                 | TEXT    | Codec of a video's video track, read from its `moov`. Three states; see below.                                                            |
+| `source_path`                                                                                                 | TEXT    | Readable path inside the container, for a backend whose reference is a path. NULL for Drive, whose file id survives a rename.             |
 | `seen_at`                                                                                                     | TEXT    | Timestamp of the sync that saw this row. Basis for `deleteStale`.                                                                         |
 | `added_at`                                                                                                    | TEXT    | Date added to the index, written on INSERT and **never** by `ON CONFLICT DO UPDATE`. Nullable — see below.                                |
 | **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                          |
@@ -99,15 +102,42 @@ synchronisations and their failures; otherwise a failed sync would announce
 everything again. `NULL` means "never announced", and the notifier's first run
 sets the boundary **without sending anything**.
 
-### `oauth_token`
+### `storage_connections`
 
-A single row, guaranteed by `CHECK (id = 1)`. Columns: `ciphertext` (the encrypted
-refresh token; see [04](./04-security-and-access.md)), `account` (email displayed in
-`/admin`), `scope`, `granted_at`, `revoked_at`.
+Where the albums live. One row = one backend this instance reads, and
+`albums.connection_id` names it.
 
-A non-null `revoked_at` means "Google rejected the token". The row is **retained**
-rather than deleted: an empty table would look like a fresh installation, whereas
-the administrator needs to know _which_ account lost its authorisation.
+| Column       | Type    | Note                                                                                                     |
+| ------------ | ------- | -------------------------------------------------------------------------------------------------------- |
+| `id`         | TEXT    | PK. A slug — `drive`, `archives-minio` — written into every album that reads it, so it never changes.    |
+| `kind`       | TEXT    | `drive`, `local`, `s3` or `webdav`. Decides which implementation `storage/registry.ts` builds.           |
+| `label`      | TEXT    | What /admin displays.                                                                                    |
+| `settings`   | TEXT    | JSON, **nothing secret**: an endpoint, a bucket, a prefix, and a Drive connection's consented scope.     |
+| `ciphertext` | TEXT    | The secret half, encrypted with `TOKEN_KEY` — see [04](./04-security-and-access.md). NULL until granted. |
+| `account`    | TEXT    | What names the connection to a person: an address, a bucket, a URL.                                      |
+| `granted_at` | TEXT    | When the secret was obtained. NULL for a connection nothing was granted to.                              |
+| `revoked_at` | TEXT    | Non-NULL once the backend stopped accepting the secret.                                                  |
+| `created_at` | TEXT    | ISO 8601.                                                                                                |
+| `position`   | INTEGER | Display rank, like `albums.position`: creation dates collide on a seeded instance.                       |
+
+**What `ciphertext` contains belongs to the kind.** Drive stores its refresh token
+there, exactly as `oauth_token` did — which is what let migration 17 _copy_ the
+column instead of re-encrypting it. A backend needing more than one value stores
+JSON in it; `StorageConnectionRepo` encrypts and decrypts a string and knows
+nothing else about it.
+
+A non-null `revoked_at` means "the backend rejected the secret". The row is
+**retained** rather than deleted: an empty table would look like a fresh
+installation, whereas the administrator needs to know _which_ connection lost its
+authorisation. Disconnecting clears the secret and keeps the row, for a different
+reason — its albums name it by id, and taking it away would leave them pointing at
+nothing.
+
+**No foreign key from `albums.connection_id`.** SQLite refuses to add a column
+carrying a foreign key unless its default is NULL, and a nullable connection is the
+state this design exists to prevent. `StorageConnectionRepo` refuses to delete a
+connection an album still names (`409 storage_in_use`), which is the same guarantee
+stated where its message can be read.
 
 ### `sessions`
 
@@ -159,15 +189,15 @@ Three points maintain the isolation:
 
 ### `users`, `albums`, `user_albums`, `settings`
 
-The configuration: who can sign in, which Drive folders are exposed, and the
-settings. Written **only** by `ConfigRepo` (`config-repo.ts`).
+The configuration: who can sign in, which containers are exposed and on which
+storage, and the settings. Written **only** by `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Columns                                                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                                         |
-| `albums`      | `id` (PK), `title`, `description`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at`               |
-| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                                    |
-| `settings`    | `key` (PK), `value` — JSON. Keys: `instanceName`, `primaryColor`, `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail` |
+| Table         | Columns                                                                                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                                            |
+| `albums`      | `id` (PK), `title`, `description`, `connection_id`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at` |
+| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                                       |
+| `settings`    | `key` (PK), `value` — JSON. Keys: `instanceName`, `primaryColor`, `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`    |
 
 Key choices:
 
@@ -182,6 +212,11 @@ Key choices:
   `album_id = '*'` row would require a fictitious album to satisfy the foreign
   key, or abandoning that key. More importantly, the wildcard must cover albums
   **created later**: a fixed list of relationships would not.
+- **`connection_id`** names the storage this album reads, defaulting to `drive`
+  — the row migration 17 creates for every instance. Changing it purges the album
+  index exactly as changing `folder_id` does: the same path on another storage is
+  another set of files, and the identifiers of the old one address nothing there
+  (D26).
 - **`position`** holds display order. `created_at` could not reproduce it because
   bootstrapping creates every album in the same millisecond.
 - **`group_by`** (`CHECK (group_by IN ('month', 'day'))`, default `month`) is the
@@ -570,24 +605,35 @@ unchanged so that recovery restarts from the same step.
 
 Current state:
 
-| Version | Contents                                                                             |
-| ------- | ------------------------------------------------------------------------------------ |
-| 1       | Initial schema: `media`, `sync_state`, `oauth_token`, `sessions`, and their indexes. |
-| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                |
-| 3       | `users`, `albums`, `user_albums`, `settings`: configuration moves into the database. |
-| 4       | `commenters`, `comments`, and their indexes; `sessions.commenter_id`.                |
-| 5       | `album_subscriptions` and its index; `sync_state.notified_at`; `media.added_at`.     |
-| 6       | `commenters.pending_display_name`.                                                   |
-| 7       | `album_days`, `geo_places`; `albums.group_by`.                                       |
-| 8       | `albums.cover_media_id`.                                                             |
-| 9       | `media_notes`: one description per photo, scoped to the album.                       |
-| 10      | `media.has_thumbnail`: does Drive have a preview of this file?                       |
-| 11      | The four FTS5 search tables, their triggers, and their `rebuild`.                    |
-| 12      | `albums.sort_order`: the album's default reading order.                              |
-| 13      | `device_pairings`: pair a screen without a keyboard instead of typing a password.    |
-| 14      | `media.video_codec`: which codec does a video's video track use?                     |
-| 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.         |
-| 16      | `commenters.locale`: the language this person is written to in.                      |
+| Version | Contents                                                                                |
+| ------- | --------------------------------------------------------------------------------------- |
+| 1       | Initial schema: `media`, `sync_state`, `oauth_token`, `sessions`, and their indexes.    |
+| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                   |
+| 3       | `users`, `albums`, `user_albums`, `settings`: configuration moves into the database.    |
+| 4       | `commenters`, `comments`, and their indexes; `sessions.commenter_id`.                   |
+| 5       | `album_subscriptions` and its index; `sync_state.notified_at`; `media.added_at`.        |
+| 6       | `commenters.pending_display_name`.                                                      |
+| 7       | `album_days`, `geo_places`; `albums.group_by`.                                          |
+| 8       | `albums.cover_media_id`.                                                                |
+| 9       | `media_notes`: one description per photo, scoped to the album.                          |
+| 10      | `media.has_thumbnail`: does Drive have a preview of this file?                          |
+| 11      | The four FTS5 search tables, their triggers, and their `rebuild`.                       |
+| 12      | `albums.sort_order`: the album's default reading order.                                 |
+| 13      | `device_pairings`: pair a screen without a keyboard instead of typing a password.       |
+| 14      | `media.video_codec`: which codec does a video's video track use?                        |
+| 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.            |
+| 16      | `commenters.locale`: the language this person is written to in.                         |
+| 17      | `storage_connections`, from `oauth_token`; `albums.connection_id`; `media.source_path`. |
+
+**Migration 17 is the one that moves something rather than adding it**, and the
+line to read twice is the one that does not appear: `ciphertext` is **copied, not
+re-encrypted**. Re-encrypting would mean decrypting with `TOKEN_KEY` inside a
+migration, where a wrong or missing key destroys an authorisation only new Google
+consent can restore. The `drive` row is inserted **whether or not a token exists**,
+because two installations depend on it — a fresh database, whose albums default to
+it, and a service-account installation, which never had an `oauth_token` row at all
+(D260815g). `packages/server/test/migrate.test.ts` covers both, and checks that a
+version 1 database still arrives with its token intact sixteen migrations later.
 
 Migration 16 is additive and touches no row: the column arrives as `NULL` for
 every identity, and the instance's `DEFAULT_LOCALE` applies until one of that
@@ -779,11 +825,11 @@ database (see
 [D28](./08-decisions/D28-three-columns-written-but-never-read-are-retained.md))
 — and `db.ts` explains their purpose:
 
-| Column                | Why it remains                                                                                                   |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `media.modified_time` | Chronological marker from which `taken_at` is derived as a last resort; allows recalculation without reindexing. |
-| `oauth_token.scope`   | Consented scope: when `SCOPES` changes, it will show whether the stored token still covers what is requested.    |
-| `sessions.created_at` | Only trace of a session's age — the first question asked after suspicious access.                                |
+| Column                               | Why it remains                                                                                                                                                                     |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `media.modified_time`                | Chronological marker from which `taken_at` is derived as a last resort; allows recalculation without reindexing.                                                                   |
+| `storage_connections.settings.scope` | Consented scope of a Drive connection: when `SCOPES` changes, it will show whether the stored token still covers what is requested. It was `oauth_token.scope` until migration 17. |
+| `sessions.created_at`                | Only trace of a session's age — the first question asked after suspicious access.                                                                                                  |
 
 Accounts, albums, and settings, however, **have been in the database** since
 migration 3. `config/albums.yaml` now serves only to bootstrap a fresh

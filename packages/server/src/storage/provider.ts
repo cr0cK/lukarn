@@ -7,9 +7,12 @@
  * the justified grid — never learns where a file lives, which is what makes this
  * interface small enough to implement against a folder, a bucket or a WebDAV server.
  */
+import type { StorageKind } from '@lukarn/shared';
 
-/** Backends this application knows how to speak to. */
-export type StorageKind = 'drive' | 'local' | 's3' | 'webdav';
+// Which backends exist is part of the API contract — /admin names them in a form —
+// so the union is declared there and re-exported here, where every implementation
+// already imports its interface.
+export type { StorageKind };
 
 /**
  * Pre-parsed metadata, when the backend supplies it.

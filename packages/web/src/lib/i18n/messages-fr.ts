@@ -390,7 +390,7 @@ export const fr: Messages = {
   'adminAlbums.description':
     'Un album = un dossier Google Drive indexé. Sa couverture se choisit sur la photo, depuis l’album.',
   'adminAlbums.resyncAll': 'Tout resynchroniser',
-  'adminAlbums.noDrive': 'Aucun compte Google Drive connecté.',
+  'adminAlbums.noStorage': 'Aucun stockage connecté.',
   'adminAlbums.new': 'Nouvel album',
   'adminAlbums.none': 'Aucun album. En créer un à partir d’un dossier du Drive.',
   'adminAlbums.syncStarted': (albums: string) => `Synchronisation lancée : ${albums}`,
@@ -435,6 +435,13 @@ export const fr: Messages = {
   'albumForm.idHint': 'Apparaît dans l’URL de l’album. Proposé à partir du titre.',
   'albumForm.description': 'Description (facultative)',
   'albumForm.folder': 'Dossier Google Drive',
+  'albumForm.container': 'Dossier dans le stockage',
+  'albumForm.containerHint': 'Chemin relatif à la racine que ce stockage déclare.',
+  'albumForm.containerPlaceholder': 'vacances/2026',
+  'albumForm.storage': 'Stockage',
+  'albumForm.storageHint': 'Où vivent les fichiers de cet album.',
+  'albumForm.storageEditHint':
+    'En changer vide l’index de l’album et le réindexe : le même chemin ailleurs, ce sont d’autres fichiers.',
   'albumForm.folderExtracted': 'Identifiant retenu :',
   'albumForm.folderHint': 'Coller l’URL du dossier : l’identifiant est le segment après /folders/.',
   'albumForm.recursive': 'Inclure les sous-dossiers',
@@ -523,6 +530,9 @@ export const fr: Messages = {
   'validate.folder': 'Indiquer le dossier Drive.',
   'validate.folderPattern':
     'Coller l’URL du dossier Drive ou son identifiant — le segment après /folders/.',
+  'validate.container': 'Indiquer le dossier à lire.',
+  'validate.containerPattern': 'Un chemin relatif à la racine du stockage, sans segment parent.',
+  'validate.storageLabel': 'Donner un nom à ce stockage.',
   'validate.interval': 'Indiquer un nombre entier de minutes (0 pour désactiver).',
   'validate.cacheSize': 'Indiquer une taille en gigaoctets.',
   'validate.cacheSizePositive': 'La taille du cache doit être supérieure à 0.',
@@ -578,27 +588,57 @@ export const fr: Messages = {
     `${count} message${count > 1 ? 's' : ''} ${restored ? 'restauré' : 'masqué'}${count > 1 ? 's' : ''}.`,
   'moderation.bulkFailed': 'La modération en masse a échoué.',
 
-  /* -------------------------------------------------------- Administration: Drive */
+  /* ------------------------------------------------------ Administration: stockage */
 
-  'drive.title': 'Connexion Google Drive',
-  'drive.serviceAccount': 'Compte de service',
-  'drive.serviceAccountHint':
-    'Aucun consentement à donner, aucun jeton à renouveler. Chaque dossier d’album doit être partagé en lecture seule avec cette adresse depuis Google Drive — sinon il reste invisible, et sa synchronisation ne trouve rien.',
-  'drive.notConfigured':
-    'GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET ne sont pas renseignés dans le fichier',
-  'drive.notConfiguredEnd': '.',
-  'drive.revoked': 'Autorisation révoquée',
-  'drive.revokedFor': (account: string) => `pour ${account}`,
-  'drive.revokedHint':
-    'L’accès a été retiré du côté de Google, ou le jeton a expiré. Les albums restent consultables tant que les vignettes sont en cache. Se reconnecter pour reprendre la synchronisation.',
-  'drive.connected': 'Connecté',
-  'drive.notConnected': 'Aucun compte connecté. Autoriser l’accès en lecture au Drive.',
-  'drive.disconnect': 'Déconnecter',
-  'drive.connect': 'Connecter Google Drive',
-  'drive.reconnect': 'Reconnecter Google Drive',
-  'drive.connectFailed': 'La connexion a échoué.',
-  'drive.disconnected': 'Google Drive déconnecté.',
-  'drive.disconnectFailed': 'Déconnexion impossible.',
+  'storage.title': 'Stockage',
+  'storage.description': 'Où vivent les albums. Une instance peut en lire plusieurs.',
+  'storage.loadFailed': 'Impossible de charger les connexions de stockage.',
+  'storage.add': 'Ajouter un stockage',
+  'storage.create': 'Ajouter',
+  'storage.created': (label: string) => `Stockage « ${label} » ajouté.`,
+  'storage.label': 'Nom',
+  'storage.identifier': 'Identifiant',
+  'storage.identifierHint':
+    'Inscrit dans chaque album qui lit ce stockage. Il ne peut plus changer.',
+  'storage.kind': 'Type',
+  'storage.kindHint': 'Ce à quoi cette connexion parle. Il ne peut plus changer ensuite.',
+  'storage.kindDrive': 'Google Drive',
+  'storage.kindLocal': 'Dossier local',
+  'storage.kindS3': 'Bucket compatible S3',
+  'storage.kindWebdav': 'Serveur WebDAV',
+  'storage.albumCount': (count: number) =>
+    count === 0
+      ? 'Aucun album ne le lit pour l’instant.'
+      : `${count} album${count > 1 ? 's' : ''} le lisent.`,
+  'storage.serviceAccountHint':
+    'Aucun consentement à donner, aucun jeton à renouveler. Chaque dossier d’album doit être partagé en lecture seule avec cette adresse depuis Google Drive — sinon il reste invisible et sa synchronisation ne trouve rien.',
+  'storage.notConfigured':
+    'GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET ne sont pas définis dans le fichier',
+  'storage.notConfiguredEnd': '.',
+  'storage.revoked': 'Autorisation révoquée',
+  'storage.revokedFor': (account: string) => `pour ${account}`,
+  'storage.revokedHint':
+    'L’accès a été retiré côté Google, ou le jeton a expiré. Les albums restent consultables tant que les vignettes sont en cache. Reconnecter pour relancer la synchronisation.',
+  'storage.connected': 'Connecté',
+  'storage.notConnected': 'Non connecté. Rien ne peut en être indexé ni servi.',
+  'storage.connect': 'Connecter Google Drive',
+  'storage.reconnect': 'Reconnecter Google Drive',
+  'storage.connectFailed': 'La connexion a échoué.',
+  'storage.disconnect': 'Déconnecter',
+  'storage.disconnected': (label: string) => `« ${label} » est déconnecté.`,
+  'storage.disconnectFailed': 'Impossible de déconnecter ce stockage.',
+  'storage.test': 'Tester',
+  'storage.testing': 'Test en cours…',
+  'storage.testOk': (account: string) => `Il répond — ${account}.`,
+  'storage.testFailed': 'Ce stockage n’a pas répondu.',
+  'storage.delete': 'Supprimer',
+  'storage.deleteOne': (label: string) => `Supprimer le stockage ${label}`,
+  'storage.deleted': (label: string) => `Stockage « ${label} » supprimé.`,
+  'storage.deleteFailed': 'Impossible de supprimer ce stockage.',
+  'storage.confirmTitle': (label: string) => `Supprimer « ${label} » ?`,
+  'storage.confirmButton': 'Supprimer',
+  'storage.confirmNothingDeleted':
+    'Rien n’est supprimé sur le stockage lui-même : c’est la façon dont cette galerie l’atteint qui disparaît. Un album qui le lit encore doit d’abord être déplacé ou supprimé.',
 
   /* ----------------------------------------------------- Administration: settings */
 

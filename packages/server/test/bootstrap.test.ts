@@ -127,13 +127,13 @@ describe('updating a live instance', () => {
         '2026-07-20T08:00:00.000Z',
       );
 
-      // The OAuth token is intact: no new consent is needed.
-      const token = context.db.prepare('SELECT account, revoked_at FROM oauth_token').get() as {
-        account: string;
-        revoked_at: string | null;
-      };
-      assert.equal(token.account, 'photos@exemple.fr');
-      assert.equal(token.revoked_at, null);
+      // The OAuth token is intact, now as the Drive connection: no new consent is
+      // needed, and the albums imported from the YAML read it without saying so.
+      const connection = context.connections.get('drive');
+      assert.equal(connection?.account, 'photos@exemple.fr');
+      assert.equal(connection?.revokedAt, null);
+      assert.equal(context.storage.isConnected('drive'), true);
+      for (const album of context.albums) assert.equal(album.connectionId, 'drive');
 
       // Both accounts log in with their previous password, and username case
       // remains irrelevant.

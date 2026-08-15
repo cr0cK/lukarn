@@ -29,7 +29,7 @@ describe('migrations', () => {
     db.close();
   });
 
-  it('adds revoked_at to a version 1 database without losing the token', () => {
+  it('carries a version 1 token all the way to the connections table', () => {
     const db = databaseAtVersion(1);
 
     // State of a live instance: an already authorised refresh token.
@@ -45,18 +45,22 @@ describe('migrations', () => {
 
     migrate(db);
 
-    assert.ok(columns(db, 'oauth_token').includes('revoked_at'));
-
-    const token = db.prepare('SELECT * FROM oauth_token WHERE id = 1').get() as {
+    const connection = db.prepare("SELECT * FROM storage_connections WHERE id = 'drive'").get() as {
       account: string;
       ciphertext: string;
       revoked_at: string | null;
+      granted_at: string;
+      settings: string;
     };
-    // The token survives and is not considered revoked: the instance continues
-    // working after the update without new consent.
-    assert.equal(token.account, 'photos@exemple.fr');
-    assert.equal(token.ciphertext, 'chiffré');
-    assert.equal(token.revoked_at, null);
+    // The token survives sixteen migrations and is not considered revoked: the
+    // instance keeps working after the update, without new consent.
+    assert.equal(connection.account, 'photos@exemple.fr');
+    assert.equal(connection.ciphertext, 'chiffré');
+    assert.equal(connection.revoked_at, null);
+    assert.equal(connection.granted_at, '2026-01-01T00:00:00.000Z');
+    // The scope moves into `settings` rather than disappearing: it is what says
+    // whether a stored token still covers what the application asks for.
+    assert.equal(JSON.parse(connection.settings).scope, 'drive.readonly');
 
     assert.equal(
       (db.prepare('SELECT COUNT(*) AS n FROM media').get() as { n: number }).n,
@@ -447,6 +451,82 @@ describe('migrations', () => {
     // what a later migration must not "fix" — logging out would otherwise erase
     // viewing history (D260809h).
     assert.deepEqual(db.pragma('foreign_key_list(album_visits)'), []);
+
+    db.close();
+  });
+
+  it('turns a version 16 token into the Drive connection, ciphertext untouched', () => {
+    const db = databaseAtVersion(16);
+    const date = '2026-02-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO oauth_token (id, ciphertext, account, scope, granted_at, revoked_at)
+       VALUES (1, 'jeton-chiffré', 'photos@exemple.fr', 'drive.readonly', ?, NULL)`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, position, created_at, updated_at)
+       VALUES ('vacances', 'Vacances', 'dossier', 1, 0, ?, ?)`,
+    ).run(date, date);
+
+    migrate(db);
+
+    const connection = db.prepare("SELECT * FROM storage_connections WHERE id = 'drive'").get() as {
+      kind: string;
+      label: string;
+      ciphertext: string;
+      account: string;
+      granted_at: string;
+      created_at: string;
+    };
+    // **Copied, never re-encrypted.** Re-encrypting would mean decrypting with
+    // TOKEN_KEY inside a migration, where a wrong key destroys an authorisation
+    // only new Google consent can restore.
+    assert.equal(connection.ciphertext, 'jeton-chiffré');
+    assert.equal(connection.kind, 'drive');
+    assert.equal(connection.label, 'Google Drive');
+    assert.equal(connection.account, 'photos@exemple.fr');
+    assert.equal(connection.granted_at, date);
+    assert.equal(connection.created_at, date);
+
+    // The album keeps reading what it was reading, without anybody choosing.
+    const album = db.prepare('SELECT * FROM albums WHERE id = ?').get('vacances') as {
+      connection_id: string;
+    };
+    assert.equal(album.connection_id, 'drive');
+
+    // The single-row table is gone: one instance, one Drive was a scope decision
+    // the schema used to enforce with CHECK (id = 1).
+    assert.equal(
+      (
+        db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'oauth_token'").get() as {
+          n: number;
+        }
+      ).n,
+      0,
+    );
+
+    db.close();
+  });
+
+  it('creates the Drive connection even where no token ever existed', () => {
+    // A service-account installation: its key lives in the environment and
+    // `oauth_token` was always empty. Without a row here, every album would
+    // default to a connection that does not exist and stop syncing.
+    const db = databaseAtVersion(16);
+    migrate(db);
+
+    const connection = db.prepare("SELECT * FROM storage_connections WHERE id = 'drive'").get() as {
+      ciphertext: string | null;
+      account: string | null;
+      granted_at: string | null;
+      created_at: string;
+      settings: string;
+    };
+    assert.equal(connection.ciphertext, null);
+    assert.equal(connection.account, null);
+    assert.equal(connection.granted_at, null);
+    // Nothing was granted, so the row is dated when it was created.
+    assert.match(connection.created_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(JSON.parse(connection.settings), {});
 
     db.close();
   });

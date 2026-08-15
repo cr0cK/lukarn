@@ -15,6 +15,7 @@ import {
   VideoTranscoder,
 } from '../src/media/transcode.js';
 import { MediaRepo, type MediaUpsert } from '../src/repo.js';
+import type { StorageProvider } from '../src/storage/provider.js';
 
 /**
  * Preparing unplayable videos.
@@ -92,7 +93,7 @@ function fauxTranscodeur(
     durees: [],
     simultanes: 0,
     maxSimultanes: 0,
-    async transcode(fileId, md5, durationMs) {
+    async transcode(_storage, fileId, md5, durationMs) {
       faux.durees.push(durationMs);
       faux.simultanes++;
       faux.maxSimultanes = Math.max(faux.maxSimultanes, faux.simultanes);
@@ -114,10 +115,12 @@ function deps(
   overrides: Partial<TranscodePassDeps> = {},
 ): TranscodePassDeps {
   return {
-    albums: () => [{ id: albumId }],
+    albums: () => [{ id: albumId, connectionId: 'drive' }],
     media,
     store: new MediaCache(join(dir, `magasin-${albumId}`), 10_000_000, silencieux),
     transcoder,
+    storage: () => ({}) as never,
+    connected: () => true,
     enabled: () => true,
     log: silencieux,
     ...overrides,
@@ -361,11 +364,11 @@ describe('transcoding pass', () => {
 
 describe('derivative production', () => {
   /** Stubbed storage: the response body is the downloaded "file". */
-  function stockage(contenu: string): { fetch: unknown; guard: unknown } {
+  function stockage(contenu: string): StorageProvider {
     return {
       fetch: () => Promise.resolve(new Response(contenu)),
       guard: <T>(operation: () => Promise<T>) => operation(),
-    };
+    } as unknown as StorageProvider;
   }
 
   it('stores the output and removes its temporary files', async () => {
@@ -374,7 +377,6 @@ describe('derivative production', () => {
     await store.load();
 
     const transcodeur = new VideoTranscoder({
-      storage: stockage('des octets de film') as never,
       store,
       root,
       // The runner writes the target in place of ffmpeg, exactly what the real
@@ -385,7 +387,13 @@ describe('derivative production', () => {
       },
     });
 
-    await transcodeur.transcode('clip', 'empreinte', 60_000, AbortSignal.timeout(5_000));
+    await transcodeur.transcode(
+      stockage('des octets de film'),
+      'clip',
+      'empreinte',
+      60_000,
+      AbortSignal.timeout(5_000),
+    );
 
     const range = store.hit(playableKey('clip', 'empreinte'));
     assert.ok(range, 'the playable version must be in the store');
@@ -402,14 +410,19 @@ describe('derivative production', () => {
     await store.load();
 
     const transcodeur = new VideoTranscoder({
-      storage: stockage('des octets de film') as never,
       store,
       root,
       run: () => Promise.reject(new Error('ffmpeg exited with 1')),
     });
 
     await assert.rejects(() =>
-      transcodeur.transcode('casse', null, 60_000, AbortSignal.timeout(5_000)),
+      transcodeur.transcode(
+        stockage('des octets de film'),
+        'casse',
+        null,
+        60_000,
+        AbortSignal.timeout(5_000),
+      ),
     );
 
     // A 150 MB original left behind after every failed attempt would fill the

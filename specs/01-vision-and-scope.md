@@ -22,10 +22,12 @@ a way for an album to record which storage it belongs to, a migration for the
 single-row `oauth_token` table, and administration screens that stop naming Drive
 folders.
 
-This is a different question from the row excluding **multiple Drives** below.
-That one is about how many accounts a single instance serves — `oauth_token`
-carries `CHECK (id = 1)` — and adding a second _kind_ of storage does not relax
-it. One instance still reads one account.
+Reading **several accounts** was excluded for as long as `oauth_token` carried
+`CHECK (id = 1)`: one instance, one Drive. That was the schema stating a scope
+decision, and a table of connections lifts it — an instance may now read a Drive
+for the family album and another for the archives (D260815g). What has not
+changed is that an album reads **one** storage: it names it, and moving it
+elsewhere reindexes it.
 
 ## Intended users
 
@@ -74,7 +76,7 @@ manageable.
 | Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                            |
 | Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51). |
 | Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                 |
-| Multi-tenancy, multiple Drives                                        | The `oauth_token` table has a `CHECK (id = 1)` constraint: one instance, one Drive.                                                                                                                                        |
+| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.      |
 
 ## Constraints that shaped the design
 

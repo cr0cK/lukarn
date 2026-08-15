@@ -95,6 +95,7 @@ function fauxRenderer(options: { echoue?: Set<string> } = {}): FauxRenderer {
     // `prepare` owns the cache short circuit because the variant key lives
     // there; prewarming need not know it.
     prepare: (
+      _storage: unknown,
       fileId: string,
       variants: Variant[],
       _md5: string | null,
@@ -118,10 +119,12 @@ function deps(
   overrides: Partial<PrewarmDeps> = {},
 ): PrewarmDeps {
   return {
-    albums: () => [{ id: albumId }],
+    albums: () => [{ id: albumId, connectionId: 'drive' }],
     media,
     cache: new MediaCache(join(dir, `cache-${albumId}`), 10_000_000, silencieux),
     renderer,
+    storage: () => ({}) as never,
+    connected: () => true,
     enabled: () => true,
     log: silencieux,
     ...overrides,
@@ -129,6 +132,24 @@ function deps(
 }
 
 describe('cache prewarming', () => {
+  it('skips an album whose storage is not connected', async () => {
+    media.upsertMany([photo('coupe', 'photo-1', 3)], '2026-07-28T12:00:00.000Z');
+    const { rendus, renderer } = fauxRenderer();
+
+    const resultat = await new PrechauffeurInstantane(
+      deps('coupe', renderer, { connected: () => false }),
+    ).run();
+
+    // The registry resolves a revoked connection perfectly well — it only refuses
+    // an unknown one — so without this check every photo of that album fails
+    // inside the loop and still pays its one-second pause. That is the waste the
+    // instance-wide gate was added for (D61), and it stops working the moment one
+    // connection is revoked while another answers.
+    assert.deepEqual(rendus, []);
+    assert.equal(resultat.rendered, 0);
+    assert.equal(resultat.failed, 0);
+  });
+
   it('renders the most recent photos first', async () => {
     media.upsertMany(
       [photo('recent', 'vieille', 1), photo('recent', 'moyenne', 15), photo('recent', 'neuve', 28)],
