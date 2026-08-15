@@ -49,6 +49,14 @@ export default defineConfig({
      */
     contextOptions: { reducedMotion: 'no-preference' },
     /**
+     * Stated for the same reason. A browser that states no preference gets the
+     * theme its device asks for, and Playwright's default device asks for light —
+     * so every claim in this suite would silently move to the theme the
+     * application does *not* ship as its default. `settings.spec.ts` emulates the
+     * other one where that is the subject.
+     */
+    colorScheme: 'dark',
+    /**
      * The service worker caches the application shell, and a shell cached by an
      * earlier test is a shell no later test can reason about. It is covered by
      * unit tests and by none of the claims here.

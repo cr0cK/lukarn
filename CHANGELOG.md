@@ -13,6 +13,26 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### A light theme, for the rooms that have windows
+
+The gallery has only ever been dark. That is right for photographs and wrong for
+a bright kitchen at eleven in the morning, where a black page is a mirror.
+
+- **Settings now offers Light beside Dark**, and it applies at once — the page,
+  the panels, the menus, administration.
+- **Until you choose, your device chooses.** A phone or a computer set to light
+  opens the gallery light, and one set to dark opens it dark. Choosing here
+  settles it for good on that browser: a phone that turns itself dark at night
+  will not undo the decision every evening.
+- **Opening a photo still puts it against near-black**, whatever the rest of the
+  application is doing. A photograph is judged against what surrounds it, and a
+  white ground shifts every exposure in it. What sits beside the photo — the
+  information panel, the comments, the sheet a phone pulls up — follows the
+  theme like everything else.
+- The choice belongs to the browser rather than the account, as the language
+  already does, so one shared key can be read light on a phone and dark on the
+  television in the same evening.
+
 ### Your own settings, on a page instead of at the bottom of a menu
 
 Choosing the language meant opening the account menu and scrolling past "Sign
@@ -22,9 +42,8 @@ from leaving.
 - **A Settings page, at the top of the account menu and open to everybody.** The
   language lives there now, as a list showing which one is in force. On a phone
   each setting is a row you tap to open, the same way administration reads.
-- **The light theme is announced where it will appear.** It is listed beside the
-  dark one, greyed and marked "soon", so the place to look for it is already the
-  right one. It does nothing yet: the gallery still has a single dark palette.
+- **The theme is listed beside it**, which is the entry above: the place to look
+  for it turned out to be the right one before it did anything.
 
 Whatever comes next — the size of the thumbnails, how many fit across the grid —
 lands on that page rather than lengthening the menu. As before, these choices

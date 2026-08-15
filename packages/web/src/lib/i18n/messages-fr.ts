@@ -75,8 +75,8 @@ export const fr: Messages = {
   'prefs.language': 'Langue',
   'prefs.theme': 'Thème',
   'prefs.themeDark': 'Sombre',
-  'prefs.themeLightSoon': 'Clair (bientôt)',
-  'prefs.themeHint': "Seul le thème sombre existe aujourd'hui ; le clair arrive.",
+  'prefs.themeLight': 'Clair',
+  'prefs.themeHint': "Suit votre appareil tant que vous n'avez pas choisi ici.",
 
   /* ------------------------------------------------------------ Sheets */
 

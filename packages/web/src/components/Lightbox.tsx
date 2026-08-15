@@ -647,13 +647,22 @@ export function Lightbox({
       role="dialog"
       aria-modal="true"
       aria-label={item.name}
-      className="fixed inset-0 z-50 flex bg-ink-950 outline-none"
+      className="fixed inset-0 z-50 flex outline-none"
     >
       {/* Photo column. It **shrinks** when the panel enters the flow (from
           `md`): as an overlay, the panel covered the "Next" arrow and had to be
           closed for every photo. `min-w-0` is essential — without it, content
-          imposes its width and the panel overflows the screen. */}
-      <div className="relative flex min-w-0 flex-1 flex-col">
+          imposes its width and the panel overflows the screen.
+
+          **`theme-dark` here and nowhere else in this file**: the stage is the
+          one surface that does not follow the reader's theme. A photograph is
+          judged against what surrounds it, and a white ground shifts every
+          exposure in it — which is why the ground carries `ink-950` while the
+          panel beside it, the sheets it opens and the menus above it stay
+          chrome and turn light with the rest of the application (D260815d).
+          The gradients and the white text in this column are painted over the
+          photo itself, and are correct for the same reason. */}
+      <div className="theme-dark relative flex min-w-0 flex-1 flex-col bg-ink-950">
         {/* The veil makes the header readable: without it, light text over an
             overexposed sky cannot be read. It covers two lines — album and day,
             then place — mirroring the bottom bar, and its transparent base keeps
@@ -1207,7 +1216,7 @@ function SheetActions({
 
       <ActionMenu
         label={t('viewer.actions')}
-        triggerClassName="flex min-h-12 min-w-12 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+        triggerClassName="flex min-h-12 min-w-12 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-tint hover:text-ink-100"
         groupes={[
           overflow.map((action) => ({
             // Omit the keyboard shortcut: this menu opens by touch, where "(f)"
@@ -1260,7 +1269,7 @@ function SheetAction({
       aria-label={announce}
       onClick={onSelect}
       className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-[0.6875rem] leading-none transition-colors ${
-        selected ? 'bg-accent-soft text-ink-100' : 'text-ink-300 hover:bg-white/5'
+        selected ? 'bg-accent-soft text-ink-100' : 'text-ink-300 hover:bg-tint'
       }`}
     >
       <span className="relative">

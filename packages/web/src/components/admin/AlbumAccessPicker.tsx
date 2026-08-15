@@ -133,7 +133,7 @@ function Choice({
     <label
       htmlFor={id}
       className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
-        checked ? 'border-accent-dim bg-accent/5' : 'border-ink-700 hover:bg-white/5'
+        checked ? 'border-accent-dim bg-accent/5' : 'border-ink-700 hover:bg-tint'
       }`}
     >
       <input
@@ -171,7 +171,7 @@ function AlbumCheckbox({
   return (
     <label
       htmlFor={id}
-      className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-white/5"
+      className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-tint"
     >
       <input
         id={id}

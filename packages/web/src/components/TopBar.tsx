@@ -75,7 +75,7 @@ interface TopBarProps {
  * `md` it stays exactly the square D90 measured.
  */
 const CLASSE_BOUTON =
-  'flex size-12 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:size-9';
+  'flex size-12 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-tint hover:text-ink-100 md:size-9';
 
 const CLASSE_PASTILLE =
   'flex size-8 shrink-0 items-center justify-center rounded-full bg-ink-700 text-ink-200 transition-colors hover:bg-ink-600 hover:text-ink-100';
@@ -147,7 +147,7 @@ export function TopBar({
             to={backTo}
             // 48 px below `md` like the other bar controls: Back is the most
             // used target on a phone and was the smallest of them at 36.
-            className="-ml-2 flex size-12 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:-ml-1 md:size-9"
+            className="-ml-2 flex size-12 shrink-0 items-center justify-center rounded-full text-ink-300 transition-colors hover:bg-tint hover:text-ink-100 md:-ml-1 md:size-9"
             aria-label={t('topbar.back')}
           >
             <svg
@@ -210,7 +210,7 @@ export function TopBar({
               onClick={feed.onOpen}
               title={t('topbar.activity')}
               aria-label={feedLabel(feed.unread, t)}
-              className={`relative hidden size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 md:flex`}
+              className={`relative hidden size-9 shrink-0 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-tint hover:text-ink-100 md:flex`}
             >
               <svg
                 viewBox="0 0 24 24"

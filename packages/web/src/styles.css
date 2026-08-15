@@ -1,8 +1,20 @@
 @import 'tailwindcss';
 
 /**
- * Neutral, slightly cool dark palette. Deliberately low contrast between
- * background levels: photos should stand out, not application chrome.
+ * Neutral, slightly cool palette. Deliberately low contrast between background
+ * levels: photos should stand out, not application chrome.
+ *
+ * **The rungs name a role, not a brightness.** `ink-900` is the page, `ink-850`
+ * the panel raised above it, `ink-700` its edge, `ink-100` the text — and that
+ * stays true in both themes, which is why the light ramp in `@layer base` runs
+ * the other way rather than being a second set of names. Nothing in the
+ * application chooses a theme; it asks for the page, and the ramp in force
+ * answers.
+ *
+ * The values below are the dark ramp, repeated by `.theme-dark` further down.
+ * Tailwind needs a value here to emit `bg-ink-850` at all, and a stylesheet read
+ * on its own should say what these tokens are rather than defer to a class.
+ * `theme.test.ts` compares the two so they cannot drift.
  */
 @theme {
   --color-ink-950: #08080a;
@@ -16,6 +28,13 @@
   --color-ink-200: #c6c6d0;
   --color-ink-100: #e8e8ee;
 
+  /* A hover or a pressed state, as a wash of the foreground over whatever is
+     underneath. Written as `#ffffff0d` rather than `bg-white/5`, which Tailwind
+     compiles to `color-mix()` — dropped whole by Chromium 79, taking the only
+     cue that a borderless row answers the pointer (D260809f). */
+  --color-tint: #ffffff0d;
+  --color-tint-strong: #ffffff1a;
+
   /* The instance's primary colour and the three values derived from it.
 
      These are **defaults**, not the values in force: `shell.ts` writes the
@@ -28,10 +47,14 @@
      Kept in step with `derivePalette('#eb2020')` by `shell.test.ts`, and plain
      hex rather than `color-mix()`, which Chromium 79 cannot parse: an
      unparseable colour is dropped entirely, so a hovered row would lose its
-     background rather than merely its tint (D260813). */
+     background rather than merely its tint (D260813).
+
+     `--color-accent-soft` is the one translucent value: it must land on a dark
+     panel and on a light one, and the only mix correct on both is the one the
+     browser performs against whatever is actually behind it (D260815d). */
   --color-accent: #eb2020;
   --color-accent-dim: #a91717;
-  --color-accent-soft: #351417;
+  --color-accent-soft: #eb202029;
   --color-accent-ink: #ffffff;
 
   --font-sans:
@@ -44,6 +67,72 @@
   body,
   #root {
     height: 100%;
+  }
+
+  /* The two ramps, and the only place either theme is spelled out.
+   *
+   * One of these classes is on `<html>` from the first byte — `index.html` ships
+   * `theme-dark` and `public/theme.js` swaps it before the first paint — so no
+   * component ever asks which theme is in force. It asks for `bg-ink-850` and
+   * gets the panel of whichever ramp is bound here. That is what keeps the light
+   * theme from being a second set of four hundred class names.
+   *
+   * `color-scheme` is set alongside, and it is not decoration: it decides the
+   * colour of the native scrollbar, of a `<select>` drop-down and of the space
+   * either side of a rubber-band scroll. Left saying `dark` on a light page,
+   * those three stay black.
+   *
+   * Deliberately **not** `@media (prefers-color-scheme)`: the device's preference
+   * is one of the three answers `lib/theme.ts` weighs, not the rule. A reader who
+   * chose light on a phone that is dark at night chose it for the gallery too. */
+  .theme-dark {
+    color-scheme: dark;
+
+    --color-ink-950: #08080a;
+    --color-ink-900: #0b0b0d;
+    --color-ink-850: #121215;
+    --color-ink-800: #17171b;
+    --color-ink-700: #232329;
+    --color-ink-600: #33333b;
+    --color-ink-400: #6b6b77;
+    --color-ink-300: #9a9aa6;
+    --color-ink-200: #c6c6d0;
+    --color-ink-100: #e8e8ee;
+
+    --color-tint: #ffffff0d;
+    --color-tint-strong: #ffffff1a;
+  }
+
+  /* The same rungs, read from the other end.
+   *
+   * Two inversions are not literal, and both are the point of naming rungs after
+   * roles. `ink-850` is the panel and therefore **whiter** than `ink-900`, the
+   * page it is raised above — a light interface stacks upwards, where a dark one
+   * stacks down. And `ink-800`, which is at once a raised bar and every hairline
+   * between rows, sits just below the panel here rather than just above it: a
+   * divider that cannot be seen is a worse loss than a top bar that reads as
+   * chrome rather than as paper.
+   *
+   * The text rungs were checked against the two grounds they land on, `ink-900`
+   * and `ink-850`, at the ratio WCAG asks of body text. `ink-400` — the muted
+   * caption, the timestamp, the placeholder — is the one that decides how far the
+   * ramp can be lightened, and it is already at 4.6:1 on the page. */
+  .theme-light {
+    color-scheme: light;
+
+    --color-ink-950: #ffffff;
+    --color-ink-900: #f5f5f7;
+    --color-ink-850: #ffffff;
+    --color-ink-800: #ebebef;
+    --color-ink-700: #dcdce3;
+    --color-ink-600: #c2c2cc;
+    --color-ink-400: #6a6a76;
+    --color-ink-300: #55555f;
+    --color-ink-200: #33333c;
+    --color-ink-100: #14141a;
+
+    --color-tint: #0000000d;
+    --color-tint-strong: #0000001a;
   }
 
   /* The type scale is 5% larger below `md`.
@@ -94,7 +183,7 @@
     overscroll-behavior-y: none;
   }
 
-  /* Subtle scrollbar matching the dark background. */
+  /* Subtle scrollbar, on the ramp in force rather than on a fixed grey. */
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--color-ink-600) transparent;

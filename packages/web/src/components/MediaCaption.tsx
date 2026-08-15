@@ -310,7 +310,7 @@ function CaptionEditor({
             type="button"
             onClick={onClose}
             disabled={update.isPending}
-            className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100"
+            className="rounded-lg px-3 py-1.5 text-sm text-ink-300 transition-colors hover:bg-tint hover:text-ink-100"
           >
             {t('common.cancel')}
           </button>

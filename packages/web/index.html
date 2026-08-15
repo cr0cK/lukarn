@@ -7,20 +7,28 @@
      the configured colour. The values written here match the `@theme` defaults in
      `styles.css`, so `pnpm dev`, where Vite serves this file untouched, looks
      exactly like production. -->
+<!-- `theme-dark` is a starting position, not the answer: `public/theme.js`, loaded
+     at the end of this head, swaps it for `theme-light` before the first paint if
+     that is what this browser was told or what its device prefers. Written here so
+     the dark ramp is bound from the very first byte — a class arriving with the
+     stylesheet would leave one frame with no ramp at all. -->
 <html
   lang="en"
-  class="dark"
+  class="theme-dark"
   style="
     --color-accent: #eb2020;
     --color-accent-dim: #a91717;
-    --color-accent-soft: #351417;
+    --color-accent-soft: #eb202029;
     --color-accent-ink: #ffffff;
   "
 >
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark" />
+    <!-- No `color-scheme` meta: `styles.css` sets the property on each ramp, and
+         the property wins over the meta — two answers where one of them cannot
+         follow the reader's choice. `theme-color` has no such equivalent, so it
+         starts on the dark page colour and `theme.js` rewrites it. -->
     <meta name="theme-color" content="#0b0b0d" />
     <meta name="robots" content="noindex, nofollow" />
 
@@ -45,6 +53,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
 
     <title>Photos</title>
+
+    <!-- Last in the head, blocking on purpose, and after the `theme-color` meta it
+         rewrites. Neither `defer` nor `type="module"` — both would let the page
+         paint dark first and flash. -->
+    <script src="/theme.js"></script>
   </head>
   <body>
     <div id="root"></div>

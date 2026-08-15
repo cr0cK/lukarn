@@ -69,7 +69,7 @@ function LigneVisiteur({ visiteur }: { visiteur: VisitorRow }): ReactElement {
           {visiteur.devices.map((appareil) => (
             <span
               key={appareil}
-              className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs font-normal text-ink-300"
+              className="shrink-0 rounded-full bg-tint px-2 py-0.5 text-xs font-normal text-ink-300"
             >
               {t(APPAREILS[appareil])}
             </span>
@@ -104,7 +104,7 @@ function LigneAlbum({ album }: { album: AlbumVisitRow }): ReactElement {
         <p className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink-100">
           <span className="truncate">{album.title ?? album.albumId}</span>
           {album.title === null && (
-            <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs font-normal text-ink-400">
+            <span className="shrink-0 rounded-full bg-tint px-2 py-0.5 text-xs font-normal text-ink-400">
               {t('visits.deleted')}
             </span>
           )}

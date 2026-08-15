@@ -5,6 +5,7 @@ import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { TopBar } from '../components/TopBar';
 import { SelectField, Section, type SelectOption } from '../components/admin/ui';
 import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT } from '../lib/i18n';
+import { THEMES, isTheme, readStoredTheme, setTheme, useTheme, type Theme } from '../lib/theme';
 
 /**
  * What the reader decides for themselves, at `/settings`.
@@ -23,6 +24,7 @@ import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT } from '../lib/i18n';
 export default function SettingsPage(): ReactElement {
   const t = useT();
   const { locale, setLocale } = useLocale();
+  const theme = useTheme();
   // Administration carries the tab bar on a phone and so does this screen: a tab
   // that goes missing on one page is exactly the irregularity the bar removes.
   const activity = useActivityFeed();
@@ -30,6 +32,11 @@ export default function SettingsPage(): ReactElement {
   const langues: SelectOption[] = AVAILABLE_LOCALES.map((code: Locale) => ({
     value: code,
     label: LOCALE_NAMES[code],
+  }));
+
+  const themes: SelectOption[] = THEMES.map((name: Theme) => ({
+    value: name,
+    label: t(name === 'dark' ? 'prefs.themeDark' : 'prefs.themeLight'),
   }));
 
   return (
@@ -58,22 +65,20 @@ export default function SettingsPage(): ReactElement {
               onChange={(value) => isLocale(value) && setLocale(value)}
             />
 
-            {/* The light theme does not exist: `styles.css` declares one dark
-                `ink-*` scale and `index.html` hardcodes `class="dark"`. The row
-                is here, with its second value listed and refused rather than
-                absent, because a setting nobody sees coming is a setting people
-                ask for. There is nothing to remember until there is a second
-                palette to remember, which is why the choice changes nothing. */}
+            {/* Until somebody opens this row, the device answers for them — which
+                is why the hint says so rather than leaving a value nobody chose
+                looking like one they did. Choosing here settles it for good on
+                this browser: a phone that turns dark at night must not undo a
+                reader's decision every evening. */}
             <SelectField
               id="prefs-theme"
               label={t('prefs.theme')}
-              value="dark"
-              options={[
-                { value: 'dark', label: t('prefs.themeDark') },
-                { value: 'light', label: t('prefs.themeLightSoon'), disabled: true },
-              ]}
-              onChange={() => undefined}
-              hint={t('prefs.themeHint')}
+              value={theme}
+              options={themes}
+              // Guarded rather than cast, as above: a `select` hands back a
+              // string, and `lib/theme.ts` owns what counts as a theme.
+              onChange={(value) => isTheme(value) && setTheme(value)}
+              hint={readStoredTheme() ? undefined : t('prefs.themeHint')}
             />
           </div>
         </Section>

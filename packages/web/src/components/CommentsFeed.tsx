@@ -194,7 +194,7 @@ export function CommentsFeed({
                 type="button"
                 onClick={() => void fetchNextPage()}
                 disabled={isFetchingNextPage}
-                className="w-full rounded-lg border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:bg-white/5 hover:text-ink-100 disabled:opacity-60"
+                className="w-full rounded-lg border border-ink-700 px-3 py-2 text-sm text-ink-300 transition-colors hover:bg-tint hover:text-ink-100 disabled:opacity-60"
               >
                 {t(isFetchingNextPage ? 'common.loading' : 'feed.older')}
               </button>
@@ -221,7 +221,7 @@ function ScopeTab({
       onClick={onSelect}
       aria-pressed={active}
       className={`min-w-0 truncate rounded-lg px-2.5 py-1 text-xs transition-colors ${
-        active ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:bg-white/5 hover:text-ink-200'
+        active ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:bg-tint hover:text-ink-200'
       }`}
     >
       {children}

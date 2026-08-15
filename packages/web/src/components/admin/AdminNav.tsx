@@ -110,7 +110,7 @@ export function AdminMenu({ unread }: { unread: number }): ReactElement {
                 // 56 px rows, and a rule **between** them rather than around each:
                 // this is one list, and six separate cards would read as six
                 // unrelated things.
-                className={`flex min-h-14 items-center gap-3 px-4 text-sm text-ink-100 transition-colors hover:bg-white/5 ${
+                className={`flex min-h-14 items-center gap-3 px-4 text-sm text-ink-100 transition-colors hover:bg-tint ${
                   rank > 0 ? 'border-t border-ink-800' : ''
                 }`}
               >
