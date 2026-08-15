@@ -78,8 +78,17 @@ export default function LoginPage(): ReactElement {
             {setup?.needsSetup && (
               <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
                 <p className="font-medium">{t('login.noAccount')}</p>
+                {/* Both forms: this screen cannot tell which one the reader can run,
+                and the published image carries no pnpm — naming only that one left
+                every container installation with a command that does not exist
+                there (D260815e). */}
                 <p className="mt-1 text-amber-200/80">{t('login.createAdmin')}</p>
-                <code className="mt-2 block rounded bg-black/30 px-2 py-1 font-mono text-xs text-amber-100">
+                <code className="mt-2 block rounded bg-black/30 px-2 py-1 font-mono text-xs break-all text-amber-100">
+                  docker compose exec app node packages/server/dist/scripts/create-admin.js
+                  &lt;username&gt;
+                </code>
+                <p className="mt-2 text-amber-200/80">{t('login.createAdminFromSource')}</p>
+                <code className="mt-1 block rounded bg-black/30 px-2 py-1 font-mono text-xs break-all text-amber-100">
                   pnpm create-admin &lt;username&gt;
                 </code>
               </div>

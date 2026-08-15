@@ -15,12 +15,12 @@ in this application migrates volumes or renames files on its own.
 
 ### Fixed
 
-- **The very first message a new installation gets now names a command that
+- **The very first thing a new installation is told now names a command that
   exists on the machine reading it.** An instance started from the image with no
-  account yet told its operator to run `pnpm create-admin` — the image carries no
-  pnpm, and that line is the only guidance offered at the one moment nothing else
-  works yet. It now gives the form for the image alongside the one for a source
-  checkout.
+  account yet — in the startup log and on the sign-in screen alike — asked its
+  operator to run `pnpm create-admin`, which the image does not carry. Both now
+  give the form for the image alongside the one for a source checkout, at the one
+  moment when nothing else works yet.
 
 ## [1.1.0] — 2026-08-15
 

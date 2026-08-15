@@ -143,6 +143,7 @@ export const fr: Messages = {
   'login.failed': 'Connexion impossible. Réessayer.',
   'login.noAccount': 'Aucun compte n’est encore configuré.',
   'login.createAdmin': 'Créer le premier administrateur sur le serveur :',
+  'login.createAdminFromSource': 'Ou, depuis les sources :',
   'login.withPhone': 'Se connecter avec un téléphone',
 
   'password.show': 'Afficher le mot de passe',
