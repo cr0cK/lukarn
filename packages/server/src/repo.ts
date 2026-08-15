@@ -78,7 +78,16 @@ export interface MediaUpsert {
   videoCodec: string | null;
 }
 
-function toItem(row: MediaRow): MediaItem {
+/**
+ * `posters` answers one question for a video: can an image be obtained for it at all?
+ *
+ * It is not the same question as `has_thumbnail`, which records what the **storage**
+ * said it holds — no for everything except a Drive. Since D260816 a video whose backend
+ * holds no preview still gets one, cut by ffmpeg, so the interface must be told it may
+ * ask: without that, `Thumb` shows a grey tile and never requests the image that would
+ * have been produced.
+ */
+function toItem(row: MediaRow, posters: boolean): MediaItem {
   return {
     id: row.id,
     albumId: row.album_id,
@@ -92,9 +101,9 @@ function toItem(row: MediaRow): MediaItem {
     takenAtFromExif: row.taken_at_from_exif === 1,
     durationMs: row.duration_ms,
     // A photo always has a render — the pipeline decodes it and falls back to the
-    // Drive preview when libvips cannot read it. A video has one only if Drive
-    // produced it: nothing is decoded locally (D92).
-    hasPreview: row.kind === 'photo' || row.has_thumbnail === 1,
+    // preview the backend holds when libvips cannot read it. A video has one when its
+    // storage holds a preview (D92) or when a still can be cut from it (D260816).
+    hasPreview: row.kind === 'photo' || row.has_thumbnail === 1 || posters,
     // Eight fingerprint characters distinguish successive versions of the same file
     // while keeping the URL readable.
     version: row.md5 ? row.md5.slice(0, 8) : null,
@@ -126,9 +135,9 @@ const SELECT_ITEMS = `SELECT media.*, media_notes.description AS description
  */
 export type IndexedDetail = Omit<MediaDetail, 'commentCount'>;
 
-function toDetail(row: MediaRow): IndexedDetail {
+function toDetail(row: MediaRow, posters: boolean): IndexedDetail {
   return {
-    ...toItem(row),
+    ...toItem(row, posters),
     exif: {
       cameraMake: row.camera_make,
       cameraModel: row.camera_model,
@@ -173,7 +182,16 @@ export function decodeCursor(cursor: string): { takenAt: string; id: string } | 
 }
 
 export class MediaRepo {
-  constructor(private readonly db: Db) {}
+  /**
+   * `posters` reports whether a still can be cut from a video, which is an environment
+   * fact — whether ffmpeg is in the image — discovered while the server starts. A
+   * function for that reason, and defaulting to "no" so a test or a command-line tool
+   * describes exactly what the index holds.
+   */
+  constructor(
+    private readonly db: Db,
+    private readonly posters: () => boolean = () => false,
+  ) {}
 
   /**
    * Chronologically sorted media page, newest to oldest by default and oldest to
@@ -222,14 +240,14 @@ export class MediaRepo {
     const last = page.at(-1);
 
     return {
-      items: page.map(toItem),
+      items: page.map((row) => toItem(row, this.posters())),
       nextCursor: hasMore && last ? encodeCursor(last.taken_at, last.id) : null,
     };
   }
 
   getDetail(albumId: string, id: string): IndexedDetail | null {
     const row = this.mediaRow(albumId, id);
-    return row ? toDetail(row) : null;
+    return row ? toDetail(row, this.posters()) : null;
   }
 
   /**
@@ -245,7 +263,7 @@ export class MediaRepo {
   setDescription(albumId: string, mediaId: string, patch: UpdateMediaRequest): MediaItem | null {
     const row = this.mediaRow(albumId, mediaId);
     if (!row) return null;
-    if (patch.description === undefined) return toItem(row);
+    if (patch.description === undefined) return toItem(row, this.posters());
 
     const trimmed = patch.description?.trim();
     const description = trimmed ? trimmed : null;
@@ -266,7 +284,7 @@ export class MediaRepo {
         .run(albumId, mediaId, description, new Date().toISOString());
     }
 
-    return { ...toItem(row), description };
+    return { ...toItem(row, this.posters()), description };
   }
 
   private mediaRow(albumId: string, id: string): MediaRow | undefined {

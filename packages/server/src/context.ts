@@ -121,7 +121,7 @@ export class AppContext {
   ) {
     this.db = openDb(env.dataDir);
     this.config = new ConfigRepo(this.db, env.appName);
-    this.media = new MediaRepo(this.db);
+    this.media = new MediaRepo(this.db, () => this.ffmpeg);
     this.comments = new CommentRepo(this.db);
     this.commenters = new CommenterRepo(this.db, env.sessionSecret);
     this.subscriptions = new SubscriptionRepo(this.db);
