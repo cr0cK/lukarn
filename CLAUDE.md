@@ -47,6 +47,25 @@ links nor `(Dxx)` references cover this case, and a renamed directory once left
 a stale path that nothing reported (D260809d). The decisions directory is
 excluded: a log names what it replaced.
 
+Two rules stated on this page used to depend on being remembered, and both were
+broken on `main` at the same time. They are now checked.
+
+**A finished plan is deleted, and a plan with every item ticked fails.** The
+1.2.0 storage plan survived the work it described: it named two branches as
+unmerged after both had landed, and left three items unticked for code
+`specs/02-architecture.md` already documented. Only the one direction can be
+detected—all boxes ticked—so a plan whose items lie in the other direction is
+still yours to notice.
+
+**The README names every storage kind `SUPPORTED_KINDS` offers.** The anchor is
+that list paired with the label `messages-en.ts` gives each kind, so adding a
+backend forces the front door to mention it. The README claimed "Drive is the
+first storage it reads, and the only one it reads today" for as long as three
+other backends shipped—nothing breaks when the front door goes stale, which is
+exactly why nothing caught it. A paraphrase does not satisfy the check on
+purpose: the words a reader meets in the README are then the words they find in
+the form.
+
 `pnpm check:changelog` guards a third reader. The specs are for whoever takes
 over the code; `CHANGELOG.md` is for whoever **runs** the application, and the
 section matching a `v*` tag becomes the body of its GitHub release — a feature
@@ -99,6 +118,7 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 | `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                        |
 | `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                             |
 | `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                            |
+| `packages/e2e/storages/` (a container, a backend, a claim)                 | `specs/07-frontend.md`, and `08` if a trade-off changes                            |
 | `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                          |
 | A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes                 |
 | `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                          |
@@ -146,6 +166,7 @@ pnpm lint                            # eslint .
 pnpm format                          # prettier --write .
 pnpm test                            # native Node runner, all packages
 pnpm test:e2e                        # Playwright, the built artefact in two browsers
+pnpm test:storages                   # the storage backends against MinIO, Apache and rclone
 pnpm check:format                    # prettier --check .—does formatting match the repository?
 pnpm check:specs                     # have the specs drifted from the code?
 pnpm check:links                     # do references between documents lead anywhere?

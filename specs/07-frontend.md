@@ -3103,8 +3103,31 @@ happened above 768 px.
 | `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field, the storage list and the WebDAV form   |
 | `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused     |
 | `comments.spec.ts` | Address → code → comment → thread → activity feed                                                        |
+| `storage.spec.ts`  | A real synchronisation, from every storage that can be reached — see below                               |
 | `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes |
 | `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                   |
+
+**`storage.spec.ts` is the only one that is not run against `seed-demo`.** Every
+other spec asserts against rows written straight into the index, so nothing
+between a storage and a grid is exercised. This one is a **table**: the same five
+claims — the probe naming what it resolved to, a sync filling the album with
+exactly what the storage holds, a resync changing nothing, the grid dating the
+photographs from their EXIF rather than from the files, and one opening full
+screen from a backend that holds no preview — replayed against a folder on disk,
+an S3 bucket, an Apache `mod_dav` and an rclone WebDAV server.
+
+The last three run in containers that `packages/e2e/storages/compose.yml`
+describes and `storages/backends.ts` starts and seeds; the folder always runs.
+Without a Docker daemon the three rows simply do not exist, and CI sets
+`LUKARN_REQUIRE_STORAGES=1` so that there its absence fails instead. The same
+directory holds `storages/contract.test.ts`, which is the provider interface
+asserted against those servers directly, under `pnpm test:storages` rather than
+Playwright — both are
+[D260816k](./08-decisions/D260816k-a-storage-backend-is-held-to-account-by-the-server.md).
+
+The three photographs every backend is filled with come from
+`fixtures/photos.ts`, once: the table only means anything if what a folder holds
+and what a bucket holds are the same bytes.
 
 It runs as `pnpm test:e2e`, on its own CI job and again before a release image is
 pushed, and stays out of `pnpm verify` on purpose — see

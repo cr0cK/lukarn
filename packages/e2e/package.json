@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test:e2e": "playwright test",
+    "test:storages": "node --import tsx --test \"storages/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {

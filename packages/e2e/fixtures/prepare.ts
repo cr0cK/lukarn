@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import argon2 from 'argon2';
+import { CONTAINER_BACKENDS, FOLDER, startStorages } from '../storages/backends.js';
+import { photographs } from './photos.js';
 // The server's **sources**, imported by path rather than through
 // `@lukarn/server`: that package's entry point is `dist/main.js`, so importing
 // the package would start a second instance instead of handing over a repository.
@@ -59,12 +61,12 @@ export async function prepareInstance(): Promise<void> {
 
   const env = loadEnv(instanceEnv(), ROOT);
   const db = openDb(env.dataDir);
-  const config = new ConfigRepo(db);
-  bootstrapFromYaml(config, env, { info: () => {}, warn: () => {} });
+  const bootstrapped = new ConfigRepo(db);
+  bootstrapFromYaml(bootstrapped, env, { info: () => {}, warn: () => {} });
   // `config/albums.yaml` carries no field for either, and both start background
   // passes that reach for a Drive account this instance does not have. Off, the
   // instance does nothing but answer requests.
-  config.updateSettings({ prewarmCache: false, transcodeVideos: false });
+  bootstrapped.updateSettings({ prewarmCache: false, transcodeVideos: false });
   db.close();
 
   seedMedia();
@@ -73,8 +75,49 @@ export async function prepareInstance(): Promise<void> {
   // album created earlier would arrive with forty demo items in it — and the one
   // spec that proves synchronisation works would be asserting against them.
   const after = openDb(env.dataDir);
-  connectLocalFolder(after, new ConfigRepo(after), env.tokenKey);
+  const config = new ConfigRepo(after);
+  const connections = new StorageConnectionRepo(after, env.tokenKey);
+
+  connectLocalFolder(connections, config);
+  await connectContainers(connections, config);
   after.close();
+}
+
+/**
+ * The storages that run in containers, connected when a Docker daemon answers.
+ *
+ * Skipped silently when there is none, which is the whole of what a contributor
+ * without Docker loses: the local folder still proves the chain end to end, and the
+ * three cases below it simply do not exist. CI sets `LUKARN_REQUIRE_STORAGES=1`, where
+ * the absence of a daemon raises instead — see `storages/backends.ts`.
+ */
+async function connectContainers(
+  connections: StorageConnectionRepo,
+  config: ConfigRepo,
+): Promise<void> {
+  if (!(await startStorages(await photographs()))) return;
+
+  for (const backend of CONTAINER_BACKENDS) {
+    connections.create({
+      id: backend.id,
+      kind: backend.kind,
+      label: backend.label,
+      settings: backend.settings,
+      secret: backend.secret,
+    });
+
+    config.createAlbum({
+      id: backend.album.id,
+      title: backend.album.title,
+      connectionId: backend.id,
+      // The folder the backend was seeded into, and the one thing every kind names
+      // the same way: a key prefix in a bucket, a collection on a WebDAV server.
+      folderId: FOLDER,
+      recursive: true,
+      groupBy: 'month',
+      sortOrder: 'desc',
+    });
+  }
 }
 
 /**
@@ -86,8 +129,8 @@ export async function prepareInstance(): Promise<void> {
  * is the point: this is the suite's only end-to-end proof that indexing works,
  * and seeding it here would prove nothing.
  */
-function connectLocalFolder(db: ReturnType<typeof openDb>, config: ConfigRepo, tokenKey: string) {
-  new StorageConnectionRepo(db, tokenKey).create({
+function connectLocalFolder(connections: StorageConnectionRepo, config: ConfigRepo) {
+  connections.create({
     id: LOCAL_CONNECTION.id,
     kind: 'local',
     label: LOCAL_CONNECTION.label,
@@ -108,53 +151,20 @@ function connectLocalFolder(db: ReturnType<typeof openDb>, config: ConfigRepo, t
 }
 
 /**
- * Real photographs on disk, each with real EXIF data.
+ * The same three photographs on disk that every container backend is given.
  *
- * Written with sharp rather than committed, for the reason `albumsYaml` gives about
- * the password hash and `prepareInstance` gives about the database: a binary in the
- * repository states nothing about what it contains, and goes stale silently. These
- * carry a capture date and a camera, so the spec can assert that the grid shows the
- * date the photograph was **taken** rather than the date it was written here —
- * which is the whole of what reading EXIF from the bytes buys.
+ * `photos.ts` renders them, rather than this file, because the storage matrix rests on
+ * their being identical: a grid that differs between a folder and a bucket then differs
+ * because of the backend and not because of what was written into it.
  */
 async function writePhotos(): Promise<void> {
   const folder = join(STORAGE_ROOT, STORAGE_SUBPATH);
   mkdirSync(folder, { recursive: true });
 
-  const { default: sharp } = await import('sharp');
-
-  for (const [index, taken] of PHOTO_DATES.entries()) {
-    // `IFD2` is sharp's name for the Exif sub-IFD, and `DateTimeOriginal` lives
-    // nowhere else. Naming it anything sharp does not recognise — `ExifIFD`, say —
-    // writes a valid JPEG with no capture date in it and reports no error, which is
-    // exactly the failure that makes a fixture worth reading twice.
-    const exif = {
-      IFD0: { Make: 'Lukarn', Model: 'E2E' },
-      IFD2: { DateTimeOriginal: taken },
-    };
-    const bytes = await sharp({
-      create: {
-        width: 240,
-        height: 160,
-        channels: 3,
-        background: { r: 40 + index * 30, g: 90, b: 160 },
-      },
-    })
-      .withExif(exif)
-      .jpeg()
-      .toBuffer();
-
-    writeFileSync(join(folder, `photo-${index + 1}.jpg`), bytes);
+  for (const photo of await photographs()) {
+    writeFileSync(join(folder, photo.name), photo.bytes);
   }
 }
-
-/**
- * Capture dates, spread across two months so the grid has more than one heading.
- *
- * EXIF's own format, without a time zone: this is the device's clock, and the
- * application stores and displays it as UTC.
- */
-const PHOTO_DATES = ['2026:03:11 09:15:00', '2026:03:11 14:02:00', '2026:04:02 18:30:00'];
 
 /**
  * The bootstrap file, with a hash produced now rather than committed.

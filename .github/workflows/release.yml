@@ -16,6 +16,13 @@ jobs:
   release:
     runs-on: ubuntu-latest
 
+    # The browser suite runs its storage table against every backend it can reach,
+    # and a release is the last place a silently shortened run may pass for a full
+    # one: without this, a runner whose Docker daemon was unavailable would gate
+    # the image on the folder row alone (D260816k).
+    env:
+      LUKARN_REQUIRE_STORAGES: '1'
+
     steps:
       - uses: actions/checkout@v7
         with:

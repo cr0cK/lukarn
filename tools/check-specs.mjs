@@ -324,6 +324,77 @@ for (const chemin of citantDesSpecs) {
   }
 }
 
+/* ------------------------------------------------------- A finished plan */
+
+/**
+ * A plan whose every item is ticked should no longer exist.
+ *
+ * `specs/09-plans/` is the one directory describing what does not exist yet, and
+ * CLAUDE.md says the pull request that finishes a plan deletes it. Nothing
+ * enforced that, and a finished plan is worse than no plan: it keeps naming
+ * branches that were merged and states as pending work that shipped, which is
+ * exactly what the last one did — three items still unticked on `main` for code
+ * `specs/02-architecture.md` already documented.
+ *
+ * Every box ticked is the one unambiguous signal available. A plan half-done is
+ * left alone, because that is what a plan is for.
+ */
+for (const chemin of fichiers(PLANS, (n) => n.endsWith('.md'))) {
+  // The directory's own README explains what a plan is; it is never finished.
+  if (chemin.endsWith('/README.md')) continue;
+
+  const source = lire(chemin);
+  const total = (source.match(/^\s*-\s\[[ x]\]/gm) ?? []).length;
+  const restants = (source.match(/^\s*-\s\[ \]/gm) ?? []).length;
+
+  if (total > 0 && restants === 0) {
+    manques.push(
+      `${relative(RACINE, chemin)}: every one of its ${total} items is ticked — the pull ` +
+        'request that finishes a plan deletes it',
+    );
+  }
+}
+
+/* ------------------------------------------------ What the README claims */
+
+/**
+ * Does the README still name every storage a released instance can read?
+ *
+ * The README is the front door, and it is the document that drifts most quietly:
+ * nothing breaks when it keeps describing an application that gained a feature
+ * six weeks ago. It claimed "Drive is the first storage it reads, and the only
+ * one it reads today" for as long as three other backends shipped, because no
+ * check reads prose.
+ *
+ * The anchor is `SUPPORTED_KINDS` — what /admin can actually build — paired with
+ * the label the interface shows for it. Requiring that exact label rather than a
+ * paraphrase is deliberate: someone reading "S3-compatible bucket" in the README
+ * looks for those words in the form, and finds them.
+ */
+const kindsSupportes = /SUPPORTED_KINDS[^=]*=\s*\[([^\]]*)\]/.exec(
+  lire(join(RACINE, 'packages/server/src/storage/registry.ts')),
+);
+
+if (!kindsSupportes) {
+  manques.push('storage/registry.ts no longer declares SUPPORTED_KINDS as a literal list');
+} else {
+  const catalogue = lire(join(RACINE, 'packages/web/src/lib/i18n/messages-en.ts'));
+  const readme = lire(join(RACINE, 'README.md'));
+
+  for (const [, kind] of kindsSupportes[1].matchAll(/'([a-z0-9]+)'/g)) {
+    const cle = `storage.kind${kind[0].toUpperCase()}${kind.slice(1)}`;
+    const libelle = new RegExp(`'${cle}':\\s*'([^']+)'`).exec(catalogue);
+
+    if (!libelle) {
+      manques.push(`messages-en.ts has no "${cle}" for the supported storage kind "${kind}"`);
+      continue;
+    }
+    if (!readme.includes(libelle[1])) {
+      manques.push(`README.md never names "${libelle[1]}", which /admin offers as a storage kind`);
+    }
+  }
+}
+
 /* --------------------------------------------------------------- Verdict */
 
 if (manques.length === 0) {

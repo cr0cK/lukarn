@@ -25,7 +25,10 @@ const server = spawn(process.execPath, [SERVER_MAIN], {
 });
 
 // Playwright signals this process when the run ends; the server is what has to
-// hear it, or the port stays held until the terminal closes.
+// hear it, or the port stays held until the terminal closes. The storage
+// containers `prepareInstance` started are not children of anything here, and
+// are taken down by `fixtures/teardown.ts` instead — a handler racing this
+// shutdown stopped them on some runs and not others.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => server.kill(signal));
 }

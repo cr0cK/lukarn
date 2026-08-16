@@ -302,10 +302,13 @@ export class S3Service implements StorageProvider {
   /**
    * Object bytes, with the browser's `Range` signed rather than merely forwarded.
    *
-   * **The range is part of the signature.** An S3 backend verifies every signed header,
-   * so a range left out of `SignedHeaders` — or signed as a different value — is
-   * refused outright, and the failure surfaces as a video that will not seek on exactly
-   * the large files seeking exists for.
+   * **The range is signed with the rest.** SigV4 only obliges `host` and the `x-amz-*`
+   * headers to be covered, so a bucket does accept an unsigned `Range` — MinIO was
+   * asked, and it serves the window. What it refuses is a range signed as one value and
+   * sent as another, which is what happens the moment a caller edits the header between
+   * signing and sending. Signing it closes that door rather than an open one, and the
+   * failure it prevents surfaces as a video that will not seek on exactly the large
+   * files seeking exists for.
    */
   async fetch(ref: string, range?: string, signal?: AbortSignal): Promise<Response> {
     return this.send('GET', this.url(this.keyOf(ref)), `"${ref}"`, { range, signal });

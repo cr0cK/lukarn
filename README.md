@@ -78,6 +78,12 @@ Five steps, from nothing to your own photographs on screen. Nothing to clone and
 nothing to compile — the published image carries the application already built.
 Docker and a Google account are the two prerequisites, and about ten minutes.
 
+**This walkthrough connects a Drive**, which is the longest of the four paths:
+steps 3 and 4 exist only to give Google an identity to share a folder with. A
+bucket, a WebDAV server and a folder on the machine are declared from `/admin` in
+one form, with no console to visit — see [Other storages](#other-storages) once
+the instance is up.
+
 > The image is built for **`linux/amd64` only**. On arm64 — an Apple Silicon Mac,
 > a Raspberry Pi — build it from source instead:
 > [`deploy/README.md`](./deploy/README.md).
@@ -223,6 +229,38 @@ Drive already knows about each file.
 folder, declare it. They resynchronise on their own at the interval set in
 `/admin`, **Resynchronise** forces a pass, and nothing is ever written to Drive.
 
+### Other storages
+
+`/admin` → **Storage** → **Add**. The form asks for what that kind needs and
+nothing else, **Test** asks the backend itself and repeats what it answered, and
+the album form then offers the new connection. Several may be connected at once.
+
+| Kind                     | What the form asks                                         |
+| ------------------------ | ---------------------------------------------------------- |
+| **Local folder**         | A subfolder of `STORAGE_LOCAL_ROOT` — see below            |
+| **S3-compatible bucket** | Endpoint, region, bucket, and a read-only access key pair  |
+| **WebDAV server**        | Address, a folder under it, a username and an app password |
+
+A **Local folder** is the one kind the container has to be given first: mount the
+photographs read-only and name their mount point, so that an administrator
+password never becomes a way to read the rest of the machine.
+
+```yaml
+environment:
+  STORAGE_LOCAL_ROOT: /photos
+volumes:
+  - /home/alice/Pictures:/photos:ro
+```
+
+`/admin` then picks a folder **inside** `/photos`, and never an absolute path.
+
+Two differences with a Drive are worth knowing before choosing. A Drive names a
+file with an identifier that survives a rename, so a photograph moved between
+folders keeps its comments; everywhere else a file is named by its path, and
+renaming it makes it a new photograph. And a Drive hands over EXIF data and a
+preview inside its listing, where the others hand over bytes — the capture date
+is then read from the file itself, and a video's poster is cut by ffmpeg.
+
 ### Beyond that
 
 | To…                                   |                                                                                                                                                                                                                             |
@@ -249,7 +287,7 @@ declared in the console must be exactly `PUBLIC_URL` followed by
 `/api/oauth/callback`, and consent is given once from `/admin` → **Connect Google
 Drive**. Step by step, including the publication status that otherwise expires the
 token every seven days:
-[`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-the-drive).
+[`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-a-storage).
 
 </details>
 

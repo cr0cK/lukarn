@@ -276,10 +276,20 @@ not have it, prefer `sudo docker`.
 
 Everything that follows is done with the `deploy` account.
 
-## 3. Give the server access to the Drive
+## 3. Give the server access to a storage
 
-Two ways, take either. The first avoids Google's warning screen and has nothing
-to renew: it is the one to prefer for a new install.
+**This section is about a Drive**, which is the one storage needing an identity
+on somebody else's service. An S3-compatible bucket and a WebDAV server are
+declared entirely from `/admin` — an address, a name and a credential — and a
+local folder needs one thing from this file and nothing from Google: mount the
+photographs read-only and point `STORAGE_LOCAL_ROOT` at their mount point, so
+that an administrator password never becomes a way to read the rest of the
+machine. See the storage table in the [root README](../README.md#other-storages).
+An instance may read several at once, so nothing below has to be done first, or
+at all.
+
+For a Drive, two ways, take either. The first avoids Google's warning screen and
+has nothing to renew: it is the one to prefer for a new install.
 
 |                                          | Service account             | OAuth                               |
 | ---------------------------------------- | --------------------------- | ----------------------------------- |

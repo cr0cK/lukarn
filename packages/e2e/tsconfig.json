@@ -15,5 +15,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["fixtures", "specs", "playwright.config.ts"]
+  "include": ["fixtures", "specs", "storages", "playwright.config.ts"]
 }

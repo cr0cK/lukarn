@@ -70,6 +70,24 @@ gate that downloads two browsers is a gate people bypass. CI runs it as a job of
 its own, so a pull request that skips it locally is still stopped; running it
 yourself only means finding out sooner.
 
+**If you touched a storage backend, run it against real servers:**
+
+```bash
+pnpm test:storages
+```
+
+It starts a MinIO, an Apache `mod_dav` and an rclone WebDAV server from
+`packages/e2e/storages/compose.yml`, seeds the same three photographs into each,
+and asserts one table of claims against all of them — about nine seconds
+including the containers. The stubs in `packages/server/test/` stay and still run
+under `pnpm test`; what this adds is the part no stub can supply, which is
+disagreeing with whoever wrote it.
+
+**Without a Docker daemon it skips**, and says so, so nothing here is a
+prerequisite for working on the rest. CI sets `LUKARN_REQUIRE_STORAGES=1`, where
+a missing daemon fails the job instead of quietly shortening it — and the browser
+suite grows the same three backends as extra rows when the daemon is there.
+
 ## Documentation is part of the change
 
 **Any change to behaviour, the API, the data model, configuration, or a technical
