@@ -145,11 +145,13 @@ describe('the registry of live providers', () => {
     assert.notEqual(registry.get(DEFAULT_CONNECTION_ID), premier);
   });
 
-  it('refuses a kind this build cannot read, naming it', () => {
+  it('refuses a connection it cannot build from, and still lists it', () => {
+    // A bucket without an endpoint: the kind is supported, the row is not usable.
+    // The refusal has to name what is missing — this is the text /admin shows.
     connections.create({ id: 'archives', kind: 's3', label: 'Archives' });
     const registry = new StorageRegistry(connections, env, silencieux);
 
-    assert.throws(() => registry.get('archives'), /s3/);
+    assert.throws(() => registry.get('archives'), /endpoint and a bucket/);
     // /admin still has to list it: hiding the connection would leave its albums
     // unexplained.
     assert.deepEqual(

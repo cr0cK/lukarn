@@ -366,11 +366,24 @@ Because the salt is random, encrypting the same secret twice produces two differ
 database observer cannot infer that it has not changed.
 
 **Every connection carries its own.** `storage_connections.ciphertext` holds whatever its kind
-needs to authenticate — Drive's refresh token, and later a bucket's key pair — and
-`StorageConnectionRepo` (`storage/connections.ts`) is the only thing that encrypts or decrypts it.
-The rest of the application handles a `StorageProvider` and never a secret: the registry builds
-one from a row, the provider uses it, and nothing else sees either. `settings` sits beside it in
-plain JSON and is deliberately readable — an endpoint or a bucket name gives access to nothing.
+needs to authenticate — Drive's refresh token, a bucket's `accessKeyId` and `secretAccessKey` as
+JSON — and `StorageConnectionRepo` (`storage/connections.ts`) is the only thing that encrypts or
+decrypts it. The rest of the application handles a `StorageProvider` and never a secret: the
+registry builds one from a row, the provider uses it, and nothing else sees either. `settings`
+sits beside it in plain JSON and is deliberately readable — an endpoint or a bucket name gives
+access to nothing.
+
+**A secret is written and never read back.** `StorageConnectionStatus` carries neither
+`ciphertext` nor `settings`, so /admin cannot display a key pair it stored, and the form asks for
+both halves again rather than pretending to edit one. A read-only key is enough for a bucket: the
+interface has no write operation, and nothing in this application ever puts an object anywhere.
+
+**An S3 signature is scoped, which is what limits what a captured request is worth.** SigV4
+derives its key from the secret through the day, the region and the service (`storage/sigv4.ts`),
+and signs the `host`, the date and every header named in `SignedHeaders` — the browser's `Range`
+included. A signed request therefore cannot be replayed against another endpoint, nor tomorrow,
+nor with the byte range rewritten. The secret key itself never leaves the process: it is an HMAC
+input, never a header.
 
 The threat model is explicit: **a dump of `lukarn.db` must not be enough to reach any storage.**
 `TOKEN_KEY` is also required; it lives in the process environment and is never written to the

@@ -1,4 +1,9 @@
-import type { AdminStatus, StorageConnectionStatus, StorageKind } from '@lukarn/shared';
+import type {
+  AdminStatus,
+  CreateStorageRequest,
+  StorageConnectionStatus,
+  StorageKind,
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { api, errorText } from '../../api/client';
@@ -16,6 +21,7 @@ import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
   Button,
+  Checkbox,
   FormError,
   ROW_ACTIONS_CLASS,
   ROW_CLASS,
@@ -255,6 +261,51 @@ function StorageRow({
   );
 }
 
+/** The fields an S3 connection is typed into, before anything is stored. */
+interface S3Draft {
+  endpoint: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  pathStyle: boolean;
+  accessKeyId: string;
+  secretAccessKey: string;
+}
+
+const EMPTY_S3: S3Draft = {
+  endpoint: '',
+  region: '',
+  bucket: '',
+  prefix: '',
+  pathStyle: false,
+  accessKeyId: '',
+  secretAccessKey: '',
+};
+
+/**
+ * The draft as the API takes it: settings in the clear, the key pair as the one secret.
+ *
+ * A connection stores exactly **one** encrypted string, so a backend needing two values
+ * puts JSON in it. Assembling that here rather than server-side keeps the secret in a
+ * single field all the way through: nothing between this form and `TOKEN_KEY` ever sees
+ * the two halves separately.
+ */
+function s3Payload(draft: S3Draft): Pick<CreateStorageRequest, 'settings' | 'secret'> {
+  return {
+    settings: {
+      endpoint: draft.endpoint.trim(),
+      region: draft.region.trim(),
+      bucket: draft.bucket.trim(),
+      prefix: draft.prefix.trim(),
+      pathStyle: String(draft.pathStyle),
+    },
+    secret: JSON.stringify({
+      accessKeyId: draft.accessKeyId.trim(),
+      secretAccessKey: draft.secretAccessKey.trim(),
+    }),
+  };
+}
+
 /** Adding a connection: what it is called, what kind it is, and its identifier. */
 function StorageForm({
   kinds,
@@ -277,6 +328,7 @@ function StorageForm({
   // album that reads this storage, so keep it readable.
   const [idTouched, setIdTouched] = useState(false);
   const [touched, setTouched] = useState(false);
+  const [s3, setS3] = useState<S3Draft>(EMPTY_S3);
 
   // A local folder is authorised by its settings rather than by consent: the one
   // thing to choose is which folder **under `STORAGE_LOCAL_ROOT`** it reads. The
@@ -289,20 +341,34 @@ function StorageForm({
     needsPath && path.trim() && extractContainer(path, kind) === null
       ? t('validate.storagePath')
       : null;
+  // A bucket is unusable without all four: the connection would be created, every album
+  // on it would stay empty, and the Test button would be the only thing saying so.
+  const s3Errors =
+    kind === 's3'
+      ? {
+          endpoint: s3.endpoint.trim() ? null : t('validate.storageEndpoint'),
+          bucket: s3.bucket.trim() ? null : t('validate.storageBucket'),
+          accessKeyId: s3.accessKeyId.trim() ? null : t('validate.storageAccessKey'),
+          secretAccessKey: s3.secretAccessKey.trim() ? null : t('validate.storageSecretKey'),
+        }
+      : null;
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     setTouched(true);
     if (labelError || idError || pathError) return;
+    if (s3Errors && Object.values(s3Errors).some(Boolean)) return;
 
     create.mutate(
       {
         id: id.trim(),
         kind,
         label: label.trim(),
-        // Empty means the root itself, so the setting is sent either way: a
-        // connection with no `path` at all reads what the container declared.
+        // Each kind contributes its own half and no other: a local folder sends its
+        // subpath — empty means the root the container declared — and a bucket sends
+        // its address alongside the one secret it encrypts.
         ...(needsPath ? { settings: { path: extractContainer(path, kind) ?? '' } } : {}),
+        ...(kind === 's3' ? s3Payload(s3) : {}),
       },
       {
         onSuccess: (created) => {
@@ -369,6 +435,18 @@ function StorageForm({
         />
       )}
 
+      {/* A bucket is authorised by what is typed here and nowhere else: there is no
+          consent screen to come back from, so the connection is created complete. */}
+      {s3Errors && (
+        <S3Fields
+          fieldId={fieldId}
+          draft={s3}
+          errors={touched ? s3Errors : null}
+          disabled={create.isPending}
+          onChange={(patch) => setS3((current) => ({ ...current, ...patch }))}
+        />
+      )}
+
       <FormError message={create.error ? errorText(create.error, t('common.saveFailed')) : null} />
 
       <div className="flex justify-end gap-2">
@@ -380,5 +458,110 @@ function StorageForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Where the bucket is, and what opens it.
+ *
+ * Five settings and a key pair, laid out in the order they are read off a provider's
+ * console. The secret half is a password field for the reason every password field
+ * exists here: this form is filled in on a laptop with somebody else in the room, and
+ * the value is never shown again once it is stored.
+ */
+function S3Fields({
+  fieldId,
+  draft,
+  errors,
+  disabled,
+  onChange,
+}: {
+  fieldId: string;
+  draft: S3Draft;
+  /** Only the four that are required: a region and a prefix have working defaults. */
+  errors: Record<'endpoint' | 'bucket' | 'accessKeyId' | 'secretAccessKey', string | null> | null;
+  disabled: boolean;
+  onChange: (patch: Partial<S3Draft>) => void;
+}): ReactElement {
+  const t = useT();
+
+  return (
+    <div className="space-y-4 border-t border-ink-850 pt-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField
+          id={`${fieldId}-endpoint`}
+          label={t('storage.endpoint')}
+          value={draft.endpoint}
+          onChange={(value) => onChange({ endpoint: value })}
+          placeholder="https://s3.eu-west-3.amazonaws.com"
+          autoComplete="off"
+          disabled={disabled}
+          error={errors?.endpoint ?? null}
+          hint={t('storage.endpointHint')}
+        />
+
+        <TextField
+          id={`${fieldId}-region`}
+          label={t('storage.region')}
+          value={draft.region}
+          onChange={(value) => onChange({ region: value })}
+          placeholder="us-east-1"
+          autoComplete="off"
+          disabled={disabled}
+          hint={t('storage.regionHint')}
+        />
+
+        <TextField
+          id={`${fieldId}-bucket`}
+          label={t('storage.bucket')}
+          value={draft.bucket}
+          onChange={(value) => onChange({ bucket: value })}
+          autoComplete="off"
+          disabled={disabled}
+          error={errors?.bucket ?? null}
+        />
+
+        <TextField
+          id={`${fieldId}-prefix`}
+          label={t('storage.prefix')}
+          value={draft.prefix}
+          onChange={(value) => onChange({ prefix: value })}
+          autoComplete="off"
+          disabled={disabled}
+          hint={t('storage.prefixHint')}
+        />
+
+        <TextField
+          id={`${fieldId}-access-key`}
+          label={t('storage.accessKeyId')}
+          value={draft.accessKeyId}
+          onChange={(value) => onChange({ accessKeyId: value })}
+          autoComplete="off"
+          disabled={disabled}
+          error={errors?.accessKeyId ?? null}
+        />
+
+        <TextField
+          id={`${fieldId}-secret-key`}
+          label={t('storage.secretAccessKey')}
+          value={draft.secretAccessKey}
+          onChange={(value) => onChange({ secretAccessKey: value })}
+          type="password"
+          autoComplete="off"
+          disabled={disabled}
+          error={errors?.secretAccessKey ?? null}
+          hint={t('storage.secretAccessKeyHint')}
+        />
+      </div>
+
+      <Checkbox
+        id={`${fieldId}-path-style`}
+        label={t('storage.pathStyle')}
+        hint={t('storage.pathStyleHint')}
+        checked={draft.pathStyle}
+        disabled={disabled}
+        onChange={(checked) => onChange({ pathStyle: checked })}
+      />
+    </div>
   );
 }

@@ -114,6 +114,40 @@ test.describe('Storage, on a phone', () => {
     await expect(page.getByRole('status')).toContainText('still holds albums');
   });
 
+  test('a bucket asks for what opens it, and refuses to be created half-typed', async ({
+    page,
+  }) => {
+    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('textbox', { name: 'Name' }).fill('Photos froides');
+
+    // The kind is a closed row here: a list always has a value to read, so it is
+    // the one control on this form that has to be opened before it can be used.
+    await page.getByRole('button', { name: /^Kind/ }).click();
+    await page.getByLabel('Kind', { exact: true }).selectOption({ label: 'S3-compatible bucket' });
+
+    // A bucket is authorised by what is typed here and nowhere else: there is no
+    // consent screen to come back from, so the fields appear with the kind.
+    const endpoint = page.getByRole('textbox', { name: 'Endpoint' });
+    await expect(endpoint).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /Address the bucket by path/ })).toBeVisible();
+
+    // Half a bucket says which halves are missing. Creating it instead would
+    // produce a connection whose albums stay empty with nothing explaining why.
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await expect(page.getByText('Enter the name of the bucket.')).toBeVisible();
+    await expect(page.getByText('Enter the secret key.')).toBeVisible();
+
+    await endpoint.fill('https://s3.example.com');
+    await page.getByRole('textbox', { name: 'Bucket' }).fill('famille');
+    await page.getByRole('textbox', { name: 'Access key' }).fill('AKIAIOSFODNN7EXAMPLE');
+    await page.getByLabel('Secret key').fill('wJalrXUtnFEMI');
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+    await expect(
+      page.getByRole('button', { name: 'Delete the storage Photos froides' }),
+    ).toBeVisible();
+  });
+
   test('an album names the storage it reads once there is a choice', async ({ page }) => {
     // Its own connection: this instance is shared by every test in the file, and
     // adding one that another test already added would only prove the conflict.

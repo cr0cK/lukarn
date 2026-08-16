@@ -534,6 +534,10 @@ export const fr: Messages = {
   'validate.containerPattern': 'Un chemin relatif à la racine du stockage, sans segment parent.',
   'validate.storageLabel': 'Donner un nom à ce stockage.',
   'validate.storagePath': 'Un dossier situé dans la racine, sans segment parent.',
+  'validate.storageEndpoint': 'Indiquer l’adresse du service, commençant par https://.',
+  'validate.storageBucket': 'Indiquer le nom du bucket.',
+  'validate.storageAccessKey': 'Indiquer la clé d’accès.',
+  'validate.storageSecretKey': 'Indiquer la clé secrète.',
   'validate.interval': 'Indiquer un nombre entier de minutes (0 pour désactiver).',
   'validate.cacheSize': 'Indiquer une taille en gigaoctets.',
   'validate.cacheSizePositive': 'La taille du cache doit être supérieure à 0.',
@@ -611,6 +615,23 @@ export const fr: Messages = {
   'storage.kindLocal': 'Dossier local',
   'storage.kindS3': 'Bucket compatible S3',
   'storage.kindWebdav': 'Serveur WebDAV',
+  'storage.endpoint': 'Point d’accès',
+  'storage.endpointHint':
+    'L’adresse du service, pas celle du bucket : https://s3.eu-west-3.amazonaws.com, ou l’adresse de votre propre serveur.',
+  'storage.region': 'Région',
+  'storage.regionHint':
+    'Amazon exige la région du bucket. Un service auto-hébergé l’ignore, mais les deux bouts doivent tout de même s’accorder — laisser vide pour us-east-1.',
+  'storage.bucket': 'Bucket',
+  'storage.prefix': 'Préfixe',
+  'storage.prefixHint':
+    'Facultatif. Restreint cette connexion à un dossier du bucket ; chaque album nomme ensuite un chemin à l’intérieur.',
+  'storage.pathStyle': 'Adresser le bucket par chemin',
+  'storage.pathStyleHint':
+    'Lit bucket.example.com par défaut. MinIO, et tout bucket dont le nom n’est pas un libellé de domaine valide, ont besoin de ceci à la place.',
+  'storage.accessKeyId': 'Clé d’accès',
+  'storage.secretAccessKey': 'Clé secrète',
+  'storage.secretAccessKeyHint':
+    'Stockée chiffrée et jamais réaffichée. Une clé en lecture seule suffit : rien ici n’écrit jamais dans le bucket.',
   'storage.albumCount': (count: number) =>
     count === 0
       ? 'Aucun album ne le lit pour l’instant.'

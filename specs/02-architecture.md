@@ -48,6 +48,8 @@ flowchart LR
 | `src/storage/drive.ts`       | Google Drive behind that interface: consent, refresh, revocation detection, and the mapping from `Schema$File` to `StorageEntry`. The only file importing `@googleapis/*`.           |
 | `src/storage/local.ts`       | `LocalFolderService`: a folder on the machine behind that interface, fenced to `STORAGE_LOCAL_ROOT` by `realpath` on every path it resolves, and building its own `Range` responses. |
 | `src/storage/xml.ts`         | The element reader S3 listings and WebDAV `PROPFIND` replies share. Reads names and text; expands no doctype and no external entity, deliberately.                                   |
+| `src/storage/sigv4.ts`       | AWS Signature Version 4 over `node:crypto`: a request description and a key pair in, headers out. Pure, so the published AWS vectors run against it (D260816e).                      |
+| `src/storage/s3.ts`          | An S3-compatible bucket behind the interface: `ListObjectsV2` for `list()`, a signed ranged `GET` for `fetch()`, and no preview. Adds no dependency.                                 |
 | `src/sync/sync.ts`           | Container traversal and index population, driven by a `StorageProvider`.                                                                                                             |
 | `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), video capture date, and the identifier derived for a path-based backend.                        |
 | `src/sync/mp4.ts`            | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                                                 |
@@ -113,6 +115,33 @@ the shape `routes/media.ts` already relays, so the media proxy has no branch for
 and every path resolved goes through `realpath` before being checked to still sit
 under that root — a symlink leading out of the tree is refused rather than followed
 (D260816d, and [04](./04-security-and-access.md)).
+`storage/s3.ts` is an S3-compatible bucket — MinIO,
+Garage, Ceph, Backblaze and Amazon alike — and adds **no dependency at all**: its
+requests are signed by `storage/sigv4.ts` and its listings read by
+`storage/xml.ts` (D260816e).
+
+A backend also declares **how it names a file**, which is what decides the
+identifier the index stores. Drive's `refKind` is `identity`: a file id survives a
+rename, which is what keeps a comment attached to a photo dragged into another
+folder. A bucket's is `path`, because an object key _is_ its location — two
+connections may hold the same one, and renaming an object gives it another. The
+index hashes the key with the connection and keeps the location in
+`media.source_path`, the only form `fetch` understands.
+
+Three properties of the S3 implementation are worth knowing before changing it:
+
+- **`delimiter=/` is what turns a flat key space into folders.** Keys sharing a
+  segment collapse into `<CommonPrefixes>`, which is the only reason a recursive
+  album does not read every object in the bucket to find its subfolders.
+- **The browser's `Range` is signed, not merely forwarded.** A bucket verifies
+  every header named in `SignedHeaders`, so a byte range left out of it — or
+  signed as a different value — is refused outright, and the symptom is a video
+  that will not seek on exactly the large files seeking exists for.
+- **A listing carries no content type**, so the MIME type comes from the
+  extension, and the table of extensions is also the filter: anything absent is
+  not indexed. RAW is deliberately absent — no backend but Drive holds a preview
+  for one, and a grid of tiles that can never load is worse than an album that
+  says a bucket held nothing it could show.
 
 **An instance reads several storages, and an album names one.** Each is a row of
 `storage_connections`; `StorageRegistry` builds a provider from it and caches one

@@ -132,6 +132,14 @@ column instead of re-encrypting it. A backend needing more than one value stores
 JSON in it; `StorageConnectionRepo` encrypts and decrypts a string and knows
 nothing else about it.
 
+An `s3` connection is the first to need two values, and stores
+`{"accessKeyId":…,"secretAccessKey":…}` in that one string. Its `settings` hold
+`endpoint`, `region`, `bucket`, `prefix` and `pathStyle` — an address, a region
+and a name, none of which grants anything on its own, which is why they sit in
+the clear beside the pair that does. `pathStyle` is the string `"true"` or
+absent: `settings` is a map of strings end to end, and inventing a JSON boolean
+for one field would make every reader of the column check two shapes.
+
 A non-null `revoked_at` means "the backend rejected the secret". The row is
 **retained** rather than deleted: an empty table would look like a fresh
 installation, whereas the administrator needs to know _which_ connection lost its

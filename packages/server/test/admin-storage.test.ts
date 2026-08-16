@@ -3,7 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { ALL_ALBUMS, type AdminAlbum, type AdminStatus } from '@lukarn/shared';
+import {
+  ALL_ALBUMS,
+  type AdminAlbum,
+  type AdminStatus,
+  type StorageConnectionStatus,
+} from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -131,19 +136,44 @@ describe('the storage list', () => {
       url: '/api/admin/status',
       headers: { cookie },
     });
-    assert.deepEqual(status.json<AdminStatus>().storageKinds, ['drive', 'local']);
+    assert.deepEqual(status.json<AdminStatus>().storageKinds, ['drive', 'local', 's3']);
 
     const refused = await server.inject({
       method: 'POST',
       url: '/api/admin/storage',
       headers: { cookie },
-      payload: { id: 'archives', kind: 's3', label: 'Archives' },
+      payload: { id: 'archives', kind: 'webdav', label: 'Archives' },
     });
 
     // Accepting it would create a connection nothing can serve from, discovered
     // only once an album on it stays empty.
     assert.equal(refused.statusCode, 400);
     assert.equal(refused.json<{ error: string }>().error, 'unsupported_kind');
+  });
+
+  it('creates a bucket from what the form typed into it', async () => {
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/storage',
+      headers: { cookie },
+      payload: {
+        id: 'archives',
+        kind: 's3',
+        label: 'Archives',
+        settings: { endpoint: 'https://s3.example.com', bucket: 'famille', pathStyle: 'true' },
+        secret: JSON.stringify({ accessKeyId: 'AKIA…', secretAccessKey: 'secret' }),
+      },
+    });
+
+    assert.equal(created.statusCode, 201);
+    const connection = created.json<StorageConnectionStatus>();
+    // `settings`: there is no consent screen to come back from, so a bucket is
+    // authorised by the same request that creates it.
+    assert.equal(connection.authorization, 'settings');
+    assert.equal(connection.connected, true);
+    // Neither half of the key pair comes back, under any key: the response is
+    // built from the row, and the row's secret stays encrypted.
+    assert.equal(JSON.stringify(connection).includes('secret'), false);
   });
 
   it('refuses a second connection with the same identifier', async () => {

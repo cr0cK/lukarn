@@ -543,6 +543,10 @@ export const en = {
   'validate.containerPattern': 'A path relative to the storage root, without a parent segment.',
   'validate.storageLabel': 'Give this storage a name.',
   'validate.storagePath': 'A folder inside the root, without a parent segment.',
+  'validate.storageEndpoint': 'Enter the address of the service, starting with https://.',
+  'validate.storageBucket': 'Enter the name of the bucket.',
+  'validate.storageAccessKey': 'Enter the access key.',
+  'validate.storageSecretKey': 'Enter the secret key.',
   'validate.interval': 'Give a whole number of minutes (0 to disable).',
   'validate.cacheSize': 'Give a size in gigabytes.',
   'validate.cacheSizePositive': 'The cache size must be greater than 0.',
@@ -619,6 +623,23 @@ export const en = {
   'storage.kindLocal': 'Local folder',
   'storage.kindS3': 'S3-compatible bucket',
   'storage.kindWebdav': 'WebDAV server',
+  'storage.endpoint': 'Endpoint',
+  'storage.endpointHint':
+    'The address of the service, not of the bucket: https://s3.eu-west-3.amazonaws.com, or the address of your own server.',
+  'storage.region': 'Region',
+  'storage.regionHint':
+    'Amazon requires the bucket’s own region. Anything self-hosted ignores it, but both ends still have to agree — leave it empty for us-east-1.',
+  'storage.bucket': 'Bucket',
+  'storage.prefix': 'Prefix',
+  'storage.prefixHint':
+    'Optional. Restricts this connection to one folder of the bucket; every album then names a path inside it.',
+  'storage.pathStyle': 'Address the bucket by path',
+  'storage.pathStyleHint':
+    'Reads bucket.example.com by default. MinIO and any bucket whose name is not a valid domain label need this instead.',
+  'storage.accessKeyId': 'Access key',
+  'storage.secretAccessKey': 'Secret key',
+  'storage.secretAccessKeyHint':
+    'Stored encrypted and never shown again. A read-only key is enough: nothing here ever writes to the bucket.',
   'storage.albumCount': (count: number) =>
     count === 0 ? 'No album reads it yet.' : `${count} album${count > 1 ? 's' : ''} read it.`,
   'storage.serviceAccountHint':
