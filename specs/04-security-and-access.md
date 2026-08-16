@@ -366,11 +366,12 @@ Because the salt is random, encrypting the same secret twice produces two differ
 database observer cannot infer that it has not changed.
 
 **Every connection carries its own.** `storage_connections.ciphertext` holds whatever its kind
-needs to authenticate — Drive's refresh token, and later a bucket's key pair — and
-`StorageConnectionRepo` (`storage/connections.ts`) is the only thing that encrypts or decrypts it.
-The rest of the application handles a `StorageProvider` and never a secret: the registry builds
-one from a row, the provider uses it, and nothing else sees either. `settings` sits beside it in
-plain JSON and is deliberately readable — an endpoint or a bucket name gives access to nothing.
+needs to authenticate — Drive's refresh token, a bucket's `accessKeyId` and `secretAccessKey` as
+JSON, a WebDAV username and app password as JSON — and `StorageConnectionRepo`
+(`storage/connections.ts`) is the only thing that encrypts or decrypts it. The rest of the
+application handles a `StorageProvider` and never a secret: the registry builds one from a row, the
+provider uses it, and nothing else sees either. `settings` sits beside it in plain JSON and is
+deliberately readable — an endpoint or a bucket name gives access to nothing.
 
 The threat model is explicit: **a dump of `lukarn.db` must not be enough to reach any storage.**
 `TOKEN_KEY` is also required; it lives in the process environment and is never written to the
@@ -429,6 +430,28 @@ mount is the boundary there, which is why `docker-compose.yml` mounts the folder
 `:ro` and the volume is what the operator controls. And the application never
 writes to a storage: the interface has no write operation, and the read-only mount
 makes that a property of the deployment rather than a promise of the code.
+
+## A WebDAV connection cannot read above its root
+
+`storage/webdav.ts` builds every URL from the connection's base address and its root, and
+**refuses any path segment that is `.` or `..`**. Neither `encodeURIComponent` nor the URL parser
+touches a dot, so an album whose folder is written `photos/../../..` would otherwise resolve
+above the collection the connection is fenced to. The refusal is an error rather than a silent
+rewrite: serving a directory nobody named is the failure worth preventing, and quietly rewriting
+the path hides that someone asked for it.
+
+The base address is also rebuilt rather than used as typed — origin, then the decoded path
+segments re-encoded one by one. That drops a query string, a fragment, and any `user:password@`
+pasted into the URL, which would otherwise reach every log line naming it.
+
+The fence is only as wide as the account behind it: an app password with access to a whole
+Nextcloud account reaches that whole account, whatever the root says. This is why the field asks
+for an **app password** rather than the login one, and says so beside itself — revoking one costs
+nothing, and it grants file access alone.
+
+Credentials travel as HTTP Basic, which is base64 and not encryption. `https` is therefore the
+only sensible scheme; `http` is accepted because a WebDAV server on the same private network is a
+real deployment, and refusing it would push people to expose one instead.
 
 ## Detecting `invalid_grant`
 

@@ -778,13 +778,39 @@ reads this storage names it. A kind outside `AdminStatus.storageKinds` responds
 `400 unsupported_kind`: accepting it would create a connection nothing can serve
 from, discovered only once an album on it stays empty.
 
-`settings` is read by the provider, not by the route, so each kind names its own
-keys. `local` takes one: **`path`**, the folder it reads **relative to
-`STORAGE_LOCAL_ROOT`**, empty for the root itself. An absolute path or one
-climbing out with `..` is refused by the provider — the route stores what it is
-given, and the fence belongs to whoever declared the root (D260816d). It is a
-setting rather than a secret because there is nothing secret about a folder name;
-`settings` is nevertheless never read back, like every other one.
+**`settings` and `secret` belong to the kind.** Both are opaque to the route,
+which stores whatever it is given: a map of strings in the clear, and one string
+encrypted with `TOKEN_KEY`. Neither is ever read back —
+`StorageConnectionStatus` exposes no `settings`, so /admin writes them and never
+displays them. What each kind expects:
+
+| Kind     | `settings`                                              | `secret`                                |
+| -------- | ------------------------------------------------------- | --------------------------------------- |
+| `drive`  | `scope`, written by the OAuth callback, not by the form | The refresh token, obtained by consent  |
+| `local`  | `path`, the folder read under `STORAGE_LOCAL_ROOT`      | None — a folder name is not a secret    |
+| `s3`     | `endpoint`, `region`, `bucket`, `prefix`, `pathStyle`   | `{"accessKeyId":…,"secretAccessKey":…}` |
+| `webdav` | `url`, the endpoint; `root`, a folder beneath it        | `{"username":…,"password":…}`           |
+
+`local`'s `path` is **relative to `STORAGE_LOCAL_ROOT`**, and empty means the root
+itself. An absolute path, or one climbing out with `..`, is refused by the
+provider: the route stores what it is given, and the fence belongs to whoever
+declared the root (D260816d).
+
+A connection stores exactly **one** encrypted string, so a backend needing two
+values puts JSON in it. `pathStyle` is the string `"true"` when the bucket is
+addressed as `host/bucket/key` rather than `bucket.host/key` — MinIO, and any
+bucket whose name is not a valid domain label. `region` defaults to `us-east-1`
+and `prefix` to the whole bucket.
+
+A WebDAV `url` is the DAV endpoint rather than the page files are browsed on —
+Nextcloud publishes its own as `/remote.php/dav/files/<username>` — and giving the
+wrong one produces a `405` that `storage/:id/test` reports in those words.
+
+An `s3` or `webdav` connection is created **complete**: there is no consent screen
+to come back from, so the form sends its settings and its secret with the same
+`POST`. One missing an endpoint or a bucket is still created rather than refused —
+unlike an unsupported kind, it explains itself immediately, as a row reading "not
+connected" whose Test button names what is absent.
 
 `PATCH`: `UpdateStorageRequest` = `{ label?, settings?, secret? }`, where
 `secret: null` forgets the stored one. `DELETE` responds **`409 storage_in_use`**
@@ -796,6 +822,14 @@ otherwise point at nothing, and every one of its thumbnails would fail.
 does not work is the answer to the question, not a failure of the route, and the
 `error` is the backend's own words — a wrong key, an unreachable host, a
 withdrawn authorisation.
+
+For a bucket the probe is one listing bounded to a single key, the cheapest call
+that separates the three failures an administrator confuses: a key pair the
+bucket refuses names the S3 `<Code>` it answered with, a host that is not there
+names the host, and a bucket that does not exist names the bucket. **A probe
+reports, it never revokes** — only an operation wrapped in `guard()` records that
+a key pair has stopped being accepted, so testing a connection cannot disable the
+one being corrected.
 
 **`storage/:id/oauth/start`** — `400 oauth_not_configured` if `GOOGLE_CLIENT_ID` /
 `GOOGLE_CLIENT_SECRET` are missing, `409 service_account_mode` when the
