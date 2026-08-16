@@ -115,6 +115,19 @@ describe('what a response must not be able to do', () => {
     assert.equal(childText(root, 'Key'), '&xxe;');
   });
 
+  it('leaves an entity named after an Object property alone', async () => {
+    // `&xxe;` above happens not to collide with anything on `Object.prototype`. These
+    // do, and a lookup table with a prototype would answer each of them with an
+    // inherited function — decoding a file name into the source of `toString`, which
+    // matches no object in any bucket.
+    const source = `<r><a>&toString;</a><b>&constructor;</b><c>&hasOwnProperty;</c></r>`;
+    const root = parseXml(source)[0]!;
+
+    assert.equal(childText(root, 'a'), '&toString;');
+    assert.equal(childText(root, 'b'), '&constructor;');
+    assert.equal(childText(root, 'c'), '&hasOwnProperty;');
+  });
+
   it('does not split a tag on a > inside an attribute', async () => {
     // An S3 error document quotes the offending request back at you.
     const source = `<Error><Message note="expected a > here">bad request</Message></Error>`;

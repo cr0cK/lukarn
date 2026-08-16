@@ -1,4 +1,4 @@
-import type { StorageConnectionRepo } from './connections.js';
+import type { StorageConnection, StorageConnectionRepo } from './connections.js';
 import {
   StorageNotConfiguredError,
   StorageNotConnectedError,
@@ -103,6 +103,36 @@ interface WebdavCredentials {
  * a path this application can store and ask for again is the whole of `hrefToRef`
  * (D260816f).
  */
+/**
+ * A live WebDAV provider, or a refusal naming which of the two states it is in.
+ *
+ * The factory refuses rather than the constructor, for the same reason `s3.ts` does:
+ * `StorageRegistry.isConnected` asks whether a connection is usable by trying to build
+ * one and watching for a throw. A service that constructs unconditionally answers "yes"
+ * for a connection with no password stored and for one the server has already rejected,
+ * and prewarming, transcoding and the startup sync all gate on that answer — they would
+ * traverse the album file by file, re-presenting a password already refused (D61).
+ */
+export function webdavFromConnection(
+  connection: StorageConnection,
+  connections: StorageConnectionRepo,
+  log: { info: (msg: string) => void; warn: (msg: string) => void },
+): WebdavService {
+  if (!connection.ciphertext) {
+    throw new StorageNotConnectedError(
+      `The WebDAV connection "${connection.label}" has no password stored. Enter one from /admin.`,
+    );
+  }
+  if (connection.revokedAt !== null) {
+    throw new StorageRevokedError(
+      `The server refused the stored app password for "${connection.label}". ` +
+        'Enter a new one from /admin.',
+    );
+  }
+
+  return new WebdavService(connections, connection.id, log);
+}
+
 export class WebdavService implements StorageProvider {
   readonly kind: StorageKind = 'webdav';
   /**
@@ -131,17 +161,26 @@ export class WebdavService implements StorageProvider {
   async probe(): Promise<StorageProbe> {
     let base: URL;
     let account: string | null = null;
+    let credentials: WebdavCredentials;
 
     try {
       base = this.base();
-      account = `${this.credentials().username}@${base.host}`;
+      credentials = this.credentials();
+      account = `${credentials.username}@${base.host}`;
     } catch (error) {
       return { ok: false, account, error: (error as Error).message };
     }
 
     let response: Response;
     try {
-      response = await this.request('PROPFIND', base, { Depth: '0' }, LISTING_TIMEOUT_MS);
+      response = await this.request(
+        'PROPFIND',
+        base,
+        { Depth: '0' },
+        LISTING_TIMEOUT_MS,
+        undefined,
+        credentials,
+      );
     } catch (error) {
       return { ok: false, account, error: unreachable(error, base) };
     }
@@ -353,8 +392,16 @@ export class WebdavService implements StorageProvider {
     timeoutMs: number | null,
     signal?: AbortSignal,
   ): Promise<Response> {
+    // **Outside the try, deliberately.** `credentials()` reports two permanent states —
+    // no secret stored, and a `TOKEN_KEY` that cannot decrypt the one that is — and
+    // rewriting either into `StorageUnavailableError` would answer 503 with a
+    // `Retry-After` forever for something no amount of retrying fixes. The route and
+    // /admin tell "will recover on its own" from "needs reconfiguration" by exactly
+    // that distinction (D14). Only the network call below is transient.
+    const credentials = this.credentials();
+
     try {
-      return await this.request(method, url, headers, timeoutMs, signal);
+      return await this.request(method, url, headers, timeoutMs, signal, credentials);
     } catch (error) {
       throw new StorageUnavailableError(
         url.pathname,
@@ -369,9 +416,10 @@ export class WebdavService implements StorageProvider {
     url: URL,
     headers: Record<string, string>,
     timeoutMs: number | null,
-    signal?: AbortSignal,
+    signal: AbortSignal | undefined,
+    credentials: { username: string; password: string },
   ): Promise<Response> {
-    const { username, password } = this.credentials();
+    const { username, password } = credentials;
     const authorization = Buffer.from(`${username}:${password}`, 'utf8').toString('base64');
 
     // Both signals matter and neither subsumes the other: the caller aborts when the

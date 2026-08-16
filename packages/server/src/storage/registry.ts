@@ -5,7 +5,7 @@ import { DriveService } from './drive.js';
 import { LocalFolderService } from './local.js';
 import { StorageNotConfiguredError, type StorageProvider } from './provider.js';
 import { s3FromConnection } from './s3.js';
-import { WebdavService } from './webdav.js';
+import { webdavFromConnection } from './webdav.js';
 
 /**
  * Kinds this release can actually build, in the order /admin offers them.
@@ -43,7 +43,7 @@ export function createProvider(
     case 's3':
       return s3FromConnection(connection, connections, log);
     case 'webdav':
-      return new WebdavService(connections, connection.id, log);
+      return webdavFromConnection(connection, connections, log);
     default:
       throw new StorageNotConfiguredError(
         `Storage of kind "${connection.kind}" is declared but this version cannot read it.`,

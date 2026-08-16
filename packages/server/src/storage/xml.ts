@@ -23,14 +23,22 @@ export interface XmlElement {
   children: XmlElement[];
 }
 
-/** The five named entities XML defines, plus numeric ones. Nothing else is expanded. */
-const NAMED: Record<string, string> = {
+/**
+ * The five named entities XML defines, plus numeric ones. Nothing else is expanded.
+ *
+ * `Object.create(null)` rather than a literal: a plain object inherits from
+ * `Object.prototype`, so `NAMED['toString']` answers a function rather than
+ * `undefined`, and `&toString;` in a file name would decode to the source of that
+ * function instead of being left alone. With no prototype there is nothing to inherit,
+ * and every name outside the five below is unknown exactly as the contract says.
+ */
+const NAMED: Record<string, string> = Object.assign(Object.create(null) as object, {
   lt: '<',
   gt: '>',
   amp: '&',
   quot: '"',
   apos: "'",
-};
+}) as Record<string, string>;
 
 /**
  * Character data with entities resolved.
