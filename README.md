@@ -3,18 +3,19 @@
 [![verify](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml/badge.svg)](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml)
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](./LICENSE)
 
-A self-hosted gallery for browsing the photos and videos of a Google Drive
-account, in place of Drive's own preview: justified grid grouped by month,
-keyboard-driven fullscreen viewer, light or dark theme.
+A self-hosted gallery for browsing photos and videos where they already sit — a
+Google Drive account, a folder on the machine, an S3-compatible bucket, a WebDAV
+server — in place of the preview each of those offers: justified grid grouped by
+month, keyboard-driven fullscreen viewer, light or dark theme.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment.
-From `/admin`, the owner declares which Drive folders become albums and who may
-open them — enough to share one album without exposing the rest of the Drive.
+From `/admin`, the owner connects the storages, declares which of their folders
+become albums and who may open them — enough to share one album without exposing
+the rest of the account.
 
-Drive is the first storage it reads, and the only one it reads today. Others are
-meant to follow: the gallery is the point, and where the photos happen to sit is
-not.
+One instance can read several storages at once, and each album names the one it
+belongs to: the gallery is the point, and where the photos happen to sit is not.
 
 | I want to…                              |                                                           |
 | --------------------------------------- | --------------------------------------------------------- |
@@ -68,7 +69,8 @@ account, and nobody's family in a public README.
 - **Everything goes through the server**: no Google URL is ever exposed to the
   browser. Thumbnails are generated as WebP and cached on disk.
 
-Drive is only ever read: the requested scope is read-only.
+A storage is only ever read: the Drive scope asked for is read-only, and nothing
+is ever written to a folder, a bucket or a WebDAV server.
 
 ## Get started
 

@@ -6,13 +6,13 @@ import { useAdminAlbums, useAdminStatus } from '../api/hooks';
 import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { Spinner } from '../components/Spinner';
-import { useT, type MessageKey } from '../lib/i18n';
+import { useT } from '../lib/i18n';
 import { PHONE_QUERY, useMediaQuery } from '../lib/useMediaQuery';
 import { TopBar } from '../components/TopBar';
 import { AdminMenu, AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
 import { CommentsSection } from '../components/admin/CommentsSection';
-import { StorageSection } from '../components/admin/StorageSection';
+import { OAUTH_MESSAGES, StorageSection } from '../components/admin/storage/StorageSection';
 import { IdentitySection } from '../components/admin/IdentitySection';
 import { MaintenanceSection } from '../components/admin/MaintenanceSection';
 import { SettingsSection } from '../components/admin/SettingsSection';
@@ -20,15 +20,6 @@ import { UsersSection } from '../components/admin/UsersSection';
 import { VisitsSection } from '../components/admin/VisitsSection';
 import { PoweredBy } from '../components/PoweredBy';
 import { FormError, Section, type Notice } from '../components/admin/ui';
-
-/** Messages from the Google consent return, passed in `?oauth=`. */
-const OAUTH_MESSAGES: Record<string, { tone: Notice['tone']; text: MessageKey }> = {
-  connected: { tone: 'ok', text: 'admin.oauthConnected' },
-  denied: { tone: 'error', text: 'admin.oauthDenied' },
-  invalid: { tone: 'error', text: 'admin.oauthInvalid' },
-  state_mismatch: { tone: 'error', text: 'admin.oauthStateMismatch' },
-  error: { tone: 'error', text: 'admin.oauthError' },
-};
 
 export default function AdminPage(): ReactElement {
   const t = useT();
@@ -78,7 +69,7 @@ export default function AdminPage(): ReactElement {
         return <CommentsSection notify={setNotice} />;
       case 'identity':
         return <IdentitySection notify={setNotice} />;
-      case 'server':
+      case 'storage':
         return (
           <>
             {status.isPending && <Spinner />}
@@ -86,6 +77,17 @@ export default function AdminPage(): ReactElement {
               <FormError message={errorText(status.error, t('admin.statusFailed'))} />
             )}
             {status.data && <StorageSection status={status.data} notify={setNotice} />}
+          </>
+        );
+      case 'server':
+        return (
+          <>
+            {/* Only maintenance reads the server state here; settings and the
+                version line do not, and neither waits on it. */}
+            {status.isPending && <Spinner />}
+            {status.error && (
+              <FormError message={errorText(status.error, t('admin.statusFailed'))} />
+            )}
             <SettingsSection notify={setNotice} />
             {status.data && <MaintenanceSection status={status.data} notify={setNotice} />}
             {/* Last, and its own section: whoever operates the instance is here,

@@ -387,6 +387,7 @@ export const en = {
   'admin.groupLibrary': 'Library',
   'admin.groupPeople': 'People',
   'admin.groupInstance': 'This instance',
+  'admin.tabStorage': 'Storage',
   'admin.tabAlbums': 'Albums',
   'admin.tabAccounts': 'Accounts',
   'admin.tabComments': 'Comments',
@@ -405,9 +406,12 @@ export const en = {
 
   'adminAlbums.title': 'Albums',
   'adminAlbums.description':
-    'One album = one indexed Google Drive folder. Its cover is chosen on the photo, from the album.',
+    'One album = one indexed folder of a storage. Its cover is chosen on the photo, from the album.',
   'adminAlbums.resyncAll': 'Resync everything',
   'adminAlbums.noStorage': 'No storage connected.',
+  'adminAlbums.noStorageYet':
+    'No storage yet. An album is a folder of one, so connect a storage first.',
+  'adminAlbums.noStorageLink': 'Go to Storage',
   'adminAlbums.new': 'New album',
   'adminAlbums.none': 'No album. Create one from a folder of your Drive.',
   'adminAlbums.syncStarted': (albums: string) => `Sync started: ${albums}`,
@@ -442,8 +446,10 @@ export const en = {
   'adminAlbums.confirmButton': 'Delete the album',
   'adminAlbums.confirmMedia': (count: number) =>
     `The ${count.toLocaleString('en-GB')} indexed media are removed from the viewer, and the album disappears for the accounts that could reach it.`,
-  'adminAlbums.confirmDrive': 'Nothing is deleted in Google Drive: the files stay in folder',
-  'adminAlbums.confirmDriveEnd': '. Recreating the album on the same folder will reindex it.',
+  'adminAlbums.confirmKeeps': (folder: string) =>
+    `Nothing is deleted on the storage: the files stay in "${folder}". Recreating the album on the same folder will reindex it.`,
+  'adminAlbums.confirmKeepsAll':
+    'Nothing is deleted on the storage: the files stay where they are. Recreating the album on the same storage will reindex it.',
 
   'albumForm.titleField': 'Title',
   'albumForm.id': 'Identifier',
@@ -451,8 +457,11 @@ export const en = {
   'albumForm.idHint': 'Appears in the URL of the album. Suggested from the title.',
   'albumForm.description': 'Description (optional)',
   'albumForm.folder': 'Google Drive folder',
+  'albumForm.addStorage': 'Add another storage',
+  'albumForm.singleStorage': (label: string) => `Read from ${label}, the only storage declared.`,
   'albumForm.container': 'Folder in the storage',
-  'albumForm.containerHint': 'Path relative to the root this storage declares.',
+  'albumForm.containerHint':
+    'Path relative to the root this storage declares. Leave empty to read all of it.',
   'albumForm.containerPlaceholder': 'holidays/2026',
   'albumForm.storage': 'Storage',
   'albumForm.storageHint': 'Where this album’s files live.',
@@ -539,10 +548,11 @@ export const en = {
   'validate.folder': 'Enter the Drive folder.',
   'validate.folderPattern':
     'Paste the Drive folder URL or its identifier — the segment after /folders/.',
-  'validate.container': 'Enter the folder to read.',
   'validate.containerPattern': 'A path relative to the storage root, without a parent segment.',
   'validate.storageLabel': 'Give this storage a name.',
   'validate.storagePath': 'A folder inside the root, without a parent segment.',
+  'validate.storageAbsolutePath':
+    'Remove the leading slash: this names a folder inside the one below, not a path on the machine.',
   'validate.storageEndpoint': 'Enter the address of the service, starting with https://.',
   'validate.storageBucket': 'Enter the name of the bucket.',
   'validate.storageAccessKey': 'Enter the access key.',
@@ -614,14 +624,16 @@ export const en = {
   'storage.create': 'Add',
   'storage.created': (label: string) => `Storage "${label}" added.`,
   'storage.label': 'Name',
-  'storage.identifier': 'Identifier',
-  'storage.identifierHint': 'Written into every album that reads this storage. It cannot change.',
   'storage.kind': 'Kind',
   'storage.kindHint': 'What this connection speaks to. It cannot change afterwards.',
+  'storage.kindFixed':
+    'A connection keeps its kind and its identifier: every album reading it points here.',
   'storage.path': 'Folder',
-  'storage.pathHint':
-    'A folder inside the one this server was given, named relative to it. Leave empty to ' +
-    'read all of it. Set STORAGE_LOCAL_ROOT to choose which folder that is.',
+  'storage.pathHint': (root: string) =>
+    `A folder inside ${root}, named relative to it. Leave empty to read all of it.`,
+  'storage.pathNoRoot':
+    'STORAGE_LOCAL_ROOT is not set on this server, so no folder can be read yet. Set it, ' +
+    'mount the folder read-only, and restart.',
   'storage.kindDrive': 'Google Drive',
   'storage.kindLocal': 'Local folder',
   'storage.kindS3': 'S3-compatible bucket',
@@ -675,6 +687,10 @@ export const en = {
   'storage.testing': 'Testing…',
   'storage.testOk': (account: string) => `It answers — ${account}.`,
   'storage.testFailed': 'This storage did not answer.',
+  'storage.edit': 'Edit',
+  'storage.editOne': (label: string) => `Edit the storage ${label}`,
+  'storage.saved': (label: string) => `Storage "${label}" saved.`,
+  'storage.secretKept': 'Leave empty to keep the credentials already stored.',
   'storage.delete': 'Delete',
   'storage.deleteOne': (label: string) => `Delete the storage ${label}`,
   'storage.deleted': (label: string) => `Storage "${label}" deleted.`,
@@ -683,6 +699,11 @@ export const en = {
   'storage.confirmButton': 'Delete',
   'storage.confirmNothingDeleted':
     'Nothing is deleted on the storage itself: this removes how this gallery reaches it. An album still reading it has to be moved or deleted first.',
+  'storage.confirmInUse': (count: number) =>
+    count > 1
+      ? `${count} albums still read this storage. Move them to another one, or delete them first — they would otherwise point at nothing.`
+      : 'One album still reads this storage. Move it to another one, or delete it first — it would otherwise point at nothing.',
+  'storage.confirmMoveThem': 'Go to the albums',
 
   /* ----------------------------------------------------- Administration: settings */
 

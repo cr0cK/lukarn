@@ -81,6 +81,8 @@ export const en = {
   'error.oauthNotConfigured':
     'Google Drive is not configured: GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are missing.',
   'error.storageNotFound': 'No storage connection with this identifier.',
+  'error.folderRequired':
+    'A Google Drive album names the folder it reads. Only a storage addressed by path can be left empty to read all of it.',
   'error.storageExists': (id: string) => `A storage connection named "${id}" already exists.`,
   'error.storageKindUnsupported': (kind: string) =>
     `This version cannot read a storage of kind "${kind}".`,

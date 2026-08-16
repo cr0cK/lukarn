@@ -1,5 +1,6 @@
 import type { AdminAlbum, StorageConnectionStatus, SyncStatus } from '@lukarn/shared';
 import { type ReactElement, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { errorText } from '../../api/client';
 import { useDeleteAlbum, useResync, useUpdateAlbum } from '../../api/hooks';
 import { formatRelative } from '../../lib/format';
@@ -37,6 +38,10 @@ export function AlbumsSection({ albums, storage, notify }: AlbumsSectionProps): 
     storage.filter((connection) => connection.connected).map((connection) => connection.id),
   );
   const anyConnected = connected.size > 0;
+  // An album is a folder of a storage, so with none declared there is nothing to
+  // point at: the form would fill in completely and the server would answer
+  // `unknown_storage` on the last click. Send the reader upstream instead.
+  const noStorage = storage.length === 0;
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -104,7 +109,8 @@ export function AlbumsSection({ albums, storage, notify }: AlbumsSectionProps): 
               setEditing(null);
               setCreating(true);
             }}
-            disabled={creating}
+            disabled={creating || noStorage}
+            title={noStorage ? t('adminAlbums.noStorageYet') : undefined}
           >
             {t('adminAlbums.new')}
           </Button>
@@ -115,8 +121,21 @@ export function AlbumsSection({ albums, storage, notify }: AlbumsSectionProps): 
         <AlbumForm storage={storage} onClose={() => setCreating(false)} notify={notify} />
       )}
 
-      {albums.length === 0 && !creating && (
-        <p className="px-4 py-6 text-sm text-ink-400">{t('adminAlbums.none')}</p>
+      {/* Upstream first: a reader who has connected nothing is told what to do,
+          rather than left with a form whose last click cannot succeed. */}
+      {noStorage ? (
+        <div className="px-4 py-6 text-sm text-ink-400">
+          <p>{t('adminAlbums.noStorageYet')}</p>
+          <Link
+            to="/admin/storage"
+            className="mt-2 inline-block text-accent underline underline-offset-2"
+          >
+            {t('adminAlbums.noStorageLink')}
+          </Link>
+        </div>
+      ) : (
+        albums.length === 0 &&
+        !creating && <p className="px-4 py-6 text-sm text-ink-400">{t('adminAlbums.none')}</p>
       )}
 
       {albums.map((album) =>
@@ -218,9 +237,13 @@ export function AlbumsSection({ albums, storage, notify }: AlbumsSectionProps): 
           onCancel={() => setConfirming(null)}
         >
           <p>{t('adminAlbums.confirmMedia', confirming.itemCount)}</p>
-          <p className="text-ink-200">
-            {t('adminAlbums.confirmDrive')} <code className="break-all">{confirming.folderId}</code>
-            {t('adminAlbums.confirmDriveEnd')}
+          {/* An album may read the whole of what its storage declares, in which case
+              there is no folder to name — and naming Drive here stopped being right
+              the day a bucket could serve an album. */}
+          <p className="break-all text-ink-200">
+            {confirming.folderId
+              ? t('adminAlbums.confirmKeeps', confirming.folderId)
+              : t('adminAlbums.confirmKeepsAll')}
           </p>
         </ConfirmDialog>
       )}

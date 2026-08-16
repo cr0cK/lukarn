@@ -1734,7 +1734,7 @@ screens of settings that were read differently would be the defect, and
 alone.
 
 What it does not borrow is the **sidebar**. `AdminNav` earns its column by
-listing six sections; two settings do not need a column naming the screen they
+listing seven sections; two settings do not need a column naming the screen they
 are already on. Sections can be split out the day there are enough of them
 without moving the address, which is why `/settings` carries no `:tab` segment
 today. The content column stops at 48 rem rather than administration's 90: that
@@ -1779,14 +1779,15 @@ Accounts, albums and settings are administered from `/admin`:
 
 Administration is navigated by **sections, one per URL** (D66):
 
-| Section  | URL               | Content                                                   |
-| -------- | ----------------- | --------------------------------------------------------- |
-| Albums   | `/admin/albums`   | `AlbumsSection`                                           |
-| Accounts | `/admin/accounts` | `UsersSection`                                            |
-| Comments | `/admin/comments` | `CommentsSection`                                         |
-| Identity | `/admin/identity` | `IdentitySection`                                         |
-| Server   | `/admin/server`   | `StorageSection`, `SettingsSection`, `MaintenanceSection` |
-| Visits   | `/admin/visits`   | `VisitsSection`                                           |
+| Section  | URL               | Content                                 |
+| -------- | ----------------- | --------------------------------------- |
+| Storage  | `/admin/storage`  | `StorageSection`                        |
+| Albums   | `/admin/albums`   | `AlbumsSection`                         |
+| Accounts | `/admin/accounts` | `UsersSection`                          |
+| Comments | `/admin/comments` | `CommentsSection`                       |
+| Identity | `/admin/identity` | `IdentitySection`                       |
+| Server   | `/admin/server`   | `SettingsSection`, `MaintenanceSection` |
+| Visits   | `/admin/visits`   | `VisitsSection`                         |
 
 `ADMIN_TABS`, in `AdminNav`, is the single source: navigation renders it, and
 `AdminPage` validates the `:tab` parameter against it. An unknown section
@@ -1796,7 +1797,7 @@ redirects rather than showing a blank page.
 ([D260814c](./08-decisions/D260814c-administration-gets-a-root-on-a-phone-and-settings-become-rows.md)).
 From `md` it still redirects to `/admin/albums`, exactly as D66 left it — which
 is also what lets `AdminNav` read its selected entry from the router rather than
-from a path comparison. Below `md` it is a screen: `AdminMenu`, the six sections
+from a path comparison. Below `md` it is a screen: `AdminMenu`, the seven sections
 as a list grouped into Library, People and This instance, a chevron per row and
 the activity count on Comments. A section's back arrow then returns there rather
 than to the gallery, through `TopBar`'s `backTo`.
@@ -1807,7 +1808,7 @@ nothing announced, and the row cost a line of every administration screen at all
 times. A phone shows one level per screen; this is that level.
 
 `ADMIN_TABS` carries a `group` read only by that list. The sidebar ignores it: a
-twelve-rem column has no room for headings, and at that width the six rows are
+twelve-rem column has no room for headings, and at that width the seven rows are
 read at once anyway.
 
 **The badge on Comments counts activity, not a queue.** There is no moderation
@@ -1819,7 +1820,7 @@ drawer — messages received since the last visit.
 moderation queue can be shared, the browser's back button returns to the
 previous section, a reload does not go back to the first one, and Google's
 consent return flow needs a destination to name: the server redirects to
-`/admin/server`, the section that carries the connect button (see
+`/admin/storage`, the section that carries the connect button (see
 [05](./05-api.md)).
 
 `AdminPage` mounts the requested section **and only the loading/error states
@@ -1834,25 +1835,42 @@ The message banner stays in the content column, stuck under the top bar: the
 comments section always scrolls, and a message shown at the very top would go
 unnoticed from the bottom of the queue.
 
-| Component                     | Role                                                                                                 |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `AdminNav`                    | Navigation between the six sections, as `NavLink`                                                    |
-| `StorageSection`              | The storages this instance reads: state, test, consent, disconnect, add, delete                      |
-| `UsersSection` / `UserForm`   | Account list, creation, editing, confirmed deletion                                                  |
-| `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing |
-| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                             |
-| `SettingsSection`             | Sync interval, sync on startup, cache                                                                |
-| `MaintenanceSection`          | Cache usage and purge                                                                                |
-| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                       |
-| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                           |
-| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                       |
-| `AdminMenu`                   | The same six sections as a grouped list, below `md`, filling `/admin`                                |
-| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry, `SettingRow`                  |
+| Component                     | Role                                                                                                                                                                                                                                                           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AdminNav`                    | Navigation between the seven sections, as `NavLink`                                                                                                                                                                                                            |
+| `StorageSection`              | The storages this instance reads: the list, and the confirmed deletion                                                                                                                                                                                         |
+| `StorageRow`                  | One connection: its state, and the buttons its `authorization` allows                                                                                                                                                                                          |
+| `StorageForm`                 | Name, kind, then the fields of the kind chosen                                                                                                                                                                                                                 |
+| `LocalFields`                 | The subpath under `STORAGE_LOCAL_ROOT`                                                                                                                                                                                                                         |
+| `S3Fields`                    | Endpoint, region, bucket, prefix, key pair, path-style                                                                                                                                                                                                         |
+| `WebdavFields`                | Address, folder, credentials                                                                                                                                                                                                                                   |
+| `UsersSection` / `UserForm`   | Account list, creation, editing, confirmed deletion                                                                                                                                                                                                            |
+| `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                           |
+| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                       |
+| `SettingsSection`             | Sync interval, sync on startup, cache                                                                                                                                                                                                                          |
+| `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                          |
+| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                 |
+| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                     |
+| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                 |
+| `AdminMenu`                   | The same seven sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                        |
+| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry, `SettingRow`. Every control sits on `ink-800`, one rung off the `ink-850/50` panel — on the same rung a field was drawn by its border alone, and that border disappears on a dim screen |
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
 
-### Storage — `components/admin/StorageSection.tsx`
+### Storage — `components/admin/storage/`
+
+**Its own section, at the head of the Library group**
+([D260816g](./08-decisions/D260816g-storage-becomes-a-section-and-a-draft-is-a-union.md)).
+Where the photographs come from is not a property of the machine, and Server —
+sync cadence, cache budget, version — is about the machine. Storage is upstream of
+Albums, so it sits above it and the two read as one flow: connect a source, then
+draw albums from it. The cache stays under Server: it is agnostic to the backend,
+one resource of the instance that Lukarn manages itself, and filing it under a
+source would suggest there is one cache per source.
+
+`/admin` still redirects to `/admin/albums` on a desktop, exactly as D66 left it.
+First in the flow is not the same as opened every day.
 
 A **list**, not a panel: an instance may read a Drive for the family album and a
 bucket for the archives, so every connection gets a row saying the one thing that
@@ -1872,8 +1890,47 @@ the address, an optional folder, a username and an app password, and nothing els
 does. The address is the field that goes wrong — Nextcloud's DAV endpoint is not
 the page files are browsed on — so its hint states the shape rather than describing
 it, and **Test** afterwards repeats what the server actually answered. The password
-travels in `secret`, the address and folder in `settings`; neither is ever read
-back, because `StorageConnectionStatus` carries neither.
+travels in `secret`, which is never read back; the address and folder are
+`settings`, which is, so that editing shows them rather than asking again.
+
+**The folder field names the root it is measured against.** A `local` connection
+holds a path relative to `STORAGE_LOCAL_ROOT`, which the operator sets and an
+administrator cannot (D260816d) — so `AdminStatus` reports it and `LocalFields`
+puts it in the hint. Without it the field asked for a path relative to a value the
+screen never showed, and the mistake that followed was to type an absolute one:
+`extractContainer` strips a leading separator, so `/home/alexis/temp` silently
+became a folder of that name **inside** the root, surfacing only as a directory
+that does not exist. A leading `/` is now refused in its own words. The stripping
+itself stays, because for a bucket prefix it is legitimate normalisation — the
+refusal lives in `draftErrors`, which knows it is looking at a local folder.
+
+**It asks for a name, not an identifier**
+([D260816h](./08-decisions/D260816h-a-storage-identifier-is-derived-from-its-name.md)).
+Nothing outside this screen ever names a connection — no URL, no environment
+variable, no line of `config/albums.yaml` — so the field asked a question whose
+answer only the machine read, and the server derives the slug from the label
+instead. An album identifier is the opposite case and its field stays exactly
+where it is: it sits in `/album/:id`, which gets shared. `StorageRow` still prints
+the derived identifier beside each connection, because that is the value a log
+line names.
+
+**A draft is a discriminated union, one file of fields per kind.** Three backends
+arriving in three parallel branches each added a draft type, a payload builder, a
+validation map and a fields component to the same single file, and a line-by-line
+merge of two of them produced code that did not compile. So the shape of a
+half-typed connection lives in `lib/storageDraft.ts` — `emptyDraft`, `draftErrors`,
+`draftPayload`, pure and tested beside `adminForm.ts`, whose `extractContainer` it
+reuses — and each kind's fields live in a file of their own: `LocalFields`,
+`S3Fields`, `WebdavFields`. Drive has none; its authorisation is a consent, not a
+form. A union rather than a `Record<StorageKind, …>` registry because under
+`noUncheckedIndexedAccess` a record hands back `unknown` and every field access
+needs a cast, while narrowing on `draft.kind` hands back exactly that kind's fields
+(D260816g). Adding a backend is then a fields component and a branch of one line in
+each of the three functions.
+
+`StorageForm` holds the draft as its **only** state for the kind: changing the
+selector calls `emptyDraft` again rather than keeping a bucket's keys under **WebDAV
+server**, which is half a form the backend never asked for.
 
 **Test is a button and not a screen state.** It costs a round trip to the storage
 itself and answers a question somebody asked by pressing it, so it is a mutation
@@ -1881,10 +1938,29 @@ rather than a query, and it renders what the backend said — a wrong key, an
 unreachable host — in the message banner. "The album is empty" is what this
 replaces.
 
-Deletion goes through `ConfirmDialog` and is refused server-side while an album
-reads the connection. The row already shows how many do, which is why the button
-stays enabled rather than silently disabled: the refusal names the albums to move
-first, and a disabled button would name nothing.
+**A connection is edited rather than replaced.** `StorageForm` takes an optional
+`connection` and becomes the edit form for it, the way `AlbumForm` takes an optional
+`album` — a corrected endpoint or a rotated key would otherwise mean deleting the
+connection and adding it again, which the albums reading it forbid outright. The
+name and the settings are editable; the kind and the identifier are shown and
+cannot be, because every album points at this connection by identifier.
+
+The credential fields start **empty and mean "unchanged"**, exactly as an account's
+password field does: the server never sends a secret back, so there is nothing to
+prefill and a blank field is the only honest default. Typing into one half makes the
+other required — the pair travels as a single encrypted string, so replacing it
+replaces both, and a new access key saved beside an empty secret would stop the
+connection answering (D260816i).
+
+Deletion goes through `ConfirmDialog`, which now **names the albums** reading the
+connection and disables its own confirm button while there are any. The server still
+refuses with `409 storage_in_use` and remains authoritative; what changed is that
+the refusal is no longer how the condition is discovered — it used to arrive in the
+banner after the dialog had closed, about albums the row had only ever counted. The
+titles come from `useAdminAlbums`, read without being waited on: the connection list
+is what this screen is opened for, and the count carries the sentence until the
+titles land. Beside them is a link to `/admin/albums`, where the storage selector
+`AlbumForm` already offers is what actually moves an album.
 
 `AlbumForm` gains the other half: a storage selector, **offered only when there is
 more than one** — with a single connection the control would decide nothing — and
@@ -1893,6 +1969,23 @@ addresses a folder by an opaque identifier pasted from a URL, every other backen
 by a path, so `lib/adminForm.ts` has `extractContainer` beside `extractFolderId`:
 validating a bucket prefix as a Drive identifier would refuse `vacances/2026` for
 containing a slash.
+
+**On a path-addressed storage the field is optional**, and empty means the whole of
+what the connection declares (D260816j). `extractContainer` therefore returns `''`
+for empty input and keeps `null` for **invalid** — the distinction the form's submit
+guard reads. Drive keeps `null` for both, because it has no empty identifier.
+
+The selector also carries **a link to `/admin/storage`**, and so does the line that
+replaces it when a single connection makes it pointless. Storage being the section
+directly above is not the same as being found: somebody filling in an album is
+looking at a form, not at a sidebar.
+
+**With no connection at all, `AlbumsSection` sends the reader upstream** rather
+than opening a form. The selector falls back to `drive` when the list is empty and
+the server answers `400 unknown_storage` on the last click of a form filled in
+completely — so "New album" is disabled and the empty state links to
+`/admin/storage` instead. The selector itself stays hidden at one connection, for
+the reason it always was: a control with a single option decides nothing.
 
 ### A setting is a row on a phone — `SettingRow`
 
@@ -2084,7 +2177,10 @@ trip to say what is wrong, by applying the same shared constants
   opaque identifier, and the server would respond with a far less helpful
   error.
 - **`slugifyAlbumId`** suggests an identifier from the title as long as the
-  field has not been touched — this identifier ends up in the album's URL.
+  field has not been touched — this identifier ends up in the album's URL. It
+  lives in `@lukarn/shared` and is re-exported here, because the server derives a
+  storage connection's identifier with the same function: a slug previewed by one
+  implementation and stored by another would eventually disagree (D260816h).
 - Editing forms send **only the changed fields**: a missing field leaves the
   value in place, so resending the whole form would overwrite a change made
   elsewhere in the meantime. An empty password means "do not change".

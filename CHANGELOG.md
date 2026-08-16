@@ -15,6 +15,43 @@ in this application migrates volumes or renames files on its own.
 
 ### Added
 
+- **An album can read a whole storage, with no folder to name.** A bucket holding
+  one gallery, or a folder mounted for exactly this, no longer needs an invented
+  subfolder: leave **Folder in the storage** empty and the album covers everything
+  the connection declares. Google Drive still asks for a folder, because it names
+  one by identifier rather than by path and there is no such thing as an empty one.
+- **A storage can be corrected without being deleted.** Each connection has an
+  **Edit** button: fix an endpoint typed with one letter wrong, rename it, point a
+  local folder somewhere else, or rotate a key that has been replaced at the
+  provider. Until now the only way to change any of it was to delete the connection
+  and add it again — which the albums reading it refuse outright, so the connections
+  worth repairing were the ones that could not be. Credential fields start empty and
+  stay that way unless you retype them; the kind and the identifier are shown but
+  fixed, since every album points at them.
+- **The folder field of a local storage says which folder it is inside.** It holds a
+  path relative to the directory the server was given, and that directory was
+  nowhere on screen — so the natural move was to paste a full path, which was quietly
+  taken as a folder of that name _inside_ the root and failed later as a directory
+  that does not exist. The root is now named under the field, and a path starting
+  with `/` is refused on the spot with the reason.
+- **Adding a storage asks for its name and nothing else.** The **Identifier**
+  field is gone: it wanted a value only the machine ever reads — no address, no
+  configuration file and no command names a storage connection — and it warned it
+  could never be changed, which is a lot to ask about something nothing depends
+  on. The name now decides it, so **Archives Été 2026** files itself under
+  `archives-ete-2026`, and a second storage called the same thing is added
+  without argument instead of being refused. The identifier still appears beside
+  every connection in the list, because that is the word logs use for it. An
+  album's identifier is a different matter and is still yours to choose: it is
+  part of the address the album is shared with.
+- **Storage is a section of `/admin` of its own**, at the top of the library
+  group and above Albums, in the order an instance is actually set up: connect a
+  source, then draw albums from it. It used to sit inside **Server**, between the
+  sync interval and the cache budget, where a screen answering "where do my photos
+  come from?" was filed with "how much disk am I using?". Albums with nothing
+  connected yet now says so and points there, instead of offering a form whose
+  last click could only fail. The cache stays under Server — it serves every
+  storage at once, so it belongs to the instance rather than to a source.
 - **An instance can now read more than one storage.** `/admin` gained a
   **Storage** section listing every connection it reads, with what state each is
   in and a **Test** button that asks the backend itself and repeats what it said —
@@ -67,7 +104,9 @@ in this application migrates volumes or renames files on its own.
 
 - **Deleting a storage is refused while an album still reads it**, naming the
   albums to move first. Removing it would leave every one of their photos failing
-  to load, with nothing on the screen explaining why.
+  to load, with nothing on the screen explaining why. The confirmation now lists
+  those albums by title and will not let the deletion through, instead of accepting
+  it and reporting the refusal afterwards.
 
 ### Migration notes
 
@@ -79,6 +118,11 @@ to move.
 
 ### Fixed
 
+- **Form fields are visible again in the dark theme.** Every input, list and text
+  area sat on the same shade as the panel behind it, so a field was a rectangle
+  drawn by its border alone — fine on a bright screen, gone on a dim one. They now
+  sit a step above the panel in the dark theme and a step below it in the light
+  one, where a field reading as a well is the shape paper takes.
 - **The very first thing a new installation is told now names a command that
   exists on the machine reading it.** An instance started from the image with no
   account yet — in the startup log and on the sign-in screen alike — asked its

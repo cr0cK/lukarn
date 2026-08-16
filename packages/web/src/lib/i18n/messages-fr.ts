@@ -370,6 +370,7 @@ export const fr: Messages = {
   'admin.groupLibrary': 'Bibliothèque',
   'admin.groupPeople': 'Personnes',
   'admin.groupInstance': 'Cette instance',
+  'admin.tabStorage': 'Stockages',
   'admin.tabAlbums': 'Albums',
   'admin.tabAccounts': 'Comptes',
   'admin.tabComments': 'Commentaires',
@@ -388,9 +389,12 @@ export const fr: Messages = {
 
   'adminAlbums.title': 'Albums',
   'adminAlbums.description':
-    'Un album = un dossier Google Drive indexé. Sa couverture se choisit sur la photo, depuis l’album.',
+    'Un album = un dossier indexé d’un stockage. Sa couverture se choisit sur la photo, depuis l’album.',
   'adminAlbums.resyncAll': 'Tout resynchroniser',
   'adminAlbums.noStorage': 'Aucun stockage connecté.',
+  'adminAlbums.noStorageYet':
+    'Aucun stockage. Un album est un dossier de l’un d’eux : commencer par en connecter un.',
+  'adminAlbums.noStorageLink': 'Aller aux stockages',
   'adminAlbums.new': 'Nouvel album',
   'adminAlbums.none': 'Aucun album. En créer un à partir d’un dossier du Drive.',
   'adminAlbums.syncStarted': (albums: string) => `Synchronisation lancée : ${albums}`,
@@ -425,9 +429,10 @@ export const fr: Messages = {
   'adminAlbums.confirmButton': 'Supprimer l’album',
   'adminAlbums.confirmMedia': (count: number) =>
     `Les ${count.toLocaleString('fr-FR')} médias indexés disparaissent de la visionneuse, et l’album disparaît pour les comptes qui y accédaient.`,
-  'adminAlbums.confirmDrive':
-    'Rien n’est supprimé dans Google Drive : les fichiers restent dans le dossier',
-  'adminAlbums.confirmDriveEnd': '. Recréer l’album sur le même dossier le réindexera.',
+  'adminAlbums.confirmKeeps': (folder: string) =>
+    `Rien n’est supprimé sur le stockage : les fichiers restent dans « ${folder} ». Recréer l’album sur le même dossier le réindexera.`,
+  'adminAlbums.confirmKeepsAll':
+    'Rien n’est supprimé sur le stockage : les fichiers restent où ils sont. Recréer l’album sur le même stockage le réindexera.',
 
   'albumForm.titleField': 'Titre',
   'albumForm.id': 'Identifiant',
@@ -435,8 +440,11 @@ export const fr: Messages = {
   'albumForm.idHint': 'Apparaît dans l’URL de l’album. Proposé à partir du titre.',
   'albumForm.description': 'Description (facultative)',
   'albumForm.folder': 'Dossier Google Drive',
+  'albumForm.addStorage': 'Ajouter un autre stockage',
+  'albumForm.singleStorage': (label: string) => `Lu depuis ${label}, le seul stockage déclaré.`,
   'albumForm.container': 'Dossier dans le stockage',
-  'albumForm.containerHint': 'Chemin relatif à la racine que ce stockage déclare.',
+  'albumForm.containerHint':
+    'Chemin relatif à la racine que ce stockage déclare. Laisser vide pour tout lire.',
   'albumForm.containerPlaceholder': 'vacances/2026',
   'albumForm.storage': 'Stockage',
   'albumForm.storageHint': 'Où vivent les fichiers de cet album.',
@@ -530,10 +538,11 @@ export const fr: Messages = {
   'validate.folder': 'Indiquer le dossier Drive.',
   'validate.folderPattern':
     'Coller l’URL du dossier Drive ou son identifiant — le segment après /folders/.',
-  'validate.container': 'Indiquer le dossier à lire.',
   'validate.containerPattern': 'Un chemin relatif à la racine du stockage, sans segment parent.',
   'validate.storageLabel': 'Donner un nom à ce stockage.',
   'validate.storagePath': 'Un dossier situé dans la racine, sans segment parent.',
+  'validate.storageAbsolutePath':
+    'Retirer la barre oblique initiale : ceci nomme un dossier situé dans celui indiqué en dessous, pas un chemin de la machine.',
   'validate.storageEndpoint': 'Indiquer l’adresse du service, commençant par https://.',
   'validate.storageBucket': 'Indiquer le nom du bucket.',
   'validate.storageAccessKey': 'Indiquer la clé d’accès.',
@@ -606,15 +615,16 @@ export const fr: Messages = {
   'storage.create': 'Ajouter',
   'storage.created': (label: string) => `Stockage « ${label} » ajouté.`,
   'storage.label': 'Nom',
-  'storage.identifier': 'Identifiant',
-  'storage.identifierHint':
-    'Inscrit dans chaque album qui lit ce stockage. Il ne peut plus changer.',
   'storage.kind': 'Type',
   'storage.kindHint': 'Ce à quoi cette connexion parle. Il ne peut plus changer ensuite.',
+  'storage.kindFixed':
+    'Une connexion garde son type et son identifiant : chaque album qui la lit pointe ici.',
   'storage.path': 'Dossier',
-  'storage.pathHint':
-    'Un dossier situé dans celui confié à ce serveur, nommé relativement à lui. Laisser ' +
-    'vide pour le lire en entier. STORAGE_LOCAL_ROOT décide duquel il s’agit.',
+  'storage.pathHint': (root: string) =>
+    `Un dossier situé dans ${root}, nommé relativement à lui. Laisser vide pour le lire en entier.`,
+  'storage.pathNoRoot':
+    'STORAGE_LOCAL_ROOT n’est pas renseigné sur ce serveur : aucun dossier ne peut encore ' +
+    'être lu. Le renseigner, monter le dossier en lecture seule, puis redémarrer.',
   'storage.kindDrive': 'Google Drive',
   'storage.kindLocal': 'Dossier local',
   'storage.kindS3': 'Bucket compatible S3',
@@ -671,6 +681,10 @@ export const fr: Messages = {
   'storage.testing': 'Test en cours…',
   'storage.testOk': (account: string) => `Il répond — ${account}.`,
   'storage.testFailed': 'Ce stockage n’a pas répondu.',
+  'storage.edit': 'Modifier',
+  'storage.editOne': (label: string) => `Modifier le stockage ${label}`,
+  'storage.saved': (label: string) => `Stockage « ${label} » enregistré.`,
+  'storage.secretKept': 'Laisser vide pour conserver les identifiants déjà enregistrés.',
   'storage.delete': 'Supprimer',
   'storage.deleteOne': (label: string) => `Supprimer le stockage ${label}`,
   'storage.deleted': (label: string) => `Stockage « ${label} » supprimé.`,
@@ -679,6 +693,11 @@ export const fr: Messages = {
   'storage.confirmButton': 'Supprimer',
   'storage.confirmNothingDeleted':
     'Rien n’est supprimé sur le stockage lui-même : c’est la façon dont cette galerie l’atteint qui disparaît. Un album qui le lit encore doit d’abord être déplacé ou supprimé.',
+  'storage.confirmInUse': (count: number) =>
+    count > 1
+      ? `${count} albums lisent encore ce stockage. Les déplacer vers un autre, ou les supprimer d’abord — ils pointeraient sinon dans le vide.`
+      : 'Un album lit encore ce stockage. Le déplacer vers un autre, ou le supprimer d’abord — il pointerait sinon dans le vide.',
+  'storage.confirmMoveThem': 'Aller aux albums',
 
   /* ----------------------------------------------------- Administration: settings */
 

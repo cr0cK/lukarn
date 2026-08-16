@@ -12,6 +12,7 @@ import {
   INSTANCE_NAME_MAX_LENGTH,
   MEDIA_DESCRIPTION_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  slugifyAlbumId,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
   VISIT_WINDOW_DEFAULT,
@@ -21,6 +22,7 @@ import {
   type AppSettings,
   type StorageAuthorization,
   type StorageConnectionStatus,
+  type StorageKind,
   type StorageProbeResult,
   type VisitsOverview,
 } from '@lukarn/shared';
@@ -126,12 +128,56 @@ const storageSettings = z.record(z.string().max(1024));
 const storageSecret = z.string().min(1).max(8192);
 
 const createStorageSchema = z.object({
-  id: connectionId,
+  /**
+   * Optional: /admin stopped asking for one, and the route derives it from the
+   * label instead (D260816h). Still accepted, because a caller that has an
+   * identifier to preserve — a restored instance, a script — must be able to say so.
+   */
+  id: connectionId.optional(),
   kind: z.enum(['drive', 'local', 's3', 'webdav']),
   label: z.string().trim().min(1).max(100),
   settings: storageSettings.optional(),
   secret: storageSecret.optional(),
 });
+
+/** What a connection is called when its own label slugifies to nothing — "📷" is a label. */
+const FALLBACK_CONNECTION_ID = 'storage';
+
+/**
+ * A connection identifier derived from its label, free among those already stored.
+ *
+ * A taken slug is suffixed — `archives`, then `archives-2` — rather than answered
+ * with a 409: the form has no identifier field left for an administrator to correct
+ * one in, so the refusal would be a dead end (D260816h).
+ */
+function deriveConnectionId(label: string, taken: (id: string) => boolean): string {
+  const base = slugifyAlbumId(label) || FALLBACK_CONNECTION_ID;
+
+  let candidate = base;
+  let suffix = 1;
+  while (taken(candidate)) {
+    suffix += 1;
+    const tail = `-${suffix}`;
+    // An album may only name a connection whose identifier fits `connectionId`, so
+    // the suffix eats into the slug rather than pushing it past that bound.
+    candidate = base.slice(0, USERNAME_MAX_LENGTH - tail.length) + tail;
+  }
+  return candidate;
+}
+
+/**
+ * Whether this kind refuses an album with no container of its own.
+ *
+ * Every path-addressed backend accepts one: it reads the root its connection already
+ * declares — the whole bucket, the whole folder — and `local`, `s3` and `webdav` all
+ * resolve an empty reference to exactly that. Drive is the exception because its
+ * references are opaque identifiers rather than paths: there is no empty one, and the
+ * nearest thing to "everything" would be the entire Drive on a read-only scope that
+ * covers it (D260816j).
+ */
+function emptyFolderRefused(kind: StorageKind, folderId: string | undefined): boolean {
+  return kind === 'drive' && !folderId?.trim();
+}
 
 const updateStorageSchema = z.object({
   label: z.string().trim().min(1).max(100).optional(),
@@ -144,7 +190,9 @@ const createAlbumSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().max(ALBUM_DESCRIPTION_MAX_LENGTH).optional(),
   connectionId: connectionId.optional(),
-  folderId: z.string().min(1).max(256),
+  // Empty is allowed here and refused below for Drive alone: a path-addressed backend
+  // reads the root its connection declares, an opaque identifier has no such value.
+  folderId: z.string().max(256),
   recursive: z.boolean().default(true),
   groupBy: groupBy.default(DEFAULT_GROUP_BY),
   sortOrder: sortOrder.default(DEFAULT_SORT_ORDER),
@@ -154,7 +202,7 @@ const updateAlbumSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().max(ALBUM_DESCRIPTION_MAX_LENGTH).nullable().optional(),
   connectionId: connectionId.optional(),
-  folderId: z.string().min(1).max(256).optional(),
+  folderId: z.string().max(256).optional(),
   recursive: z.boolean().optional(),
   groupBy: groupBy.optional(),
   sortOrder: sortOrder.optional(),
@@ -278,6 +326,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       connected: context.storage.isConnected(connection.id),
       revokedAt: connection.revokedAt,
       authorization: authorizationOf(connection),
+      // The column is JSON, so what comes back out is typed `unknown`, while the
+      // route only ever writes strings into it. Coerce rather than cast: a value
+      // that somehow is not one still reaches the form as something readable.
+      settings: Object.fromEntries(
+        Object.entries(connection.settings).map(([key, value]) => [key, String(value)]),
+      ),
       albumCount: context.config.albumsOn(connection.id).length,
       createdAt: connection.createdAt,
     };
@@ -290,6 +344,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const status: AdminStatus = {
         storage: context.connections.list().map(toStorageStatus),
         storageKinds: SUPPORTED_KINDS,
+        storageLocalRoot: context.env.storageLocalRoot,
         oauthConfigured: context.env.serviceAccount !== null || context.env.google !== null,
         albums: context.albums.map((album) => buildAlbum(album, context.media, context.syncState)),
         cache: context.cache.stats(),
@@ -570,11 +625,18 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       const connection = input.connectionId ?? context.connections.list()[0]?.id;
-      if (!connection || !context.connections.get(connection)) {
+      const resolved = connection ? context.connections.get(connection) : undefined;
+      if (!connection || !resolved) {
         return reply.code(400).send({
           error: 'unknown_storage',
           message: request.t('error.storageNotFound'),
         });
+      }
+
+      if (emptyFolderRefused(resolved.kind, input.folderId)) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.folderRequired') });
       }
 
       const album = context.config.createAlbum({
@@ -627,6 +689,16 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           error: 'unknown_storage',
           message: request.t('error.storageNotFound'),
         });
+      }
+
+      // The kind that will apply once this patch lands, which is not necessarily the
+      // one stored: moving an album onto a Drive and clearing its folder in the same
+      // request has to be refused on the destination's terms.
+      const kind = context.connections.get(patch.connectionId ?? stored.connectionId)?.kind;
+      if (patch.folderId !== undefined && kind && emptyFolderRefused(kind, patch.folderId)) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.folderRequired') });
       }
 
       const album = context.config.updateAlbum(id, { ...patch, coverMediaId: coverId });
@@ -763,7 +835,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const input = parsed.data;
 
-      if (context.connections.get(input.id)) {
+      // Only a caller that chose the identifier can be told it is taken; a derived
+      // one is made free below instead.
+      if (input.id && context.connections.get(input.id)) {
         return reply.code(409).send({
           error: 'conflict',
           message: request.t('error.storageExists', input.id),
@@ -779,7 +853,13 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const connection = context.connections.create(input);
+      const id =
+        input.id ??
+        deriveConnectionId(
+          input.label,
+          (candidate) => context.connections.get(candidate) !== undefined,
+        );
+      const connection = context.connections.create({ ...input, id });
       context.storage.invalidate();
       request.log.info(`Storage "${connection.id}" (${connection.kind}) created`);
 
@@ -994,9 +1074,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
  * OAuth callback. Mounted outside the `/admin` prefix because its URL is fixed in the
  * Google console — but it requires the same administrator session.
  *
- * Returns target `/admin/server`, the section containing the connect button: that
+ * Returns target `/admin/storage`, the section containing the connect button: that
  * is where the flow started, and the message responds there to an action still fresh
- * in mind (D66).
+ * in mind (D66, D260816g).
  */
 export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsync {
   return async (app) => {
@@ -1004,10 +1084,10 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       const query = request.query as { code?: string; state?: string; error?: string };
 
       if (query.error) {
-        return reply.redirect(`/admin/server?oauth=denied`);
+        return reply.redirect(`/admin/storage?oauth=denied`);
       }
       if (!query.code || !query.state) {
-        return reply.redirect(`/admin/server?oauth=invalid`);
+        return reply.redirect(`/admin/storage?oauth=invalid`);
       }
 
       const cookie = request.cookies[OAUTH_STATE_COOKIE];
@@ -1020,7 +1100,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
 
       if (!unsigned?.valid || connectionId === null || state !== query.state) {
         request.log.warn('Invalid OAuth state, callback rejected');
-        return reply.redirect(`/admin/server?oauth=state_mismatch`);
+        return reply.redirect(`/admin/storage?oauth=state_mismatch`);
       }
 
       reply.clearCookie(OAUTH_STATE_COOKIE, { path: '/api' });
@@ -1028,7 +1108,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
       const drive = context.storage.drive(connectionId);
       if (!drive) {
         request.log.warn(`OAuth callback for unknown storage "${connectionId}"`);
-        return reply.redirect(`/admin/server?oauth=invalid`);
+        return reply.redirect(`/admin/storage?oauth=invalid`);
       }
 
       try {
@@ -1036,7 +1116,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
         context.storage.invalidate();
       } catch (error) {
         request.log.error({ err: error }, 'Connecting Drive failed');
-        return reply.redirect(`/admin/server?oauth=error`);
+        return reply.redirect(`/admin/storage?oauth=error`);
       }
 
       // First connection: the index is empty for the albums on this storage, so fill
@@ -1047,7 +1127,7 @@ export function createOAuthCallbackRoute(context: AppContext): FastifyPluginAsyn
         request.log.error({ err: error }, 'Initial sync failed');
       });
 
-      return reply.redirect(`/admin/server?oauth=connected`);
+      return reply.redirect(`/admin/storage?oauth=connected`);
     });
   };
 }
