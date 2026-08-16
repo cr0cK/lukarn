@@ -77,6 +77,8 @@ export const fr: Messages = {
   'error.oauthNotConfigured':
     'Google Drive n’est pas configuré : GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET sont absents.',
   'error.storageNotFound': 'Aucune connexion de stockage avec cet identifiant.',
+  'error.folderRequired':
+    'Un album Google Drive nomme le dossier qu’il lit. Seul un stockage adressé par chemin peut être laissé vide pour tout lire.',
   'error.storageExists': (id: string) => `Une connexion de stockage nommée « ${id} » existe déjà.`,
   'error.storageKindUnsupported': (kind: string) =>
     `Cette version ne sait pas lire un stockage de type « ${kind} ».`,

@@ -639,13 +639,25 @@ export interface StorageConnectionStatus {
    */
   revokedAt: string | null;
   authorization: StorageAuthorization;
+  /**
+   * Backend settings as stored, so an edit form can show what a connection reads
+   * rather than asking for it again. Safe to return and deliberately so — an
+   * endpoint, a bucket, a folder give access to nothing on their own, which is why
+   * they are stored in the clear. The secret half never leaves the server.
+   */
+  settings: Record<string, string>;
   /** Albums reading it. A connection with albums cannot be deleted. */
   albumCount: number;
   createdAt: string;
 }
 
 export interface CreateStorageRequest {
-  id: string;
+  /**
+   * Slug this connection is stored under. **Optional**: /admin no longer asks for
+   * one, and the server derives it from the label, suffixing it when taken
+   * (D260816h). Sending one keeps the old behaviour, conflict included.
+   */
+  id?: string;
   kind: StorageKind;
   label: string;
   /** Backend settings, nothing secret: an endpoint, a bucket, a root. */
@@ -681,6 +693,13 @@ export interface AdminStatus {
    * offered in a form, and the two lists would drift the day one arrives.
    */
   storageKinds: StorageKind[];
+  /**
+   * The directory a `local` connection may read inside, or `null` when
+   * `STORAGE_LOCAL_ROOT` is unset. Reported so the folder field can name it: that
+   * field holds a path relative to this value, and a relative path measured against
+   * something the screen never shows is a path typed blind (D260816d).
+   */
+  storageLocalRoot: string | null;
   /**
    * `true` if either Google authentication path is configured. An environment fact
    * rather than a per-connection one: without it, no Drive connection can be
@@ -1008,3 +1027,27 @@ export const PASSWORD_MIN_LENGTH = 8;
 export const DISPLAY_NAME_MAX_LENGTH = 64;
 /** Maximum address length as specified by RFC 5321. */
 export const EMAIL_MAX_LENGTH = 254;
+
+/**
+ * Derives an identifier from what a person typed — an album title, a storage name.
+ * No accents and no spaces: the result is read from an album URL and from a
+ * `connection_id` in a log line.
+ *
+ * Shared rather than owned by the form because the server derives a storage
+ * connection's identifier with it (D260816h). A slug previewed by one
+ * implementation and stored by another would eventually disagree, and the
+ * identifier of a connection never changes afterwards.
+ *
+ * May return an empty string: a title made only of emoji or punctuation slugifies
+ * to nothing, and whoever calls this decides what to do about it — a form asks
+ * again, the storage route falls back.
+ */
+export function slugifyAlbumId(title: string): string {
+  const slug = title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug.slice(0, USERNAME_MAX_LENGTH);
+}

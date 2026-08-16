@@ -111,8 +111,18 @@ export const ROW_CLASS = 'flex flex-col gap-3 xl:flex-row xl:gap-4';
  */
 export const ROW_ACTIONS_CLASS = 'flex flex-wrap items-center gap-2 xl:justify-end';
 
+/**
+ * Every field, list and text area, so a form is one material rather than several.
+ *
+ * `ink-800` and not `ink-850`: a `Section` is already `ink-850/50`, so a control on
+ * the same rung was a rectangle drawn by its border alone — legible on a bright
+ * screen and gone on a dim one. `ink-800` is the rung whose documented role is a
+ * raised surface, and it inverts with the ramp: a step up from the panel in the
+ * dark theme, a step down in the light one, where a field reading as a well is the
+ * shape paper takes.
+ */
 const CONTROL_CLASS =
-  'w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60 read-only:text-ink-300';
+  'w-full rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60 read-only:text-ink-300';
 
 /**
  * One setting as a **row**: its name on the left, what it currently reads on the

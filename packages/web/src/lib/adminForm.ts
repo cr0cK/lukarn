@@ -56,7 +56,11 @@ export function extractContainer(input: string, kind: StorageKind): string | nul
   if (kind === 'drive') return extractFolderId(input);
 
   const value = input.trim();
-  if (!value) return null;
+  // Empty is a **container**, not a missing one: it names the root the connection
+  // already declares — the whole bucket, the whole folder. Drive has no equivalent,
+  // which is why it returns `null` above: its references are opaque identifiers, and
+  // the nearest thing to "everything" would be the entire Drive (D260816j).
+  if (!value) return '';
   // Leading and trailing separators are noise the backend does not want: a path
   // is relative to the root the connection already declares.
   const path = value.replace(/^\/+|\/+$/g, '');
@@ -137,25 +141,18 @@ export function validateContainerInput(
   t: Translate,
 ): string | null {
   if (kind === 'drive') return validateFolderInput(value, t);
-  if (!value.trim()) return t('validate.container');
+  // No "required" branch: an album reading the whole of what its storage declares is
+  // an ordinary album, and a bucket dedicated to one is the common case.
   if (extractContainer(value, kind) === null) return t('validate.containerPattern');
   return null;
 }
 
 /**
- * Suggests an album identifier from the entered title. No accents or spaces:
- * the identifier appears in the album URL.
+ * Re-exported from the contract, where it moved once the server started deriving a
+ * storage connection's identifier with it: the two ends must slugify identically,
+ * and a form importing its rules from one place is the point of this module.
  */
-export function slugifyAlbumId(title: string): string {
-  const slug = title
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  // The shared pattern requires starting with a letter or number.
-  return slug.slice(0, USERNAME_MAX_LENGTH);
-}
+export { slugifyAlbumId } from '@lukarn/shared';
 
 /** Number entered with a decimal comma or a point. `null` when unreadable. */
 export function parseNumber(value: string): number | null {

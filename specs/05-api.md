@@ -724,9 +724,10 @@ produces a new store key, hence a new derivative.
 | POST   | `/api/admin/cache/clear`             | `200 { ok: true }`                                             |
 
 **`status`** — `AdminStatus`: `storage` (every connection, see below),
-`storageKinds` (the kinds this build can create), `oauthConfigured`, `albums`
-(**all** declared albums, not just the administrator's),
-`cache: { entryCount, bytes, maxBytes }`. The front end polls it again every 2 s
+`storageKinds` (the kinds this build can create), `storageLocalRoot` (the
+directory a `local` connection may read inside, `null` when `STORAGE_LOCAL_ROOT`
+is unset), `oauthConfigured`, `albums` (**all** declared albums, not just the
+administrator's), `cache: { entryCount, bytes, maxBytes }`. The front end polls it again every 2 s
 while an album is `syncStatus: 'running'`.
 
 The four `drive*` fields of 1.1 are gone: an instance may read several storages,
@@ -760,8 +761,13 @@ three bounded reads, with no scan (see [03](./03-data-model.md)).
 ### Storage connections
 
 `StorageConnectionStatus` = `{ id, kind, label, account, connected, revokedAt,
-authorization, albumCount, createdAt }`. It never carries a secret, under any
-key: `settings` is not exposed either, and the secret half is only ever written.
+authorization, settings, albumCount, createdAt }`. It never carries a secret,
+under any key — the encrypted half is only ever written, never returned.
+
+`settings` **is** returned, so that editing a connection shows what it reads
+instead of asking for it again. That is safe by the same reasoning that stores it
+in the clear: an endpoint, a bucket, a folder give access to nothing on their own
+(D260816i).
 
 `authorization` says which controls this connection has, and is what the front
 end branches on instead of the kind:
@@ -772,17 +778,31 @@ end branches on instead of the kind:
 | `key`      | The environment already holds it: nothing to connect, only an address to share (D46). |
 | `settings` | An endpoint and a secret typed into the form itself.                                  |
 
-`POST` body: `CreateStorageRequest` = `{ id, kind, label, settings?, secret? }`.
-`id` follows `ALBUM_ID_PATTERN` and never changes afterwards — every album that
-reads this storage names it. A kind outside `AdminStatus.storageKinds` responds
-`400 unsupported_kind`: accepting it would create a connection nothing can serve
-from, discovered only once an album on it stays empty.
+`POST` body: `CreateStorageRequest` = `{ id?, kind, label, settings?, secret? }`.
+A kind outside `AdminStatus.storageKinds` responds `400 unsupported_kind`:
+accepting it would create a connection nothing can serve from, discovered only
+once an album on it stays empty.
+
+**`id` is optional, and /admin never sends one**
+([D260816h](./08-decisions/D260816h-a-storage-identifier-is-derived-from-its-name.md)).
+Absent, it is derived from `label` with `slugifyAlbumId` — the same function the
+album form previews an album identifier with — and suffixed until it is free:
+`Archives` becomes `archives`, then `archives-2`, then `archives-3`. A label that
+slugifies to nothing at all, `📷`, falls back to `storage`. Derivation never
+answers `409`: nothing in the form could be corrected in reply to one.
+
+Sent explicitly, it follows `ALBUM_ID_PATTERN`, is bounded by
+`USERNAME_MAX_LENGTH`, and a taken one answers **`409 conflict`** — the caller
+chose the value and is the only one who can choose another.
+
+Either way the identifier is a **slug and never changes afterwards**: every album
+that reads this storage names it, and `connection_id = 'archives-minio'` is what a
+log line or a database dump has to be read from.
 
 **`settings` and `secret` belong to the kind.** Both are opaque to the route,
 which stores whatever it is given: a map of strings in the clear, and one string
-encrypted with `TOKEN_KEY`. Neither is ever read back —
-`StorageConnectionStatus` exposes no `settings`, so /admin writes them and never
-displays them. What each kind expects:
+encrypted with `TOKEN_KEY`. Only the secret is write-only; `settings` comes back
+in `StorageConnectionStatus`. What each kind expects:
 
 | Kind     | `settings`                                              | `secret`                                |
 | -------- | ------------------------------------------------------- | --------------------------------------- |
@@ -812,10 +832,21 @@ to come back from, so the form sends its settings and its secret with the same
 unlike an unsupported kind, it explains itself immediately, as a row reading "not
 connected" whose Test button names what is absent.
 
-`PATCH`: `UpdateStorageRequest` = `{ label?, settings?, secret? }`, where
-`secret: null` forgets the stored one. `DELETE` responds **`409 storage_in_use`**
-while an album reads it, naming the albums to move first — the album would
-otherwise point at nothing, and every one of its thumbnails would fail.
+`PATCH`: `UpdateStorageRequest` = `{ label?, settings?, secret? }`. Neither the
+kind nor the identifier can be changed, and that is the point: an album names this
+connection by identifier, and one that changed backend underneath would leave every
+media addressed in a language the new one does not speak.
+
+The secret has **three** answers and only two of them are a field: a value replaces
+it, **absent** leaves it alone, and `secret: null` forgets it. /admin sends the
+second whenever the credential fields were left empty, which is what makes editing
+an endpoint possible without retyping a key (D260816i).
+
+`DELETE` responds **`409 storage_in_use`** while an album reads it, naming the
+albums to move first — the album would otherwise point at nothing, and every one of
+its thumbnails would fail. /admin now names them in the confirmation itself and
+refuses to send the request, so the 409 is the boundary rather than the way it is
+discovered.
 
 **`storage/:id/test`** — asks the backend itself and relays what it said:
 `StorageProbeResult` = `{ ok, account, error }`, **always 200**. A connection that
@@ -880,6 +911,16 @@ folderId, recursive?, groupBy?, sortOrder? }` (`recursive` defaults to `true`,
 to the instance's first connection). `PATCH`: `UpdateAlbumRequest`, where
 `description: null` clears the description. `409 conflict` on an id already
 taken, `400 unknown_storage` on a `connectionId` naming no connection.
+
+**`folderId` may be empty on every kind addressed by a path** — `local`, `s3`,
+`webdav` — where it means the whole of what the connection declares: its bucket,
+its folder, its DAV root ([D260816j](./08-decisions/D260816j-an-album-container-is-optional-except-on-drive.md)).
+A bucket holding one gallery is the common case, and every one of those backends
+already resolved an empty reference to its own root. On **Drive** it is refused
+with `400 bad_request`: a Drive reference is an opaque identifier rather than a
+path, so there is no empty one, and the nearest equivalent would be the entire
+Drive on a read-only scope covering all of it. The check runs where the connection
+is resolved, since the schema alone cannot know the kind.
 
 `groupBy` is the split applied when the album is opened, `sortOrder` its
 reading direction — two preferences, which `?group=` and `?order=` override.
@@ -1121,8 +1162,8 @@ Mounted outside the `/admin` prefix because its URL is fixed in the Google
 Cloud console, but protected by the same `requireAdmin`. Parameters `code`,
 `state`, `error` set by Google.
 
-Never returns JSON: always redirects to `/admin/server?oauth=<reason>`
-— the section carrying the connect button (D66).
+Never returns JSON: always redirects to `/admin/storage?oauth=<reason>`
+— the section carrying the connect button (D66, D260816g).
 
 | `oauth=`         | Cause                                                                    |
 | ---------------- | ------------------------------------------------------------------------ |

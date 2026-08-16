@@ -8,12 +8,17 @@ import { useT, type MessageKey } from '../../lib/i18n';
  * Single source: navigation renders them, and `AdminPage` validates its URL
  * segment against this list. Adding a section here requires no second update.
  *
- * `group` exists only for the phone list, where six undifferentiated rows say
+ * `group` exists only for the phone list, where seven undifferentiated rows say
  * nothing about what belongs with what. The sidebar ignores it: a twelve-rem
  * column has no room for headings, and at that width the whole list is read at
  * once anyway.
+ *
+ * Storage opens the Library group because it is upstream of it: a source is
+ * connected, then albums are drawn from it. `/admin` still redirects to Albums on
+ * a desktop (D66) — first in the flow is not the same as opened every day.
  */
 export const ADMIN_TABS = [
+  { slug: 'storage', label: 'admin.tabStorage', group: 'admin.groupLibrary' },
   { slug: 'albums', label: 'admin.tabAlbums', group: 'admin.groupLibrary' },
   { slug: 'accounts', label: 'admin.tabAccounts', group: 'admin.groupPeople' },
   { slug: 'comments', label: 'admin.tabComments', group: 'admin.groupPeople' },
@@ -108,7 +113,7 @@ export function AdminMenu({ unread }: { unread: number }): ReactElement {
                 key={tab.slug}
                 to={`/admin/${tab.slug}`}
                 // 56 px rows, and a rule **between** them rather than around each:
-                // this is one list, and six separate cards would read as six
+                // this is one list, and seven separate cards would read as seven
                 // unrelated things.
                 className={`flex min-h-14 items-center gap-3 px-4 text-sm text-ink-100 transition-colors hover:bg-tint ${
                   rank > 0 ? 'border-t border-ink-800' : ''

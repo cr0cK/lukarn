@@ -9,6 +9,12 @@ interface ConfirmDialogProps {
   children: ReactNode;
   confirmLabel: string;
   busy?: boolean;
+  /**
+   * Refuses the action while something else has to happen first, the dialog's own text
+   * saying what. The server refuses it too and stays authoritative — this only stops
+   * that refusal from being how the condition is discovered.
+   */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -25,6 +31,7 @@ export function ConfirmDialog({
   children,
   confirmLabel,
   busy = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): ReactElement {
@@ -66,7 +73,7 @@ export function ConfirmDialog({
           <Button onClick={onCancel} disabled={busy}>
             {t('common.cancel')}
           </Button>
-          <Button variant="danger" onClick={onConfirm} disabled={busy}>
+          <Button variant="danger" onClick={onConfirm} disabled={busy || confirmDisabled}>
             {busy ? t('confirm.deleting') : confirmLabel}
           </Button>
         </div>

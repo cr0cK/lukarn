@@ -49,8 +49,7 @@ test.describe('An album read from a folder on disk', () => {
   });
 
   test('Test answers with the folder the connection resolved to', async ({ page }) => {
-    // Storage sits inside the Server section rather than having one of its own.
-    await page.goto('/admin/server');
+    await page.goto('/admin/storage');
 
     // The innermost element carrying both this connection's name and a Test button —
     // `hasText` alone matches every ancestor up to `<body>`, and every one of those

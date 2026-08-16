@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
 import {
+  ALBUM_ID_PATTERN,
   ALL_ALBUMS,
   type AdminAlbum,
   type AdminStatus,
@@ -194,6 +195,57 @@ describe('the storage list', () => {
     });
 
     assert.equal(response.statusCode, 409);
+  });
+
+  it('derives a readable identifier from the name when the request sends none', async () => {
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/storage',
+      headers: { cookie },
+      payload: { kind: 'drive', label: 'Archives Été 2026' },
+    });
+
+    assert.equal(created.statusCode, 201);
+    // A slug rather than a number: this value is what `connection_id` reads as in a
+    // log line and in a database dump, and that is the whole reason it is not a
+    // counter (D260816h).
+    assert.equal(created.json<StorageConnectionStatus>().id, 'archives-ete-2026');
+    assert.match(created.json<StorageConnectionStatus>().id, ALBUM_ID_PATTERN);
+  });
+
+  it('suffixes a derived identifier rather than refusing the name a second time', async () => {
+    const payload = { kind: 'drive', label: 'Archives' };
+    const ids: string[] = [];
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const created = await server.inject({
+        method: 'POST',
+        url: '/api/admin/storage',
+        headers: { cookie },
+        payload,
+      });
+      assert.equal(created.statusCode, 201);
+      ids.push(created.json<StorageConnectionStatus>().id);
+    }
+
+    // Two storages may legitimately be called the same thing, and the form has no
+    // identifier field to correct a 409 in: refusing here would be a dead end.
+    assert.deepEqual(ids, ['archives', 'archives-2', 'archives-3']);
+  });
+
+  it('still produces a usable identifier for a name that slugifies to nothing', async () => {
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/storage',
+      headers: { cookie },
+      payload: { kind: 'drive', label: '📷' },
+    });
+
+    assert.equal(created.statusCode, 201);
+    // An empty identifier would be stored, then refused by every route that names a
+    // connection — an album could never be pointed at it.
+    const { id } = created.json<StorageConnectionStatus>();
+    assert.match(id, ALBUM_ID_PATTERN);
+    assert.ok(context.connections.get(id));
   });
 
   it('creates a second Drive connection, which the single-row table forbade', async () => {

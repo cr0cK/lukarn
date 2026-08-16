@@ -1,5 +1,6 @@
 import type { AdminAlbum, StorageConnectionStatus, UpdateAlbumRequest } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { errorText } from '../../api/client';
 import { useCreateAlbum, useUpdateAlbum } from '../../api/hooks';
 import {
@@ -19,6 +20,16 @@ interface AlbumFormProps {
   storage: StorageConnectionStatus[];
   onClose: () => void;
   notify: Notify;
+}
+
+/** The way to a source this form cannot offer, wherever the storage is named. */
+function AddStorage(): ReactElement {
+  const t = useT();
+  return (
+    <Link to="/admin/storage" className="text-accent underline underline-offset-2">
+      {t('albumForm.addStorage')}
+    </Link>
+  );
 }
 
 /** Form for creating and editing an album. */
@@ -172,8 +183,22 @@ export function AlbumForm({ album, storage, onClose, notify }: AlbumFormProps): 
             label: connection.label,
           }))}
           onChange={setConnectionId}
-          hint={t(editing ? 'albumForm.storageEditHint' : 'albumForm.storageHint')}
+          hint={
+            <>
+              {t(editing ? 'albumForm.storageEditHint' : 'albumForm.storageHint')} <AddStorage />
+            </>
+          }
         />
+      )}
+
+      {/* With one connection there is no selector — a control with a single option
+          decides nothing — but that is exactly when a second source is worth adding,
+          so the way to one stays. Storage being the section above is not the same as
+          being found: somebody filling in an album is looking at a form, not a sidebar. */}
+      {storage.length === 1 && (
+        <p className="text-xs text-ink-400">
+          {t('albumForm.singleStorage', storage[0]!.label)} <AddStorage />
+        </p>
       )}
 
       <TextField

@@ -536,7 +536,7 @@ to copy into Drive sharing.
 - `GET /api/oauth/callback` **requires the same administrator session** and compares the received
   `state` with the cookie. Without this double check, a third party could complete a callback using
   a code obtained elsewhere and connect _their_ Drive to this instance. Failures redirect to
-  `/admin/server?oauth=<reason>` instead of displaying a raw error.
+  `/admin/storage?oauth=<reason>` instead of displaying a raw error.
 
 The requested scopes are `drive.readonly` (read access to the whole Drive—needed to point to any
 folder without sharing it) and `userinfo.email` (only to display the connected account in `/admin`;
