@@ -65,6 +65,15 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
 
+    # `storage.spec.ts` runs its table against every storage it can reach, and here
+    # that has to be all four: the fixture starts the other three from
+    # `packages/e2e/storages/compose.yml`. Without this, a runner whose daemon was
+    # unavailable would quietly run the folder row alone and still report a pass —
+    # and "skipped" and "passed" must not look alike on the one machine nobody
+    # watches (D260816k).
+    env:
+      LUKARN_REQUIRE_STORAGES: '1'
+
     steps:
       - uses: actions/checkout@v7
 
@@ -96,6 +105,50 @@ jobs:
           name: playwright-report
           path: packages/e2e/playwright-report/
           retention-days: 7
+
+  # The storage backends, against the servers people actually run.
+  #
+  # `pnpm test` answers every S3 and WebDAV request from a local stub, which is
+  # fast, needs no daemon and is the right default — but a stub agrees with
+  # whoever wrote it. The shapes a real MinIO returns, the href a real Apache
+  # writes and the refusal a real bucket sends were checked by nothing until this
+  # job existed, and the two backends shipped that way (D260816k).
+  #
+  # A job of its own, and not part of `pnpm verify`, for the reason the browsers
+  # are not: `verify` runs on the 22/24 matrix and on `pre-push`, and a gate
+  # needing a Docker daemon is a gate people work around (D260814g).
+  storages:
+    runs-on: ubuntu-latest
+
+    # A missing daemon fails here rather than skipping. Locally the suite skips,
+    # so that a contributor without Docker can still run everything else.
+    env:
+      LUKARN_REQUIRE_STORAGES: '1'
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The suite imports the server's sources, which import `@lukarn/shared`
+      # through its `dist/`. Nothing else here has to be built: no browser, no
+      # front end, and no server process.
+      - run: pnpm --filter @lukarn/shared build
+
+      # Starts `packages/e2e/storages/compose.yml`, seeds the three servers, runs
+      # the contract table against each, and takes them down again.
+      - run: pnpm test:storages
+
+      - name: What the storages logged
+        if: failure()
+        run: docker compose -f packages/e2e/storages/compose.yml logs --tail 50
 
   # The image is what production runs, and nothing built it before a tag was
   # pushed: a broken Dockerfile passed every check and only showed itself at

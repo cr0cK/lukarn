@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @lukarn/e2e test:e2e",
+    "test:storages": "pnpm --filter @lukarn/e2e test:storages",
     "hash-password": "pnpm --filter @lukarn/server hash-password",
     "create-admin": "pnpm --filter @lukarn/server create-admin",
     "reset-password": "pnpm --filter @lukarn/server reset-password",

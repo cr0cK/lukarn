@@ -36,6 +36,17 @@ described by a plan that is about to be deleted. Everything else applies here as
 elsewhere: a `(Dxx)` reference must point at a decision that exists, and a
 document cited between backticks must be a file.
 
+**The one rule above is checked**, and only in the direction that can be checked:
+a plan every one of whose items is ticked fails `check:specs`, naming itself. The
+rule used to depend on somebody remembering it, and the last plan here outlived
+its work — it stayed on `main` describing two branches as unmerged after both had
+landed, with three items unticked for code the architecture spec already
+documented. Nothing said so, because nothing was reading.
+
+A half-finished plan is left alone, which is what a plan is for. What cannot be
+detected is the other direction — an item still unticked for work that shipped —
+so a plan is worth rereading whenever the work it describes moves.
+
 ## Current
 
 None. Nothing is in flight across several pull requests, which is the normal

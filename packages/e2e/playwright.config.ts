@@ -19,6 +19,13 @@ export default defineConfig({
   outputDir: './test-results',
 
   /**
+   * The storage containers the fixture started, taken down by name. Nothing else
+   * needs a teardown: the instance is deleted on the way **in**, so a run starts
+   * from nothing whatever the last one left.
+   */
+  globalTeardown: './fixtures/teardown.ts',
+
+  /**
    * One worker, deliberately. All the specs share one instance and one database:
    * a comment posted by one file and a cover set by another would make each
    * other's assertions depend on which finished first.

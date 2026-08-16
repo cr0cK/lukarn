@@ -1,0 +1,97 @@
+# The storages the test suites read, as the servers people actually run.
+#
+# `packages/server/test/s3.test.ts` and `webdav.test.ts` already answer every
+# request from a local stub, and they stay: they are fast, need no daemon, and
+# the S3 one recomputes the signature, which is a stricter reader than most
+# buckets. What a stub cannot do is disagree with its author. MinIO decides for
+# itself whether a signature covers the `Range` header, Apache decides what an
+# href looks like, and neither was ever asked before this file existed — the
+# S3 and WebDAV backends shipped against nothing but the shapes their own
+# authors expected (D260816k).
+#
+# Started by `packages/e2e/storages/backends.ts`, which also seeds them. Nothing
+# here is reachable from outside the machine: every port is bound to loopback.
+
+name: lukarn-storages
+
+services:
+  # From quay.io rather than Docker Hub: this is the registry MinIO publishes to
+  # first, and it applies no anonymous pull limit — a rate-limited CI job fails
+  # in a way that reads exactly like a broken test.
+  #
+  # Pinned, like the two below. `latest` would make a green run depend on what a
+  # third party released this morning, and the first failure would be blamed on
+  # the branch that happened to be open.
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: lukarn
+      MINIO_ROOT_PASSWORD: lukarn-secret-key
+    ports:
+      - '127.0.0.1:19000:9000'
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Apache `mod_dav`: one of the two href forms `storage/webdav.ts` reads. The
+  # password file is written at startup rather than committed — see
+  # `httpd-dav.conf`.
+  webdav-apache:
+    image: httpd:2.4.65
+    environment:
+      DAV_USER: lukarn
+      DAV_PASSWORD: lukarn-app-password
+    volumes:
+      - ./httpd-dav.conf:/usr/local/apache2/conf/httpd.conf:ro
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /var/dav && chown www-data:www-data /var/dav
+        htpasswd -bc /tmp/htpasswd "$$DAV_USER" "$$DAV_PASSWORD"
+        chown www-data /tmp/htpasswd
+        exec httpd-foreground
+    ports:
+      - '127.0.0.1:19001:80'
+    healthcheck:
+      # `PROPFIND` rather than `GET`: the collection answers 401 to an
+      # unauthenticated request either way, and a 401 proves the module is
+      # loaded and the directory is a DAV collection, which is what is being
+      # waited for.
+      test:
+        [
+          'CMD-SHELL',
+          'httpd -t && [ "$$(wget -q -S -O /dev/null http://localhost/ 2>&1 | head -1)" ]',
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The other href form, and a second implementation of the same protocol: a
+  # bug read as "WebDAV behaves like this" is a bug that reproduces on one
+  # server only.
+  #
+  # From ghcr.io for the reason given above quay.io.
+  webdav-rclone:
+    image: ghcr.io/rclone/rclone:1.71.0
+    entrypoint: rclone
+    command:
+      - serve
+      - webdav
+      - /data
+      - --addr
+      - :8080
+      - --user
+      - lukarn
+      - --pass
+      - lukarn-app-password
+    ports:
+      - '127.0.0.1:19002:8080'
+    healthcheck:
+      test: ['CMD', 'rclone', 'version']
+      interval: 2s
+      timeout: 5s
+      retries: 30
