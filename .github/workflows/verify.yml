@@ -48,10 +48,9 @@ jobs:
       # name.
       - run: pnpm install --frozen-lockfile
 
-      # `shared` has to be compiled before the other two typecheck: they import
-      # its declarations from `dist`.
-      - run: pnpm --filter @lukarn/shared build
-
+      # Nothing between the install and the gate, deliberately: `verify` compiles
+      # `shared` itself (D260817). A step here would be a second copy of that
+      # invariant, and the copy CI holds is the one a developer never sees.
       - run: pnpm verify
 
   # Everything above compiles the front end and never loads it. The whole of
