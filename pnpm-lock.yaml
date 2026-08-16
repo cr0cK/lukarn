@@ -38,6 +38,9 @@ importers:
       argon2:
         specifier: ^0.41.1
         version: 0.41.1
+      sharp:
+        specifier: ^0.34.5
+        version: 0.34.5
       tsx:
         specifier: ^4.23.11
         version: 4.23.12

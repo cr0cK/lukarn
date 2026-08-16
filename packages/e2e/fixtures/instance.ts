@@ -23,6 +23,28 @@ export const CACHE_DIR = join(TMP, 'cache');
 export const CONFIG_PATH = join(TMP, 'config/albums.yaml');
 
 /**
+ * The folder a local storage connection is allowed to read, and the subfolder it
+ * actually reads.
+ *
+ * Two levels rather than one, because that split **is** the thing under test: the
+ * environment declares the fence and /admin picks a subpath inside it (D260816d). A
+ * fixture pointing the connection straight at the root would exercise neither half.
+ */
+export const STORAGE_ROOT = join(TMP, 'photos');
+export const STORAGE_SUBPATH = 'corsica';
+
+/**
+ * The one connection this instance can actually read.
+ *
+ * `config/albums.yaml` has no field naming a connection, so it is created through
+ * `StorageConnectionRepo` in `prepare.ts` — the same path `/admin` takes.
+ */
+export const LOCAL_CONNECTION = { id: 'disk', label: 'Photos on disk' };
+
+/** The album served from that folder, and the only one a real sync ever fills. */
+export const LOCAL_ALBUM = { id: 'corsica', title: 'Corsica on disk' };
+
+/**
  * The **built** front end and the **built** server: the suite exercises the
  * artefact a container ships, not a dev server. A Vite dev server transforms
  * modules on demand and serves its own `index.html`, so it would prove nothing
@@ -120,6 +142,10 @@ export function instanceEnv(): NodeJS.ProcessEnv {
     GOOGLE_CLIENT_ID: '',
     GOOGLE_CLIENT_SECRET: '',
     GOOGLE_SERVICE_ACCOUNT_FILE: '',
+    // The one storage this instance can genuinely read. Set rather than empty
+    // because the local backend is the only one the suite can exercise end to end:
+    // a Drive, a bucket and a WebDAV server all need credentials no test may hold.
+    STORAGE_LOCAL_ROOT: STORAGE_ROOT,
     // Required, not optional: `commentsEnabled` is derived from whether a relay
     // is configured, so without one the interface offers no comment form at all.
     SMTP_URL: `smtp://127.0.0.1:${SMTP_PORT}`,
