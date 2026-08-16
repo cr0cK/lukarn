@@ -16,7 +16,7 @@ import {
 } from '../../api/hooks';
 import { extractContainer, slugifyAlbumId, validateAlbumId } from '../../lib/adminForm';
 import { formatRelative } from '../../lib/format';
-import { useT, type MessageKey } from '../../lib/i18n';
+import { useT, type MessageKey, type Translate } from '../../lib/i18n';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 import {

@@ -143,17 +143,21 @@ describe('the storage list', () => {
     assert.deepEqual(status.json<AdminStatus>().storageKinds, SUPPORTED_KINDS);
     assert.ok(status.json<AdminStatus>().storageKinds.includes('drive'));
 
+    // Every kind `StorageKind` declares is now buildable, so the `unsupported_kind`
+    // refusal has nothing left to refuse through this route — it guards the gap
+    // between a kind existing in the contract and the factory being able to build
+    // it, and that gap is currently closed. What still has to hold is that a kind
+    // nobody declared is refused, one guard earlier.
     const refused = await server.inject({
       method: 'POST',
       url: '/api/admin/storage',
       headers: { cookie },
-      payload: { id: 'archives', kind: 'webdav', label: 'Archives' },
+      payload: { id: 'archives', kind: 'ftp', label: 'Archives' },
     });
 
     // Accepting it would create a connection nothing can serve from, discovered
     // only once an album on it stays empty.
     assert.equal(refused.statusCode, 400);
-    assert.equal(refused.json<{ error: string }>().error, 'unsupported_kind');
   });
 
   it('creates a bucket from what the form typed into it', async () => {
