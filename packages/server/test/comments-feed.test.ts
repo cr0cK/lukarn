@@ -60,6 +60,7 @@ function media(albumId: string, id: string, md5: string | null = null): MediaUps
     md5,
     hasThumbnail: true,
     videoCodec: null,
+    sourcePath: null,
   };
 }
 

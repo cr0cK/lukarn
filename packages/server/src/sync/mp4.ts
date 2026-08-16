@@ -42,7 +42,7 @@ export interface MoovScan {
   nextOffset: number | null;
 }
 
-type BoxHeader =
+export type BoxHeader =
   | {
       kind: 'box';
       /** Total size including the header. `0` means "to the end". */
@@ -61,7 +61,12 @@ function isBoxType(type: string): boolean {
   return /^[\x20-\x7e]{4}$/.test(type);
 }
 
-function readBoxHeader(buffer: Buffer, offset: number): BoxHeader {
+/**
+ * Exported because HEIC is the same container: `sync/exif.ts` walks `meta`, `iinf` and
+ * `iloc` from here, and a second reading of the size field would be a second place for
+ * the 64-bit form and the truncated window to be got wrong.
+ */
+export function readBoxHeader(buffer: Buffer, offset: number): BoxHeader {
   if (offset < 0 || offset + 8 > buffer.length) return { kind: 'truncated' };
 
   const short = buffer.readUInt32BE(offset);

@@ -542,6 +542,14 @@ export const en = {
   'validate.container': 'Enter the folder to read.',
   'validate.containerPattern': 'A path relative to the storage root, without a parent segment.',
   'validate.storageLabel': 'Give this storage a name.',
+  'validate.storagePath': 'A folder inside the root, without a parent segment.',
+  'validate.storageEndpoint': 'Enter the address of the service, starting with https://.',
+  'validate.storageBucket': 'Enter the name of the bucket.',
+  'validate.storageAccessKey': 'Enter the access key.',
+  'validate.storageSecretKey': 'Enter the secret key.',
+  'validate.storageUrl': 'Enter the WebDAV address, starting with https://.',
+  'validate.storageUsername': 'Enter the username this instance connects with.',
+  'validate.storagePassword': 'Enter the app password.',
   'validate.interval': 'Give a whole number of minutes (0 to disable).',
   'validate.cacheSize': 'Give a size in gigabytes.',
   'validate.cacheSizePositive': 'The cache size must be greater than 0.',
@@ -610,10 +618,41 @@ export const en = {
   'storage.identifierHint': 'Written into every album that reads this storage. It cannot change.',
   'storage.kind': 'Kind',
   'storage.kindHint': 'What this connection speaks to. It cannot change afterwards.',
+  'storage.path': 'Folder',
+  'storage.pathHint':
+    'A folder inside the one this server was given, named relative to it. Leave empty to ' +
+    'read all of it. Set STORAGE_LOCAL_ROOT to choose which folder that is.',
   'storage.kindDrive': 'Google Drive',
   'storage.kindLocal': 'Local folder',
   'storage.kindS3': 'S3-compatible bucket',
   'storage.kindWebdav': 'WebDAV server',
+  'storage.endpoint': 'Endpoint',
+  'storage.endpointHint':
+    'The address of the service, not of the bucket: https://s3.eu-west-3.amazonaws.com, or the address of your own server.',
+  'storage.region': 'Region',
+  'storage.regionHint':
+    'Amazon requires the bucket’s own region. Anything self-hosted ignores it, but both ends still have to agree — leave it empty for us-east-1.',
+  'storage.bucket': 'Bucket',
+  'storage.prefix': 'Prefix',
+  'storage.prefixHint':
+    'Optional. Restricts this connection to one folder of the bucket; every album then names a path inside it.',
+  'storage.pathStyle': 'Address the bucket by path',
+  'storage.pathStyleHint':
+    'Reads bucket.example.com by default. MinIO and any bucket whose name is not a valid domain label need this instead.',
+  'storage.accessKeyId': 'Access key',
+  'storage.secretAccessKey': 'Secret key',
+  'storage.secretAccessKeyHint':
+    'Stored encrypted and never shown again. A read-only key is enough: nothing here ever writes to the bucket.',
+  'storage.webdavUrl': 'WebDAV address',
+  'storage.webdavUrlHint':
+    'The endpoint, not the page the files are browsed on. Nextcloud and ownCloud publish theirs as https://cloud.example.com/remote.php/dav/files/<username>.',
+  'storage.webdavRoot': 'Folder',
+  'storage.webdavRootHint':
+    'Optional. A folder under that address, which every album on this storage reads from.',
+  'storage.webdavUsername': 'Username',
+  'storage.webdavPassword': 'App password',
+  'storage.webdavPasswordHint':
+    'Create one in the account’s security settings. It grants file access alone, and revoking it costs nothing.',
   'storage.albumCount': (count: number) =>
     count === 0 ? 'No album reads it yet.' : `${count} album${count > 1 ? 's' : ''} read it.`,
   'storage.serviceAccountHint':

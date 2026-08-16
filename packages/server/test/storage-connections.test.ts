@@ -145,11 +145,13 @@ describe('the registry of live providers', () => {
     assert.notEqual(registry.get(DEFAULT_CONNECTION_ID), premier);
   });
 
-  it('refuses a kind this build cannot read, naming it', () => {
+  it('refuses a connection it cannot build from, and still lists it', () => {
+    // A bucket without an endpoint: the kind is supported, the row is not usable.
+    // The refusal has to name what is missing — this is the text /admin shows.
     connections.create({ id: 'archives', kind: 's3', label: 'Archives' });
     const registry = new StorageRegistry(connections, env, silencieux);
 
-    assert.throws(() => registry.get('archives'), /s3/);
+    assert.throws(() => registry.get('archives'), /endpoint and a bucket/);
     // /admin still has to list it: hiding the connection would leave its albums
     // unexplained.
     assert.deepEqual(
@@ -160,6 +162,36 @@ describe('the registry of live providers', () => {
       ],
     );
     assert.equal(registry.isConnected('archives'), false);
+  });
+
+  it('answers "not connected" for a WebDAV row with no password stored', () => {
+    // `secret` is optional when a connection is created, so this row is reachable from
+    // /admin. `isConnected` decides whether prewarming, transcoding and the startup
+    // sync traverse an album at all, and it reads its answer from whether the factory
+    // throws — a service that builds unconditionally would report "yes" and let each
+    // pass fail file by file, which is the waste D61 exists to prevent.
+    connections.create({ id: 'nextcloud', kind: 'webdav', label: 'Nextcloud' });
+    const registry = new StorageRegistry(connections, env, silencieux);
+
+    assert.throws(() => registry.get('nextcloud'), /no password stored/);
+    assert.equal(registry.isConnected('nextcloud'), false);
+  });
+
+  it('answers "not connected" for a WebDAV row the server already refused', () => {
+    connections.create({
+      id: 'nextcloud-revoked',
+      kind: 'webdav',
+      label: 'Nextcloud',
+      secret: JSON.stringify({ username: 'alexis', password: 'app-password' }),
+    });
+    const used = connections.get('nextcloud-revoked')!.ciphertext;
+    assert.equal(connections.markRevoked('nextcloud-revoked', used), true);
+    const registry = new StorageRegistry(connections, env, silencieux);
+
+    // Re-presenting a password the server has already rejected is the specific waste
+    // here: every pass would offer it again, on every file.
+    assert.throws(() => registry.get('nextcloud-revoked'), /refused the stored app password/);
+    assert.equal(registry.isConnected('nextcloud-revoked'), false);
   });
 
   it('says nothing is connected until something is', () => {

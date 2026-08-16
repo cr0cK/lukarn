@@ -51,6 +51,7 @@ function photo(albumId: string, id: string, jour: number): MediaUpsert {
     md5: `empreinte-${id}`,
     hasThumbnail: true,
     videoCodec: null,
+    sourcePath: null,
   };
 }
 
@@ -96,11 +97,12 @@ function fauxRenderer(options: { echoue?: Set<string> } = {}): FauxRenderer {
     // there; prewarming need not know it.
     prepare: (
       _storage: unknown,
-      fileId: string,
+      file: { id: string },
       variants: Variant[],
       _md5: string | null,
       origin: RenderOrigin = 'original',
     ) => {
+      const fileId = file.id;
       if (options.echoue?.has(fileId)) return Promise.reject(new Error('unreadable'));
       demandes.push(variants);
       origines.set(fileId, origin);
@@ -126,6 +128,7 @@ function deps(
     storage: () => ({}) as never,
     connected: () => true,
     enabled: () => true,
+    stills: () => false,
     log: silencieux,
     ...overrides,
   };
@@ -219,7 +222,7 @@ describe('cache prewarming', () => {
     ]);
   });
 
-  it('prepares a video with a Drive preview and skips one without it', async () => {
+  it('skips a video without a preview when no still can be cut', async () => {
     media.upsertMany(
       [
         photo('videos', 'image', 3),
@@ -232,14 +235,30 @@ describe('cache prewarming', () => {
 
     const resultat = await new PrechauffeurInstantane(deps('videos', renderer)).run();
 
-    // The route rejects the video without a preview with 415: preparing it would
-    // spend one Drive call per pass on an impossible derivative.
+    // Without ffmpeg nothing can produce that poster, and every pass would download
+    // the original once an hour to fail on the same missing binary.
     assert.deepEqual(rendus, ['image', 'clip-avec']);
     // A video with one starts from the preview, never the original: tens of KB
     // rather than a 48 MB MP4 that would be fetched and discarded.
     assert.equal(origines.get('clip-avec'), 'poster');
     assert.equal(origines.get('image'), 'original');
     assert.equal(resultat.rendered, 2);
+  });
+
+  it('prepares a video without a preview once a still can be cut', async () => {
+    media.upsertMany([video('stills', 'clip-local', 1, false)], '2026-07-03T12:00:00.000Z');
+    const { rendus, origines, renderer } = fauxRenderer();
+
+    const resultat = await new PrechauffeurInstantane(
+      deps('stills', renderer, { stills: () => true }),
+    ).run();
+
+    // This is what a local folder or a bucket looks like: the backend holds no
+    // preview, so the poster comes from ffmpeg. Skipping it would leave every video
+    // in such an album without a tile (D260816).
+    assert.deepEqual(rendus, ['clip-local']);
+    assert.equal(origines.get('clip-local'), 'poster');
+    assert.equal(resultat.rendered, 1);
   });
 
   it('stops when the cache reaches its share', async () => {

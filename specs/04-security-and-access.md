@@ -366,11 +366,12 @@ Because the salt is random, encrypting the same secret twice produces two differ
 database observer cannot infer that it has not changed.
 
 **Every connection carries its own.** `storage_connections.ciphertext` holds whatever its kind
-needs to authenticate — Drive's refresh token, and later a bucket's key pair — and
-`StorageConnectionRepo` (`storage/connections.ts`) is the only thing that encrypts or decrypts it.
-The rest of the application handles a `StorageProvider` and never a secret: the registry builds
-one from a row, the provider uses it, and nothing else sees either. `settings` sits beside it in
-plain JSON and is deliberately readable — an endpoint or a bucket name gives access to nothing.
+needs to authenticate — Drive's refresh token, a bucket's `accessKeyId` and `secretAccessKey` as
+JSON, a WebDAV username and app password as JSON — and `StorageConnectionRepo`
+(`storage/connections.ts`) is the only thing that encrypts or decrypts it. The rest of the
+application handles a `StorageProvider` and never a secret: the registry builds one from a row, the
+provider uses it, and nothing else sees either. `settings` sits beside it in plain JSON and is
+deliberately readable — an endpoint or a bucket name gives access to nothing.
 
 The threat model is explicit: **a dump of `lukarn.db` must not be enough to reach any storage.**
 `TOKEN_KEY` is also required; it lives in the process environment and is never written to the
@@ -383,6 +384,74 @@ authorisation over a mistyped environment variable; restoring the original key i
 `/admin` offers reconnection meanwhile. The same distinction is why **disconnecting clears the
 secret without deleting the connection**: the albums reading it name it by id, and removing the row
 would leave them pointing at nothing.
+
+## A local folder: the root is a fence, and `realpath` is what enforces it
+
+`packages/server/src/storage/local.ts`. A folder on the machine is the one storage
+whose references are paths the server itself resolves, so it is the one that can be
+talked into opening a file nobody meant to publish. Two mechanisms answer that, and
+they answer different attacks.
+
+**The root is declared by the environment.** `STORAGE_LOCAL_ROOT` names one
+directory, and it is empty by default — the kind is then not offered at all. A
+connection chooses a **subpath under it**; an absolute path is refused rather than
+reinterpreted, and so is one containing `..`. This is deliberately not an /admin
+decision: the account that administers albums is not the account that runs the
+container, and letting the first name `/etc` or `/app/data` would turn an
+administrator password into a file-read primitive over the whole machine (D260816d).
+
+**Every resolved path goes through `realpath`, then is checked to still sit under
+that root.** `path.resolve` normalises `..` away and knows nothing about links: a
+symlink named `holidays` pointing at `/etc` survives it untouched. `realpath` is
+what turns a request into the file that would actually be opened, and only then is
+the comparison meaningful. The comparison itself includes the separator —
+`/photos-private` must not count as inside `/photos`.
+
+The check covers three moments, because each is a separate way in:
+
+| Moment                | What is checked                                                       |
+| --------------------- | --------------------------------------------------------------------- |
+| Resolving the subpath | The connection's folder is really under the root, links followed      |
+| Listing a folder      | An escaping entry is **dropped**, so it never enters the index at all |
+| Fetching bytes        | The reference resolves under the root, or the request is refused      |
+
+Dropping an escaping link at listing time is the load-bearing half: an entry that
+reaches the index acquires a media id, and every later request for it arrives
+looking legitimate. Refusing it at `fetch` alone would be a check on the wrong side
+of the database.
+
+The fence is recomputed on every call rather than cached at startup, for the same
+reason a session is revalidated per request: a root replaced by a link afterwards
+must be caught the next time it is used, not remembered from when it was valid.
+
+Two things are deliberately **not** claimed. A hard link inside the root to a file
+outside it is indistinguishable from the file itself and is not detected — the
+mount is the boundary there, which is why `docker-compose.yml` mounts the folder
+`:ro` and the volume is what the operator controls. And the application never
+writes to a storage: the interface has no write operation, and the read-only mount
+makes that a property of the deployment rather than a promise of the code.
+
+## A WebDAV connection cannot read above its root
+
+`storage/webdav.ts` builds every URL from the connection's base address and its root, and
+**refuses any path segment that is `.` or `..`**. Neither `encodeURIComponent` nor the URL parser
+touches a dot, so an album whose folder is written `photos/../../..` would otherwise resolve
+above the collection the connection is fenced to. The refusal is an error rather than a silent
+rewrite: serving a directory nobody named is the failure worth preventing, and quietly rewriting
+the path hides that someone asked for it.
+
+The base address is also rebuilt rather than used as typed — origin, then the decoded path
+segments re-encoded one by one. That drops a query string, a fragment, and any `user:password@`
+pasted into the URL, which would otherwise reach every log line naming it.
+
+The fence is only as wide as the account behind it: an app password with access to a whole
+Nextcloud account reaches that whole account, whatever the root says. This is why the field asks
+for an **app password** rather than the login one, and says so beside itself — revoking one costs
+nothing, and it grants file access alone.
+
+Credentials travel as HTTP Basic, which is base64 and not encryption. `https` is therefore the
+only sensible scheme; `http` is accepted because a WebDAV server on the same private network is a
+real deployment, and refusing it would push people to expose one instead.
 
 ## Detecting `invalid_grant`
 

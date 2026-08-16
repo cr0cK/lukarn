@@ -24,6 +24,44 @@ in this application migrates volumes or renames files on its own.
 - **A connection can be disconnected without being forgotten.** Signing an account
   out clears its credentials and keeps the connection, so the albums reading it
   keep pointing somewhere and reconnecting is one button.
+- **Videos with no preview now get one.** Until now a video whose storage held no
+  image of it showed a grey tile with a play icon, and there was no way to tell a
+  holiday clip from a screen recording without opening it. A frame is now taken
+  from the video itself, one second in — past the black frame recordings tend to
+  open on — and cached like any other thumbnail. It needs ffmpeg, which the
+  container image already carries; without it, nothing changes.
+- **An album can be served from a folder on the machine**, with no Google account
+  anywhere in the picture. Photographs already sitting on a disk — or on a NAS
+  mounted beside the container — are read where they are, never uploaded and never
+  copied, and videos still seek because the folder answers `Range` requests the way
+  a web server does. Point `STORAGE_LOCAL_ROOT` at the directory the server may
+  read, mount it read-only, then add a **Local folder** storage in `/admin`.
+  Choosing that directory stays with whoever runs the server: `/admin` only picks a
+  folder inside it, so an administrator password never becomes a way to read the
+  rest of the machine, and a shortcut leading out of the folder is refused rather
+  than followed.
+- **Albums can now live in an S3-compatible bucket** — a MinIO or Garage of your
+  own, Backblaze, Scaleway, Amazon — declared in /admin with its address, its
+  bucket name and a read-only key pair. Nothing has to be uploaded to Google, and
+  a gallery can be served entirely from storage its owner runs. Tick **Address
+  the bucket by path** for MinIO, and for any bucket whose name is not a valid
+  domain name. The key is stored encrypted and never shown again. **Test** asks
+  the bucket itself: a mistyped key, an address that answers nothing and a bucket
+  name that does not exist now read differently, instead of all becoming an album
+  that stays empty.
+- **Albums can now live on a WebDAV server** — Nextcloud, ownCloud, an Apache
+  `mod_dav`, a Synology — alongside a Google Drive or instead of one. Add it from
+  **Storage** with its address, a folder and an app password: no Google account is
+  involved, and the photos stay on a machine you already run. **Test** names what
+  is wrong when something is — a refused password, a host that never answered, or
+  an address that is not a WebDAV endpoint, which is the mistake everyone makes
+  first.
+
+  Two things behave differently there than on a Drive. Renaming a photo makes it a
+  new photo, so its comments stay behind with the old name; Drive is the only
+  backend whose identifiers survive a rename. And a WebDAV server holds no
+  previews of its own, so a video's poster is cut locally with ffmpeg, while a
+  HEIC or RAW file nothing here can decode has no thumbnail at all.
 
 ### Changed
 

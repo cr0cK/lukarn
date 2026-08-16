@@ -1862,9 +1862,18 @@ not, what has to be done about it.
 Each row branches on `authorization`, never on the kind. `consent` shows Connect,
 Reconnect or Disconnect; `key` shows no button at all and the address to share the
 folder with, because a service account is authorised in Drive rather than here
-(D46); `settings` will show the endpoint typed into the form. Reading the kind
-instead would mean a new branch for every backend, in a component whose job is not
-to know them apart.
+(D46); `settings` is configured in the add form and has nothing to press afterwards.
+Reading the kind instead would mean a new branch for every backend, in a component
+whose job is not to know them apart.
+
+**The add form is where a `settings` kind is configured**, and it is the one place
+the kind is read rather than the authorisation: choosing **WebDAV server** reveals
+the address, an optional folder, a username and an app password, and nothing else
+does. The address is the field that goes wrong — Nextcloud's DAV endpoint is not
+the page files are browsed on — so its hint states the shape rather than describing
+it, and **Test** afterwards repeats what the server actually answered. The password
+travels in `secret`, the address and folder in `settings`; neither is ever read
+back, because `StorageConnectionStatus` carries neither.
 
 **Test is a button and not a screen state.** It costs a round trip to the storage
 itself and answers a question somebody asked by pressing it, so it is a mutation
@@ -2995,7 +3004,7 @@ happened above 768 px.
 | `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals           |
 | `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                             |
 | `search.spec.ts`   | The field opens where the button is, focused                                                             |
-| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field                                         |
+| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field, the storage list and the WebDAV form   |
 | `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused     |
 | `comments.spec.ts` | Address → code → comment → thread → activity feed                                                        |
 | `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes |

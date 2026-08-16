@@ -88,6 +88,7 @@ before(async () => {
     md5: null,
     hasThumbnail: true,
     videoCodec: null,
+    sourcePath: null,
   };
   context.media.upsertMany([video], '2026-01-01T00:00:00.000Z');
 

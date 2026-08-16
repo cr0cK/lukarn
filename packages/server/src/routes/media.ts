@@ -6,13 +6,14 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
 import {
+  mediaRef,
   StorageNotConfiguredError,
   StorageNotConnectedError,
   StorageRevokedError,
   StorageUnavailableError,
 } from '../storage/provider.js';
 import { formatRange, parseRange, type ByteRange } from '../media/range.js';
-import type { Variant } from '../media/renderer.js';
+import { NoPreviewError, type Variant } from '../media/renderer.js';
 import { playableKey } from '../media/transcode.js';
 import { requireAuth } from '../plugins/auth.js';
 
@@ -89,22 +90,20 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
         .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
     }
     /**
-     * A video has a thumbnail — the preview Drive produces from its first second
-     * (D92) — but nothing larger: `full` and `hd` would enlarge an image only a few
-     * hundred pixels wide, and files Drive could not read or has not yet processed
-     * have no preview.
+     * A video has a thumbnail but nothing larger: `full` and `hd` would enlarge an
+     * image only a few hundred pixels wide.
+     *
+     * Whether that thumbnail exists is **not** decided here. `has_thumbnail` records
+     * what the storage said it holds, and outside Drive every backend says no (D92);
+     * refusing on it would leave every album read from a folder or a bucket without a
+     * single video poster. The renderer owns the chain instead — the preview the
+     * backend holds, then a still cut by ffmpeg — and answers `NoPreviewError` when
+     * neither exists, which becomes the same 415 as before (D260816).
      */
-    if (meta.kind === 'video') {
-      if (variant.kind !== 'thumb') {
-        return reply
-          .code(415)
-          .send({ error: 'unsupported', message: request.t('error.noFullscreenForVideo') });
-      }
-      if (!meta.hasThumbnail) {
-        return reply
-          .code(415)
-          .send({ error: 'unsupported', message: request.t('error.noVideoPreview') });
-      }
+    if (meta.kind === 'video' && variant.kind !== 'thumb') {
+      return reply
+        .code(415)
+        .send({ error: 'unsupported', message: request.t('error.noFullscreenForVideo') });
     }
 
     /**
@@ -126,7 +125,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
 
     const rendered = await context.renderer.render(
       context.storage.get(meta.connectionId),
-      mediaId,
+      mediaRef(mediaId, meta.sourcePath),
       variant,
       meta.md5,
       meta.kind === 'video' ? 'poster' : 'original',
@@ -148,7 +147,14 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     // Storage unavailable: an explicit message rather than an opaque 500 repeated for
     // every grid thumbnail. The two cases are distinguished so the administrator
     // knows whether to connect or reconnect.
-    app.setErrorHandler(async (error, _request, reply) => {
+    app.setErrorHandler(async (error, request, reply) => {
+      // Not a fault: the backend holds no preview of this video and the image has no
+      // ffmpeg to cut one. 415 says so once instead of a 500 the client retries.
+      if (error instanceof NoPreviewError) {
+        return reply
+          .code(415)
+          .send({ error: 'unsupported', message: request.t('error.noVideoPreview') });
+      }
       if (error instanceof StorageRevokedError) {
         return reply.code(503).send({ error: 'storage_revoked', message: error.message });
       }
@@ -290,7 +296,10 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
       // Through `guard`, like every other read: a revoked authorisation must become the
       // 503 the error handler below already knows how to phrase, not a bare 500.
       const upstream = await storage.guard(() =>
-        storage.fetch(mediaId, range ? formatRange(range) : undefined),
+        storage.fetch(
+          mediaRef(mediaId, meta.sourcePath).ref,
+          range ? formatRange(range) : undefined,
+        ),
       );
 
       /**

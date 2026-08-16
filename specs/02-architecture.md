@@ -23,39 +23,45 @@ flowchart LR
 
 ### The server, file by file
 
-| File                         | Responsibility                                                                                                                                                               |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/main.ts`                | Entry point: `.env`, env, `buildApp`, reschedulable timers, graceful shutdown.                                                                                               |
-| `src/app.ts`                 | Fastify assembly: plugins, route prefixes, frontend serving, error handler.                                                                                                  |
-| `src/env.ts`                 | zod schema for environment variables, path resolution.                                                                                                                       |
-| `src/config.ts`              | zod schema for `albums.yaml`, read only when bootstrapping an empty database.                                                                                                |
-| `src/bootstrap.ts`           | One-time import of `albums.yaml` into the database, while no account exists.                                                                                                 |
-| `src/config-repo.ts`         | `ConfigRepo`: accounts, albums, permissions, settings. Sole writer, in-memory snapshot.                                                                                      |
-| `src/context.ts`             | `AppContext`: single object carrying config, database, and services. Routes instantiate nothing.                                                                             |
-| `src/db.ts`                  | Opens SQLite, sets pragmas, holds the `MIGRATIONS` array.                                                                                                                    |
-| `src/repo.ts`                | Access to the `media` and `sync_state` tables, pagination cursors.                                                                                                           |
-| `src/comments.ts`            | `CommentRepo`: threads limited to one level of depth, moderation.                                                                                                            |
-| `src/places.ts`              | `AlbumDayRepo` and `PlacesPass`: annotated days, clustering of EXIF positions.                                                                                               |
-| `src/geocoder.ts`            | Rate-limited Nominatim reverse geocoding, cached by cells of roughly one kilometre.                                                                                          |
-| `src/commenters.ts`          | `CommenterRepo`: commenter identities, code-based address verification, recipients.                                                                                          |
-| `src/mail.ts`                | SMTP transport, out-of-request sending queue, notification email composition.                                                                                                |
-| `src/sessions.ts`            | Session creation, reading, destruction, and purging.                                                                                                                         |
-| `src/crypto.ts`              | AES-256-GCM for the refresh token, constant-time comparison.                                                                                                                 |
-| `src/throttle.ts`            | Progressive in-memory backoff for login attempts.                                                                                                                            |
-| `src/storage/provider.ts`    | `StorageProvider`: the three operations a backend owes the indexer and the media proxy, the shape of a listed entry, and the error taxonomy every backend maps onto.         |
-| `src/storage/connections.ts` | `StorageConnectionRepo`: the connections table, its secrets through `crypto.ts`, and an in-memory snapshot. Sole writer.                                                     |
-| `src/storage/registry.ts`    | `StorageRegistry`: turns a connection row into a live `StorageProvider`, one cached per connection and dropped on any write.                                                 |
-| `src/storage/drive.ts`       | Google Drive behind that interface: consent, refresh, revocation detection, and the mapping from `Schema$File` to `StorageEntry`. The only file importing `@googleapis/*`.   |
-| `src/sync/sync.ts`           | Container traversal and index population, driven by a `StorageProvider`.                                                                                                     |
-| `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), and video capture date.                                                                 |
-| `src/sync/mp4.ts`            | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                                         |
-| `src/media/renderer.ts`      | WebP rendering with sharp, concurrent-render deduplication, fallback to the preview the backend holds. `prepare` prepares several variants from one download for prewarming. |
-| `src/media/cache.ts`         | Disk cache with an in-memory inventory and LRU eviction. Two instances: image derivatives and prepared video storage.                                                        |
-| `src/media/transcode.ts`     | `VideoTranscoder` and `TranscodePass`: background H.264 versions of videos whose codec no common browser decodes, one at a time.                                             |
-| `src/media/range.ts`         | Validation of the `Range` header before relaying it.                                                                                                                         |
-| `src/plugins/auth.ts`        | Session resolution on every request, `requireAuth` / `requireAdmin` guards.                                                                                                  |
-| `src/plugins/headers.ts`     | Security headers applied to every response — see [04](./04-security-and-access.md).                                                                                          |
-| `src/routes/*.ts`            | The four route families — see [05](./05-api.md).                                                                                                                             |
+| File                         | Responsibility                                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main.ts`                | Entry point: `.env`, env, `buildApp`, reschedulable timers, graceful shutdown.                                                                                                       |
+| `src/app.ts`                 | Fastify assembly: plugins, route prefixes, frontend serving, error handler.                                                                                                          |
+| `src/env.ts`                 | zod schema for environment variables, path resolution.                                                                                                                               |
+| `src/config.ts`              | zod schema for `albums.yaml`, read only when bootstrapping an empty database.                                                                                                        |
+| `src/bootstrap.ts`           | One-time import of `albums.yaml` into the database, while no account exists.                                                                                                         |
+| `src/config-repo.ts`         | `ConfigRepo`: accounts, albums, permissions, settings. Sole writer, in-memory snapshot.                                                                                              |
+| `src/context.ts`             | `AppContext`: single object carrying config, database, and services. Routes instantiate nothing.                                                                                     |
+| `src/db.ts`                  | Opens SQLite, sets pragmas, holds the `MIGRATIONS` array.                                                                                                                            |
+| `src/repo.ts`                | Access to the `media` and `sync_state` tables, pagination cursors.                                                                                                                   |
+| `src/comments.ts`            | `CommentRepo`: threads limited to one level of depth, moderation.                                                                                                                    |
+| `src/places.ts`              | `AlbumDayRepo` and `PlacesPass`: annotated days, clustering of EXIF positions.                                                                                                       |
+| `src/geocoder.ts`            | Rate-limited Nominatim reverse geocoding, cached by cells of roughly one kilometre.                                                                                                  |
+| `src/commenters.ts`          | `CommenterRepo`: commenter identities, code-based address verification, recipients.                                                                                                  |
+| `src/mail.ts`                | SMTP transport, out-of-request sending queue, notification email composition.                                                                                                        |
+| `src/sessions.ts`            | Session creation, reading, destruction, and purging.                                                                                                                                 |
+| `src/crypto.ts`              | AES-256-GCM for the refresh token, constant-time comparison.                                                                                                                         |
+| `src/throttle.ts`            | Progressive in-memory backoff for login attempts.                                                                                                                                    |
+| `src/storage/provider.ts`    | `StorageProvider`: the three operations a backend owes the indexer and the media proxy, the shape of a listed entry, and the error taxonomy every backend maps onto.                 |
+| `src/storage/connections.ts` | `StorageConnectionRepo`: the connections table, its secrets through `crypto.ts`, and an in-memory snapshot. Sole writer.                                                             |
+| `src/storage/registry.ts`    | `StorageRegistry`: turns a connection row into a live `StorageProvider`, one cached per connection and dropped on any write.                                                         |
+| `src/storage/drive.ts`       | Google Drive behind that interface: consent, refresh, revocation detection, and the mapping from `Schema$File` to `StorageEntry`. The only file importing `@googleapis/*`.           |
+| `src/storage/local.ts`       | `LocalFolderService`: a folder on the machine behind that interface, fenced to `STORAGE_LOCAL_ROOT` by `realpath` on every path it resolves, and building its own `Range` responses. |
+| `src/storage/xml.ts`         | The element reader S3 listings and WebDAV `PROPFIND` replies share. Reads names and text; expands no doctype and no external entity, deliberately.                                   |
+| `src/storage/sigv4.ts`       | AWS Signature Version 4 over `node:crypto`: a request description and a key pair in, headers out. Pure, so the published AWS vectors run against it (D260816e).                      |
+| `src/storage/s3.ts`          | An S3-compatible bucket behind the interface: `ListObjectsV2` for `list()`, a signed ranged `GET` for `fetch()`, and no preview. Adds no dependency.                                 |
+| `src/storage/webdav.ts`      | A WebDAV server behind that interface: a `PROPFIND` listing, Basic authentication, a ranged `GET`, and the href resolution that turns a server's URL back into a path.               |
+| `src/sync/sync.ts`           | Container traversal and index population, driven by a `StorageProvider`.                                                                                                             |
+| `src/sync/metadata.ts`       | Normalisation shared by every backend (MIME types, EXIF date, numbers, coordinates), video capture date, and the identifier derived for a path-based backend.                        |
+| `src/sync/mp4.ts`            | Windowed reading of an MP4 container header: where its `moov` is, which date its `mvhd` holds, and which codec its video track uses.                                                 |
+| `src/sync/exif.ts`           | Locating the EXIF block in the first bytes of a photograph: a JPEG's `APP1` marker, and a HEIC's `meta → iinf → iloc` indirection. Pure, and never reaches the network.              |
+| `src/media/renderer.ts`      | WebP rendering with sharp, concurrent-render deduplication, fallback to the preview the backend holds. `prepare` prepares several variants from one download for prewarming.         |
+| `src/media/cache.ts`         | Disk cache with an in-memory inventory and LRU eviction. Two instances: image derivatives and prepared video storage.                                                                |
+| `src/media/transcode.ts`     | `VideoTranscoder` and `TranscodePass`: background H.264 versions of videos whose codec no common browser decodes, one at a time.                                                     |
+| `src/media/range.ts`         | Validation of the `Range` header before relaying it.                                                                                                                                 |
+| `src/plugins/auth.ts`        | Session resolution on every request, `requireAuth` / `requireAdmin` guards.                                                                                                          |
+| `src/plugins/headers.ts`     | Security headers applied to every response — see [04](./04-security-and-access.md).                                                                                                  |
+| `src/routes/*.ts`            | The four route families — see [05](./05-api.md).                                                                                                                                     |
 
 ## The storage interface
 
@@ -85,9 +91,78 @@ nulls describe Drive's privilege rather than a defect: `files.list` returns EXIF
 data and a `thumbnailLink` in the listing itself, which is what makes indexing
 free of downloads (D3) and gives HEIC, RAW and video their only preview (D92).
 
-Google Drive is the one implementation today (`storage/drive.ts`), and it is the
-only file that imports `@googleapis/*`. Nothing downstream — the index, the disk
-cache, the renderer, the justified grid — knows where a file lives.
+Google Drive (`storage/drive.ts`) is the only file that imports `@googleapis/*`,
+and a **local folder** (`storage/local.ts`) is the second implementation.
+Nothing downstream — the index, the disk cache, the renderer, the justified grid —
+knows where a file lives.
+
+A folder is the backend that holds neither of the two things Drive holds, which is
+what makes it the proof the interface fits more than Drive:
+
+| What Drive supplies    | What a folder supplies                                                                              |
+| ---------------------- | --------------------------------------------------------------------------------------------------- |
+| `imageMediaMetadata`   | `media: null` — the indexer reads the bytes                                                         |
+| `thumbnailLink`        | `preview()` returns `null` — the renderer decodes, and ffmpeg cuts a video's poster (D260816)       |
+| `md5Checksum`          | `version` is `size:mtimeMs`, the pair the filesystem guarantees moves when the bytes do             |
+| An id surviving a move | `refKind: 'path'` — the reference **is** the location, so a rename produces a new file to the index |
+
+It also answers `Range` itself rather than relaying an upstream answer: 206 with a
+`Content-Range`, 416 with `bytes */size` when the interval names nothing, 200
+otherwise, from a `createReadStream` turned into a `Response`. That is precisely
+the shape `routes/media.ts` already relays, so the media proxy has no branch for it.
+
+**Which folder it may read is declared by the environment, not by /admin.**
+`STORAGE_LOCAL_ROOT` names one directory; a connection chooses a subpath under it,
+and every path resolved goes through `realpath` before being checked to still sit
+under that root — a symlink leading out of the tree is refused rather than followed
+(D260816d, and [04](./04-security-and-access.md)).
+`storage/s3.ts` is an S3-compatible bucket — MinIO,
+Garage, Ceph, Backblaze and Amazon alike — and adds **no dependency at all**: its
+requests are signed by `storage/sigv4.ts` and its listings read by
+`storage/xml.ts` (D260816e).
+
+A backend also declares **how it names a file**, which is what decides the
+identifier the index stores. Drive's `refKind` is `identity`: a file id survives a
+rename, which is what keeps a comment attached to a photo dragged into another
+folder. A bucket's is `path`, because an object key _is_ its location — two
+connections may hold the same one, and renaming an object gives it another. The
+index hashes the key with the connection and keeps the location in
+`media.source_path`, the only form `fetch` understands.
+
+Three properties of the S3 implementation are worth knowing before changing it:
+
+- **`delimiter=/` is what turns a flat key space into folders.** Keys sharing a
+  segment collapse into `<CommonPrefixes>`, which is the only reason a recursive
+  album does not read every object in the bucket to find its subfolders.
+- **The browser's `Range` is signed, not merely forwarded.** A bucket verifies
+  every header named in `SignedHeaders`, so a byte range left out of it — or
+  signed as a different value — is refused outright, and the symptom is a video
+  that will not seek on exactly the large files seeking exists for.
+- **A listing carries no content type**, so the MIME type comes from the
+  extension, and the table of extensions is also the filter: anything absent is
+  not indexed. RAW is deliberately absent — no backend but Drive holds a preview
+  for one, and a grid of tiles that can never load is worse than an album that
+  says a bucket held nothing it could show.
+
+A **WebDAV server** (`storage/webdav.ts`) differs from Drive in exactly the three
+ways the interface was shaped to absorb, and in no others:
+
+| Question                      | Drive                       | WebDAV                                       |
+| ----------------------------- | --------------------------- | -------------------------------------------- |
+| `refKind` — what names a file | `identity`, a file id       | `path`, kept in `media.source_path`          |
+| `media` in a listing          | EXIF data, parsed by Google | `null`; the indexer reads the bytes          |
+| A page of a listing           | `nextPageToken`             | none — a `PROPFIND` answers whole (D260816f) |
+
+`preview()` follows the second row: Drive holds a JPEG for anything it cannot
+otherwise show, a WebDAV server holds nothing, and a video poster is cut by ffmpeg
+instead (D260816).
+
+`storage/webdav.ts` asks for five properties with `Depth: 1` — `getcontenttype`,
+`getcontentlength`, `getlastmodified`, `getetag`, `resourcetype` — reads the reply
+with `storage/xml.ts`, drops the collection's own entry, and turns each remaining
+`<href>` back into a path relative to the connection's root. That last step is the
+one that differs by server, and [D260816f](./08-decisions/D260816f-a-webdav-listing-arrives-whole-and-is-read-by-its.md)
+records how it is done and what it costs.
 
 **An instance reads several storages, and an album names one.** Each is a row of
 `storage_connections`; `StorageRegistry` builds a provider from it and caches one
@@ -211,7 +286,21 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    backend-specific part happens earlier, in the provider: `storage/drive.ts` is
    where `imageMediaMetadata.time` goes through `parseExifTime` and `rotation`
    becomes `rotated`.
-7. **A video is the only exception to "no content is downloaded"**: no backend
+7. **A photograph whose backend supplies no metadata is read from its own bytes.**
+   `StorageEntry.media` is `null` for everything except Drive, and capture date,
+   camera, ISO and position then come from the EXIF block — which sits at the
+   **front** of both formats that carry one, so a single 64 KB window reaches it.
+   `sync/exif.ts` locates it: the `APP1` marker for a JPEG, and for a HEIC the
+   `meta → iinf → iloc` indirection that stores EXIF as an addressed item.
+   `fromExifBlock` in `sync/metadata.ts` turns it into the same
+   `ProviderMediaMetadata` Drive delivers pre-parsed, so nothing downstream learns
+   which backend a photograph came from. **One window per new photograph and none
+   afterwards**: `MediaRepo.indexedMedia` returns what the last pass read, and
+   while the version the backend reports is unchanged the bytes are unchanged. A
+   file with no EXIF — a screenshot, a re-encoded photograph — is the ordinary
+   case and falls back to `modifiedTime`, exactly as before. See
+   [D260816b](./08-decisions/D260816b-exif-is-read-from-a-64-kb-window-not-from-the-file.md).
+8. **A video is the only exception to "no content is downloaded"**: no backend
    exposes a capture date for it, so the beginning of its file is read through
    `Range` requests (D97). `sync/mp4.ts` follows the chain of top-level boxes from offset
    0 to reach the `moov`, whose `mvhd` contains the recording date;
@@ -227,11 +316,11 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    14 are reread once, then bypassed like the others. A read failure does not fail
    the sync: the date falls back to the file name, then to `modifiedTime`, and the
    codec remains `NULL`, so it is retried.
-8. Rows are written in batches of 500 within a transaction. The album becomes
+9. Rows are written in batches of 500 within a transaction. The album becomes
    available during the sync.
-9. `deleteStale(albumId, seenAt)` removes anything not seen again — a file that
-   was moved, deleted, or moved to the bin.
-10. `sync_state` changes to `ok`. On failure, the status changes to `error` with
+10. `deleteStale(albumId, seenAt)` removes anything not seen again — a file that
+    was moved, deleted, or moved to the bin.
+11. `sync_state` changes to `ok`. On failure, the status changes to `error` with
     the message, **but `lastSyncAt` retains the value of the last successful
     sync**: /admin therefore reports the last genuinely complete pass. Note what
     this does **not** mean: the index has not been rolled back. Batches already
@@ -239,7 +328,7 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
     mixture of old and new content. It remains consistent — everything written
     does exist in the storage — but is simply incomplete (see
     [D27](./08-decisions/D27-an-interrupted-sync-leaves-a-mixed-index-and-that-is.md)).
-11. `syncAll` processes albums **sequentially** to preserve the quota, and stops
+12. `syncAll` processes albums **sequentially** to preserve the quota, and stops
     immediately on `StorageRevokedError` — subsequent albums would fail in the
     same way.
 

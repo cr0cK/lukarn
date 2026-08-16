@@ -533,6 +533,15 @@ export const fr: Messages = {
   'validate.container': 'Indiquer le dossier à lire.',
   'validate.containerPattern': 'Un chemin relatif à la racine du stockage, sans segment parent.',
   'validate.storageLabel': 'Donner un nom à ce stockage.',
+  'validate.storagePath': 'Un dossier situé dans la racine, sans segment parent.',
+  'validate.storageEndpoint': 'Indiquer l’adresse du service, commençant par https://.',
+  'validate.storageBucket': 'Indiquer le nom du bucket.',
+  'validate.storageAccessKey': 'Indiquer la clé d’accès.',
+  'validate.storageSecretKey': 'Indiquer la clé secrète.',
+  'validate.storageUrl': 'Indiquer l’adresse WebDAV, commençant par https://.',
+  'validate.storageUsername':
+    'Indiquer le nom d’utilisateur avec lequel cette instance se connecte.',
+  'validate.storagePassword': 'Indiquer le mot de passe d’application.',
   'validate.interval': 'Indiquer un nombre entier de minutes (0 pour désactiver).',
   'validate.cacheSize': 'Indiquer une taille en gigaoctets.',
   'validate.cacheSizePositive': 'La taille du cache doit être supérieure à 0.',
@@ -602,10 +611,41 @@ export const fr: Messages = {
     'Inscrit dans chaque album qui lit ce stockage. Il ne peut plus changer.',
   'storage.kind': 'Type',
   'storage.kindHint': 'Ce à quoi cette connexion parle. Il ne peut plus changer ensuite.',
+  'storage.path': 'Dossier',
+  'storage.pathHint':
+    'Un dossier situé dans celui confié à ce serveur, nommé relativement à lui. Laisser ' +
+    'vide pour le lire en entier. STORAGE_LOCAL_ROOT décide duquel il s’agit.',
   'storage.kindDrive': 'Google Drive',
   'storage.kindLocal': 'Dossier local',
   'storage.kindS3': 'Bucket compatible S3',
   'storage.kindWebdav': 'Serveur WebDAV',
+  'storage.endpoint': 'Point d’accès',
+  'storage.endpointHint':
+    'L’adresse du service, pas celle du bucket : https://s3.eu-west-3.amazonaws.com, ou l’adresse de votre propre serveur.',
+  'storage.region': 'Région',
+  'storage.regionHint':
+    'Amazon exige la région du bucket. Un service auto-hébergé l’ignore, mais les deux bouts doivent tout de même s’accorder — laisser vide pour us-east-1.',
+  'storage.bucket': 'Bucket',
+  'storage.prefix': 'Préfixe',
+  'storage.prefixHint':
+    'Facultatif. Restreint cette connexion à un dossier du bucket ; chaque album nomme ensuite un chemin à l’intérieur.',
+  'storage.pathStyle': 'Adresser le bucket par chemin',
+  'storage.pathStyleHint':
+    'Lit bucket.example.com par défaut. MinIO, et tout bucket dont le nom n’est pas un libellé de domaine valide, ont besoin de ceci à la place.',
+  'storage.accessKeyId': 'Clé d’accès',
+  'storage.secretAccessKey': 'Clé secrète',
+  'storage.secretAccessKeyHint':
+    'Stockée chiffrée et jamais réaffichée. Une clé en lecture seule suffit : rien ici n’écrit jamais dans le bucket.',
+  'storage.webdavUrl': 'Adresse WebDAV',
+  'storage.webdavUrlHint':
+    'Le point d’accès, pas la page où l’on parcourt les fichiers. Nextcloud et ownCloud publient le leur sous la forme https://cloud.exemple.fr/remote.php/dav/files/<utilisateur>.',
+  'storage.webdavRoot': 'Dossier',
+  'storage.webdavRootHint':
+    'Facultatif. Un dossier sous cette adresse, dans lequel lisent tous les albums de ce stockage.',
+  'storage.webdavUsername': 'Nom d’utilisateur',
+  'storage.webdavPassword': 'Mot de passe d’application',
+  'storage.webdavPasswordHint':
+    'À créer dans les réglages de sécurité du compte. Il ne donne accès qu’aux fichiers, et le révoquer ne coûte rien.',
   'storage.albumCount': (count: number) =>
     count === 0
       ? 'Aucun album ne le lit pour l’instant.'

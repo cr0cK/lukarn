@@ -11,16 +11,34 @@ it.
 The application replaces this preview with a self-hosted gallery that reads the
 owner's Drive and exposes it behind a username and password, one album at a time.
 
-## One storage today, not one by definition
+## More than one storage, and more than one kind
 
-Google Drive is the **first** storage read, and the only one read today — but no
-longer the only one the code can express. `packages/server/src/storage/` holds
-`StorageProvider`, the three operations that actually reach a storage, and Drive
-as its first implementation; everything downstream reads a `StorageEntry` and
-never a Drive field (D260815f). What remains before a second backend is usable:
-a way for an album to record which storage it belongs to, a migration for the
-single-row `oauth_token` table, and administration screens that stop naming Drive
-folders.
+Google Drive is the **first** storage read, and no longer the only kind.
+`packages/server/src/storage/` holds `StorageProvider`, the three operations that
+actually reach a storage; everything downstream reads a `StorageEntry` and never a
+Drive field (D260815f).
+
+**A folder on the machine** — photographs already on a disk, or on a NAS mounted
+beside the container, served without being uploaded anywhere. That folder is chosen
+by whoever runs the server, not by whoever administers it: `STORAGE_LOCAL_ROOT`
+names one directory and `/admin` picks a subfolder under it (D260816d, and
+[04](./04-security-and-access.md)).
+
+**An S3-compatible bucket** — MinIO, Garage, Ceph, Backblaze and Amazon alike,
+declared from /admin with an endpoint, a bucket and a read-only key pair. It adds
+no dependency: the signature is computed here and the listing read by the element
+reader WebDAV shares (D260816e).
+
+**A WebDAV server** — Nextcloud, ownCloud, an Apache `mod_dav`, a Synology —
+declared with an address, a folder and an app password (D260816f).
+
+None of the three can do what only Drive can, and the difference is a scope
+statement rather than an omission. Drive names a file with an identifier that
+survives a rename, so a photograph dragged into another folder keeps its comments;
+everywhere else a file is named by its path, and renaming it makes it a new
+photograph (D260816c). Drive also returns EXIF data and holds a preview inside its
+listing, where the others hold neither — the indexer reads the bytes, and a video
+poster is cut by ffmpeg (D260816, D260816b).
 
 Reading **several accounts** was excluded for as long as `oauth_token` carried
 `CHECK (id = 1)`: one instance, one Drive. That was the schema stating a scope
@@ -63,20 +81,20 @@ reaching a screen (see [07](./07-frontend.md)).
 These omissions are not gaps to fill; they are choices that keep the project
 manageable.
 
-| Excluded                                                              | Why                                                                                                                                                                                                                        |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Writing anything to Drive                                             | The requested scope is `drive.readonly` (`packages/server/src/storage/drive.ts`), and the interface every backend implements has no write operation. No app bug can destroy the originals.                                 |
-| Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                               |
-| Registration, forgotten passwords                                     | The owner creates accounts from `/admin`. There is no public form and no email to send.                                                                                                                                    |
-| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                   |
-| Facial recognition, search, tags                                      | These would require processing the content — and therefore downloading every original, which indexing is specifically designed to avoid.                                                                                   |
-| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).      |
-| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                  |
-| Video transcoding                                                     | ffmpeg on a modest VPS consumes CPU that is not available. `Range` requests are relayed unchanged to Drive. A video does have a thumbnail, but it comes from the Drive preview: no bytes are decoded here (D92).           |
-| Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                            |
-| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51). |
-| Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                 |
-| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.      |
+| Excluded                                                              | Why                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals. |
+| Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                                                 |
+| Registration, forgotten passwords                                     | The owner creates accounts from `/admin`. There is no public form and no email to send.                                                                                                                                                      |
+| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                     |
+| Facial recognition, search, tags                                      | These would require processing the content — and therefore downloading every original, which indexing is specifically designed to avoid.                                                                                                     |
+| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                        |
+| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                    |
+| Video transcoding                                                     | ffmpeg on a modest VPS consumes CPU that is not available. `Range` requests are relayed unchanged to Drive. A video does have a thumbnail, but it comes from the Drive preview: no bytes are decoded here (D92).                             |
+| Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                                              |
+| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                   |
+| Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                                   |
+| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                        |
 
 ## Constraints that shaped the design
 

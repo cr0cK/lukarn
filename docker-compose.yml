@@ -40,6 +40,12 @@ services:
       GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # The one directory a local-folder storage may read, as a path **inside the
+      # container** — it names the mount point of the volume below, not a path on
+      # the host. Empty ⇒ the kind is not offered at all: /admin cannot connect a
+      # folder the container was never given. Whoever runs the container plants
+      # this fence; /admin only chooses a subfolder under it (D260816d).
+      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT:-}
       # Without these two, comments stay unavailable: the address verification
       # code has no way out.
       SMTP_URL: ${SMTP_URL:-}
@@ -60,6 +66,10 @@ services:
     volumes:
       # Configuration, read-only: the application never modifies it.
       - ./config:/app/config:ro
+      # Photographs already on this machine, for a local-folder storage. Uncomment
+      # it together with STORAGE_LOCAL_ROOT=/photos above, and keep the `:ro` — the
+      # application never writes to a storage, and the mount is what guarantees it.
+      # - ./photos:/photos:ro
       # SQLite index and encrypted refresh token — the only irreplaceable data.
       - lukarn-data:/app/data
       # Generated thumbnails: losing this volume costs a regeneration, nothing

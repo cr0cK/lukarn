@@ -76,6 +76,7 @@ function photo(albumId: string, id: string): MediaUpsert {
     md5: 'abcdef0123456789',
     hasThumbnail: true,
     videoCodec: null,
+    sourcePath: null,
   };
 }
 

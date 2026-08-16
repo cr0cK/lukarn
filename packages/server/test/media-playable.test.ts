@@ -60,6 +60,7 @@ function video(albumId: string, id: string, md5: string | null): MediaUpsert {
     md5,
     hasThumbnail: true,
     videoCodec: 'hvc1',
+    sourcePath: null,
   };
 }
 

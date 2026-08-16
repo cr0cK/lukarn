@@ -19,37 +19,43 @@ The index. One row = one file of one storage **in one album**. Which storage is
 not a column here: it comes from the album (`albums.connection_id`), and
 `getFileMeta` joins it so the media proxy can resolve a provider.
 
-| Column                                                                                                        | Type    | Note                                                                                                                                      |
-| ------------------------------------------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `album_id`                                                                                                    | TEXT    | Album ID as stored in the `albums` table. No foreign key: the index is cleaned explicitly (see below).                                    |
-| `id`                                                                                                          | TEXT    | Drive file ID.                                                                                                                            |
-| `name`                                                                                                        | TEXT    | File name; used for the download `Content-Disposition`.                                                                                   |
-| `mime_type`                                                                                                   | TEXT    | Returned unchanged on `/original`.                                                                                                        |
-| `kind`                                                                                                        | TEXT    | `CHECK (kind IN ('photo','video'))`.                                                                                                      |
-| `size`                                                                                                        | INTEGER | Nullable: Drive does not always report a size.                                                                                            |
-| `width` / `height`                                                                                            | INTEGER | **Already corrected for EXIF rotation** by `toUpsert`. This lets the frontend calculate the layout without loading an image.              |
-| `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Photo: EXIF date when known, otherwise `modifiedTime`. Video: reconstructed from the file — see below.                      |
-| `taken_at_from_exif`                                                                                          | INTEGER | 0/1. The frontend writes "Taken" or "Modified" according to the value. Set to 1 whenever the date comes from the file, EXIF or container. |
-| `modified_time`                                                                                               | TEXT    | ISO 8601. Written on every sync, never read — retained; see "Columns written and never read" below.                                       |
-| `duration_ms`                                                                                                 | INTEGER | Videos only.                                                                                                                              |
-| `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, all nullable. Served by `/items/:mediaId`.                                                                                          |
-| `md5`                                                                                                         | TEXT    | Drive content fingerprint. Carries the URL and ETag version and forms part of the disk-cache key.                                         |
-| `has_thumbnail`                                                                                               | INTEGER | 0/1, Drive's `hasThumbnail`. Determines whether a **video** has a thumbnail — see below.                                                  |
-| `video_codec`                                                                                                 | TEXT    | Codec of a video's video track, read from its `moov`. Three states; see below.                                                            |
-| `source_path`                                                                                                 | TEXT    | Readable path inside the container, for a backend whose reference is a path. NULL for Drive, whose file id survives a rename.             |
-| `seen_at`                                                                                                     | TEXT    | Timestamp of the sync that saw this row. Basis for `deleteStale`.                                                                         |
-| `added_at`                                                                                                    | TEXT    | Date added to the index, written on INSERT and **never** by `ON CONFLICT DO UPDATE`. Nullable — see below.                                |
-| **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                          |
+| Column                                                                                                        | Type    | Note                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `album_id`                                                                                                    | TEXT    | Album ID as stored in the `albums` table. No foreign key: the index is cleaned explicitly (see below).                                                                                                                   |
+| `id`                                                                                                          | TEXT    | The backend's reference when it is an identity (a Drive file id), otherwise `sha1(connectionId\|path)` truncated to 32 characters — D260816c.                                                                            |
+| `name`                                                                                                        | TEXT    | File name; used for the download `Content-Disposition`.                                                                                                                                                                  |
+| `mime_type`                                                                                                   | TEXT    | Returned unchanged on `/original`.                                                                                                                                                                                       |
+| `kind`                                                                                                        | TEXT    | `CHECK (kind IN ('photo','video'))`.                                                                                                                                                                                     |
+| `size`                                                                                                        | INTEGER | Nullable: Drive does not always report a size.                                                                                                                                                                           |
+| `width` / `height`                                                                                            | INTEGER | **Already corrected for EXIF rotation** by `toUpsert`. This lets the frontend calculate the layout without loading an image.                                                                                             |
+| `taken_at`                                                                                                    | TEXT    | ISO 8601 UTC. Photo: EXIF date when known, otherwise `modifiedTime`. Video: reconstructed from the file — see below.                                                                                                     |
+| `taken_at_from_exif`                                                                                          | INTEGER | 0/1. The frontend writes "Taken" or "Modified" according to the value. Set to 1 whenever the date comes from the file, EXIF or container.                                                                                |
+| `modified_time`                                                                                               | TEXT    | ISO 8601. Written on every sync, never read — retained; see "Columns written and never read" below.                                                                                                                      |
+| `duration_ms`                                                                                                 | INTEGER | Videos only.                                                                                                                                                                                                             |
+| `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, all nullable. Served by `/items/:mediaId`.                                                                                                                                                                         |
+| `md5`                                                                                                         | TEXT    | Whatever the backend guarantees changes with the bytes: a Drive `md5Checksum`, an ETag, `size:mtime`. Carries the URL and ETag version, forms part of the disk-cache key, and is what lets a resync skip rereading EXIF. |
+| `has_thumbnail`                                                                                               | INTEGER | 0/1: does the **storage** hold a preview? Drive is the only backend that says yes. It no longer decides whether a video has a thumbnail — D260816.                                                                       |
+| `video_codec`                                                                                                 | TEXT    | Codec of a video's video track, read from its `moov`. Three states; see below.                                                                                                                                           |
+| `source_path`                                                                                                 | TEXT    | Path inside the container, for a backend whose reference is a path — the only way to fetch the bytes back, since `id` is a hash. NULL for Drive, whose file id survives a rename.                                        |
+| `seen_at`                                                                                                     | TEXT    | Timestamp of the sync that saw this row. Basis for `deleteStale`.                                                                                                                                                        |
+| `added_at`                                                                                                    | TEXT    | Date added to the index, written on INSERT and **never** by `ON CONFLICT DO UPDATE`. Nullable — see below.                                                                                                               |
+| **PK**                                                                                                        |         | `(album_id, id)`                                                                                                                                                                                                         |
 
 **In practice, `has_thumbnail` applies only to videos.** A photo always has a
-render — the pipeline decodes it and falls back to the Drive preview when libvips
-cannot read it —, while a video has an image only if Drive produced one from its
-first second
-([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)).
-The API therefore exposes not the column but the question being asked:
+render — the pipeline decodes it and falls back to the preview the backend holds
+when libvips cannot read it —, while a video's image comes either from that
+preview
+([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md))
+or, when the backend holds none, from a still cut by ffmpeg
+([D260816](./08-decisions/D260816-a-video-preview-is-cut-by-ffmpeg-when-the-backend.md)).
+
+The column records **what the storage said it holds**, which outside Drive is
+always no. The API therefore exposes not the column but the question being asked:
 `MediaItem.hasPreview`, calculated by `toItem()` as
-`kind === 'photo' || has_thumbnail === 1`. The frontend requests a thumbnail
-"when one exists", without reproducing the photo/video rule itself.
+`kind === 'photo' || has_thumbnail === 1 || ffmpeg is available`. The frontend
+requests a thumbnail "when one exists", without reproducing the rule itself — and
+without that last term it would never request the poster ffmpeg would have
+produced.
 
 **A video's `taken_at` does not come from Drive.** `videoMediaMetadata` is limited
 to `{width, height, durationMillis}`: there is no capture date. The sync therefore
@@ -120,11 +126,26 @@ Where the albums live. One row = one backend this instance reads, and
 | `created_at` | TEXT    | ISO 8601.                                                                                                |
 | `position`   | INTEGER | Display rank, like `albums.position`: creation dates collide on a seeded instance.                       |
 
-**What `ciphertext` contains belongs to the kind.** Drive stores its refresh token
-there, exactly as `oauth_token` did — which is what let migration 17 _copy_ the
-column instead of re-encrypting it. A backend needing more than one value stores
-JSON in it; `StorageConnectionRepo` encrypts and decrypts a string and knows
-nothing else about it.
+**What `settings` and `ciphertext` contain belongs to the kind.**
+`StorageConnectionRepo` encrypts and decrypts a string and knows nothing else about
+it; a backend needing more than one value puts JSON there.
+
+| Kind     | `settings`                                       | `ciphertext`                          |
+| -------- | ------------------------------------------------ | ------------------------------------- |
+| `drive`  | `scope`, the consented OAuth scopes              | the refresh token, on its own         |
+| `webdav` | `url`, the endpoint; `root`, a folder beneath it | `{"username":…,"password":…}` as JSON |
+
+Drive's is a bare token rather than an envelope because that is what `oauth_token`
+held — which is what let migration 17 _copy_ the column instead of re-encrypting
+it with a key the migration cannot be sure of.
+
+An `s3` connection is the first to need two values, and stores
+`{"accessKeyId":…,"secretAccessKey":…}` in that one string. Its `settings` hold
+`endpoint`, `region`, `bucket`, `prefix` and `pathStyle` — an address, a region
+and a name, none of which grants anything on its own, which is why they sit in
+the clear beside the pair that does. `pathStyle` is the string `"true"` or
+absent: `settings` is a map of strings end to end, and inventing a JSON boolean
+for one field would make every reader of the column check two shapes.
 
 A non-null `revoked_at` means "the backend rejected the secret". The row is
 **retained** rather than deleted: an empty table would look like a fresh

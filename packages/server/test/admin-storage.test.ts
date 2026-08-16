@@ -3,13 +3,19 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { ALL_ALBUMS, type AdminAlbum, type AdminStatus } from '@lukarn/shared';
+import {
+  ALL_ALBUMS,
+  type AdminAlbum,
+  type AdminStatus,
+  type StorageConnectionStatus,
+} from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
 import type { AppContext } from '../src/context.js';
 import { loadEnv } from '../src/env.js';
 import type { MediaUpsert } from '../src/repo.js';
+import { SUPPORTED_KINDS } from '../src/storage/registry.js';
 
 /**
  * Administering several storages, and what an album does when it moves between
@@ -54,6 +60,7 @@ function photo(albumId: string, id: string): MediaUpsert {
     md5: null,
     hasThumbnail: true,
     videoCodec: null,
+    sourcePath: null,
   };
 }
 
@@ -130,19 +137,52 @@ describe('the storage list', () => {
       url: '/api/admin/status',
       headers: { cookie },
     });
-    assert.deepEqual(status.json<AdminStatus>().storageKinds, ['drive']);
+    // The list the form offers is the list the factory can build, and the point is
+    // that it is the *same* list: naming the kinds here again would let the two drift
+    // the day one arrives, which is the drift this route exists to prevent.
+    assert.deepEqual(status.json<AdminStatus>().storageKinds, SUPPORTED_KINDS);
+    assert.ok(status.json<AdminStatus>().storageKinds.includes('drive'));
 
+    // Every kind `StorageKind` declares is now buildable, so the `unsupported_kind`
+    // refusal has nothing left to refuse through this route — it guards the gap
+    // between a kind existing in the contract and the factory being able to build
+    // it, and that gap is currently closed. What still has to hold is that a kind
+    // nobody declared is refused, one guard earlier.
     const refused = await server.inject({
       method: 'POST',
       url: '/api/admin/storage',
       headers: { cookie },
-      payload: { id: 'archives', kind: 's3', label: 'Archives' },
+      payload: { id: 'archives', kind: 'ftp', label: 'Archives' },
     });
 
     // Accepting it would create a connection nothing can serve from, discovered
     // only once an album on it stays empty.
     assert.equal(refused.statusCode, 400);
-    assert.equal(refused.json<{ error: string }>().error, 'unsupported_kind');
+  });
+
+  it('creates a bucket from what the form typed into it', async () => {
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/storage',
+      headers: { cookie },
+      payload: {
+        id: 'archives',
+        kind: 's3',
+        label: 'Archives',
+        settings: { endpoint: 'https://s3.example.com', bucket: 'famille', pathStyle: 'true' },
+        secret: JSON.stringify({ accessKeyId: 'AKIA…', secretAccessKey: 'secret' }),
+      },
+    });
+
+    assert.equal(created.statusCode, 201);
+    const connection = created.json<StorageConnectionStatus>();
+    // `settings`: there is no consent screen to come back from, so a bucket is
+    // authorised by the same request that creates it.
+    assert.equal(connection.authorization, 'settings');
+    assert.equal(connection.connected, true);
+    // Neither half of the key pair comes back, under any key: the response is
+    // built from the row, and the row's secret stays encrypted.
+    assert.equal(JSON.stringify(connection).includes('secret'), false);
   });
 
   it('refuses a second connection with the same identifier', async () => {

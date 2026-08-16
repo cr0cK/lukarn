@@ -12,6 +12,7 @@ import {
 } from '@lukarn/shared';
 import type { Db } from './db.js';
 import { DEFAULT_CONNECTION_ID } from './storage/connections.js';
+import type { ProviderMediaMetadata } from './storage/provider.js';
 
 /** Raw `media` row with its joined description. */
 interface MediaRow {
@@ -76,9 +77,27 @@ export interface MediaUpsert {
    * three states.
    */
   videoCodec: string | null;
+  /**
+   * Where the file sits inside its container, for a backend that names files by path.
+   *
+   * `null` for a Drive, whose reference is already the identifier. Everywhere else the
+   * identifier is a hash — a path is not unique across connections and does not survive
+   * a rename — and this column is the only remaining way to ask the storage for the
+   * bytes. See `StorageRefKind` in `storage/provider.ts`.
+   */
+  sourcePath: string | null;
 }
 
-function toItem(row: MediaRow): MediaItem {
+/**
+ * `posters` answers one question for a video: can an image be obtained for it at all?
+ *
+ * It is not the same question as `has_thumbnail`, which records what the **storage**
+ * said it holds — no for everything except a Drive. Since D260816 a video whose backend
+ * holds no preview still gets one, cut by ffmpeg, so the interface must be told it may
+ * ask: without that, `Thumb` shows a grey tile and never requests the image that would
+ * have been produced.
+ */
+function toItem(row: MediaRow, posters: boolean): MediaItem {
   return {
     id: row.id,
     albumId: row.album_id,
@@ -92,9 +111,9 @@ function toItem(row: MediaRow): MediaItem {
     takenAtFromExif: row.taken_at_from_exif === 1,
     durationMs: row.duration_ms,
     // A photo always has a render — the pipeline decodes it and falls back to the
-    // Drive preview when libvips cannot read it. A video has one only if Drive
-    // produced it: nothing is decoded locally (D92).
-    hasPreview: row.kind === 'photo' || row.has_thumbnail === 1,
+    // preview the backend holds when libvips cannot read it. A video has one when its
+    // storage holds a preview (D92) or when a still can be cut from it (D260816).
+    hasPreview: row.kind === 'photo' || row.has_thumbnail === 1 || posters,
     // Eight fingerprint characters distinguish successive versions of the same file
     // while keeping the URL readable.
     version: row.md5 ? row.md5.slice(0, 8) : null,
@@ -126,9 +145,9 @@ const SELECT_ITEMS = `SELECT media.*, media_notes.description AS description
  */
 export type IndexedDetail = Omit<MediaDetail, 'commentCount'>;
 
-function toDetail(row: MediaRow): IndexedDetail {
+function toDetail(row: MediaRow, posters: boolean): IndexedDetail {
   return {
-    ...toItem(row),
+    ...toItem(row, posters),
     exif: {
       cameraMake: row.camera_make,
       cameraModel: row.camera_model,
@@ -173,7 +192,16 @@ export function decodeCursor(cursor: string): { takenAt: string; id: string } | 
 }
 
 export class MediaRepo {
-  constructor(private readonly db: Db) {}
+  /**
+   * `posters` reports whether a still can be cut from a video, which is an environment
+   * fact — whether ffmpeg is in the image — discovered while the server starts. A
+   * function for that reason, and defaulting to "no" so a test or a command-line tool
+   * describes exactly what the index holds.
+   */
+  constructor(
+    private readonly db: Db,
+    private readonly posters: () => boolean = () => false,
+  ) {}
 
   /**
    * Chronologically sorted media page, newest to oldest by default and oldest to
@@ -222,14 +250,14 @@ export class MediaRepo {
     const last = page.at(-1);
 
     return {
-      items: page.map(toItem),
+      items: page.map((row) => toItem(row, this.posters())),
       nextCursor: hasMore && last ? encodeCursor(last.taken_at, last.id) : null,
     };
   }
 
   getDetail(albumId: string, id: string): IndexedDetail | null {
     const row = this.mediaRow(albumId, id);
-    return row ? toDetail(row) : null;
+    return row ? toDetail(row, this.posters()) : null;
   }
 
   /**
@@ -245,7 +273,7 @@ export class MediaRepo {
   setDescription(albumId: string, mediaId: string, patch: UpdateMediaRequest): MediaItem | null {
     const row = this.mediaRow(albumId, mediaId);
     if (!row) return null;
-    if (patch.description === undefined) return toItem(row);
+    if (patch.description === undefined) return toItem(row, this.posters());
 
     const trimmed = patch.description?.trim();
     const description = trimmed ? trimmed : null;
@@ -266,7 +294,7 @@ export class MediaRepo {
         .run(albumId, mediaId, description, new Date().toISOString());
     }
 
-    return { ...toItem(row), description };
+    return { ...toItem(row, this.posters()), description };
   }
 
   private mediaRow(albumId: string, id: string): MediaRow | undefined {
@@ -365,6 +393,46 @@ export class MediaRepo {
    * Read using the `(album_id, id)` pair, the primary key: the same file indexed under
    * two albums carries two rows that may have been dated at different times.
    */
+  /**
+   * The metadata a previous synchronisation read out of this file's bytes.
+   *
+   * What makes indexing a folder or a bucket repeatable: reading EXIF costs one ranged
+   * request per photograph, and a library of five thousand would pay it again on every
+   * pass. `md5` holds whatever the backend guarantees changes with the content, so when
+   * it is unchanged the bytes are unchanged and rereading them would return exactly
+   * this.
+   *
+   * `rotated` comes back **false** with the dimensions already exchanged: the swap was
+   * applied on the way in, and reporting it again would undo it.
+   */
+  indexedMedia(
+    albumId: string,
+    id: string,
+  ): { md5: string | null; media: ProviderMediaMetadata } | null {
+    const row = this.mediaRow(albumId, id);
+    if (!row) return null;
+
+    return {
+      md5: row.md5,
+      media: {
+        width: row.width,
+        height: row.height,
+        rotated: false,
+        takenAt: row.taken_at_from_exif === 1 ? row.taken_at : null,
+        cameraMake: row.camera_make,
+        cameraModel: row.camera_model,
+        lens: row.lens,
+        isoSpeed: row.iso_speed,
+        exposureTime: row.exposure_time,
+        aperture: row.aperture,
+        focalLength: row.focal_length,
+        lat: row.lat,
+        lng: row.lng,
+        durationMs: row.duration_ms,
+      },
+    };
+  }
+
   fileTakenAt(
     albumId: string,
     id: string,
@@ -505,13 +573,13 @@ export class MediaRepo {
          taken_at, taken_at_from_exif, modified_time, duration_ms,
          camera_make, camera_model, lens, iso_speed, exposure_time,
          aperture, focal_length, lat, lng, md5, has_thumbnail, video_codec,
-         seen_at, added_at
+         source_path, seen_at, added_at
        ) VALUES (
          @albumId, @id, @name, @mimeType, @kind, @size, @width, @height,
          @takenAt, @takenAtFromExif, @modifiedTime, @durationMs,
          @cameraMake, @cameraModel, @lens, @isoSpeed, @exposureTime,
          @aperture, @focalLength, @lat, @lng, @md5, @hasThumbnail, @videoCodec,
-         @seenAt, @seenAt
+         @sourcePath, @seenAt, @seenAt
        )
        ON CONFLICT (album_id, id) DO UPDATE SET
          name = excluded.name,
@@ -536,6 +604,7 @@ export class MediaRepo {
          md5 = excluded.md5,
          has_thumbnail = excluded.has_thumbnail,
          video_codec = excluded.video_codec,
+         source_path = excluded.source_path,
          seen_at = excluded.seen_at
          -- added_at is deliberately absent from this DO UPDATE: it is the index
          -- insertion date and never changes. Rewriting it would make a photo indexed

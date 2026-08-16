@@ -2,7 +2,7 @@ import { access } from 'node:fs/promises';
 import { cpus } from 'node:os';
 import sharp from 'sharp';
 import type { ThumbSize } from '@lukarn/shared';
-import type { StorageProvider } from '../storage/provider.js';
+import type { MediaRef, StorageProvider } from '../storage/provider.js';
 import type { MediaCache } from './cache.js';
 import { Semaphore, renderConcurrencyFor } from './semaphore.js';
 
@@ -65,6 +65,37 @@ export type Variant = { kind: 'thumb'; size: ThumbSize } | { kind: 'full' } | { 
  */
 export type RenderOrigin = 'original' | 'poster';
 
+/**
+ * A still extracted from the video itself, for a backend holding no preview.
+ *
+ * A function rather than a dependency on the transcoder: the renderer needs one image
+ * and must not learn where ffmpeg lives, how it is reniced or where its temporary files
+ * go. It answers `null` when no still can be cut — ffmpeg absent from the image — which
+ * is the one remaining case where a video genuinely has no thumbnail (D260816). That is
+ * a question the renderer must ask at render time, not at construction: whether the
+ * binary exists is discovered while the server starts, after every component is built.
+ */
+export type StillSource = (storage: StorageProvider, file: MediaRef) => Promise<Buffer | null>;
+
+/**
+ * No image can be produced for this video at all.
+ *
+ * A class rather than a bare `Error` because the media route answers it with 415 and
+ * the sentence a reader understands: the alternative is a 500 for a state that is not a
+ * fault — a video whose storage holds no preview, on an image without ffmpeg.
+ */
+export class NoPreviewError extends Error {
+  constructor(fileId: string) {
+    super(`No preview exists for ${fileId} and none can be produced.`);
+    this.name = 'NoPreviewError';
+  }
+}
+
+export interface MediaRendererOptions {
+  concurrency?: number;
+  still?: StillSource | null;
+}
+
 export interface Rendered {
   path: string;
   contentType: string;
@@ -121,13 +152,15 @@ function encodingFor(variant: Variant): { edge: number; quality: number } {
 export class MediaRenderer {
   private readonly inFlight = new Map<string, Promise<Rendered>>();
   private readonly places: Semaphore;
+  private readonly still: StillSource | null;
 
   constructor(
     private readonly cache: MediaCache,
     private readonly log: Logger,
-    concurrency = renderConcurrencyFor(cpus().length),
+    options: MediaRendererOptions = {},
   ) {
-    this.places = new Semaphore(concurrency);
+    this.places = new Semaphore(options.concurrency ?? renderConcurrencyFor(cpus().length));
+    this.still = options.still ?? null;
   }
 
   /** Active and queued renders. Exposed in /admin for diagnostics. */
@@ -155,16 +188,19 @@ export class MediaRenderer {
    * The provider is an argument rather than a dependency: one instance serves every
    * album, and albums no longer all read the same storage. The cache key deliberately
    * ignores it — a file identifier already belongs to one connection, and mixing the
-   * two would rebuild every derivative the day a connection is renamed.
+   * two would rebuild every derivative the day a connection is renamed. It is keyed on
+   * `file.id` rather than `file.ref` for the same reason: on a path-based backend the
+   * reference is the location, and keying on it would discard every derivative of a
+   * folder somebody reorganised.
    */
   async render(
     storage: StorageProvider,
-    fileId: string,
+    file: MediaRef,
     variant: Variant,
     md5: string | null = null,
     origin: RenderOrigin = 'original',
   ): Promise<Rendered> {
-    const key = variantKey(fileId, variant, md5);
+    const key = variantKey(file.id, variant, md5);
 
     const cached = this.cache.hit(key);
     // Inventory may reference a missing file: "clear cache" from /admin removes the
@@ -176,7 +212,7 @@ export class MediaRenderer {
     const pending = this.inFlight.get(key);
     if (pending) return pending;
 
-    const task = this.produce(storage, fileId, variant, key, origin).finally(() =>
+    const task = this.produce(storage, file, variant, key, origin).finally(() =>
       this.inFlight.delete(key),
     );
     this.inFlight.set(key, task);
@@ -198,7 +234,7 @@ export class MediaRenderer {
    */
   async prepare(
     storage: StorageProvider,
-    fileId: string,
+    file: MediaRef,
     variants: Variant[],
     md5: string | null = null,
     origin: RenderOrigin = 'original',
@@ -207,7 +243,7 @@ export class MediaRenderer {
     // fallback, and starting smallest would make `withoutEnlargement` fix all later
     // variants at that size.
     const manquantes = variants
-      .filter((variant) => !this.isCached(fileId, variant, md5))
+      .filter((variant) => !this.isCached(file.id, variant, md5))
       .sort((a, b) => encodingFor(b).edge - encodingFor(a).edge);
     if (manquantes.length === 0) return 0;
 
@@ -218,25 +254,25 @@ export class MediaRenderer {
       try {
         source =
           origin === 'poster'
-            ? await this.providerPreview(storage, fileId, premiere)
-            : await this.download(storage, fileId);
+            ? await this.poster(storage, file, premiere)
+            : await this.download(storage, file.ref);
         // The first conversion doubles as a decode test: it switches formats bundled
         // libvips cannot read to the backend preview, exactly like a requested render.
-        await this.store(fileId, premiere, md5, source);
+        await this.store(file.id, premiere, md5, source);
       } catch (error) {
         // In `poster`, the backend preview **is** the fallback; requesting it again
         // after failure would only repeat the same call.
         if (origin === 'poster') throw error;
         this.log.warn(
-          `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
+          `Local decoding impossible for ${file.id} (${(error as Error).message}), ` +
             'falling back to the preview held by the storage',
         );
-        source = await this.providerPreview(storage, fileId, premiere);
-        await this.store(fileId, premiere, md5, source);
+        source = await this.providerPreview(storage, file.ref, premiere);
+        await this.store(file.id, premiere, md5, source);
       }
 
       for (const variant of manquantes.slice(1)) {
-        await this.store(fileId, variant, md5, source);
+        await this.store(file.id, variant, md5, source);
       }
       return manquantes.length;
     });
@@ -249,12 +285,33 @@ export class MediaRenderer {
    */
   private produce(
     storage: StorageProvider,
-    fileId: string,
+    file: MediaRef,
     variant: Variant,
     key: string,
     origin: RenderOrigin,
   ): Promise<Rendered> {
-    return this.places.run(() => this.build(storage, fileId, variant, key, origin));
+    return this.places.run(() => this.build(storage, file, variant, key, origin));
+  }
+
+  /**
+   * A video's poster: the preview the backend holds, or a still cut from the video.
+   *
+   * Drive is the only backend that holds one (D92), so outside it this always reaches
+   * ffmpeg — the reason the route no longer refuses on `has_thumbnail` alone
+   * (D260816). The still costs a full download and is why it happens once: the result
+   * is cached under the same key as any other derivative.
+   */
+  private async poster(
+    storage: StorageProvider,
+    file: MediaRef,
+    variant: Variant,
+  ): Promise<Buffer> {
+    const held = await storage.guard(() => storage.preview(file.ref, encodingFor(variant).edge));
+    if (held) return Buffer.from(await held.arrayBuffer());
+
+    const cut = this.still ? await this.still(storage, file) : null;
+    if (!cut) throw new NoPreviewError(file.id);
+    return cut;
   }
 
   private async store(
@@ -268,7 +325,7 @@ export class MediaRenderer {
 
   private async build(
     storage: StorageProvider,
-    fileId: string,
+    file: MediaRef,
     variant: Variant,
     key: string,
     origin: RenderOrigin,
@@ -278,22 +335,23 @@ export class MediaRenderer {
     try {
       const source =
         origin === 'poster'
-          ? await this.providerPreview(storage, fileId, variant)
-          : await this.download(storage, fileId);
+          ? await this.poster(storage, file, variant)
+          : await this.download(storage, file.ref);
       output = await this.transform(source, variant);
     } catch (error) {
-      // In `poster`, the backend preview **is** the source: there is no original behind
-      // it to decode and nothing more for fallback to attempt.
+      // In `poster`, the source is already a fallback chain of its own — the preview the
+      // backend holds, then a still cut from the video. There is no original behind it
+      // to decode and nothing further to attempt.
       if (origin === 'poster') throw error;
       // Formats bundled libvips cannot decode (some HEIC and proprietary RAW), and
       // files too large for memory: a backend that holds a JPEG preview can serve it,
       // so restart there. Downloading is inside `try` so the second case takes this
       // path — otherwise a photo the storage can display would only return an error.
       this.log.warn(
-        `Local decoding impossible for ${fileId} (${(error as Error).message}), ` +
+        `Local decoding impossible for ${file.id} (${(error as Error).message}), ` +
           'falling back to the preview held by the storage',
       );
-      const fallback = await this.providerPreview(storage, fileId, variant);
+      const fallback = await this.providerPreview(storage, file.ref, variant);
       output = await this.transform(fallback, variant);
     }
 
@@ -328,10 +386,10 @@ export class MediaRenderer {
    * allocation, but the body is measured too: a missing or false header must not crash
    * the process.
    */
-  private async download(storage: StorageProvider, fileId: string): Promise<Buffer> {
+  private async download(storage: StorageProvider, ref: string): Promise<Buffer> {
     // `guard` is what turns a withdrawn authorisation into a 503 the browser retries:
     // without it, opening a photo after a revoked token produced a bare 500.
-    const response = await storage.guard(() => storage.fetch(fileId));
+    const response = await storage.guard(() => storage.fetch(ref));
 
     const annoncee = Number(response.headers.get('content-length'));
     if (Number.isFinite(annoncee) && annoncee > MAX_DECODE_BYTES) {
@@ -357,13 +415,13 @@ export class MediaRenderer {
    */
   private async providerPreview(
     storage: StorageProvider,
-    fileId: string,
+    ref: string,
     variant: Variant,
   ): Promise<Buffer> {
-    const response = await storage.guard(() => storage.preview(fileId, encodingFor(variant).edge));
+    const response = await storage.guard(() => storage.preview(ref, encodingFor(variant).edge));
 
     if (!response) {
-      throw new Error(`The storage holds no preview for ${fileId}`);
+      throw new Error(`The storage holds no preview for ${ref}`);
     }
 
     return Buffer.from(await response.arrayBuffer());
