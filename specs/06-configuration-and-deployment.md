@@ -513,7 +513,8 @@ deployment.
 ## Checks
 
 ```bash
-pnpm verify   # typecheck, lint, check:format, tests, check:specs, check:links
+pnpm verify   # typecheck, lint, check:format, tests, and the four documentation
+              # checks: check:specs, check:links, check:prose, check:changelog
 ```
 
 It compiles `shared` before the first of them: the other packages typecheck
@@ -527,13 +528,20 @@ Server tests run with Node's native runner (`node --import tsx
 would rewrite. Without it, formatting wasn't checked anywhere and drifted — five
 files on `main` had strayed from it (D75).
 
-Two checks cover documentation, and neither judges the prose:
+Four checks cover documentation, and three of them judge no prose:
 `tools/check-specs.mjs` compares what the code exposes to what the specs
 mention; `tools/check-links.mjs` resolves the relative links and anchors
-of the three documents that reference one another (D64). Both also run
+of the three documents that reference one another (D64); and
+`tools/check-changelog.mjs` requires a visible change to say so. All four also run
 on `pre-push`. External links are not followed: that would require the
 network, and a check that fails because a third-party site is slow eventually gets
 disabled.
+
+The fourth does judge prose, within limits it can defend.
+`tools/check-prose.mjs` reads the five documents a stranger meets first and fails
+on two measurable things: em dashes past a budget per file, and a short list of
+constructions that state something by denying its opposite. It says nothing about
+whether a paragraph is any good (D260817b).
 
 `check-specs.mjs` also covers **decision consistency**: an
 identifier defined twice, a file name that doesn't match its decision's

@@ -1,8 +1,9 @@
 #!/bin/sh
 # Prevents publishing documentation that lies: a discrepancy between the code and
-# the specs, a duplicated decision identifier, a reference — `(Dxx)` as well as a
-# relative link — that leads nowhere, or a change somebody will notice with
-# nothing about it in the changelog.
+# the specs, a duplicated decision identifier, a reference (`(Dxx)` as well as a
+# relative link) that leads nowhere, or a change somebody will notice with
+# nothing about it in the changelog. It also reads the register of the documents
+# a stranger meets first, which drifts in one direction and never back.
 #
 # Formatting is not checked here (D75): `pnpm verify` and CI check it. Blocking a
 # push over whitespace, when `pnpm format` fixes it, would cause more frustration
@@ -25,6 +26,13 @@ fi
 if ! node tools/check-links.mjs; then
   echo ""
   echo "Push stopped. Fix the references, or"
+  echo "use --no-verify if you know why you are bypassing the check."
+  exit 1
+fi
+
+if ! node tools/check-prose.mjs; then
+  echo ""
+  echo "Push stopped. A public document has drifted out of register, or"
   echo "use --no-verify if you know why you are bypassing the check."
   exit 1
 fi

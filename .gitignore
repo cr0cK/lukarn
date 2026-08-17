@@ -39,3 +39,6 @@ packages/e2e/playwright-report/
 .DS_Store
 *.log
 .eslintcache
+
+# Local scratch: per-PR babysit state, never committed
+.local/
