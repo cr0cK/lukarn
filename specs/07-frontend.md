@@ -3135,6 +3135,11 @@ pushed, and stays out of `pnpm verify` on purpose — see
 also records why WebKit is in it, why no `data-testid` is, and why safe areas are
 asserted on the CSS rule rather than on a computed value.
 
+That command **builds `dist/` before it starts anything**
+([D260817c](./08-decisions/D260817c-the-browser-suite-builds-what-it-drives.md)):
+the server it spawns is a compiled artefact, so a build that predates the branch
+under test would answer the browsers with screens the specs were written after.
+
 **Locators are roles and accessible names, never test hooks.** That is a
 constraint on the components as much as on the suite: a control the tests cannot
 name is a control a screen reader cannot name either.

@@ -87,7 +87,8 @@ jobs:
       # The suite is what `pnpm verify` deliberately leaves out: it loads the
       # built front end in two browsers, which is the only check here that opens
       # the page a visitor will open.
-      - run: pnpm build
+      # `test:e2e` builds `dist/` before it drives it (D260817c), so the artefact
+      # the browsers load is this tag's, never whatever was lying around.
       - run: pnpm --filter @lukarn/e2e exec playwright install --with-deps chromium webkit
       - run: pnpm test:e2e
 
