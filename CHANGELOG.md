@@ -11,6 +11,29 @@ in this application migrates volumes or renames files on its own.
 
 [semantic versioning]: https://semver.org
 
+## [Unreleased]
+
+### The front end addresses the application by an alias
+
+An instance served by the Caddy this repository ships is unaffected. An instance
+served by a front end shared with another application was exposed to a name
+collision: the `Caddyfile` proxied to `app:8080`, compose gives every container
+its service name as an alias on every network it joins, and most compose files
+call their service `app`. Docker then answered that name with either application,
+in turn, request after request. The site kept working most of the time and served
+the neighbour the rest of it.
+
+The upstream is now `lukarn:8080`, an alias declared in `docker-compose.yml`. An
+instance reached through a proxy of its own, over the published `127.0.0.1:8080`,
+is not concerned at all: the alias is a name inside docker, and a proxy dialing a
+port on the host never resolves it. Nothing was removed either, so anything still
+addressing the container as `app` keeps working.
+
+Updating takes `git pull` and `docker compose up -d` on the whole project, which
+is what `deploy/deploy.sh` runs. Recreating the front end alone, before the
+application has been given the alias, leaves Caddy asking for a name that does not
+resolve yet.
+
 ## [1.2.0] — 2026-08-17
 
 ### Three new storage backends alongside Google Drive

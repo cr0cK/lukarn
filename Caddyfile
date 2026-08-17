@@ -22,7 +22,13 @@
 		max_size 1MB
 	}
 
-	reverse_proxy app:8080 {
+	# `lukarn`, and never the service name `app`: compose gives every container its
+	# service name as an alias on each network it joins, so a network shared with
+	# another application — which is how this Caddy is replaced by one front end
+	# serving several sites — has `app` answering from whichever container got
+	# there first, per request. The alias is declared in `docker-compose.yml` and
+	# resolves in both arrangements (D260817d).
+	reverse_proxy lukarn:8080 {
 		# Videos are served over `Range`, relayed from Drive as they come:
 		# buffering the response before sending it would make the player wait and
 		# hold the whole file in memory.

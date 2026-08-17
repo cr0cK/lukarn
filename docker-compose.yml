@@ -63,6 +63,15 @@ services:
       # it was built from, and an instance must not be able to claim another one.
       UPDATE_CHECK_URL: ${UPDATE_CHECK_URL-https://api.github.com/repos/cr0cK/lukarn/releases/latest}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+    networks:
+      default:
+        # The name the `Caddyfile` proxies to, here and behind a front end shared
+        # with other applications alike — which is why it is an alias rather than
+        # the service name. Compose gives every container its service name as an
+        # alias too, and on a shared network `app` answers from whichever
+        # application got there first; `lukarn` is this one (D260817d).
+        aliases:
+          - lukarn
     volumes:
       # Configuration, read-only: the application never modifies it.
       - ./config:/app/config:ro
@@ -82,7 +91,10 @@ services:
         max-file: '3'
 
   # TLS and public front end. See `Caddyfile`. If a proxy already runs on the
-  # host, drop this service and give `app` back a `ports: ['127.0.0.1:8080:8080']`.
+  # host, drop this service and give `app` back a `ports: ['127.0.0.1:8080:8080']`
+  # — or, when that proxy runs in docker and can import the `Caddyfile` from this
+  # clone, put `app` on its network instead: the upstream above is an alias
+  # precisely so that arrangement resolves to this application (D260817d).
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
