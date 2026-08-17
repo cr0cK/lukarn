@@ -87,15 +87,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The suite exercises `dist/`, not a dev server: `packages/server/dist`
-      # serving `packages/web/dist` is the artefact the image carries.
-      - run: pnpm build
-
       # WebKit is the engine the mobile rework targets — safe-area insets, pinch
       # and view transitions are iOS claims, and Chromium agreeing proves
       # nothing about them. Chromium covers the desktop half.
       - run: pnpm --filter @lukarn/e2e exec playwright install --with-deps chromium webkit
 
+      # The command builds `dist/` itself: the suite exercises the artefact the
+      # image carries, so the build belongs to it rather than to whoever
+      # remembers to run it first (D260817c).
       - run: pnpm test:e2e
 
       - uses: actions/upload-artifact@v5
@@ -136,13 +135,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # The suite imports the server's sources, which import `@lukarn/shared`
-      # through its `dist/`. Nothing else here has to be built: no browser, no
-      # front end, and no server process.
-      - run: pnpm --filter @lukarn/shared build
-
       # Starts `packages/e2e/storages/compose.yml`, seeds the three servers, runs
-      # the contract table against each, and takes them down again.
+      # the contract table against each, and takes them down again. The command
+      # compiles `shared` itself — the suite imports the server's sources, which
+      # read its declarations from `dist/` (D260817c).
       - run: pnpm test:storages
 
       - name: What the storages logged

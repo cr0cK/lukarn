@@ -218,6 +218,12 @@ builds a throwaway instance, starts the **built** server on it and drives the
 real page on a phone (WebKit) and a desktop (Chromium). Reckon two minutes, most
 of it seeding, and `pnpm exec playwright install chromium webkit` once.
 
+The command builds `dist/` before driving it (D260817c), so there is no ordering
+to remember: it is the artefact the image carries, and a `dist` left over from an
+earlier release fails _plausibly_—every screen added since simply absent, which
+reads as a regression in the branch under test rather than as the wrong build on
+the port.
+
 It is **not** part of `verify`, and must not be added to it: `verify` runs on the
 22/24 matrix and on `pre-push`, and a gate that downloads two browsers is a gate
 people bypass (D260814g). CI runs it as a job of its own and again in

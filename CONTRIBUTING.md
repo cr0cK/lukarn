@@ -59,13 +59,14 @@ the diff of a fix that was not theirs.
 
 ```bash
 pnpm exec playwright install chromium webkit   # once
-pnpm build && pnpm test:e2e
+pnpm test:e2e
 ```
 
-It builds a throwaway instance under `packages/e2e/.tmp/`, starts the **built**
-server on it, and drives the real page on a phone (WebKit) and a desktop
-(Chromium): the tab bar, the sheets, the viewer, search, `/admin` and the comment
-flow end to end. Reckon two minutes, most of it seeding.
+It compiles the workspace, builds a throwaway instance under
+`packages/e2e/.tmp/`, starts the **built** server on it, and drives the real page
+on a phone (WebKit) and a desktop (Chromium): the tab bar, the sheets, the
+viewer, search, `/admin` and the comment flow end to end. Reckon two minutes,
+most of it seeding.
 
 It is not in `pnpm verify` on purpose. That command runs on `pre-push`, and a
 gate that downloads two browsers is a gate people bypass. CI runs it as a job of
