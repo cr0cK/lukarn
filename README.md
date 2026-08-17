@@ -179,8 +179,9 @@ different kinds, and each album names the one it reads.
 | **WebDAV server**        | Nextcloud, ownCloud, Synology, `mod_dav` | Address, folder, username, app password              |
 | **Google Drive**         | A Drive account                          | A service-account key, and the folder shared with it |
 
-Only the last one needs anything outside this application, namely a console to
-visit and a folder to share. Open the one you are using:
+A local folder is mounted into the container before `/admin` can see it, and
+Google Drive needs a console visited and a folder shared. A bucket and a WebDAV
+server are declared here and nowhere else. Open the one you are using:
 
 <details>
 <summary><b>Local folder</b>: photographs already on the machine</summary>

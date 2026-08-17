@@ -1,4 +1,4 @@
-# D260817c — The register of a public document is checked
+# D260817b — The register of a public document is checked
 
 **Context.** The five documents a stranger reads (`README.md`, `CHANGELOG.md`,
 `deploy/README.md`, `CONTRIBUTING.md`, `SECURITY.md`) had drifted into a

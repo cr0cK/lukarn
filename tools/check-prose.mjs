@@ -15,7 +15,8 @@
  * stops being a choice and becomes a tic. The phrase list is different, since
  * those constructions have a plain equivalent every time.
  *
- * Code blocks and tables of shell commands are exempt: the point is prose.
+ * Code blocks and inline code are exempt: the point is prose, and a document
+ * has to be able to quote the phrases it forbids.
  *
  *   node tools/check-prose.mjs
  */
@@ -23,7 +24,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const RACINE = fileURLToPath(new URL('..', import.meta.url));
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 /**
  * The documents this check reads, and the em dashes each may still carry.
@@ -31,11 +32,6 @@ const RACINE = fileURLToPath(new URL('..', import.meta.url));
  * `specs/` is deliberately absent: it is read by whoever takes over the code,
  * not by whoever discovers the project, and twenty thousand lines of it would
  * make this a rewrite rather than a check.
- *
- * `CHANGELOG.md` is read down to its second version heading and no further. The
- * section of a version that has shipped is the body of a GitHub release that
- * already exists, and editing it here would make the file disagree with the page
- * people were sent to. Only the notes still being written are held to this.
  */
 const BUDGETS = {
   'README.md': 2,
@@ -49,14 +45,24 @@ const BUDGETS = {
  * The version headings, whose `## [1.2.0] — 2026-08-17` is a date separator
  * rather than a sentence, and has been the file's format since 1.0.0.
  */
-function sansTitresDeVersion(source) {
+function withoutVersionTitles(source) {
   return source.replace(/^## \[.*$/gm, '');
 }
 
-/** The preamble and the newest section: everything above the second `## [`. */
-function sectionEnCours(source) {
-  const versions = [...source.matchAll(/^## \[/gm)];
-  return versions.length < 2 ? source : source.slice(0, versions[1].index);
+/**
+ * The changelog section still being written.
+ *
+ * `## [Unreleased]` by name, the way `check-changelog.mjs` finds it, rather
+ * than "whatever sits at the top": between a release and the next feature the
+ * topmost section is the one that has just shipped, and holding it to this
+ * check would demand edits to notes a GitHub release page already carries.
+ * With no unreleased section there is nothing here to judge.
+ */
+function draftSection(source) {
+  const start = source.search(/^## \[?unreleased\]?/im);
+  if (start < 0) return '';
+  const next = source.slice(start).search(/\n## /);
+  return next < 0 ? source.slice(start) : source.slice(start, start + next);
 }
 
 /**
@@ -64,69 +70,73 @@ function sectionEnCours(source) {
  *
  * Each one is a habit rather than a mistake, which is why the message names the
  * replacement: a check that only says "no" teaches nothing the second time.
+ *
+ * The patterns must not overlap. `not just` and `it's not just` would both
+ * match the same words and report one lapse twice, so the longer form keeps
+ * only the alternative the shorter ones do not already cover.
  */
-const TOURNURES = [
+const TURNS = [
   {
-    motif: /\band nothing (?:else|more)\b/gi,
-    conseil: 'say what it does ask for, or drop the clause',
+    pattern: /\band nothing (?:else|more)\b/gi,
+    advice: 'say what it does ask for, or drop the clause',
   },
-  { motif: /\bnot just\b/gi, conseil: 'state the thing itself' },
-  { motif: /\bnot only\b(?![^.]{0,30}\bbut\b)/gi, conseil: 'state the thing itself' },
-  { motif: /\bit'?s not (?:just|merely|only)\b/gi, conseil: 'state the thing itself' },
-  { motif: /\bis not (?:a|an|the)\b[^.]{0,40}\bit is\b/gi, conseil: 'say what it is' },
-  { motif: /,\s*never (?:a|an|the)\s/gi, conseil: 'use "rather than", or a sentence of its own' },
-  { motif: /\bat its core\b/gi, conseil: 'delete it' },
-  { motif: /\bthe real question is\b/gi, conseil: 'ask the question' },
-  { motif: /\bwhat really matters\b/gi, conseil: 'say what matters' },
-  { motif: /\bit is worth noting that\b/gi, conseil: 'note it' },
+  { pattern: /\bnot just\b/gi, advice: 'state the thing itself' },
+  { pattern: /\bnot only\b(?![^.]{0,30}\bbut\b)/gi, advice: 'state the thing itself' },
+  { pattern: /\bit'?s not merely\b/gi, advice: 'state the thing itself' },
+  { pattern: /\bis not (?:a|an|the)\b[^.]{0,40}\bit is\b/gi, advice: 'say what it is' },
+  { pattern: /,\s*never (?:a|an|the)\s/gi, advice: 'use "rather than", or a sentence of its own' },
+  { pattern: /\bat its core\b/gi, advice: 'delete it' },
+  { pattern: /\bthe real question is\b/gi, advice: 'ask the question' },
+  { pattern: /\bwhat really matters\b/gi, advice: 'say what matters' },
+  { pattern: /\bit is worth noting that\b/gi, advice: 'note it' },
   {
-    motif: /\blet'?s (?:dive|explore|break)\b/gi,
-    conseil: 'do the thing instead of announcing it',
+    pattern: /\blet'?s (?:dive|explore|break)\b/gi,
+    advice: 'do the thing instead of announcing it',
   },
 ];
 
 /** Fenced blocks and inline code, which are quoted rather than written. */
-function sansCode(source) {
+function withoutCode(source) {
   return source.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
 }
 
 /** Line breaks hide a phrase from a search; prose is read as one string. */
-function aplati(source) {
+function flattened(source) {
   return source.replace(/\s+/g, ' ');
 }
 
-const manques = [];
+const failures = [];
 
-for (const [fichier, budget] of Object.entries(BUDGETS)) {
-  const brut = readFileSync(join(RACINE, fichier), 'utf8');
-  const source = sansCode(
-    fichier === 'CHANGELOG.md' ? sansTitresDeVersion(sectionEnCours(brut)) : brut,
+for (const [file, budget] of Object.entries(BUDGETS)) {
+  const raw = readFileSync(join(ROOT, file), 'utf8');
+  const source = withoutCode(
+    file === 'CHANGELOG.md' ? withoutVersionTitles(draftSection(raw)) : raw,
   );
 
-  const cadratins = (source.match(/—/g) ?? []).length;
-  if (cadratins > budget) {
-    manques.push(
-      `${fichier}: ${cadratins} em dashes for a budget of ${budget}. ` +
+  const dashes = (source.match(/—/g) ?? []).length;
+  if (dashes > budget) {
+    failures.push(
+      `${file}: ${dashes} em dashes for a budget of ${budget}. ` +
         'A comma, a colon or a full stop carries almost all of them.',
     );
   }
 
-  const plat = aplati(source);
-  for (const { motif, conseil } of TOURNURES) {
-    for (const trouve of plat.matchAll(motif)) {
-      const extrait = plat.slice(Math.max(0, trouve.index - 40), trouve.index + 60).trim();
-      manques.push(`${fichier}: "${trouve[0]}" (${conseil})\n      …${extrait}…`);
+  const prose = flattened(source);
+  for (const { pattern, advice } of TURNS) {
+    for (const found of prose.matchAll(pattern)) {
+      const excerpt = prose.slice(Math.max(0, found.index - 40), found.index + 60).trim();
+      failures.push(`${file}: "${found[0]}" (${advice})\n      …${excerpt}…`);
     }
   }
 }
 
-if (manques.length === 0) {
+if (failures.length === 0) {
   console.log(`prose: ${Object.keys(BUDGETS).length} public documents read as written`);
   process.exit(0);
 }
 
-console.error(`\nThe register of a public document has drifted — ${manques.length} issue(s):\n`);
-for (const manque of manques) console.error(`  · ${manque}`);
+console.error(`\nThe register of a public document has drifted — ${failures.length} issue(s):\n`);
+for (const failure of failures) console.error(`  · ${failure}`);
 console.error(
   '\nThese documents address a stranger, and the tone rule is in CLAUDE.md' +
     '\nand CONTRIBUTING.md. Raising a budget is a decision, not a fix.\n',

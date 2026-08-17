@@ -541,7 +541,7 @@ The fourth does judge prose, within limits it can defend.
 `tools/check-prose.mjs` reads the five documents a stranger meets first and fails
 on two measurable things: em dashes past a budget per file, and a short list of
 constructions that state something by denying its opposite. It says nothing about
-whether a paragraph is any good (D260817c).
+whether a paragraph is any good (D260817b).
 
 `check-specs.mjs` also covers **decision consistency**: an
 identifier defined twice, a file name that doesn't match its decision's
