@@ -284,7 +284,8 @@ declared entirely from `/admin` — an address, a name and a credential — and 
 local folder needs one thing from this file and nothing from Google: mount the
 photographs read-only and point `STORAGE_LOCAL_ROOT` at their mount point, so
 that an administrator password never becomes a way to read the rest of the
-machine. See the storage table in the [root README](../README.md#other-storages).
+machine. See the storage table in the
+[root README](../README.md#3-connect-a-storage).
 An instance may read several at once, so nothing below has to be done first, or
 at all.
 

@@ -4,8 +4,8 @@
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](./LICENSE)
 
 A self-hosted gallery for browsing photos and videos where they already sit — a
-Google Drive account, a folder on the machine, an S3-compatible bucket, a WebDAV
-server — in place of the preview each of those offers: justified grid grouped by
+folder on the machine, an S3-compatible bucket, a WebDAV server, a Google Drive
+account — in place of the preview each of those offers: justified grid grouped by
 month, keyboard-driven fullscreen viewer, light or dark theme.
 
 Access is by username and password, and a credential can be handed to several
@@ -19,7 +19,7 @@ belongs to: the gallery is the point, and where the photos happen to sit is not.
 
 | I want to…                              |                                                           |
 | --------------------------------------- | --------------------------------------------------------- |
-| **Run it, and see my own photos in it** | [**Get started**](#get-started) — five steps, ten minutes |
+| **Run it, and see my own photos in it** | [**Get started**](#get-started) — four steps, ten minutes |
 | Work on the code                        | [Run it from source](#run-it-from-source)                 |
 | Put it on a server and keep it running  | [`deploy/README.md`](./deploy/README.md)                  |
 | Understand how it is built              | [`specs/README.md`](./specs/README.md)                    |
@@ -66,24 +66,27 @@ account, and nobody's family in a public README.
   link; administrators can hide and restore comments from `/admin`.
 - **Installable on a phone**: added to the home screen, it opens full-screen
   with no address bar and no password to type again.
-- **Everything goes through the server**: no Google URL is ever exposed to the
-  browser. Thumbnails are generated as WebP and cached on disk.
+- **Everything goes through the server**: no storage URL, signed or otherwise, is
+  ever exposed to the browser. Thumbnails are generated as WebP and cached on
+  disk.
+- **Four storage kinds, several at a time**, each album naming the one it reads:
+  a folder on the machine, an S3-compatible bucket, a WebDAV server, Google
+  Drive.
 
-A storage is only ever read: the Drive scope asked for is read-only, and nothing
-is ever written to a folder, a bucket or a WebDAV server.
+A storage is only ever read: the Drive scope asked for is read-only, an S3 key
+pair only has to grant reads, and nothing is ever written to a folder, a bucket
+or a WebDAV server.
 
 ## Get started
 
-Five steps, from nothing to your own photographs on screen. Nothing to clone and
+Four steps, from nothing to your own photographs on screen. Nothing to clone and
 nothing to compile — the published image carries the application already built.
-Docker and — for the walkthrough below — a Google account are the prerequisites,
-and about ten minutes.
+Docker and somewhere your photographs already live are the two prerequisites, and
+about ten minutes.
 
-**This walkthrough connects a Drive**, which is the longest of the four paths:
-steps 3 and 4 exist only to give Google an identity to share a folder with. A
-bucket, a WebDAV server and a folder on the machine are declared from `/admin` in
-one form, with no console to visit — see [Other storages](#other-storages) once
-the instance is up.
+Steps 1, 2 and 4 are the same wherever they live. **Step 3 is the only one that
+depends on the storage**, and it has one collapsed section per kind — open the
+one you are using and ignore the rest.
 
 > The image is built for **`linux/amd64` only**. On arm64 — an Apple Silicon Mac,
 > a Raspberry Pi — build it from source instead:
@@ -114,9 +117,9 @@ services:
       - '127.0.0.1:8080:8080'
     env_file: .env
     volumes:
-      # The Drive key, when there is one. Read-only: nothing is written here.
+      # A Drive service-account key, when there is one. Read-only: nothing is written here.
       - ./config:/app/config:ro
-      # Accounts, index and the encrypted Google token — the only irreplaceable data.
+      # Accounts, index and the encrypted storage credentials — the only irreplaceable data.
       - lukarn-data:/app/data
       # Generated thumbnails: losing this volume costs a regeneration, nothing more.
       - lukarn-cache:/app/cache
@@ -157,11 +160,90 @@ docker compose exec app node packages/server/dist/scripts/create-admin.js alice
 The password is prompted without being displayed.
 
 **Sign in at `http://localhost:8080`.** That username and password are yours as a
-visitor; they have nothing to do with Google. Nobody who opens your gallery will
-ever see a Google screen — the application holds one Drive credential, yours, and
-serves every photograph through it.
+visitor; they have nothing to do with wherever the photographs sit. Nobody who
+opens your gallery is asked to sign in to anything else — the application holds
+one credential per storage, yours, and serves every photograph through it.
 
-### 3. Give it an identity on Google
+### 3. Connect a storage
+
+**`/admin` → Storage → Add.** The form asks for what that kind needs and nothing
+else, **Test** asks the backend itself and repeats what it answered, and the
+album form then offers the new connection. Several may be connected at once, of
+different kinds, and each album names the one it reads.
+
+| Kind                     | Where the photographs are                | What it asks for                                     |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------- |
+| **Local folder**         | A disk or NAS the container can see      | A folder under `STORAGE_LOCAL_ROOT`                  |
+| **S3-compatible bucket** | MinIO, Garage, Backblaze, Scaleway, AWS  | Endpoint, region, bucket, read-only key pair         |
+| **WebDAV server**        | Nextcloud, ownCloud, Synology, `mod_dav` | Address, folder, username, app password              |
+| **Google Drive**         | A Drive account                          | A service-account key, and the folder shared with it |
+
+Only the last one needs anything outside this application — a console to visit
+and a folder to share. Open the one you are using:
+
+<details>
+<summary><b>Local folder</b> — photographs already on the machine</summary>
+
+Nothing is uploaded or copied: the files are read where they are, and videos
+seek because the folder answers `Range` requests the way a web server does.
+
+The container has to be given the directory first, because **choosing what the
+gallery may read is the operator's decision, not an administrator's**. Add to
+`docker-compose.yml`:
+
+```yaml
+environment:
+  STORAGE_LOCAL_ROOT: /photos
+volumes:
+  - /home/alice/Pictures:/photos:ro
+```
+
+Then `docker compose up -d`, and in **Storage → Add** pick **Local folder**. The
+folder field holds a path **inside** `/photos` — `2026/summer`, or empty for the
+whole of it. An absolute path is refused, and so is a symlink leading out: an
+administrator password never becomes a way to read the rest of the machine.
+
+</details>
+
+<details>
+<summary><b>S3-compatible bucket</b> — MinIO, Garage, Backblaze, Scaleway, Amazon</summary>
+
+**Storage → Add → S3-compatible bucket**: the endpoint, the region, the bucket
+name and an access key pair. The endpoint is the address of the service and not
+of the bucket, the region matters only to Amazon, and an optional **Prefix**
+restricts the connection to one folder of the bucket. The secret key is stored
+encrypted and never shown again, and a read-only one is enough — nothing here
+ever writes to a bucket.
+
+Tick **Address the bucket by path** for MinIO, and for any bucket whose name is
+not a valid domain name. Leaving it unticked addresses it as a subdomain, which
+is what Amazon expects.
+
+**Test** asks the bucket itself, so a mistyped key, an address that answers
+nothing and a bucket that does not exist read differently instead of all
+becoming an album that stays empty.
+
+</details>
+
+<details>
+<summary><b>WebDAV server</b> — Nextcloud, ownCloud, Synology, Apache <code>mod_dav</code></summary>
+
+**Storage → Add → WebDAV server**: the address of the **endpoint** — not the page
+the files are browsed on, which is the mistake everyone makes first. Nextcloud
+and ownCloud publish theirs as
+`https://cloud.example.com/remote.php/dav/files/<username>`. Then an optional
+folder under it, a username, and an **app password** created in the account's
+security settings rather than the account's own password: it grants file access
+alone, and revoking it costs nothing.
+
+**Test** names what is wrong when something is — a refused password, a host that
+never answered, or an address that is not a WebDAV endpoint, which is the
+mistake everyone makes first.
+
+</details>
+
+<details>
+<summary><b>Google Drive</b> — a service account, and a folder shared with it</summary>
 
 The gallery signs in to Google as a **service account**: an identity that owns
 nothing, has an address of its own, and sees only what somebody shares with that
@@ -189,78 +271,66 @@ docker compose up -d                    # re-reads the .env
 That path is the one **the container sees**: `./config` on your machine is
 mounted at `/app/config` inside it.
 
-**Open `/admin`.** The Drive section now shows the account's address, of the form
-`lukarn@my-project.iam.gserviceaccount.com`. **Copy it** — the next step is what
-gives it something to read.
-
-### 4. Share a folder with that address
-
-In **Google Drive**, right-click the folder holding the photographs →
-**Share** → paste the address → leave the role at **Viewer** → untick "Notify
-people", since that mailbox does not exist → **Share**.
+**Open `/admin` → Storage.** The connection shows the account's address, of the
+form `lukarn@my-project.iam.gserviceaccount.com`. **Copy it**, then in **Google
+Drive** right-click the folder holding the photographs → **Share** → paste the
+address → leave the role at **Viewer** → untick "Notify people", since that
+mailbox does not exist → **Share**.
 
 That share _is_ the access: what you share, the gallery reads; the rest of your
-Drive stays invisible to it. And sharing is **inherited**, so one share at the top
-of a folder covers every subfolder in it, and every photograph added to it later.
+Drive stays invisible to it. And sharing is **inherited**, so one share at the
+top of a folder covers every subfolder in it, and every photograph added later.
 
-> **The one thing that fails silently.** A folder nobody shared produces no error
-> — not in `/admin`, not in the logs. Only an empty album. If an album stays at
-> zero items after a sync that reported "ok", check the share before anything
-> else.
+> **The one thing that fails silently.** A folder nobody shared produces no
+> error — not in `/admin`, not in the logs. Only an empty album. If an album
+> stays at zero items after a sync that reported "ok", check the share before
+> anything else.
 
-### 5. Declare the album
+Connecting your own Google account with OAuth instead is possible and is not the
+path recommended here: it grants read access to the **whole** Drive, Google shows
+its "hasn't verified this app" screen at every consent, and the refresh token
+expires after six months of inactivity — the gallery then quietly stops filling.
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` go in the `.env`, the redirect URI
+declared in the console must be exactly `PUBLIC_URL` followed by
+`/api/oauth/callback`, and consent is given once from `/admin`. Step by step,
+including the publication status that otherwise expires the token every seven
+days: [`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-a-storage).
 
-Open that same folder in Drive and copy its identifier from the address bar — the
-segment after `/folders/`:
+</details>
+
+### 4. Declare an album
+
+In **`/admin` → Albums**, create the album: a title, the storage it reads, a
+folder inside that storage, and who may open it. **Synchronisation starts on its
+own and the photographs appear within seconds** — indexing reads what the storage
+already knows about each file.
+
+Leave the folder empty and the album covers everything the connection declares,
+which is what a bucket holding one gallery wants. Google Drive is the exception:
+it names a folder by identifier rather than by path, so paste the segment after
+`/folders/` from the address bar.
 
 ```
 https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz
                                        ^--------- folderId ------^
 ```
 
-A path (`/Holidays/2026-07-Germany`) will not do: the Drive API only handles
-identifiers. That one survives renames and moves.
+**That is the install.** Every album after this one is one step, storage
+permitting. They resynchronise on their own at the interval set in `/admin`,
+**Resynchronise** forces a pass, and **nothing is ever written to a storage**.
 
-Then, in **`/admin` → Albums**, create the album: a title, that identifier as the
-folder ID, and who may open it. **Synchronisation starts on its own and the
-photographs appear within seconds** — indexing downloads nothing, it reads what
-Drive already knows about each file.
+### What differs between storages
 
-**That is the install.** Every album after this one is two steps: share its
-folder, declare it. They resynchronise on their own at the interval set in
-`/admin`, **Resynchronise** forces a pass, and nothing is ever written to Drive.
+The gallery behaves the same on all four. Two things underneath do not:
 
-### Other storages
-
-`/admin` → **Storage** → **Add**. The form asks for what that kind needs and
-nothing else, **Test** asks the backend itself and repeats what it answered, and
-the album form then offers the new connection. Several may be connected at once.
-
-| Kind                     | What the form asks                                         |
-| ------------------------ | ---------------------------------------------------------- |
-| **Local folder**         | A subfolder of `STORAGE_LOCAL_ROOT` — see below            |
-| **S3-compatible bucket** | Endpoint, region, bucket, and a read-only access key pair  |
-| **WebDAV server**        | Address, a folder under it, a username and an app password |
-
-A **Local folder** is the one kind the container has to be given first: mount the
-photographs read-only and name their mount point, so that an administrator
-password never becomes a way to read the rest of the machine.
-
-```yaml
-environment:
-  STORAGE_LOCAL_ROOT: /photos
-volumes:
-  - /home/alice/Pictures:/photos:ro
-```
-
-`/admin` then picks a folder **inside** `/photos`, and never an absolute path.
-
-Two differences with a Drive are worth knowing before choosing. A Drive names a
-file with an identifier that survives a rename, so a photograph moved between
-folders keeps its comments; everywhere else a file is named by its path, and
-renaming it makes it a new photograph. And a Drive hands over EXIF data and a
-preview inside its listing, where the others hand over bytes — the capture date
-is then read from the file itself, and a video's poster is cut by ffmpeg.
+- **A renamed file keeps its comments on Drive, and nowhere else.** Drive names a
+  file by an identifier that survives a rename or a move; every other backend
+  names it by its path, so renaming it makes it a new photograph, with the
+  comments left behind on the old name.
+- **Drive hands over EXIF data and a preview inside its listing**; the others
+  hand over bytes. The capture date is then read from the file itself, a video's
+  poster is cut locally with ffmpeg, and a HEIC or RAW file nothing here can
+  decode has no thumbnail at all.
 
 ### Beyond that
 
@@ -274,23 +344,6 @@ is then read from the file itself, and a video's poster is cut by ffmpeg.
 
 Every variable, with what it changes:
 [`specs/06`](./specs/06-configuration-and-deployment.md).
-
-<details>
-<summary>Connecting your own Google account instead, with OAuth</summary>
-
-Nothing to share per album, and that is the whole of its appeal. The price is
-paid three times: it grants read access to the **whole** Drive, Google shows its
-"hasn't verified this app" screen at every consent, and the refresh token expires
-after six months of inactivity — the gallery then quietly stops filling.
-
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` go in the `.env`, the redirect URI
-declared in the console must be exactly `PUBLIC_URL` followed by
-`/api/oauth/callback`, and consent is given once from `/admin` → **Connect Google
-Drive**. Step by step, including the publication status that otherwise expires the
-token every seven days:
-[`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-a-storage).
-
-</details>
 
 ## Run it from source
 
@@ -316,9 +369,9 @@ through its `dist/`, not its sources: on a fresh clone, `pnpm dev` and
 built. The same constraint fixes the order of the full build, `shared` → `web` →
 `server`.
 
-**Photographs without a Drive account.** `seed-demo` fills albums that already
-exist, so declare one from `/admin` first — its Drive folder never has to be
-reachable:
+**Photographs without connecting anything.** `seed-demo` fills albums that
+already exist, so declare one from `/admin` first — the storage it names never
+has to be reachable:
 
 ```bash
 pnpm --filter @lukarn/server seed-demo 300
@@ -377,17 +430,17 @@ the API and the built front end.
 ```
 packages/
 ├─ shared/   Types shared between the API and the front end
-├─ server/   Fastify · SQLite · Google Drive · image cache
+├─ server/   Fastify · SQLite · four storage backends · image cache
 └─ web/      React · Vite · Tailwind
 ```
 
 Two choices explain most of the rest. **The index lives in SQLite**, fed by a
-walk of the Drive folders that downloads nothing — `files.list` already returns
-dimensions and EXIF — so the grid is read locally, and knowing every proportion
-in advance lets it lay itself out before a single image loads. And **nothing
-reaches the browser from Google**: thumbnails are rendered to WebP and cached on
-disk with LRU eviction, videos are relayed `Range` by `Range` without
-transcoding.
+walk of the storage that downloads as little as it can — a Drive listing already
+carries dimensions and EXIF, and elsewhere only the header of each file is
+read — so the grid is served locally, and knowing every proportion in advance
+lets it lay itself out before a single image loads. And **no storage URL ever
+reaches the browser**: thumbnails are rendered to WebP and cached on disk with
+LRU eviction, videos are relayed `Range` by `Range` without transcoding.
 
 Why it is built this way is in [`specs/`](./specs/) — start with
 [`specs/README.md`](./specs/README.md).
