@@ -171,7 +171,8 @@ pnpm check:format                    # prettier --check .—does formatting matc
 pnpm check:specs                     # have the specs drifted from the code?
 pnpm check:links                     # do references between documents lead anywhere?
 pnpm check:changelog                 # does a visible change say so in CHANGELOG.md?
-pnpm verify                          # shared compiled, then all seven—the gate before publishing
+pnpm check:prose                     # do the public documents still read as written?
+pnpm verify                          # shared compiled, then all eight—the gate before publishing
 
 just dev                             # the stack, prerequisites checked first
 just demo [count]                    # the stack, against a seeded instance in .demo/
@@ -192,9 +193,9 @@ own database and its own cache, so it never touches the `./data` a real one uses
 `just` is a shortcut: no check, hook or workflow depends on it.
 
 Before declaring work complete, run **`pnpm verify`**—typecheck, lint,
-formatting, tests, spec checks and link checks. CI runs the same command, and the
-two documentation checks also run on `pre-push`: divergence blocks publication
-before it reaches the remote repository.
+formatting, tests, and the four documentation checks (specs, links, prose,
+changelog). CI runs the same command, and those four also run on `pre-push`:
+divergence blocks publication before it reaches the remote repository.
 
 It compiles `shared` first, and that step is part of the gate rather than a
 prerequisite left to whoever runs it (D260817). Everything downstream typechecks
@@ -336,6 +337,29 @@ this file.
 This repository is open source. Its writing addresses a stranger, not the team
 that wrote it. `CONTRIBUTING.md` tells that reader what this page tells an agent;
 keep them aligned.
+
+**Write plainly, and factually.** The five documents a stranger reads—`README.md`,
+`CHANGELOG.md`, `deploy/README.md`, `CONTRIBUTING.md`, `SECURITY.md`—had drifted
+into a register that reads as machine-written, and `pnpm check:prose` now holds
+them to this. What it caught, and what to avoid:
+
+- **The em dash is rationed**, to a budget per file rather than banned outright.
+  A comma, a colon or a full stop carries almost every one of them, and prose
+  broken by a dash every few lines is the single loudest tell. Reach for a second
+  sentence before reaching for a dash.
+- **No `and nothing else`, `not just X`, `it is not X, it is Y`, `never a photo`.**
+  Each states a thing by denying its opposite. Say what the thing is.
+- **A heading states what changed**, not what it means. `Three new storage
+backends alongside Google Drive`, not `Photographs no longer have to live in
+Google Drive`. The evocative version reads as marketing, and a reader scanning
+  a release page for what is new has to translate it first.
+- No `at its core`, `the real question is`, `it is worth noting that`, and no
+  announcing what the next paragraph will do.
+
+The register to aim for is a colleague explaining the change: specific, ordered,
+unhurried, with no sentence performing. The check reads the newest changelog
+section only—notes for a version that shipped are the body of a release page
+that already exists, and editing them would make the two disagree.
 
 **A pull request says what it adds or fixes, not what its author went through.**
 In practice:

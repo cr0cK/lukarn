@@ -3,29 +3,30 @@
 [![verify](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml/badge.svg)](https://github.com/cr0cK/lukarn/actions/workflows/verify.yml)
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](./LICENSE)
 
-A self-hosted gallery for browsing photos and videos where they already sit — a
+A self-hosted gallery for browsing photos and videos where they already sit: a
 folder on the machine, an S3-compatible bucket, a WebDAV server, a Google Drive
-account — in place of the preview each of those offers: justified grid grouped by
-month, keyboard-driven fullscreen viewer, light or dark theme.
+account. It replaces the preview each of those offers with a justified grid
+grouped by month, a keyboard-driven fullscreen viewer, and a light or dark
+theme.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment.
 From `/admin`, the owner connects the storages, declares which of their folders
-become albums and who may open them — enough to share one album without exposing
-the rest of the account.
+become albums and who may open them. That is enough to share one album without
+exposing the rest of the account.
 
 One instance can read several storages at once, and each album names the one it
 belongs to: the gallery is the point, and where the photos happen to sit is not.
 
-| I want to…                              |                                                           |
-| --------------------------------------- | --------------------------------------------------------- |
-| **Run it, and see my own photos in it** | [**Get started**](#get-started) — four steps, ten minutes |
-| Work on the code                        | [Run it from source](#run-it-from-source)                 |
-| Put it on a server and keep it running  | [`deploy/README.md`](./deploy/README.md)                  |
-| Understand how it is built              | [`specs/README.md`](./specs/README.md)                    |
-| Contribute                              | [`CONTRIBUTING.md`](./CONTRIBUTING.md)                    |
-| Report a vulnerability                  | [`SECURITY.md`](./SECURITY.md)                            |
-| See what changed                        | [`CHANGELOG.md`](./CHANGELOG.md)                          |
+| I want to…                              |                                                          |
+| --------------------------------------- | -------------------------------------------------------- |
+| **Run it, and see my own photos in it** | [**Get started**](#get-started): four steps, ten minutes |
+| Work on the code                        | [Run it from source](#run-it-from-source)                |
+| Put it on a server and keep it running  | [`deploy/README.md`](./deploy/README.md)                 |
+| Understand how it is built              | [`specs/README.md`](./specs/README.md)                   |
+| Contribute                              | [`CONTRIBUTING.md`](./CONTRIBUTING.md)                   |
+| Report a vulnerability                  | [`SECURITY.md`](./SECURITY.md)                           |
+| See what changed                        | [`CHANGELOG.md`](./CHANGELOG.md)                         |
 
 ## What it looks like
 
@@ -48,8 +49,8 @@ code received by email.
 <img src="./assets/screenshots/tour.gif" alt="Signing in, opening an album, scrolling the grid, opening a photograph, then its information and its comments">
 
 Screenshots come from `seed-demo --photos`, on
-[public-domain and CC0 photographs](https://commons.wikimedia.org/) — no Drive
-account, and nobody's family in a public README.
+[public-domain and CC0 photographs](https://commons.wikimedia.org/). No account
+anywhere is involved, and nobody's family appears in a public README.
 
 ## What it does
 
@@ -79,17 +80,17 @@ or a WebDAV server.
 
 ## Get started
 
-Four steps, from nothing to your own photographs on screen. Nothing to clone and
-nothing to compile — the published image carries the application already built.
-Docker and somewhere your photographs already live are the two prerequisites, and
+Four steps, from nothing to your own photographs on screen. There is nothing to
+clone and nothing to compile, since the published image carries the application
+already built. You need Docker, somewhere your photographs already live, and
 about ten minutes.
 
 Steps 1, 2 and 4 are the same wherever they live. **Step 3 is the only one that
-depends on the storage**, and it has one collapsed section per kind — open the
-one you are using and ignore the rest.
+depends on the storage**, and it has one collapsed section per kind. Open the one
+you are using and ignore the rest.
 
-> The image is built for **`linux/amd64` only**. On arm64 — an Apple Silicon Mac,
-> a Raspberry Pi — build it from source instead:
+> The image is built for **`linux/amd64` only**. On arm64, such as an Apple
+> Silicon Mac or a Raspberry Pi, build it from source instead:
 > [`deploy/README.md`](./deploy/README.md).
 
 ### 1. Start it
@@ -111,7 +112,7 @@ services:
     restart: unless-stopped
     ports:
       # Loopback only. Published on every interface, the gallery would answer
-      # anyone on the network over plain HTTP — cookies are not `secure` outside
+      # anyone on the network over plain HTTP. Cookies are not `secure` outside
       # https, and a forged X-Forwarded-For from a private address defeats the
       # login backoff. Reaching it from elsewhere goes through a TLS front end.
       - '127.0.0.1:8080:8080'
@@ -119,7 +120,7 @@ services:
     volumes:
       # A Drive service-account key, when there is one. Read-only: nothing is written here.
       - ./config:/app/config:ro
-      # Accounts, index and the encrypted storage credentials — the only irreplaceable data.
+      # Accounts, index and the encrypted storage credentials: the only irreplaceable data.
       - lukarn-data:/app/data
       # Generated thumbnails: losing this volume costs a regeneration, nothing more.
       - lukarn-cache:/app/cache
@@ -161,14 +162,14 @@ The password is prompted without being displayed.
 
 **Sign in at `http://localhost:8080`.** That username and password are yours as a
 visitor; they have nothing to do with wherever the photographs sit. Nobody who
-opens your gallery is asked to sign in to anything else — the application holds
+opens your gallery is asked to sign in to anything else. The application holds
 one credential per storage, yours, and serves every photograph through it.
 
 ### 3. Connect a storage
 
-**`/admin` → Storage → Add.** The form asks for what that kind needs and nothing
-else, **Test** asks the backend itself and repeats what it answered, and the
-album form then offers the new connection. Several may be connected at once, of
+**`/admin` → Storage → Add.** The form asks only for what that kind needs,
+**Test** asks the backend itself and repeats what it answered, and the album form
+then offers the new connection. Several may be connected at once, of
 different kinds, and each album names the one it reads.
 
 | Kind                     | Where the photographs are                | What it asks for                                     |
@@ -178,11 +179,11 @@ different kinds, and each album names the one it reads.
 | **WebDAV server**        | Nextcloud, ownCloud, Synology, `mod_dav` | Address, folder, username, app password              |
 | **Google Drive**         | A Drive account                          | A service-account key, and the folder shared with it |
 
-Only the last one needs anything outside this application — a console to visit
-and a folder to share. Open the one you are using:
+Only the last one needs anything outside this application, namely a console to
+visit and a folder to share. Open the one you are using:
 
 <details>
-<summary><b>Local folder</b> — photographs already on the machine</summary>
+<summary><b>Local folder</b>: photographs already on the machine</summary>
 
 Nothing is uploaded or copied: the files are read where they are, and videos
 seek because the folder answers `Range` requests the way a web server does.
@@ -199,21 +200,22 @@ volumes:
 ```
 
 Then `docker compose up -d`, and in **Storage → Add** pick **Local folder**. The
-folder field holds a path **inside** `/photos` — `2026/summer`, or empty for the
-whole of it. An absolute path is refused, and so is a symlink leading out: an
-administrator password never becomes a way to read the rest of the machine.
+folder field holds a path **inside** `/photos`, such as `2026/summer`, or empty
+for the whole of it. An absolute path is refused, and so is a symlink leading out
+of the directory, so an administrator password never becomes a way to read the
+rest of the machine.
 
 </details>
 
 <details>
-<summary><b>S3-compatible bucket</b> — MinIO, Garage, Backblaze, Scaleway, Amazon</summary>
+<summary><b>S3-compatible bucket</b>: MinIO, Garage, Backblaze, Scaleway, Amazon</summary>
 
 **Storage → Add → S3-compatible bucket**: the endpoint, the region, the bucket
 name and an access key pair. The endpoint is the address of the service and not
 of the bucket, the region matters only to Amazon, and an optional **Prefix**
 restricts the connection to one folder of the bucket. The secret key is stored
-encrypted and never shown again, and a read-only one is enough — nothing here
-ever writes to a bucket.
+encrypted and never shown again, and a read-only one is enough, since nothing
+here ever writes to a bucket.
 
 Tick **Address the bucket by path** for MinIO, and for any bucket whose name is
 not a valid domain name. Leaving it unticked addresses it as a subdomain, which
@@ -226,9 +228,9 @@ becoming an album that stays empty.
 </details>
 
 <details>
-<summary><b>WebDAV server</b> — Nextcloud, ownCloud, Synology, Apache <code>mod_dav</code></summary>
+<summary><b>WebDAV server</b>: Nextcloud, ownCloud, Synology, Apache <code>mod_dav</code></summary>
 
-**Storage → Add → WebDAV server**: the address of the **endpoint** — not the page
+**Storage → Add → WebDAV server**: the address of the **endpoint**, not the page
 the files are browsed on, which is the mistake everyone makes first. Nextcloud
 and ownCloud publish theirs as
 `https://cloud.example.com/remote.php/dav/files/<username>`. Then an optional
@@ -236,26 +238,25 @@ folder under it, a username, and an **app password** created in the account's
 security settings rather than the account's own password: it grants file access
 alone, and revoking it costs nothing.
 
-**Test** names what is wrong when something is — a refused password, a host that
-never answered, or an address that is not a WebDAV endpoint, which is the
-mistake everyone makes first.
+**Test** names what is wrong when something is: a refused password, a host that
+never answered, or an address that is not a WebDAV endpoint.
 
 </details>
 
 <details>
-<summary><b>Google Drive</b> — a service account, and a folder shared with it</summary>
+<summary><b>Google Drive</b>: a service account, and a folder shared with it</summary>
 
 The gallery signs in to Google as a **service account**: an identity that owns
 nothing, has an address of its own, and sees only what somebody shares with that
-address — exactly like a person you would add to a folder. No consent screen, no
-"Google hasn't verified this app", and nothing that expires.
+address, exactly like a person you would add to a folder. There is no consent
+screen, no "Google hasn't verified this app", and nothing that expires.
 
 In the [Google Cloud console](https://console.cloud.google.com/):
 
 1. **Create a project**, then **APIs & Services → Library**: enable **Google
    Drive API**.
-2. **IAM & Admin → Service Accounts → Create.** Give it a name and stop there —
-   no role to grant, since it touches nothing in the project.
+2. **IAM & Admin → Service Accounts → Create.** Give it a name and stop there.
+   There is no role to grant, since it touches nothing in the project.
 3. On the account you have just created: **Keys → Add key → Create → JSON**. The
    file downloads once and only once.
 
@@ -282,14 +283,15 @@ Drive stays invisible to it. And sharing is **inherited**, so one share at the
 top of a folder covers every subfolder in it, and every photograph added later.
 
 > **The one thing that fails silently.** A folder nobody shared produces no
-> error — not in `/admin`, not in the logs. Only an empty album. If an album
+> error, neither in `/admin` nor in the logs. Only an empty album. If an album
 > stays at zero items after a sync that reported "ok", check the share before
 > anything else.
 
 Connecting your own Google account with OAuth instead is possible and is not the
 path recommended here: it grants read access to the **whole** Drive, Google shows
 its "hasn't verified this app" screen at every consent, and the refresh token
-expires after six months of inactivity — the gallery then quietly stops filling.
+expires after six months of inactivity, after which the gallery quietly stops
+filling.
 `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` go in the `.env`, the redirect URI
 declared in the console must be exactly `PUBLIC_URL` followed by
 `/api/oauth/callback`, and consent is given once from `/admin`. Step by step,
@@ -302,8 +304,8 @@ days: [`deploy/README.md`](./deploy/README.md#3-give-the-server-access-to-a-stor
 
 In **`/admin` → Albums**, create the album: a title, the storage it reads, a
 folder inside that storage, and who may open it. **Synchronisation starts on its
-own and the photographs appear within seconds** — indexing reads what the storage
-already knows about each file.
+own and the photographs appear within seconds**, since indexing reads what the
+storage already knows about each file.
 
 Leave the folder empty and the album covers everything the connection declares,
 which is what a bucket holding one gallery wants. Google Drive is the exception:
@@ -338,8 +340,8 @@ The gallery behaves the same on all four. Two things underneath do not:
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Update                                | `docker compose pull && docker compose up -d`                                                                                                                                                                               |
 | Decide when to update                 | Replace `latest` with a release number: a `pull` then changes nothing until you raise it                                                                                                                                    |
-| Enable comments                       | `SMTP_URL` and `MAIL_FROM` in the `.env` — without a mail server, nobody can confirm their address                                                                                                                          |
-| Reach it from a domain, over TLS      | [`deploy/README.md`](./deploy/README.md) — certificate, backups, a machine of its own                                                                                                                                       |
+| Enable comments                       | `SMTP_URL` and `MAIL_FROM` in the `.env`. Without a mail server, nobody can confirm their address                                                                                                                           |
+| Reach it from a domain, over TLS      | [`deploy/README.md`](./deploy/README.md): certificate, backups, a machine of its own                                                                                                                                        |
 | Put it behind a proxy you already run | `PUBLIC_URL=https://photos.example.com` in the `.env`, proxy to port 8080, and leave the binding on `127.0.0.1` so the proxy is the only way in. Security headers come from the application, so nothing to add on that side |
 
 Every variable, with what it changes:
@@ -348,7 +350,7 @@ Every variable, with what it changes:
 ## Run it from source
 
 For development, or for a machine the published image does not fit. Node ≥ 22 and
-pnpm are all that is needed — no Google account, no domain, no server.
+pnpm are all that is needed. No Google account, no domain, no server.
 
 ```bash
 pnpm install
@@ -370,8 +372,8 @@ built. The same constraint fixes the order of the full build, `shared` → `web`
 `server`.
 
 **Photographs without connecting anything.** `seed-demo` fills albums that
-already exist, so declare one from `/admin` first — the storage it names never
-has to be reachable:
+already exist, so declare one from `/admin` first. The storage it names never has
+to be reachable:
 
 ```bash
 pnpm --filter @lukarn/server seed-demo 300
@@ -380,29 +382,31 @@ pnpm --filter @lukarn/server seed-demo 300
 Restart the server afterwards: the disk cache is inventoried only at startup, so
 the thumbnails just written stay invisible to a running process.
 
-Before proposing a change, `pnpm verify` — typecheck, lint, formatting, tests and
-the documentation checks, the same command CI runs, with nothing to build first.
+Before proposing a change, run `pnpm verify`: typecheck, lint, formatting, tests
+and the documentation checks. It is the same command CI runs, with nothing to
+build first.
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the rest.
 
 ### The same, shorter, with just
 
 [`just`](https://github.com/casey/just) is a command runner you install
-separately — a package on your system, not a dependency of this repository.
+separately, as a package on your system rather than a dependency of this
+repository.
 Nothing in the build, the checks or CI uses it: it only saves retyping the
 sequences above, each step skipped once it is already done.
 
-| Command             | Does                                                                                                             |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `just dev`          | `pnpm install`, a `.env` carrying two fresh secrets, the `shared` build, then `pnpm dev` — against your instance |
-| `just demo`         | The same against a throwaway instance in `.demo/`, albums declared and seeded, signed in as `demo` / `demo1234`  |
-| `just demo-reset`   | Forgets that instance; the next `just demo` rebuilds it                                                          |
-| `just admin <name>` | The first administrator of the `./data` instance, password prompted                                              |
+| Command             | Does                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `just dev`          | `pnpm install`, a `.env` carrying two fresh secrets, the `shared` build, then `pnpm dev`, against your instance |
+| `just demo`         | The same against a throwaway instance in `.demo/`, albums declared and seeded, signed in as `demo` / `demo1234` |
+| `just demo-reset`   | Forgets that instance; the next `just demo` rebuilds it                                                         |
+| `just admin <name>` | The first administrator of the `./data` instance, password prompted                                             |
 
 `.demo/` holds its own database and its own cache, so nothing there touches the
 `./data` you develop against.
 
 <details>
-<summary>Keyboard shortcuts — the application shows this list under <code>?</code></summary>
+<summary>Keyboard shortcuts, also shown in the application under <code>?</code></summary>
 
 |                |                                     |
 | -------------- | ----------------------------------- |
@@ -424,8 +428,8 @@ sequences above, each step skipped once it is already done.
 
 ## Architecture
 
-pnpm monorepo, a single container in production — the Fastify server serves both
-the API and the built front end.
+pnpm monorepo, a single container in production, where the Fastify server serves
+both the API and the built front end.
 
 ```
 packages/
@@ -435,14 +439,14 @@ packages/
 ```
 
 Two choices explain most of the rest. **The index lives in SQLite**, fed by a
-walk of the storage that downloads as little as it can — a Drive listing already
-carries dimensions and EXIF, and elsewhere only the header of each file is
-read — so the grid is served locally, and knowing every proportion in advance
-lets it lay itself out before a single image loads. And **no storage URL ever
+walk of the storage that downloads as little as it can. A Drive listing already
+carries dimensions and EXIF, and elsewhere only the header of each file is read.
+The grid is therefore served locally, and knowing every proportion in advance
+lets it lay itself out before a single image loads. Second, **no storage URL ever
 reaches the browser**: thumbnails are rendered to WebP and cached on disk with
-LRU eviction, videos are relayed `Range` by `Range` without transcoding.
+LRU eviction, and videos are relayed `Range` by `Range` without transcoding.
 
-Why it is built this way is in [`specs/`](./specs/) — start with
+Why it is built this way is in [`specs/`](./specs/). Start with
 [`specs/README.md`](./specs/README.md).
 
 ## Security
@@ -453,17 +457,18 @@ Why it is built this way is in [`specs/`](./specs/) — start with
   Every media access checks the album it belongs to.
 - The Google refresh token is encrypted with AES-256-GCM under a key derived from
   `TOKEN_KEY`, which is absent from the database.
-- **Security headers come from the application**, not from the proxy — CSP with
+- **Security headers come from the application** rather than from the proxy: CSP
+  with
   `script-src 'self'`, so a `<script>` slipped into an album title or a comment
   does not execute. They hold in development and behind an unconfigured front end
   as well.
 
 Details in [`specs/04`](./specs/04-security-and-access.md). Found a hole? Please
-report it privately — [`SECURITY.md`](./SECURITY.md) says how, and what counts.
+report it privately. [`SECURITY.md`](./SECURITY.md) says how, and what counts.
 
 ## The name
 
-_Lukarn_ is Gothic for a lantern — the thing you pick up to go and look in the
+_Lukarn_ is Gothic for a lantern, the thing you pick up to go and look in the
 dark. It is also the word the linguists put forward, next to Irish _luacharn_,
 when they argued that French _lucarne_ came from Latin _lucerna_: the small
 opening in a roof that lets the light in and lets you see inside. Either reading
@@ -474,7 +479,7 @@ shutter release sits under a thumb.
 
 ## License
 
-[AGPL-3.0-only](./LICENSE) — Copyright (C) 2026 Alexis Mineaud.
+[AGPL-3.0-only](./LICENSE). Copyright (C) 2026 Alexis Mineaud.
 
 Run it, study it, change it, pass it on. The one obligation worth knowing: if you
 deploy a modified version and let anyone reach it over a network, section 13

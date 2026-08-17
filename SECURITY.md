@@ -13,7 +13,7 @@ profile with `SECURITY` in the subject.
 What helps, in rough order of usefulness: what an attacker gains, the smallest
 sequence of steps that reproduces it, the version or commit you tested, and
 whether the instance was reachable from the internet. A proof of concept is
-welcome but not required — a precise description of the flaw is worth more than a
+welcome but not required. A precise description of the flaw is worth more than a
 script that only works on your setup.
 
 Expect an acknowledgement within a week. This is a spare-time project with a
@@ -28,7 +28,8 @@ next release, and the upgrade path is `git pull` and `./deploy/deploy.sh`.
 
 ## What is in scope
 
-The application as this repository deploys it — the Fastify server, the front
+The application as this repository deploys it, meaning the Fastify server, the
+front
 end, the SQLite schema, the Docker composition and the deployment scripts.
 Anything that lets someone:
 
@@ -54,7 +55,7 @@ a vulnerability rather than a design choice:
 - **Anything requiring an administrator account.** An administrator can already
   read every album, change every setting and connect a Drive: that is the role,
   not a flaw.
-- **A misconfigured deployment** — secrets committed to a repository, a `.env`
+- **A misconfigured deployment**: secrets committed to a repository, a `.env`
   world-readable, an instance published without TLS, `PUBLIC_URL` on `http` in
   production. The documentation covers these; a way to make the application
   _silently_ accept such a configuration is in scope.
@@ -69,6 +70,6 @@ Documented in [`specs/04-security-and-access.md`](./specs/04-security-and-access
 summarised in the [README](./README.md#security). In short: argon2id password
 hashing, sessions in the database and revocable immediately, per-album
 authorisation on every media request, the Google refresh token encrypted with
-AES-256-GCM under a key that is absent from the database, and security headers —
-CSP included — set by the application rather than the proxy, so they hold in
+AES-256-GCM under a key that is absent from the database, and security headers
+(CSP included) set by the application rather than the proxy, so they hold in
 development and behind an unconfigured front end as well.

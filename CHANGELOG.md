@@ -2,9 +2,9 @@
 
 Notable changes, newest first. Versions follow [semantic versioning], and the
 section matching a `v*` tag becomes the body of its
-[GitHub release](https://github.com/cr0cK/lukarn/releases) — so these notes are
-written once, reviewed in a pull request, and not rewritten in a web form
-afterwards.
+[GitHub release](https://github.com/cr0cK/lukarn/releases). These notes are
+therefore written once, reviewed in a pull request, and not rewritten in a web
+form afterwards.
 
 For an instance in service, **read the migration notes before updating.** Nothing
 in this application migrates volumes or renames files on its own.
@@ -13,83 +13,83 @@ in this application migrates volumes or renames files on its own.
 
 ## [1.2.0] — 2026-08-17
 
-### Photographs no longer have to live in Google Drive
+### Three new storage backends alongside Google Drive
 
-An album could read one thing: a folder of a Google account. Storage is now an
-interface and Drive merely its first implementation — three others answer the
-same questions, and one instance can read several at once.
+An album could only read a folder of a Google account. Storage is now an
+interface with four implementations behind it, and one instance can connect
+several at a time. Each album names the storage it reads.
 
-- **A folder on the machine.** Photographs on a disk, or on a NAS mounted beside
-  the container, are read where they are — never uploaded, never copied, and
-  videos still seek. Point `STORAGE_LOCAL_ROOT` at the directory the server may
-  read and mount it read-only; `/admin` then picks a folder inside it and nothing
-  outside, so an administrator password never becomes a way to read the machine.
-- **An S3-compatible bucket** — MinIO, Garage, Backblaze, Scaleway, Amazon — with
-  its address, its bucket and a read-only key pair, stored encrypted and never
-  shown again. Tick **Address the bucket by path** for MinIO, and for any bucket
-  whose name is not a valid domain name.
-- **A WebDAV server** — Nextcloud, ownCloud, a Synology, an Apache `mod_dav` —
-  with an address, a folder and an app password. No Google account anywhere, and
-  the photographs stay on a machine you already run.
-- **Videos with no preview now get one**, cut from the video itself a second in,
-  past the black frame recordings tend to open on. A grey tile with a play icon
-  said nothing about which clip it was. It needs ffmpeg, which the image carries.
+- **Local folder.** Photographs on a disk, or on a NAS mounted beside the
+  container, are read where they are. Nothing is uploaded or copied, and videos
+  still seek. Point `STORAGE_LOCAL_ROOT` at the directory the server may read and
+  mount it read-only. `/admin` then picks a folder inside that directory and
+  cannot reach outside it, so an administrator password does not become a way to
+  read the rest of the machine.
+- **S3-compatible bucket** (MinIO, Garage, Backblaze, Scaleway, Amazon): an
+  address, a bucket name and a read-only key pair. The secret key is stored
+  encrypted and never shown again. Tick **Address the bucket by path** for MinIO,
+  and for any bucket whose name is not a valid domain name.
+- **WebDAV server** (Nextcloud, ownCloud, Synology, Apache `mod_dav`): an
+  address, an optional folder under it, a username and an app password.
+- **Video thumbnails where the storage holds no preview.** A video used to show a
+  grey tile with a play icon, so a holiday clip and a screen recording looked
+  alike. A frame is now taken from the video itself, one second in, and cached
+  like any other thumbnail. This needs ffmpeg, which the container image carries.
 
-Two things differ away from a Drive. Drive names a file by an identifier that
-survives a rename, so a renamed photograph keeps its comments; everywhere else a
-file is named by its path, and renaming it makes it a new photograph. And Drive
-hands over EXIF and a preview with its listing, where the others hand over bytes
-— the capture date is read from the file itself, and a HEIC or RAW file nothing
-here can decode has no thumbnail at all.
+Two behaviours differ from Drive. Drive names a file by an identifier that
+survives a rename, so a renamed photograph keeps its comments; the other three
+name a file by its path, so renaming it creates a new photograph. Drive also
+returns EXIF data and a preview with its listing, where the others return bytes:
+the capture date is read from the file itself, and a HEIC or RAW file that
+nothing here can decode has no thumbnail.
 
-### Storage becomes a section of its own, above Albums
+### Storage is now its own section of /admin
 
-`/admin` gained a **Storage** section, at the top of the library group and in the
-order an instance is actually set up: connect a source, then draw albums from it.
-It used to sit inside **Server**, between the sync interval and the cache budget,
-where "where do my photos come from?" was filed with "how much disk am I using?".
+**Storage** sits at the top of the library group, above Albums, in the order an
+instance is set up: connect a source, then draw albums from it. It used to sit
+inside **Server**, between the sync interval and the cache budget. The cache
+stays under Server, since it serves every storage at once.
 
-- **Every connection is listed with its state and a Test button** that asks the
-  backend and repeats what it said — a wrong key, an unreachable host — instead
-  of an album that stays empty for no stated reason. An album names the storage
-  it reads, so a second Google account can serve some albums and the first the
-  others.
-- **A connection can be edited** rather than deleted and added again: fix a
-  mistyped endpoint, rename it, move a local folder, rotate a key. Deleting was
-  the only way before, and the albums reading it refuse that outright — so the
-  connections worth repairing were exactly the ones that could not be.
-- **Signing an account out keeps the connection**, so the albums reading it still
-  point somewhere and reconnecting is one button.
-- **Deleting a storage an album still reads is refused**, naming the albums to
-  move first, instead of being accepted and leaving their photographs failing to
-  load with nothing on screen to explain why.
-- **An album can read a whole storage, with no folder to name** — leave the
-  folder empty and it covers everything the connection declares. Drive still asks
-  for one, naming folders by identifier rather than by path.
-- **Adding a storage asks for a name and nothing else.** The **Identifier** field
-  wanted a value only the machine ever reads, and warned it could never be
-  changed; the name now settles it, and two storages may share a name without
-  argument.
+- **Each connection shows its state and a Test button** that asks the backend and
+  reports what it answered, such as a wrong key or an unreachable host. Until now
+  a misconfigured connection produced an album that stayed empty, with no stated
+  reason.
+- **A connection can be edited** instead of deleted and added again: a mistyped
+  endpoint, a rename, a local folder that moved, a rotated key. Albums reading a
+  connection refuse its deletion, so until now the connections worth repairing
+  were exactly the ones that could not be.
+- **Signing an account out keeps the connection.** Its credentials are cleared,
+  the albums reading it still point somewhere, and reconnecting takes one button.
+- **Deleting a storage an album still reads is refused**, and the albums to move
+  are listed by title. The deletion used to go through and leave their
+  photographs failing to load.
+- **An album can read a whole storage, with no folder to name.** Leave the folder
+  empty and the album covers everything the connection declares. Drive still
+  requires one, since it names folders by identifier rather than by path.
+- **Adding a storage asks for a name.** The **Identifier** field is gone: it
+  wanted a value only the machine reads, and warned it could never be changed.
+  The name now decides it, and two storages may share a name.
 
 ### Migration notes
 
 Nothing to do. The stored Google authorisation moves into the new connections
-table **without being re-encrypted**, and every album keeps reading exactly what
-it read before — including an instance authenticating with a service account.
+table without being re-encrypted, and every album keeps reading what it read
+before. An instance authenticating with a service account is covered too.
 
-Reading a folder on the machine is the one thing that has to be granted from
-outside: `STORAGE_LOCAL_ROOT` and a read-only mount, as the README shows. Nothing
-else here adds a variable.
+Reading a folder on the machine is the one capability that has to be granted from
+outside `/admin`: add `STORAGE_LOCAL_ROOT` and a read-only mount, as the README
+shows. Nothing else in this release adds a variable.
 
 ### Fixed
 
 - **Form fields are visible again in the dark theme.** Every input, list and text
   area sat on the same shade as the panel behind it, so a field was a rectangle
-  drawn by its border alone — fine on a bright screen, gone on a dim one.
-- **A new installation is now told to run a command that exists on the machine
-  reading it.** An instance started from the image with no account yet — in the
-  startup log and on the sign-in screen alike — asked its operator for
-  `pnpm create-admin`, which the image does not carry.
+  drawn by its border alone. That is legible on a bright screen and invisible on
+  a dim one.
+- **A new installation is told to run a command that exists on the machine
+  reading it.** An instance started from the image with no account yet asked its
+  operator for `pnpm create-admin`, which the image does not carry. The startup
+  log and the sign-in screen now give the form for the image as well.
 
 ## [1.1.0] — 2026-08-15
 
