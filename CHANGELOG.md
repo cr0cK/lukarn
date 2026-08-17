@@ -11,15 +11,65 @@ in this application migrates volumes or renames files on its own.
 
 [semantic versioning]: https://semver.org
 
-## [Unreleased]
+## [1.2.0] — 2026-08-17
 
-### Added
+### Photographs no longer have to live in Google Drive
 
-- **An album can read a whole storage, with no folder to name.** A bucket holding
-  one gallery, or a folder mounted for exactly this, no longer needs an invented
-  subfolder: leave **Folder in the storage** empty and the album covers everything
-  the connection declares. Google Drive still asks for a folder, because it names
-  one by identifier rather than by path and there is no such thing as an empty one.
+An album could read one thing: a folder of a Google account. Storage is now an
+interface, and Drive merely its first implementation — the grid, the viewer, the
+comments and the synchronisation above it no longer know which kind they are
+reading from. Three others answer the same questions.
+
+- **A folder on the machine.** Photographs already sitting on a disk — or on a
+  NAS mounted beside the container — are read where they are, never uploaded and
+  never copied, and videos still seek because the folder answers `Range` requests
+  the way a web server does. Point `STORAGE_LOCAL_ROOT` at the directory the
+  server may read, mount it read-only, then add a **Local folder** storage in
+  `/admin`. Choosing that directory stays with whoever runs the server: `/admin`
+  only picks a folder inside it, so an administrator password never becomes a way
+  to read the rest of the machine, and a shortcut leading out of the folder is
+  refused rather than followed.
+- **An S3-compatible bucket** — a MinIO or Garage of your own, Backblaze,
+  Scaleway, Amazon — declared with its address, its bucket name and a read-only
+  key pair. Nothing has to be uploaded to Google, and a gallery can be served
+  entirely from storage its owner runs. Tick **Address the bucket by path** for
+  MinIO, and for any bucket whose name is not a valid domain name. The key is
+  stored encrypted and never shown again.
+- **A WebDAV server** — Nextcloud, ownCloud, an Apache `mod_dav`, a Synology —
+  with its address, a folder under it and an app password. No Google account is
+  involved anywhere, and the photographs stay on a machine you already run.
+- **Videos with no preview now get one.** Until now a video whose storage held no
+  image of it showed a grey tile with a play icon, and there was no way to tell a
+  holiday clip from a screen recording without opening it. A frame is now taken
+  from the video itself, one second in — past the black frame recordings tend to
+  open on — and cached like any other thumbnail. It needs ffmpeg, which the
+  container image already carries; without it, nothing changes.
+
+Two things are worth knowing before moving away from a Drive. A Drive names a
+file by an identifier that survives a rename, so a photograph renamed or moved
+between folders keeps its comments; everywhere else a file is named by its path,
+and renaming it makes it a new photograph. And a Drive hands over EXIF data and a
+preview inside its listing, where the others hand over bytes — the capture date is
+then read from the file itself, and a HEIC or RAW file nothing here can decode has
+no thumbnail at all.
+
+### Storage becomes a section of its own, above Albums
+
+`/admin` gained a **Storage** section, at the top of the library group and in the
+order an instance is actually set up: connect a source, then draw albums from it.
+It used to sit inside **Server**, between the sync interval and the cache budget,
+where a screen answering "where do my photos come from?" was filed with "how much
+disk am I using?". Albums with nothing connected yet now says so and points there,
+instead of offering a form whose last click could only fail. The cache stays under
+Server — it serves every storage at once, so it belongs to the instance rather
+than to a source.
+
+- **An instance can now read more than one storage.** The section lists every
+  connection it reads, with what state each is in and a **Test** button that asks
+  the backend itself and repeats what it said — a wrong key or an unreachable
+  host, instead of an album that stays empty for no stated reason. An album names
+  the storage it belongs to, so a second Google account can serve some albums
+  while the first serves the others.
 - **A storage can be corrected without being deleted.** Each connection has an
   **Edit** button: fix an endpoint typed with one letter wrong, rename it, point a
   local folder somewhere else, or rotate a key that has been replaced at the
@@ -28,6 +78,19 @@ in this application migrates volumes or renames files on its own.
   worth repairing were the ones that could not be. Credential fields start empty and
   stay that way unless you retype them; the kind and the identifier are shown but
   fixed, since every album points at them.
+- **A connection can be disconnected without being forgotten.** Signing an account
+  out clears its credentials and keeps the connection, so the albums reading it
+  keep pointing somewhere and reconnecting is one button.
+- **Deleting a storage is refused while an album still reads it**, naming the
+  albums to move first. Removing it would leave every one of their photos failing
+  to load, with nothing on the screen explaining why. The confirmation now lists
+  those albums by title and will not let the deletion through, instead of accepting
+  it and reporting the refusal afterwards.
+- **An album can read a whole storage, with no folder to name.** A bucket holding
+  one gallery, or a folder mounted for exactly this, no longer needs an invented
+  subfolder: leave **Folder in the storage** empty and the album covers everything
+  the connection declares. Google Drive still asks for a folder, because it names
+  one by identifier rather than by path and there is no such thing as an empty one.
 - **The folder field of a local storage says which folder it is inside.** It holds a
   path relative to the directory the server was given, and that directory was
   nowhere on screen — so the natural move was to paste a full path, which was quietly
@@ -44,69 +107,6 @@ in this application migrates volumes or renames files on its own.
   every connection in the list, because that is the word logs use for it. An
   album's identifier is a different matter and is still yours to choose: it is
   part of the address the album is shared with.
-- **Storage is a section of `/admin` of its own**, at the top of the library
-  group and above Albums, in the order an instance is actually set up: connect a
-  source, then draw albums from it. It used to sit inside **Server**, between the
-  sync interval and the cache budget, where a screen answering "where do my photos
-  come from?" was filed with "how much disk am I using?". Albums with nothing
-  connected yet now says so and points there, instead of offering a form whose
-  last click could only fail. The cache stays under Server — it serves every
-  storage at once, so it belongs to the instance rather than to a source.
-- **An instance can now read more than one storage.** `/admin` gained a
-  **Storage** section listing every connection it reads, with what state each is
-  in and a **Test** button that asks the backend itself and repeats what it said —
-  a wrong key or an unreachable host, instead of an album that stays empty for no
-  stated reason. An album names the storage it belongs to, so a second Google
-  account can serve some albums while the first serves the others.
-- **A connection can be disconnected without being forgotten.** Signing an account
-  out clears its credentials and keeps the connection, so the albums reading it
-  keep pointing somewhere and reconnecting is one button.
-- **Videos with no preview now get one.** Until now a video whose storage held no
-  image of it showed a grey tile with a play icon, and there was no way to tell a
-  holiday clip from a screen recording without opening it. A frame is now taken
-  from the video itself, one second in — past the black frame recordings tend to
-  open on — and cached like any other thumbnail. It needs ffmpeg, which the
-  container image already carries; without it, nothing changes.
-- **An album can be served from a folder on the machine**, with no Google account
-  anywhere in the picture. Photographs already sitting on a disk — or on a NAS
-  mounted beside the container — are read where they are, never uploaded and never
-  copied, and videos still seek because the folder answers `Range` requests the way
-  a web server does. Point `STORAGE_LOCAL_ROOT` at the directory the server may
-  read, mount it read-only, then add a **Local folder** storage in `/admin`.
-  Choosing that directory stays with whoever runs the server: `/admin` only picks a
-  folder inside it, so an administrator password never becomes a way to read the
-  rest of the machine, and a shortcut leading out of the folder is refused rather
-  than followed.
-- **Albums can now live in an S3-compatible bucket** — a MinIO or Garage of your
-  own, Backblaze, Scaleway, Amazon — declared in /admin with its address, its
-  bucket name and a read-only key pair. Nothing has to be uploaded to Google, and
-  a gallery can be served entirely from storage its owner runs. Tick **Address
-  the bucket by path** for MinIO, and for any bucket whose name is not a valid
-  domain name. The key is stored encrypted and never shown again. **Test** asks
-  the bucket itself: a mistyped key, an address that answers nothing and a bucket
-  name that does not exist now read differently, instead of all becoming an album
-  that stays empty.
-- **Albums can now live on a WebDAV server** — Nextcloud, ownCloud, an Apache
-  `mod_dav`, a Synology — alongside a Google Drive or instead of one. Add it from
-  **Storage** with its address, a folder and an app password: no Google account is
-  involved, and the photos stay on a machine you already run. **Test** names what
-  is wrong when something is — a refused password, a host that never answered, or
-  an address that is not a WebDAV endpoint, which is the mistake everyone makes
-  first.
-
-  Two things behave differently there than on a Drive. Renaming a photo makes it a
-  new photo, so its comments stay behind with the old name; Drive is the only
-  backend whose identifiers survive a rename. And a WebDAV server holds no
-  previews of its own, so a video's poster is cut locally with ffmpeg, while a
-  HEIC or RAW file nothing here can decode has no thumbnail at all.
-
-### Changed
-
-- **Deleting a storage is refused while an album still reads it**, naming the
-  albums to move first. Removing it would leave every one of their photos failing
-  to load, with nothing on the screen explaining why. The confirmation now lists
-  those albums by title and will not let the deletion through, instead of accepting
-  it and reporting the refusal afterwards.
 
 ### Migration notes
 
@@ -115,6 +115,11 @@ connections table **without re-encrypting it**, and every existing album keeps
 reading exactly what it was reading. An instance authenticating with a service
 account is covered too: its connection appears even though it never had a token
 to move.
+
+Reading a folder on the machine is the one thing that has to be granted from
+outside: `STORAGE_LOCAL_ROOT` and a read-only mount in `docker-compose.yml`, as
+the README shows. Nothing else in this release adds a variable, and an instance
+updating without touching its `.env` keeps every storage it already had.
 
 ### Fixed
 
@@ -351,5 +356,7 @@ install.
   the application came back — a `docker compose up -d` returns when the container
   starts, not when it works.
 
-[unreleased]: https://github.com/cr0cK/lukarn/compare/v1.0.0...main
+[unreleased]: https://github.com/cr0cK/lukarn/compare/v1.2.0...main
+[1.2.0]: https://github.com/cr0cK/lukarn/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/cr0cK/lukarn/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/cr0cK/lukarn/releases/tag/v1.0.0

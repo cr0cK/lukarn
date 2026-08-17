@@ -76,7 +76,8 @@ is ever written to a folder, a bucket or a WebDAV server.
 
 Five steps, from nothing to your own photographs on screen. Nothing to clone and
 nothing to compile — the published image carries the application already built.
-Docker and a Google account are the two prerequisites, and about ten minutes.
+Docker and — for the walkthrough below — a Google account are the prerequisites,
+and about ten minutes.
 
 **This walkthrough connects a Drive**, which is the longest of the four paths:
 steps 3 and 4 exist only to give Google an identity to share a folder with. A
