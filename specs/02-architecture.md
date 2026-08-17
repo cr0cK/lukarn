@@ -530,7 +530,9 @@ same process. There is one origin, so session cookies are simple, there is no CO
 and no internal reverse proxy needs configuring.
 
 In production, a second container accompanies it: **Caddy**, which terminates TLS
-and proxies to `app:8080`. The application publishes no port on the host. This is
+and proxies to `lukarn:8080` — the network alias, not the service name, so that the
+same `Caddyfile` still names this application behind a front end shared with others
+(D260817d). The application publishes no port on the host. This is
 not an exception to the previous paragraph — Caddy knows nothing about the
 application, and there is still only one origin and one application process — it
 simply moves TLS and certificate renewal out of the code (D47).

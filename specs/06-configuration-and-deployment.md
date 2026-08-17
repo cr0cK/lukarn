@@ -261,11 +261,15 @@ D53's reasoning to the one identifier that escaped it.
 `docker-compose.yml` declares **two services**:
 
 - **`app`** — the application. It publishes **no port on the host** (`expose`
-  rather than `ports`): it's only reachable through compose's internal network.
-  Nothing in the application listens on a public interface.
+  rather than `ports`): it's only reachable through compose's internal network,
+  under the alias **`lukarn`**. Nothing in the application listens on a public
+  interface.
 - **`caddy`** — `caddy:2-alpine`, the only one publishing 80, 443 and 443/udp. It terminates
   TLS, obtains and renews the Let's Encrypt certificate with no scheduled
-  task, and relays to `app:8080`.
+  task, and relays to `lukarn:8080` — the alias and not the service name, so that
+  the same `Caddyfile` still names this application when the front end is one
+  shared with other applications
+  ([D260817d](./08-decisions/D260817d-the-front-end-addresses-an-alias-not-the-service-name.md)).
 
 The `Caddyfile` is mounted read-only and fits in about ten lines.
 Its site address is `{$PUBLIC_URL}`: the variable that builds the OAuth
