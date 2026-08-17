@@ -43,8 +43,10 @@ pnpm verify
 ```
 
 Seven gates in one command: `typecheck`, `lint`, `check:format`, `test`,
-`check:specs`, `check:links`, `check:changelog`. This is exactly what CI runs, so
-a green `verify` means a green pull request. Three of them also run on
+`check:specs`, `check:links`, `check:changelog`. It compiles `shared` first, so
+there is nothing to run beforehand — the other packages typecheck against that
+package's build output. This is exactly what CI runs, so a green `verify` means a
+green pull request. Three of them also run on
 `pre-push`, installed automatically by the `prepare` script — a push that would
 make the documentation lie is stopped before it reaches the remote.
 

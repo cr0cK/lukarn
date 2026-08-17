@@ -42,7 +42,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @lukarn/shared build
       - run: pnpm verify
 
       # **Before the image is pushed, deliberately.** The notes are the one thing

@@ -327,7 +327,7 @@ Restart the server afterwards: the disk cache is inventoried only at startup, so
 the thumbnails just written stay invisible to a running process.
 
 Before proposing a change, `pnpm verify` — typecheck, lint, formatting, tests and
-the documentation checks, the same command CI runs.
+the documentation checks, the same command CI runs, with nothing to build first.
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) has the rest.
 
 ### The same, shorter, with just

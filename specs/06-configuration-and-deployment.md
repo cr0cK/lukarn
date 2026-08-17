@@ -516,6 +516,10 @@ deployment.
 pnpm verify   # typecheck, lint, check:format, tests, check:specs, check:links
 ```
 
+It compiles `shared` before the first of them: the other packages typecheck
+against its `dist`, and a gate that assumes somebody built it beforehand fails on
+a working copy while passing in CI (D260817).
+
 Server tests run with Node's native runner (`node --import tsx
 --test`): no test framework among the dependencies.
 

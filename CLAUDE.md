@@ -171,7 +171,7 @@ pnpm check:format                    # prettier --check .—does formatting matc
 pnpm check:specs                     # have the specs drifted from the code?
 pnpm check:links                     # do references between documents lead anywhere?
 pnpm check:changelog                 # does a visible change say so in CHANGELOG.md?
-pnpm verify                          # all seven at once—the gate before publishing
+pnpm verify                          # shared compiled, then all seven—the gate before publishing
 
 just dev                             # the stack, prerequisites checked first
 just demo [count]                    # the stack, against a seeded instance in .demo/
@@ -195,6 +195,13 @@ Before declaring work complete, run **`pnpm verify`**—typecheck, lint,
 formatting, tests, spec checks and link checks. CI runs the same command, and the
 two documentation checks also run on `pre-push`: divergence blocks publication
 before it reaches the remote repository.
+
+It compiles `shared` first, and that step is part of the gate rather than a
+prerequisite left to whoever runs it (D260817). Everything downstream typechecks
+against `dist`, so a working copy whose `dist` predates the last change to
+`packages/shared/src` reports missing exports for code that is correct. CI never
+saw it—a fresh clone has no `dist` to be stale—which is exactly why the
+compilation belongs inside the command both of them run.
 
 **A change under `packages/web/src` is not finished until `pnpm test:e2e` has
 also passed, and a new screen or control is not finished until a spec in
