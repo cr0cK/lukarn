@@ -60,8 +60,8 @@ importers:
         specifier: ^20.2.0
         version: 20.2.0
       '@googleapis/oauth2':
-        specifier: ^5.0.1
-        version: 5.0.1
+        specifier: ^6.0.0
+        version: 6.0.0
       '@lukarn/shared':
         specifier: workspace:*
         version: link:../shared
@@ -642,8 +642,8 @@ packages:
     resolution: {integrity: sha512-6xPjqqLl34jBXWYMO34ywLVQsT8FgH948x8YI9o6Tdqs7+n4QRyvkC+BcvVQaAPNc+pyqsvZAXcbdMEcGgDUGw==}
     engines: {node: '>=12.0.0'}
 
-  '@googleapis/oauth2@5.0.1':
-    resolution: {integrity: sha512-C67lu327UqJJwjrDzw/6j3udYlBF9vJudv7CrZZAQW47Q1sVhvzAriQ1+MdIGIb0Aypv9IXsVaWya8jqJzjpQA==}
+  '@googleapis/oauth2@6.0.0':
+    resolution: {integrity: sha512-tmDk7M+vLzxmwHuM8fLXF6g/HJtwOu55qGz0TItJVfi/zTSHvbALPt2x2qCZUGkK9FxPOo9a1S4/XM0sH7nCVw==}
     engines: {node: '>=12.0.0'}
 
   '@humanfs/core@0.19.2':
@@ -2919,7 +2919,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@googleapis/oauth2@5.0.1':
+  '@googleapis/oauth2@6.0.0':
     dependencies:
       googleapis-common: 8.0.3
     transitivePeerDependencies:
