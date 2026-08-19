@@ -68,6 +68,15 @@ its sessions and unpairs its screens as a conversion does.
 Nothing changes for an account that keeps a password. Its sessions, its albums, its
 paired screens and the way anyone signs in with it are untouched.
 
+### Emails are written to their reader
+
+Every message the gallery sends now addresses the person receiving it, in both
+languages. The French ones had been written the way a screen is labelled, which put
+"À saisir dans la page restée ouverte" and "Ne le transmettre à personne" into what
+is, for the person opening it, a letter. Verification codes, new-comment and
+new-photo notifications and the two unsubscribe pages are all affected. Nothing
+about what they do has changed.
+
 ### The front end addresses the application by an alias
 
 An instance served by the Caddy this repository ships is unaffected. An instance

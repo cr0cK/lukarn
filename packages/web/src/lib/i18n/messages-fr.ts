@@ -11,6 +11,12 @@ import type { Messages } from './messages-en';
  * "vous". A gallery is installed by strangers for strangers, and the choice
  * between tu and vous would have to be made five hundred times, wrongly at least
  * once.
+ *
+ * That holds because everything here is read on a screen, where nobody has been
+ * addressed. It does not travel: the emails in
+ * `packages/server/src/i18n/messages-fr.ts` are letters to one person and say
+ * "vous", and applying this paragraph to them is what once put "Ne le transmettre
+ * à personne" into an invitation.
  */
 export const fr: Messages = {
   /* ------------------------------------------------------------- Everywhere */

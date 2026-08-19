@@ -121,7 +121,7 @@ export const en = {
     `You have just given this address on ${host} to sign your comments.`,
   'mail.codeHere': 'Here is your code:',
   'mail.codeValidity':
-    'Type it into the page you left open. It lasts fifteen minutes and works once.',
+    'Type it into the page you left open. It is good for fifteen minutes and works once.',
   'mail.codeIgnore':
     'If you did not ask for this, ignore the message: until the code is entered, nothing is tied to this address. Do not pass it on to anyone.',
 
@@ -129,7 +129,7 @@ export const en = {
   'mail.signInIntro': (host: string) => `This code signs you in to ${host}, under your own name.`,
   'mail.signInHere': 'Here is your code:',
   'mail.signInValidity':
-    'Type it into the page you left open. It lasts fifteen minutes and works once.',
+    'Type it into the page you left open. It is good for fifteen minutes and works once.',
   'mail.signInIgnore':
     'If you did not ask to sign in, ignore the message: the code opens nothing until it is entered. Do not pass it on to anyone, whoever enters it signs in as you.',
 
