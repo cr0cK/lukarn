@@ -12,11 +12,13 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # `claude-code-action` refuses to run for an event a bot triggered, and that
+    # refusal is a red cross nobody can turn green: dependabot opens its own pull
+    # requests, and a bot pushing to one triggers `synchronize` under its own
+    # name. Skipping is the same coverage without the failure, and the review a
+    # dependency bump needs is the diff of the upstream release, which this job
+    # never had in front of it.
+    if: github.event.sender.type != 'Bot'
 
     runs-on: ubuntu-latest
     permissions:
