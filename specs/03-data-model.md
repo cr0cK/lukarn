@@ -188,13 +188,13 @@ A pending pairing request while a screen without a keyboard obtains a session
 (D260809c). This is a transient table: a row lives there for at most five minutes
 and disappears as soon as the requesting device collects its session.
 
-| Column                      | Role                                                                                                                                                                                                             |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `user_code` (PK)            | The eight characters displayed on the requesting screen and included in the QR code. Stored **in plain text**: they appear on a television, so hashing would protect nothing the room cannot already see.        |
-| `device_hash` (UNIQUE)      | HMAC of the 32-byte `deviceCode` returned only to the requester. This authorises session collection, never the displayed code. Hashed for the same reason as `commenters.code_hash`: a dump must reveal nothing. |
-| `username`                  | The approving person's account, `NULL` until someone approves. `COLLATE NOCASE` and `ON DELETE CASCADE`, as wherever an account is referenced: a request approved by a deleted account dies.                     |
-| `approved_at`, `created_at` | ISO 8601 UTC dates. A `NULL` `approved_at` means "pending".                                                                                                                                                      |
-| `expires_at`                | Five minutes after creation. A longer request would leave an approvable code lingering on a powered-on screen.                                                                                                   |
+| Column                      | Role                                                                                                                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `user_code` (PK)            | The eight characters displayed on the requesting screen and included in the QR code. Stored **in plain text**: they appear on a television, so hashing would protect nothing the room cannot already see.                |
+| `device_hash` (UNIQUE)      | HMAC of the 32-byte `deviceCode` returned only to the requester. This authorises session collection, never the displayed code. Hashed for the same reason as `verification_codes.code_hash`: a dump must reveal nothing. |
+| `username`                  | The approving person's account, `NULL` until someone approves. `COLLATE NOCASE` and `ON DELETE CASCADE`, as wherever an account is referenced: a request approved by a deleted account dies.                             |
+| `approved_at`, `created_at` | ISO 8601 UTC dates. A `NULL` `approved_at` means "pending".                                                                                                                                                              |
+| `expires_at`                | Five minutes after creation. A longer request would leave an approvable code lingering on a powered-on screen.                                                                                                           |
 
 Three points maintain the isolation:
 
@@ -215,7 +215,7 @@ storage, and the settings. Written **only** by `ConfigRepo` (`config-repo.ts`).
 
 | Table         | Columns                                                                                                                                                          |
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `created_at`, `updated_at`                                                            |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `commenter_id`, `created_at`, `updated_at`                                            |
 | `albums`      | `id` (PK), `title`, `description`, `connection_id`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at` |
 | `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                                       |
 | `settings`    | `key` (PK), `value` — JSON. Keys: `instanceName`, `primaryColor`, `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`    |
@@ -273,28 +273,89 @@ Key choices:
   `ETag` and a generated-icon key where two spellings would be two entries. The
   logo itself is not in the database — it is a file under `DATA_DIR/branding/`
   (D260813b).
+- **`commenter_id` binds this access key to a person**, or is `NULL` and the
+  account is the shareable key it has always been. There is one axis rather than
+  two kinds of instance: every rule written against a session — `canSee()` on
+  every request, 404 and never 403, the account reread on every request — stays
+  true without asking which kind of account it is looking at. The `UNIQUE` index
+  over the column counts multiple `NULL`s as distinct, which is exactly "many
+  unbound accounts, at most one account per person", and `ON DELETE SET NULL`
+  means forgetting who somebody is never deletes their album grants. The column
+  is written when a code is consumed and never at creation: a verified address
+  proves that somebody controls an inbox, not that they accepted this account.
+- **"No password" is one reserved argon2 hash**, declared in `crypto.ts` as
+  `NO_PASSWORD_HASH`. `password_hash` is `NOT NULL` and stays that way: a nullable
+  column would mean rebuilding `users` to express with a null what a constant
+  expresses without touching the schema. An account created by address carries it
+  until its invitation is consumed, and `/auth/login` compares it like any other
+  hash, without branching. It is a constant rather than random bytes thrown away
+  because two rules have to recognise it: the last-admin count, which excludes an
+  account with this hash and no binding, and the account list, which shows an
+  account with no way in. It is generated from CSPRNG bytes whose preimage is
+  destroyed, never by hashing a readable literal, since a sentinel that is
+  `argon2("NO_PASSWORD")` is a password opening every account holding it.
+  `config.ts` refuses it in a bootstrap `config/albums.yaml`: that file runs before
+  any mail could be sent, so it keeps creating shared keys.
 - **`created_at` / `updated_at` are written by the application**, in ISO 8601 UTC,
   rather than by `CURRENT_TIMESTAMP`, which would produce a different format from
   the rest of the database.
-  **There is deliberately no email address on `users`.** An account is an access
-  key, not a contactable person: the same username may be shared by an entire
-  household. Addresses belong to `commenters` below, while the address notified
-  of new comments is an instance setting (`settings.moderationEmail`).
+- **There is still no address column on `users`.** An account may now name a
+  person, and it does so through `commenter_id` rather than through a column of
+  its own: one identity, one row, one place a rename applies. An unbound account
+  remains an access key with nobody behind it, shareable by an entire household.
+  The address notified of new comments is an instance setting
+  (`settings.moderationEmail`) and binds nobody.
+- **Resolving an address to an account is a query, not a snapshot lookup.**
+  `ConfigRepo.userForEmail` joins `users` to `commenters` in SQLite, and it runs
+  once per sign-in. What stays in memory is `canSee()`, which runs once per
+  thumbnail: nothing added here may reach that path.
+
+#### What binding an account writes
+
+Three operations write more than the four tables above, and each is one transaction
+owned by `ConfigRepo` because it owns the snapshot that must be rebuilt once the
+transaction has committed. Neither `createUser` nor `updateUser` is reused inside
+them: both invalidate that snapshot before returning, so composing them would
+rebuild it from writes still open to rollback, and `PRAGMA data_version` does not
+move for a write on the connection that made it.
+
+| Operation                    | Writes                                                                     |
+| ---------------------------- | -------------------------------------------------------------------------- |
+| Create an account by address | `users` with the reserved hash, `verification_codes`                       |
+| Consume an invitation        | `users`, `commenters`, `verification_codes`, `sessions`, `device_pairings` |
+| Unbind                       | `users`, `sessions`, `device_pairings`                                     |
+
+Consuming an invitation covers converting a shared key as well, with the same
+statements: the account is bound, its address verified, the code spent, its password
+replaced by the reserved hash, its sessions closed and its approved pairings deleted.
+An account created by address has no password to replace, no session and no paired
+screen, so those three do nothing there. On a shared key they are the point. Closing
+the sessions alone would not be enough, since an approved `device_pairings` row
+survives it and `claim()` turns it into a fresh session afterwards. **The new session
+is opened after the commit**, by the route: a blanket close run afterwards would sign
+out the person who just proved the address.
+
+**A password cannot be set on a bound account**, and the refusal lives at the
+`ConfigRepo` boundary rather than on the route, because `pnpm reset-password` writes
+through the repository without passing any route. The single exception is unbinding,
+which requires a password in the same transaction and closes the sessions: without
+the rule an administrator sets a password on a bound account and signs as that
+person, and without the exception unbinding leaves an account nobody can enter. The
+command performs that unbind for a bound account, and says so as it does it.
 
 ### `commenters`
 
 A **person**, as opposed to the access key in `users`.
 
-| Column                                                          | Role                                            |
-| --------------------------------------------------------------- | ----------------------------------------------- |
-| `id`                                                            | PK, `AUTOINCREMENT`                             |
-| `email`                                                         | `NOT NULL UNIQUE COLLATE NOCASE` — the identity |
-| `display_name`                                                  | Name used to sign comments                      |
-| `notify`                                                        | Unsubscription                                  |
-| `verified_at`                                                   | `NULL` until the code has been entered          |
-| `code_hash`, `code_expires_at`, `code_sent_at`, `code_attempts` | Verification in progress                        |
-| `pending_display_name`                                          | Requested rename, pending the code              |
-| `locale`                                                        | Language this person is written to in           |
+| Column                 | Role                                            |
+| ---------------------- | ----------------------------------------------- |
+| `id`                   | PK, `AUTOINCREMENT`                             |
+| `email`                | `NOT NULL UNIQUE COLLATE NOCASE` — the identity |
+| `display_name`         | Name used to sign comments                      |
+| `notify`               | Unsubscription                                  |
+| `verified_at`          | `NULL` until the code has been entered          |
+| `pending_display_name` | Requested rename, pending the code              |
+| `locale`               | Language this person is written to in           |
 
 Key choices:
 
@@ -305,12 +366,9 @@ Key choices:
 - **`verified_at` is not decorative.** Identity is declarative: anyone behind the
   shared access key could sign another person's name or send notifications to a
   third party's inbox. The code sent by email prevents this.
-- **`code_hash`, never the plain-text code.** An HMAC costs less than a SQL query,
-  and a database dump must not provide what is needed to validate an address.
-- **`code_sent_at` and `code_attempts` are safeguards, not traces.** The first
-  prevents sending another code within a minute — otherwise the form becomes a
-  machine for sending emails to an address one does not own. The second limits
-  attempts to five, because six digits can be exhausted in a million attempts.
+- **The code itself is not here.** It lived on this table as four columns while
+  there was one thing to prove; since migration 18 it is `verification_codes`
+  below. What is left here is what a person is.
 - **`pending_display_name` holds a rename until proof is supplied.** The name of
   an **already verified** identity changes only when the code is validated, never
   on request: otherwise knowing someone's address would be enough to rename them,
@@ -329,7 +387,66 @@ Key choices:
 
 `sessions` holds a `commenter_id` (`ON DELETE SET NULL`): the session
 **remembers** the identity; it does not define it. Losing one's identity therefore
-never removes album access, which comes only from the access key.
+never removes album access, which comes only from the access key. `users` holds a
+`commenter_id` of its own with the same clause, and the two answer different
+questions: the session's is what this device declared, the account's is who this
+account **is**.
+
+### `verification_codes`
+
+The six digits sent to an address. `users` carries authorisation, `commenters`
+carries identity, and a code is neither: it is a short-lived proof that whoever
+typed it reads a given inbox. Written **only** by `VerificationCodeRepo`
+(`verification-codes.ts`).
+
+| Column              | Role                                                                       |
+| ------------------- | -------------------------------------------------------------------------- |
+| `target`            | The address, `NOT NULL COLLATE NOCASE` like `commenters.email`             |
+| `purpose`           | `identity`, `signin` or `invite`, and half of the primary key              |
+| `code_hash`         | HMAC of the digits, on `SESSION_SECRET`                                    |
+| `expires_at`        | Fifteen minutes, or seven days for an invitation                           |
+| `sent_at`           | Last delivery, read across every purpose of one address                    |
+| `attempts`          | Five, whatever the purpose                                                 |
+| `username`          | The account an invitation is for, `NULL` otherwise, FK `ON DELETE CASCADE` |
+| `(target, purpose)` | Composite primary key                                                      |
+
+Key choices:
+
+- **The purpose is part of the key rather than a flag.** A code minted for one
+  flow is then not merely refused by another, it is not found by it. With one
+  pending code per address, verifying an address while signing in would overwrite
+  one with the other, and the fourth purpose this shape anticipates would arrive
+  with nowhere to sit.
+- **A second, partial unique index covers `username WHERE purpose = 'invite'`.**
+  One invitation per address is not the invariant that matters; one invitation
+  per **account** is. Without it, inviting `mamie` at one address and then at
+  another leaves two live codes racing to bind the same account, and reminting a
+  pending invitation has no single row to work from. Minting an invitation
+  therefore deletes any row matching either axis before inserting, in one
+  transaction: both constraints refuse a duplicate, neither replaces it, and an
+  upsert can name only one of them.
+- **`username` is `COLLATE NOCASE`, which is not decoration.** `users.username`
+  is `NOCASE`, so a child column left on the default would let `Mamie` and
+  `mamie` both satisfy that partial index and both be invitations to one account.
+  `ON DELETE CASCADE` stops a deleted account leaving its code behind, where
+  recreating the same username would let the original recipient bind an account
+  that may now be an administrator.
+- **Two `CHECK`s carry invariants nothing else states**: one restricting `purpose`
+  to the three values, and one making `username` non-null **exactly when** the
+  purpose is `invite`. An invitation without an account has nothing to bind, and
+  a sign-in code naming one would bind it without anybody proving the address.
+- **Every column but `username` is stated `NOT NULL`.** A composite primary key
+  does not impose it in SQLite, where a rowid table accepts a null inside one.
+- **One send a minute is per address, across every purpose.** `code_sent_at` was
+  one column per person; a per-row check would let an identity code and an
+  invitation reach the same inbox in the same minute, which is the mail-bombing
+  the rule exists to stop. Five attempts, in contrast, are per code — and are
+  enforced for `invite` exactly as for the rest, because a seven-day life is what
+  makes the ceiling rather than the deadline the thing that bounds guessing.
+- **The hourly purge in `main.ts`** removes what has expired. The four columns
+  this table replaced were overwritten in place and accumulated nothing; a table
+  does. It needs no cap of its own: a request for an address nothing knows writes
+  no row.
 
 ### `comments`
 
@@ -619,10 +736,11 @@ of the array.
 
 `packages/server/test/migrate.test.ts` enforces the invariants: a fresh database
 reaches the latest version, a version 1 database gains `revoked_at` without losing
-its token or index, a version 3 database gains comments **without `users` changing
-by a single column** — existing access keys retain their hashes, and open sessions
-are not invalidated —, `migrate` is idempotent, and a failure leaves `user_version`
-unchanged so that recovery restarts from the same step.
+its token or index, a version 3 database gains comments **and `users` changes by
+exactly one column, migration 18's `commenter_id`, which arrives empty** — existing
+access keys retain their hashes, an upgraded key stays a shared key, and open
+sessions are not invalidated —, `migrate` is idempotent, and a failure leaves
+`user_version` unchanged so that recovery restarts from the same step.
 
 Current state:
 
@@ -645,6 +763,26 @@ Current state:
 | 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.            |
 | 16      | `commenters.locale`: the language this person is written to in.                         |
 | 17      | `storage_connections`, from `oauth_token`; `albums.connection_id`; `media.source_path`. |
+| 18      | `users.commenter_id`; `verification_codes`; the four code columns leave `commenters`.   |
+
+Migration 18 binds an account to a person and moves the code apparatus out of
+`commenters`. Both halves are one migration because they are one decision:
+`users.commenter_id` names the identity an account **is**, and a second use of a
+code — signing in — turns the four columns D39 put on `commenters` into one column
+set with two meanings. `users` carries authorisation, `commenters` carries
+identity, and a code is neither, which is the sentence that stops the next reader
+wondering why sign-in touches a table called `commenters`.
+
+**Pending codes are invalidated by the upgrade**, deliberately rather than as a
+side effect: codes live in SQLite and survive a restart today, so this is a
+fifteen-minute cost paid once, at a moment somebody chose. `pending_display_name`
+**stays** — the rule it enforces is about the name and not about the code (D42),
+and dropping it would restore a rename this repository already closed. Nothing
+indexes the four departing columns, so `ALTER TABLE … DROP COLUMN` applies without
+recreating the table. `packages/server/test/migrate.test.ts` verifies this on a
+version 17 database holding an account and an identity with a code pending: the
+columns are gone, the row survives verified, the table of codes arrives empty, and
+both unique constraints, the collation and the cascade hold.
 
 **Migration 17 is the one that moves something rather than adding it**, and the
 line to read twice is the one that does not appear: `ciphertext` is **copied, not

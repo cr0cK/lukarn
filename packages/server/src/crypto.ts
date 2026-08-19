@@ -127,6 +127,39 @@ export function hashDeviceCode(deviceCode: string, secret: string): string {
 }
 
 /**
+ * The hash `users.password_hash` carries when the account has no password.
+ *
+ * `password_hash` is `NOT NULL` and stays that way, so "no password" is one
+ * reserved argon2 hash rather than a null or a rebuilt table. A hash of random
+ * bytes thrown away would be refused by the same comparison at the same cost, but
+ * nothing could tell it apart from a real password afterwards, and two rules need
+ * to: the last-admin count refuses to leave an instance administrable by nobody,
+ * and the account list shows an account with no way in. Both are answerable only
+ * because this value is a constant.
+ *
+ * It is **generated from 64 CSPRNG bytes whose preimage was destroyed**, never by
+ * hashing a readable literal: a sentinel that is `argon2("NO_PASSWORD")` is a
+ * password that opens every account holding it.
+ *
+ * `/auth/login` compares hashes without branching on it, by design. The refusal
+ * costs one argon2 verification like any wrong password, so an account with no
+ * password is not the one that answers faster.
+ */
+export const NO_PASSWORD_HASH =
+  '$argon2id$v=19$m=65536,t=3,p=4$pHqTAPOWnrJ7LUOojL+/5Q$q0WtXBNH2ODcMJ0KgVJpael8qmINi4AUMpZowVwPU/s';
+
+/**
+ * Whether this hash is the reserved one above, meaning the account has no password
+ * and is entered — if at all — by a code sent to the address it is bound to.
+ *
+ * Constant time, like every other comparison against a stored secret here: the
+ * answer is read by the account list, and a stopwatch must not read it earlier.
+ */
+export function hasNoPassword(hash: string): boolean {
+  return safeEqual(hash, NO_PASSWORD_HASH);
+}
+
+/**
  * Constant-time comparison that tolerates different lengths. `timingSafeEqual`
  * throws when they differ — which is already an answer, but in the form of an
  * exception rather than `false`.

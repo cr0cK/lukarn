@@ -403,3 +403,126 @@ export function buildVerificationMail(
 
   return { to: email, subject, text, html };
 }
+
+/**
+ * Code that opens a session on an account already bound to this address.
+ *
+ * The subject and the first line say **what the code grants**, which is the whole
+ * defence against the one attack this design leaves standing: it is social, and
+ * consists of triggering a code and talking its holder into reading it out. Somebody
+ * who has been told "read me the verification code" has to meet the words "signs in
+ * to this gallery as you" before they do.
+ *
+ * Composed like `buildVerificationMail`, and for the same reasons: no clickable link,
+ * and the six digits as one unbroken string.
+ */
+export function buildSignInMail(
+  email: string,
+  displayName: string,
+  code: string,
+  locale: Locale,
+  instanceName: string,
+  env: Env,
+): MailMessage {
+  const t = translator(locale);
+  const host = new URL(env.publicUrl).host;
+  const subject = t('mail.signInSubject', host);
+
+  const text = [
+    t('mail.codeHello', displayName),
+    '',
+    t('mail.signInIntro', host),
+    t('mail.signInHere'),
+    '',
+    code,
+    '',
+    t('mail.signInValidity'),
+    '',
+    '—',
+    t('mail.signInIgnore'),
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      ${header(instanceName, env.publicUrl)}
+      <p style="margin: 0 0 16px;">${escapeHtml(t('mail.codeHello', displayName))}</p>
+      <p style="margin: 0 0 8px;">
+        ${escapeHtml(t('mail.signInIntro', host))}
+        ${t('mail.signInHere')}
+      </p>
+      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
+      <p style="margin: 0 0 24px; color: #666;">${t('mail.signInValidity')}</p>
+      <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
+      <p style="margin: 0; font-size: 13px; color: #888;">${t('mail.signInIgnore')}</p>
+    </div>
+  `.trim();
+
+  return { to: email, subject, text, html };
+}
+
+/**
+ * Invitation to an account created for this address, or to one being converted.
+ *
+ * No greeting by name: nobody has said what this person is called yet — that is what
+ * the acceptance step asks for. The subject and the first line say what the code
+ * grants, for the reason `buildSignInMail` gives.
+ *
+ * **The link carries no secret.** It lands on the sign-in page with the address
+ * already filled in, and the six digits are still typed by hand. That is the line
+ * between it and the magic link the sign-in decision rejects: it authenticates
+ * nobody, grants exactly what knowing this instance exists grants, and the address in
+ * it is the recipient's own — already in the `To:` header of the message carrying it.
+ * Opening it must not mint a new code either, or reading the message would invalidate
+ * the code being read: the page offers to send another instead.
+ *
+ * The language is the instance default rather than a recorded one: the recipient has
+ * never made a request here, so there is nothing to have recorded (D260812d).
+ */
+export function buildInvitationMail(
+  email: string,
+  code: string,
+  locale: Locale,
+  instanceName: string,
+  env: Env,
+): MailMessage {
+  const t = translator(locale);
+  const host = new URL(env.publicUrl).host;
+  const subject = t('mail.inviteSubject', host);
+  const link = `${env.publicUrl}/login?email=${encodeURIComponent(email)}`;
+
+  const text = [
+    t('mail.inviteIntro', host),
+    t('mail.inviteHere'),
+    '',
+    code,
+    '',
+    t('mail.inviteValidity'),
+    '',
+    t('mail.inviteLink'),
+    link,
+    '',
+    '—',
+    t('mail.inviteIgnore'),
+  ].join('\n');
+
+  const html = `
+    <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
+      ${header(instanceName, env.publicUrl)}
+      <p style="margin: 0 0 8px;">
+        ${escapeHtml(t('mail.inviteIntro', host))}
+        ${t('mail.inviteHere')}
+      </p>
+      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
+      <p style="margin: 0 0 16px; color: #666;">${t('mail.inviteValidity')}</p>
+      <p style="margin: 0 0 24px;">
+        ${escapeHtml(t('mail.inviteLink'))}
+        <br>
+        <a href="${escapeHtml(link)}" style="color: #2563eb;">${escapeHtml(link)}</a>
+      </p>
+      <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
+      <p style="margin: 0; font-size: 13px; color: #888;">${t('mail.inviteIgnore')}</p>
+    </div>
+  `.trim();
+
+  return { to: email, subject, text, html };
+}

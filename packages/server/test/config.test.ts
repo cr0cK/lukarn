@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseConfig } from '../src/config.js';
+import { NO_PASSWORD_HASH } from '../src/crypto.js';
 
 /**
  * `config/albums.yaml` now only bootstraps a fresh installation, but it must
@@ -107,6 +108,26 @@ albums:
     folderId: f
 `),
       /argon2/,
+    );
+  });
+
+  it('rejects the reserved hash that means "no password"', () => {
+    // The file carries password hashes and runs before any mail could be sent, so an
+    // account it declared this way would be one nobody was invited to and nobody can
+    // enter. Only creating an invitation from /admin writes that value.
+    assert.throws(
+      () =>
+        parseConfig(`
+users:
+  - username: mamie
+    passwordHash: "${NO_PASSWORD_HASH}"
+    albums: ["a"]
+albums:
+  - id: a
+    title: A
+    folderId: f
+`),
+      /reserved hash/,
     );
   });
 

@@ -33,6 +33,12 @@ function startScheduler(context: AppContext): () => void {
     const abandoned = context.pairings.purgeExpired();
     if (abandoned > 0) context.log.debug(`${abandoned} expired pairing requests purged`);
 
+    // A sign-in code lives fifteen minutes and an invitation seven days; neither
+    // removes itself. The four columns this table replaced were overwritten in
+    // place and accumulated nothing, so this purge is new with the table.
+    const spentCodes = context.codes.purgeExpired();
+    if (spentCodes > 0) context.log.debug(`${spentCodes} expired verification codes purged`);
+
     // Keep four hundred days of visits so year-on-year comparison remains possible.
     // Since the table is aggregated on write, there is never much to remove (D260809h).
     const forgottenVisits = context.visits.purgeOld(400);

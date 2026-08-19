@@ -49,6 +49,11 @@ export const fr: Messages = {
   'error.invalidCode': 'Code invalide — six chiffres attendus.',
   'error.codeAttemptsExhausted': 'Trop de tentatives. Demander un nouveau code.',
   'error.codeWrongOrExpired': 'Code erroné ou expiré. En demander un nouveau si besoin.',
+  'error.invalidEmail': 'Adresse invalide',
+  'error.displayNameRequired':
+    'Indiquer le nom qui signera les commentaires, puis renvoyer le code.',
+  'error.identityBound':
+    'Ce compte est une personne, et son adresse ne se change pas depuis cette session. Se déconnecter pour utiliser la galerie sous une autre.',
 
   'error.noIcon': 'Aucune icône de ce nom',
   'error.logoEmpty': 'Aucune image reçue.',
@@ -68,6 +73,14 @@ export const fr: Messages = {
     'Le rôle du dernier administrateur ne peut pas être retiré : l’instance deviendrait inadministrable. Nommer d’abord un autre administrateur.',
   'error.lastAdminDelete':
     'Le dernier administrateur ne peut pas être supprimé : l’instance deviendrait inadministrable.',
+  'error.identityTaken': (username: string) =>
+    `Cette adresse ouvre déjà le compte « ${username} ». Une adresse appartient à un seul compte.`,
+  'error.accountAlreadyBound': (username: string) =>
+    `« ${username} » est déjà une personne. Changer l’adresse d’un compte lié n’est pas proposé : le délier d’abord, ce qui lui redonne un mot de passe et ferme ses sessions.`,
+  'error.noInvitationPending': (username: string) =>
+    `Aucune invitation en attente pour « ${username} » : il n’y a rien à renvoyer. Indiquer l’adresse à laquelle l’inviter.`,
+  'error.passwordOnBoundAccount': (username: string) =>
+    `« ${username} » est lié à une personne et n’a pas de mot de passe. Le délier pour lui en donner un, ce qui ferme aussi ses sessions.`,
   'error.coverNotInAlbum': 'Cette couverture n’est pas une photo indexée dans cet album.',
   'error.serviceAccountConsent':
     'Cette instance s’authentifie avec un compte de service : il n’y a aucun consentement à donner. Partager le dossier avec son adresse depuis Google Drive.',
@@ -108,6 +121,25 @@ export const fr: Messages = {
     'À saisir dans la page restée ouverte. Il dure quinze minutes et ne fonctionne qu’une fois.',
   'mail.codeIgnore':
     'Si ce code n’a pas été demandé, ignorer ce message : tant qu’il n’est pas saisi, rien n’est rattaché à cette adresse. Ne le transmettre à personne.',
+
+  'mail.signInSubject': (host: string) => `Code de connexion — ${host}`,
+  'mail.signInIntro': (host: string) =>
+    `Ce code ouvre une session sur ${host} en tant que la personne à qui appartient cette adresse.`,
+  'mail.signInHere': 'Voici le code :',
+  'mail.signInValidity':
+    'À saisir dans la page restée ouverte. Il dure quinze minutes et ne fonctionne qu’une fois.',
+  'mail.signInIgnore':
+    'Si cette connexion n’a pas été demandée, ignorer ce message : le code n’ouvre rien tant qu’il n’est pas saisi. Ne le transmettre à personne — qui le saisit se connecte à votre place.',
+
+  'mail.inviteSubject': (host: string) => `Un compte vous attend sur ${host}`,
+  'mail.inviteIntro': (host: string) =>
+    `Un compte vient d’être ouvert pour vous sur ${host}. Le code ci-dessous est ce qui l’ouvre, et cette adresse devient le nom qui signera vos commentaires.`,
+  'mail.inviteHere': 'Voici le code :',
+  'mail.inviteValidity':
+    'Il dure sept jours et ne fonctionne qu’une fois. En demander un autre depuis la page de connexion s’il expire.',
+  'mail.inviteLink': 'Se connecter depuis cette page, l’adresse déjà remplie :',
+  'mail.inviteIgnore':
+    'Si ce message est inattendu, l’ignorer : aucun compte ne s’ouvre tant que le code n’est pas saisi. Ne le transmettre à personne — qui le saisit se connecte à votre place.',
 
   /* ---------------------------------------------------- Unsubscribe pages */
 

@@ -27,6 +27,7 @@ import { SubscriptionRepo } from './subscriptions.js';
 import { VisitLog } from './telemetry.js';
 import { LoginThrottle } from './throttle.js';
 import { UpdateChecker } from './updates.js';
+import { VerificationCodeRepo } from './verification-codes.js';
 
 const GIB = 1024 ** 3;
 
@@ -44,6 +45,12 @@ export class AppContext {
   readonly comments: CommentRepo;
   /** Commenter identities — people, as opposed to access keys. */
   readonly commenters: CommenterRepo;
+  /**
+   * The codes sent to an address, whatever they prove. One table rather than four
+   * columns per flow: `users` carries authorisation, `commenters` carries identity,
+   * and a code is neither. Its purge runs with hourly housekeeping in `main.ts`.
+   */
+  readonly codes: VerificationCodeRepo;
   /** New-item subscriptions created when an album is opened. */
   readonly subscriptions: SubscriptionRepo;
   /** New-photo announcements triggered by hourly housekeeping in `main.ts`. */
@@ -123,7 +130,8 @@ export class AppContext {
     this.config = new ConfigRepo(this.db, env.appName);
     this.media = new MediaRepo(this.db, () => this.ffmpeg);
     this.comments = new CommentRepo(this.db);
-    this.commenters = new CommenterRepo(this.db, env.sessionSecret);
+    this.commenters = new CommenterRepo(this.db);
+    this.codes = new VerificationCodeRepo(this.db, env.sessionSecret);
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);

@@ -642,6 +642,84 @@ export const MIGRATIONS: string[] = [
   -- survives a rename.
   ALTER TABLE media ADD COLUMN source_path TEXT;
   `,
+
+  // 18 — an account may be a person, and the code apparatus leaves `commenters` for a
+  // table of its own.
+  //
+  // `users` carries authorisation and `commenters` carries identity; a code is neither,
+  // and D39 put its four columns on `commenters` when there was one thing to prove. A
+  // second use would turn them into one column set with two meanings, and one pending
+  // code per address means verifying an address while signing in overwrites one with
+  // the other.
+  //
+  // **Pending codes are invalidated by this upgrade**, deliberately rather than as a
+  // side effect: they survive a restart today because they live in SQLite, so this is
+  // a fifteen-minute cost paid once, at a moment somebody chose.
+  `
+  -- The person this access key is, or NULL for a key a household shares. The UNIQUE
+  -- index over it counts multiple NULLs as distinct, which is exactly "many unbound
+  -- accounts, at most one account per person". The column may carry its REFERENCES
+  -- clause because its default is NULL — the same restriction albums.connection_id
+  -- met in migration 17 and could not satisfy (D260815g).
+  --
+  -- ON DELETE SET NULL rather than CASCADE: forgetting who somebody is must not
+  -- delete the account, its album grants and everything written against its username.
+  ALTER TABLE users ADD COLUMN commenter_id INTEGER REFERENCES commenters (id) ON DELETE SET NULL;
+  CREATE UNIQUE INDEX idx_users_commenter ON users (commenter_id);
+
+  CREATE TABLE verification_codes (
+    -- The address the code was sent to. COLLATE NOCASE like commenters.email, so one
+    -- inbox is one row whatever case somebody typed.
+    target      TEXT    NOT NULL COLLATE NOCASE,
+    -- Part of the key rather than a flag: a code minted for one flow is then not
+    -- merely refused by another, it is not found by it.
+    purpose     TEXT    NOT NULL CHECK (purpose IN ('identity', 'signin', 'invite')),
+    -- HMAC of the six digits, never plaintext, for the reason D39 gives: a database
+    -- dump must not validate an address or open a session.
+    code_hash   TEXT    NOT NULL,
+    -- Fifteen minutes for 'identity' and 'signin', seven days for 'invite', which has
+    -- to survive somebody's weekend.
+    expires_at  TEXT    NOT NULL,
+    -- Last delivery, read across every purpose of one address: without it the routes
+    -- become a way to send bursts of email to an inbox nobody proved they own.
+    sent_at     TEXT    NOT NULL,
+    -- Five attempts, whatever the purpose. Six digits fall to a million tries, and a
+    -- seven-day life is why the ceiling matters more here than anywhere else.
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    -- The account an invitation is for, NULL for every other purpose. COLLATE NOCASE
+    -- is not decoration: users.username is NOCASE, and a child column left on the
+    -- default would let 'Mamie' and 'mamie' both satisfy the partial index below and
+    -- both be invitations to one account. ON DELETE CASCADE stops a deleted account
+    -- leaving its code behind, where recreating the same username would let the
+    -- original recipient bind an account that may now be an administrator.
+    username    TEXT    COLLATE NOCASE REFERENCES users (username) ON DELETE CASCADE,
+    -- Every column but username is stated NOT NULL: a composite primary key does
+    -- not impose it in SQLite, where a rowid table accepts a null inside one.
+    PRIMARY KEY (target, purpose),
+    -- Two invariants nothing else states. The second is an equality rather than two
+    -- implications: an invitation without an account has nothing to bind, and a
+    -- sign-in code naming one would bind it without anybody proving the address.
+    CHECK ((purpose = 'invite') = (username IS NOT NULL))
+  );
+
+  -- One invitation per address is not the invariant that matters; one invitation per
+  -- **account** is. Without this index, inviting mamie at one address and then at
+  -- another leaves two live codes racing to bind the same account, and reminting the
+  -- pending invitation has no single row to work from.
+  CREATE UNIQUE INDEX idx_verification_codes_invite
+    ON verification_codes (username) WHERE purpose = 'invite';
+
+  -- What is left on commenters is what a person is. Nothing indexes these four, so
+  -- ALTER TABLE … DROP COLUMN applies without recreating the table.
+  --
+  -- pending_display_name **stays**: the rule it enforces is about the name, not
+  -- about the code — requesting a code renames nobody (D42) — and dropping it would
+  -- restore a rename this repository already closed.
+  ALTER TABLE commenters DROP COLUMN code_hash;
+  ALTER TABLE commenters DROP COLUMN code_expires_at;
+  ALTER TABLE commenters DROP COLUMN code_sent_at;
+  ALTER TABLE commenters DROP COLUMN code_attempts;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

@@ -13,6 +13,44 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### An account can be one person, invited by email
+
+Until now an account was a password, and whoever had it was whoever had it. A
+household sharing one is the case this application was built for, and it stays
+exactly as it is. What was missing is the other case: somebody who should have an
+account of their own, whose name follows them from a phone to a laptop without
+being proved again on each.
+
+Creating an account in **Administration → Accounts** now takes either a password,
+as before, or an email address. An address sends an invitation instead of setting a
+password. The recipient opens the message, types the six digits it carries, and
+gives the name their comments will be signed with. From then on that account is
+that person: they are known as soon as they sign in, on every device, and they sign
+in with a code sent to that address rather than with a password. There is still no
+public registration form, and nobody can create an account for themselves.
+
+An account already in use can be converted the same way, from its row in the list.
+Read the confirmation before agreeing to it: converting closes every session that
+account has open and stops its password working, so anyone else behind it is signed
+out and has to be given an account of their own. Converting a key three people
+share is the wrong move for that reason. The right one is to leave it alone.
+
+The account list gains a column saying which of four things each account is: a
+shared key, a person, an invitation still open until its date, or an account whose
+invitation expired with nobody taking it up. That last state is the only way an
+owner ever finds out that a message went nowhere, and the row offers inviting again
+and deleting side by side. An invitation lasts seven days.
+
+Two things to know before using it. Invitations need SMTP configured, the same
+relay comments already need; without one the form says so rather than creating an
+account nobody can enter. And an account bound to a person holds no password at
+all, so if somebody loses access to their address, an administrator takes the
+account back by unbinding it and setting a password in the same step, which also
+closes its sessions.
+
+Nothing changes for an account that keeps a password. Its sessions, its albums, its
+paired screens and the way anyone signs in with it are untouched.
+
 ### The front end addresses the application by an alias
 
 An instance served by the Caddy this repository ships is unaffected. An instance

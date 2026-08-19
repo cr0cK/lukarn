@@ -53,6 +53,11 @@ export const en = {
   'error.invalidCode': 'Invalid code — six digits expected.',
   'error.codeAttemptsExhausted': 'Too many attempts. Ask for a new code.',
   'error.codeWrongOrExpired': 'Wrong or expired code. Ask for a new one if needed.',
+  'error.invalidEmail': 'Invalid address',
+  'error.displayNameRequired':
+    'Give the name your comments will be signed with, then send the code again.',
+  'error.identityBound':
+    'This account is one person, and its address is not this session\u2019s to change. Sign out to use the gallery as somebody else.',
 
   'error.noIcon': 'No icon of that name',
   'error.logoEmpty': 'No image received.',
@@ -72,6 +77,14 @@ export const en = {
     'The last administrator cannot have the role removed: the instance would become unadministrable. Appoint another administrator first.',
   'error.lastAdminDelete':
     'The last administrator cannot be deleted: the instance would become unadministrable.',
+  'error.identityTaken': (username: string) =>
+    `That address already signs in as "${username}". An address belongs to one account.`,
+  'error.accountAlreadyBound': (username: string) =>
+    `"${username}" is already one person. Changing the address of a bound account is not offered: unbind it first, which gives it a password again and closes its sessions.`,
+  'error.noInvitationPending': (username: string) =>
+    `"${username}" has no invitation waiting, so there is nothing to send again. Give the address to invite it at.`,
+  'error.passwordOnBoundAccount': (username: string) =>
+    `"${username}" is bound to a person and holds no password. Unbind it to give it one, which also closes its sessions.`,
   'error.coverNotInAlbum': 'That cover is not a photo indexed in this album.',
   'error.serviceAccountConsent':
     'This instance authenticates with a service account: there is no consent to give. Share the folder with its address from Google Drive.',
@@ -111,6 +124,25 @@ export const en = {
     'Type it into the page you left open. It lasts fifteen minutes and works once.',
   'mail.codeIgnore':
     'If you did not ask for this, ignore the message: until the code is entered, nothing is tied to this address. Do not pass it on to anyone.',
+
+  'mail.signInSubject': (host: string) => `Sign-in code \u2014 ${host}`,
+  'mail.signInIntro': (host: string) =>
+    `This code signs in to ${host} as the person this address belongs to.`,
+  'mail.signInHere': 'Here is your code:',
+  'mail.signInValidity':
+    'Type it into the page you left open. It lasts fifteen minutes and works once.',
+  'mail.signInIgnore':
+    'If you did not ask to sign in, ignore the message: the code opens nothing until it is entered. Do not pass it on to anyone \u2014 whoever types it signs in as you.',
+
+  'mail.inviteSubject': (host: string) => `An account for you on ${host}`,
+  'mail.inviteIntro': (host: string) =>
+    `An account has been opened for you on ${host}. The code below is what opens it, and this address becomes the name your comments are signed with.`,
+  'mail.inviteHere': 'Here is your code:',
+  'mail.inviteValidity':
+    'It lasts seven days and works once. Ask for another from the sign-in page if it runs out.',
+  'mail.inviteLink': 'Sign in from this page, with the address already filled in:',
+  'mail.inviteIgnore':
+    'If this was not expected, ignore the message: no account is opened until the code is entered. Do not pass it on to anyone \u2014 whoever types it signs in as you.',
 
   /* ---------------------------------------------------- Unsubscribe pages */
 

@@ -11,6 +11,11 @@
 The distinction between the last two is recent and structural: credentials entrusted to an entire
 household do not identify who is writing. See D38.
 
+Since 1.3 the last two may be **joined on one account**: `users.commenter_id` names the person an
+access key is, or is `NULL` and that key stays what it has always been. There is one axis rather
+than two kinds of instance (D260819), so nothing below has to ask which kind of account it is
+looking at.
+
 ## The two authentication methods, not to be confused
 
 This is the project's most costly source of confusion. These are two unrelated mechanisms that do
@@ -51,6 +56,66 @@ fraction of the time taken by a wrong password, allowing accounts to be enumerat
 User lookup is **case-insensitive** (`ConfigRepo.user`), as is uniqueness—this is the role of the
 primary key's `COLLATE NOCASE` (see [03](./03-data-model.md)). Creating "ALEXIS" when
 "alexis" exists returns **409**, never a silent overwrite.
+
+## An account bound to a person
+
+`users.commenter_id` holds the identity an account **is**. A bound account is one person: every
+device that signs in with it signs comments with that name, and there is nothing left to declare on
+arrival (D260819).
+
+- **The identity comes from the account, and is reread on every request.** `plugins/auth.ts` reads
+  `users.commenter_id` when it is set and `sessions.commenter_id` otherwise, so an address deleted
+  elsewhere stops signing without waiting for another sign-in — the session lasts a year. The two
+  columns answer different questions: the session's is what this device declared, the account's is
+  who this account is.
+- **A binding is always a verified one.** The column is written when a code is consumed, and by
+  nothing else. No route under `/api/admin` points it at an identity, because an administrator able
+  to do so could aim their own account at anyone who has ever commented and sign as them. Unbinding
+  clears the column, and nothing else writes it. The rule that an unverified identity is attached to no session therefore holds here
+  without a check of its own.
+- **`SessionUser.identityBound` says which of the two the identity came from.** The front end needs
+  it in order to stop offering to change or forget an identity the server will refuse to change or
+  forget.
+
+**Two credentials, one per kind of account.** An unbound account is entered with its password,
+exactly as before. A bound account holds no password and is entered with six digits sent to the
+address it is bound to (D260819b).
+
+| The account is | Entered with                         | Recovered by                                                                                     |
+| -------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Unbound        | Its password, argon2id               | `pnpm reset-password`, or /admin                                                                 |
+| Bound          | A code sent to its address, `signin` | Unbinding it, which requires a password. `pnpm reset-password` performs that unbind and says so. |
+
+"No password" is **one reserved argon2 hash**, `NO_PASSWORD_HASH` in `crypto.ts`. `password_hash`
+is `NOT NULL` and stays that way, and a nullable column would mean rebuilding `users` to express
+with a null what a constant expresses without touching the schema. `/auth/login` compares it like
+any other hash, without branching, so an account with no password is not the one that answers
+faster. It is a constant rather than random bytes thrown away because two rules have to recognise
+it: the last-admin count, which excludes an account holding this hash with no binding so that the
+only working administrator cannot demote or delete themselves, and the account list, which shows an
+account with no way in. It is generated from CSPRNG bytes whose preimage was destroyed, since a
+sentinel that is `argon2("NO_PASSWORD")` would be a password opening every account holding it, and
+`config.ts` refuses this exact value from a bootstrap `config/albums.yaml`.
+
+**A password cannot be set on a bound account.** The refusal lives at the `ConfigRepo` boundary
+rather than on the route, because `pnpm reset-password` writes through the repository without
+passing any route, and guarding the route alone would leave a shell command that quietly recreates
+the impersonation. The single exception is `{ unbind: true, password }`, which in one transaction
+clears the binding, writes the password and closes the sessions: the administrator taking the
+account back and handing it over as the shared key it has become. Without the rule an administrator
+sets a password on a bound account, signs in, and the session signs as that person; without the
+exception, unbinding leaves an account nobody can enter, the administrator included.
+
+**What a conversion closes.** Consuming an invitation on an account that had a password closes that
+account's sessions and deletes its approved pairings, in the same transaction that writes the
+binding and replaces the password. Without the closing, the other devices of a household keep a
+session that has just started signing under one person's name; without the password being replaced,
+everyone who knew the shared key still walks in under it. The pairing row matters on its own: it
+survives a session purge, and `claim()` turns a `deviceCode` into a fresh session on that username
+afterwards, so a television approved while the key was shared would come back as the person the
+account has just become. Unbinding closes the same two. The new session is opened by the route
+**after** the commit, because it belongs to whoever just proved the address and a blanket close run
+afterwards would sign them straight out.
 
 ## Attempt throttling
 
@@ -98,6 +163,22 @@ bypassable without any warning.
 Accepted limitations: the counters are in memory and therefore lost on restart, and a truly
 distributed attack (one address per attempt, one username per attempt) is not slowed by any of the
 three axes. For an instance with a few accounts behind a reverse proxy, this is the chosen trade-off.
+
+**The code routes reuse these three axes; there is no fourth counter.** `/api/auth/code/verify`
+calls `fail()` and `succeed()` with the **address** in place of the username, the way pairing puts
+its `deviceCode` there, so probing codes is slowed exactly like probing passwords.
+
+`/api/auth/code/request` is the exception, and the shape is deliberate. It counts on the caller's
+`ip` axis alone, because a `429` keyed to an address is the oracle its uniform `202` exists to
+close. And it counts **every call, whatever it decided to do**: before the body is even parsed,
+before the address is looked up, and whether or not an email went out. The `ip` axis is shared with
+`/auth/login`, so an attacker walks it to one below its threshold with failed sign-ins and then
+sends a single request for a candidate address. If the counter moved, the address was known. The
+uniform `202` closes the answer channel, and a counter that depended on the answer — counting only
+what was actually sent, the version that looks careful — reopens it one call later. The counter is
+therefore a function of how much the caller asked, never of what the answers were, which also still
+bounds mail-bombing across a thousand addresses: a thousand calls trip the axis whether or not
+anybody exists behind them.
 
 ## Sessions
 
@@ -171,9 +252,14 @@ What holds it all together:
   to take its place.
 - **Approval requires a session** (`requireAuth`), and the created session carries the approver's
   account and albums—reevaluated on every request like any other session.
-- **The commenter identity does not follow.** The paired screen arrives without an identity, as
-  after a password login: it belongs to the person, not the access key. Without this rule, the
-  living-room television would sign with the approver's name.
+- **The commenter identity does not follow an unbound account, and does follow a bound one.** From
+  a shared key the paired screen arrives without an identity, as after a password login: the
+  approver is one of several people, and without this rule the living-room television would sign
+  with their name. On a bound account the identity **is** the account, so it follows by
+  construction, and approving a screen from one delegates the ability to sign as you (D260819).
+  `pairings.ts` needs no state for this, since the created session already carries the approver's
+  account; `/device/poll` returns that account's identity and `identityBound` in its approval
+  payload, so a paired screen is not cached as unidentified until some later `/me`.
 - **A `deviceCode` is worth only one session**: the request is deleted when retrieved, and replaying
   it returns the same response as an unknown code.
 - **Five minutes**, then the request dies. The hourly purge in `main.ts` removes requests that nobody
@@ -259,7 +345,15 @@ received code, and forget the identity for this session.
   distinguishing the two would tell a probing user which addresses have already commented on this
   instance. A `429` remains possible during the minute after a send—it reveals only that a code has
   just been sent to the address, not that the instance knows it, and the route is only open to an
-  authenticated account.
+  authenticated account. **That last clause is what carries the argument**, and it does not survive
+  on a route anybody can call: `/api/auth/code/request` therefore answers `202` for the minute
+  after a send as well, and `/api/auth/code/verify` returns one refusal where `/identity/verify`
+  returns four (D260819b).
+- **All three routes answer `409 identity_bound` on a bound account**, refused by a `preHandler`
+  before any handler runs. The identity of such an account is not the session's to choose:
+  declaring another address would attach an identity the account contradicts, and forgetting one
+  would silently do nothing, since `plugins/auth.ts` reads the account rather than the session.
+  Forgetting who you are is a shared-key operation; on a bound account the way out is to sign out.
 - **The session remembers the identity; it does not define it.** The identity is reread on every
   request: deleting an address removes the right to comment without waiting for another login—the
   session lasts one year.
@@ -575,6 +669,12 @@ Two points support everything else:
 - **Never the media item.** Counting photo by photo would produce someone's viewing history in an
   application where an entire household shares a password. The counters stop at "how many photos
   were opened in this album on that day".
+
+**The counters did not change in 1.3, and their justification did.** A bound account is one person,
+so the sentence above no longer holds on its own: what was "the counters cannot identify a person"
+is now "the counters do not identify a person", which is the stronger promise and the one this
+application intends to keep. Personal accounts are not permission to count photo by photo, and any
+later work that wants finer telemetry is deciding to build a viewing history (D260819).
 
 Reading is reserved for administrators: `GET /api/admin/visits` is under the prefix-level
 `requireAdmin`, like everything else (see [05](./05-api.md)). The hourly purge in `main.ts` retains

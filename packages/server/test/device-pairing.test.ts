@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { ALL_ALBUMS, type DevicePairingStart } from '@lukarn/shared';
+import { ALL_ALBUMS, type DevicePairingStart, type SessionUser } from '@lukarn/shared';
 import argon2 from 'argon2';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app.js';
@@ -59,6 +59,29 @@ function poll(deviceCode: string) {
     url: '/api/auth/device/poll',
     payload: { deviceCode },
   });
+}
+
+/**
+ * Creates an account by address, takes its invitation up and returns the session
+ * that opened. The code comes straight from the repository: this instance has no
+ * mail relay, and `/code/verify` needs none.
+ */
+async function bindAndSignIn(username: string, email: string, name: string): Promise<string> {
+  const invited = context.config.createInvitedUser(
+    { username, admin: false, albums: ['vacances'], email },
+    context.codes,
+  );
+  assert.ok('user' in invited, `invitation refused for ${username}`);
+
+  const response = await server.inject({
+    method: 'POST',
+    url: '/api/auth/code/verify',
+    payload: { email, code: invited.code, displayName: name },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
+  assert.ok(cookie, 'session cookie missing');
+  return `lukarn_session=${cookie.value}`;
 }
 
 /** Expires a request without waiting five minutes. */
@@ -222,15 +245,14 @@ describe('commenter identity', () => {
     const cookie = await login('alexis');
 
     // A verified identity attached to the session of whoever will approve.
-    const asked = context.commenters.requestCode('mamie@exemple.fr', 'Mamie');
-    assert.ok('code' in asked);
-    const verified = context.commenters.verify('mamie@exemple.fr', asked.code);
-    assert.ok('commenter' in verified);
+    context.commenters.declare('mamie@exemple.fr', 'Mamie');
+    const verified = context.commenters.markVerified('mamie@exemple.fr');
+    assert.ok(verified);
 
     const session = context.db
       .prepare('SELECT id FROM sessions WHERE username = ? ORDER BY rowid DESC LIMIT 1')
       .get('alexis') as { id: string };
-    context.sessions.attachCommenter(session.id, verified.commenter.id);
+    context.sessions.attachCommenter(session.id, verified.id);
 
     const me = await server.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
     assert.equal(
@@ -245,6 +267,24 @@ describe('commenter identity', () => {
     // Without this rule, the living-room television would sign "Mamie" for the
     // whole household: identity belongs to the person, the access key to the device.
     assert.equal(claimed.json<{ user: { identity: unknown } }>().user.identity, null);
+  });
+
+  it('follows a bound account, whose identity is the account itself', async () => {
+    const cookie = await bindAndSignIn('aieule', 'aieule@exemple.fr', 'Aïeule');
+
+    const pairing = await start();
+    await approve(pairing.userCode, cookie);
+    const claimed = await poll(pairing.deviceCode);
+
+    // The rule above inverts here, and only here: on a shared key the approver is
+    // one of several people, while on a bound account the account **is** the person,
+    // so approving a screen delegates the ability to sign as them. The poll builds
+    // its payload inline, which is why the screen would otherwise be cached as
+    // unidentified until some later `/me`.
+    const user = claimed.json<{ user: SessionUser }>().user;
+    assert.equal(user.username, 'aieule');
+    assert.equal(user.identity?.displayName, 'Aïeule');
+    assert.equal(user.identityBound, true);
   });
 });
 

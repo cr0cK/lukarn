@@ -47,11 +47,10 @@ let context: AppContext;
 
 /** Pre-verified identity: the code path is tested elsewhere. */
 function identiteVerifiee(email: string, nom: string): number {
-  const asked = context.commenters.requestCode(email, nom);
-  assert.ok('code' in asked);
-  const verified = context.commenters.verify(email, asked.code);
-  assert.ok('commenter' in verified);
-  return verified.commenter.id;
+  context.commenters.declare(email, nom);
+  const verified = context.commenters.markVerified(email);
+  assert.ok(verified);
+  return verified.id;
 }
 
 /** Opens a session with the shared access key and returns its cookie. */
@@ -208,14 +207,13 @@ describe('subscription when opening an album', () => {
   });
 
   it('never subscribes an unverified identity', () => {
-    const asked = context.commenters.requestCode('abo-inconnu@exemple.fr', 'Inconnu');
-    assert.ok('code' in asked);
+    const declared = context.commenters.declare('abo-inconnu@exemple.fr', 'Inconnu');
 
-    context.subscriptions.subscribe(asked.commenter.id, 'vacances');
+    context.subscriptions.subscribe(declared.id, 'vacances');
 
     // The address has only been declared: it may belong to a third party whom
     // this gallery has no right to contact.
-    assert.equal(context.subscriptions.state(asked.commenter.id, 'vacances'), null);
+    assert.equal(context.subscriptions.state(declared.id, 'vacances'), null);
     assert.deepEqual(context.subscriptions.subscribers('vacances'), []);
   });
 

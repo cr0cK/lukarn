@@ -12,8 +12,8 @@ const PHOTO = 'IMG_0001.jpg';
 const MESSAGE = 'The light on the cliffs is exactly as promised.';
 
 test('a comment is signed by an address the sender proves they own', async ({ page }) => {
-  // The code cannot be read out of the database — `commenters.code_hash` holds an
-  // HMAC — so intercepting the message is the only way through this flow.
+  // The code cannot be read out of the database — `verification_codes.code_hash`
+  // holds an HMAC — so intercepting the message is the only way through this flow.
   await clearMail();
 
   await openDayAlbum(page);

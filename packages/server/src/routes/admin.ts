@@ -19,6 +19,7 @@ import {
   VISIT_WINDOW_MAX,
   type AdminAlbum,
   type AdminStatus,
+  type AdminUser,
   type AppSettings,
   type StorageAuthorization,
   type StorageConnectionStatus,
@@ -29,10 +30,11 @@ import {
 import argon2 from 'argon2';
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import type { StoredAlbum } from '../config-repo.js';
+import type { StoredAlbum, StoredUser } from '../config-repo.js';
 import { toAdminUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
 import type { Translate } from '../i18n/index.js';
+import { buildInvitationMail } from '../mail.js';
 import { requireAdmin } from '../plugins/auth.js';
 import { buildAlbum } from '../repo.js';
 import type { StorageConnection } from '../storage/connections.js';
@@ -76,18 +78,40 @@ const moderationEmail = z
   .nullable()
   .optional();
 
-const createUserSchema = z.object({
-  username: identifier,
-  password,
-  admin: z.boolean().default(false),
-  albums: albumList.default([]),
-});
+/** Address an invitation goes to. Same bound as everywhere else an address is read. */
+const invitedEmail = z.string().trim().email('invalid address').max(EMAIL_MAX_LENGTH);
 
-const updateUserSchema = z.object({
-  password: password.optional(),
-  admin: z.boolean().optional(),
-  albums: albumList.optional(),
-});
+const createUserSchema = z
+  .object({
+    username: identifier,
+    password: password.optional(),
+    email: invitedEmail.optional(),
+    admin: z.boolean().default(false),
+    albums: albumList.default([]),
+  })
+  // Exactly one, as `CreateUserRequest` says in the type system. A password creates
+  // the shared key of 1.2 and nothing about it changes; an address creates an account
+  // with no password and invites it. Both at once would be a key pretending to be a
+  // person, and neither would be an account nobody can enter.
+  .refine((input) => (input.password === undefined) !== (input.email === undefined), {
+    message: 'exactly one of password and email',
+  });
+
+/** Inviting an existing account. Without an address, the pending invitation is remade. */
+const inviteUserSchema = z.object({ email: invitedEmail.optional() });
+
+const updateUserSchema = z
+  .object({
+    password: password.optional(),
+    admin: z.boolean().optional(),
+    albums: albumList.optional(),
+    unbind: z.literal(true).optional(),
+  })
+  // Unbinding without a password would leave an account with no identity and a hash
+  // nobody can enter, the administrator included.
+  .refine((input) => input.unbind === undefined || input.password !== undefined, {
+    message: 'unbinding requires the password the account is entered with afterwards',
+  });
 
 const moderationQuerySchema = z.object({
   filter: z.enum(['all', 'visible', 'hidden']).default('all'),
@@ -260,6 +284,21 @@ function commenterIdOf(params: unknown): number | null {
  * not the interface, and translating a library's vocabulary would mean
  * maintaining a copy of it.
  */
+/**
+ * The one-a-minute delivery delay, as an HTTP answer.
+ *
+ * The delay is per address across every purpose, so an administrator inviting two
+ * accounts at the same inbox in the same minute meets it — which is the mail-bombing
+ * rule doing its job rather than a fault of this route.
+ */
+function tooSoon(reply: FastifyReply, retryAfterMs: number, t: Translate): FastifyReply {
+  const seconds = Math.ceil(retryAfterMs / 1000);
+  return reply
+    .code(429)
+    .header('Retry-After', String(seconds))
+    .send({ error: 'too_soon', message: t('error.codeJustSent', seconds) });
+}
+
 function badRequest(reply: FastifyReply, error: z.ZodError, t: Translate): FastifyReply {
   const details = error.issues
     .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
@@ -337,6 +376,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     };
   }
 
+  /**
+   * The account list's view of an account. The identity and the pending invitation
+   * live outside the configuration snapshot, so the projection is given the two
+   * repositories that hold them rather than reading them itself.
+   */
+  const adminUser = (user: StoredUser): AdminUser =>
+    toAdminUser(user, context.codes, context.commenters);
+
   return async (app) => {
     app.addHook('preHandler', requireAdmin);
 
@@ -373,9 +420,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
     /* ------------------------------------------------------------- accounts */
 
-    app.get('/users', async (_request, reply) =>
-      reply.send(context.config.users().map(toAdminUser)),
-    );
+    app.get('/users', async (_request, reply) => reply.send(context.config.users().map(adminUser)));
 
     app.post('/users', async (request, reply) => {
       const parsed = createUserSchema.safeParse(request.body ?? {});
@@ -398,15 +443,140 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'unknown_album', message: request.t('error.unknownAlbum', missing) });
       }
 
+      // Created by address: the reserved hash and the invitation, together. No binding
+      // is written here and no existing `commenters` row is touched — a verified
+      // address proves that somebody controls an inbox, not that they accepted this
+      // account, and consuming the code is what proves the second. Adopting an
+      // identity that already signs comments is the good case, and it happens there.
+      if (input.email !== undefined) {
+        if (!context.mailer.enabled) {
+          // Refused rather than creating an account nobody can enter: with no relay
+          // the invitation is never sent, and the account would sit in the list with
+          // no password and no way to acquire one.
+          return reply.code(503).send({
+            error: 'mail_not_configured',
+            message: request.t('error.mailNotConfigured'),
+          });
+        }
+
+        // Bound rows only. A pending invitation holds nothing: one invitation per
+        // address at a time, so a second one replaces the first and the account it
+        // named loses it — which the account list shows.
+        const holder = context.config.userForEmail(input.email);
+        if (holder) {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', holder.username),
+          });
+        }
+
+        const created = context.config.createInvitedUser(
+          {
+            username: input.username,
+            admin: input.admin,
+            albums: input.albums,
+            email: input.email,
+          },
+          context.codes,
+        );
+        if ('failure' in created) return tooSoon(reply, created.retryAfterMs, request.t);
+
+        context.mailer.queue(
+          buildInvitationMail(
+            input.email,
+            created.code,
+            context.env.defaultLocale,
+            context.settings.instanceName,
+            context.env,
+          ),
+        );
+        request.log.info(`Account "${created.user.username}" created and invited`);
+        return reply.code(201).send(adminUser(created.user));
+      }
+
       const user = context.config.createUser({
         username: input.username,
-        passwordHash: await argon2.hash(input.password, { type: argon2.argon2id }),
+        // Guaranteed by the schema: exactly one of the two is present.
+        passwordHash: await argon2.hash(input.password!, { type: argon2.argon2id }),
         admin: input.admin,
         albums: input.albums,
       });
 
       request.log.info(`Account "${user.username}" created`);
-      return reply.code(201).send(toAdminUser(user));
+      return reply.code(201).send(adminUser(user));
+    });
+
+    /**
+     * Invites an account that already exists, and sends its invitation again.
+     *
+     * With an address it invites that account. Without one it mints a fresh code for
+     * the invitation already pending, which is what somebody presses when the first
+     * message went unread. An account that keeps its password stays enterable
+     * throughout: an invitation to convert that nobody takes up leaves a working
+     * shared key exactly as it was.
+     */
+    app.post('/users/:username/invite', async (request, reply) => {
+      const { username } = request.params as { username: string };
+      const stored = context.config.user(username);
+      if (!stored) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.accountNotFound') });
+      }
+
+      const parsed = inviteUserSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
+
+      // Refused on a bound account: that would be changing somebody's address, which
+      // is out of scope for this release, and it is the shape of the impersonation
+      // this design exists to prevent — an administrator pointing an account at an
+      // inbox they read.
+      if (stored.commenterId !== null) {
+        return reply.code(409).send({
+          error: 'already_bound',
+          message: request.t('error.accountAlreadyBound', stored.username),
+        });
+      }
+
+      if (!context.mailer.enabled) {
+        return reply.code(503).send({
+          error: 'mail_not_configured',
+          message: request.t('error.mailNotConfigured'),
+        });
+      }
+
+      // An invitation that expired left no row behind, so nothing here still knows
+      // where it was sent: the address has to be given again.
+      const email = parsed.data.email ?? context.codes.pendingInvite(stored.username)?.target;
+      if (!email) {
+        return reply.code(409).send({
+          error: 'no_invitation',
+          message: request.t('error.noInvitationPending', stored.username),
+        });
+      }
+
+      const holder = context.config.userForEmail(email);
+      if (holder) {
+        return reply.code(409).send({
+          error: 'identity_taken',
+          message: request.t('error.identityTaken', holder.username),
+        });
+      }
+
+      const minted = context.codes.mint(email, 'invite', { username: stored.username });
+      if ('failure' in minted) return tooSoon(reply, minted.retryAfterMs, request.t);
+
+      context.mailer.queue(
+        buildInvitationMail(
+          email,
+          minted.code,
+          context.env.defaultLocale,
+          context.settings.instanceName,
+          context.env,
+        ),
+      );
+      request.log.info(`Account "${stored.username}" invited`);
+      return reply.send(adminUser(stored));
     });
 
     app.patch('/users/:username', async (request, reply) => {
@@ -424,7 +594,17 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       // Removing the last administrator's role would make the instance impossible to
       // administer: nobody could connect Drive, create an account or restore the role.
-      if (patch.admin === false && stored.admin && context.config.adminCount() <= 1) {
+      //
+      // The count excludes administrators nobody can sign in as, so the predicate has
+      // to move with it: refusing to demote a *pending* administrator while the working
+      // one remains is the new wrong answer. It guards when the target is itself usable
+      // and taking it away would leave none behind.
+      if (
+        patch.admin === false &&
+        stored.admin &&
+        context.config.isUsable(stored.username) &&
+        context.config.adminCount() <= 1
+      ) {
         return reply.code(409).send({
           error: 'last_admin',
           message: request.t('error.lastAdminRole'),
@@ -440,13 +620,47 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         }
       }
 
-      const user = context.config.updateUser(stored.username, {
-        passwordHash: patch.password
-          ? await argon2.hash(patch.password, { type: argon2.argon2id })
-          : undefined,
-        admin: patch.admin,
-        albums: patch.albums,
-      });
+      if (patch.unbind) {
+        // `{ unbind: true, password }` is the single way a bound account is given a
+        // password: in one transaction it clears the binding, writes the password,
+        // closes the sessions and forgets the paired screens. It is the administrator
+        // taking the account back and handing it over as the shared key it has become,
+        // and the answer to somebody losing access to their address.
+        context.config.unbindUser(
+          stored.username,
+          await argon2.hash(patch.password!, { type: argon2.argon2id }),
+        );
+        request.log.info(
+          `Account "${stored.username}" unbound and given a password, its sessions are closed`,
+        );
+      }
+
+      let user: StoredUser;
+      try {
+        user = context.config.updateUser(stored.username, {
+          // The unbind above already wrote it, inside the transaction that closed the
+          // sessions: hashing it again would only rewrite the same column.
+          passwordHash:
+            patch.password && !patch.unbind
+              ? await argon2.hash(patch.password, { type: argon2.argon2id })
+              : undefined,
+          admin: patch.admin,
+          albums: patch.albums,
+        });
+      } catch (error) {
+        // The refusal belongs to `ConfigRepo` rather than here, because
+        // `pnpm reset-password` writes through it without passing any route. This asks
+        // and translates rather than restating the condition: a bound account being
+        // given a password is the only reason a well-formed patch is refused, so
+        // anything else is a fault and keeps travelling.
+        if (patch.password !== undefined && stored.commenterId !== null) {
+          return reply.code(409).send({
+            error: 'password_on_bound_account',
+            message: request.t('error.passwordOnBoundAccount', stored.username),
+          });
+        }
+        throw error;
+      }
 
       /**
        * Changing a password closes open sessions: otherwise an already signed-in
@@ -458,12 +672,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
        * disappears on the next request. Changing the album list does not sign out for
        * the same reason.
        */
-      if (patch.password) {
+      if (patch.password && !patch.unbind) {
         context.sessions.destroyForUser(stored.username);
         request.log.info(`Sessions of "${stored.username}" closed after password change`);
       }
 
-      return reply.send(toAdminUser(user));
+      return reply.send(adminUser(user));
     });
 
     app.delete('/users/:username', async (request, reply) => {
@@ -475,7 +689,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.accountNotFound') });
       }
 
-      if (stored.admin && context.config.adminCount() <= 1) {
+      // As above: the last administrator who can actually sign in, not the last row.
+      if (
+        stored.admin &&
+        context.config.isUsable(stored.username) &&
+        context.config.adminCount() <= 1
+      ) {
         return reply.code(409).send({
           error: 'last_admin',
           message: request.t('error.lastAdminDelete'),
@@ -483,7 +702,11 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       context.config.deleteUser(stored.username);
-      // A deleted account must not continue navigating with its session.
+      // A deleted account must not continue navigating with its session. Its pending
+      // invitation leaves with it through `verification_codes.username`, which
+      // references this row `ON DELETE CASCADE`: without that, recreating the same
+      // username would let the original recipient bind an account that may by then be
+      // an administrator.
       context.sessions.destroyForUser(stored.username);
       request.log.info(`Account "${stored.username}" deleted, its sessions are closed`);
 

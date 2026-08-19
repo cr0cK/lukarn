@@ -51,11 +51,19 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
     // Identity is reread on every request rather than fixed at sign-in: an address
     // deleted from another device must revoke commenting without waiting for another
     // sign-in — the session lasts a year.
-    const commenter =
-      session.commenterId === null ? null : context.commenters.byId(session.commenterId);
+    //
+    // It comes from the **account** when that account is bound, and from the session
+    // otherwise. `users.commenter_id` is written only when a code is consumed, so a
+    // bound identity is always a verified one: the rule that an unverified identity
+    // is attached to no session holds here without a check of its own.
+    const bound = configured.commenterId;
+    const identityId = bound ?? session.commenterId;
+    const commenter = identityId === null ? null : context.commenters.byId(identityId);
     // Identity deleted meanwhile: detach it rather than retaining an identifier that
-    // no longer identifies anything.
-    if (session.commenterId !== null && !commenter) {
+    // no longer identifies anything. Only the session's own can dangle — deleting an
+    // identity sets `users.commenter_id` back to NULL (ON DELETE SET NULL), so a
+    // bound account has already stopped being that person by the time it is read.
+    if (bound === null && session.commenterId !== null && !commenter) {
       context.sessions.attachCommenter(session.id, null);
     }
 
@@ -85,6 +93,7 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       username: configured.username,
       admin: configured.admin,
       identity: commenter ? toIdentity(commenter) : null,
+      identityBound: bound !== null,
       commentsEnabled: context.mailer.enabled,
     };
   });

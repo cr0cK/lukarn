@@ -37,7 +37,8 @@ flowchart LR
 | `src/comments.ts`            | `CommentRepo`: threads limited to one level of depth, moderation.                                                                                                                    |
 | `src/places.ts`              | `AlbumDayRepo` and `PlacesPass`: annotated days, clustering of EXIF positions.                                                                                                       |
 | `src/geocoder.ts`            | Rate-limited Nominatim reverse geocoding, cached by cells of roughly one kilometre.                                                                                                  |
-| `src/commenters.ts`          | `CommenterRepo`: commenter identities, code-based address verification, recipients.                                                                                                  |
+| `src/commenters.ts`          | `CommenterRepo`: commenter identities, the rename that waits for proof, notification recipients.                                                                                     |
+| `src/verification-codes.ts`  | `VerificationCodeRepo`: the codes sent to an address, whatever they prove. One send a minute per address, five attempts per code, a deadline per purpose.                            |
 | `src/mail.ts`                | SMTP transport, out-of-request sending queue, notification email composition.                                                                                                        |
 | `src/sessions.ts`            | Session creation, reading, destruction, and purging.                                                                                                                                 |
 | `src/crypto.ts`              | AES-256-GCM for the refresh token, constant-time comparison.                                                                                                                         |
