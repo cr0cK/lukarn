@@ -177,13 +177,13 @@ test('the invitation says what the code grants, and carries the digits in the bo
   // one attack left standing: it is social, and consists of talking the holder of a
   // code into reading it out. `indexOf` rather than a line index because the sentence
   // has to come **before** the digits to be read before them.
-  const intro = `An account has been opened for you on ${HOST}.`;
+  const intro = `An account has been created for you on ${HOST}.`;
   expect(body).toContain(intro);
-  expect(body).toContain('this address becomes the name your comments are signed with');
+  expect(body).toContain('this address is what your comments will be signed under');
   expect(body.indexOf(intro)).toBeLessThan(body.indexOf(code));
 
   // Seven days, stated in the message as well as on the account list.
-  expect(body).toContain('It lasts seven days and works once.');
+  expect(body).toContain('It is good for seven days and works once.');
 
   // The link carries no secret: it fills the address in and asks for the six digits,
   // which is the line between it and a magic link (D260819b).
@@ -286,8 +286,8 @@ test('another browser context signs in with a code, and finds the same person', 
   // is read out to anybody. This is a sign-in rather than a second invitation: the
   // address opens an account now.
   expect(body).toContain(`Hello ${INVITED.name},`);
-  expect(body).toContain(`This code signs in to ${HOST} as the person this address`);
-  expect(body).not.toContain('An account has been opened for you');
+  expect(body).toContain(`This code signs you in to ${HOST}`);
+  expect(body).not.toContain('An account has been created for you');
 
   await page.getByRole('textbox', { name: 'Sign-in code' }).fill(verificationCode(signInMail));
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -341,10 +341,10 @@ test('an invitation is written in the language chosen for it, and again in it wh
   );
 
   const invitation = await waitForMail(IN_FRENCH.typo);
-  expect(subjectOf(invitation)).toBe(`Un compte sur ${HOST}`);
+  expect(subjectOf(invitation)).toBe(`Un compte pour vous sur ${HOST}`);
   const body = readable(invitation);
-  expect(body).toContain(`Un compte vient d’être ouvert sur ${HOST}`);
-  expect(body).toContain('Il dure sept jours et ne fonctionne qu’une fois.');
+  expect(body).toContain(`Un compte a été créé pour vous sur ${HOST}`);
+  expect(body).toContain('Il est valable sept jours et ne fonctionne qu’une fois.');
 
   // Sent again, to the address that should have been typed the first time. The
   // request carries no language of its own, so the only thing that can still put this
@@ -363,8 +363,8 @@ test('an invitation is written in the language chosen for it, and again in it wh
   expect(again.ok()).toBe(true);
 
   const corrected = await waitForMail(IN_FRENCH.email);
-  expect(subjectOf(corrected)).toBe(`Un compte sur ${HOST}`);
-  expect(readable(corrected)).toContain(`Un compte vient d’être ouvert sur ${HOST}`);
+  expect(subjectOf(corrected)).toBe(`Un compte pour vous sur ${HOST}`);
+  expect(readable(corrected)).toContain(`Un compte a été créé pour vous sur ${HOST}`);
 
   // And the list says where the invitation waits now, which is the other half of a
   // corrected address: the first one is gone rather than left open beside it.
@@ -425,7 +425,7 @@ test('the language belongs to the person, and the next code arrives in it', asyn
   const signInMail = await waitForMail(IN_FRENCH.email);
   const body = readable(signInMail);
   expect(body).toContain(`Bonjour ${IN_FRENCH.name},`);
-  expect(body).toContain(`Ce code ouvre une session sur ${HOST}`);
+  expect(body).toContain(`Ce code vous connecte à ${HOST}`);
 
   await page.getByRole('textbox', { name: 'Sign-in code' }).fill(verificationCode(signInMail));
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();

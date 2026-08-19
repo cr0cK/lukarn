@@ -123,23 +123,22 @@ export const fr: Messages = {
     'Si ce code n’a pas été demandé, ignorer ce message : tant qu’il n’est pas saisi, rien n’est rattaché à cette adresse. Ne le transmettre à personne.',
 
   'mail.signInSubject': (host: string) => `Code de connexion — ${host}`,
-  'mail.signInIntro': (host: string) =>
-    `Ce code ouvre une session sur ${host}, au nom de la personne dont c’est l’adresse.`,
+  'mail.signInIntro': (host: string) => `Ce code vous connecte à ${host}, en votre nom.`,
   'mail.signInHere': 'Voici le code :',
   'mail.signInValidity':
-    'À saisir dans la page restée ouverte. Il dure quinze minutes et ne fonctionne qu’une fois.',
+    'Entrez-le dans la page restée ouverte. Il est valable quinze minutes et ne fonctionne qu’une fois.',
   'mail.signInIgnore':
-    'Si cette connexion n’a pas été demandée, ignorer ce message : le code n’ouvre rien tant qu’il n’est pas saisi. Ne le transmettre à personne — qui le saisit ouvre une session à la place de son destinataire.',
+    'Si vous n’avez pas demandé à vous connecter, ignorez ce message : le code n’ouvre rien tant qu’il n’a pas été entré. Ne le communiquez à personne, celui qui l’entre se connecte à votre place.',
 
-  'mail.inviteSubject': (host: string) => `Un compte sur ${host}`,
+  'mail.inviteSubject': (host: string) => `Un compte pour vous sur ${host}`,
   'mail.inviteIntro': (host: string) =>
-    `Un compte vient d’être ouvert sur ${host} pour la personne qui lit cette adresse. Le code de ce message est ce qui l’ouvre, et cette adresse devient le nom qui signera les commentaires écrits depuis ce compte.`,
-  'mail.inviteOpen': 'Ouvrir cette page, qui connaît déjà l’adresse :',
-  'mail.inviteThen': 'Puis saisir ce code :',
+    `Un compte a été créé pour vous sur ${host}. Le code ci-dessous y donne accès, et c’est cette adresse qui identifiera vos commentaires.`,
+  'mail.inviteOpen': 'Ouvrez cette page, votre adresse y est déjà remplie :',
+  'mail.inviteThen': 'Puis entrez ce code :',
   'mail.inviteValidity':
-    'Il dure sept jours et ne fonctionne qu’une fois. En demander un autre depuis cette page s’il expire.',
+    'Il est valable sept jours et ne fonctionne qu’une fois. S’il expire, vous pourrez en demander un autre depuis cette même page.',
   'mail.inviteIgnore':
-    'Si ce message est inattendu, l’ignorer : aucun compte ne s’ouvre tant que le code n’est pas saisi. Ne le transmettre à personne — qui le saisit entre dans le compte à la place de son destinataire.',
+    'Si vous n’attendiez pas ce message, ignorez-le : aucun compte ne s’ouvre tant que le code n’a pas été entré. Ne le communiquez à personne, celui qui l’entre se connecte à votre place.',
 
   /* ---------------------------------------------------- Unsubscribe pages */
 

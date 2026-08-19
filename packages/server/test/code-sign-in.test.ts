@@ -204,7 +204,7 @@ describe('the language of an invitation', () => {
     });
     assert.equal(created.statusCode, 201, created.body);
     await context.mailer.drain();
-    assert.match(sent.at(-1)!.subject, /Un compte sur/);
+    assert.match(sent.at(-1)!.subject, /Un compte pour vous sur/);
 
     // Sending it again from /admin, which is what somebody presses when the first
     // message went unread. Arriving in another language would read as a different
@@ -219,7 +219,7 @@ describe('the language of an invitation', () => {
     });
     assert.equal(resent.statusCode, 200, resent.body);
     await context.mailer.drain();
-    assert.match(sent.at(-1)!.subject, /Un compte sur/);
+    assert.match(sent.at(-1)!.subject, /Un compte pour vous sur/);
 
     // And from the address itself, which asks in English here: the header says what
     // this browser reads, and the recipient of the invitation is not holding it.
@@ -232,7 +232,7 @@ describe('the language of an invitation', () => {
     });
     assert.equal(asked.statusCode, 202, asked.body);
     await context.mailer.drain();
-    assert.match(sent.at(-1)!.subject, /Un compte sur/);
+    assert.match(sent.at(-1)!.subject, /Un compte pour vous sur/);
 
     // Taking it up hands that language to the identity, so the first notification
     // sent before any request of theirs is already readable to them.
