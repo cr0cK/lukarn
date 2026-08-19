@@ -134,6 +134,15 @@ the pull request that finishes it**, and `check:specs` does not read it when
 looking for module mentions — a plan naming a file before it exists would
 otherwise satisfy the check the day it is created.
 
+It is also where a **decision still to be taken** lives. `08-decisions/` is a
+record of how this application is built, so a decision file added before its code
+describes an instance nobody is running: write the reasoning into the plan, and let
+the pull request that makes it true move it out under the identifier of the day it
+is written. The 1.2.0 storage work did exactly that — its plan carried the
+trade-offs, and each pull request wrote the decisions it had earned. Nothing checks
+this, and the shape that makes it easy to get wrong is a design session that
+produces the reasoning before any code exists.
+
 Five documents, five readers, no duplication between them:
 
 | File               | Reader                          | Answers                                               |

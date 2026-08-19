@@ -49,6 +49,7 @@ so a plan is worth rereading whenever the work it describes moves.
 
 ## Current
 
-None. Nothing is in flight across several pull requests, which is the normal
-state of this directory: it fills up while a release-sized piece of work is under
-way and empties again when it lands.
+[1.3.0 — An account can be a person](./1.3.0-personal-accounts.md): an account may
+be bound to a verified identity and sign in with a code sent to its address, while
+an unbound one stays the shared access key it has always been. Two pull requests,
+neither started.

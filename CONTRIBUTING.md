@@ -158,6 +158,14 @@ branches.
 Decisions are a journal: they are not rewritten. A decision that recounts how
 something used to be keeps the names it had at the time.
 
+**A decision is written with the code it describes.** The log says how this
+application is built, so a file added before the work lands describes an instance
+nobody is running. Until then the reasoning belongs in `specs/09-plans/`, the one
+place allowed to record a decision as still to be taken, and the pull request that
+makes it true moves it out under the identifier of the day it is written. Nothing
+checks this. It is the same shape as the rule above it: the log is a record, and a
+record of the future is a plan.
+
 ## Commits and pull requests
 
 **In English**, both, title included, like the rest of the repository.
