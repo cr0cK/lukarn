@@ -135,12 +135,16 @@ export const en = {
     'If you did not ask to sign in, ignore the message: the code opens nothing until it is entered. Do not pass it on to anyone \u2014 whoever types it signs in as you.',
 
   'mail.inviteSubject': (host: string) => `An account for you on ${host}`,
+  // The first line says what the code grants, which is the only defence against the
+  // attack that remains: somebody talking its holder into reading it out.
   'mail.inviteIntro': (host: string) =>
-    `An account has been opened for you on ${host}. The code below is what opens it, and this address becomes the name your comments are signed with.`,
-  'mail.inviteHere': 'Here is your code:',
+    `An account has been opened for you on ${host}. The code in this message is what opens it, and this address becomes the name your comments are signed with.`,
+  // The page before the code. Six digits handed over before anywhere to type them
+  // leaves the reader holding a number and a question.
+  'mail.inviteOpen': 'Open this page, which already knows the address:',
+  'mail.inviteThen': 'Then enter this code:',
   'mail.inviteValidity':
-    'It lasts seven days and works once. Ask for another from the sign-in page if it runs out.',
-  'mail.inviteLink': 'Sign in from this page, with the address already filled in:',
+    'It lasts seven days and works once. Ask for another from that page if it runs out.',
   'mail.inviteIgnore':
     'If this was not expected, ignore the message: no account is opened until the code is entered. Do not pass it on to anyone \u2014 whoever types it signs in as you.',
 

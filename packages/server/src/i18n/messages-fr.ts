@@ -124,22 +124,22 @@ export const fr: Messages = {
 
   'mail.signInSubject': (host: string) => `Code de connexion — ${host}`,
   'mail.signInIntro': (host: string) =>
-    `Ce code ouvre une session sur ${host} en tant que la personne à qui appartient cette adresse.`,
+    `Ce code ouvre une session sur ${host}, au nom de la personne dont c’est l’adresse.`,
   'mail.signInHere': 'Voici le code :',
   'mail.signInValidity':
     'À saisir dans la page restée ouverte. Il dure quinze minutes et ne fonctionne qu’une fois.',
   'mail.signInIgnore':
-    'Si cette connexion n’a pas été demandée, ignorer ce message : le code n’ouvre rien tant qu’il n’est pas saisi. Ne le transmettre à personne — qui le saisit se connecte à votre place.',
+    'Si cette connexion n’a pas été demandée, ignorer ce message : le code n’ouvre rien tant qu’il n’est pas saisi. Ne le transmettre à personne — qui le saisit ouvre une session à la place de son destinataire.',
 
-  'mail.inviteSubject': (host: string) => `Un compte vous attend sur ${host}`,
+  'mail.inviteSubject': (host: string) => `Un compte sur ${host}`,
   'mail.inviteIntro': (host: string) =>
-    `Un compte vient d’être ouvert pour vous sur ${host}. Le code ci-dessous est ce qui l’ouvre, et cette adresse devient le nom qui signera vos commentaires.`,
-  'mail.inviteHere': 'Voici le code :',
+    `Un compte vient d’être ouvert sur ${host} pour la personne qui lit cette adresse. Le code de ce message est ce qui l’ouvre, et cette adresse devient le nom qui signera les commentaires écrits depuis ce compte.`,
+  'mail.inviteOpen': 'Ouvrir cette page, qui connaît déjà l’adresse :',
+  'mail.inviteThen': 'Puis saisir ce code :',
   'mail.inviteValidity':
-    'Il dure sept jours et ne fonctionne qu’une fois. En demander un autre depuis la page de connexion s’il expire.',
-  'mail.inviteLink': 'Se connecter depuis cette page, l’adresse déjà remplie :',
+    'Il dure sept jours et ne fonctionne qu’une fois. En demander un autre depuis cette page s’il expire.',
   'mail.inviteIgnore':
-    'Si ce message est inattendu, l’ignorer : aucun compte ne s’ouvre tant que le code n’est pas saisi. Ne le transmettre à personne — qui le saisit se connecte à votre place.',
+    'Si ce message est inattendu, l’ignorer : aucun compte ne s’ouvre tant que le code n’est pas saisi. Ne le transmettre à personne — qui le saisit entre dans le compte à la place de son destinataire.',
 
   /* ---------------------------------------------------- Unsubscribe pages */
 

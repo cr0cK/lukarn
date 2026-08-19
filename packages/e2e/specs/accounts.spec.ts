@@ -169,7 +169,14 @@ test('the invitation says what the code grants, and carries the digits in the bo
 
   // The link carries no secret: it fills the address in and asks for the six digits,
   // which is the line between it and a magic link (D260819b).
-  expect(body).toContain(`${BASE_URL}/login?email=${encodeURIComponent(INVITED.email)}`);
+  const link = `${BASE_URL}/login?email=${encodeURIComponent(INVITED.email)}`;
+  expect(body).toContain(link);
+
+  // And it comes **before** the digits. A recipient handed six digits with nowhere to
+  // type them has to work out what to do with them, and this message is read by
+  // somebody who has never seen this instance: the page is the answer to the question
+  // the code asks, so it is stated first.
+  expect(body.indexOf(link)).toBeLessThan(body.indexOf(code));
 });
 
 test('the code opens the account, once its holder has said what to call them', async ({ page }) => {
