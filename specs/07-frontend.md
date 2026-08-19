@@ -154,9 +154,16 @@ somewhere else.
 
 ## Sign-in — `pages/LoginPage.tsx`
 
-Two fields, and a second path underneath them: **"Sign in with a phone"**. It
-is there for the screen that has no keyboard — a television, where every
-character is typed with a remote (D260809c).
+Three ways in, on one screen and shown at the same time: a username with its
+password, an **email address**, and **"Sign in with a phone"** for the screen that
+has no keyboard — a television, where every character is typed with a remote
+(D260809c).
+
+The address is there because somebody invited by email has never been told a
+username (D260819b). Both forms are visible from the start, separated by a rule,
+since a screen that made a reader work out which of the two is theirs would already
+have lost them. Neither has a route of its own: `Step` is local state on `/login`,
+and the code replaces the two forms in place.
 
 **The identifier is trimmed before it is sent**, and the server trims it too
 (`05-api.md`): `USERNAME_PATTERN` allows no whitespace, so no account carries
@@ -165,6 +172,59 @@ paste. Without this trim, the input looks fine on screen and the rejection
 arrives with a wrong-password message — the worst possible diagnosis, since it
 points at the other field. The password, on the other hand, is sent as typed:
 it is allowed to carry whitespace at either end.
+
+### The code step, and the link an invitation carries
+
+Submitting the address replaces both forms with a field for the six digits
+(`VERIFICATION_CODE_LENGTH`). What the screen says above it stays conditional: "if
+this address is known here, a code is on its way to it". The server answers `202`
+for an address that opens an account, for one it has never seen and for one asked
+again inside the minute alike (see [05](./05-api.md)), and a screen announcing
+"sent" would reopen in the interface the enumeration channel that answer closes.
+
+**`/login?email=<address>` lands on the code step without asking for a code.** The
+link in an invitation fills the field, and whoever follows it is holding the code
+that message was sent with; minting another would invalidate the one under their
+eyes. Only the wording changes: the step names the address and asks for the digits
+from the message, and **"Send another code"** sits beside "Use another address" as a
+deliberate press. The link itself carries no secret and authenticates nobody, which
+is the line between it and a magic link (D260819b).
+
+Under those two buttons, one sentence says what the server cannot: an invitation
+that has expired cannot be renewed from here. Once the hourly purge has taken the
+row, nothing connects that address to that account any more, so `request` sends
+nothing and still answers `202`. Without the sentence, somebody presses "Send
+another code" and waits for a message that was never going to arrive; with it, they
+go back to whoever invited them.
+
+The field keeps digits and drops everything else as it is typed: six characters
+pasted out of a message bring along the spaces a selection collects, and the server
+requires exactly six after trimming. `inputMode="numeric"` and
+`autocomplete="one-time-code"` are what get the numeric keypad and the operating
+system's own suggestion of the code it has just seen arrive.
+
+A relay that is not configured is reported in this screen's own words rather than
+the server's: `503 mail_not_configured` is a property of the instance, and the
+server's wording for it speaks of comments, which is not what is being attempted
+here.
+
+### The name, asked only once the server asks for it
+
+An invitation for an address no identity here has verified needs a display name, and
+this screen cannot know that in advance: somebody typing their own address gets the
+same `202` whether they are being invited or signing in again. So the code is sent
+on its own, and `400 display_name_required` is what adds the field. Nothing was
+consumed and no attempt was counted (see [05](./05-api.md)), so the same digits are
+resubmitted with the name rather than a fresh code being asked for.
+
+- **The field is latched open**, rather than rendered from the last error. A second
+  refusal would otherwise take the field away along with the name already typed into
+  it.
+- **That refusal is not shown in red.** It is a request for one more field, and an
+  alert beside the code would report a failure where nothing failed.
+- **The name travels only when the server has asked for it.** On every other path it
+  is ignored by design, since a name arriving with a sign-in code must never rename
+  an identity that already exists (D42).
 
 ### `components/PasswordInput.tsx`
 
@@ -1835,25 +1895,25 @@ The message banner stays in the content column, stuck under the top bar: the
 comments section always scrolls, and a message shown at the very top would go
 unnoticed from the bottom of the queue.
 
-| Component                     | Role                                                                                                                                                                                                                                                           |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AdminNav`                    | Navigation between the seven sections, as `NavLink`                                                                                                                                                                                                            |
-| `StorageSection`              | The storages this instance reads: the list, and the confirmed deletion                                                                                                                                                                                         |
-| `StorageRow`                  | One connection: its state, and the buttons its `authorization` allows                                                                                                                                                                                          |
-| `StorageForm`                 | Name, kind, then the fields of the kind chosen                                                                                                                                                                                                                 |
-| `LocalFields`                 | The subpath under `STORAGE_LOCAL_ROOT`                                                                                                                                                                                                                         |
-| `S3Fields`                    | Endpoint, region, bucket, prefix, key pair, path-style                                                                                                                                                                                                         |
-| `WebdavFields`                | Address, folder, credentials                                                                                                                                                                                                                                   |
-| `UsersSection` / `UserForm`   | Account list, creation, editing, confirmed deletion                                                                                                                                                                                                            |
-| `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                           |
-| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                       |
-| `SettingsSection`             | Sync interval, sync on startup, cache                                                                                                                                                                                                                          |
-| `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                          |
-| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                 |
-| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                     |
-| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                 |
-| `AdminMenu`                   | The same seven sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                        |
-| `ui.tsx`                      | Shared primitives: button, field, checkbox, section box, row geometry, `SettingRow`. Every control sits on `ink-800`, one rung off the `ink-850/50` panel — on the same rung a field was drawn by its border alone, and that border disappears on a dim screen |
+| Component                     | Role                                                                                                                                                                                                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AdminNav`                    | Navigation between the seven sections, as `NavLink`                                                                                                                                                                                                                      |
+| `StorageSection`              | The storages this instance reads: the list, and the confirmed deletion                                                                                                                                                                                                   |
+| `StorageRow`                  | One connection: its state, and the buttons its `authorization` allows                                                                                                                                                                                                    |
+| `StorageForm`                 | Name, kind, then the fields of the kind chosen                                                                                                                                                                                                                           |
+| `LocalFields`                 | The subpath under `STORAGE_LOCAL_ROOT`                                                                                                                                                                                                                                   |
+| `S3Fields`                    | Endpoint, region, bucket, prefix, key pair, path-style                                                                                                                                                                                                                   |
+| `WebdavFields`                | Address, folder, credentials                                                                                                                                                                                                                                             |
+| `UsersSection` / `UserForm`   | Account list and its four states, creation with a password or with an invitation, the language that invitation is written in, editing, re-invitation and confirmed deletion                                                                                              |
+| `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                                     |
+| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
+| `SettingsSection`             | Sync interval, sync on startup, cache                                                                                                                                                                                                                                    |
+| `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                                    |
+| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                           |
+| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                               |
+| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                           |
+| `AdminMenu`                   | The same seven sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                                  |
+| `ui.tsx`                      | Shared primitives: button, field, checkbox, `Choice`, section box, row geometry, `SettingRow`. Every control sits on `ink-800`, one rung off the `ink-850/50` panel — on the same rung a field was drawn by its border alone, and that border disappears on a dim screen |
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
@@ -2144,6 +2204,76 @@ known (D50). `AlbumForm` only carries the grouping preference, as a
 checkbox: `GroupBy` only has two values and the absence of grouping by year
 is a documented choice, a selector would only add one more component.
 
+### Accounts — `components/admin/UsersSection.tsx` and `UserForm.tsx`
+
+**Every account is in one of four states, and its row says which** (`AccountState`,
+in `packages/shared`): a shared key, a person, an invitation open until its date, or
+an account with no way in. The first three describe something that works. The fourth
+is an invitation that expired unread, on an account that holds neither a password
+nor a binding, and this badge is the only place its owner will ever learn that the
+message went nowhere. It is therefore the loud one, red against three quiet
+neighbours, with a sentence under it naming the two ways out: invite again, or
+delete.
+
+The sentence under the badge is driven by `state` rather than by whichever field
+happens to be filled. An invitation is also in flight on accounts whose state stays
+`shared_key`, since their password still works, and reading `invitation` first
+printed that sentence twice on those rows — once under the badge and once on the
+line that exists for exactly that case.
+
+The state is a column of its own from `xl` and a line of its own below that, at a
+fixed width rather than `flex-1`. The badge is the word the eye runs down the list
+looking for, and a column that resizes with its neighbour puts it somewhere new on
+every row.
+
+**Inviting sits beside deleting**, which is what makes an account with no way in
+recoverable from the list itself. A row with neither an identity nor a pending
+invitation offers "Invite by email"; one with an invitation pending offers "Send it
+again", which remints the code already minted and needs no address and no dialog. A
+bound account offers neither: the server refuses both with `already_bound`, since
+changing somebody's address is out of scope for 1.3
+(see [04](./04-security-and-access.md)).
+
+**Converting goes through `ConfirmDialog`**, the dialog that guards deletion, because
+it is a comparable act. The moment the recipient enters the code, that account's open
+sessions close on every device, its paired screens are unpaired and its password
+stops working. Whoever converts `famille` has to read that sentence, because the
+three other people behind it are about to be signed out. An account with no way in
+gets the other sentence: it holds no password today, so nothing is lost by trying
+again. The address to invite is a field inside the dialog, validated as it is typed
+(`validateEmail`, `lib/adminForm.ts`) with confirmation refused until it is valid, so
+a refusal that said nothing is never a button that looks broken. `busyLabel` is what
+lets the dialog say "Sending…" where a deletion says "Deleting…".
+
+**Creating picks the credential before showing a field.** `POST /api/admin/users`
+takes exactly one of a password and an address, and the form puts that choice at the
+top as two `Choice` cards, so a form carrying both fields at once never exists. With
+no SMTP relay the second card is shown disabled, carrying its reason, rather than
+hidden: an administrator looking for the option has to be told it exists and what it
+waits on. The row's invite button is disabled the same way, with the same sentence as
+its `title`.
+
+**An invitation carries a language, chosen where it is sent from.** Both places
+that send one offer the same `SelectField`: the creation form, in the grid beside
+the address, and the conversion dialog, under it. It starts on the language the
+administrator is reading the interface in, because somebody about to write to a
+relative is usually about to write in the language they are reading themselves, and
+a language this instance does not speak is refused rather than folded back to the
+default (see [05](./05-api.md)). The options come from `localeOptions()`
+(`ui.tsx`), the one list the three screens offering a language share, and each is
+named in its own words: "Français" is spelt the same on an English screen, and
+translating it would show "French" to somebody looking for their own language in a
+list they cannot read. The choice travels with the message alone. The screen it was
+sent from stays in the language its administrator reads, and the person it reaches
+opens the gallery in it the first time they sign in (D260819c).
+
+**Editing a bound account offers one password field, and says what it costs.** An
+ordinary password change is refused on such an account, and the single way through is
+unbind-and-set in one act (see [04](./04-security-and-access.md)). The field is
+therefore labelled "Password, replacing the person", and its hint names the address
+about to be released along with the sessions and the paired screens that close with
+it. Left empty, it changes nothing.
+
 ### Album assignment is a choice between two regimes
 
 `AlbumAccessPicker` offers two exclusive options: **all albums** — the
@@ -2160,6 +2290,12 @@ it.
 `formatAlbumAccess` (`lib/adminForm.ts`) summarises the assignment in the
 account list by naming the wildcard as such, never by enumerating the albums
 it covers today.
+
+Both exclusive choices in administration — the wildcard against a selection, a
+password against an invitation — are drawn by `Choice` (`ui.tsx`): one card per
+option, carrying its own explanation, because the difference between the two has to
+be read before it is made. One `name` per group is what makes them exclusive in the
+browser, so the form has no invalid state left to validate afterwards.
 
 ### What the form corrects before calling the server
 
@@ -2382,6 +2518,13 @@ conversation under a photo from a forum.
   that is not honoured.
 - **No "Reply" button without a verified identity**: the server would refuse,
   and offering the gesture would lead straight to an error message.
+- **No "change address" on an account that is a person.**
+  `SessionUser.identityBound` says the identity comes from the account rather than
+  from the session, and the server answers `409 identity_bound` to changing or
+  forgetting it (see [04](./04-security-and-access.md)). The link is therefore
+  absent on such an account, since leaving it would make that refusal the way the
+  rule is discovered. The signature line still names the person; the way out of it
+  is to sign out.
 - **The thread-opening form is anchored at the bottom**, outside the
   scrolling area. On a heavily commented photo, the whole conversation would
   otherwise have to be scrolled through to find where to write.
@@ -2563,13 +2706,41 @@ backends — would be configuration to maintain for behaviour nobody would use
 | `messages-fr.ts` | The French catalogue, typed as `Messages`. A missing key fails `pnpm typecheck`. |
 | `translate.ts`   | Reading a catalogue, without React — for `lib/` modules and their tests.         |
 | `locale.ts`      | Which language, and where the answer comes from. No React either.                |
-| `index.tsx`      | `LocaleProvider`, `useT`, `useLocale`.                                           |
+| `index.tsx`      | `LocaleProvider`, `useT`, `useLocale`, `useAdoptLocale`.                         |
 
 **Resolution order**: what this browser was told to use
-(`localStorage['lukarn:locale']`), then the first supported language in
-`navigator.languages`, then English. The choice is a property of the **browser**,
-not of the account: one access key may be shared by a household, and one member
-reading French must not switch the television in the living room.
+(`localStorage['lukarn:locale']`), then the language a **bound** session arrived
+with, then the first supported language in `navigator.languages`, then English.
+
+The first is a property of the **browser** rather than of the account: one access
+key may be shared by a household, and one member reading French must not switch the
+television in the living room. The second is a property of the **person**, and a
+bound account is one person rather than a key several people hold, so the language
+their invitation was written in is the best evidence of what they read (D260819c).
+`sessionLocale` (`locale.ts`) holds the precedence between them: it answers `null`
+whenever this browser has already chosen, so what a reader picked in `/settings`
+outranks whatever a session brings.
+
+**The language a session brings is offered, and never written down.** `adoptLocale`
+sets the language in force and leaves `localStorage` alone, unlike `setLocale`: a
+default the server supplied would become indistinguishable from a decision once
+stored, this browser could never shed it, and its own preference would stop being
+reachable by leaving `/settings` alone. The adoption therefore lasts as long as the
+page: a reload resolves from storage and the browser again, and whoever wants it
+kept chooses it in `/settings`, which is a decision and is stored.
+
+**It happens on the response that opens the session, rather than on a later read of
+`/auth/me`.** `settleSession` (`api/hooks.ts`) adopts the language before it
+invalidates the album list, and that order is the claim. `api/client.ts` announces
+the active language on every request and `plugins/auth.ts` records what it receives
+against the identity (D260812d), so a request going out first would write this
+browser's language over the seeded one, and the adoption would undo itself on the
+first request it caused. The three doors into a session share the one function:
+signing in with a password, spending a code, and a paired screen being approved.
+
+**Only a bound account offers a language**, since a shared key says nothing about
+who is holding it and the television in the living room is the case that rule exists
+for (D260812d).
 
 **`/settings` carries it**, as a `SelectField` listing every language — one entry
 toggling between two would have nowhere to put a third, and never says what it is
@@ -3094,18 +3265,19 @@ variant, that `/admin` is a list of sections whose settings are rows, that
 `/settings` is read the same way — and, on the desktop side, that none of that
 happened above 768 px.
 
-| Spec               | What it holds to account                                                                                 |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                                         |
-| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals           |
-| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                             |
-| `search.spec.ts`   | The field opens where the button is, focused                                                             |
-| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field, the storage list and the WebDAV form   |
-| `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused     |
-| `comments.spec.ts` | Address → code → comment → thread → activity feed                                                        |
-| `storage.spec.ts`  | A real synchronisation, from every storage that can be reached — see below                               |
-| `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes |
-| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                   |
+| Spec               | What it holds to account                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                                                                                       |
+| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals                                                         |
+| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                                                                           |
+| `search.spec.ts`   | The field opens where the button is, focused                                                                                                           |
+| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field, the storage list and the WebDAV form                                                 |
+| `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused                                                   |
+| `comments.spec.ts` | Address → code → comment → thread → activity feed                                                                                                      |
+| `accounts.spec.ts` | An invitation sent from `/admin`, its code read from the queued mail, the session it opens, and the language it was written in followed to the gallery |
+| `storage.spec.ts`  | A real synchronisation, from every storage that can be reached — see below                                                                             |
+| `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes                                               |
+| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                                                                 |
 
 **`storage.spec.ts` is the only one that is not run against `seed-demo`.** Every
 other spec asserts against rows written straight into the index, so nothing

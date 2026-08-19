@@ -28,7 +28,11 @@ test.describe('Administration, on a phone', () => {
     }
 
     for (const section of SECTIONS) {
-      const row = sections.getByRole('link', { name: section.name, exact: true });
+      // Anchored rather than exact: Comments carries the unread count inside its
+      // name — "Comments 1" — as soon as a spec running before this file has left a
+      // message behind, which `accounts.spec.ts` does. That badge is the other
+      // file's claim; the claim here is that each section is a row of its own.
+      const row = sections.getByRole('link', { name: new RegExp(`^${section.name}`) });
       await expect(row).toBeVisible();
       // Six rows scrolling sideways two at a time is what this replaced, so the
       // rows have to be rows: full width, and tall enough to aim at.

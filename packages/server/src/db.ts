@@ -720,6 +720,24 @@ export const MIGRATIONS: string[] = [
   ALTER TABLE commenters DROP COLUMN code_sent_at;
   ALTER TABLE commenters DROP COLUMN code_attempts;
   `,
+
+  // 19 — the language an invitation is written in.
+  //
+  // Every other message this instance sends goes to somebody whose browser has
+  // already announced a language, recorded on `commenters.locale` (D260812d). An
+  // invitation is the one message composed for a person nothing here has ever met,
+  // so the choice belongs to whoever invites them — the only party who knows what
+  // language the recipient reads. It sits on the code rather than in the request
+  // because it has to outlive it: sending the invitation again must not arrive in
+  // another language, and accepting it seeds the identity with the choice.
+  //
+  // Nullable rather than DEFAULT 'en': a row written before this column existed
+  // carries no choice, and the instance's DEFAULT_LOCALE keeps applying to it. A
+  // default would freeze the language of the day into rows nobody chose it for, and
+  // "chosen" and "never asked" would stop being distinguishable.
+  `
+  ALTER TABLE verification_codes ADD COLUMN locale TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

@@ -112,14 +112,22 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
           placeholder={t('comments.placeholder', me.identity.displayName)}
         />
         <p className="mt-2 text-xs text-ink-400">
-          {t('comments.signedAs')} <span className="text-ink-200">{me.identity.displayName}</span>.{' '}
-          <button
-            type="button"
-            onClick={() => setIdentifying(true)}
-            className="underline underline-offset-2 transition-colors hover:text-ink-100"
-          >
-            {t('comments.changeAddress')}
-          </button>
+          {t('comments.signedAs')} <span className="text-ink-200">{me.identity.displayName}</span>.
+          {/* A bound account is one person, and the server refuses to change or forget
+              that identity: the way out is to sign out. Offering the link anyway would
+              make a 409 the way that rule is discovered. */}
+          {!me.identityBound && (
+            <>
+              {' '}
+              <button
+                type="button"
+                onClick={() => setIdentifying(true)}
+                className="underline underline-offset-2 transition-colors hover:text-ink-100"
+              >
+                {t('comments.changeAddress')}
+              </button>
+            </>
+          )}
         </p>
       </>
     );

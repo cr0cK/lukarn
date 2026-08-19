@@ -24,16 +24,33 @@ being proved again on each.
 Creating an account in **Administration → Accounts** now takes either a password,
 as before, or an email address. An address sends an invitation instead of setting a
 password. The recipient opens the message, types the six digits it carries, and
-gives the name their comments will be signed with. From then on that account is
-that person: they are known as soon as they sign in, on every device, and they sign
-in with a code sent to that address rather than with a password. There is still no
-public registration form, and nobody can create an account for themselves.
+gives the name their comments will be signed with; somebody who has already
+commented here keeps the name they gave then. From then on that account is that
+person: they are known as soon as they sign in, on every device, they sign in with
+a code sent to that address rather than with a password, and their comments are
+signed without an address being confirmed again. There is still no public
+registration form, and nobody can create an account for themselves.
+
+An invitation also carries a language, chosen where it is sent from. The control
+sits with the address, starts on the language you are reading the interface in, and
+names each language in its own words. The message goes out in that language, sending
+it again repeats it, and the gallery opens in it when its recipient signs in on a
+browser that has not been given a language of its own. Whoever picks a language in
+Settings keeps it: that choice wins over the one an invitation carried.
+
+The sign-in screen has a second field for it, under the username and the password.
+The invitation carries a link that opens that screen with the address already
+filled in, and the six digits are still typed by hand. Anyone arriving later types
+the address and asks for a code. A code that goes astray can be sent again from
+there, and the screen says plainly that an invitation which has run out cannot be
+renewed by pressing that button: ask whoever invited you to invite again.
 
 An account already in use can be converted the same way, from its row in the list.
-Read the confirmation before agreeing to it: converting closes every session that
-account has open and stops its password working, so anyone else behind it is signed
-out and has to be given an account of their own. Converting a key three people
-share is the wrong move for that reason. The right one is to leave it alone.
+Read the confirmation before agreeing to it. The moment the recipient enters their
+code, that account's open sessions close on every device, its paired screens are
+unpaired and its password stops working, so anyone else behind it is signed out and
+has to be given an account of their own. Converting a key three people share is the
+wrong move for that reason. The right one is to leave it alone.
 
 The account list gains a column saying which of four things each account is: a
 shared key, a person, an invitation still open until its date, or an account whose
@@ -45,11 +62,20 @@ Two things to know before using it. Invitations need SMTP configured, the same
 relay comments already need; without one the form says so rather than creating an
 account nobody can enter. And an account bound to a person holds no password at
 all, so if somebody loses access to their address, an administrator takes the
-account back by unbinding it and setting a password in the same step, which also
-closes its sessions.
+account back by unbinding it and setting a password in the same step, which closes
+its sessions and unpairs its screens as a conversion does.
 
 Nothing changes for an account that keeps a password. Its sessions, its albums, its
 paired screens and the way anyone signs in with it are untouched.
+
+### Emails are written to their reader
+
+Every message the gallery sends now addresses the person receiving it, in both
+languages. The French ones had been written the way a screen is labelled, which put
+"À saisir dans la page restée ouverte" and "Ne le transmettre à personne" into what
+is, for the person opening it, a letter. Verification codes, new-comment and
+new-photo notifications and the two unsubscribe pages are all affected. Nothing
+about what they do has changed.
 
 ### The front end addresses the application by an alias
 

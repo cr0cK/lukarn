@@ -1,6 +1,7 @@
 import { ALL_ALBUMS, type AdminAlbum } from '@lukarn/shared';
 import { type ReactElement, useId, useState } from 'react';
 import { useT } from '../../lib/i18n';
+import { Choice } from './ui';
 
 interface AlbumAccessPickerProps {
   albums: AdminAlbum[];
@@ -111,47 +112,6 @@ export function AlbumAccessPicker({
         </div>
       )}
     </fieldset>
-  );
-}
-
-function Choice({
-  name,
-  id,
-  checked,
-  onSelect,
-  label,
-  hint,
-}: {
-  name: string;
-  id: string;
-  checked: boolean;
-  onSelect: () => void;
-  label: string;
-  hint: ReactElement | string;
-}): ReactElement {
-  return (
-    <label
-      htmlFor={id}
-      className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
-        checked ? 'border-accent-dim bg-accent/5' : 'border-ink-700 hover:bg-tint'
-      }`}
-    >
-      <input
-        id={id}
-        name={name}
-        type="radio"
-        checked={checked}
-        onChange={onSelect}
-        aria-describedby={`${id}-hint`}
-        className="mt-0.5 size-4 shrink-0 accent-accent"
-      />
-      <span className="min-w-0">
-        <span className="block text-sm text-ink-100">{label}</span>
-        <span id={`${id}-hint`} className="block text-xs text-ink-400">
-          {hint}
-        </span>
-      </span>
-    </label>
   );
 }
 

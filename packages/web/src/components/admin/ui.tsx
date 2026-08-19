@@ -1,5 +1,5 @@
 import { type ReactElement, type ReactNode, useState } from 'react';
-import { useT } from '../../lib/i18n';
+import { AVAILABLE_LOCALES, LOCALE_NAMES, useT } from '../../lib/i18n';
 import { PHONE_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { PasswordInput } from '../PasswordInput';
 import { Chevron } from './AdminNav';
@@ -348,6 +348,7 @@ export function SelectField({
   options,
   onChange,
   hint,
+  disabled = false,
 }: {
   id: string;
   label: string;
@@ -355,6 +356,8 @@ export function SelectField({
   options: readonly SelectOption[];
   onChange: (value: string) => void;
   hint?: ReactNode;
+  /** While a form is submitting, so one live control is not left among frozen ones. */
+  disabled?: boolean;
 }): ReactElement {
   const phone = useMediaQuery(PHONE_QUERY);
   const hintId = hint ? `${id}-hint` : undefined;
@@ -365,6 +368,7 @@ export function SelectField({
       id={id}
       value={value}
       onChange={(event) => onChange(event.target.value)}
+      disabled={disabled}
       aria-describedby={hintId}
       // Capped rather than full-bleed like `TextField`, and the difference is
       // the control: a text field is as wide as what may be typed into it,
@@ -414,6 +418,22 @@ export function SelectField({
   );
 }
 
+/**
+ * The supported languages as options, each written in the language it names.
+ *
+ * One list for the three screens that offer a language — the reader's own settings,
+ * and the two places an invitation is sent from. Built here rather than repeated at
+ * each call site, since the day a third language ships is the day the copy that was
+ * missed shows two.
+ *
+ * The labels never go through a catalogue: "Français" is spelt the same on an English
+ * screen, and translating it would show "French" to somebody looking for their own
+ * language in a list they cannot read.
+ */
+export function localeOptions(): SelectOption[] {
+  return AVAILABLE_LOCALES.map((code) => ({ value: code, label: LOCALE_NAMES[code] }));
+}
+
 /** Checkbox with a clickable label and optional explanation. */
 export function Checkbox({
   id,
@@ -457,6 +477,60 @@ export function Checkbox({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * One option of an exclusive choice, as a card carrying its own explanation.
+ *
+ * A bare radio with a label beside it cannot say what the option means, and every
+ * exclusive choice in administration is between two things whose difference has to
+ * be read before it is made: the wildcard against a selection of albums, a password
+ * against an invitation. Callers pass one `name` to the group so the browser makes
+ * them exclusive — the form then has no invalid state to validate afterwards.
+ */
+export function Choice({
+  name,
+  id,
+  checked,
+  onSelect,
+  label,
+  hint,
+  disabled = false,
+}: {
+  /** Shared by every option of the group, and what makes them exclusive. */
+  name: string;
+  id: string;
+  checked: boolean;
+  onSelect: () => void;
+  label: string;
+  hint: ReactNode;
+  disabled?: boolean;
+}): ReactElement {
+  return (
+    <label
+      htmlFor={id}
+      className={`flex gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
+        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+      } ${checked ? 'border-accent-dim bg-accent/5' : 'border-ink-700 hover:bg-tint'}`}
+    >
+      <input
+        id={id}
+        name={name}
+        type="radio"
+        checked={checked}
+        disabled={disabled}
+        onChange={onSelect}
+        aria-describedby={`${id}-hint`}
+        className="mt-0.5 size-4 shrink-0 accent-accent"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm text-ink-100">{label}</span>
+        <span id={`${id}-hint`} className="block text-xs text-ink-400">
+          {hint}
+        </span>
+      </span>
+    </label>
   );
 }
 

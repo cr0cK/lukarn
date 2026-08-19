@@ -10,6 +10,7 @@
 import {
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
+  EMAIL_MAX_LENGTH,
   HEX_COLOR_PATTERN,
   INSTANCE_NAME_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -78,6 +79,21 @@ export function validateUsername(value: string, t: Translate): string | null {
     return t('validate.usernameLength', USERNAME_MAX_LENGTH);
   }
   if (!USERNAME_PATTERN.test(username)) return t('validate.identifierPattern');
+  return null;
+}
+
+/**
+ * Error message for an address an invitation is to be sent to, or `null`.
+ *
+ * Deliberately shallow: the server validates the address properly, and the only
+ * mistakes worth catching before the round trip are the empty field and the one
+ * missing its `@`. A stricter pattern here would refuse addresses that exist.
+ */
+export function validateEmail(value: string, t: Translate): string | null {
+  const email = value.trim();
+  if (!email) return t('validate.email');
+  if (email.length > EMAIL_MAX_LENGTH) return t('validate.emailLength', EMAIL_MAX_LENGTH);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return t('validate.emailPattern');
   return null;
 }
 

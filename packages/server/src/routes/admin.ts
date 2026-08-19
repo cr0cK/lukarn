@@ -10,6 +10,7 @@ import {
   EMAIL_MAX_LENGTH,
   HEX_COLOR_PATTERN,
   INSTANCE_NAME_MAX_LENGTH,
+  LOCALES,
   MEDIA_DESCRIPTION_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   slugifyAlbumId,
@@ -81,11 +82,22 @@ const moderationEmail = z
 /** Address an invitation goes to. Same bound as everywhere else an address is read. */
 const invitedEmail = z.string().trim().email('invalid address').max(EMAIL_MAX_LENGTH);
 
+/**
+ * Language an invitation is written in, chosen by whoever sends it.
+ *
+ * Refused rather than folded back to the default when it names an unsupported
+ * language: this is a choice somebody made on a form, so a silent substitution would
+ * send the message in a language the sender did not pick and report success. The
+ * header `plugins/locale.ts` reads is the opposite case, and degrades on purpose.
+ */
+const invitationLocale = z.enum(LOCALES);
+
 const createUserSchema = z
   .object({
     username: identifier,
     password: password.optional(),
     email: invitedEmail.optional(),
+    locale: invitationLocale.optional(),
     admin: z.boolean().default(false),
     albums: albumList.default([]),
   })
@@ -98,7 +110,10 @@ const createUserSchema = z
   });
 
 /** Inviting an existing account. Without an address, the pending invitation is remade. */
-const inviteUserSchema = z.object({ email: invitedEmail.optional() });
+const inviteUserSchema = z.object({
+  email: invitedEmail.optional(),
+  locale: invitationLocale.optional(),
+});
 
 const updateUserSchema = z
   .object({
@@ -476,6 +491,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
             admin: input.admin,
             albums: input.albums,
             email: input.email,
+            locale: input.locale,
           },
           context.codes,
         );
@@ -485,7 +501,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           buildInvitationMail(
             input.email,
             created.code,
-            context.env.defaultLocale,
+            // The sender's choice, and the instance default when they made none. The
+            // recipient has never made a request here, so there is nothing recorded
+            // to consult (D260812d) and nobody but the sender knows what they read.
+            input.locale ?? context.env.defaultLocale,
             context.settings.instanceName,
             context.env,
           ),
@@ -547,7 +566,8 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       // An invitation that expired left no row behind, so nothing here still knows
       // where it was sent: the address has to be given again.
-      const email = parsed.data.email ?? context.codes.pendingInvite(stored.username)?.target;
+      const pending = context.codes.pendingInvite(stored.username);
+      const email = parsed.data.email ?? pending?.target;
       if (!email) {
         return reply.code(409).send({
           error: 'no_invitation',
@@ -563,14 +583,22 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const minted = context.codes.mint(email, 'invite', { username: stored.username });
+      // Sending the invitation again repeats the language of the one already
+      // pending, so a second message never arrives in another language than the
+      // first — the recipient has read nothing yet, and a switch mid-conversation
+      // reads as a different message rather than the same one twice. A locale in the
+      // request overrides it: that is the sender changing their mind, which is the
+      // one thing allowed to.
+      const locale = parsed.data.locale ?? pending?.locale ?? null;
+
+      const minted = context.codes.mint(email, 'invite', { username: stored.username, locale });
       if ('failure' in minted) return tooSoon(reply, minted.retryAfterMs, request.t);
 
       context.mailer.queue(
         buildInvitationMail(
           email,
           minted.code,
-          context.env.defaultLocale,
+          locale ?? context.env.defaultLocale,
           context.settings.instanceName,
           context.env,
         ),

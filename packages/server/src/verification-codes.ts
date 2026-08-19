@@ -1,4 +1,4 @@
-import { VERIFICATION_CODE_LENGTH } from '@lukarn/shared';
+import { isLocale, VERIFICATION_CODE_LENGTH, type Locale } from '@lukarn/shared';
 import { randomInt } from 'node:crypto';
 import { hashVerificationCode, safeEqual } from './crypto.js';
 import type { Db } from './db.js';
@@ -55,6 +55,12 @@ export interface StoredCode {
   attempts: number;
   /** The account an invitation is for, `null` for every other purpose. */
   username: string | null;
+  /**
+   * Language the message carrying this code was written in, `null` when nobody chose
+   * one and the instance default applied. Read again when the message is sent a
+   * second time, so a resend never arrives in another language than the first.
+   */
+  locale: Locale | null;
 }
 
 /** What prevents sending a code, expressed in a term a route can translate. */
@@ -71,6 +77,7 @@ interface CodeRow {
   sent_at: string;
   attempts: number;
   username: string | null;
+  locale: string | null;
 }
 
 function toStoredCode(row: CodeRow): StoredCode {
@@ -81,6 +88,10 @@ function toStoredCode(row: CodeRow): StoredCode {
     sentAt: row.sent_at,
     attempts: row.attempts,
     username: row.username,
+    // Validated rather than cast: a hand-edited database must not put an unsupported
+    // tag into a translator, and an unreadable one means the instance default, which
+    // is what `null` already says here.
+    locale: isLocale(row.locale) ? row.locale : null,
   };
 }
 
@@ -97,14 +108,20 @@ export class VerificationCodeRepo {
    *
    * `options.username` names the account an invitation is for and is required for
    * that purpose alone — the table's `CHECK` says the same thing.
+   *
+   * `options.locale` is the language the message will be written in, kept so that
+   * sending it again repeats it. Omitting it stores nothing rather than storing the
+   * instance default: "never asked" and "chose the default language" are different
+   * answers, and only the second must survive a change to `DEFAULT_LOCALE`.
    */
   mint(
     target: string,
     purpose: CodePurpose,
-    options: { username?: string } = {},
+    options: { username?: string; locale?: Locale | null } = {},
   ): { code: string } | { failure: MintFailure; retryAfterMs: number } {
     const normalized = target.trim();
     const username = options.username ?? null;
+    const locale = options.locale ?? null;
     // Thrown rather than returned: the table's CHECK says the same thing, and a
     // caller pairing the wrong purpose with the wrong argument has a bug no route
     // can answer.
@@ -139,8 +156,9 @@ export class VerificationCodeRepo {
     const expiresAt = new Date(now + TTL_MS[purpose]).toISOString();
     const hash = hashVerificationCode(normalized, code, this.secret);
 
-    if (purpose === 'invite') this.replaceInvite(normalized, username!, hash, expiresAt, sentAt);
-    else this.replaceCode(normalized, purpose, hash, expiresAt, sentAt);
+    if (purpose === 'invite')
+      this.replaceInvite(normalized, username!, hash, expiresAt, sentAt, locale);
+    else this.replaceCode(normalized, purpose, hash, expiresAt, sentAt, locale);
 
     return { code };
   }
@@ -251,6 +269,7 @@ export class VerificationCodeRepo {
     hash: string,
     expiresAt: string,
     sentAt: string,
+    locale: Locale | null,
   ): void {
     const remove = this.db.prepare(
       `DELETE FROM verification_codes
@@ -258,12 +277,12 @@ export class VerificationCodeRepo {
     );
     const insert = this.db.prepare(
       `INSERT INTO verification_codes
-         (target, purpose, code_hash, expires_at, sent_at, attempts, username)
-       VALUES (?, 'invite', ?, ?, ?, 0, ?)`,
+         (target, purpose, code_hash, expires_at, sent_at, attempts, username, locale)
+       VALUES (?, 'invite', ?, ?, ?, 0, ?, ?)`,
     );
     this.db.transaction(() => {
       remove.run(target, username);
-      insert.run(target, hash, expiresAt, sentAt, username);
+      insert.run(target, hash, expiresAt, sentAt, username, locale);
     })();
   }
 
@@ -277,16 +296,17 @@ export class VerificationCodeRepo {
     hash: string,
     expiresAt: string,
     sentAt: string,
+    locale: Locale | null,
   ): void {
     this.db
       .prepare(
         `INSERT INTO verification_codes
-           (target, purpose, code_hash, expires_at, sent_at, attempts, username)
-         VALUES (?, ?, ?, ?, ?, 0, NULL)
+           (target, purpose, code_hash, expires_at, sent_at, attempts, username, locale)
+         VALUES (?, ?, ?, ?, ?, 0, NULL, ?)
          ON CONFLICT (target, purpose) DO UPDATE
            SET code_hash = excluded.code_hash, expires_at = excluded.expires_at,
-               sent_at = excluded.sent_at, attempts = 0`,
+               sent_at = excluded.sent_at, attempts = 0, locale = excluded.locale`,
       )
-      .run(target, purpose, hash, expiresAt, sentAt);
+      .run(target, purpose, hash, expiresAt, sentAt, locale);
   }
 }

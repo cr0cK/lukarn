@@ -121,28 +121,31 @@ export const en = {
     `You have just given this address on ${host} to sign your comments.`,
   'mail.codeHere': 'Here is your code:',
   'mail.codeValidity':
-    'Type it into the page you left open. It lasts fifteen minutes and works once.',
+    'Type it into the page you left open. It is good for fifteen minutes and works once.',
   'mail.codeIgnore':
     'If you did not ask for this, ignore the message: until the code is entered, nothing is tied to this address. Do not pass it on to anyone.',
 
   'mail.signInSubject': (host: string) => `Sign-in code \u2014 ${host}`,
-  'mail.signInIntro': (host: string) =>
-    `This code signs in to ${host} as the person this address belongs to.`,
+  'mail.signInIntro': (host: string) => `This code signs you in to ${host}, under your own name.`,
   'mail.signInHere': 'Here is your code:',
   'mail.signInValidity':
-    'Type it into the page you left open. It lasts fifteen minutes and works once.',
+    'Type it into the page you left open. It is good for fifteen minutes and works once.',
   'mail.signInIgnore':
-    'If you did not ask to sign in, ignore the message: the code opens nothing until it is entered. Do not pass it on to anyone \u2014 whoever types it signs in as you.',
+    'If you did not ask to sign in, ignore the message: the code opens nothing until it is entered. Do not pass it on to anyone, whoever enters it signs in as you.',
 
   'mail.inviteSubject': (host: string) => `An account for you on ${host}`,
+  // The first line says what the code grants, which is the only defence against the
+  // attack that remains: somebody talking its holder into reading it out.
   'mail.inviteIntro': (host: string) =>
-    `An account has been opened for you on ${host}. The code below is what opens it, and this address becomes the name your comments are signed with.`,
-  'mail.inviteHere': 'Here is your code:',
+    `An account has been created for you on ${host}. The code below opens it, and this address is what your comments will be signed under.`,
+  // The page before the code. Six digits handed over before anywhere to type them
+  // leaves the reader holding a number and a question.
+  'mail.inviteOpen': 'Open this page, where your address is already filled in:',
+  'mail.inviteThen': 'Then enter this code:',
   'mail.inviteValidity':
-    'It lasts seven days and works once. Ask for another from the sign-in page if it runs out.',
-  'mail.inviteLink': 'Sign in from this page, with the address already filled in:',
+    'It is good for seven days and works once. If it runs out, you can ask for another from that same page.',
   'mail.inviteIgnore':
-    'If this was not expected, ignore the message: no account is opened until the code is entered. Do not pass it on to anyone \u2014 whoever types it signs in as you.',
+    'If you were not expecting this, ignore the message: no account opens until the code is entered. Do not pass it on to anyone, whoever enters it signs in as you.',
 
   /* ---------------------------------------------------- Unsubscribe pages */
 

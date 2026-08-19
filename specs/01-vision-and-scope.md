@@ -49,17 +49,29 @@ elsewhere reindexes it.
 
 ## Intended users
 
-There are two roles, and only two:
+There are two roles, and only two. The second comes in two kinds since 1.3, which
+differ by who holds the credential rather than by what may be seen:
 
-| Role      | How many         | What they do                                                                   |
-| --------- | ---------------- | ------------------------------------------------------------------------------ |
-| The owner | One per instance | Connects their Drive once via OAuth, manages accounts and albums from `/admin` |
-| Visitors  | A few accounts   | Sign in with a username/password and view their albums                         |
+| Role                        | How many         | What they do                                                                                      |
+| --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------- |
+| The owner                   | One per instance | Connects their Drive once via OAuth, manages accounts and albums from `/admin`                    |
+| An account that is a key    | A few accounts   | Signs in with a username and a password, which a household may pass around, and views its albums  |
+| An account that is a person | Any of those     | Invited by email, signs in with a code sent to that address, and is known by name on every device |
 
-An **account is not a person**: it is an access key, and nothing prevents an
-entire household from sharing one — that has been the intended use since
-`albums.yaml`. When signing a comment, each person identifies themselves with
-their name and address, verified by a code (see [04](./04-security-and-access.md)).
+An **account need not be a person**: by default it is an access key, and nothing
+prevents an entire household from sharing one, which has been the intended use
+since `albums.yaml`. When signing a comment on such an account, each person
+identifies themselves with their name and address, verified by a code (see
+[04](./04-security-and-access.md)).
+
+Since 1.3 an account may instead be **bound to one verified identity**
+([D260819](./08-decisions/D260819-an-account-may-be-bound-to-a-person-rather-than-a.md)).
+The owner invites it by email, the recipient enters the six digits the message
+carries and gives the name their comments will be signed with, and from then on
+that account is that person: known as soon as the session opens, on a phone and
+on a laptop alike, and entered with a code sent to that address rather than with
+a password
+([D260819b](./08-decisions/D260819b-a-bound-account-signs-in-with-a-code-sent-to-its.md)).
 
 A visitor never has a Google account and never sees a Google URL. All content
 passes through the server, which obtains it with the owner's single token.
@@ -81,20 +93,20 @@ reaching a screen (see [07](./07-frontend.md)).
 These omissions are not gaps to fill; they are choices that keep the project
 manageable.
 
-| Excluded                                                              | Why                                                                                                                                                                                                                                          |
-| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals. |
-| Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                                                 |
-| Registration, forgotten passwords                                     | The owner creates accounts from `/admin`. There is no public form and no email to send.                                                                                                                                                      |
-| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                     |
-| Facial recognition, search, tags                                      | These would require processing the content — and therefore downloading every original, which indexing is specifically designed to avoid.                                                                                                     |
-| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                        |
-| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                    |
-| Video transcoding                                                     | ffmpeg on a modest VPS consumes CPU that is not available. `Range` requests are relayed unchanged to Drive. A video does have a thumbnail, but it comes from the Drive preview: no bytes are decoded here (D92).                             |
-| Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                                              |
-| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                   |
-| Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                                   |
-| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                        |
+| Excluded                                                              | Why                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals.     |
+| Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                                                     |
+| Registration, forgotten passwords                                     | The owner creates every account from `/admin`, with a password or with an invitation sent to an address. An invitation changes who types the secret, never who may open the door: there is still no public form, and nobody signs themselves up. |
+| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                         |
+| Facial recognition, search, tags                                      | These would require processing the content — and therefore downloading every original, which indexing is specifically designed to avoid.                                                                                                         |
+| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                            |
+| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                        |
+| Video transcoding                                                     | ffmpeg on a modest VPS consumes CPU that is not available. `Range` requests are relayed unchanged to Drive. A video does have a thumbnail, but it comes from the Drive preview: no bytes are decoded here (D92).                                 |
+| Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                                                  |
+| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                       |
+| Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                                       |
+| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                            |
 
 ## Constraints that shaped the design
 
@@ -136,6 +148,12 @@ not move afterwards (see [07](./07-frontend.md)).
   and notified by email. They are signed by an **identity** — a name and an address
   verified by code — separate from the access key, which a household can share.
   Without an SMTP server, no code is sent and comments remain unavailable.
+- **An account can be one person, invited by email**. The owner creates it with an
+  address instead of a password, or converts an account already in use; the
+  recipient enters the code the invitation carries and gives the name their
+  comments will be signed with. That account is then entered with a code sent to
+  that address, and it signs by itself on every device it opens. An account
+  created with a password is untouched (see D260819 and D260819b).
 - **Activity feed**: the latest comments from albums the visitor is authorised to
   view, across all albums and photos, in a drawer opened from the top bar. A
   conversation should not be discovered only by opening the right photo by chance:

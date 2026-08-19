@@ -383,7 +383,14 @@ Key choices:
   inbox belonging to one reader — and the interface language stays in the browser,
   which is what a shared television needs. `NULL` until one of that person's
   requests announces a supported language; the instance's `DEFAULT_LOCALE` then
-  applies (D260812d).
+  applies (D260812d). Accepting an invitation **seeds** it with the language that
+  invitation was written in, and only when it is `NULL`: that first email goes out
+  before any request of theirs has arrived, while a value already stored came from
+  their own browser and is the authoritative one. The rule lives in the statement
+  rather than in a branch above it: `CommenterRepo.seedLocale` writes
+  `WHERE id = ? AND locale IS NULL`, so a caller that forgot to look first finds
+  nothing to overwrite, and the guard cannot be bypassed by a second caller
+  (D260819c).
 
 `sessions` holds a `commenter_id` (`ON DELETE SET NULL`): the session
 **remembers** the identity; it does not define it. Losing one's identity therefore
@@ -408,6 +415,7 @@ typed it reads a given inbox. Written **only** by `VerificationCodeRepo`
 | `sent_at`           | Last delivery, read across every purpose of one address                    |
 | `attempts`          | Five, whatever the purpose                                                 |
 | `username`          | The account an invitation is for, `NULL` otherwise, FK `ON DELETE CASCADE` |
+| `locale`            | Language the message was written in, `NULL` when nobody chose one          |
 | `(target, purpose)` | Composite primary key                                                      |
 
 Key choices:
@@ -443,6 +451,15 @@ Key choices:
   the rule exists to stop. Five attempts, in contrast, are per code — and are
   enforced for `invite` exactly as for the rest, because a seven-day life is what
   makes the ceiling rather than the deadline the thing that bounds guessing.
+- **`locale` is the one thing the recipient of an invitation cannot tell us.** Every
+  other message goes to somebody whose browser has announced a language, recorded on
+  `commenters.locale` (D260812d); an invitation is composed for a person this
+  instance has never met, so whoever invites them chooses it. It lives on the code
+  rather than in the request that created it because it must outlive that request:
+  sending the invitation again — from `/admin` or from the address itself — repeats
+  the language of the first message, and consuming the code gives it to the identity
+  that has none. `NULL` means nobody chose, and `DEFAULT_LOCALE` then applies exactly
+  as before.
 - **The hourly purge in `main.ts`** removes what has expired. The four columns
   this table replaced were overwritten in place and accumulated nothing; a table
   does. It needs no cap of its own: a request for an address nothing knows writes
@@ -764,6 +781,16 @@ Current state:
 | 16      | `commenters.locale`: the language this person is written to in.                         |
 | 17      | `storage_connections`, from `oauth_token`; `albums.connection_id`; `media.source_path`. |
 | 18      | `users.commenter_id`; `verification_codes`; the four code columns leave `commenters`.   |
+| 19      | `verification_codes.locale`: the language an invitation is written in.                  |
+
+Migration 19 is additive and touches no row: the column arrives as `NULL` on every
+code, and the instance's `DEFAULT_LOCALE` keeps applying to the invitations already
+pending. Nullable is the point rather than a convenience — `DEFAULT 'en'` would
+freeze the language of the day into rows nobody chose it for, and "chosen" would
+stop being distinguishable from "never asked", which is the difference the resend
+reads. `packages/server/test/migrate.test.ts` verifies it on a version 18 database
+holding an invitation: the code survives with no language, and both unique
+constraints still refuse a second invitation to one account.
 
 Migration 18 binds an account to a person and moves the code apparatus out of
 `commenters`. Both halves are one migration because they are one decision:

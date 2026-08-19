@@ -475,8 +475,12 @@ export function buildSignInMail(
  * Opening it must not mint a new code either, or reading the message would invalidate
  * the code being read: the page offers to send another instead.
  *
- * The language is the instance default rather than a recorded one: the recipient has
- * never made a request here, so there is nothing to have recorded (D260812d).
+ * **The language is chosen by whoever invites**, and is the one argument here that
+ * cannot be worked out from the recipient: they have never made a request to this
+ * instance, so nothing about them has been recorded (D260812d), and the person
+ * sending the invitation is the only party who knows what they read. The choice is
+ * kept on the code row, so sending the message again repeats it; the instance
+ * default applies when nobody chose.
  */
 export function buildInvitationMail(
   email: string,
@@ -490,16 +494,21 @@ export function buildInvitationMail(
   const subject = t('mail.inviteSubject', host);
   const link = `${env.publicUrl}/login?email=${encodeURIComponent(email)}`;
 
+  // The page first, the code second. A recipient handed six digits before being told
+  // where they go has to work out what to do with them, and the invitation is read by
+  // somebody who has never seen this instance. Ordering it the other way put the
+  // answer after the question.
   const text = [
     t('mail.inviteIntro', host),
-    t('mail.inviteHere'),
+    '',
+    t('mail.inviteOpen'),
+    link,
+    '',
+    t('mail.inviteThen'),
     '',
     code,
     '',
     t('mail.inviteValidity'),
-    '',
-    t('mail.inviteLink'),
-    link,
     '',
     '—',
     t('mail.inviteIgnore'),
@@ -508,17 +517,19 @@ export function buildInvitationMail(
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       ${header(instanceName, env.publicUrl)}
-      <p style="margin: 0 0 8px;">
-        ${escapeHtml(t('mail.inviteIntro', host))}
-        ${t('mail.inviteHere')}
-      </p>
-      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
-      <p style="margin: 0 0 16px; color: #666;">${t('mail.inviteValidity')}</p>
-      <p style="margin: 0 0 24px;">
-        ${escapeHtml(t('mail.inviteLink'))}
+      <p style="margin: 0 0 16px;">${escapeHtml(t('mail.inviteIntro', host))}</p>
+      <!-- The address is shown rather than hidden behind a label: this message carries a
+           code, and a reader deciding whether to trust it should be able to read where
+           the link goes. A styled button would also resemble the magic link D260819b
+           rejects, which this deliberately is not. -->
+      <p style="margin: 0 0 20px;">
+        ${escapeHtml(t('mail.inviteOpen'))}
         <br>
         <a href="${escapeHtml(link)}" style="color: #2563eb;">${escapeHtml(link)}</a>
       </p>
+      <p style="margin: 0 0 8px;">${escapeHtml(t('mail.inviteThen'))}</p>
+      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
+      <p style="margin: 0 0 24px; color: #666;">${t('mail.inviteValidity')}</p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">${t('mail.inviteIgnore')}</p>
     </div>

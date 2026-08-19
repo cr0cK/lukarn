@@ -162,6 +162,36 @@ export const en = {
   'login.createAdminFromSource': 'Or, running from a source checkout:',
   'login.withPhone': 'Sign in with a phone',
 
+  /* Signing in as a person: an address, then the code sent to it (D260819b). */
+
+  'login.email': 'Email address',
+  'login.emailHint': 'Invited by email? Sign in with a code sent to that address.',
+  'login.sendCode': 'Email a code',
+  'login.sendFailed': 'The code could not be sent.',
+  'login.mailNotConfigured':
+    'This gallery has no mail server, so it cannot send a code. Sign in with a username and a password.',
+  // Conditional on purpose, and it stays that way: the server answers the same for an
+  // address it knows and one it does not, and a screen announcing "sent" would say in
+  // the interface what the server refuses to say.
+  'login.codeSent': (length: number, email: string) =>
+    `If ${email} is known here, a ${length}-digit code is on its way to it.`,
+  // Arriving from the link in an invitation: the code is already in the reader's hands,
+  // and asking for another one would invalidate the one they are holding.
+  'login.codeFromEmail': (length: number, email: string) =>
+    `Enter the ${length}-digit code from the message sent to ${email}.`,
+  'login.codeLabel': 'Sign-in code',
+  'login.codeFailed': 'The code could not be checked.',
+  'login.nameLabel': 'Display name',
+  'login.namePlaceholder': 'Your name, as it will appear',
+  'login.nameNeeded':
+    'This code is an invitation. Give the name to be known by here, then send the code again.',
+  'login.resend': 'Send another code',
+  'login.otherAddress': 'Use another address',
+  // An expired invitation leaves nothing to remint, so the button above it does nothing
+  // and says so beforehand rather than after.
+  'login.invitationExpired':
+    'An invitation that has expired cannot be renewed from here: ask whoever sent it for a new one.',
+
   'password.show': 'Show the password',
   'password.hide': 'Hide the password',
 
@@ -503,6 +533,47 @@ export const en = {
   'adminUsers.confirmSignIn': 'This account will no longer be able to sign in.',
   'adminUsers.confirmMedia': 'The albums and the indexed media are untouched.',
 
+  /* How each account is entered. Four states, one of which nothing else reports:
+     an invitation that expired unread leaves an account nobody can enter, and this
+     column is where its owner finds out. */
+
+  'adminUsers.stateSharedKey': 'shared key',
+  'adminUsers.stateSharedKeyDetail': 'A password, which several people may know.',
+  'adminUsers.statePerson': 'person',
+  'adminUsers.statePersonDetail': (displayName: string, email: string) =>
+    `Bound to ${displayName}, at ${email}. They sign in with a code sent there.`,
+  'adminUsers.stateInvited': 'invited',
+  'adminUsers.stateInvitedDetail': (email: string, until: string) =>
+    `Invitation sent to ${email}, open until ${until}.`,
+  'adminUsers.stateNoWayIn': 'no way in',
+  'adminUsers.stateNoWayInDetail':
+    'The invitation expired unread. This account has no password and no address: invite it again, or delete it.',
+  'adminUsers.pendingInvitation': (email: string, until: string) =>
+    `An invitation to become a person is also open, sent to ${email} until ${until}.`,
+
+  'adminUsers.invite': 'Invite by email',
+  'adminUsers.inviteAccount': (username: string) => `Invite account ${username} by email`,
+  'adminUsers.resend': 'Send it again',
+  'adminUsers.resendAccount': (username: string) =>
+    `Send the invitation for account ${username} again`,
+  'adminUsers.resent': (username: string) =>
+    `A new code is on its way to the address invited for "${username}".`,
+  'adminUsers.inviteFailed': 'The invitation could not be sent.',
+  'adminUsers.invited': (username: string, email: string) =>
+    `Account "${username}" invited at ${email}.`,
+  'adminUsers.inviteTitle': (username: string) => `Invite "${username}" to become a person?`,
+  'adminUsers.inviteButton': 'Send the invitation',
+  'adminUsers.inviting': 'Sending…',
+  'adminUsers.inviteAddress': 'Address to invite',
+  'adminUsers.inviteExplain':
+    'Whoever reads that address gets a code, and has seven days to enter it. Until they do, nothing about this account changes.',
+  // The one sentence somebody must read before converting a key three people share:
+  // the other two are about to be signed out.
+  'adminUsers.inviteConverts': (username: string) =>
+    `The moment they enter it, "${username}" becomes that person: its open sessions close on every device, its paired screens are unpaired, and its password stops working. Anyone else signing in with that password loses access.`,
+  'adminUsers.inviteRevives':
+    'This account holds no password today, so nothing is lost by trying again.',
+
   'userForm.username': 'Username',
   'userForm.usernameFixed':
     'The username does not change; delete and recreate the account if needed.',
@@ -517,6 +588,35 @@ export const en = {
   'userForm.create': 'Create the account',
   'userForm.created': (username: string) => `Account "${username}" created.`,
   'userForm.saved': (username: string) => `Account "${username}" saved.`,
+
+  /* Creating an account: a password, or an invitation. Exclusive, and chosen before
+     either field is shown rather than refused once both are filled. */
+
+  'userForm.howLegend': 'How this account is entered',
+  'userForm.byPassword': 'With a password',
+  'userForm.byPasswordHint': 'A key several people may share. Nobody has to have an email address.',
+  'userForm.byEmail': 'With an invitation sent by email',
+  'userForm.byEmailHint':
+    'The account becomes the person who accepts it: they sign in with a code sent to that address, and their comments are signed with their name.',
+  'userForm.byEmailNoMail':
+    'This gallery has no mail server, so it cannot send an invitation. Set one up in Settings first.',
+  'userForm.email': 'Email address',
+  'userForm.emailHint':
+    'The invitation is sent here and stays open for seven days. No password is set: the code is how this account is entered.',
+  // Both places that send an invitation read these two: the language is the same
+  // choice whether the account is being created or converted, and a second wording
+  // for it would be the one that drifts.
+  'userForm.locale': 'Language of the invitation',
+  'userForm.localeHint':
+    'The message is written in it, and the gallery opens in it the first time they sign in.',
+  'userForm.invite': 'Send the invitation',
+  'userForm.invited': (username: string, email: string) =>
+    `Account "${username}" created and invited at ${email}.`,
+  // A bound account has one way through, and the field says so before it is used:
+  // the server refuses an ordinary password change on it.
+  'userForm.unbindPassword': 'Password, replacing the person',
+  'userForm.unbindHint': (email: string) =>
+    `Setting a password here unbinds ${email}: the account goes back to being a shared key, its open sessions close, its paired screens are unpaired, and signing in with a code stops working. Leave it empty to keep the binding.`,
 
   'access.legend': 'Accessible albums',
   'access.every': 'Every album',
@@ -545,6 +645,9 @@ export const en = {
   'validate.password': 'Enter a password.',
   'validate.passwordLength': (min: number) => `A password must be at least ${min} characters.`,
   'validate.title': 'Enter a title.',
+  'validate.email': 'Enter an email address.',
+  'validate.emailLength': (max: number) => `An address cannot be longer than ${max} characters.`,
+  'validate.emailPattern': 'An address looks like someone@example.org.',
   'validate.folder': 'Enter the Drive folder.',
   'validate.folderPattern':
     'Paste the Drive folder URL or its identifier — the segment after /folders/.',

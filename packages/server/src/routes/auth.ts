@@ -4,6 +4,7 @@ import {
   USER_CODE_LENGTH,
   VERIFICATION_CODE_LENGTH,
   normalizeUserCode,
+  type Locale,
   type SessionUser,
 } from '@lukarn/shared';
 import argon2 from 'argon2';
@@ -73,7 +74,7 @@ class DisplayNameRequired extends Error {}
 type CodeOutcome =
   | { kind: 'refused' }
   | { kind: 'signedIn'; username: string; session: SessionRecord }
-  | { kind: 'invited'; username: string };
+  | { kind: 'invited'; username: string; locale: Locale | null };
 
 /** The displayed code after folding: eight characters from the unambiguous alphabet. */
 const USER_CODE_PATTERN = new RegExp(`^[A-HJ-NP-Z2-9]{${USER_CODE_LENGTH}}$`);
@@ -278,15 +279,19 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       if (pending) {
         const minted = context.codes.mint(pending.target, 'invite', {
           username: pending.username!,
+          locale: pending.locale,
         });
         if ('code' in minted) {
-          // The recipient has never made a request here, so there is no recorded
-          // language to go by: the instance default applies (D260812d).
+          // The language the row carries, which is the one whoever invited chose. The
+          // recipient has still made no request here to have a language recorded, so
+          // without that choice the instance default applies (D260812d) — and a code
+          // asked for again must reach the inbox in the language of the message it
+          // replaces.
           context.mailer.queue(
             buildInvitationMail(
               pending.target,
               minted.code,
-              context.env.defaultLocale,
+              pending.locale ?? context.env.defaultLocale,
               context.settings.instanceName,
               context.env,
             ),
@@ -369,7 +374,11 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
             // ask whether an address has an invitation waiting.
             throw new DisplayNameRequired();
           }
-          return { kind: 'invited', username };
+          // The language of the message that brought this person here, carried out of
+          // the row rather than read from the request: it is what the identity is
+          // seeded with, and the browser's own header replaces it on the very next
+          // request (D260812d).
+          return { kind: 'invited', username, locale: checked.row.locale };
         })();
       } catch (error) {
         if (error instanceof DisplayNameRequired) {
@@ -402,7 +411,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         let user: StoredUser;
         try {
           user = context.config.consumeInvitation(
-            { username: outcome.username, email, displayName },
+            { username: outcome.username, email, displayName, locale: outcome.locale },
             context.codes,
           );
         } catch (error) {

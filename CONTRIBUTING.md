@@ -223,6 +223,14 @@ interface and `specs/`. A few code identifiers predating the rule remain in
 French (see `CLAUDE.md`); renaming them is separate work, not to be folded into
 a prose-only change.
 
+What a reader sees is translated, and the register depends on who is being
+spoken to. A message with a recipient addresses them: an email, and the page a
+link in an email opens, say `you` in English and `vous` in French. A button, a
+field label or a hint sits on a screen nobody was addressed on, and French writes
+it in the impersonal infinitive the interface catalogue uses throughout: `Se
+connecter`, `Corriger l'adresse`. Read a new email aloud as if you were sending
+it to somebody. Both registers are correct, and only one of them suits a letter.
+
 ## Things that will be turned down
 
 - **Presenting any host or third-party service as the right choice.** The

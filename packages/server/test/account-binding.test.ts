@@ -180,6 +180,40 @@ describe('consuming an invitation', () => {
     assert.equal(config.userForEmail('MAMIE@exemple.fr')?.username, 'mamie');
     assert.equal(config.userForEmail('inconnue@exemple.fr'), undefined);
   });
+
+  it('gives the identity the language its invitation was written in', () => {
+    const result = config.createInvitedUser(
+      { username: 'mamie', admin: false, albums: ['*'], email: 'mamie@exemple.fr', locale: 'fr' },
+      codes,
+    );
+    assert.ok('user' in result);
+
+    config.consumeInvitation(
+      { username: 'mamie', email: 'mamie@exemple.fr', displayName: 'Mamie', locale: 'fr' },
+      codes,
+    );
+
+    // The window this exists for is the one before the first request: `plugins/auth.ts`
+    // records `Accept-Language` from then on, and the emails composed in between would
+    // otherwise go out in the instance default.
+    assert.equal(commenters.byEmail('mamie@exemple.fr')?.locale, 'fr');
+  });
+
+  it('leaves an identity that already reads a language alone', () => {
+    commenters.declare('alice@exemple.fr', 'Alice');
+    const identity = commenters.markVerified('alice@exemple.fr')!;
+    commenters.setLocale(identity.id, 'fr');
+    invite('alice', 'alice@exemple.fr');
+
+    config.consumeInvitation(
+      { username: 'alice', email: 'alice@exemple.fr', displayName: 'Alice', locale: 'en' },
+      codes,
+    );
+
+    // That value came from this person's own browser, which D260812d makes
+    // authoritative: a language somebody else picked for them must not displace it.
+    assert.equal(commenters.byEmail('alice@exemple.fr')?.locale, 'fr');
+  });
 });
 
 describe('converting a shared key', () => {

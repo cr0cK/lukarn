@@ -71,7 +71,21 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
     // in another process (D260812d). Guarded by the comparison: this hook runs on
     // every thumbnail request, and an unconditional UPDATE would put a write on
     // the critical path of a cold grid.
-    if (commenter && commenter.locale !== request.locale) {
+    //
+    // **Only a request the application made itself says anything about language.**
+    // `api/client.ts` announces the language the interface is displaying; a `<img>`
+    // pointing at `/api/media` is issued by the browser with the browser's own
+    // `Accept-Language`, which is a setting nobody revisited. Without this guard the
+    // first row of thumbnails overwrites a language somebody chose, and an invitation
+    // written in French is undone by the photographs it led to (D260819c).
+    //
+    // `Sec-Fetch-Dest` is the browser stating what it will do with the answer:
+    // `empty` is `fetch()`, everything else is a subresource. A browser that does not
+    // send it keeps the previous behaviour rather than losing the recording, which is
+    // the safer way round: the language stays a guess there, as it was before.
+    const destination = request.headers['sec-fetch-dest'];
+    const fromTheApplication = destination === undefined || destination === 'empty';
+    if (fromTheApplication && commenter && commenter.locale !== request.locale) {
       context.commenters.setLocale(commenter.id, request.locale);
     }
 
