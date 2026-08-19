@@ -53,6 +53,11 @@ export const en = {
   'error.invalidCode': 'Invalid code — six digits expected.',
   'error.codeAttemptsExhausted': 'Too many attempts. Ask for a new code.',
   'error.codeWrongOrExpired': 'Wrong or expired code. Ask for a new one if needed.',
+  'error.invalidEmail': 'Invalid address',
+  'error.displayNameRequired':
+    'Give the name your comments will be signed with, then send the code again.',
+  'error.identityBound':
+    'This account is one person, and its address is not this session\u2019s to change. Sign out to use the gallery as somebody else.',
 
   'error.noIcon': 'No icon of that name',
   'error.logoEmpty': 'No image received.',
@@ -72,6 +77,14 @@ export const en = {
     'The last administrator cannot have the role removed: the instance would become unadministrable. Appoint another administrator first.',
   'error.lastAdminDelete':
     'The last administrator cannot be deleted: the instance would become unadministrable.',
+  'error.identityTaken': (username: string) =>
+    `That address already signs in as "${username}". An address belongs to one account.`,
+  'error.accountAlreadyBound': (username: string) =>
+    `"${username}" is already one person. Changing the address of a bound account is not offered: unbind it first, which gives it a password again and closes its sessions.`,
+  'error.noInvitationPending': (username: string) =>
+    `"${username}" has no invitation waiting, so there is nothing to send again. Give the address to invite it at.`,
+  'error.passwordOnBoundAccount': (username: string) =>
+    `"${username}" is bound to a person and holds no password. Unbind it to give it one, which also closes its sessions.`,
   'error.coverNotInAlbum': 'That cover is not a photo indexed in this album.',
   'error.serviceAccountConsent':
     'This instance authenticates with a service account: there is no consent to give. Share the folder with its address from Google Drive.',
@@ -108,9 +121,31 @@ export const en = {
     `You have just given this address on ${host} to sign your comments.`,
   'mail.codeHere': 'Here is your code:',
   'mail.codeValidity':
-    'Type it into the page you left open. It lasts fifteen minutes and works once.',
+    'Type it into the page you left open. It is good for fifteen minutes and works once.',
   'mail.codeIgnore':
     'If you did not ask for this, ignore the message: until the code is entered, nothing is tied to this address. Do not pass it on to anyone.',
+
+  'mail.signInSubject': (host: string) => `Sign-in code \u2014 ${host}`,
+  'mail.signInIntro': (host: string) => `This code signs you in to ${host}, under your own name.`,
+  'mail.signInHere': 'Here is your code:',
+  'mail.signInValidity':
+    'Type it into the page you left open. It is good for fifteen minutes and works once.',
+  'mail.signInIgnore':
+    'If you did not ask to sign in, ignore the message: the code opens nothing until it is entered. Do not pass it on to anyone, whoever enters it signs in as you.',
+
+  'mail.inviteSubject': (host: string) => `An account for you on ${host}`,
+  // The first line says what the code grants, which is the only defence against the
+  // attack that remains: somebody talking its holder into reading it out.
+  'mail.inviteIntro': (host: string) =>
+    `An account has been created for you on ${host}. The code below opens it, and this address is what your comments will be signed under.`,
+  // The page before the code. Six digits handed over before anywhere to type them
+  // leaves the reader holding a number and a question.
+  'mail.inviteOpen': 'Open this page, where your address is already filled in:',
+  'mail.inviteThen': 'Then enter this code:',
+  'mail.inviteValidity':
+    'It is good for seven days and works once. If it runs out, you can ask for another from that same page.',
+  'mail.inviteIgnore':
+    'If you were not expecting this, ignore the message: no account opens until the code is entered. Do not pass it on to anyone, whoever enters it signs in as you.',
 
   /* ---------------------------------------------------- Unsubscribe pages */
 

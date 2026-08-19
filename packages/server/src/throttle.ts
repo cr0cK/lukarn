@@ -72,16 +72,32 @@ export class LoginThrottle {
   }
 
   fail(attempt: LoginAttempt, now = Date.now()): void {
-    for (const axis of AXES) {
-      const key = keyOn(axis, attempt);
-      const existing = this.attempts.get(key);
-      if (!existing || now - existing.lastFailureAt > RESET_AFTER_MS) {
-        this.attempts.set(key, { failures: 1, lastFailureAt: now });
-        continue;
-      }
-      existing.failures++;
-      existing.lastFailureAt = now;
-    }
+    for (const axis of AXES) this.bump(keyOn(axis, attempt), now);
+    this.enforceBound(now);
+  }
+
+  /**
+   * Delay owed by this source alone, ignoring the two axes keyed to a username.
+   *
+   * A route that answers the same thing to every caller has no username to be
+   * blocked on, and blocking it on one would answer a question it refuses to answer:
+   * a `429` keyed to an address is the oracle the uniform response exists to close.
+   */
+  blockedForIp(ip: string, now = Date.now()): number {
+    return this.delayOn('ip', { ip, username: '' }, now);
+  }
+
+  /**
+   * Counts one call against this source, and against nothing else.
+   *
+   * Not a failure: the counter is a function of **how much the caller asked**, never
+   * of what the answers were. The `ip` axis is shared with `/auth/login`, so an
+   * attacker walks it to one below its threshold with failed sign-ins and then makes
+   * a single call for a candidate address — if a counter that depended on the answer
+   * moved, the address was known.
+   */
+  countCall(ip: string, now = Date.now()): void {
+    this.bump(keyOn('ip', { ip, username: '' }), now);
     this.enforceBound(now);
   }
 
@@ -110,6 +126,17 @@ export class LoginThrottle {
   /** Number of live counters. Used by tests and diagnostics. */
   get size(): number {
     return this.attempts.size;
+  }
+
+  /** One counter, one step. Shared so that counting on one axis reads the same as on three. */
+  private bump(key: string, now: number): void {
+    const existing = this.attempts.get(key);
+    if (!existing || now - existing.lastFailureAt > RESET_AFTER_MS) {
+      this.attempts.set(key, { failures: 1, lastFailureAt: now });
+      return;
+    }
+    existing.failures++;
+    existing.lastFailureAt = now;
   }
 
   private delayOn(axis: Axis, attempt: LoginAttempt, now: number): number {

@@ -1,15 +1,90 @@
-import type { AdminAlbum, AdminUser } from '@lukarn/shared';
+import {
+  isLocale,
+  type AccountState,
+  type AdminAlbum,
+  type AdminUser,
+  type Locale,
+} from '@lukarn/shared';
 import { type ReactElement, useMemo, useState } from 'react';
 import { errorText } from '../../api/client';
-import { useAdminUsers, useDeleteUser, useMe } from '../../api/hooks';
-import { formatAlbumAccess } from '../../lib/adminForm';
+import {
+  useAdminStatus,
+  useAdminUsers,
+  useDeleteUser,
+  useInviteUser,
+  useMe,
+} from '../../api/hooks';
+import { formatAlbumAccess, validateEmail } from '../../lib/adminForm';
+import { formatDate } from '../../lib/format';
 import { useT } from '../../lib/i18n';
+import type { MessageKey, Translate } from '../../lib/i18n/translate';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
 import { UserForm } from './UserForm';
-import { Button, FormError, ROW_ACTIONS_CLASS, ROW_CLASS, Section, type Notify } from './ui';
+import {
+  Button,
+  FormError,
+  ROW_ACTIONS_CLASS,
+  ROW_CLASS,
+  Section,
+  SelectField,
+  TextField,
+  localeOptions,
+  type Notify,
+} from './ui';
 
-/** "Accounts" section: list, create, edit and delete accounts. */
+/**
+ * Colour of the state badge, by state.
+ *
+ * "No way in" is deliberately the loudest of the four: an invitation that expired
+ * unread is the one thing about an account that nothing else reports, and a grey
+ * label reading "no way in" is a grey label nobody reads. The other three describe
+ * a working account and say so quietly.
+ */
+const STATE_BADGE: Record<AccountState, string> = {
+  shared_key: 'bg-ink-800 text-ink-300',
+  person: 'bg-emerald-500/15 text-emerald-300',
+  invited: 'bg-amber-500/10 text-amber-200',
+  no_way_in: 'border border-red-500/40 bg-red-500/15 font-medium text-red-300',
+};
+
+const STATE_LABEL = {
+  shared_key: 'adminUsers.stateSharedKey',
+  person: 'adminUsers.statePerson',
+  invited: 'adminUsers.stateInvited',
+  no_way_in: 'adminUsers.stateNoWayIn',
+} as const satisfies Record<AccountState, MessageKey>;
+
+/**
+ * The sentence under the badge: what that state means for this account.
+ *
+ * Driven by `state` rather than by whichever field happens to be filled, because an
+ * invitation is also in flight on accounts whose state is `shared_key` — reading
+ * `invitation` first printed the invitation sentence twice on those rows, once here
+ * and once on the line below that exists for exactly that case.
+ */
+function stateDetail(user: AdminUser, t: Translate): string {
+  switch (user.state) {
+    case 'person':
+      return user.identity
+        ? t('adminUsers.statePersonDetail', user.identity.displayName, user.identity.email)
+        : t('adminUsers.statePerson');
+    case 'invited':
+      return user.invitation
+        ? t(
+            'adminUsers.stateInvitedDetail',
+            user.invitation.email,
+            formatDate(user.invitation.expiresAt, t),
+          )
+        : t('adminUsers.stateInvited');
+    case 'no_way_in':
+      return t('adminUsers.stateNoWayInDetail');
+    case 'shared_key':
+      return t('adminUsers.stateSharedKeyDetail');
+  }
+}
+
+/** "Accounts" section: list, create, edit, invite and delete accounts. */
 export function UsersSection({
   albums,
   notify,
@@ -20,11 +95,23 @@ export function UsersSection({
   const t = useT();
   const { data: users, isPending, error } = useAdminUsers();
   const { data: me } = useMe();
+  const { data: status } = useAdminStatus();
   const remove = useDeleteUser();
+  const invite = useInviteUser();
+  const mailConfigured = status?.mailConfigured !== false;
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<AdminUser | null>(null);
+  const [converting, setConverting] = useState<AdminUser | null>(null);
+  const [address, setAddress] = useState('');
+  // The language whoever is inviting reads themselves: they are usually about to
+  // speak to that person in it.
+  const [locale, setLocale] = useState<Locale>(t.locale);
+  // Validated as the address is typed rather than on submit: the dialog's confirm
+  // button is refused until it is valid, so a rejection with nothing said would be a
+  // button that looks broken.
+  const addressError = validateEmail(address, t);
 
   const titles = useMemo(() => new Map(albums.map((album) => [album.id, album.title])), [albums]);
 
@@ -39,6 +126,41 @@ export function UsersSection({
         setConfirming(null);
       },
     });
+  };
+
+  const openConversion = (user: AdminUser): void => {
+    setAddress('');
+    setLocale(t.locale);
+    setConverting(user);
+  };
+
+  const confirmConversion = (user: AdminUser): void => {
+    if (addressError) return;
+    const email = address.trim();
+    invite.mutate(
+      { username: user.username, body: { email, locale } },
+      {
+        onSuccess: () => {
+          notify({ tone: 'ok', text: t('adminUsers.invited', user.username, email) });
+          setConverting(null);
+        },
+        onError: (inviteError) => {
+          notify({ tone: 'error', text: errorText(inviteError, t('adminUsers.inviteFailed')) });
+        },
+      },
+    );
+  };
+
+  /** Remints the invitation already pending: no address to give, nothing to confirm. */
+  const resend = (user: AdminUser): void => {
+    invite.mutate(
+      { username: user.username, body: {} },
+      {
+        onSuccess: () => notify({ tone: 'ok', text: t('adminUsers.resent', user.username) }),
+        onError: (inviteError) =>
+          notify({ tone: 'error', text: errorText(inviteError, t('adminUsers.inviteFailed')) }),
+      },
+    );
   };
 
   return (
@@ -58,7 +180,14 @@ export function UsersSection({
         </Button>
       }
     >
-      {creating && <UserForm albums={albums} onClose={() => setCreating(false)} notify={notify} />}
+      {creating && (
+        <UserForm
+          albums={albums}
+          mailConfigured={mailConfigured}
+          onClose={() => setCreating(false)}
+          notify={notify}
+        />
+      )}
 
       {isPending && (
         <div className="px-4 py-6">
@@ -83,6 +212,7 @@ export function UsersSection({
             albums={albums}
             user={user}
             isSelf={user.username === me?.username}
+            mailConfigured={mailConfigured}
             onClose={() => setEditing(null)}
             notify={notify}
           />
@@ -114,6 +244,33 @@ export function UsersSection({
               </p>
             </div>
 
+            {/* How the account is entered, as a column of its own from `xl` and a
+                line of its own below it. Fixed width rather than `flex-1`: the
+                badge is the word the eye looks for down the list, and a column
+                that resizes with its neighbour puts it somewhere new on each row. */}
+            <div className="min-w-0 xl:w-72 xl:shrink-0">
+              <p>
+                <span
+                  className={`inline-block rounded-full px-2 py-0.5 text-xs ${STATE_BADGE[user.state]}`}
+                >
+                  {t(STATE_LABEL[user.state])}
+                </span>
+              </p>
+              <p className="mt-0.5 text-xs text-ink-400">{stateDetail(user, t)}</p>
+              {/* An invitation on an account that still has its password: the state
+                  stays "shared key" because the key still works, so the invitation
+                  in flight has nowhere else to appear. */}
+              {user.invitation && user.state === 'shared_key' && (
+                <p className="mt-0.5 text-xs text-amber-200">
+                  {t(
+                    'adminUsers.pendingInvitation',
+                    user.invitation.email,
+                    formatDate(user.invitation.expiresAt, t),
+                  )}
+                </p>
+              )}
+            </div>
+
             <div className={ROW_ACTIONS_CLASS}>
               <Button
                 onClick={() => {
@@ -124,6 +281,28 @@ export function UsersSection({
               >
                 {t('adminUsers.edit')}
               </Button>
+
+              {/* Inviting sits beside deleting, and a bound account offers neither
+                  form of it: the server refuses both with `already_bound`. */}
+              {!user.identity &&
+                (user.invitation ? (
+                  <Button
+                    onClick={() => resend(user)}
+                    disabled={invite.isPending}
+                    ariaLabel={t('adminUsers.resendAccount', user.username)}
+                  >
+                    {t('adminUsers.resend')}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => openConversion(user)}
+                    disabled={!mailConfigured}
+                    ariaLabel={t('adminUsers.inviteAccount', user.username)}
+                    title={mailConfigured ? undefined : t('userForm.byEmailNoMail')}
+                  >
+                    {t('adminUsers.invite')}
+                  </Button>
+                ))}
 
               <Button
                 variant="danger"
@@ -151,6 +330,52 @@ export function UsersSection({
         >
           <p>{t('adminUsers.confirmSignIn')}</p>
           <p>{t('adminUsers.confirmMedia')}</p>
+        </ConfirmDialog>
+      )}
+
+      {/* The same dialog that guards deletion, because this is the same kind of act:
+          on an account that still has a password, accepting the invitation closes
+          every session it has open and retires that password. */}
+      {converting && (
+        <ConfirmDialog
+          title={t('adminUsers.inviteTitle', converting.username)}
+          confirmLabel={t('adminUsers.inviteButton')}
+          busyLabel={t('adminUsers.inviting')}
+          busy={invite.isPending}
+          confirmDisabled={addressError !== null}
+          onConfirm={() => confirmConversion(converting)}
+          onCancel={() => setConverting(null)}
+        >
+          <p>{t('adminUsers.inviteExplain')}</p>
+          <p>
+            {converting.state === 'shared_key'
+              ? t('adminUsers.inviteConverts', converting.username)
+              : t('adminUsers.inviteRevives')}
+          </p>
+          <TextField
+            id="invite-address"
+            label={t('adminUsers.inviteAddress')}
+            type="email"
+            value={address}
+            onChange={setAddress}
+            autoComplete="off"
+            disabled={invite.isPending}
+            // Only once something has been typed: an error under an untouched field
+            // is the dialog telling somebody off for having just opened it.
+            error={address ? addressError : null}
+          />
+          <SelectField
+            id="invite-locale"
+            label={t('userForm.locale')}
+            value={locale}
+            options={localeOptions()}
+            // Guarded rather than cast, as `/settings` does: a `select` hands back a
+            // string, and the predicate in `@lukarn/shared` is the one thing that
+            // decides what counts as a language.
+            onChange={(value) => isLocale(value) && setLocale(value)}
+            disabled={invite.isPending}
+            hint={t('userForm.localeHint')}
+          />
         </ConfirmDialog>
       )}
     </Section>

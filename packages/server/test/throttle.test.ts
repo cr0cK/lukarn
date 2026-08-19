@@ -120,6 +120,41 @@ describe('login throttling', () => {
     assert.ok(throttle.blockedFor(depuis('10.0.0.66', 'inconnu-suivant'), now) > 0);
   });
 
+  /**
+   * A public route answering the same thing to every caller has no username to be
+   * blocked on: a `429` keyed to an address is the oracle that answer exists to
+   * close. What it has instead is one counter for the caller, moved by the call
+   * itself rather than by what the call turned out to be about.
+   */
+  it('counts a call against its caller and against no account', () => {
+    const throttle = new LoginThrottle();
+
+    for (let call = 0; call < 21; call++) throttle.countCall('10.0.0.5', now);
+
+    assert.ok(throttle.blockedForIp('10.0.0.5', now) > 0);
+    // Nothing was asserted about an account, so no account carries a penalty: the
+    // same one reached from elsewhere is as free as it was.
+    assert.equal(throttle.blockedFor({ ip: '10.0.0.6', username: 'alexis' }, now), 0);
+  });
+
+  it('spends the same allowance as a failed sign-in from that address', () => {
+    const throttle = new LoginThrottle();
+
+    // Twenty failures leave the address one below its threshold, which is where an
+    // attacker parks it before asking whether one address is known here.
+    for (let attempt = 0; attempt < 20; attempt++) {
+      throttle.fail({ ip: '10.0.0.66', username: `unknown-${attempt}` }, now);
+    }
+    assert.equal(throttle.blockedForIp('10.0.0.66', now), 0);
+
+    throttle.countCall('10.0.0.66', now);
+
+    // One shared counter, so the twenty-first call costs what the twenty-first
+    // failure would have. A counter of its own would answer, one call later, the
+    // question the uniform response refused.
+    assert.ok(throttle.blockedForIp('10.0.0.66', now) > 0);
+  });
+
   it('forgets expired counters when asked to clean up', () => {
     const throttle = new LoginThrottle();
     for (let essai = 0; essai < 500; essai++) {

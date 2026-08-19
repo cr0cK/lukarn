@@ -235,6 +235,16 @@ export interface SessionUser {
   /** `null` until someone identifies themselves in this session. */
   identity: CommenterIdentity | null;
   /**
+   * `true` when the identity above comes from the **account** rather than from this
+   * session: the account is one person, and every device signing in with it signs
+   * with that name.
+   *
+   * The interface needs it in order to stop offering to change or forget an identity
+   * the server will refuse to change or forget — on a bound account the way out is
+   * to sign out.
+   */
+  identityBound: boolean;
+  /**
    * `false` if the instance has no SMTP server: no verification code can be sent, so
    * nobody can identify themselves or comment. The interface must say so rather than
    * offer a form that will fail.
@@ -251,6 +261,16 @@ export interface CommenterIdentity {
   displayName: string;
   /** `false` after unsubscribing from a received email. */
   notify: boolean;
+  /**
+   * Language this person is written to in, as the server has it. `null` while none is
+   * recorded, in which case the instance default applies (D260812d).
+   *
+   * The interface reads it once, when a session begins: somebody who accepted an
+   * invitation has never chosen a language here, and the one their invitation was
+   * written in is the best evidence of what they read. What they pick afterwards is
+   * the browser's own, and travels back as `Accept-Language`.
+   */
+  locale: Locale | null;
 }
 
 /** What is declared to identify oneself. The address then receives a code. */
@@ -270,6 +290,33 @@ export const VERIFICATION_CODE_LENGTH = 6;
 export interface LoginRequest {
   username: string;
   password: string;
+}
+
+/**
+ * Asking for a code at an address, without a session.
+ *
+ * The answer is the same for an address that opens an account, one that has an
+ * invitation waiting, one nothing knows and one asked again inside the minute: two
+ * rapid requests would otherwise be a test for "does this address open an account
+ * here".
+ */
+export interface CodeRequest {
+  email: string;
+}
+
+/** Spending a code: this is what opens the session. */
+export interface CodeVerifyRequest {
+  email: string;
+  code: string;
+  /**
+   * Name to be known by, required when an invitation is being taken up at an address
+   * no identity has verified. Optional because the screen cannot know in advance:
+   * somebody typing their own address gets the same answer whether they are being
+   * invited or signing in again, so the server asks with `display_name_required` and
+   * the screen resubmits. Ignored on every other path — a name arriving here must
+   * never rename an existing identity.
+   */
+  displayName?: string;
 }
 
 /* --------------------------------------------------------------------------
@@ -746,30 +793,128 @@ export interface ApiError {
 export const ALL_ALBUMS = '*';
 
 /**
- * An access key. It opens albums and may be shared by several people: no email address
- * is attached; addresses belong to commenter identities.
+ * How an account is entered, as the server concludes it.
+ *
+ * The reserved hash meaning "no password" never leaves the server: the account list
+ * reads a state the server derived, never a hash it compares itself. Two of these
+ * four are answerable only because that hash is a constant.
+ */
+export type AccountState =
+  /** A password somebody knows, shareable by a whole household as before. */
+  | 'shared_key'
+  /** Bound to a verified identity: one person, on every device they sign in from. */
+  | 'person'
+  /** Created by address, its invitation still open until `invitation.expiresAt`. */
+  | 'invited'
+  /**
+   * Created by address and never taken up: the invitation expired and the account
+   * holds no password. It still carries the album grants somebody set on purpose,
+   * and nothing that could exercise them — re-invite it, or delete it.
+   */
+  | 'no_way_in';
+
+/** The person a bound account is. Their notification switch is theirs, not the list's. */
+export interface AdminUserIdentity {
+  email: string;
+  displayName: string;
+}
+
+/** The invitation still open on an account, and the date it stops being one. */
+export interface AdminUserInvitation {
+  /** Address it was sent to. */
+  email: string;
+  /** ISO 8601. Seven days from the last send, and shown as a date on the row. */
+  expiresAt: string;
+}
+
+/**
+ * An access key, or the person it was bound to.
+ *
+ * Unbound it opens albums and may be shared by several people. Bound it is one
+ * person, and `identity` is the address that proved it — written when a code was
+ * consumed, never asserted from /admin.
  */
 export interface AdminUser {
   username: string;
   admin: boolean;
   /** List of album IDs, or `['*']`. */
   albums: string[];
+  /** The person this account is, `null` for a key a household shares. */
+  identity: AdminUserIdentity | null;
+  /**
+   * The invitation waiting to be taken up, `null` when none is. An expired one reads
+   * as `null` here: nothing still connects that address to this account, and
+   * re-inviting is the administrator's to do.
+   */
+  invitation: AdminUserInvitation | null;
+  /**
+   * How the account is entered **today**. An unconsumed invitation on an account that
+   * still has its password leaves this `shared_key`, since the key still works;
+   * `invitation` is what says an invitation is also in flight.
+   */
+  state: AccountState;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface CreateUserRequest {
+/** What both ways of creating an account have in common. */
+interface CreateUserFields {
   username: string;
-  password: string;
   admin?: boolean;
   albums?: string[];
 }
 
-/** Omitted fields = unchanged. An absent `password` retains the password. */
-export interface UpdateUserRequest {
-  password?: string;
+/**
+ * Creating an account takes **exactly one** of a password and an address, and the
+ * union says so: a call supplying both, or neither, fails to compile rather than at
+ * runtime.
+ *
+ * With a password the account is a shared key and nothing about it has changed. With
+ * an address it is created with no password and invited; the binding is written when
+ * the invitation is consumed, so that creating it asserts nothing about who the
+ * recipient is.
+ *
+ * `locale` is the language that invitation is written in, and it belongs to the
+ * address branch alone: a password reaches nobody, so there is no message to choose a
+ * language for.
+ */
+export type CreateUserRequest =
+  | (CreateUserFields & { password: string; email?: never; locale?: never })
+  | (CreateUserFields & { email: string; password?: never; locale?: Locale });
+
+/** What an account update may change whichever form it takes. */
+interface UpdateUserFields {
   admin?: boolean;
   albums?: string[];
+}
+
+/**
+ * Omitted fields = unchanged. An absent `password` retains the password.
+ *
+ * The second form is the single way to give a bound account a password: it clears the
+ * binding, sets the password and closes the sessions in one act. An ordinary password
+ * update is refused while the account is bound — otherwise an administrator sets a
+ * password on it, signs in, and the session signs as that person.
+ */
+export type UpdateUserRequest =
+  | (UpdateUserFields & { password?: string; unbind?: false })
+  | (UpdateUserFields & { password: string; unbind: true });
+
+/**
+ * Inviting an account that already exists, or sending its invitation again.
+ *
+ * With an address it invites that account. Without one it mints a fresh code for the
+ * invitation already pending, which is what somebody presses when the first message
+ * was never read. It is refused on an account already bound: that would be changing
+ * somebody's address, and it is the shape of the impersonation this design prevents.
+ */
+export interface InviteUserRequest {
+  email?: string;
+  /**
+   * Language the message is written in. Omitted on a resend, where the language the
+   * invitation was minted with is repeated rather than reread from the sender.
+   */
+  locale?: Locale;
 }
 
 export interface AdminAlbum {

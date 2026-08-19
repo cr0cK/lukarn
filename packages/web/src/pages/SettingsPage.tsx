@@ -1,10 +1,10 @@
-import { isLocale, type Locale } from '@lukarn/shared';
+import { isLocale } from '@lukarn/shared';
 import type { ReactElement } from 'react';
 import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { TopBar } from '../components/TopBar';
-import { SelectField, Section, type SelectOption } from '../components/admin/ui';
-import { AVAILABLE_LOCALES, LOCALE_NAMES, useLocale, useT } from '../lib/i18n';
+import { SelectField, Section, localeOptions, type SelectOption } from '../components/admin/ui';
+import { useLocale, useT } from '../lib/i18n';
 import { THEMES, isTheme, readStoredTheme, setTheme, useTheme, type Theme } from '../lib/theme';
 
 /**
@@ -28,11 +28,6 @@ export default function SettingsPage(): ReactElement {
   // Administration carries the tab bar on a phone and so does this screen: a tab
   // that goes missing on one page is exactly the irregularity the bar removes.
   const activity = useActivityFeed();
-
-  const langues: SelectOption[] = AVAILABLE_LOCALES.map((code: Locale) => ({
-    value: code,
-    label: LOCALE_NAMES[code],
-  }));
 
   const themes: SelectOption[] = THEMES.map((name: Theme) => ({
     value: name,
@@ -58,7 +53,7 @@ export default function SettingsPage(): ReactElement {
               id="prefs-language"
               label={t('prefs.language')}
               value={locale}
-              options={langues}
+              options={localeOptions()}
               // Guarded rather than cast: a `select` hands back a string, and
               // the one place that decides what counts as a language is the
               // predicate `lib/i18n/locale.ts` already reads storage with.

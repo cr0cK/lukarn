@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { DEFAULT_GROUP_BY, DEFAULT_SORT_ORDER } from '@lukarn/shared';
 import yaml from 'js-yaml';
 import { z } from 'zod';
+import { hasNoPassword } from './crypto.js';
 
 /**
  * Reads `config/albums.yaml`: accounts, albums, permissions and settings.
@@ -22,7 +23,18 @@ const identifier = z
 const userSchema = z.object({
   username: identifier,
   /** argon2id hash produced by `pnpm hash-password`. */
-  passwordHash: z.string().startsWith('$argon2', 'must be an argon2 hash (pnpm hash-password)'),
+  passwordHash: z
+    .string()
+    .startsWith('$argon2', 'must be an argon2 hash (pnpm hash-password)')
+    // Any other argon2 string is accepted as written, which is why this one has to
+    // be named: it is the reserved value marking an account with no password, and
+    // only creating an invitation from /admin may write it. This file runs before
+    // any mail could be sent, so an account it declared that way would be one
+    // nobody can enter and nobody was invited to.
+    .refine(
+      (hash) => !hasNoPassword(hash),
+      'reserved hash meaning "no password": invite an account from /admin instead',
+    ),
   admin: z.boolean().default(false),
   /** List of album IDs, or `["*"]` for all of them. */
   albums: z.array(z.string().min(1)).default([]),

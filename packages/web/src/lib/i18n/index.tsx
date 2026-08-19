@@ -25,7 +25,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { activeLocale, setActiveLocale, writeStoredLocale } from './locale';
+import { activeLocale, sessionLocale, setActiveLocale, writeStoredLocale } from './locale';
 import { makeTranslate, type Translate } from './translate';
 
 export { AVAILABLE_LOCALES, LOCALE_NAMES, makeTranslate } from './translate';
@@ -34,6 +34,7 @@ export type { MessageKey, Messages, Translate } from './translate';
 interface I18n {
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  adoptLocale: (offered: Locale | null) => void;
   t: Translate;
 }
 
@@ -59,9 +60,23 @@ export function LocaleProvider({ children }: { children: ReactNode }): ReactElem
     setActiveLocale(next);
   }, []);
 
+  /**
+   * Takes the language a session arrived with, when nothing here has been chosen.
+   *
+   * Storage is left alone on purpose, unlike `setLocale`: this is a default the
+   * server supplied, not a decision, and `sessionLocale` owns the precedence that
+   * keeps a decision made here above it.
+   */
+  const adoptLocale = useCallback((offered: Locale | null) => {
+    const next = sessionLocale(offered);
+    if (!next) return;
+    setLocaleState(next);
+    setActiveLocale(next);
+  }, []);
+
   const value = useMemo<I18n>(
-    () => ({ locale, setLocale, t: makeTranslate(locale) }),
-    [locale, setLocale],
+    () => ({ locale, setLocale, adoptLocale, t: makeTranslate(locale) }),
+    [locale, setLocale, adoptLocale],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
@@ -87,4 +102,15 @@ export function useT(): Translate {
 export function useLocale(): { locale: Locale; setLocale: (locale: Locale) => void } {
   const { locale, setLocale } = useI18n();
   return { locale, setLocale };
+}
+
+/**
+ * Offers the interface the language a session brings, which it takes only if nobody
+ * has chosen one in this browser.
+ *
+ * Separate from `useLocale` because the two are opposite gestures: one records a
+ * decision, this one supplies a default and must never be mistaken for the first.
+ */
+export function useAdoptLocale(): (offered: Locale | null) => void {
+  return useI18n().adoptLocale;
 }

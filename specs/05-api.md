@@ -24,6 +24,22 @@ commenter identity, the language is **recorded** on it — only when it changes 
 so an email composed hours later reaches its recipient in the language they read
 (see [03](./03-data-model.md) and D260812d).
 
+**The recording reads only requests the application made itself**, which
+`plugins/auth.ts` tells apart by `Sec-Fetch-Dest`: `empty` is a `fetch()` carrying
+the language the interface is displaying, and everything else is a subresource the
+browser asked for with its own preference. A thumbnail says nothing about what
+somebody reads, and a cold grid sends hundreds of them, so without this a language
+chosen for a person is overwritten by the first photographs they open
+([D260819c](./08-decisions/D260819c-the-language-of-an-invitation-is-chosen-by-whoever.md)).
+A browser sending no such header keeps the earlier behaviour.
+
+**An invitation is the one message with nobody to read a language from.** Its
+recipient has made no request here, so nothing about them is recorded: whoever
+sends it chooses, `POST /api/admin/users` and
+`POST /api/admin/users/:username/invite` carry that choice, and
+`verification_codes.locale` keeps it so that sending the message again repeats it
+(D260819c). `DEFAULT_LOCALE` applies when nobody chose.
+
 Logs are not translated: they are read next to the code, which is in English.
 
 ## Error responses
@@ -94,6 +110,8 @@ variables.
 | POST   | `/api/auth/logout`                   | none    |
 | GET    | `/api/auth/me`                       | none\*  |
 | GET    | `/api/auth/setup-state`              | none    |
+| POST   | `/api/auth/code/request`             | none    |
+| POST   | `/api/auth/code/verify`              | none    |
 | POST   | `/api/auth/device/start`             | none    |
 | POST   | `/api/auth/device/poll`              | none    |
 | GET    | `/api/auth/device/:userCode`         | session |
@@ -116,10 +134,21 @@ password. The password is left untouched: it is allowed to contain one.
 **`POST /api/auth/logout`** — destroys the session if the cookie names one,
 clears the cookie. Always responds `200 { ok: true }`, even without a session.
 
-**`GET /api/auth/me`** — `200 SessionUser` if signed in, `401 unauthorized`
-otherwise. \*Open route in the sense that it does not reject before entering: the
+**`GET /api/auth/me`** — `200 SessionUser` = `{ username, admin, identity,
+identityBound, commentsEnabled }` if signed in, `401 unauthorized` otherwise.
+`identityBound` says the identity above comes from the **account** rather than
+from this session, which is what an account bound to a person means. The front
+end reads it to stop offering to change or forget an identity the server will
+refuse to change or forget: on such an account the way out is to sign out. \*Open route in the sense that it does not reject before entering: the
 401 is the normal response for a signed-out visitor, and the front end uses it to
 decide whether to show the sign-in form.
+
+`identity` is a `CommenterIdentity` = `{ email, displayName, notify, locale }`.
+`locale` is the language this person is written to in, `null` while none is
+recorded, and their own requests maintain it through `Accept-Language` (D260812d).
+An invitation seeds it when the identity has none, which is what lets the interface
+open in it: it is read as a session begins, on a bound account alone
+(see [07](./07-frontend.md) and D260819c).
 
 **`GET /api/auth/setup-state`** — `200 { needsSetup: boolean }`. Says whether the
 database still holds no account, in which case the sign-in screen shows the
@@ -130,6 +159,78 @@ Public, and it has to be: it is queried before any sign-in. It discloses
 nothing — on an instance with no account there is nothing to protect, and the
 response never says **who** exists, only whether anyone does
 (`packages/server/test/setup-state.test.ts` verifies this).
+
+### Signing in with a code — `verification-codes.ts`
+
+An account bound to a person holds no password. It is entered with six digits
+sent to the address it is bound to, and an invitation is taken up the same way
+(D260819b). Both routes are public, since nobody signing in has a session yet,
+and both therefore say **one thing only** about the address they are given.
+
+**`POST /api/auth/code/request`** — body `{ email }`. Sends a code, or does not.
+
+| Code | Body                                       | When                                                              |
+| ---- | ------------------------------------------ | ----------------------------------------------------------------- |
+| 202  | `{ ok: true }`                             | The body parsed. What the route then did is not in the response.  |
+| 400  | `bad_request`                              | Missing body, or a value that is not an address.                  |
+| 429  | `too_many_attempts` + `Retry-After` header | Throttle on the caller's `ip` axis, checked before anything else. |
+| 503  | `mail_not_configured`                      | The instance has no SMTP relay, so no code could go out.          |
+
+The `202` covers four situations: the address opens an account, an invitation to
+it is waiting, nothing here knows it, and a code went to it less than a minute
+ago. Telling them apart would make two rapid requests a test for "does this
+address open an account here", which is the question a public route must not
+answer. The `503` is a property of the instance rather than of the address, so it
+is allowed to be visible: it says nothing about who has an account, and the
+alternative is a `202` followed by somebody waiting for an email that was never
+going to be sent.
+
+An expired invitation is not remade. Once the hourly purge has taken the row,
+nothing still connects that address to that account, and inviting it again is the
+administrator's to do.
+
+**`POST /api/auth/code/verify`** — body `{ email, code, displayName? }`. Spends
+the code and opens the session, writing the binding when what was spent was an
+invitation.
+
+| Code | Body                                       | When                                                                                  |
+| ---- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 200  | `SessionUser`                              | Success. Sets the `lukarn_session` cookie.                                            |
+| 400  | `bad_request`                              | Missing body, or a code that is not `VERIFICATION_CODE_LENGTH` long.                  |
+| 400  | `display_name_required`                    | Valid invitation, for an address this instance cannot name.                           |
+| 400  | `invalid_code`                             | Unknown, mismatched, expired or exhausted, with one body for all four.                |
+| 409  | `identity_taken`                           | The address was bound to another account between the two requests.                    |
+| 429  | `too_many_attempts` + `Retry-After` header | Throttle, on the sign-in flow's three axes, the address standing in for the username. |
+
+Which code is looked for is decided by the address rather than by the caller: an
+address that opens an account is a `signin` code, any other is an `invite`.
+Purpose is half the primary key of `verification_codes`, so a code minted for one
+flow is not found by the other rather than merely refused by it.
+
+**One refusal for four cases.** `invalid_code` answers a code nothing knows, a
+wrong one, an expired one and one whose five attempts are spent.
+`routes/identity.ts` tells the same four apart and may keep doing so, because
+`requireAuth` guards its whole prefix and the caller is already inside the
+instance. That argument does not survive on a route anybody can call, which is
+why the two flows differ here.
+
+**`display_name_required` consumes nothing.** `commenters.display_name` is
+`NOT NULL`, an invitation carries an address and an account, and nothing else
+names the person, so accepting one for an address this instance does not know
+asks for a name. The screen cannot know in advance whether it will be needed:
+somebody typing their own address gets the same `202` whether they are being
+invited or signing in again. The answer therefore arrives after a valid
+comparison, and the transaction is rolled back — the code is not spent and the
+attempt is not counted. Without that, a correct code arriving on the fifth
+attempt would answer `display_name_required` and be exhausted by the time the
+name came back. The screen asks, and resubmits with `displayName` set.
+
+A row whose `verified_at` is `NULL` counts as unknown here and its owner is asked
+for their own name: `CommenterRepo` records a declared name before verification,
+so anybody behind a shared key can pre-seed an address with wording of their
+choosing. Only an **already verified** identity is adopted as it stands, keeping
+the comments it has already signed, and `displayName` is ignored on that path
+rather than renaming it (D42).
 
 ### Pairing a screen — `pairings.ts`
 
@@ -393,6 +494,13 @@ is already open, the access key and the person being two distinct things.
 | POST   | `/api/identity/verify`       | `SessionUser` |
 | POST   | `/api/identity/forget`       | `SessionUser` |
 
+**All three answer `409 identity_bound` on a bound account**, refused by a second
+`preHandler` before any handler runs. The identity of such an account is not the
+session's to choose: `plugins/auth.ts` reads it from the account, so declaring
+another address would attach an identity the account contradicts, and forgetting
+one would silently do nothing. Changing the address of a bound account is out of
+scope for this release; here the way out is to sign out (D260819).
+
 **`request-code`** — body `IdentityRequest` = `{ email, displayName }`. Sends a
 six-digit code and responds `202` **whether the address is already known or
 not**: telling the two apart would tell whoever tries it which addresses have
@@ -407,6 +515,13 @@ identity to the session and returns the updated `SessionUser`. `400` on a wrong,
 expired or exhausted code — **the same message in all three cases**, since
 detailing which one would mostly help someone trying codes at random. Five
 attempts, then a new code must be requested.
+
+Both routes distinguish more than `/api/auth/code/*` does: `request-code` answers
+`429 too_soon` inside the minute after a send, and `verify` returns the failure
+in its `error` field. What makes that acceptable is `requireAuth` on the prefix,
+so the caller already holds an account here. The public sign-in routes carry no
+such guarantee and answer uniformly, which is the difference the two sections
+describe.
 
 **`forget`** — detaches the identity from this session. Comments already
 written stay in place: they belong to the conversation, not to the device.
@@ -698,30 +813,31 @@ produces a new store key, hence a new derivative.
 
 `requireAdmin` as a `preHandler` on the whole `/api/admin` prefix.
 
-| Method | Path                                 | Response                                                       |
-| ------ | ------------------------------------ | -------------------------------------------------------------- |
-| GET    | `/api/admin/status`                  | `200 AdminStatus`                                              |
-| GET    | `/api/admin/visits`                  | `200 VisitsOverview` · `400`                                   |
-| GET    | `/api/admin/users`                   | `200 AdminUser[]`                                              |
-| POST   | `/api/admin/users`                   | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` |
-| PATCH  | `/api/admin/users/:username`         | `200 AdminUser` · `400` · `404` · `409 last_admin`             |
-| DELETE | `/api/admin/users/:username`         | `200 { ok: true }` · `404` · `409 last_admin`                  |
-| GET    | `/api/admin/albums`                  | `200 AdminAlbum[]`                                             |
-| POST   | `/api/admin/albums`                  | `201 AdminAlbum` · `400` · `409 conflict`                      |
-| PATCH  | `/api/admin/albums/:id`              | `200 AdminAlbum` · `400` · `404`                               |
-| DELETE | `/api/admin/albums/:id`              | `200 { ok: true }` · `404`                                     |
-| PATCH  | `/api/admin/albums/:id/days/:day`    | `200 AlbumDay` · `400` · `404`                                 |
-| GET    | `/api/admin/settings`                | `200 AppSettings`                                              |
-| PATCH  | `/api/admin/settings`                | `200 AppSettings` · `400`                                      |
-| GET    | `/api/admin/storage`                 | `200 StorageConnectionStatus[]`                                |
-| POST   | `/api/admin/storage`                 | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409` |
-| PATCH  | `/api/admin/storage/:id`             | `200 StorageConnectionStatus` · `400` · `404`                  |
-| DELETE | `/api/admin/storage/:id`             | `200 { ok: true }` · `404` · `409 storage_in_use`              |
-| POST   | `/api/admin/storage/:id/test`        | `200 StorageProbeResult` · `404`                               |
-| GET    | `/api/admin/storage/:id/oauth/start` | `200 { url }` · `400 oauth_not_configured` · `404` · `409`     |
-| POST   | `/api/admin/storage/:id/disconnect`  | `200 { ok: true }` · `404` · `409 service_account_mode`        |
-| POST   | `/api/admin/resync`                  | `202 { started: string[] }` · `400` · `404` · `503`            |
-| POST   | `/api/admin/cache/clear`             | `200 { ok: true }`                                             |
+| Method | Path                                 | Response                                                                                                                                        |
+| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/admin/status`                  | `200 AdminStatus`                                                                                                                               |
+| GET    | `/api/admin/visits`                  | `200 VisitsOverview` · `400`                                                                                                                    |
+| GET    | `/api/admin/users`                   | `200 AdminUser[]`                                                                                                                               |
+| POST   | `/api/admin/users`                   | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured`              |
+| POST   | `/api/admin/users/:username/invite`  | `200 AdminUser` · `400` · `404` · `409 already_bound` · `409 no_invitation` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured` |
+| PATCH  | `/api/admin/users/:username`         | `200 AdminUser` · `400` · `404` · `409 last_admin` · `409 password_on_bound_account`                                                            |
+| DELETE | `/api/admin/users/:username`         | `200 { ok: true }` · `404` · `409 last_admin`                                                                                                   |
+| GET    | `/api/admin/albums`                  | `200 AdminAlbum[]`                                                                                                                              |
+| POST   | `/api/admin/albums`                  | `201 AdminAlbum` · `400` · `409 conflict`                                                                                                       |
+| PATCH  | `/api/admin/albums/:id`              | `200 AdminAlbum` · `400` · `404`                                                                                                                |
+| DELETE | `/api/admin/albums/:id`              | `200 { ok: true }` · `404`                                                                                                                      |
+| PATCH  | `/api/admin/albums/:id/days/:day`    | `200 AlbumDay` · `400` · `404`                                                                                                                  |
+| GET    | `/api/admin/settings`                | `200 AppSettings`                                                                                                                               |
+| PATCH  | `/api/admin/settings`                | `200 AppSettings` · `400`                                                                                                                       |
+| GET    | `/api/admin/storage`                 | `200 StorageConnectionStatus[]`                                                                                                                 |
+| POST   | `/api/admin/storage`                 | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409`                                                                                  |
+| PATCH  | `/api/admin/storage/:id`             | `200 StorageConnectionStatus` · `400` · `404`                                                                                                   |
+| DELETE | `/api/admin/storage/:id`             | `200 { ok: true }` · `404` · `409 storage_in_use`                                                                                               |
+| POST   | `/api/admin/storage/:id/test`        | `200 StorageProbeResult` · `404`                                                                                                                |
+| GET    | `/api/admin/storage/:id/oauth/start` | `200 { url }` · `400 oauth_not_configured` · `404` · `409`                                                                                      |
+| POST   | `/api/admin/storage/:id/disconnect`  | `200 { ok: true }` · `404` · `409 service_account_mode`                                                                                         |
+| POST   | `/api/admin/resync`                  | `202 { started: string[] }` · `400` · `404` · `503`                                                                                             |
+| POST   | `/api/admin/cache/clear`             | `200 { ok: true }`                                                                                                                              |
 
 **`status`** — `AdminStatus`: `storage` (every connection, see below),
 `storageKinds` (the kinds this build can create), `storageLocalRoot` (the
@@ -884,24 +1000,121 @@ are regenerated on demand.
 
 ### Accounts
 
-`POST` body: `CreateUserRequest` = `{ username, password, admin?, albums? }`.
-`PATCH`: `UpdateUserRequest` = `{ password?, admin?, albums? }`, an absent field
+`POST` body: `CreateUserRequest`, which takes **exactly one** of a password and
+an address. `{ username, password, admin?, albums? }` creates the shared key of
+1.2, unchanged in every respect; `{ username, email, locale?, admin?, albums? }`
+creates an account with no password and sends it an invitation. Supplying both, or neither,
+is a `400`: the union in `packages/shared` says the same thing in the type system,
+so a front end making that call fails to compile rather than at runtime. `PATCH`:
+`UpdateUserRequest` = `{ password?, admin?, albums?, unbind? }`, an absent field
 meaning "unchanged". The response is an `AdminUser` — **never a password hash,
 under any key**.
 
-**No email address here**: an account is an access key, possibly shared, not
-someone reachable. Addresses belong to commenter identities, and the one
-notified of new comments is the `moderationEmail` setting.
+**An address creates an invitation rather than an account somebody can enter**
+(D260819). The account exists straight away with its role and its albums, and it
+holds the reserved hash meaning "no password" until the recipient enters the code
+sent to that address. The binding is written at that moment and never at
+creation, because a verified address proves that somebody controls an inbox, not
+that they accepted this account. No route under `/api/admin` points
+`users.commenter_id` at an identity — unbinding clears it, and nothing else writes
+it — which is what stops an administrator aiming an account at anyone who has ever
+commented and signing as them. The address notified of new
+comments is still the `moderationEmail` setting, and it binds nothing.
 
 - `username`: `USERNAME_PATTERN`, 64 characters at most. `password`:
-  `PASSWORD_MIN_LENGTH` (8) at minimum, 512 at most.
+  `PASSWORD_MIN_LENGTH` (8) at minimum, 512 at most. `email`: a valid address,
+  `EMAIL_MAX_LENGTH` at most.
+- `locale`: the language the invitation is written in, one of the two the instance
+  speaks. Anything else is a `400`, rather than the default quietly applied: this
+  is a choice made on a form, and a message going out in a language its sender did
+  not pick while the response reports success is worse than a refusal. Omitted,
+  `DEFAULT_LOCALE` applies. The union in `packages/shared` puts it on the address
+  branch alone, so a front end pairing it with a password fails to compile, and the
+  route ignores it there since that branch sends no message (D260819c).
 - `albums`: a list of ids, or `['*']` (`ALL_ALBUMS`) as a wildcard. An unknown
   id responds `400 unknown_album`, naming the culprit. A list mixing `'*'` with
   ids counts as a wildcard.
 - `409 conflict` if the username is taken, **case included**.
-- `409 last_admin` on deleting the last administrator or removing their role.
+- `409 identity_taken` **naming the account that already holds the address**, so
+  the message says where to look. It fires against bound accounts only: one
+  invitation exists per address at a time, so a second one replaces the first and
+  the account it named loses it, which the account list shows. An invitation
+  expiring unclaimed frees its address, the right outcome for a message nobody
+  read.
+- `503 mail_not_configured` when the instance has no relay. An account created by
+  address would otherwise sit in the list with no password and no way to acquire
+  one.
+- `429 too_soon` with `Retry-After` when a code went to that address within the
+  minute, on every purpose. The account is not created either: it lands in the
+  same transaction as its invitation, or an address typed one minute too early
+  leaves an account nobody invited and nobody can enter.
+- `409 last_admin` on deleting the last administrator or removing their role. The
+  count is of administrators who **can sign in**, not of rows: an admin account
+  whose invitation is still pending has neither password nor binding, and
+  counting it would let the only working administrator demote or delete
+  themselves. The refusal also guards on the target: removing a pending
+  administrator while the working one remains is allowed.
+- `409 password_on_bound_account` on setting a password while the account is
+  bound, named after the account. `{ unbind: true, password }` is the single
+  exception and the only way a bound account is given a password: in one act it
+  clears the binding, writes the password and closes the sessions. `unbind`
+  without a password is a `400` — it would leave an account with no identity and
+  a hash nobody can enter, the administrator included.
 - Deleting an account and changing its password close its sessions; changing
-  its role or albums does not (see [04](./04-security-and-access.md)).
+  its role or albums does not (see [04](./04-security-and-access.md)). Unbinding
+  and consuming an invitation close them too, and delete the account's approved
+  pairings with them.
+
+**`POST /api/admin/users/:username/invite`** — body `InviteUserRequest` =
+`{ email?, locale? }`. Converts an account that already exists, and sends an invitation
+again. With an address it invites that account; without one it mints a fresh code
+for the invitation already pending, which is what somebody presses when the first
+message went unread. `409 no_invitation` when there is neither: an expired
+invitation left no row, so nothing here still knows where it was sent and the
+address has to be given again.
+
+**A resend takes its language from the invitation rather than from the request.**
+Without a `locale`, the message repeats the one the pending row was minted with, so
+a second copy of an unread message never reaches the inbox in another language than
+the first. A `locale` in the request overrides it, which is the sender changing
+their mind. With neither, `DEFAULT_LOCALE` applies exactly as on the first send.
+`POST /api/auth/code/request` follows the same rule when the address it is given has
+an invitation waiting: that is the recipient asking for the message again, and the
+row already holds the language they were written to in (D260819c).
+
+It answers `409 already_bound` on an account that is already bound. Changing
+somebody's address is out of scope for this release, and it is the shape of the
+impersonation this design exists to prevent. The other refusals are the ones
+above: `404` for an unknown account, `409 identity_taken`, `429 too_soon`,
+`503 mail_not_configured`.
+
+The account keeps its password throughout. An invitation to convert that nobody
+takes up leaves a working shared key exactly as it was, and the conversion happens
+when the code is consumed: the account is bound, its password is replaced by the
+reserved hash, its sessions close and its approved pairings go with them.
+
+**`AdminUser`** carries what the account list reads: `identity`
+(`{ email, displayName }`, the person a bound account is, `null` otherwise),
+`invitation` (`{ email, expiresAt }`, the one still open, `null` when none is),
+and `state`, which is one of four.
+
+| `state`      | What the account is                                                                   |
+| ------------ | ------------------------------------------------------------------------------------- |
+| `shared_key` | A password somebody knows, shareable by a household as before.                        |
+| `person`     | Bound to a verified identity: one person, on every device they sign in from.          |
+| `invited`    | Created by address, its invitation open until `invitation.expiresAt`.                 |
+| `no_way_in`  | Created by address and never taken up: the invitation expired and no password exists. |
+
+`state` says how the account is entered **today**, and `invitation` says what is
+in flight on it. The two disagree on purpose for a conversion: an account that
+still has its password reads `shared_key` while an invitation waits on it, since
+the key still works. An expired invitation is already absent from `invitation`,
+which is what turns an account created by address into one with no way in. Such an
+account still holds the album grants somebody set on purpose, and nothing that
+could exercise them.
+
+The reserved hash never leaves the server. "No way in" is a conclusion the server
+draws, and the account list reads a state rather than comparing a hash of its own.
 
 ### Albums
 

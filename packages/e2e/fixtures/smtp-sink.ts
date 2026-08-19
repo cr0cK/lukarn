@@ -8,7 +8,7 @@ import { SINK_PORT, SMTP_PORT } from './instance.js';
  * It is **required, not a convenience**. `commentsEnabled` is derived from
  * whether SMTP is configured, so without a relay the interface never offers the
  * comment form at all; and the verification code cannot be read out of the
- * database either — `commenters.code_hash` holds an HMAC, never the digits.
+ * database either — `verification_codes.code_hash` holds an HMAC, never the digits.
  * Intercepting the message is the only way to complete the identity flow.
  *
  * It speaks the four commands nodemailer sends and advertises no extension:

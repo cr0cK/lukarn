@@ -74,6 +74,19 @@ async function login(username: string, password = PASSWORD): Promise<string> {
   return `lukarn_session=${entry.value}`;
 }
 
+/**
+ * An administrator created by address: the reserved hash and an invitation nobody
+ * has taken up. Written through the repository rather than the route, which would
+ * need a mail relay this instance deliberately does not have.
+ */
+function invite(username: string, email: string): void {
+  const result = context.config.createInvitedUser(
+    { username, admin: true, albums: ['*'], email },
+    context.codes,
+  );
+  assert.ok('user' in result, `invitation refused for ${username}`);
+}
+
 /** Restores the configuration to a known state before each test. */
 function reset(): void {
   for (const user of context.config.users()) context.config.deleteUser(user.username);
@@ -233,6 +246,46 @@ describe('last administrator', () => {
 
     assert.equal((await patch('/api/admin/users/patron', { admin: false })).statusCode, 200);
     assert.equal(context.config.user('patron')!.admin, false);
+    assert.equal(context.config.adminCount(), 1);
+  });
+
+  it('is still the last one while the other administrator is an unread invitation', async () => {
+    invite('attendue', 'attendue@exemple.fr');
+
+    // An account created by address holds an unusable hash and no binding until its
+    // code is consumed. Counting it would let the only administrator who can sign in
+    // demote or delete themselves, leaving the instance administrable by nobody —
+    // the outcome `specs/04-security-and-access.md` says requires shell access to
+    // repair.
+    const demoted = await patch('/api/admin/users/patron', { admin: false });
+    assert.equal(demoted.statusCode, 409, demoted.body);
+    assert.equal(demoted.json<{ error: string }>().error, 'last_admin');
+
+    const deleted = await server.inject({
+      method: 'DELETE',
+      url: '/api/admin/users/patron',
+      headers: { cookie },
+    });
+    assert.equal(deleted.statusCode, 409, deleted.body);
+    assert.equal(deleted.json<{ error: string }>().error, 'last_admin');
+    assert.equal(context.config.user('patron')!.admin, true);
+  });
+
+  it('lets a pending administrator be demoted or deleted while a working one remains', async () => {
+    invite('demise', 'demise@exemple.fr');
+    invite('supprimee', 'supprimee@exemple.fr');
+
+    // The other half of the same rule: the protection guards the target that can
+    // actually sign in, so refusing here would be the new wrong answer — an account
+    // nobody can enter would become impossible to tidy away.
+    assert.equal((await patch('/api/admin/users/demise', { admin: false })).statusCode, 200);
+    const deleted = await server.inject({
+      method: 'DELETE',
+      url: '/api/admin/users/supprimee',
+      headers: { cookie },
+    });
+    assert.equal(deleted.statusCode, 200, deleted.body);
+    assert.equal(context.config.user('supprimee'), undefined);
     assert.equal(context.config.adminCount(), 1);
   });
 });

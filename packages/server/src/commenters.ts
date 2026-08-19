@@ -1,11 +1,4 @@
-import {
-  VERIFICATION_CODE_LENGTH,
-  isLocale,
-  type CommenterIdentity,
-  type Locale,
-} from '@lukarn/shared';
-import { randomInt } from 'node:crypto';
-import { hashVerificationCode, safeEqual } from './crypto.js';
+import { isLocale, type CommenterIdentity, type Locale } from '@lukarn/shared';
 import type { Db } from './db.js';
 
 /**
@@ -19,20 +12,9 @@ import type { Db } from './db.js';
  *
  * The address is verified because identity is declarative: without a code, anyone
  * behind the shared key could sign using someone else's name or send notifications
- * to a third party's inbox.
+ * to a third party's inbox. The code itself lives in `verification-codes.ts`: what
+ * is left here is what a person is.
  */
-
-/** Code lifetime. Long enough to fetch the email, but no longer. */
-const CODE_TTL_MS = 15 * 60 * 1000;
-
-/** Minimum delay between two deliveries to the same address. */
-const RESEND_DELAY_MS = 60 * 1000;
-
-/**
- * Attempts before invalidating the code. Six digits can be exhausted in one million
- * attempts; without a limit, verification would verify nothing.
- */
-const MAX_ATTEMPTS = 5;
 
 const MAX_DISPLAY_NAME = 64;
 
@@ -56,10 +38,6 @@ interface CommenterRow {
   display_name: string;
   notify: number;
   verified_at: string | null;
-  code_hash: string | null;
-  code_expires_at: string | null;
-  code_sent_at: string | null;
-  code_attempts: number;
   pending_display_name: string | null;
   locale: string | null;
 }
@@ -81,20 +59,12 @@ export function toIdentity(commenter: StoredCommenter): CommenterIdentity {
     email: commenter.email,
     displayName: commenter.displayName,
     notify: commenter.notify,
+    locale: commenter.locale,
   };
 }
 
-/** What prevents sending a code, expressed in a term the route can translate. */
-export type RequestFailure = 'too_soon';
-
-/** What prevents validating a code. */
-export type VerifyFailure = 'unknown' | 'expired' | 'too_many_attempts' | 'mismatch';
-
 export class CommenterRepo {
-  constructor(
-    private readonly db: Db,
-    private readonly secret: string,
-  ) {}
+  constructor(private readonly db: Db) {}
 
   byEmail(email: string): StoredCommenter | null {
     const row = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(email.trim()) as
@@ -114,6 +84,21 @@ export class CommenterRepo {
     this.db.prepare('UPDATE commenters SET locale = ? WHERE id = ?').run(locale, id);
   }
 
+  /**
+   * Gives a language to an identity that has none, and leaves an existing one alone.
+   *
+   * Somebody accepting an invitation gets the language that invitation was written
+   * in, so the first email after they join is already readable to them rather than
+   * waiting for a request to announce one. The `IS NULL` is the whole rule: a value
+   * already stored came from that person's own browser, which D260812d makes
+   * authoritative, and a choice made on their behalf must not displace it.
+   */
+  seedLocale(id: number, locale: Locale): void {
+    this.db
+      .prepare('UPDATE commenters SET locale = ? WHERE id = ? AND locale IS NULL')
+      .run(locale, id);
+  }
+
   byId(id: number): StoredCommenter | null {
     const row = this.db.prepare('SELECT * FROM commenters WHERE id = ?').get(id) as
       CommenterRow | undefined;
@@ -121,109 +106,65 @@ export class CommenterRepo {
   }
 
   /**
-   * Prepares a verification: creates the identity if the address is unknown,
-   * generates a code and returns it in plain text **once** to the caller that will
-   * send it by email. Only its HMAC is retained.
+   * Records the identity behind an address before its code is checked: creates it
+   * if the address is unknown, and takes note of the name declared with it.
    *
    * The supplied name is **not applied immediately** to an already verified identity:
-   * it waits in `pending_display_name` until `verify` proves control of the inbox.
-   * Without this delay, knowing someone's address would be enough to rename them —
-   * and because comment signatures are read on every request, their entire history
-   * would change names instantly without any code being entered.
+   * it waits in `pending_display_name` until control of the inbox is proved. Without
+   * this delay, knowing someone's address would be enough to rename them — and
+   * because comment signatures are read on every request, their entire history would
+   * change names instantly without any code being entered (D42).
    *
    * An identity that is not yet verified is written directly: nothing is signed by
    * it yet, so there is nothing to hijack.
    */
-  requestCode(
-    email: string,
-    displayName: string,
-  ):
-    | { code: string; commenter: StoredCommenter }
-    | { failure: RequestFailure; retryAfterMs: number } {
+  declare(email: string, displayName: string): StoredCommenter {
     const normalized = email.trim();
     const name = displayName.trim().slice(0, MAX_DISPLAY_NAME);
-    const now = Date.now();
     const existing = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(normalized) as
       CommenterRow | undefined;
-
-    // Without this delay, the form would become a way to send bursts of email to an
-    // address the requester does not control.
-    if (existing?.code_sent_at) {
-      const elapsed = now - new Date(existing.code_sent_at).getTime();
-      if (elapsed < RESEND_DELAY_MS) {
-        return { failure: 'too_soon', retryAfterMs: RESEND_DELAY_MS - elapsed };
-      }
-    }
-
-    // `randomInt` rather than `Math.random`: this is a secret, however short-lived.
-    const code = String(randomInt(0, 10 ** VERIFICATION_CODE_LENGTH)).padStart(
-      VERIFICATION_CODE_LENGTH,
-      '0',
-    );
-    const nowIso = new Date(now).toISOString();
-    const expiresAt = new Date(now + CODE_TTL_MS).toISOString();
-    const hash = hashVerificationCode(normalized, code, this.secret);
 
     if (existing) {
       // The column name is selected from two literals in this file, never built from
       // the request, so nothing can be injected through it.
       const column = existing.verified_at === null ? 'display_name' : 'pending_display_name';
-      this.db
-        .prepare(
-          `UPDATE commenters
-              SET ${column} = ?, code_hash = ?, code_expires_at = ?, code_sent_at = ?,
-                  code_attempts = 0
-            WHERE id = ?`,
-        )
-        .run(name, hash, expiresAt, nowIso, existing.id);
-      return { code, commenter: this.byId(existing.id)! };
+      this.db.prepare(`UPDATE commenters SET ${column} = ? WHERE id = ?`).run(name, existing.id);
+      return this.byId(existing.id)!;
     }
 
+    const nowIso = new Date().toISOString();
     const result = this.db
-      .prepare(
-        `INSERT INTO commenters (email, display_name, code_hash, code_expires_at, code_sent_at,
-                                 created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(normalized, name, hash, expiresAt, nowIso, nowIso);
-
-    return { code, commenter: this.byId(Number(result.lastInsertRowid))! };
+      .prepare('INSERT INTO commenters (email, display_name, created_at) VALUES (?, ?, ?)')
+      .run(normalized, name, nowIso);
+    return this.byId(Number(result.lastInsertRowid))!;
   }
 
   /**
-   * Validates a code. Every attempt is counted **before** comparison so abandoning
-   * partway through cannot provide free attempts.
+   * Marks an address verified and applies the rename that was waiting on proof.
+   *
+   * This is where, and nowhere else, a name takes effect: control of the inbox has
+   * just been shown. `verified_at` keeps its first value, because the date somebody
+   * became a person is not rewritten by their signing in again.
+   *
+   * Returns `null` for an address this table does not know, which a caller holding a
+   * valid code should treat as it treats an unknown one.
    */
-  verify(email: string, code: string): { commenter: StoredCommenter } | { failure: VerifyFailure } {
+  markVerified(email: string): StoredCommenter | null {
     const row = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(email.trim()) as
       CommenterRow | undefined;
+    if (!row) return null;
 
-    if (!row || !row.code_hash || !row.code_expires_at) return { failure: 'unknown' };
-    if (row.code_attempts >= MAX_ATTEMPTS) return { failure: 'too_many_attempts' };
-    if (new Date(row.code_expires_at).getTime() <= Date.now()) return { failure: 'expired' };
-
-    this.db
-      .prepare('UPDATE commenters SET code_attempts = code_attempts + 1 WHERE id = ?')
-      .run(row.id);
-
-    const expected = hashVerificationCode(row.email, code.trim(), this.secret);
-    if (!safeEqual(expected, row.code_hash)) return { failure: 'mismatch' };
-
-    // The code is consumed: replaying it must not revalidate an address whose access
-    // was revoked in the meantime. This is also where, and nowhere else, a rename
-    // takes effect — control has just been proved.
     this.db
       .prepare(
         `UPDATE commenters
             SET verified_at = COALESCE(verified_at, ?),
                 display_name = COALESCE(pending_display_name, display_name),
-                pending_display_name = NULL,
-                code_hash = NULL, code_expires_at = NULL, code_attempts = 0
+                pending_display_name = NULL
           WHERE id = ?`,
       )
       .run(new Date().toISOString(), row.id);
 
-    return { commenter: this.byId(row.id)! };
+    return this.byId(row.id)!;
   }
 
   /** Disables notifications without deleting the address, so resubscribing remains possible. */

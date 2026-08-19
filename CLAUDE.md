@@ -296,6 +296,19 @@ A message is a sentence, or a function of what varies inside it. Never assemble
 one from fragments at the call site: `${count}` followed by `"items"` cannot be
 translated into a language that agrees the noun differently.
 
+**A message with a recipient addresses them; a message on a screen does not.**
+An email, and the page a link in an email opens, are read by one person who was
+written to: they say `you` in English and `vous` in French. A button, a field
+label or a hint sits on a screen nobody was addressed on, and French writes it in
+the impersonal infinitive the interface catalogue already uses — `Se connecter`,
+`Corriger l'adresse`, `À écrire le premier`.
+
+The two are one catalogue pair per surface, and applying the interface register to
+an email is what produced `Ouvrir cette page, qui connaît déjà l'adresse` and
+`Ne le transmettre à personne` — administrative prose nobody writes to a relative.
+Read a new email aloud as if sending it to someone. Both registers are correct;
+only one of them is correct for a letter.
+
 `t` carries its language (`t.locale`), so anything producing text for a human
 takes it and nothing else: `formatDate(iso, t)`, `dayLabel(key, t)`,
 `validateTitle(value, t)`. The browser announces the language in force with

@@ -558,10 +558,14 @@ it escaped both, and so survived a rename.
 
 ### Seeing emails for real
 
-The tests verify what `buildCommentMail`, `buildAlbumUpdateMail` and
-`buildVerificationMail` compose — subject, links, escaping. They say
+The tests verify what `buildCommentMail`, `buildAlbumUpdateMail`,
+`buildVerificationMail`, `buildInvitationMail` and `buildSignInMail` compose —
+subject, links, escaping, and the order the invitation states things in. They say
 nothing about rendering in a client, nor about the MIME encoding of accented characters, which
-can only be seen after a send. A dummy relay is enough:
+can only be seen after a send. This matters most for the invitation: it is the one
+message read by somebody who has never seen the instance, and its link is folded
+across two lines by quoted-printable, so a raw payload is exactly where it looks
+broken while being correct. A dummy relay is enough:
 
 ```bash
 docker run -d --rm --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit

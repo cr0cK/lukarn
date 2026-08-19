@@ -101,8 +101,10 @@ describe('migrations', () => {
 
     migrate(db);
 
-    // The access key is unchanged: commenter identity lives elsewhere, and
-    // mixing them would sign every household message as "famille".
+    // The access key keeps everything it had: commenter identity lives elsewhere,
+    // and mixing them would sign every household message as "famille". The one
+    // column added since is migration 18's binding, and it arrives empty — an
+    // upgraded key stays the shared key it was.
     assert.deepEqual(columns(db, 'users'), [
       'username',
       'password_hash',
@@ -110,11 +112,14 @@ describe('migrations', () => {
       'all_albums',
       'created_at',
       'updated_at',
+      'commenter_id',
     ]);
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get('famille') as {
       password_hash: string;
+      commenter_id: number | null;
     };
     assert.equal(user.password_hash, 'empreinte');
+    assert.equal(user.commenter_id, null);
 
     assert.ok(columns(db, 'comments').includes('commenter_id'));
     assert.ok(columns(db, 'commenters').includes('verified_at'));
@@ -375,6 +380,7 @@ describe('migrations', () => {
       'all_albums',
       'created_at',
       'updated_at',
+      'commenter_id',
     ]);
 
     db.close();
@@ -527,6 +533,144 @@ describe('migrations', () => {
     // Nothing was granted, so the row is dated when it was created.
     assert.match(connection.created_at, /^\d{4}-\d{2}-\d{2}T/);
     assert.deepEqual(JSON.parse(connection.settings), {});
+
+    db.close();
+  });
+
+  it('binds an account to a person and moves the code apparatus out of commenters', () => {
+    const db = databaseAtVersion(17);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('mamie', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO commenters (email, display_name, verified_at, code_hash, code_expires_at,
+                               code_sent_at, code_attempts, created_at)
+       VALUES ('mamie@exemple.fr', 'Mamie', ?, 'empreinte-du-code', '2099-01-01T00:00:00.000Z',
+               ?, 2, ?)`,
+    ).run(date, date, date);
+
+    migrate(db);
+
+    // What is left on `commenters` is what a person is. `pending_display_name`
+    // stays: the rule it enforces is about the name, not about the code, and
+    // dropping it would restore a rename this repository already closed (D42).
+    const identity = columns(db, 'commenters');
+    for (const gone of ['code_hash', 'code_expires_at', 'code_sent_at', 'code_attempts']) {
+      assert.ok(!identity.includes(gone), `${gone} should be gone from commenters`);
+    }
+    assert.ok(identity.includes('pending_display_name'));
+    assert.ok(identity.includes('verified_at'));
+
+    // A code pending at upgrade time is invalidated, deliberately: codes live in
+    // SQLite and survive a restart, so this is a fifteen-minute cost paid once, at
+    // a moment somebody chose.
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS n FROM verification_codes').get() as { n: number }).n,
+      0,
+    );
+
+    // Many unbound accounts, at most one account per person: SQLite counts NULLs
+    // as distinct inside a UNIQUE index, which is exactly that sentence.
+    const person = db
+      .prepare("SELECT id FROM commenters WHERE email = 'mamie@exemple.fr'")
+      .get() as { id: number };
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('famille', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare("UPDATE users SET commenter_id = ? WHERE username = 'mamie'").run(person.id);
+    assert.throws(
+      () =>
+        db.prepare("UPDATE users SET commenter_id = ? WHERE username = 'famille'").run(person.id),
+      /UNIQUE/,
+    );
+
+    const invite = db.prepare(
+      `INSERT INTO verification_codes
+         (target, purpose, code_hash, expires_at, sent_at, username)
+       VALUES (?, 'invite', 'empreinte', '2099-01-01T00:00:00.000Z', ?, ?)`,
+    );
+    invite.run('mamie@exemple.fr', date, 'mamie');
+    // One invitation per **account**, not per address: without the partial index,
+    // inviting one account at a second address would leave two live codes racing
+    // to bind it. The collation is not decoration — `users.username` is NOCASE, so
+    // a child column left on the default would let both of these through.
+    assert.throws(() => invite.run('autre@exemple.fr', date, 'Mamie'), /UNIQUE/);
+    // The partial index applies to invitations alone: a sign-in code for the same
+    // address is another row, and is not found by the invitation flow.
+    db.prepare(
+      `INSERT INTO verification_codes (target, purpose, code_hash, expires_at, sent_at)
+       VALUES (?, 'signin', 'empreinte', '2099-01-01T00:00:00.000Z', ?)`,
+    ).run('mamie@exemple.fr', date);
+
+    // The cascade stops a deleted account leaving its invitation behind, where
+    // recreating the same username would let the original recipient bind an
+    // account that may now be an administrator.
+    db.pragma('foreign_keys = ON');
+    db.prepare("DELETE FROM users WHERE username = 'mamie'").run();
+    assert.deepEqual(
+      db
+        .prepare('SELECT purpose FROM verification_codes')
+        .all()
+        .map((row) => (row as { purpose: string }).purpose),
+      ['signin'],
+    );
+
+    db.close();
+  });
+
+  it('leaves a version 18 invitation with no language, and both its constraints', () => {
+    const db = databaseAtVersion(18);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('mamie', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO verification_codes
+         (target, purpose, code_hash, expires_at, sent_at, username)
+       VALUES ('mamie@exemple.fr', 'invite', 'empreinte', '2099-01-01T00:00:00.000Z', ?, 'mamie')`,
+    ).run(date);
+
+    migrate(db);
+
+    const invitation = db
+      .prepare("SELECT * FROM verification_codes WHERE target = 'mamie@exemple.fr'")
+      .get() as { code_hash: string; locale: string | null };
+    // The code still opens the account it was minted for, and carries no language:
+    // nobody chose one for it, and the instance default keeps applying to it. A
+    // DEFAULT would have made every pending invitation look like a choice.
+    assert.equal(invitation.code_hash, 'empreinte');
+    assert.equal(invitation.locale, null);
+    assert.ok(columns(db, 'verification_codes').includes('locale'));
+
+    // Adding a column must not rebuild the table, which is where the two constraints
+    // of migration 18 would be lost quietly: one invitation per account, whichever
+    // address it went to, and one row per address and purpose.
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO verification_codes
+               (target, purpose, code_hash, expires_at, sent_at, username)
+             VALUES ('autre@exemple.fr', 'invite', 'x', '2099-01-01T00:00:00.000Z', ?, 'Mamie')`,
+          )
+          .run(date),
+      /UNIQUE/,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO verification_codes
+               (target, purpose, code_hash, expires_at, sent_at, username)
+             VALUES ('mamie@exemple.fr', 'invite', 'x', '2099-01-01T00:00:00.000Z', ?, 'mamie')`,
+          )
+          .run(date),
+      /UNIQUE/,
+    );
 
     db.close();
   });

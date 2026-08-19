@@ -49,6 +49,12 @@ export type ClaimResult =
  * keeping them separate: the `userCode` is displayed on screen — in front of the
  * whole room — and only identifies the request; the `deviceCode` is returned once
  * to the requester and is the only value that claims the session.
+ *
+ * An account's approved rows are also deleted from inside `ConfigRepo`, where
+ * binding an account to a person and unbinding it are each one transaction. An
+ * approved row survives a session close, and `claim()` would turn it into a fresh
+ * session afterwards — a television approved while the key was shared coming back
+ * as the person that account has just become.
  */
 export class PairingStore {
   constructor(

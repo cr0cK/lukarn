@@ -34,6 +34,16 @@ const root = mkdtempSync(join(tmpdir(), 'lukarn-comments-'));
 let server: FastifyInstance;
 let context: AppContext;
 
+/**
+ * Lets an address ask for another code without waiting a minute. The delay is
+ * desirable in production and would make these tests depend on a real wait.
+ */
+function rearmTheCode(email: string): void {
+  context.db
+    .prepare("UPDATE verification_codes SET sent_at = '2020-01-01T00:00:00.000Z' WHERE target = ?")
+    .run(email);
+}
+
 function media(albumId: string, id: string): MediaUpsert {
   return {
     albumId,
@@ -328,9 +338,7 @@ describe('author identity', () => {
     const autreAppareil = await login('famille');
     // The resend delay rejects a second code within a minute — desirable in
     // production, but it would make this test depend on a real wait.
-    context.db
-      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
-      .run('mamie@exemple.fr');
+    rearmTheCode('mamie@exemple.fr');
     await identify(autreAppareil, 'mamie@exemple.fr', 'Mamie');
 
     const page = await read(autreAppareil, 'vacances', 'photo-partagee');
@@ -348,9 +356,7 @@ describe('author identity', () => {
     // address while declaring any name they choose. The code goes to her: they
     // will never see it.
     const usurpateur = await login('famille');
-    context.db
-      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
-      .run('mamie@exemple.fr');
+    rearmTheCode('mamie@exemple.fr');
     const demande = await server.inject({
       method: 'POST',
       url: '/api/identity/request-code',
@@ -370,9 +376,7 @@ describe('author identity', () => {
     const avant = await post(familleCookie, 'vacances', 'photo-partagee', 'Avant le renommage');
     assert.equal(avant.author.displayName, 'Mamie');
 
-    context.db
-      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
-      .run('mamie@exemple.fr');
+    rearmTheCode('mamie@exemple.fr');
     await identify(familleCookie, 'mamie@exemple.fr', 'Grand-mère');
 
     const page = await read(familleCookie, 'vacances', 'photo-partagee');
@@ -380,9 +384,7 @@ describe('author identity', () => {
     assert.equal(apres?.root.author.displayName, 'Grand-mère');
 
     // Restored: subsequent tests expect "Mamie".
-    context.db
-      .prepare("UPDATE commenters SET code_sent_at = '2020-01-01T00:00:00.000Z' WHERE email = ?")
-      .run('mamie@exemple.fr');
+    rearmTheCode('mamie@exemple.fr');
     await identify(familleCookie, 'mamie@exemple.fr', 'Mamie');
   });
 });

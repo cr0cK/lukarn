@@ -29,6 +29,25 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
     app.addHook('preHandler', requireAuth);
 
+    /**
+     * A bound account is refused all three: declaring an address, verifying one and
+     * forgetting the identity.
+     *
+     * The identity of such an account is not the session's to choose. Without this,
+     * somebody signed in as a person could declare another address and attach an
+     * identity the account contradicts — or, on `/forget`, silently do nothing, since
+     * `plugins/auth.ts` reads the account rather than the session. Changing the
+     * address of a bound account is out of scope for this release; here the way out
+     * is to sign out.
+     */
+    app.addHook('preHandler', async (request, reply) => {
+      if (request.user?.identityBound) {
+        await reply
+          .code(409)
+          .send({ error: 'identity_bound', message: request.t('error.identityBound') });
+      }
+    });
+
     /** Rebuilds the session as returned by `/auth/me` after a change. */
     const sessionUser = (
       username: string,
@@ -40,6 +59,9 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
         username,
         admin,
         identity: commenter ? toIdentity(commenter) : null,
+        // Always false here: the hook above refused every bound account before any of
+        // these handlers ran, so the identity this rebuilds is the session's own.
+        identityBound: false,
         commentsEnabled: context.mailer.enabled,
       };
     };
@@ -66,10 +88,10 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       const { email, displayName } = parsed.data;
-      const result = context.commenters.requestCode(email, displayName);
+      const minted = context.codes.mint(email, 'identity');
 
-      if ('failure' in result) {
-        const seconds = Math.ceil(result.retryAfterMs / 1000);
+      if ('failure' in minted) {
+        const seconds = Math.ceil(minted.retryAfterMs / 1000);
         return reply
           .code(429)
           .header('Retry-After', String(seconds))
@@ -79,13 +101,17 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
           });
       }
 
+      // After the code, never before: a refused request must not record a name for
+      // an address whose owner is about to be sent nothing.
+      context.commenters.declare(email, displayName);
+
       // The language of the request, not a stored one: the code is read within
       // minutes, in the tab that asked for it.
       context.mailer.queue(
         buildVerificationMail(
           email,
           displayName,
-          result.code,
+          minted.code,
           request.locale,
           context.settings.instanceName,
           context.env,
@@ -108,22 +134,38 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'bad_request', message: request.t('error.invalidCode') });
       }
 
-      const result = context.commenters.verify(parsed.data.email, parsed.data.code);
-      if ('failure' in result) {
+      const { email, code } = parsed.data;
+      const checked = context.codes.check(email, 'identity', code);
+      if ('failure' in checked) {
         // Incorrect, expired and exhausted codes return the same message: identifying
         // which case occurred mainly helps someone trying random codes.
         const message = request.t(
-          result.failure === 'too_many_attempts'
+          checked.failure === 'too_many_attempts'
             ? 'error.codeAttemptsExhausted'
             : 'error.codeWrongOrExpired',
         );
-        return reply.code(400).send({ error: result.failure, message });
+        return reply.code(400).send({ error: checked.failure, message });
       }
 
-      context.sessions.attachCommenter(request.sessionId!, result.commenter.id);
-      return reply.send(
-        sessionUser(request.user!.username, request.user!.admin, result.commenter.id),
-      );
+      // Verification and consumption in one transaction: a replayed code must not
+      // revalidate an address whose access was revoked in the meantime, and an
+      // identity that failed to be written must leave its code unspent.
+      const commenter = context.db.transaction(() => {
+        const verified = context.commenters.markVerified(email);
+        if (verified) context.codes.consume(email, 'identity');
+        return verified;
+      })();
+
+      // The code was valid but its identity has gone: the same answer as a code
+      // nothing knows, which is what it has become.
+      if (!commenter) {
+        return reply
+          .code(400)
+          .send({ error: 'unknown', message: request.t('error.codeWrongOrExpired') });
+      }
+
+      context.sessions.attachCommenter(request.sessionId!, commenter.id);
+      return reply.send(sessionUser(request.user!.username, request.user!.admin, commenter.id));
     });
 
     /**

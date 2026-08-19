@@ -11,6 +11,7 @@ import { signUnsubscribeToken, verifyUnsubscribeToken } from '../src/crypto.js';
 import { migrate } from '../src/db.js';
 import { loadEnv } from '../src/env.js';
 import { Mailer, buildCommentMail, buildVerificationMail, type MailMessage } from '../src/mail.js';
+import { VerificationCodeRepo } from '../src/verification-codes.js';
 
 /**
  * Commenter identity, code verification and notification recipients.
@@ -39,15 +40,18 @@ const silencieux = { info: () => {}, warn: () => {}, debug: () => {} };
 let db: Database.Database;
 let comments: CommentRepo;
 let commenters: CommenterRepo;
+let codes: VerificationCodeRepo;
 let config: ConfigRepo;
 
-/** Identity verified immediately: the code path is tested separately. */
+/**
+ * Identity verified immediately: the code path lives in
+ * `packages/server/test/verification-codes.test.ts`.
+ */
 function identiteVerifiee(email: string, nom: string): number {
-  const asked = commenters.requestCode(email, nom);
-  assert.ok('code' in asked);
-  const verified = commenters.verify(email, asked.code);
-  assert.ok('commenter' in verified);
-  return verified.commenter.id;
+  commenters.declare(email, nom);
+  const verified = commenters.markVerified(email);
+  assert.ok(verified);
+  return verified.id;
 }
 
 before(() => {
@@ -57,7 +61,8 @@ before(() => {
 
   config = new ConfigRepo(db);
   comments = new CommentRepo(db);
-  commenters = new CommenterRepo(db, env.sessionSecret);
+  commenters = new CommenterRepo(db);
+  codes = new VerificationCodeRepo(db, env.sessionSecret);
 
   config.createAlbum({ id: 'vacances', title: 'Vacances', folderId: 'f', recursive: true });
   // One access key shared by the household: identity, not the account,
@@ -71,40 +76,19 @@ after(() => {
 });
 
 describe('address verification', () => {
-  it('rejects a wrong code and accepts the right one', () => {
-    const asked = commenters.requestCode('papi@exemple.fr', 'Papi');
+  it('marks the address verified once its code is checked', () => {
+    const asked = codes.mint('papi@exemple.fr', 'identity');
     assert.ok('code' in asked);
-    assert.equal(asked.commenter.verifiedAt, null, 'verified before entering the code');
+    const declared = commenters.declare('papi@exemple.fr', 'Papi');
+    assert.equal(declared.verifiedAt, null, 'verified before entering the code');
 
-    assert.deepEqual(commenters.verify('papi@exemple.fr', '000000'), { failure: 'mismatch' });
-
-    const ok = commenters.verify('papi@exemple.fr', asked.code);
-    assert.ok('commenter' in ok);
-    assert.ok(ok.commenter.verifiedAt);
-  });
-
-  it('exhausts the code after five attempts', () => {
-    const asked = commenters.requestCode('brute@exemple.fr', 'Brute');
-    assert.ok('code' in asked);
-
-    for (let essai = 0; essai < 5; essai++) {
-      assert.deepEqual(commenters.verify('brute@exemple.fr', '000000'), { failure: 'mismatch' });
-    }
-
-    // Even the right code no longer works: six digits take a million attempts
-    // to exhaust, so without a limit verification would verify nothing.
-    assert.deepEqual(commenters.verify('brute@exemple.fr', asked.code), {
-      failure: 'too_many_attempts',
+    assert.deepEqual(codes.check('papi@exemple.fr', 'identity', '000000'), {
+      failure: 'mismatch',
     });
-  });
+    assert.ok('row' in codes.check('papi@exemple.fr', 'identity', asked.code));
 
-  it('refuses to resend a code within a minute', () => {
-    commenters.requestCode('spam@exemple.fr', 'Spam');
-    const second = commenters.requestCode('spam@exemple.fr', 'Spam');
-    // Without this delay, the form would send bursts of email to an address the
-    // requester does not own.
-    assert.ok('failure' in second);
-    assert.equal(second.failure, 'too_soon');
+    const verified = commenters.markVerified('papi@exemple.fr');
+    assert.ok(verified?.verifiedAt);
   });
 
   it('recognises the same person regardless of address case', () => {
@@ -112,14 +96,16 @@ describe('address verification', () => {
     assert.equal(commenters.byEmail('nadine@exemple.fr')?.id, premier);
   });
 
-  it('never stores the code in plaintext', () => {
-    const asked = commenters.requestCode('secret@exemple.fr', 'Secret');
-    assert.ok('code' in asked);
-    const row = db
-      .prepare('SELECT code_hash FROM commenters WHERE email = ?')
-      .get('secret@exemple.fr') as { code_hash: string };
-    // A database dump must not provide enough to verify an address.
-    assert.ok(!row.code_hash.includes(asked.code));
+  it('renames a verified identity only once the code is checked', () => {
+    const id = identiteVerifiee('rename@exemple.fr', 'Mamie');
+
+    // Declaring another name writes nothing visible: knowing an address would
+    // otherwise be enough to rename somebody, and a comment signature is reread
+    // on every request (D42).
+    commenters.declare('rename@exemple.fr', 'Sale gosse');
+    assert.equal(commenters.byId(id)?.displayName, 'Mamie');
+
+    assert.equal(commenters.markVerified('rename@exemple.fr')?.displayName, 'Sale gosse');
   });
 });
 

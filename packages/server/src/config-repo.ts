@@ -7,14 +7,19 @@ import {
   HEX_COLOR_PATTERN,
   INSTANCE_NAME_MAX_LENGTH,
   normalizeHexColor,
+  type AccountState,
   type AdminUser,
   type AppSettings,
   type GroupBy,
+  type Locale,
   type SortOrder,
 } from '@lukarn/shared';
 import { z } from 'zod';
+import { CommenterRepo, type StoredCommenter } from './commenters.js';
+import { hasNoPassword, NO_PASSWORD_HASH } from './crypto.js';
 import type { Db } from './db.js';
 import { DEFAULT_CONNECTION_ID } from './storage/connections.js';
+import type { MintFailure, VerificationCodeRepo } from './verification-codes.js';
 
 /**
  * Repository of accounts, albums and settings — the application configuration,
@@ -27,6 +32,16 @@ import { DEFAULT_CONNECTION_ID } from './storage/connections.js';
  * in a grid of several hundred tiles. One SQL query per thumbnail would be a clear
  * regression from the in-memory configuration being replaced. The snapshot is rebuilt
  * on the first read following a write, never during the write.
+ *
+ * **Binding an account to a person writes three further tables**, and that exception
+ * is deliberate: creating an invitation, consuming one and unbinding are each one
+ * transaction, and the snapshot must be rebuilt once that transaction has committed.
+ * A second owner would mean either a second transaction or an invalidation from
+ * inside this one, and `PRAGMA data_version` does not move for a write on this
+ * connection, so nothing would notice. The rule followed inside them: borrow the
+ * repository that carries rules — `CommenterRepo` for the rename D42 holds back,
+ * `VerificationCodeRepo` for the code itself — and write the statement where it is
+ * only a statement, which is what closing sessions and forgetting paired screens are.
  */
 
 /** Album as stored. A superset of what synchronisation needs. */
@@ -64,6 +79,12 @@ export interface StoredUser {
   allAlbums: boolean;
   /** Explicitly assigned album IDs, excluding the wildcard. */
   albums: string[];
+  /**
+   * The person this account **is**, or `null` for the key a household shares. It is
+   * written when a code is consumed and never at creation, so a bound identity is
+   * always a verified one.
+   */
+  commenterId: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -164,6 +185,7 @@ interface UserRow {
   password_hash: string;
   admin: number;
   all_albums: number;
+  commenter_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -195,21 +217,121 @@ function toAlbum(row: AlbumRow): StoredAlbum {
   };
 }
 
-/** API shape: the wildcard becomes `['*']` again and the hash disappears. */
-export function toAdminUser(user: StoredUser): AdminUser {
+/**
+ * API shape: the wildcard becomes `['*']` again, the hash disappears, and the two
+ * things a snapshot row cannot say are looked up — who this account is, and what
+ * invitation is still open on it.
+ *
+ * The reserved hash never leaves the server. `state` is the conclusion drawn from it
+ * here, so that no client ever compares a hash of its own.
+ *
+ * The repositories are passed rather than held: this is a projection run once per row
+ * of the account list, and neither lookup belongs on the `canSee()` path the snapshot
+ * exists for.
+ */
+export function toAdminUser(
+  user: StoredUser,
+  codes: VerificationCodeRepo,
+  commenters: CommenterRepo,
+): AdminUser {
+  const bound = user.commenterId === null ? null : commenters.byId(user.commenterId);
+  const pending = codes.pendingInvite(user.username);
+
   return {
     username: user.username,
     admin: user.admin,
     albums: user.allAlbums ? [ALL_ALBUMS] : [...user.albums],
+    identity: bound ? { email: bound.email, displayName: bound.displayName } : null,
+    invitation: pending ? { email: pending.target, expiresAt: pending.expiresAt } : null,
+    state: accountState(user, bound !== null, pending !== null),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+/**
+ * How the account is entered today, which is not always what is in flight on it.
+ *
+ * A conversion keeps its real password until the code is consumed, so an invitation
+ * to convert that nobody takes up leaves a working shared key exactly as it was —
+ * `state` says `shared_key` and `invitation` says an invitation is also waiting. The
+ * expired one is already gone from `pendingInvite`, which is what turns an account
+ * created by address into one with no way in.
+ */
+function accountState(user: StoredUser, bound: boolean, invited: boolean): AccountState {
+  if (bound) return 'person';
+  if (!hasNoPassword(user.passwordHash)) return 'shared_key';
+  return invited ? 'invited' : 'no_way_in';
+}
+
+/** What creating an account by address needs: the account, and where to invite it. */
+export interface CreateInvitedUserInput {
+  username: string;
+  admin: boolean;
+  /** Album IDs, or a list containing `'*'` for the wildcard. */
+  albums: string[];
+  /** The address the invitation goes to. Nothing is written to `commenters` yet. */
+  email: string;
+  /**
+   * Language the invitation is written in, chosen by whoever invites. Omitted when
+   * nobody chose one, and the instance default then applies to this message and to
+   * every later one until its recipient's browser announces theirs.
+   */
+  locale?: Locale;
+}
+
+/**
+ * The account and the digits to send it, or the refusal that left neither behind.
+ *
+ * The code is returned once, to the caller that will put it in an email — nothing
+ * reads it back afterwards.
+ */
+export type CreateInvitedUserResult =
+  { user: StoredUser; code: string } | { failure: MintFailure; retryAfterMs: number };
+
+/** What consuming an invitation needs, once its code has been checked. */
+export interface ConsumeInvitationInput {
+  /** The account the invitation named. */
+  username: string;
+  /** The address whose control has just been proved. */
+  email: string;
+  /**
+   * Name for an identity this instance does not know, or knows without having
+   * verified it. Ignored for an already verified one: somebody's name is theirs to
+   * give, and a name arriving here must never rename them (D42).
+   */
+  displayName?: string;
+  /**
+   * Language the invitation was written in, read from the code row that has just
+   * been proved. It seeds the identity when that identity carries none.
+   */
+  locale?: Locale | null;
+}
+
+/**
+ * Rollback signal for an invitation that could not be minted.
+ *
+ * Thrown rather than returned because `better-sqlite3` commits a transaction whose
+ * function returns: the account must leave with the invitation, or an address typed
+ * one minute too early leaves a sentinel account nobody invited and nobody can enter.
+ */
+class InvitationRefused extends Error {
+  constructor(readonly refusal: { failure: MintFailure; retryAfterMs: number }) {
+    super(`Invitation refused: ${refusal.failure}`);
+  }
 }
 
 export class ConfigRepo {
   private snapshot: Snapshot | null = null;
   /** Last observed value of `PRAGMA data_version`. See `read()`. */
   private dataVersion = -1;
+
+  /**
+   * Identity writes made inside the transactions below. Constructed here rather than
+   * received: it needs this connection and nothing else, and the rename it holds back
+   * until proof (D42) must be applied by its own code rather than reimplemented.
+   */
+  private readonly identities: CommenterRepo;
 
   /**
    * `instanceName` is the value `APP_NAME` seeds while nothing has been saved. It is
@@ -220,7 +342,9 @@ export class ConfigRepo {
   constructor(
     private readonly db: Db,
     private readonly instanceName: string = DEFAULT_INSTANCE_NAME,
-  ) {}
+  ) {
+    this.identities = new CommenterRepo(db);
+  }
 
   /* -------------------------------------------------------------------- reading */
 
@@ -240,6 +364,28 @@ export class ConfigRepo {
 
   users(): StoredUser[] {
     return [...this.read().users.values()];
+  }
+
+  /**
+   * The account bound to this address, or `undefined` when no account is that person.
+   *
+   * This is the one lookup here that queries SQLite rather than the snapshot: it runs
+   * once per sign-in, while the snapshot exists for `canSee()`, which runs once per
+   * thumbnail. Carrying addresses in memory would enlarge that snapshot for a path
+   * that is asked a few times a day.
+   *
+   * No check on `verified_at`: `commenter_id` is written only when a code is
+   * consumed, so a bound identity is a verified one by construction.
+   */
+  userForEmail(email: string): StoredUser | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT u.username AS username
+           FROM users u JOIN commenters c ON c.id = u.commenter_id
+          WHERE c.email = ?`,
+      )
+      .get(email.trim()) as { username: string } | undefined;
+    return row ? this.user(row.username) : undefined;
   }
 
   /** Albums visible to this account, in display order. */
@@ -277,8 +423,35 @@ export class ConfigRepo {
     return this.read().users.size;
   }
 
+  /**
+   * Administrators who can **actually sign in**, which is what the last-admin
+   * protection has to count.
+   *
+   * An account created by address holds the reserved hash until its invitation is
+   * consumed, so counting rows would let the only working administrator demote or
+   * delete themselves while the other one is an unread email — leaving the instance
+   * administrable by nobody, the outcome `specs/04-security-and-access.md` says
+   * requires shell access to repair. The name is unchanged because both callers are
+   * that protection, and neither ever wanted a row count.
+   */
   adminCount(): number {
-    return [...this.read().users.values()].filter((user) => user.admin).length;
+    return [...this.read().users.values()].filter((user) => user.admin && usable(user)).length;
+  }
+
+  /**
+   * Whether this account has a way in: a real password, or a completed binding.
+   *
+   * Structural, and deliberately silent about whether mail leaves the machine this
+   * morning. An instance that turns its mailer off has `pnpm reset-password` as the
+   * way back, and an account state that changed with the weather would be worse than
+   * the lockout it tried to prevent.
+   *
+   * The count above answers "how many are left"; this answers "is this one of them",
+   * which is the question asked of the account about to be demoted or deleted.
+   */
+  isUsable(username: string): boolean {
+    const user = this.user(username);
+    return user !== undefined && usable(user);
   }
 
   settings(): AppSettings {
@@ -308,6 +481,19 @@ export class ConfigRepo {
   updateUser(username: string, patch: UpdateUserInput): StoredUser {
     const stored = this.user(username);
     if (!stored) throw new Error(`Unknown account: "${username}"`);
+    // A bound account holds no password, and the single way to give it one is
+    // `unbindUser`, which clears the binding and closes the sessions in the same
+    // transaction. Without this refusal an administrator sets a password on a bound
+    // account, signs in, and the session signs as that person — the binding they were
+    // forbidden to assert, entered through the door instead of the window. The rule
+    // sits here rather than on the route because `pnpm reset-password` writes through
+    // this repository without passing any route.
+    if (patch.passwordHash !== undefined && stored.commenterId !== null) {
+      throw new Error(
+        `"${stored.username}" is bound to a person and holds no password: ` +
+          'unbind it to give it one, which also closes its sessions.',
+      );
+    }
     const now = new Date().toISOString();
 
     this.db.transaction(() => {
@@ -344,6 +530,164 @@ export class ConfigRepo {
     const changes = this.db.prepare('DELETE FROM users WHERE username = ?').run(username).changes;
     this.invalidate();
     return changes > 0;
+  }
+
+  /* --------------------------------------------- an account that is a person */
+
+  /**
+   * Creates an account by address: the reserved hash and the invitation, together.
+   *
+   * They land in one transaction because neither is any use alone. An invitation
+   * refused after the account was written leaves a sentinel account nobody invited
+   * and nobody can enter, and only an administrator reading the account list would
+   * ever find out. No binding is written here and no existing `commenters` row is
+   * touched: a verified address proves that somebody controls an inbox, not that they
+   * accepted this account, and consuming the code is what proves the second.
+   *
+   * `createUser` is not reused: it invalidates the snapshot before returning, so
+   * composing it here would rebuild that snapshot from writes this transaction may
+   * still roll back — and `PRAGMA data_version` does not move for a write on this
+   * connection, so nothing would ever notice.
+   */
+  createInvitedUser(
+    input: CreateInvitedUserInput,
+    codes: VerificationCodeRepo,
+  ): CreateInvitedUserResult {
+    const now = new Date().toISOString();
+    const { allAlbums, ids } = splitAlbums(input.albums);
+
+    let minted: { code: string };
+    try {
+      minted = this.db.transaction(() => {
+        this.db
+          .prepare(
+            `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          )
+          .run(input.username, NO_PASSWORD_HASH, input.admin ? 1 : 0, allAlbums ? 1 : 0, now, now);
+        this.linkAlbums(input.username, ids);
+
+        const result = codes.mint(input.email, 'invite', {
+          username: input.username,
+          locale: input.locale,
+        });
+        if ('failure' in result) throw new InvitationRefused(result);
+        return result;
+      })();
+    } catch (error) {
+      // Nothing was committed, so the snapshot still describes the database.
+      if (error instanceof InvitationRefused) return error.refusal;
+      throw error;
+    }
+
+    this.invalidate();
+    return { user: this.user(input.username)!, code: minted.code };
+  }
+
+  /**
+   * Consumes an invitation: the account becomes this person, and stops being a key.
+   *
+   * One transaction for what is one act. It writes the binding, marks the address
+   * verified — creating the identity when the instance does not know it — gives that
+   * identity the language its invitation was written in if it has none, spends the
+   * code, replaces the password with the reserved hash, closes the account's sessions
+   * and forgets its paired screens.
+   *
+   * The last three are what a **conversion** needs, and they are unconditional
+   * because an account created by address has no password to replace, no session and
+   * no paired screen: the same statements, doing nothing. On a shared key they are
+   * the whole point. Without the closing, the other devices of a household keep a
+   * session that has just started signing under one person's name; without the
+   * password, everyone who knew the key still walks in under it; without the pairing
+   * row, `claim()` turns a television approved while the key was shared into a fresh
+   * session as the person it has just become.
+   *
+   * **The new session is opened by the caller, after this returns**, and the order
+   * is the point: the session belongs to whoever just proved the address, and a
+   * blanket close run afterwards would sign them straight back out.
+   */
+  consumeInvitation(input: ConsumeInvitationInput, codes: VerificationCodeRepo): StoredUser {
+    const stored = this.user(input.username);
+    if (!stored) throw new Error(`Unknown account: "${input.username}"`);
+    const now = new Date().toISOString();
+
+    this.db.transaction(() => {
+      const known = this.identities.byEmail(input.email);
+      let identity: StoredCommenter;
+      if (known && known.verifiedAt !== null) {
+        // Adopting an identity that already signs comments is the good case: the
+        // household member who has commented keeps their comments. Its name is left
+        // exactly as they wrote it.
+        identity = known;
+      } else {
+        // A row nobody has verified carries a name anybody behind the shared key
+        // could have chosen, so it takes the unknown path rather than being adopted
+        // as it stands. The route asks for the name before spending the code.
+        const name = input.displayName?.trim();
+        if (!name) {
+          throw new Error(`No verified identity for "${input.email}" and no name supplied`);
+        }
+        this.identities.declare(input.email, name);
+        identity = this.identities.markVerified(input.email)!;
+      }
+
+      // The language the invitation was written in becomes this person's, and only
+      // if they have none: a stored value came from their own browser, which
+      // D260812d makes authoritative over a choice somebody made for them.
+      //
+      // `plugins/auth.ts` records `Accept-Language` on every authenticated request,
+      // so the browser reclaims that authority as soon as the next one arrives. This
+      // covers the window before it, and the emails composed inside that window.
+      if (input.locale) this.identities.seedLocale(identity.id, input.locale);
+
+      // A UNIQUE index guards `commenter_id`: an identity bound to another account
+      // between the invitation and this moment raises here, and the whole act —
+      // the binding, the code, the closing — rolls back rather than half-applying.
+      this.db
+        .prepare(
+          `UPDATE users SET commenter_id = ?, password_hash = ?, updated_at = ?
+            WHERE username = ?`,
+        )
+        .run(identity.id, NO_PASSWORD_HASH, now, stored.username);
+      this.closeAccess(stored.username);
+      codes.consume(input.email, 'invite');
+    })();
+
+    this.invalidate();
+    return this.user(stored.username)!;
+  }
+
+  /**
+   * Takes the account back from the person it was: clears the binding, sets a real
+   * password, closes the sessions and forgets the paired screens.
+   *
+   * The password is required rather than optional, and this is the exception that
+   * makes the refusal in `updateUser` liveable: unbinding without one would leave an
+   * account with no identity and a hash nobody can enter, the administrator included.
+   * It is also the answer to somebody losing access to their address — the account
+   * becomes the shared key it has become in practice, and the comments it signed keep
+   * the name they were signed with.
+   */
+  unbindUser(username: string, passwordHash: string): StoredUser {
+    const stored = this.user(username);
+    if (!stored) throw new Error(`Unknown account: "${username}"`);
+    if (hasNoPassword(passwordHash)) {
+      throw new Error(`Unbinding "${stored.username}" requires a password it can be entered with.`);
+    }
+    const now = new Date().toISOString();
+
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE users SET commenter_id = NULL, password_hash = ?, updated_at = ?
+            WHERE username = ?`,
+        )
+        .run(passwordHash, now, stored.username);
+      this.closeAccess(stored.username);
+    })();
+
+    this.invalidate();
+    return this.user(stored.username)!;
   }
 
   createAlbum(input: CreateAlbumInput): StoredAlbum {
@@ -467,6 +811,20 @@ export class ConfigRepo {
 
   /* ------------------------------------------------------------------- internal */
 
+  /**
+   * Everything that could still open a session on this account, in two statements.
+   *
+   * Written here rather than through `SessionStore` and `PairingStore` because it is
+   * two statements and no rule: both classes would have to be handed this connection
+   * to keep the surrounding transaction, and `PairingStore` a secret it would not
+   * use. Closing the sessions alone is not enough — an approved `device_pairings` row
+   * survives it, and `claim()` turns it into a fresh session afterwards.
+   */
+  private closeAccess(username: string): void {
+    this.db.prepare('DELETE FROM sessions WHERE username = ?').run(username);
+    this.db.prepare('DELETE FROM device_pairings WHERE username = ?').run(username);
+  }
+
   private linkAlbums(username: string, albumIds: string[]): void {
     const statement = this.db.prepare(
       'INSERT OR IGNORE INTO user_albums (username, album_id) VALUES (?, ?)',
@@ -511,7 +869,7 @@ export class ConfigRepo {
       .all() as AlbumRow[];
     const userRows = this.db
       .prepare(
-        `SELECT username, password_hash, admin, all_albums, created_at, updated_at
+        `SELECT username, password_hash, admin, all_albums, commenter_id, created_at, updated_at
            FROM users ORDER BY username`,
       )
       .all() as UserRow[];
@@ -539,6 +897,7 @@ export class ConfigRepo {
         allAlbums: row.all_albums === 1,
         // Sorted like albums so the list returned by the API is stable.
         albums: albums.filter((album) => granted.get(key)?.has(album.id)).map((album) => album.id),
+        commenterId: row.commenter_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       });
@@ -604,6 +963,15 @@ function storedForm(key: string, value: unknown): unknown {
 function normalize(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+/**
+ * A way in: a real password, or a completed binding. An account with the reserved
+ * hash and no binding holds album grants somebody set on purpose and no credential
+ * that could exercise them.
+ */
+function usable(user: StoredUser): boolean {
+  return !hasNoPassword(user.passwordHash) || user.commenterId !== null;
 }
 
 /** `['*', 'a']` means wildcard: the most permissive value wins without silent error. */
