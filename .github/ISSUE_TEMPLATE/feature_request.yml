@@ -5,8 +5,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        This is a photo viewer for a Google Drive account, kept deliberately
-        small. [`specs/01-vision-and-scope.md`](../blob/main/specs/01-vision-and-scope.md)
+        This is a self-hosted gallery for photos and videos that already sit in a
+        folder on the machine, an S3-compatible bucket, a WebDAV server or a
+        Google Drive account. Its scope is kept deliberately small:
+        [`specs/01-vision-and-scope.md`](../blob/main/specs/01-vision-and-scope.md)
         lists what is out of scope on purpose — worth a glance first, it may
         already answer you. Being out of scope today is not a permanent verdict,
         but the reasoning is written down.
