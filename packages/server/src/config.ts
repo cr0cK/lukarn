@@ -52,12 +52,12 @@ const configSchema = z
         /** Resynchronise all albums when the server starts. */
         onStartup: z.boolean().default(true),
       })
-      .default({}),
+      .prefault({}),
     cache: z
       .object({
         maxSizeGB: z.number().positive().default(20),
       })
-      .default({}),
+      .prefault({}),
   })
   .superRefine((config, ctx) => {
     const albumIds = new Set(config.albums.map((a) => a.id));

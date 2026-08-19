@@ -122,7 +122,7 @@ const connectionId = z
  * because they are written to the database and read back into a form, and nothing a
  * backend needs is a paragraph.
  */
-const storageSettings = z.record(z.string().max(1024));
+const storageSettings = z.record(z.string(), z.string().max(1024));
 
 /** A secret bounded well above a service-account key, the longest one in practice. */
 const storageSecret = z.string().min(1).max(8192);
