@@ -146,6 +146,27 @@ export const fr: Messages = {
   'login.createAdminFromSource': 'Ou, depuis les sources :',
   'login.withPhone': 'Se connecter avec un téléphone',
 
+  'login.email': 'Adresse email',
+  'login.emailHint': 'Invité par email ? Se connecter avec un code envoyé à cette adresse.',
+  'login.sendCode': 'Recevoir un code',
+  'login.sendFailed': 'Le code n’a pas pu être envoyé.',
+  'login.mailNotConfigured':
+    'Cette galerie n’a pas de serveur mail : elle ne peut pas envoyer de code. Se connecter avec un identifiant et un mot de passe.',
+  'login.codeSent': (length: number, email: string) =>
+    `Si ${email} est connue ici, un code à ${length} chiffres est en route.`,
+  'login.codeFromEmail': (length: number, email: string) =>
+    `Saisir le code à ${length} chiffres reçu à ${email}.`,
+  'login.codeLabel': 'Code de connexion',
+  'login.codeFailed': 'Le code n’a pas pu être vérifié.',
+  'login.nameLabel': 'Nom affiché',
+  'login.namePlaceholder': 'Le nom tel qu’il apparaîtra',
+  'login.nameNeeded':
+    'Ce code est une invitation. Indiquer le nom sous lequel être connu ici, puis renvoyer le code.',
+  'login.resend': 'Envoyer un autre code',
+  'login.otherAddress': 'Utiliser une autre adresse',
+  'login.invitationExpired':
+    'Une invitation expirée ne peut pas être renouvelée ici : en demander une nouvelle à la personne qui l’a envoyée.',
+
   'password.show': 'Afficher le mot de passe',
   'password.hide': 'Masquer le mot de passe',
 
@@ -488,6 +509,41 @@ export const fr: Messages = {
   'adminUsers.confirmSignIn': 'Ce compte ne pourra plus se connecter.',
   'adminUsers.confirmMedia': 'Les albums et les médias indexés ne sont pas touchés.',
 
+  'adminUsers.stateSharedKey': 'clé partagée',
+  'adminUsers.stateSharedKeyDetail': 'Un mot de passe, que plusieurs personnes peuvent connaître.',
+  'adminUsers.statePerson': 'personne',
+  'adminUsers.statePersonDetail': (displayName: string, email: string) =>
+    `Lié à ${displayName}, à l’adresse ${email}. La connexion se fait avec un code envoyé là.`,
+  'adminUsers.stateInvited': 'invité',
+  'adminUsers.stateInvitedDetail': (email: string, until: string) =>
+    `Invitation envoyée à ${email}, valable jusqu’au ${until}.`,
+  'adminUsers.stateNoWayIn': 'aucun accès',
+  'adminUsers.stateNoWayInDetail':
+    'L’invitation a expiré sans être ouverte. Ce compte n’a ni mot de passe ni adresse : le réinviter, ou le supprimer.',
+  'adminUsers.pendingInvitation': (email: string, until: string) =>
+    `Une invitation à devenir une personne est aussi en cours, envoyée à ${email} jusqu’au ${until}.`,
+
+  'adminUsers.invite': 'Inviter par email',
+  'adminUsers.inviteAccount': (username: string) => `Inviter le compte ${username} par email`,
+  'adminUsers.resend': 'Renvoyer',
+  'adminUsers.resendAccount': (username: string) => `Renvoyer l’invitation du compte ${username}`,
+  'adminUsers.resent': (username: string) =>
+    `Un nouveau code part vers l’adresse invitée pour « ${username} ».`,
+  'adminUsers.inviteFailed': 'L’invitation n’a pas pu être envoyée.',
+  'adminUsers.invited': (username: string, email: string) =>
+    `Compte « ${username} » invité à ${email}.`,
+  'adminUsers.inviteTitle': (username: string) =>
+    `Inviter « ${username} » à devenir une personne ?`,
+  'adminUsers.inviteButton': 'Envoyer l’invitation',
+  'adminUsers.inviting': 'Envoi…',
+  'adminUsers.inviteAddress': 'Adresse à inviter',
+  'adminUsers.inviteExplain':
+    'La personne qui lit cette adresse reçoit un code et dispose de sept jours pour le saisir. Tant qu’elle ne l’a pas fait, rien ne change pour ce compte.',
+  'adminUsers.inviteConverts': (username: string) =>
+    `Dès qu’elle le saisit, « ${username} » devient cette personne : ses sessions se ferment sur tous les appareils, ses écrans appairés sont désappairés, et son mot de passe cesse de fonctionner. Toute autre personne qui se connectait avec ce mot de passe perd l’accès.`,
+  'adminUsers.inviteRevives':
+    'Ce compte n’a aujourd’hui aucun mot de passe : réessayer ne fait rien perdre.',
+
   'userForm.username': 'Identifiant',
   'userForm.usernameFixed':
     'L’identifiant ne change pas ; supprimer et recréer le compte si nécessaire.',
@@ -504,6 +560,25 @@ export const fr: Messages = {
   'userForm.create': 'Créer le compte',
   'userForm.created': (username: string) => `Compte « ${username} » créé.`,
   'userForm.saved': (username: string) => `Compte « ${username} » enregistré.`,
+
+  'userForm.howLegend': 'Comment on entre dans ce compte',
+  'userForm.byPassword': 'Avec un mot de passe',
+  'userForm.byPasswordHint':
+    'Une clé que plusieurs personnes peuvent partager. Personne n’a besoin d’une adresse email.',
+  'userForm.byEmail': 'Avec une invitation envoyée par email',
+  'userForm.byEmailHint':
+    'Le compte devient la personne qui l’accepte : elle se connecte avec un code envoyé à cette adresse, et ses commentaires sont signés de son nom.',
+  'userForm.byEmailNoMail':
+    'Cette galerie n’a pas de serveur mail : elle ne peut pas envoyer d’invitation. En configurer un dans les réglages d’abord.',
+  'userForm.email': 'Adresse email',
+  'userForm.emailHint':
+    'L’invitation part à cette adresse et reste valable sept jours. Aucun mot de passe n’est défini : le code est la façon d’entrer dans ce compte.',
+  'userForm.invite': 'Envoyer l’invitation',
+  'userForm.invited': (username: string, email: string) =>
+    `Compte « ${username} » créé et invité à ${email}.`,
+  'userForm.unbindPassword': 'Mot de passe, en remplacement de la personne',
+  'userForm.unbindHint': (email: string) =>
+    `Définir un mot de passe ici délie ${email} : le compte redevient une clé partagée, ses sessions se ferment, ses écrans appairés sont désappairés, et la connexion par code cesse de fonctionner. Laisser vide pour conserver le lien.`,
 
   'access.legend': 'Albums accessibles',
   'access.every': 'Tous les albums',
@@ -535,6 +610,9 @@ export const fr: Messages = {
   'validate.passwordLength': (min: number) =>
     `Un mot de passe doit faire au moins ${min} caractères.`,
   'validate.title': 'Saisir un titre.',
+  'validate.email': 'Saisir une adresse email.',
+  'validate.emailLength': (max: number) => `Une adresse ne peut pas dépasser ${max} caractères.`,
+  'validate.emailPattern': 'Une adresse ressemble à prenom@exemple.org.',
   'validate.folder': 'Indiquer le dossier Drive.',
   'validate.folderPattern':
     'Coller l’URL du dossier Drive ou son identifiant — le segment après /folders/.',

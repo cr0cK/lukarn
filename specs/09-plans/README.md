@@ -49,7 +49,13 @@ so a plan is worth rereading whenever the work it describes moves.
 
 ## Current
 
-[1.3.0 — An account can be a person](./1.3.0-personal-accounts.md): an account may
-be bound to a verified identity and sign in with a code sent to its address, while
-an unbound one stays the shared access key it has always been. Two pull requests,
-neither started.
+None. Nothing is in flight across several pull requests, which is the normal
+state of this directory: it fills up while a release-sized piece of work is under
+way and empties again when it lands.
+
+The last plan to leave was 1.3.0, an account that can be a person. Both of its
+pull requests have landed, and what it said that is still true now lives in `01`
+to `08`: the two decisions it carried are
+[D260819](../08-decisions/D260819-an-account-may-be-bound-to-a-person-rather-than-a.md)
+and
+[D260819b](../08-decisions/D260819b-a-bound-account-signs-in-with-a-code-sent-to-its.md).

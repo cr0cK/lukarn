@@ -460,6 +460,60 @@ export function Checkbox({
   );
 }
 
+/**
+ * One option of an exclusive choice, as a card carrying its own explanation.
+ *
+ * A bare radio with a label beside it cannot say what the option means, and every
+ * exclusive choice in administration is between two things whose difference has to
+ * be read before it is made: the wildcard against a selection of albums, a password
+ * against an invitation. Callers pass one `name` to the group so the browser makes
+ * them exclusive — the form then has no invalid state to validate afterwards.
+ */
+export function Choice({
+  name,
+  id,
+  checked,
+  onSelect,
+  label,
+  hint,
+  disabled = false,
+}: {
+  /** Shared by every option of the group, and what makes them exclusive. */
+  name: string;
+  id: string;
+  checked: boolean;
+  onSelect: () => void;
+  label: string;
+  hint: ReactNode;
+  disabled?: boolean;
+}): ReactElement {
+  return (
+    <label
+      htmlFor={id}
+      className={`flex gap-2.5 rounded-lg border px-3 py-2 transition-colors ${
+        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+      } ${checked ? 'border-accent-dim bg-accent/5' : 'border-ink-700 hover:bg-tint'}`}
+    >
+      <input
+        id={id}
+        name={name}
+        type="radio"
+        checked={checked}
+        disabled={disabled}
+        onChange={onSelect}
+        aria-describedby={`${id}-hint`}
+        className="mt-0.5 size-4 shrink-0 accent-accent"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm text-ink-100">{label}</span>
+        <span id={`${id}-hint`} className="block text-xs text-ink-400">
+          {hint}
+        </span>
+      </span>
+    </label>
+  );
+}
+
 /** Server error applying to an entire form. */
 export function FormError({ message }: { message: string | null }): ReactElement | null {
   if (!message) return null;

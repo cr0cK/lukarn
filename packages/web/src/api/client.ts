@@ -9,6 +9,8 @@ import {
   type AlbumDay,
   type AppSettings,
   type BulkModerationResult,
+  type CodeRequest,
+  type CodeVerifyRequest,
   type Comment,
   type CommentsFeedPage,
   type CommentsPage,
@@ -20,6 +22,7 @@ import {
   type DevicePairingState,
   type DevicePollResult,
   type IdentityRequest,
+  type InviteUserRequest,
   type ItemsPage,
   type MediaDetail,
   type MediaItem,
@@ -124,6 +127,20 @@ export const api = {
     }),
 
   logout: () => request<{ ok: true }>('/auth/logout', { method: 'POST' }),
+
+  /* Signing in as a person: a code sent to the address, in place of a password (D260819b). */
+
+  /**
+   * Asks for a code at an address. `202` for an address that opens an account, one
+   * holding an invitation, one nothing knows and one asked again inside the minute
+   * alike, so nothing here may report success as "this address exists".
+   */
+  requestSignInCode: (body: CodeRequest) =>
+    request<{ ok: true }>('/auth/code/request', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Spends the code, and this is what opens the session. */
+  verifySignInCode: (body: CodeVerifyRequest) =>
+    request<SessionUser>('/auth/code/verify', { method: 'POST', body: JSON.stringify(body) }),
 
   /* Pairing a screen without a keyboard — see D260809c. */
 
@@ -309,6 +326,17 @@ export const api = {
   updateUser: (username: string, body: UpdateUserRequest) =>
     request<AdminUser>(`/admin/users/${encodeURIComponent(username)}`, {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * Invites an account that already exists, and sends its invitation again. With an
+   * address it invites that account; with an empty body it remints the invitation
+   * already pending, which is what the row offers when the first message went unread.
+   */
+  inviteUser: (username: string, body: InviteUserRequest) =>
+    request<AdminUser>(`/admin/users/${encodeURIComponent(username)}/invite`, {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
 

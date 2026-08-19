@@ -3,15 +3,16 @@ import {
   PASSWORD_MIN_LENGTH,
   type AdminAlbum,
   type AdminUser,
+  type CreateUserRequest,
   type UpdateUserRequest,
 } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
 import { useCreateUser, useUpdateUser } from '../../api/hooks';
-import { validatePassword, validateUsername } from '../../lib/adminForm';
+import { validateEmail, validatePassword, validateUsername } from '../../lib/adminForm';
 import { useT } from '../../lib/i18n';
 import { AlbumAccessPicker } from './AlbumAccessPicker';
-import { Button, Checkbox, FormError, TextField, type Notify } from './ui';
+import { Button, Checkbox, Choice, FormError, TextField, type Notify } from './ui';
 
 interface UserFormProps {
   albums: AdminAlbum[];
@@ -19,6 +20,8 @@ interface UserFormProps {
   user?: AdminUser;
   /** `true` when editing the current session's account. */
   isSelf?: boolean;
+  /** `false` disables creating by address: with no relay the invitation never leaves. */
+  mailConfigured?: boolean;
   onClose: () => void;
   notify: Notify;
 }
@@ -28,6 +31,7 @@ export function UserForm({
   albums,
   user,
   isSelf = false,
+  mailConfigured = true,
   onClose,
   notify,
 }: UserFormProps): ReactElement {
@@ -36,47 +40,68 @@ export function UserForm({
   const create = useCreateUser();
   const update = useUpdateUser();
   const editing = user !== undefined;
+  // A bound account is refused an ordinary password change by the server, and the
+  // single way through — unbind and set in one act — is what the field below offers.
+  const bound = user?.identity ?? null;
 
   const [username, setUsername] = useState(user?.username ?? '');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  // The credential is chosen before either field is shown, so a form carrying both a
+  // password and an address never exists: the request takes exactly one of them, and
+  // a choice made up front is a rule the person reads rather than a refusal they meet.
+  const [byEmail, setByEmail] = useState(false);
   const [admin, setAdmin] = useState(user?.admin ?? false);
   const [userAlbums, setUserAlbums] = useState<string[]>(user?.albums ?? []);
   const [touched, setTouched] = useState(false);
 
+  const inviting = !editing && byEmail;
   const usernameError = editing ? null : validateUsername(username, t);
-  const passwordError = validatePassword(password, !editing, t);
+  const passwordError = inviting ? null : validatePassword(password, !editing, t);
+  const emailError = inviting ? validateEmail(email, t) : null;
   const pending = create.isPending || update.isPending;
   const serverError = create.error ?? update.error;
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     setTouched(true);
-    if (usernameError || passwordError) return;
+    if (usernameError || passwordError || emailError) return;
 
     if (!editing) {
-      create.mutate(
-        { username: username.trim(), password, admin, albums: userAlbums },
-        {
-          onSuccess: (created) => {
-            notify({ tone: 'ok', text: t('userForm.created', created.username) });
-            onClose();
-          },
+      const body: CreateUserRequest = inviting
+        ? { username: username.trim(), email: email.trim(), admin, albums: userAlbums }
+        : { username: username.trim(), password, admin, albums: userAlbums };
+
+      create.mutate(body, {
+        onSuccess: (created) => {
+          notify({
+            tone: 'ok',
+            text: inviting
+              ? t('userForm.invited', created.username, email.trim())
+              : t('userForm.created', created.username),
+          });
+          onClose();
         },
-      );
+      });
       return;
     }
 
     // An absent field preserves its value: sending only changes avoids overwriting
     // an edit made elsewhere in the meantime.
-    const body: UpdateUserRequest = {};
-    if (password) body.password = password;
-    if (admin !== user.admin) body.admin = admin;
-    if (!sameAlbums(userAlbums, user.albums)) body.albums = userAlbums;
+    const fields: { admin?: boolean; albums?: string[] } = {};
+    if (admin !== user.admin) fields.admin = admin;
+    if (!sameAlbums(userAlbums, user.albums)) fields.albums = userAlbums;
 
-    if (Object.keys(body).length === 0) {
+    if (!password && Object.keys(fields).length === 0) {
       onClose();
       return;
     }
+
+    const body: UpdateUserRequest = !password
+      ? fields
+      : bound
+        ? { ...fields, password, unbind: true }
+        : { ...fields, password };
 
     update.mutate(
       { username: user.username, body },
@@ -91,6 +116,33 @@ export function UserForm({
 
   return (
     <form onSubmit={submit} className="space-y-4 border-b border-ink-850 bg-ink-900/40 px-4 py-4">
+      {!editing && (
+        <fieldset disabled={pending} className="min-w-0">
+          <legend className="mb-1.5 text-sm text-ink-300">{t('userForm.howLegend')}</legend>
+          <div className="space-y-2">
+            <Choice
+              name={`${fieldId}-how`}
+              id={`${fieldId}-how-password`}
+              checked={!byEmail}
+              onSelect={() => setByEmail(false)}
+              label={t('userForm.byPassword')}
+              hint={t('userForm.byPasswordHint')}
+            />
+            <Choice
+              name={`${fieldId}-how`}
+              id={`${fieldId}-how-email`}
+              checked={byEmail}
+              onSelect={() => setByEmail(true)}
+              // Offered and refused rather than hidden: an administrator looking for
+              // this option needs to be told it exists and what it waits on.
+              disabled={!mailConfigured}
+              label={t('userForm.byEmail')}
+              hint={t(mailConfigured ? 'userForm.byEmailHint' : 'userForm.byEmailNoMail')}
+            />
+          </div>
+        </fieldset>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           id={`${fieldId}-username`}
@@ -105,19 +157,45 @@ export function UserForm({
           hint={t(editing ? 'userForm.usernameFixed' : 'userForm.usernameHint')}
         />
 
-        <TextField
-          id={`${fieldId}-password`}
-          label={t(editing ? 'userForm.newPassword' : 'userForm.password')}
-          type="password"
-          value={password}
-          onChange={setPassword}
-          autoComplete="new-password"
-          disabled={pending}
-          error={touched ? passwordError : null}
-          hint={
-            editing ? t('userForm.passwordKeep') : t('userForm.passwordHint', PASSWORD_MIN_LENGTH)
-          }
-        />
+        {!inviting && (
+          <TextField
+            id={`${fieldId}-password`}
+            label={t(
+              bound
+                ? 'userForm.unbindPassword'
+                : editing
+                  ? 'userForm.newPassword'
+                  : 'userForm.password',
+            )}
+            type="password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="new-password"
+            disabled={pending}
+            error={touched ? passwordError : null}
+            hint={
+              bound
+                ? t('userForm.unbindHint', bound.email)
+                : editing
+                  ? t('userForm.passwordKeep')
+                  : t('userForm.passwordHint', PASSWORD_MIN_LENGTH)
+            }
+          />
+        )}
+
+        {inviting && (
+          <TextField
+            id={`${fieldId}-email`}
+            label={t('userForm.email')}
+            type="email"
+            value={email}
+            onChange={setEmail}
+            autoComplete="off"
+            disabled={pending}
+            error={touched ? emailError : null}
+            hint={t('userForm.emailHint')}
+          />
+        )}
       </div>
 
       <Checkbox
@@ -143,7 +221,13 @@ export function UserForm({
           {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" disabled={pending}>
-          {pending ? t('common.saving') : editing ? t('common.save') : t('userForm.create')}
+          {pending
+            ? t('common.saving')
+            : editing
+              ? t('common.save')
+              : inviting
+                ? t('userForm.invite')
+                : t('userForm.create')}
         </Button>
       </div>
     </form>

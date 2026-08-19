@@ -9,6 +9,8 @@ interface ConfirmDialogProps {
   children: ReactNode;
   confirmLabel: string;
   busy?: boolean;
+  /** Shown while `busy`. Defaults to deleting, which is what most of these guard. */
+  busyLabel?: string;
   /**
    * Refuses the action while something else has to happen first, the dialog's own text
    * saying what. The server refuses it too and stays authoritative — this only stops
@@ -31,6 +33,7 @@ export function ConfirmDialog({
   children,
   confirmLabel,
   busy = false,
+  busyLabel,
   confirmDisabled = false,
   onConfirm,
   onCancel,
@@ -74,7 +77,7 @@ export function ConfirmDialog({
             {t('common.cancel')}
           </Button>
           <Button variant="danger" onClick={onConfirm} disabled={busy || confirmDisabled}>
-            {busy ? t('confirm.deleting') : confirmLabel}
+            {busy ? (busyLabel ?? t('confirm.deleting')) : confirmLabel}
           </Button>
         </div>
       </div>

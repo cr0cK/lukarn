@@ -2,11 +2,14 @@ import {
   DEFAULT_SORT_ORDER,
   SEARCH_MIN_LENGTH,
   type AlbumDay,
+  type CodeRequest,
+  type CodeVerifyRequest,
   type CreateAlbumRequest,
   type CreateStorageRequest,
   type CreateCommentRequest,
   type FeedComment,
   type IdentityRequest,
+  type InviteUserRequest,
   type CreateUserRequest,
   type ItemsPage,
   type MediaDetail,
@@ -122,6 +125,31 @@ export function useLogin() {
   return useMutation({
     mutationFn: ({ username, password }: { username: string; password: string }) =>
       api.login(username, password),
+    onSuccess: (user) => {
+      queryClient.setQueryData(queryKeys.me, user);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
+    },
+  });
+}
+
+/**
+ * Asks for a code at an address. Nothing is settled until it is entered, and the
+ * answer says nothing about whether the address is known here.
+ */
+export function useRequestSignInCode() {
+  return useMutation({ mutationFn: (body: CodeRequest) => api.requestSignInCode(body) });
+}
+
+/**
+ * Spends the code and opens the session, so it settles it exactly as `useLogin` does:
+ * the returned user replaces the cached one and the album list is refetched for
+ * whoever has just arrived. Without the first, the application would keep serving the
+ * signed-out `me` until something else happened to refetch it.
+ */
+export function useVerifySignInCode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CodeVerifyRequest) => api.verifySignInCode(body),
     onSuccess: (user) => {
       queryClient.setQueryData(queryKeys.me, user);
       void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
@@ -716,6 +744,21 @@ export function useUpdateUser() {
     mutationFn: ({ username, body }: { username: string; body: UpdateUserRequest }) =>
       api.updateUser(username, body),
     onSuccess: () => invalidateAccess(queryClient),
+  });
+}
+
+/**
+ * Invites an existing account, or sends its invitation again.
+ *
+ * Only the account list changes: an invitation grants no album, so the album side of
+ * the assignment is not stale and refetching it would be a request for nothing.
+ */
+export function useInviteUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ username, body }: { username: string; body: InviteUserRequest }) =>
+      api.inviteUser(username, body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.adminUsers }),
   });
 }
 
