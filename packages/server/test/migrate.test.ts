@@ -621,6 +621,60 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('leaves a version 18 invitation with no language, and both its constraints', () => {
+    const db = databaseAtVersion(18);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('mamie', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO verification_codes
+         (target, purpose, code_hash, expires_at, sent_at, username)
+       VALUES ('mamie@exemple.fr', 'invite', 'empreinte', '2099-01-01T00:00:00.000Z', ?, 'mamie')`,
+    ).run(date);
+
+    migrate(db);
+
+    const invitation = db
+      .prepare("SELECT * FROM verification_codes WHERE target = 'mamie@exemple.fr'")
+      .get() as { code_hash: string; locale: string | null };
+    // The code still opens the account it was minted for, and carries no language:
+    // nobody chose one for it, and the instance default keeps applying to it. A
+    // DEFAULT would have made every pending invitation look like a choice.
+    assert.equal(invitation.code_hash, 'empreinte');
+    assert.equal(invitation.locale, null);
+    assert.ok(columns(db, 'verification_codes').includes('locale'));
+
+    // Adding a column must not rebuild the table, which is where the two constraints
+    // of migration 18 would be lost quietly: one invitation per account, whichever
+    // address it went to, and one row per address and purpose.
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO verification_codes
+               (target, purpose, code_hash, expires_at, sent_at, username)
+             VALUES ('autre@exemple.fr', 'invite', 'x', '2099-01-01T00:00:00.000Z', ?, 'Mamie')`,
+          )
+          .run(date),
+      /UNIQUE/,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO verification_codes
+               (target, purpose, code_hash, expires_at, sent_at, username)
+             VALUES ('mamie@exemple.fr', 'invite', 'x', '2099-01-01T00:00:00.000Z', ?, 'mamie')`,
+          )
+          .run(date),
+      /UNIQUE/,
+    );
+
+    db.close();
+  });
+
   it('is idempotent', () => {
     const db = databaseAtVersion(0);
     migrate(db);

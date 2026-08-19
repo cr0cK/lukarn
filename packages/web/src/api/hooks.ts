@@ -12,8 +12,10 @@ import {
   type InviteUserRequest,
   type CreateUserRequest,
   type ItemsPage,
+  type Locale,
   type MediaDetail,
   type MediaItem,
+  type SessionUser,
   type SortOrder,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
@@ -34,6 +36,7 @@ import {
 } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { logoChanged } from '../lib/branding';
+import { useAdoptLocale } from '../lib/i18n';
 import { ApiError, api, type AdminCommentsQuery } from './client';
 
 export const queryKeys = {
@@ -120,15 +123,36 @@ export function useSetupState() {
   });
 }
 
+/**
+ * Settles a session that has just opened: the language first, then the cache.
+ *
+ * **The order is the point.** `api/client.ts` announces the active language on every
+ * request and `plugins/auth.ts` records what it receives against the identity, so the
+ * album list refetched below would write this browser's language over the one the
+ * invitation was written in — and the adoption would undo itself on the very first
+ * request it caused.
+ *
+ * Only an account that **is** this person offers its language: a shared key stays on
+ * the language of the browser reading it, since a household holding one key need not
+ * read one language (D260812d).
+ */
+function settleSession(
+  queryClient: QueryClient,
+  user: SessionUser,
+  adopt: (offered: Locale | null) => void,
+): void {
+  if (user.identityBound) adopt(user.identity?.locale ?? null);
+  queryClient.setQueryData(queryKeys.me, user);
+  void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
+}
+
 export function useLogin() {
   const queryClient = useQueryClient();
+  const adopt = useAdoptLocale();
   return useMutation({
     mutationFn: ({ username, password }: { username: string; password: string }) =>
       api.login(username, password),
-    onSuccess: (user) => {
-      queryClient.setQueryData(queryKeys.me, user);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
-    },
+    onSuccess: (user) => settleSession(queryClient, user, adopt),
   });
 }
 
@@ -148,12 +172,10 @@ export function useRequestSignInCode() {
  */
 export function useVerifySignInCode() {
   const queryClient = useQueryClient();
+  const adopt = useAdoptLocale();
   return useMutation({
     mutationFn: (body: CodeVerifyRequest) => api.verifySignInCode(body),
-    onSuccess: (user) => {
-      queryClient.setQueryData(queryKeys.me, user);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
-    },
+    onSuccess: (user) => settleSession(queryClient, user, adopt),
   });
 }
 
@@ -175,14 +197,12 @@ export function useStartPairing() {
  */
 export function usePairingPoll(deviceCode: string | null, intervalMs: number) {
   const queryClient = useQueryClient();
+  const adopt = useAdoptLocale();
   return useQuery({
     queryKey: ['pairing', 'poll', deviceCode],
     queryFn: async () => {
       const result = await api.pollPairing(deviceCode!);
-      if (result.status === 'approved') {
-        queryClient.setQueryData(queryKeys.me, result.user);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.albums });
-      }
+      if (result.status === 'approved') settleSession(queryClient, result.user, adopt);
       return result;
     },
     enabled: deviceCode !== null,

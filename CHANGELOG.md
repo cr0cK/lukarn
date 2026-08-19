@@ -31,6 +31,13 @@ a code sent to that address rather than with a password, and their comments are
 signed without an address being confirmed again. There is still no public
 registration form, and nobody can create an account for themselves.
 
+An invitation also carries a language, chosen where it is sent from. The control
+sits with the address, starts on the language you are reading the interface in, and
+names each language in its own words. The message goes out in that language, sending
+it again repeats it, and the gallery opens in it when its recipient signs in on a
+browser that has not been given a language of its own. Whoever picks a language in
+Settings keeps it: that choice wins over the one an invitation carried.
+
 The sign-in screen has a second field for it, under the username and the password.
 The invitation carries a link that opens that screen with the address already
 filled in, and the six digits are still typed by hand. Anyone arriving later types

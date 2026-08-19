@@ -261,6 +261,16 @@ export interface CommenterIdentity {
   displayName: string;
   /** `false` after unsubscribing from a received email. */
   notify: boolean;
+  /**
+   * Language this person is written to in, as the server has it. `null` while none is
+   * recorded, in which case the instance default applies (D260812d).
+   *
+   * The interface reads it once, when a session begins: somebody who accepted an
+   * invitation has never chosen a language here, and the one their invitation was
+   * written in is the best evidence of what they read. What they pick afterwards is
+   * the browser's own, and travels back as `Accept-Language`.
+   */
+  locale: Locale | null;
 }
 
 /** What is declared to identify oneself. The address then receives a code. */
@@ -863,10 +873,14 @@ interface CreateUserFields {
  * an address it is created with no password and invited; the binding is written when
  * the invitation is consumed, so that creating it asserts nothing about who the
  * recipient is.
+ *
+ * `locale` is the language that invitation is written in, and it belongs to the
+ * address branch alone: a password reaches nobody, so there is no message to choose a
+ * language for.
  */
 export type CreateUserRequest =
-  | (CreateUserFields & { password: string; email?: never })
-  | (CreateUserFields & { email: string; password?: never });
+  | (CreateUserFields & { password: string; email?: never; locale?: never })
+  | (CreateUserFields & { email: string; password?: never; locale?: Locale });
 
 /** What an account update may change whichever form it takes. */
 interface UpdateUserFields {
@@ -896,6 +910,11 @@ export type UpdateUserRequest =
  */
 export interface InviteUserRequest {
   email?: string;
+  /**
+   * Language the message is written in. Omitted on a resend, where the language the
+   * invitation was minted with is repeated rather than reread from the sender.
+   */
+  locale?: Locale;
 }
 
 export interface AdminAlbum {

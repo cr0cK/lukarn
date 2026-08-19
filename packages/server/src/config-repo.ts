@@ -11,6 +11,7 @@ import {
   type AdminUser,
   type AppSettings,
   type GroupBy,
+  type Locale,
   type SortOrder,
 } from '@lukarn/shared';
 import { z } from 'zod';
@@ -271,6 +272,12 @@ export interface CreateInvitedUserInput {
   albums: string[];
   /** The address the invitation goes to. Nothing is written to `commenters` yet. */
   email: string;
+  /**
+   * Language the invitation is written in, chosen by whoever invites. Omitted when
+   * nobody chose one, and the instance default then applies to this message and to
+   * every later one until its recipient's browser announces theirs.
+   */
+  locale?: Locale;
 }
 
 /**
@@ -294,6 +301,11 @@ export interface ConsumeInvitationInput {
    * give, and a name arriving here must never rename them (D42).
    */
   displayName?: string;
+  /**
+   * Language the invitation was written in, read from the code row that has just
+   * been proved. It seeds the identity when that identity carries none.
+   */
+  locale?: Locale | null;
 }
 
 /**
@@ -555,7 +567,10 @@ export class ConfigRepo {
           .run(input.username, NO_PASSWORD_HASH, input.admin ? 1 : 0, allAlbums ? 1 : 0, now, now);
         this.linkAlbums(input.username, ids);
 
-        const result = codes.mint(input.email, 'invite', { username: input.username });
+        const result = codes.mint(input.email, 'invite', {
+          username: input.username,
+          locale: input.locale,
+        });
         if ('failure' in result) throw new InvitationRefused(result);
         return result;
       })();
@@ -573,7 +588,8 @@ export class ConfigRepo {
    * Consumes an invitation: the account becomes this person, and stops being a key.
    *
    * One transaction for what is one act. It writes the binding, marks the address
-   * verified — creating the identity when the instance does not know it — spends the
+   * verified — creating the identity when the instance does not know it — gives that
+   * identity the language its invitation was written in if it has none, spends the
    * code, replaces the password with the reserved hash, closes the account's sessions
    * and forgets its paired screens.
    *
@@ -614,6 +630,15 @@ export class ConfigRepo {
         this.identities.declare(input.email, name);
         identity = this.identities.markVerified(input.email)!;
       }
+
+      // The language the invitation was written in becomes this person's, and only
+      // if they have none: a stored value came from their own browser, which
+      // D260812d makes authoritative over a choice somebody made for them.
+      //
+      // `plugins/auth.ts` records `Accept-Language` on every authenticated request,
+      // so the browser reclaims that authority as soon as the next one arrives. This
+      // covers the window before it, and the emails composed inside that window.
+      if (input.locale) this.identities.seedLocale(identity.id, input.locale);
 
       // A UNIQUE index guards `commenter_id`: an identity bound to another account
       // between the invitation and this moment raises here, and the whole act —

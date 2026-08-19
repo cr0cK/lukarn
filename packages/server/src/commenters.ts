@@ -59,6 +59,7 @@ export function toIdentity(commenter: StoredCommenter): CommenterIdentity {
     email: commenter.email,
     displayName: commenter.displayName,
     notify: commenter.notify,
+    locale: commenter.locale,
   };
 }
 
@@ -81,6 +82,21 @@ export class CommenterRepo {
    */
   setLocale(id: number, locale: Locale): void {
     this.db.prepare('UPDATE commenters SET locale = ? WHERE id = ?').run(locale, id);
+  }
+
+  /**
+   * Gives a language to an identity that has none, and leaves an existing one alone.
+   *
+   * Somebody accepting an invitation gets the language that invitation was written
+   * in, so the first email after they join is already readable to them rather than
+   * waiting for a request to announce one. The `IS NULL` is the whole rule: a value
+   * already stored came from that person's own browser, which D260812d makes
+   * authoritative, and a choice made on their behalf must not displace it.
+   */
+  seedLocale(id: number, locale: Locale): void {
+    this.db
+      .prepare('UPDATE commenters SET locale = ? WHERE id = ? AND locale IS NULL')
+      .run(locale, id);
   }
 
   byId(id: number): StoredCommenter | null {

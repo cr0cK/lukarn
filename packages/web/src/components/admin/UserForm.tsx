@@ -1,9 +1,11 @@
 import {
   ALL_ALBUMS,
   PASSWORD_MIN_LENGTH,
+  isLocale,
   type AdminAlbum,
   type AdminUser,
   type CreateUserRequest,
+  type Locale,
   type UpdateUserRequest,
 } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
@@ -12,7 +14,16 @@ import { useCreateUser, useUpdateUser } from '../../api/hooks';
 import { validateEmail, validatePassword, validateUsername } from '../../lib/adminForm';
 import { useT } from '../../lib/i18n';
 import { AlbumAccessPicker } from './AlbumAccessPicker';
-import { Button, Checkbox, Choice, FormError, TextField, type Notify } from './ui';
+import {
+  Button,
+  Checkbox,
+  Choice,
+  FormError,
+  SelectField,
+  TextField,
+  localeOptions,
+  type Notify,
+} from './ui';
 
 interface UserFormProps {
   albums: AdminAlbum[];
@@ -47,6 +58,9 @@ export function UserForm({
   const [username, setUsername] = useState(user?.username ?? '');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  // Whoever invites usually speaks to the person they are inviting in the language
+  // they are themselves reading, so that is where the choice starts.
+  const [locale, setLocale] = useState<Locale>(t.locale);
   // The credential is chosen before either field is shown, so a form carrying both a
   // password and an address never exists: the request takes exactly one of them, and
   // a choice made up front is a rule the person reads rather than a refusal they meet.
@@ -69,7 +83,7 @@ export function UserForm({
 
     if (!editing) {
       const body: CreateUserRequest = inviting
-        ? { username: username.trim(), email: email.trim(), admin, albums: userAlbums }
+        ? { username: username.trim(), email: email.trim(), locale, admin, albums: userAlbums }
         : { username: username.trim(), password, admin, albums: userAlbums };
 
       create.mutate(body, {
@@ -194,6 +208,24 @@ export function UserForm({
             disabled={pending}
             error={touched ? emailError : null}
             hint={t('userForm.emailHint')}
+          />
+        )}
+
+        {/* In the grid beside the address rather than under the form: the language
+            is a property of the message being addressed there, and a control sitting
+            below the album picker would be read after the decision it belongs to. */}
+        {inviting && (
+          <SelectField
+            id={`${fieldId}-locale`}
+            label={t('userForm.locale')}
+            value={locale}
+            options={localeOptions()}
+            // Guarded rather than cast, as `/settings` does: a `select` hands back a
+            // string, and the predicate in `@lukarn/shared` is the one thing that
+            // decides what counts as a language.
+            onChange={(value) => isLocale(value) && setLocale(value)}
+            disabled={pending}
+            hint={t('userForm.localeHint')}
           />
         )}
       </div>

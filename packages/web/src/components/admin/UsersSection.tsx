@@ -1,4 +1,10 @@
-import type { AccountState, AdminAlbum, AdminUser } from '@lukarn/shared';
+import {
+  isLocale,
+  type AccountState,
+  type AdminAlbum,
+  type AdminUser,
+  type Locale,
+} from '@lukarn/shared';
 import { type ReactElement, useMemo, useState } from 'react';
 import { errorText } from '../../api/client';
 import {
@@ -21,7 +27,9 @@ import {
   ROW_ACTIONS_CLASS,
   ROW_CLASS,
   Section,
+  SelectField,
   TextField,
+  localeOptions,
   type Notify,
 } from './ui';
 
@@ -97,6 +105,9 @@ export function UsersSection({
   const [confirming, setConfirming] = useState<AdminUser | null>(null);
   const [converting, setConverting] = useState<AdminUser | null>(null);
   const [address, setAddress] = useState('');
+  // The language whoever is inviting reads themselves: they are usually about to
+  // speak to that person in it.
+  const [locale, setLocale] = useState<Locale>(t.locale);
   // Validated as the address is typed rather than on submit: the dialog's confirm
   // button is refused until it is valid, so a rejection with nothing said would be a
   // button that looks broken.
@@ -119,6 +130,7 @@ export function UsersSection({
 
   const openConversion = (user: AdminUser): void => {
     setAddress('');
+    setLocale(t.locale);
     setConverting(user);
   };
 
@@ -126,7 +138,7 @@ export function UsersSection({
     if (addressError) return;
     const email = address.trim();
     invite.mutate(
-      { username: user.username, body: { email } },
+      { username: user.username, body: { email, locale } },
       {
         onSuccess: () => {
           notify({ tone: 'ok', text: t('adminUsers.invited', user.username, email) });
@@ -351,6 +363,18 @@ export function UsersSection({
             // Only once something has been typed: an error under an untouched field
             // is the dialog telling somebody off for having just opened it.
             error={address ? addressError : null}
+          />
+          <SelectField
+            id="invite-locale"
+            label={t('userForm.locale')}
+            value={locale}
+            options={localeOptions()}
+            // Guarded rather than cast, as `/settings` does: a `select` hands back a
+            // string, and the predicate in `@lukarn/shared` is the one thing that
+            // decides what counts as a language.
+            onChange={(value) => isLocale(value) && setLocale(value)}
+            disabled={invite.isPending}
+            hint={t('userForm.localeHint')}
           />
         </ConfirmDialog>
       )}

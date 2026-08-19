@@ -603,6 +603,12 @@ export const en = {
   'userForm.email': 'Email address',
   'userForm.emailHint':
     'The invitation is sent here and stays open for seven days. No password is set: the code is how this account is entered.',
+  // Both places that send an invitation read these two: the language is the same
+  // choice whether the account is being created or converted, and a second wording
+  // for it would be the one that drifts.
+  'userForm.locale': 'Language of the invitation',
+  'userForm.localeHint':
+    'The message is written in it, and the gallery opens in it the first time they sign in.',
   'userForm.invite': 'Send the invitation',
   'userForm.invited': (username: string, email: string) =>
     `Account "${username}" created and invited at ${email}.`,

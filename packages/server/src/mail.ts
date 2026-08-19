@@ -475,8 +475,12 @@ export function buildSignInMail(
  * Opening it must not mint a new code either, or reading the message would invalidate
  * the code being read: the page offers to send another instead.
  *
- * The language is the instance default rather than a recorded one: the recipient has
- * never made a request here, so there is nothing to have recorded (D260812d).
+ * **The language is chosen by whoever invites**, and is the one argument here that
+ * cannot be worked out from the recipient: they have never made a request to this
+ * instance, so nothing about them has been recorded (D260812d), and the person
+ * sending the invitation is the only party who knows what they read. The choice is
+ * kept on the code row, so sending the message again repeats it; the instance
+ * default applies when nobody chose.
  */
 export function buildInvitationMail(
   email: string,

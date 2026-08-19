@@ -1,21 +1,24 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ALBUMS, BASE_URL } from '../fixtures/instance.js';
+import { ALBUMS, BASE_URL, SEED_COUNT } from '../fixtures/instance.js';
 import { clearMail, verificationCode, waitForMail, type SinkMessage } from '../fixtures/mail.js';
 import { signIn } from '../fixtures/session.js';
 
 /**
  * An account that is a person, from the invitation to the second device.
  *
- * The four tests are **one journey**, in order: the account created here is the
- * account signed into two tests later, and the code read out of the sink is the code
- * typed after that. `serial` states that — a later test starting from a state an
- * earlier one failed to produce reports the same defect three times over.
+ * Two journeys, each read in order: the account created in a test is the account
+ * signed into two tests later, and the code read out of the sink is the code typed
+ * after that. `serial` states that — a later test starting from a state an earlier
+ * one failed to produce reports the same defect three times over. The first journey
+ * is the release itself; the second is the same route in a language its sender chose
+ * and this instance does not default to.
  *
  * Nothing here waits for a delay to pass. The one-a-minute rule on sending is real,
  * and the flow simply never asks it to be broken: the invitation is taken up through
- * the link its own message carries, which mints nothing, and the sign-in code of the
- * last test is asked for after consumption has removed the invitation row that would
- * otherwise have been the address's most recent send.
+ * the link its own message carries, which mints nothing, the sign-in codes are asked
+ * for after consumption has removed the invitation row that would otherwise have been
+ * the address's most recent send, and the one message sent twice goes to a second
+ * address rather than to the same one inside the minute.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -25,6 +28,21 @@ const INVITED = {
   email: 'mamie@example.com',
   /** Nobody has said this yet: the acceptance step is where it is first given. */
   name: 'Mamie Jeanne',
+};
+
+/**
+ * The account invited in a language its sender is not reading.
+ *
+ * Every screen in this file is in English, so a message arriving in French can only
+ * come from the choice made on the form: an invitation that inherited the language of
+ * the administrator sending it would prove nothing here.
+ */
+const IN_FRENCH = {
+  username: 'papi',
+  /** Mistyped on purpose. Correcting it is what sends the invitation a second time. */
+  typo: 'papi@exmaple.com',
+  email: 'papi@example.com',
+  name: 'Papi Jean',
 };
 
 /**
@@ -289,4 +307,131 @@ test('another browser context signs in with a code, and finds the same person', 
   await expect(sheet.getByRole('tabpanel')).toContainText(INVITED.name);
   await expect(sheet.getByRole('button', { name: 'Sign in to comment' })).toHaveCount(0);
   await expect(sheet.getByPlaceholder(`Comment as ${INVITED.name}…`)).toBeVisible();
+});
+
+test('an invitation is written in the language chosen for it, and again in it when it is sent again', async ({
+  page,
+}) => {
+  await clearMail();
+
+  await signIn(page);
+  await page.goto('/admin/accounts');
+  await page.getByRole('button', { name: 'New account' }).click();
+  await page.getByRole('radio', { name: 'With an invitation sent by email' }).check();
+
+  await page.getByLabel('Username', { exact: true }).fill(IN_FRENCH.username);
+  await page.getByLabel('Email address', { exact: true }).fill(IN_FRENCH.typo);
+
+  // A closed list on a phone is a row showing its value, opening onto the control.
+  // Chosen by the label rather than by the code: `fr` names nothing to whoever reads
+  // the list, and each language is written in its own words so that somebody looking
+  // for theirs finds it on a screen they cannot otherwise read.
+  await page.getByRole('button', { name: /^Language of the invitation/ }).click();
+  await page
+    .getByRole('combobox', { name: 'Language of the invitation' })
+    .selectOption({ label: 'Français' });
+
+  await page.getByRole('radio', { name: 'Every album' }).check();
+  await page.getByRole('button', { name: 'Send the invitation' }).click();
+
+  // The screen the invitation was sent from stays in the language its administrator
+  // reads: what was chosen is the language of a message.
+  await expect(page.getByRole('status')).toContainText(
+    `Account "${IN_FRENCH.username}" created and invited at ${IN_FRENCH.typo}.`,
+  );
+
+  const invitation = await waitForMail(IN_FRENCH.typo);
+  expect(subjectOf(invitation)).toBe(`Un compte sur ${HOST}`);
+  const body = readable(invitation);
+  expect(body).toContain(`Un compte vient d’être ouvert sur ${HOST}`);
+  expect(body).toContain('Il dure sept jours et ne fonctionne qu’une fois.');
+
+  // Sent again, to the address that should have been typed the first time. The
+  // request carries no language of its own, so the only thing that can still put this
+  // message in French is the language stored on the invitation: a second copy
+  // reverting to the instance default is what this catches, and it reaches somebody
+  // who has read nothing yet as a different message rather than as the same one twice.
+  //
+  // Through the route rather than the row's "Send it again" button, and the address is
+  // why: one send a minute per address, whatever the purpose, so pressing that button
+  // here would be refused and this suite never waits for a delay to pass. Correcting a
+  // mistyped address is the same handler, and it is what somebody does next.
+  await clearMail();
+  const again = await page.request.post(`/api/admin/users/${IN_FRENCH.username}/invite`, {
+    data: { email: IN_FRENCH.email },
+  });
+  expect(again.ok()).toBe(true);
+
+  const corrected = await waitForMail(IN_FRENCH.email);
+  expect(subjectOf(corrected)).toBe(`Un compte sur ${HOST}`);
+  expect(readable(corrected)).toContain(`Un compte vient d’être ouvert sur ${HOST}`);
+
+  // And the list says where the invitation waits now, which is the other half of a
+  // corrected address: the first one is gone rather than left open beside it.
+  await page.goto('/admin/accounts');
+  await expect(
+    page.getByText(
+      new RegExp(`^Invitation sent to ${IN_FRENCH.email}, open until \\d{1,2} \\w+ \\d{4}\\.$`),
+    ),
+  ).toBeVisible();
+});
+
+test('the gallery opens in that language, on a browser that has chosen none', async ({ page }) => {
+  const code = verificationCode(await waitForMail(IN_FRENCH.email));
+
+  await page.goto(`/login?email=${encodeURIComponent(IN_FRENCH.email)}`);
+
+  // English until the session opens, and it has to be: this browser has chosen no
+  // language and asks for English, and nothing about the invitation has reached the
+  // page yet.
+  await expect(
+    page.getByText(`Enter the 6-digit code from the message sent to ${IN_FRENCH.email}.`),
+  ).toBeVisible();
+
+  await page.getByRole('textbox', { name: 'Sign-in code' }).fill(code);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  await expect(page.getByText('This code is an invitation.')).toBeVisible();
+  await page.getByRole('textbox', { name: 'Display name' }).fill(IN_FRENCH.name);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: ALBUMS.day.title })).toBeVisible();
+
+  // The whole chain, read where a person reads it: the invitation carried French,
+  // taking it up gave that language to the person it named, and the response opening
+  // the session offered it to an interface with nothing of its own to prefer. Two
+  // surfaces rather than one, because a single translated string can be a coincidence.
+  await expect(page.getByText(`${SEED_COUNT} éléments`).first()).toBeVisible();
+  await expect(
+    page
+      .getByRole('navigation', { name: 'Sections principales' })
+      .getByRole('button', { name: 'Compte', exact: true }),
+  ).toBeVisible();
+});
+
+test('the language belongs to the person, and the next code arrives in it', async ({ page }) => {
+  await clearMail();
+
+  // A second device, which never saw the invitation and asks in English.
+  await page.goto('/login');
+  await page.getByLabel('Email address', { exact: true }).fill(IN_FRENCH.email);
+  await page.getByRole('button', { name: 'Email a code' }).click();
+  await expect(page.getByText(`If ${IN_FRENCH.email} is known here`)).toBeVisible();
+
+  // Written in French all the same. This is the seed being read back: the identity
+  // was given the language of its invitation and nothing since has overwritten it,
+  // which is what the browser announcing English on every signed-in request would do
+  // if the gallery had opened in the wrong language a test ago.
+  const signInMail = await waitForMail(IN_FRENCH.email);
+  const body = readable(signInMail);
+  expect(body).toContain(`Bonjour ${IN_FRENCH.name},`);
+  expect(body).toContain(`Ce code ouvre une session sur ${HOST}`);
+
+  await page.getByRole('textbox', { name: 'Sign-in code' }).fill(verificationCode(signInMail));
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+
+  // And this device opens in it too, without an invitation anywhere in sight: the
+  // language is the person's now, and every session they open offers it.
+  await expect(page.getByRole('heading', { name: ALBUMS.day.title })).toBeVisible();
+  await expect(page.getByText(`${SEED_COUNT} éléments`).first()).toBeVisible();
 });

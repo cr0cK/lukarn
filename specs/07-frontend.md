@@ -1904,7 +1904,7 @@ unnoticed from the bottom of the queue.
 | `LocalFields`                 | The subpath under `STORAGE_LOCAL_ROOT`                                                                                                                                                                                                                                   |
 | `S3Fields`                    | Endpoint, region, bucket, prefix, key pair, path-style                                                                                                                                                                                                                   |
 | `WebdavFields`                | Address, folder, credentials                                                                                                                                                                                                                                             |
-| `UsersSection` / `UserForm`   | Account list and its four states, creation with a password or with an invitation, editing, re-invitation and confirmed deletion                                                                                                                                          |
+| `UsersSection` / `UserForm`   | Account list and its four states, creation with a password or with an invitation, the language that invitation is written in, editing, re-invitation and confirmed deletion                                                                                              |
 | `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                                     |
 | `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
 | `SettingsSection`             | Sync interval, sync on startup, cache                                                                                                                                                                                                                                    |
@@ -2252,6 +2252,20 @@ no SMTP relay the second card is shown disabled, carrying its reason, rather tha
 hidden: an administrator looking for the option has to be told it exists and what it
 waits on. The row's invite button is disabled the same way, with the same sentence as
 its `title`.
+
+**An invitation carries a language, chosen where it is sent from.** Both places
+that send one offer the same `SelectField`: the creation form, in the grid beside
+the address, and the conversion dialog, under it. It starts on the language the
+administrator is reading the interface in, because somebody about to write to a
+relative is usually about to write in the language they are reading themselves, and
+a language this instance does not speak is refused rather than folded back to the
+default (see [05](./05-api.md)). The options come from `localeOptions()`
+(`ui.tsx`), the one list the three screens offering a language share, and each is
+named in its own words: "Français" is spelt the same on an English screen, and
+translating it would show "French" to somebody looking for their own language in a
+list they cannot read. The choice travels with the message alone. The screen it was
+sent from stays in the language its administrator reads, and the person it reaches
+opens the gallery in it the first time they sign in (D260819c).
 
 **Editing a bound account offers one password field, and says what it costs.** An
 ordinary password change is refused on such an account, and the single way through is
@@ -2692,13 +2706,41 @@ backends — would be configuration to maintain for behaviour nobody would use
 | `messages-fr.ts` | The French catalogue, typed as `Messages`. A missing key fails `pnpm typecheck`. |
 | `translate.ts`   | Reading a catalogue, without React — for `lib/` modules and their tests.         |
 | `locale.ts`      | Which language, and where the answer comes from. No React either.                |
-| `index.tsx`      | `LocaleProvider`, `useT`, `useLocale`.                                           |
+| `index.tsx`      | `LocaleProvider`, `useT`, `useLocale`, `useAdoptLocale`.                         |
 
 **Resolution order**: what this browser was told to use
-(`localStorage['lukarn:locale']`), then the first supported language in
-`navigator.languages`, then English. The choice is a property of the **browser**,
-not of the account: one access key may be shared by a household, and one member
-reading French must not switch the television in the living room.
+(`localStorage['lukarn:locale']`), then the language a **bound** session arrived
+with, then the first supported language in `navigator.languages`, then English.
+
+The first is a property of the **browser** rather than of the account: one access
+key may be shared by a household, and one member reading French must not switch the
+television in the living room. The second is a property of the **person**, and a
+bound account is one person rather than a key several people hold, so the language
+their invitation was written in is the best evidence of what they read (D260819c).
+`sessionLocale` (`locale.ts`) holds the precedence between them: it answers `null`
+whenever this browser has already chosen, so what a reader picked in `/settings`
+outranks whatever a session brings.
+
+**The language a session brings is offered, and never written down.** `adoptLocale`
+sets the language in force and leaves `localStorage` alone, unlike `setLocale`: a
+default the server supplied would become indistinguishable from a decision once
+stored, this browser could never shed it, and its own preference would stop being
+reachable by leaving `/settings` alone. The adoption therefore lasts as long as the
+page: a reload resolves from storage and the browser again, and whoever wants it
+kept chooses it in `/settings`, which is a decision and is stored.
+
+**It happens on the response that opens the session, rather than on a later read of
+`/auth/me`.** `settleSession` (`api/hooks.ts`) adopts the language before it
+invalidates the album list, and that order is the claim. `api/client.ts` announces
+the active language on every request and `plugins/auth.ts` records what it receives
+against the identity (D260812d), so a request going out first would write this
+browser's language over the seeded one, and the adoption would undo itself on the
+first request it caused. The three doors into a session share the one function:
+signing in with a password, spending a code, and a paired screen being approved.
+
+**Only a bound account offers a language**, since a shared key says nothing about
+who is holding it and the television in the living room is the case that rule exists
+for (D260812d).
 
 **`/settings` carries it**, as a `SelectField` listing every language — one entry
 toggling between two would have nowhere to put a third, and never says what it is
@@ -3223,19 +3265,19 @@ variant, that `/admin` is a list of sections whose settings are rows, that
 `/settings` is read the same way — and, on the desktop side, that none of that
 happened above 768 px.
 
-| Spec               | What it holds to account                                                                                 |
-| ------------------ | -------------------------------------------------------------------------------------------------------- |
-| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                                         |
-| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals           |
-| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                             |
-| `search.spec.ts`   | The field opens where the button is, focused                                                             |
-| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field, the storage list and the WebDAV form   |
-| `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused     |
-| `comments.spec.ts` | Address → code → comment → thread → activity feed                                                        |
-| `accounts.spec.ts` | An invitation sent from `/admin`, its code read from the queued mail, and the session it opens           |
-| `storage.spec.ts`  | A real synchronisation, from every storage that can be reached — see below                               |
-| `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes |
-| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                   |
+| Spec               | What it holds to account                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `albums.spec.ts`   | Sign-in, the four tabs, fingertip-sized targets, both safe areas                                                                                       |
+| `album.spec.ts`    | Real thumbnails, a top bar carrying only this page, its retraction, the sheet's two dismissals                                                         |
+| `viewer.spec.ts`   | The bare opening, the tap that undoes it, the sheet at both stops, the pinch                                                                           |
+| `search.spec.ts`   | The field opens where the button is, focused                                                                                                           |
+| `admin.spec.ts`    | Sections as a list, a setting as a row that opens onto its field, the storage list and the WebDAV form                                                 |
+| `settings.spec.ts` | The menu offers Settings and no language, rows opening onto their list, the theme listed and refused                                                   |
+| `comments.spec.ts` | Address → code → comment → thread → activity feed                                                                                                      |
+| `accounts.spec.ts` | An invitation sent from `/admin`, its code read from the queued mail, the session it opens, and the language it was written in followed to the gallery |
+| `storage.spec.ts`  | A real synchronisation, from every storage that can be reached — see below                                                                             |
+| `version.spec.ts`  | "Powered by Lukarn v1.0.0", the changelog link, and the badge offering the release the fixture publishes                                               |
+| `desktop.spec.ts`  | The bar, the side panel, the keyboard — and no tab bar                                                                                                 |
 
 **`storage.spec.ts` is the only one that is not run against `seed-demo`.** Every
 other spec asserts against rows written straight into the index, so nothing

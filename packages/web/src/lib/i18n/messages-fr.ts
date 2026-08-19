@@ -573,6 +573,9 @@ export const fr: Messages = {
   'userForm.email': 'Adresse email',
   'userForm.emailHint':
     'L’invitation part à cette adresse et reste valable sept jours. Aucun mot de passe n’est défini : le code est la façon d’entrer dans ce compte.',
+  'userForm.locale': 'Langue de l’invitation',
+  'userForm.localeHint':
+    'Le message est écrit dans cette langue, et la galerie s’ouvre dedans à la première connexion.',
   'userForm.invite': 'Envoyer l’invitation',
   'userForm.invited': (username: string, email: string) =>
     `Compte « ${username} » créé et invité à ${email}.`,

@@ -187,6 +187,95 @@ describe('creating an account by address', () => {
   });
 });
 
+/**
+ * An invitation is the one message this instance composes for somebody it has never
+ * met: nothing about them is recorded, so the language belongs to whoever invites
+ * them (D260812d). What is checked here is that the choice survives everything that
+ * sends the message a second time, and that the person it reaches inherits it.
+ */
+describe('the language of an invitation', () => {
+  it('is written in the language chosen, whichever door sends it again', async () => {
+    sent.length = 0;
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: { cookie: adminCookie },
+      payload: { username: 'tata', email: 'tata@example.com', locale: 'fr', albums: [ALL_ALBUMS] },
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    await context.mailer.drain();
+    assert.match(sent.at(-1)!.subject, /Un compte sur/);
+
+    // Sending it again from /admin, which is what somebody presses when the first
+    // message went unread. Arriving in another language would read as a different
+    // message rather than the same one twice.
+    rearmTheCode('tata@example.com');
+    sent.length = 0;
+    const resent = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/tata/invite',
+      headers: { cookie: adminCookie },
+      payload: {},
+    });
+    assert.equal(resent.statusCode, 200, resent.body);
+    await context.mailer.drain();
+    assert.match(sent.at(-1)!.subject, /Un compte sur/);
+
+    // And from the address itself, which asks in English here: the header says what
+    // this browser reads, and the recipient of the invitation is not holding it.
+    rearmTheCode('tata@example.com');
+    sent.length = 0;
+    const asked = await server.inject({
+      method: 'POST',
+      url: '/api/auth/code/request',
+      payload: { email: 'tata@example.com' },
+    });
+    assert.equal(asked.statusCode, 202, asked.body);
+    await context.mailer.drain();
+    assert.match(sent.at(-1)!.subject, /Un compte sur/);
+
+    // Taking it up hands that language to the identity, so the first notification
+    // sent before any request of theirs is already readable to them.
+    await takeUpInvitation('tata@example.com', 'Tata');
+    assert.equal(context.commenters.byEmail('tata@example.com')?.locale, 'fr');
+  });
+
+  it('falls back to the instance default when nobody chose one', async () => {
+    assert.equal(context.env.defaultLocale, 'en', 'this test reads the fallback');
+
+    await createByEmail('tonton', 'tonton@example.com');
+    await context.mailer.drain();
+    assert.match(sent.at(-1)!.subject, /An account for you on/);
+
+    // Nothing is stored, so the default keeps applying to the resend as well rather
+    // than being frozen into the row on the day it was minted.
+    rearmTheCode('tonton@example.com');
+    sent.length = 0;
+    const resent = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/tonton/invite',
+      headers: { cookie: adminCookie },
+      payload: {},
+    });
+    assert.equal(resent.statusCode, 200, resent.body);
+    await context.mailer.drain();
+    assert.match(sent.at(-1)!.subject, /An account for you on/);
+  });
+
+  it('refuses a language this instance does not speak rather than substituting one', async () => {
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: { cookie: adminCookie },
+      payload: { username: 'cousin', email: 'cousin@example.com', locale: 'de' },
+    });
+
+    // A choice made on a form: sending the message in another language and reporting
+    // success would be worse than saying no.
+    assert.equal(response.statusCode, 400, response.body);
+  });
+});
+
 describe('the two public routes say one thing only', () => {
   it('answers 202 for an unknown address, a known one and one asked again', async () => {
     await createByEmail('tantine', 'tantine@example.com');

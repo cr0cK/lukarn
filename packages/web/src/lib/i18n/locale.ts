@@ -1,11 +1,17 @@
 /**
  * Which language the interface speaks, and where that answer comes from.
  *
- * Three sources, in this order: what this browser was **told** to use, what its
- * user configured in the system, then English. The chosen language is a property
- * of the browser rather than of the account: a household shares one access key
- * (`users`), and one member reading French must not switch the television in the
- * living room.
+ * Four sources, in this order: what this browser was **told** to use, the language
+ * the person a **bound** account signs as is written to, what its user configured in
+ * the system, then English.
+ *
+ * The first is a property of the browser rather than of the account, and stays so:
+ * a household shares one access key (`users`), and one member reading French must
+ * not switch the television in the living room. The second refines that rule rather
+ * than contradicting it — a bound account is one person, not a key several people
+ * hold, so the language their invitation was written in is the best evidence of what
+ * they read. It never outranks a choice made here, and never becomes one either
+ * (`sessionLocale`).
  *
  * Deliberately free of React so `api/client.ts` can read the active language
  * without a hook: every request announces it with `Accept-Language`, which is how
@@ -60,6 +66,24 @@ export function browserLocale(): Locale | null {
 /** The language to open with, before anyone touches the menu. */
 export function initialLocale(): Locale {
   return readStoredLocale() ?? browserLocale() ?? DEFAULT_LOCALE;
+}
+
+/**
+ * The language a session brings with it, or `null` when it must not be taken.
+ *
+ * A session cannot answer at page load — nobody is signed in yet — so this sits
+ * beside `initialLocale` rather than inside it, and applies the same precedence
+ * afterwards: an explicit choice already stored here wins, and whoever made none
+ * takes the language the invitation was written in.
+ *
+ * The result is deliberately **not** stored. A language the server supplied is a
+ * default, and writing it down would make it indistinguishable from a decision: this
+ * browser could never shed it, and its own preference would stop being reachable by
+ * leaving the menu alone.
+ */
+export function sessionLocale(offered: Locale | null): Locale | null {
+  if (!offered || readStoredLocale()) return null;
+  return offered;
 }
 
 /**

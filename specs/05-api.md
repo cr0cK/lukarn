@@ -24,6 +24,22 @@ commenter identity, the language is **recorded** on it — only when it changes 
 so an email composed hours later reaches its recipient in the language they read
 (see [03](./03-data-model.md) and D260812d).
 
+**The recording reads only requests the application made itself**, which
+`plugins/auth.ts` tells apart by `Sec-Fetch-Dest`: `empty` is a `fetch()` carrying
+the language the interface is displaying, and everything else is a subresource the
+browser asked for with its own preference. A thumbnail says nothing about what
+somebody reads, and a cold grid sends hundreds of them, so without this a language
+chosen for a person is overwritten by the first photographs they open
+([D260819c](./08-decisions/D260819c-the-language-of-an-invitation-is-chosen-by-whoever.md)).
+A browser sending no such header keeps the earlier behaviour.
+
+**An invitation is the one message with nobody to read a language from.** Its
+recipient has made no request here, so nothing about them is recorded: whoever
+sends it chooses, `POST /api/admin/users` and
+`POST /api/admin/users/:username/invite` carry that choice, and
+`verification_codes.locale` keeps it so that sending the message again repeats it
+(D260819c). `DEFAULT_LOCALE` applies when nobody chose.
+
 Logs are not translated: they are read next to the code, which is in English.
 
 ## Error responses
@@ -126,6 +142,13 @@ end reads it to stop offering to change or forget an identity the server will
 refuse to change or forget: on such an account the way out is to sign out. \*Open route in the sense that it does not reject before entering: the
 401 is the normal response for a signed-out visitor, and the front end uses it to
 decide whether to show the sign-in form.
+
+`identity` is a `CommenterIdentity` = `{ email, displayName, notify, locale }`.
+`locale` is the language this person is written to in, `null` while none is
+recorded, and their own requests maintain it through `Accept-Language` (D260812d).
+An invitation seeds it when the identity has none, which is what lets the interface
+open in it: it is read as a session begins, on a bound account alone
+(see [07](./07-frontend.md) and D260819c).
 
 **`GET /api/auth/setup-state`** — `200 { needsSetup: boolean }`. Says whether the
 database still holds no account, in which case the sign-in screen shows the
@@ -979,8 +1002,8 @@ are regenerated on demand.
 
 `POST` body: `CreateUserRequest`, which takes **exactly one** of a password and
 an address. `{ username, password, admin?, albums? }` creates the shared key of
-1.2, unchanged in every respect; `{ username, email, admin?, albums? }` creates an
-account with no password and sends it an invitation. Supplying both, or neither,
+1.2, unchanged in every respect; `{ username, email, locale?, admin?, albums? }`
+creates an account with no password and sends it an invitation. Supplying both, or neither,
 is a `400`: the union in `packages/shared` says the same thing in the type system,
 so a front end making that call fails to compile rather than at runtime. `PATCH`:
 `UpdateUserRequest` = `{ password?, admin?, albums?, unbind? }`, an absent field
@@ -1001,6 +1024,13 @@ comments is still the `moderationEmail` setting, and it binds nothing.
 - `username`: `USERNAME_PATTERN`, 64 characters at most. `password`:
   `PASSWORD_MIN_LENGTH` (8) at minimum, 512 at most. `email`: a valid address,
   `EMAIL_MAX_LENGTH` at most.
+- `locale`: the language the invitation is written in, one of the two the instance
+  speaks. Anything else is a `400`, rather than the default quietly applied: this
+  is a choice made on a form, and a message going out in a language its sender did
+  not pick while the response reports success is worse than a refusal. Omitted,
+  `DEFAULT_LOCALE` applies. The union in `packages/shared` puts it on the address
+  branch alone, so a front end pairing it with a password fails to compile, and the
+  route ignores it there since that branch sends no message (D260819c).
 - `albums`: a list of ids, or `['*']` (`ALL_ALBUMS`) as a wildcard. An unknown
   id responds `400 unknown_album`, naming the culprit. A list mixing `'*'` with
   ids counts as a wildcard.
@@ -1036,12 +1066,21 @@ comments is still the `moderationEmail` setting, and it binds nothing.
   pairings with them.
 
 **`POST /api/admin/users/:username/invite`** — body `InviteUserRequest` =
-`{ email? }`. Converts an account that already exists, and sends an invitation
+`{ email?, locale? }`. Converts an account that already exists, and sends an invitation
 again. With an address it invites that account; without one it mints a fresh code
 for the invitation already pending, which is what somebody presses when the first
 message went unread. `409 no_invitation` when there is neither: an expired
 invitation left no row, so nothing here still knows where it was sent and the
 address has to be given again.
+
+**A resend takes its language from the invitation rather than from the request.**
+Without a `locale`, the message repeats the one the pending row was minted with, so
+a second copy of an unread message never reaches the inbox in another language than
+the first. A `locale` in the request overrides it, which is the sender changing
+their mind. With neither, `DEFAULT_LOCALE` applies exactly as on the first send.
+`POST /api/auth/code/request` follows the same rule when the address it is given has
+an invitation waiting: that is the recipient asking for the message again, and the
+row already holds the language they were written to in (D260819c).
 
 It answers `409 already_bound` on an account that is already bound. Changing
 somebody's address is out of scope for this release, and it is the shape of the
