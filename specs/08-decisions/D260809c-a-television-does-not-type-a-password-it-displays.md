@@ -1,5 +1,7 @@
 # D260809c — A television does not type a password: it displays one and has it approved
 
+**Confidence.** observed — plugins/auth.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The only way in was `POST /api/auth/login`, with two fields to
 enter. On a computer or phone, a password manager fills them in; on a television
 there is neither a manager nor a keyboard — each character is entered with the

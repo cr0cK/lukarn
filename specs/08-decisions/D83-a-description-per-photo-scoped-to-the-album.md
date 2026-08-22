@@ -1,5 +1,7 @@
 # D83 — A description per photo, scoped to the album
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** An album has a description and a day has a note, but a specific
 photo had nothing. Yet this is where context is needed most: "Léa jumps from the
 jetty, third attempt" cannot be inferred from the filename, EXIF, or the day note,

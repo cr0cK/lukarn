@@ -1,5 +1,7 @@
 # D64 — The deployment procedure lives beside the scripts, not in the root README
 
+**Confidence.** observed — backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** As missing pieces were added — hardening (D47), scripts and
 cloud-init (D52), provider neutrality (D63) — the root `README.md` reached seven
 hundred lines, over three quarters of them only concerning server installation.

@@ -1,5 +1,7 @@
 # D260816i — A connection is edited, and its settings are read back
 
+**Confidence.** observed — db.ts, git ls-files → exit 0 · 2026-08-23
+
 ## Context
 
 `/admin` could add a storage connection and delete one, and nothing in between.

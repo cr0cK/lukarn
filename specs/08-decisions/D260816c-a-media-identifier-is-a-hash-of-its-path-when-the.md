@@ -1,5 +1,7 @@
 # D260816c — A media identifier is a hash of its path when the backend has none
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-16
+
 **Context.** Until now the string the index stored as a file's identifier and the
 string handed to `provider.fetch` were the same one: a Drive file id, opaque,
 unique across every account, and unchanged when the file is renamed or dragged

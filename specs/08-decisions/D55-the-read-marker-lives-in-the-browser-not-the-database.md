@@ -1,5 +1,7 @@
 # D55 — The read marker lives in the browser, not the database
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Displaying "3 new comments" requires knowing where the reader had
 reached. A server-side table would be the instinctive answer.
 

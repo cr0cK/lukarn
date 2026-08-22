@@ -1,5 +1,7 @@
 # D68 — A day's collapsed state is layout data and does not survive the page
 
+**Confidence.** observed — lib/seenComments.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The division by day was not visible. A section header followed by
 two hundred thumbnails, then another header: nothing while scrolling indicates
 where one day ends and the next begins. The requested remedy was to collapse a

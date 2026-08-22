@@ -1,5 +1,7 @@
 # D29 — Login throttling operates along three axes
 
+**Confidence.** observed — main.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** D13 had chosen a single `<ip>:<username>` key, accepting that a
 distributed attack or username sweep would not be slowed down. This limitation
 is more costly than estimated: each rejected attempt triggers a deliberately slow

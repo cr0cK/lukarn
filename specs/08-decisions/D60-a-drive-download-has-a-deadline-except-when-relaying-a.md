@@ -1,5 +1,7 @@
 # D60 — A Drive download has a deadline, except when relaying a video
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `DriveService.send()` called `fetch` without an `AbortSignal`. Node
 then inherits undici's default: **five minutes**. But the render limiter slot is
 taken **before** the download — deliberately, because the original in memory is

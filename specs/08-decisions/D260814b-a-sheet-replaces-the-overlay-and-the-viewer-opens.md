@@ -1,5 +1,7 @@
 # D260814b — A sheet replaces the overlay, and the viewer opens bare
 
+**Confidence.** observed — components/Sheet.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.**
 [D260814](./D260814-the-mobile-shell-moves-to-a-bottom-tab-bar.md) moved
 navigation to the bottom of the phone screen and left the two surfaces that

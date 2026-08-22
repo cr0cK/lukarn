@@ -1,5 +1,7 @@
 # D20 — Zooming with a high-resolution variant rather than `scale()` on the screen rendering
 
+**Confidence.** observed — packages/web/src/components/ZoomableImage.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The user wants to examine the details of a photo in the viewer.
 
 **Decision.** `ZoomableImage` (`packages/web/src/components/ZoomableImage.tsx`)

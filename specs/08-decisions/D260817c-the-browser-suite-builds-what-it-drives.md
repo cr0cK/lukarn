@@ -1,5 +1,7 @@
 # D260817c — The browser suite builds what it drives
 
+**Confidence.** observed — fixtures/serve.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `packages/e2e` runs the **built** artefact: `fixtures/serve.ts`
 spawns `packages/server/dist/main.js`, which serves `packages/web/dist`. That is
 the point of the suite — it opens the page a visitor opens, not a dev server

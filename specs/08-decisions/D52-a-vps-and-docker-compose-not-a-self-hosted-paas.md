@@ -1,5 +1,7 @@
 # D52 — A VPS and `docker compose`, not a self-hosted PaaS
 
+**Confidence.** observed — deploy/backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The repository could build an image and serve HTTPS (D47), but
 nothing described how to arrive at a running machine. `README.md` targeted a
 generic VPS: undersized specification, SSH open to the world, and updates through

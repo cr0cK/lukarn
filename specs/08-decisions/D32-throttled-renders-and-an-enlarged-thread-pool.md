@@ -1,5 +1,7 @@
 # D32 — Throttled renders and an enlarged thread pool
 
+**Confidence.** observed — media/semaphore.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Opening a grid whose thumbnails are not yet cached triggers one
 render per visible photo. Each loads the entire original into memory — nine
 megabytes for a typical camera photo — then decodes and re-encodes it. The

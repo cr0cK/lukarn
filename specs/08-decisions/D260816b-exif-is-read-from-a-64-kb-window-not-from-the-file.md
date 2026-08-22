@@ -1,5 +1,7 @@
 # D260816b — EXIF is read from a 64 KB window, not from the file
 
+**Confidence.** observed — sync/exif.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** [D3](./D3-indexing-without-downloading.md) is the property the whole
 index rests on: an album of several thousand photographs is indexed without
 downloading a byte, because Drive returns dimensions, capture date, camera and

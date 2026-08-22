@@ -1,3 +1,7 @@
+---
+type: decision-store
+---
+
 # 08 — Decision log
 
 One decision per file: its context, the decision, what was rejected, and why.

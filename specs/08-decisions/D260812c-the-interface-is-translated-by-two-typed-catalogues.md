@@ -1,5 +1,7 @@
 # D260812c — The interface is translated by two typed catalogues, not by a library
 
+**Confidence.** observed — messages-en.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The repository had just settled on a single language, English,
 because splitting by audience — English on GitHub, French in the interface —
 fails as soon as an unknown contributor has to read the code, its comments and

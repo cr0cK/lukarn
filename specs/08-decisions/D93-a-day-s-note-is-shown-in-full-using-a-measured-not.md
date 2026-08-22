@@ -1,5 +1,7 @@
 # D93 — A day's note is shown in full using a measured, not estimated, line count
 
+**Confidence.** observed — lib/measureLines.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** D85 reduced a day's note to **one truncated line** in the section
 header so the height reserved by `useGridLayout` exactly matched that rendered by
 `SectionHeader` (D49: layout is calculated without the DOM). The contract was

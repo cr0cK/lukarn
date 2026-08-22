@@ -1,5 +1,7 @@
 # D1 — SQLite rather than PostgreSQL
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** A searchable media index, with chronological sorting and pagination,
 is needed on a modest VPS.
 

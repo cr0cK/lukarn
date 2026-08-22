@@ -1,5 +1,7 @@
 # D260809g — A derivative can no longer be larger than its source video
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** [D6](./D6-a-video-is-relayed-untouched-except-a-codec-no-browser.md) anticipated a derivative
 1.5 times smaller than its source, and the first production batch did yield that
 figure: 1,234 MB of originals for 818 MB of output across twenty videos. The

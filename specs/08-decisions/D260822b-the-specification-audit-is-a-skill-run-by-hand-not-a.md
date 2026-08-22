@@ -1,5 +1,7 @@
 # D260822b — The specification audit is a skill run by hand, not a workflow
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-23
+
 **Context.** Every documentation check here proves that a mention **exists**:
 `check:specs` finds the route and the variable, `check:links` resolves the link,
 `check:changelog` requires an announcement. None of them reads a paragraph and asks

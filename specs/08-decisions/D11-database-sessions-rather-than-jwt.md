@@ -1,5 +1,7 @@
 # D11 — Database sessions rather than JWT
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Visitors must remain authenticated between requests.
 
 **Decision.** An opaque identifier of 32 random bytes, a row in `sessions`, a

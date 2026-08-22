@@ -1,5 +1,7 @@
 # D90 — View controls identify themselves on hover at every width
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** [D73](./D73-the-top-bar-fits-on-one-row-and-declares-its-controls.md)
 measured the cost of view-control labels and postponed them beyond `lg`: at
 768 px, displaying them reduced the album title from 456 to 144 px. Beyond that

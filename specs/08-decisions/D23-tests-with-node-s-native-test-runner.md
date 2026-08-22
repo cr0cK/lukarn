@@ -1,5 +1,7 @@
 # D23 — Tests with Node's native test runner
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Tests are needed, without adding tooling overhead.
 
 **Decision.** `node --import tsx --test`, `node:assert/strict`, tests written in

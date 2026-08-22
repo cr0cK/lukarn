@@ -1,5 +1,7 @@
 # D21 — Asymmetric preloading in the viewer
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Each photo missing from the server cache requires downloading an
 original from Drive; preloading too widely saturates the queue and slows down the
 photo being viewed.

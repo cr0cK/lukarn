@@ -1,5 +1,7 @@
 # D27 — An interrupted sync leaves a mixed index, and that is accepted
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `Syncer.run()` writes in batches of 500, each batch in its own
 transaction, so that the album becomes browsable during synchronisation (see
 [02](../02-architecture.md)). If the sync fails partway through, the batches

@@ -1,5 +1,7 @@
 # D3 — Indexing without downloading
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Indexing thousands of photos must neither take hours nor exhaust the quota.
 
 **Decision.** `files.list` with

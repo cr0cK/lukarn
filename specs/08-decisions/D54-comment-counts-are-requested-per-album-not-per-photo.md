@@ -1,5 +1,7 @@
 # D54 — Comment counts are requested per album, not per photo
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The viewer must indicate that a photo has a conversation **before**
 anything is opened — that is the only point when the information is useful. But
 `MediaDetail.commentCount` is only loaded when the panel opens, specifically to

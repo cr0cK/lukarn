@@ -1,5 +1,7 @@
 # D56 — The side panel takes a column; it no longer covers the photo
 
+**Confidence.** observed — lib/zoom.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The panel overlaid the right edge, exactly where the "Next" arrow
 sat. Reading a thread and then moving to the next photo required closing the
 panel, clicking, and reopening it — for every photo. Leaving it open was

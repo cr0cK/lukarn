@@ -1,5 +1,7 @@
 # D6 — A video is relayed untouched, except a codec no browser decodes
 
+**Confidence.** observed — media/range.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Videos are MP4 and MOV files, some of them large. Handed to the
 browser as they stand, they cost the server nothing and seek natively. The
 exception is the codec the browser cannot open at all: **25 of the 38 files** in

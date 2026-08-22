@@ -1,5 +1,7 @@
 # D28 — Three columns written but never read are retained
 
+**Confidence.** observed — db.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `media.modified_time`, `oauth_token.scope` and
 `sessions.created_at` are populated on write and do not appear in any read query.
 

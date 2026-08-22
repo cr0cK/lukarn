@@ -1,5 +1,7 @@
 # D18 — The sort direction lives in the URL and the query key
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The album can be browsed from newest to oldest or the other way
 round.
 

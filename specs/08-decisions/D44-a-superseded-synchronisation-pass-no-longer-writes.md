@@ -1,5 +1,7 @@
 # D44 — A superseded synchronisation pass no longer writes anything
 
+**Confidence.** observed — routes/admin.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Found during cross-review. Changing an album's Drive folder purges
 the index immediately (`routes/admin.ts`), so the album instantly stops showing
 what the owner has just removed. But the synchronisation already in flight for

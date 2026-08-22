@@ -1,5 +1,7 @@
 # D87 — A departed image must be abandoned, or it blocks the queue for those being viewed
 
+**Confidence.** observed — lib/imageRelease.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Some thumbnails remained black in the grid — sometimes for a
 minute, sometimes long enough to appear lost. Opening the corresponding photo
 showed it immediately, ruling out a failed server render: the file existed, but

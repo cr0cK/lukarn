@@ -1,5 +1,7 @@
 # D73 — The top bar fits on one row and declares its controls instead of rendering them
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** On a phone, the bar grew to **101 px** — two rows. The first aligned
 Back, the title, "Admin", and "Log out", amounting to 169 px of text buttons that
 reduced the album title to `D.` and the subtitle to `120 items · Febr…`. The

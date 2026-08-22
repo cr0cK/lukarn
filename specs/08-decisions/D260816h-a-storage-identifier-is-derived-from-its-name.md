@@ -1,5 +1,7 @@
 # D260816h — A storage identifier is derived from its name
 
+**Confidence.** observed — db.ts, git ls-files → exit 0 · 2026-08-23
+
 ## Context
 
 The "Add a storage" form asked for two things before anything else: a **Name**,

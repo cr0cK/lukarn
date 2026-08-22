@@ -1,5 +1,7 @@
 # D22 — A shared `AppContext` object
 
+**Confidence.** observed — packages/server/test/access.test.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Routes, synchronisation and the media pipeline need the same
 services.
 

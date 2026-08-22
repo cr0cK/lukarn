@@ -1,5 +1,7 @@
 # D10 — Separate cache headers for `/assets/` and `index.html`
 
+**Confidence.** observed — packages/server/test/static.test.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Both are served by the same static plugin.
 
 **Decision.** `setHeaders` distinguishes them by the presence of `/assets/` in the path:

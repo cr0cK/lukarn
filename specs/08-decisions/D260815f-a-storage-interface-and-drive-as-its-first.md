@@ -1,5 +1,7 @@
 # D260815f — A storage interface, and Drive as its first implementation
 
+**Confidence.** observed — storage/provider.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `packages/server/src/drive/` spoke to the Google Drive API directly,
 and everything downstream spoke Drive with it. `Syncer` held a `drive_v3.Drive`
 and read `Schema$File` fields; `MediaRenderer` built a `thumbnailLink` URL and

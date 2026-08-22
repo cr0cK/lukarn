@@ -1,5 +1,7 @@
 # D260815b — The account is a person, not an initial
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-15
+
 **Context.** Three surfaces stood for whoever is signed in, and each drew them
 differently. The top bar's badge held a letter taken from the identifier; the
 Account tab on a phone held a person glyph; the menu both of them open opened on

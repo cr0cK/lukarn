@@ -1,5 +1,7 @@
 # D65 — The code email subject names the instance, not the code
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The verification email put the code at the start of its subject —
 `864781 — verification code`. The intention was practical: on a phone, the
 notification banner was enough to read the code without opening the mailbox. The

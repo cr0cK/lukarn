@@ -1,5 +1,7 @@
 # D260811c — A published image, with local builds provided as an override
 
+**Confidence.** observed — deploy/deploy.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `docker-compose.yml` contained `build: .`, so every instance built
 the application on its own machine. The cost was invisible while there was only
 one operator: they were the one requiring **4 GB of memory** on the VPS, not to

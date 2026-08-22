@@ -1,5 +1,7 @@
 # D260815d — The light theme is a second ramp, not a second interface
 
+**Confidence.** observed — styles.css, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The interface has always been dark, and it said so in three places:
 one `ink-*` scale in `styles.css`, `class="dark"` hardcoded in `index.html`, and a
 Theme row on `/settings` whose second value was greyed out with "(soon)" beside it

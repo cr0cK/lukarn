@@ -1,5 +1,7 @@
 # D86 — The account fits in a badge, and its initial is rendered locally
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The top bar aligned Admin, Log out, and Install, three buttons none
 of which is used daily in a photo viewer; at `lg` they carried labels, consuming
 nearly 250 px of the album title. Elsewhere, under "Albums", a subtitle said

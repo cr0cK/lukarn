@@ -1,5 +1,7 @@
 # D260809 — A decision is numbered by its date and lives in its own file
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The decision log was a single file nearly four thousand lines long,
 with each new entry appended using the next sequential number. Two parallel
 branches collided in it in two ways, and work is done in worktrees, so several

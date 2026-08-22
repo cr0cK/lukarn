@@ -1,5 +1,7 @@
 # D67 — The moderation queue is a work list, not a feed
 
+**Confidence.** observed — format.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The queue rendered fifty reverse-chronological rows, a "Load more"
 button that stacked them, and two filters — all or hidden. Three defects, all
 measurable:

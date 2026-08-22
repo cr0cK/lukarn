@@ -1,5 +1,7 @@
 # D260814f — The sheet's grip answers a tap, not only a drag
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-14
+
 **Context.** The sheet was built around its gesture: the grip follows the finger
 and the release decides which stop it lands on
 ([D260814b](./D260814b-a-sheet-replaces-the-overlay-and-the-viewer-opens.md)).

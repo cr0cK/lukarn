@@ -1,5 +1,7 @@
 # D260819 — An account may be bound to a person, rather than a second authentication mode
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-20
+
 **Context.** `users` is an access key.
 [D38](./D38-an-access-key-is-not-a-person.md) separated it from `commenters`, the
 person who signs a comment, because a password given to a whole family cannot say

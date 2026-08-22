@@ -1,5 +1,7 @@
 # D260816e — S3 requests are signed by hand rather than with the AWS SDK
 
+**Confidence.** observed — storage/sigv4.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** An S3-compatible bucket is the third storage this application reads,
 behind the interface
 [D260815f](./D260815f-a-storage-interface-and-drive-as-its-first.md) declared.

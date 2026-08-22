@@ -1,5 +1,7 @@
 # D14 — Refresh token encrypted at rest
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The token provides read access to the owner's entire Drive and is
 stored in a SQLite file on a VPS.
 

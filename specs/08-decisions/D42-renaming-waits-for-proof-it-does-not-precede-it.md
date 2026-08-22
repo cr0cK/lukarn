@@ -1,5 +1,7 @@
 # D42 — Renaming waits for proof; it does not precede it
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Found during cross-review. `requestCode` wrote `display_name` as soon
 as it was requested, with this comment as justification: "it is revalidated by
 the following code anyway". That was false in terms of operation order — the

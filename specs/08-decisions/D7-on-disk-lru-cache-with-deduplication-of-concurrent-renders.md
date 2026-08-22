@@ -1,5 +1,7 @@
 # D7 — On-disk LRU cache with deduplication of concurrent renders
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Opening an album triggers dozens of thumbnail requests at once; producing a
 thumbnail requires a Drive download and sharp decoding.
 

@@ -1,5 +1,7 @@
 # D85 — One line per text in the section header, because reserved height must be exact
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Grid layout is calculated without the DOM: `useGridLayout` declares
 each header's height, and `SectionHeader` must fit within it (D49). A day note
 reserved **two** lines there — 40 px — although most day notes are short and use

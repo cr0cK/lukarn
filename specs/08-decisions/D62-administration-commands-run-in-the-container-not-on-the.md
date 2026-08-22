@@ -1,5 +1,7 @@
 # D62 — Administration commands run in the container, not on the host
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `deploy/cloud-init.yaml` (D52) sets up a machine with Docker,
 `rclone`, Tailscale, and `ufw` — and nothing else. Meanwhile, `README.md` created
 the first administrator with `pnpm install && pnpm create-admin alexis` on the

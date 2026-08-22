@@ -1,5 +1,7 @@
 # D34 — One thread per (album, media) pair, not per media item
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The same Drive file appears in several albums when their folders
 are nested — this is already the reason for the composite primary key
 `(album_id, id)` of `media` and for `albumsContaining()`.

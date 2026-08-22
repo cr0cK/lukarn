@@ -1,5 +1,7 @@
 # D260813c — The instance name leaves the environment for the database
 
+**Confidence.** observed — context.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** D72 put the instance name in `APP_NAME` and had the server
 substitute it into `index.html` and the manifest at startup. The reasoning still
 holds in part: the name must exist before any account does, because the first

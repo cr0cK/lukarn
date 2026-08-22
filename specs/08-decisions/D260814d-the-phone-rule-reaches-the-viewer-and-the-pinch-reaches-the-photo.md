@@ -1,5 +1,7 @@
 # D260814d — The phone rule reaches the viewer, and the pinch reaches the photo
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-14
+
 **Context.**
 [D260814](./D260814-the-mobile-shell-moves-to-a-bottom-tab-bar.md) stated one
 rule — the top bar describes the page, the bottom bar navigates between pages —

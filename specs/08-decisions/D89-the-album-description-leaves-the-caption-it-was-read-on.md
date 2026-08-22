@@ -1,5 +1,7 @@
 # D89 — The album description leaves the caption: it was read on entry
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** [D84](./D84-context-moves-to-the-bottom-of-the-viewer-at-every-width.md)
 gathered three texts at the bottom of the viewer, from most specific to most
 general: photo, day, album. The reasoning held for the first two — they belong to

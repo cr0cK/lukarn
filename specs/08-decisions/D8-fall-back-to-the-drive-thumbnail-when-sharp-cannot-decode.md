@@ -1,5 +1,7 @@
 # D8 — Fall back to the Drive thumbnail when sharp cannot decode
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The libvips bundled with sharp cannot decode every HEIC file or proprietary
 RAW format.
 

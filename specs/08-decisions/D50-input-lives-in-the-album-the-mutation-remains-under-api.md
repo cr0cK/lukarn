@@ -1,5 +1,7 @@
 # D50 — Input lives in the album; the mutation remains under `/api/admin`
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** It is impossible to know what to write about a day without seeing
 its photos. Annotating from `/admin` would amount to asking someone to describe
 14 July from memory while looking at a list of albums.

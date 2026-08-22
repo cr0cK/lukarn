@@ -1,5 +1,7 @@
 # D58 — Prewarming prepares thumbnails and follows synchronisation
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** D45 had decided that prewarming renders the `full` variant and is
 never connected to the end of a synchronisation. Both points proved wrong in use,
 and it took a test account opening an album of 941 never-viewed photos to reveal

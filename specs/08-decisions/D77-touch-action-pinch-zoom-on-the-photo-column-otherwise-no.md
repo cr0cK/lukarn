@@ -1,5 +1,7 @@
 # D77 — `touch-action: pinch-zoom` on the photo column, otherwise no touch gesture completes
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** On a phone, panning around an enlarged photo was described as "very,
 very slow, almost unusable", and the position indicator "slipped" as soon as it
 moved. It was not slow: the gesture died midway. No `touch-action` was declared

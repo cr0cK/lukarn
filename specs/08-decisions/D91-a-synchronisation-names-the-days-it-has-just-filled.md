@@ -1,5 +1,7 @@
 # D91 — A synchronisation names the days it has just filled
 
+**Confidence.** observed — main.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** [D48](./D48-geocoding-runs-in-the-background-and-its-cache-is-a-one.md)
 connected the places pass to startup and hourly housekeeping while explicitly
 excluding synchronisation: geocoding is capped at one request per second, and a

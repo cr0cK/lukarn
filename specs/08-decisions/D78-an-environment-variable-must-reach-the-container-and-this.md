@@ -1,5 +1,7 @@
 # D78 — An environment variable must reach the container, and this is checked
 
+**Confidence.** observed — env.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `APP_NAME` (D72) and `GEOCODING_URL` were declared in the zod schema
 in `env.ts`, in `.env.example`, and described in `05`, `06`, and `08`. Neither
 reached the production process.

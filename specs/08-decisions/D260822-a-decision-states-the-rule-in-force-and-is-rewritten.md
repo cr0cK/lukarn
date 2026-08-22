@@ -1,5 +1,7 @@
 # D260822 — A decision states the rule in force and is rewritten when it changes
 
+**Confidence.** observed — routes/media.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** This directory was append-only: a new decision was added instead of
 rewriting an existing one, on the grounds that a decision later reversed remains
 useful information. Two costs came with that, and both were being paid.

@@ -1,5 +1,7 @@
 # D260813 — The brand colour is a setting, and its palette is derived in TypeScript rather than by `color-mix()`
 
+**Confidence.** observed — styles.css, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The project has a mark: a rounded black square, a white `L` and a red
 dot standing for both the lucarne and the lens. The dot's red is the identity —
 and it is one operator's red. This gallery is self-hosted software: the person

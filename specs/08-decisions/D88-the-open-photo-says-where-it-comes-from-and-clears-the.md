@@ -1,5 +1,7 @@
 # D88 — The open photo says where it comes from and clears the chrome with one key
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** [D84](./D84-context-moves-to-the-bottom-of-the-viewer-at-every-width.md)
 moved everything **written by hand** about a photo into the bottom strip. The
 header retained its previous split: the filename in bold and first

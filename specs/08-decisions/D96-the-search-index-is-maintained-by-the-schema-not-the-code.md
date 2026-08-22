@@ -1,5 +1,7 @@
 # D96 — The search index is maintained by the schema, not the code
 
+**Confidence.** observed — search.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Beyond around twenty albums, the home page cannot answer "where are
 the Marseille photos?". Yet the information already exists in the database:
 albums have titles and descriptions, days have notes and places — entered or

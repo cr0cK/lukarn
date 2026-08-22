@@ -1,5 +1,7 @@
 # D36 — Post-publication moderation through reversible hiding
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The administrator needed a way to remove a comment.
 
 **Decision.** The comment is published immediately and can be **hidden**

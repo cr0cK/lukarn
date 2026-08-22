@@ -1,5 +1,7 @@
 # D260817b — The register of a public document is checked
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-17
+
 **Context.** The five documents a stranger reads (`README.md`, `CHANGELOG.md`,
 `deploy/README.md`, `CONTRIBUTING.md`, `SECURITY.md`) had drifted into a
 recognisable register. The measurements at the time: 42 em dashes across 486

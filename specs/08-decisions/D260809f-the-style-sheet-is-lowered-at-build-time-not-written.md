@@ -1,5 +1,7 @@
 # D260809f — The style sheet is lowered at build time, not written twice
 
+**Confidence.** observed — tools/legacy-css.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The application rendered poorly in an LG television browser:
 missing padding, a shrivelled viewer header, and panel labels stuck to the edge.
 The readout collected from the device through

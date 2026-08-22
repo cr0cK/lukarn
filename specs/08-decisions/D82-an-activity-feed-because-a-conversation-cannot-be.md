@@ -1,5 +1,7 @@
 # D82 — An activity feed, because a conversation cannot be discovered otherwise
 
+**Confidence.** observed — lib/commentGroups.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Comments were invisible until the photo carrying them was opened.
 The viewer badge is only seen once the photo is reached, and in an album with
 thousands of views but ten messages, nobody encounters it. A discussion could

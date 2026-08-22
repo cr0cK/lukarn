@@ -1,5 +1,7 @@
 # D260817 — Verify compiles what it typechecks
 
+**Confidence.** observed — packages/shared/src/index.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `@lukarn/shared` is private to the workspace and never published,
 but it is consumed the way a published package is: its `exports` point at
 `dist`, so `server`, `web` and `e2e` typecheck against generated declarations

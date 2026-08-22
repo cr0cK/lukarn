@@ -1,5 +1,7 @@
 # D13 — In-memory login throttling
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Slow down dictionary attacks without penalising a typing mistake.
 
 **Decision.** An in-memory `Map`, keyed by `<ip>:<username>`, five unrestricted

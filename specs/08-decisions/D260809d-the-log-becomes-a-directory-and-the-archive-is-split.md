@@ -1,5 +1,7 @@
 # D260809d — The log becomes a directory, and the archive is split with it
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** [D260809](./D260809-a-decision-is-numbered-by-its-date-and-lives-in-its.md) made every
 **new** decision a file, while leaving the first ninety-nine in the original
 log. This division reflected a constraint at the time: two branches were open,

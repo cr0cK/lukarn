@@ -1,5 +1,7 @@
 # D260813d — Tailwind's own variables are initialised for every engine, not for the two its sniff names
 
+**Confidence.** observed — tools/legacy-css.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Adding an accent outline to the selected administration section
 (D260813) meant using Tailwind's `outline` utility for the first time. It
 compiles to `outline-style: var(--tw-outline-style); outline-width: 1px`.

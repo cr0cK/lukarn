@@ -1,5 +1,7 @@
 # D80 — An album cover is chosen on the photo and falls back automatically
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The cover displayed on the home page was always the album's most
 recent photo. For a holiday album, that is the journey home; for a ten-year
 "children" album, it is whatever was uploaded yesterday. The thumbnail

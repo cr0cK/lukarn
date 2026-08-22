@@ -1,5 +1,7 @@
 # D61 — Prewarming stops when Drive is not connected
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `CachePrewarmer` only checked `prewarmCache`. With no Drive
 connection — a fresh instance, revoked consent, or a missing service account key
 — the pass traversed the entire album, failing photo by photo, **including a

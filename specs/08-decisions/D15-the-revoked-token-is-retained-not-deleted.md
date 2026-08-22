@@ -1,5 +1,7 @@
 # D15 — The revoked token is retained, not deleted
 
+**Confidence.** observed — packages/server/test/revocation.test.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Google may reject the refresh token (`invalid_grant`) without
 warning: access withdrawn, six months of inactivity, or the application returned
 to "Test".
