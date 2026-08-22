@@ -53,9 +53,20 @@ None. Nothing is in flight across several pull requests, which is the normal
 state of this directory: it fills up while a release-sized piece of work is under
 way and empties again when it lands.
 
-The last plan to leave was 1.3.0, an account that can be a person. Both of its
-pull requests have landed, and what it said that is still true now lives in `01`
-to `08`: the two decisions it carried are
+The last plan to leave was "Keeping the specs true, in four layers", and it left
+by being **abandoned rather than finished** — which is the other way a plan ends,
+and the one worth writing down. It proposed four mechanisms; the two that were
+built are the two that survive, and the two that were not turned out to be
+answering a question the measurements had moved. What it said that is still true
+now lives in
+[D260822](../08-decisions/D260822-a-decision-states-the-rule-in-force-and-is-rewritten.md)
+and
+[D260822b](../08-decisions/D260822b-the-specification-audit-is-a-skill-run-by-hand-not-a.md),
+including the one direction it named that nobody has taken yet.
+
+Before it, 1.3.0 — an account that can be a person — left the ordinary way, both
+of its pull requests landed, carrying
 [D260819](../08-decisions/D260819-an-account-may-be-bound-to-a-person-rather-than-a.md)
 and
-[D260819b](../08-decisions/D260819b-a-bound-account-signs-in-with-a-code-sent-to-its.md).
+[D260819b](../08-decisions/D260819b-a-bound-account-signs-in-with-a-code-sent-to-its.md)
+out with it.

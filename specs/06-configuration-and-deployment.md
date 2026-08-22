@@ -553,18 +553,20 @@ whether a paragraph is any good (D260817b).
 
 **None of these reads a paragraph and asks whether it is still true**, which is
 the defect they leave open: nine claims were found false in August 2026, and every
-pull request responsible had updated the specs. `.github/workflows/spec-sync.yml`
-answers that one differently — it is triggered by a merge to `main`, maps the files
-it touched onto the documents that follow them, and rereads those documents **whole**
-against the code, opening a pull request only when something was false (D260822b).
-It runs the same Claude Code action as the review workflow, on the same credential,
-and blocks nothing.
+pull request responsible had updated the specs. `.claude/skills/spec-sync/` answers
+that one differently — invoked as `/spec-sync`, it rereads a document **whole**
+against the code and corrects only what is false, citing the `file:line` that settles
+each correction.
 
-What it is told to do lives in `.claude/skills/spec-sync/`, not in the workflow: the
-same brief is invoked by hand on a worktree, and a second copy written into the YAML
-would be one more thing to keep true. Bare, `/spec-sync` audits every document —
-the full sync, and the default because it is what somebody asking for one wants.
-The merge scoping is what the workflow adds.
+**Nothing triggers it.** It is run by hand, and the natural anchor is a release: the
+corpus is already open at that moment for `CHANGELOG.md`, and a false specification
+is most expensive when it ships with the image. A workflow ran it on every merge for
+a while, and the scoping that made it cheap enough to do so leaked in five separate
+ways while the trigger itself was refused by the action — [D260822b](./08-decisions/D260822b-the-specification-audit-is-a-skill-run-by-hand-not-a.md)
+records what was measured and what was given up.
+
+Bare, `/spec-sync` audits `01` through `07` — the full sync, and the default because
+it is what somebody asking for one wants. Named, `/spec-sync 04 05` audits those.
 
 `check-specs.mjs` also covers **decision consistency**: an
 identifier defined twice, a file name that doesn't match its decision's

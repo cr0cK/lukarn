@@ -100,10 +100,10 @@ nothing can hold to account, which is an argument for citing.
 `.claude/skills/spec-sync/` reads a document in `specs/` end to end against the
 code and corrects only what is false, citing the `file:line` that settles each
 correction. Bare it audits `01` through `07`, which is the full sync; named —
-`/spec-sync 04` — it audits those. `.github/workflows/spec-sync.yml` invokes it
-after a merge to `main`, narrowed to what that merge touched by the table below
-(D260822b). It never improves prose: an audit that also
-rewrites what is merely worded oddly cannot be reviewed.
+`/spec-sync 04` — it audits those. **Nothing triggers it: it is run by hand**, and
+the anchor is a release, where the corpus is already open (D260822b). It never
+improves prose: an audit that also rewrites what is merely worded oddly cannot be
+reviewed.
 
 `pnpm check:changelog` guards a third reader. The specs are for whoever takes
 over the code; `CHANGELOG.md` is for whoever **runs** the application, and the
