@@ -124,12 +124,12 @@ space (`USERNAME_PATTERN`), and rejecting one that came from a mobile
 autocomplete would fail a submission right under the message for a wrong
 password. The password is left untouched: it is allowed to contain one.
 
-| Code | Body                                       | When                                                                      |
-| ---- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| 200  | `SessionUser` = `{ username, admin }`      | Success. Sets the `lukarn_session` cookie.                                |
-| 400  | `bad_request`                              | Missing body or out of bounds.                                            |
-| 401  | `invalid_credentials`                      | Unknown username **or** wrong password — identical message in both cases. |
-| 429  | `too_many_attempts` + `Retry-After` header | Throttle active on one of three axes: IP/username pair, username, IP.     |
+| Code | Body                                                            | When                                                                                                                      |
+| ---- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 200  | `SessionUser`, with `identity: null` and `identityBound: false` | Success. Sets the `lukarn_session` cookie. A password sign-in is a shared key by construction, so it carries no identity. |
+| 400  | `bad_request`                                                   | Missing body or out of bounds.                                                                                            |
+| 401  | `invalid_credentials`                                           | Unknown username **or** wrong password — identical message in both cases.                                                 |
+| 429  | `too_many_attempts` + `Retry-After` header                      | Throttle active on one of three axes: IP/username pair, username, IP.                                                     |
 
 **`POST /api/auth/logout`** — destroys the session if the cookie names one,
 clears the cookie. Always responds `200 { ok: true }`, even without a session.
@@ -820,31 +820,32 @@ produces a new store key, hence a new derivative.
 
 `requireAdmin` as a `preHandler` on the whole `/api/admin` prefix.
 
-| Method | Path                                 | Response                                                                                                                                        |
-| ------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/admin/status`                  | `200 AdminStatus`                                                                                                                               |
-| GET    | `/api/admin/visits`                  | `200 VisitsOverview` · `400`                                                                                                                    |
-| GET    | `/api/admin/users`                   | `200 AdminUser[]`                                                                                                                               |
-| POST   | `/api/admin/users`                   | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured`              |
-| POST   | `/api/admin/users/:username/invite`  | `200 AdminUser` · `400` · `404` · `409 already_bound` · `409 no_invitation` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured` |
-| PATCH  | `/api/admin/users/:username`         | `200 AdminUser` · `400` · `404` · `409 last_admin` · `409 password_on_bound_account`                                                            |
-| DELETE | `/api/admin/users/:username`         | `200 { ok: true }` · `404` · `409 last_admin`                                                                                                   |
-| GET    | `/api/admin/albums`                  | `200 AdminAlbum[]`                                                                                                                              |
-| POST   | `/api/admin/albums`                  | `201 AdminAlbum` · `400` · `409 conflict`                                                                                                       |
-| PATCH  | `/api/admin/albums/:id`              | `200 AdminAlbum` · `400` · `404`                                                                                                                |
-| DELETE | `/api/admin/albums/:id`              | `200 { ok: true }` · `404`                                                                                                                      |
-| PATCH  | `/api/admin/albums/:id/days/:day`    | `200 AlbumDay` · `400` · `404`                                                                                                                  |
-| GET    | `/api/admin/settings`                | `200 AppSettings`                                                                                                                               |
-| PATCH  | `/api/admin/settings`                | `200 AppSettings` · `400`                                                                                                                       |
-| GET    | `/api/admin/storage`                 | `200 StorageConnectionStatus[]`                                                                                                                 |
-| POST   | `/api/admin/storage`                 | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409`                                                                                  |
-| PATCH  | `/api/admin/storage/:id`             | `200 StorageConnectionStatus` · `400` · `404`                                                                                                   |
-| DELETE | `/api/admin/storage/:id`             | `200 { ok: true }` · `404` · `409 storage_in_use`                                                                                               |
-| POST   | `/api/admin/storage/:id/test`        | `200 StorageProbeResult` · `404`                                                                                                                |
-| GET    | `/api/admin/storage/:id/oauth/start` | `200 { url }` · `400 oauth_not_configured` · `404` · `409`                                                                                      |
-| POST   | `/api/admin/storage/:id/disconnect`  | `200 { ok: true }` · `404` · `409 service_account_mode`                                                                                         |
-| POST   | `/api/admin/resync`                  | `202 { started: string[] }` · `400` · `404` · `503`                                                                                             |
-| POST   | `/api/admin/cache/clear`             | `200 { ok: true }`                                                                                                                              |
+| Method | Path                                   | Response                                                                                                                                        |
+| ------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/admin/status`                    | `200 AdminStatus`                                                                                                                               |
+| GET    | `/api/admin/visits`                    | `200 VisitsOverview` · `400`                                                                                                                    |
+| GET    | `/api/admin/users`                     | `200 AdminUser[]`                                                                                                                               |
+| POST   | `/api/admin/users`                     | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured`              |
+| POST   | `/api/admin/users/:username/invite`    | `200 AdminUser` · `400` · `404` · `409 already_bound` · `409 no_invitation` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured` |
+| PATCH  | `/api/admin/users/:username`           | `200 AdminUser` · `400` · `404` · `409 last_admin` · `409 password_on_bound_account`                                                            |
+| DELETE | `/api/admin/users/:username`           | `200 { ok: true }` · `404` · `409 last_admin`                                                                                                   |
+| GET    | `/api/admin/albums`                    | `200 AdminAlbum[]`                                                                                                                              |
+| POST   | `/api/admin/albums`                    | `201 AdminAlbum` · `400` · `409 conflict`                                                                                                       |
+| PATCH  | `/api/admin/albums/:id`                | `200 AdminAlbum` · `400` · `404`                                                                                                                |
+| DELETE | `/api/admin/albums/:id`                | `200 { ok: true }` · `404`                                                                                                                      |
+| PATCH  | `/api/admin/albums/:id/days/:day`      | `200 AlbumDay` · `400` · `404`                                                                                                                  |
+| PATCH  | `/api/admin/albums/:id/items/:mediaId` | `200 MediaItem` · `400` · `404`                                                                                                                 |
+| GET    | `/api/admin/settings`                  | `200 AppSettings`                                                                                                                               |
+| PATCH  | `/api/admin/settings`                  | `200 AppSettings` · `400`                                                                                                                       |
+| GET    | `/api/admin/storage`                   | `200 StorageConnectionStatus[]`                                                                                                                 |
+| POST   | `/api/admin/storage`                   | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409`                                                                                  |
+| PATCH  | `/api/admin/storage/:id`               | `200 StorageConnectionStatus` · `400` · `404`                                                                                                   |
+| DELETE | `/api/admin/storage/:id`               | `200 { ok: true }` · `404` · `409 storage_in_use`                                                                                               |
+| POST   | `/api/admin/storage/:id/test`          | `200 StorageProbeResult` · `404`                                                                                                                |
+| GET    | `/api/admin/storage/:id/oauth/start`   | `200 { url }` · `400 oauth_not_configured` · `404` · `409`                                                                                      |
+| POST   | `/api/admin/storage/:id/disconnect`    | `200 { ok: true }` · `404` · `409 service_account_mode`                                                                                         |
+| POST   | `/api/admin/resync`                    | `202 { started: string[] }` · `400` · `404` · `503`                                                                                             |
+| POST   | `/api/admin/cache/clear`               | `200 { ok: true }`                                                                                                                              |
 
 **`status`** — `AdminStatus`: `storage` (every connection, see below),
 `storageKinds` (the kinds this build can create), `storageLocalRoot` (the
@@ -1406,7 +1407,7 @@ Served by `registerFrontend` (`app.ts`) when `WEB_DIR/index.html` exists.
 | `/manifest.webmanifest` | The manifest, `application/manifest+json`, `Cache-Control: no-cache`                                               |
 | `/sw.js`                | Actual file from `public/`. Outside `/assets/`, hence `Cache-Control: no-cache` — intended for the service worker. |
 | `/assets/*`             | Actual file, `Cache-Control: public, max-age=31536000, immutable`. Missing ⇒ **404 JSON**, never `index.html`.     |
-| `/api/*`                | Unknown ⇒ `404 { error: 'not_found', message: 'Route inconnue' }`                                                  |
+| `/api/*`                | Unknown ⇒ `404 { error: 'not_found', message: 'Unknown route' }`                                                   |
 | everything else         | `index.html` — routing lives in the front end, a reload on `/album/x` must work                                    |
 
 **`/` and `/manifest.webmanifest` are not served from disk**: both carry the
