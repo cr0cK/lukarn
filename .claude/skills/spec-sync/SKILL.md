@@ -1,6 +1,6 @@
 ---
 name: spec-sync
-description: Rereads the specifications in specs/ against the code and corrects only what has become false. Invoked bare it audits the whole corpus, one document at a time; given names it audits those. Use when asked to sync, audit or re-verify the specs, when a claim in specs/ looks doubtful, or after a merge changed the code a document describes. Not for writing new documentation, not for improving prose.
+description: Rereads the specifications in specs/ against the code and corrects only what has become false. Invoked bare it audits the whole corpus, one document at a time; given names it audits those. Use when asked to sync, audit or re-verify the specs, when a claim in specs/ looks doubtful, or before cutting a release. Not for writing new documentation, not for improving prose.
 ---
 
 # Auditing the specifications against the code
@@ -26,15 +26,14 @@ asking for one wants. Do not try to guess a smaller scope from git.
 `07` is 3,300 lines — take it in sections rather than in one pass, and do not let
 its size push the earlier documents into a skim.
 
-Two narrower entry points:
+One narrower entry point: **names given** — `/spec-sync 04`, `/spec-sync 02 05` —
+audits exactly those. Use it when somebody points at a document, not to save time on
+a full sync.
 
-- **Names given** — `/spec-sync 04`, `/spec-sync 02 05` — audit exactly those.
-- **`$PUSH_RANGE` set**, which is how CI calls it after a merge: run
-  `git diff --name-only "$PUSH_RANGE"` and map those files onto documents with the
-  **"If you change… / Update…" table in `CLAUDE.md`**, at most three. That table has
-  holes — 28 of the 52 server modules have no row — so when a changed file maps
-  nowhere, pick the document describing that subsystem anyway and report that the
-  mapping did not name it. A missing row is a finding of its own.
+**Nothing invokes this automatically.** A workflow did for a while, scoped to what a
+merge touched, and the scoping leaked in five ways while the trigger itself was
+refused by the action (D260822b). Reading everything is what makes a pass free of
+machinery: there is nothing to route, nothing to queue, nothing to lose track of.
 
 ## 2. Read each document whole
 
