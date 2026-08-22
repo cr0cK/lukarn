@@ -32,6 +32,12 @@ follow them. The audit reads at most three.
 already did, and it is how the nine claims survived. A page reread end to end is the
 only thing that catches a sentence three merges falsified between them.
 
+**The brief is a skill, not a prompt in the workflow.**
+`.claude/skills/spec-sync/` holds it, the workflow invokes `/spec-sync`, and the
+same words can be run by hand on a worktree — which is how it gets tried before it
+is trusted. Writing it out in the YAML as well would be a second copy to keep true,
+inside the job that exists because copies drift.
+
 **It corrects what is false and nothing else.** An audit that also improves prose
 eventually rewrites something true, and a reviewer then has to check every line to
 find the one that matters. Each correction cites the `file:line` proving it, and a

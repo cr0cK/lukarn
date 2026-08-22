@@ -126,61 +126,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUSH_RANGE: ${{ steps.range.outputs.spec }}
-          REQUESTED: ${{ inputs.documents }}
+          SPEC_SYNC_DOCUMENTS: ${{ inputs.documents }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: '--allowedTools "Bash,Read,Edit,Write,Grep,Glob"'
-          prompt: |
-            Audit one or more specification documents against the code, and correct
-            only what has become false.
-
-            ## Which documents
-
-            If REQUESTED is set, audit exactly those. Otherwise run
-            `git diff --name-only $PUSH_RANGE` and use the "If you change… /
-            Update…" table in CLAUDE.md to map the touched files onto the documents
-            that follow them.
-            Audit at most three; if the mapping names more, take the three whose
-            subsystem the diff touched most.
-
-            ## What to do with them
-
-            Read each document **in full**. It is the whole point of this job: a
-            claim usually goes stale across several merges, none of which
-            contradicted it on its own, so reading only the diff finds nothing.
-
-            For every claim that asserts something checkable — a number, a name, a
-            route, a column, an "only", a "never", a behaviour — verify it against
-            the code. Read the source. Do not reason from the document.
-
-            ## The three rules
-
-            1. **Correct what is false. Never touch what is merely worded oddly.**
-               An audit that improves prose eventually rewrites something true, and
-               then nobody can review it. If a sentence is accurate, leave it exactly
-               as it is, however you would have phrased it.
-            2. **Every correction cites the code that proves it**, as `file:line`, in
-               the pull request body. A claim you cannot prove either way is reported
-               in the body under "Could not verify" and left untouched in the file.
-            3. **Follow the repository's own rules**, which are in CLAUDE.md: English
-               throughout, the prose register of `check:prose`, and — if you rewrite a
-               decision in `specs/08-decisions/` — the `Swept:` line its own check
-               will demand of you.
-
-            ## Finishing
-
-            Run `pnpm verify`. It must pass before you open anything.
-
-            If nothing was false, **open no pull request**. Say so in one line and
-            stop; a pull request opened to prove the job ran is how the job gets
-            muted.
-
-            Otherwise commit on a branch named `spec-sync/<document>`, with the
-            subject `docs(specs): what the code now says about <subject>`, and open a
-            pull request with `gh pr create --label spec-sync`. Fill the repository's
-            template. In "What changes", one bullet per correction: the claim as it
-            stood, what the code does, and the `file:line` that shows it.
-
-            You are auditing, not designing. If a document describes something you
-            think is wrong in the code, that is not your business here: say it in the
-            pull request body and change nothing.
+          # The brief lives in `.claude/skills/spec-sync/`, where it can also be
+          # invoked by hand on a worktree. One copy, two callers: a prompt written
+          # out here as well would be the second copy to keep true, which is the
+          # defect this whole job exists to fix.
+          prompt: '/spec-sync'

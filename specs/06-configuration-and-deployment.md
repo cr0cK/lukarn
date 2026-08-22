@@ -558,6 +558,10 @@ against the code, opening a pull request only when something was false (D260822b
 It runs the same Claude Code action as the review workflow, on the same credential,
 and blocks nothing.
 
+What it is told to do lives in `.claude/skills/spec-sync/`, not in the workflow: the
+same brief is invoked by hand as `/spec-sync 04` on a worktree, and a second copy
+written into the YAML would be one more thing to keep true.
+
 `check-specs.mjs` also covers **decision consistency**: an
 identifier defined twice, a file name that doesn't match its decision's
 title, or a `(Dxx)` reference to a missing decision. `check-links.mjs`
