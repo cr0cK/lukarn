@@ -99,9 +99,10 @@ nothing can hold to account, which is an argument for citing.
 **Rereading a whole document is `/spec-sync`.** The skill in
 `.claude/skills/spec-sync/` reads a document in `specs/` end to end against the
 code and corrects only what is false, citing the `file:line` that settles each
-correction. `.github/workflows/spec-sync.yml` invokes it after a merge to `main`,
-scoped by the table below; run it by hand on a worktree — `/spec-sync 04` — when a
-claim looks doubtful (D260822b). It never improves prose: an audit that also
+correction. Bare it audits `01` through `07`, which is the full sync; named —
+`/spec-sync 04` — it audits those. `.github/workflows/spec-sync.yml` invokes it
+after a merge to `main`, narrowed to what that merge touched by the table below
+(D260822b). It never improves prose: an audit that also
 rewrites what is merely worded oddly cannot be reviewed.
 
 `pnpm check:changelog` guards a third reader. The specs are for whoever takes

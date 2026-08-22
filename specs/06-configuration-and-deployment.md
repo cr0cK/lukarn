@@ -559,8 +559,10 @@ It runs the same Claude Code action as the review workflow, on the same credenti
 and blocks nothing.
 
 What it is told to do lives in `.claude/skills/spec-sync/`, not in the workflow: the
-same brief is invoked by hand as `/spec-sync 04` on a worktree, and a second copy
-written into the YAML would be one more thing to keep true.
+same brief is invoked by hand on a worktree, and a second copy written into the YAML
+would be one more thing to keep true. Bare, `/spec-sync` audits every document —
+the full sync, and the default because it is what somebody asking for one wants.
+The merge scoping is what the workflow adds.
 
 `check-specs.mjs` also covers **decision consistency**: an
 identifier defined twice, a file name that doesn't match its decision's

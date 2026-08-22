@@ -38,6 +38,12 @@ same words can be run by hand on a worktree — which is how it gets tried befor
 is trusted. Writing it out in the YAML as well would be a second copy to keep true,
 inside the job that exists because copies drift.
 
+**Scope is the parameter, and its default is everything.** Invoked bare the skill
+audits `01` through `07`; the merge scoping is what the workflow adds, through
+`PUSH_RANGE`. The default matters more than it looks: a skill defaulting to "map
+whatever the last diff touched" does nothing at all when invoked from a branch
+level with `main`, which is exactly when somebody asks for a sync.
+
 **It corrects what is false and nothing else.** An audit that also improves prose
 eventually rewrites something true, and a reviewer then has to check every line to
 find the one that matters. Each correction cites the `file:line` proving it, and a

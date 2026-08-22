@@ -1,9 +1,9 @@
 ---
 name: spec-sync
-description: Rereads a whole specification document in specs/ against the code and corrects only what has become false. Use after a merge changed the code a document describes, when asked to audit or re-verify the specs, or when a claim in specs/ looks doubtful. Not for writing new documentation, not for improving prose.
+description: Rereads the specifications in specs/ against the code and corrects only what has become false. Invoked bare it audits the whole corpus, one document at a time; given names it audits those. Use when asked to sync, audit or re-verify the specs, when a claim in specs/ looks doubtful, or after a merge changed the code a document describes. Not for writing new documentation, not for improving prose.
 ---
 
-# Auditing a specification against the code
+# Auditing the specifications against the code
 
 Read a document in `specs/` end to end, verify every checkable claim against the
 source, and correct only what is false.
@@ -16,35 +16,38 @@ nine claims in `specs/` that the code had made false, some standing for six mont
 is never a missing edit. It is an edit made in the wrong paragraph while the
 contradicted one stays.
 
-## 1. Choose the documents
+## 1. Scope
 
-If the invocation names documents (`/spec-sync 04`, `/spec-sync 02 05`), audit
-exactly those. In CI the same request arrives as `$SPEC_SYNC_DOCUMENTS`.
+**Invoked bare, audit the whole corpus**: `01` through `07`, in order, one document
+at a time. This is the full sync and it is the default because it is what somebody
+asking for one wants. Do not try to guess a smaller scope from git.
 
-Otherwise derive them from what changed:
+`01` first: it summarises the other six, so it is where a claim goes stale fastest.
+`07` is 3,300 lines — take it in sections rather than in one pass, and do not let
+its size push the earlier documents into a skim.
 
-```bash
-git diff --name-only "${PUSH_RANGE:-origin/main...HEAD}"
-```
+Two narrower entry points:
 
-Map those files onto documents with the **"If you change… / Update…" table in
-`CLAUDE.md`**. Audit at most three; if the mapping names more, take the three whose
-subsystem the diff touched most.
+- **Names given** — `/spec-sync 04`, `/spec-sync 02 05` — audit exactly those.
+- **`$PUSH_RANGE` set**, which is how CI calls it after a merge: run
+  `git diff --name-only "$PUSH_RANGE"` and map those files onto documents with the
+  **"If you change… / Update…" table in `CLAUDE.md`**, at most three. That table has
+  holes — 28 of the 52 server modules have no row — so when a changed file maps
+  nowhere, pick the document describing that subsystem anyway and report that the
+  mapping did not name it. A missing row is a finding of its own.
 
-**That table has holes** — 28 of the 52 server modules have no row. When a changed
-file maps nowhere, do not stop: pick the document that describes that subsystem and
-say in your report that the mapping did not name it. A missing row is a finding of
-its own.
+## 2. Read each document whole
 
-## 2. Read the whole document
-
-Not the diff. Reading the diff is what the author already did, and it is how those
-nine claims survived.
+Not its diff, and not the parts a recent change touched. Reading the diff is what
+the author already did, and it is how those nine claims survived.
 
 A claim usually goes stale across **several** merges, none of which contradicted it
 on its own. `01` said "There is only one encrypted refresh token in a single-row
 table" while three pull requests each moved one piece of that arrangement. Only a
 page reread end to end finds those.
+
+Finish a document before opening the next one. Findings accumulate; the audit is
+not over until the last document has been read.
 
 ## 3. Verify every checkable claim
 
@@ -68,6 +71,8 @@ Cheap traps, all of which have caught somebody here:
 - a rule attributed to a column the code has since stopped reading
 - a decision cited for a conclusion it no longer holds
 - a `(Dxx)` reference to a decision about something else
+- a claim about a file that has been renamed, or about a symbol now exported under
+  another name
 
 ## 4. The three rules
 
@@ -91,20 +96,24 @@ file is left untouched.
 
 Run `pnpm verify`. It must pass before anything is opened.
 
-**If nothing was false, open nothing.** Say so in one line and stop. A pull request
-opened to prove the audit ran is how the audit gets muted.
+**If nothing was false, open nothing.** Say so in one line, naming the documents
+read, and stop. A pull request opened to prove the audit ran is how the audit gets
+muted.
 
-Otherwise:
+Otherwise commit — one commit per document, so a reviewer can take them one at a
+time — and open a single pull request:
 
 ```bash
-git checkout -b spec-sync/<document>
+git checkout -b spec-sync/<date or subject>
 git commit -m "docs(specs): what the code now says about <subject>"
 gh pr create --base "<the branch you started from>" --label spec-sync
 ```
 
-Fill `.github/PULL_REQUEST_TEMPLATE.md`. In **What changes**, one bullet per
-correction, each carrying three things: the claim as it stood, what the code
-actually does, and the `file:line` that shows it.
+Fill `.github/PULL_REQUEST_TEMPLATE.md`. In **What changes**, group by document, one
+bullet per correction, each carrying three things: the claim as it stood, what the
+code actually does, and the `file:line` that shows it. End the body with the
+documents you read and found accurate — a reader needs to know the audit covered
+them, not just that it said nothing about them.
 
 You are auditing, not designing. If a document describes something you think is
 wrong in the **code**, that is not your business here: say it in the pull request

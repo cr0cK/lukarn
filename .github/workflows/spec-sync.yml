@@ -134,4 +134,9 @@ jobs:
           # invoked by hand on a worktree. One copy, two callers: a prompt written
           # out here as well would be the second copy to keep true, which is the
           # defect this whole job exists to fix.
+          #
+          # Bare, the skill audits the whole corpus — which is what somebody asking
+          # for a sync wants, and far too much to run on every merge. `PUSH_RANGE`
+          # in the environment is what narrows it to the documents this merge can
+          # have falsified.
           prompt: '/spec-sync'
