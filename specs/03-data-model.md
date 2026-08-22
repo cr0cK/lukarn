@@ -211,12 +211,12 @@ Three points maintain the isolation:
 The configuration: who can sign in, which containers are exposed and on which
 storage, and the settings. Written **only** by `ConfigRepo` (`config-repo.ts`).
 
-| Table         | Columns                                                                                                                                                          |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `commenter_id`, `created_at`, `updated_at`                                            |
-| `albums`      | `id` (PK), `title`, `description`, `connection_id`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at` |
-| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                                       |
-| `settings`    | `key` (PK), `value` — JSON. Keys: `instanceName`, `primaryColor`, `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `moderationEmail`    |
+| Table         | Columns                                                                                                                                                                                                 |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`       | `username` (PK, `COLLATE NOCASE`), `password_hash`, `admin`, `all_albums`, `commenter_id`, `created_at`, `updated_at`                                                                                   |
+| `albums`      | `id` (PK), `title`, `description`, `connection_id`, `folder_id`, `recursive`, `group_by`, `sort_order`, `cover_media_id`, `position`, `created_at`, `updated_at`                                        |
+| `user_albums` | `username`, `album_id`, composite PK, two `ON DELETE CASCADE` foreign keys                                                                                                                              |
+| `settings`    | `key` (PK), `value` — JSON. Keys: `instanceName`, `primaryColor`, `syncIntervalMinutes`, `syncOnStartup`, `cacheMaxSizeGB`, `prewarmCache`, `transcodeVideos`, `videoCacheMaxSizeGB`, `moderationEmail` |
 
 Key choices:
 
@@ -599,7 +599,7 @@ Key choices:
   pass. The cache is shared between albums: two trips to the same place count as
   one call.
 
-`settings` holds JSON values and defaults live in the code (`DEFAULT_SETTINGS`):
+`settings` holds JSON values and defaults live in the code (`defaultSettings`):
 a missing key is not an anomaly, and adding a setting requires no migration.
 
 **Memory cache.** `canSee()` is called on every media request, and therefore for
@@ -722,10 +722,11 @@ declared) produces **two rows**. Consequences to understand:
 - Metadata is duplicated. This is accepted: the cost is a few hundred bytes per
   duplicate, compared with a join on every grid read.
 - `getDetail(albumId, id)` is scoped to an album; `getFileMeta(id)` is not. The
-  columns it reads (`name`, `mime_type`, `kind`, `size`, `md5`, `has_thumbnail`)
-  describe the file rather than its membership — but the two rows can **diverge**
-  between synchronisations, when one has already seen a new version of the file
-  that the other does not yet know. The selection is therefore
+  columns it reads from `media` (`name`, `mime_type`, `kind`, `size`, `md5`,
+  `has_thumbnail`, `source_path`) describe the file rather than its membership,
+  and the connection it serves comes from the album it joins — but the two rows
+  can **diverge** between synchronisations, when one has already seen a new
+  version of the file that the other does not yet know. The selection is therefore
   `ORDER BY seen_at DESC, album_id ASC LIMIT 1`: the most recently seen row
   describes the file as it exists in Drive today. A `LIMIT 1` without sorting
   would let SQLite return the old one, and the cache would produce a derivative

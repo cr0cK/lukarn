@@ -231,10 +231,10 @@ Key points:
 
 Triggered at startup (`sync.onStartup`), periodically (`sync.intervalMinutes`),
 after successful OAuth consent, from `POST /api/admin/resync`, **when an album is
-created**, and **when its scope changes** (`folderId` or `recursive` is
-changed: the album index is then purged and rebuilt). The last two go through
-`startSync` (`routes/admin.ts`) — this is the "I create an album and open it
-straight away" path, the most common one during installation.
+created**, and **when its scope changes** (`connectionId`, `folderId` or
+`recursive` is changed: the album index is then purged and rebuilt). The last two
+go through `startSync` (`routes/admin.ts`) — this is the "I create an album and
+open it straight away" path, the most common one during installation.
 
 All these triggers go through `AppContext.syncThenPrewarm`: indexing is followed
 by thumbnail prewarming (D58), then preparation of unplayable videos (D6).
@@ -242,13 +242,13 @@ The order matters — thumbnails keep someone waiting in front of the grid, whil
 transcoding prepares a video that nobody is watching yet.
 
 1. `Syncer.sync(album)` — if a sync of the same album is already running **with
-   the same effective configuration** (`folderId` and `recursive`), its pending
-   promise is returned unchanged: a manual resync never duplicates the work. If
-   the configuration has changed in the meantime, a new sync is queued after the
-   previous one. Sharing the old promise would return work to the caller that
-   repopulates the album from the folder it has just left; running them in
-   parallel would let the arrival order of `deleteStale` calls determine the final
-   content.
+   the same effective configuration** (`connectionId`, `folderId` and
+   `recursive`), its pending promise is returned unchanged: a manual resync never
+   duplicates the work. If the configuration has changed in the meantime, a new
+   sync is queued after the previous one. Sharing the old promise would return
+   work to the caller that repopulates the album from the folder it has just
+   left; running them in parallel would let the arrival order of `deleteStale`
+   calls determine the final content.
 2. `sync_state` changes to `running`, and the error is reset to `null`.
 3. An ISO `seenAt` is fixed: this is the pass timestamp.
 4. Depth-first traversal from `folderId`, with `visited` guarding against cycles
@@ -415,14 +415,14 @@ triggered from /admin during a write. Closing the window entirely would require
 leases or a reference count on every entry, adding more permanent complexity than
 a missing thumbnail costs the person who reloads it.
 
-**No video transcoding.** `GET /api/media/:id/original` relays the `Range` header
-unchanged to Drive and copies `Content-Length` / `Content-Range` from the response.
-Native seeking works, the VPS CPU does nothing, and there is no intermediate
-format to store. Both `206` **and `416`** statuses are relayed: an unsatisfiable
-range is part of the normal `Range` protocol (offset beyond the end, common when
-switching videos), and its `Content-Range` tells the player where the file ends.
-The accepted tradeoff is that a format the browser cannot read cannot be played at
-all.
+**A video is relayed untouched.** `GET /api/media/:id/original` relays the `Range`
+header unchanged to the storage the album names, and copies `Content-Length` /
+`Content-Range` from the response. Native seeking works and the VPS CPU does
+nothing. Both `206` **and `416`** statuses are relayed: an unsatisfiable range is
+part of the normal `Range` protocol (offset beyond the end, common when switching
+videos), and its `Content-Range` tells the player where the file ends. The one
+exception is a codec no browser decodes, prepared in advance and served from
+`/playable` — see the flow above and D6.
 
 **A day's locations are derived in two stages.** A dated grid does not say what
 happened, while photos often contain their position. The `places.ts` pass is
@@ -480,10 +480,10 @@ the old index while the sync fills it, and the pass meant to follow the sync wou
 be rejected as concurrent — newly arrived photos, precisely the ones about to be
 opened, would wait for hourly housekeeping. Housekeeping and startup remain wired
 separately because automatic synchronisation may be disabled. The `prewarmCache`
-setting is reread for every photo — **and conditional on a Drive connection**:
-without it, the pass would fail photo by photo while retaining its one-second
-pause, wasting fifteen minutes of every hour on an album of a thousand photos
-(D61). Its slowness is deliberate — see D45.
+setting is reread for every photo — **and conditional on at least one connected
+storage**: without it, the pass would fail photo by photo while retaining its
+one-second pause, wasting fifteen minutes of every hour on an album of a thousand
+photos (D61). Its slowness is deliberate — see D45.
 
 **A content download has a 120 s deadline; relaying a video does not.** Because a
 limiter slot is acquired **before** downloading, a frozen `fetch` would freeze all

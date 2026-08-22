@@ -144,6 +144,7 @@ the administration API, not here.
 | `folderId`    | string  | —       | Non-empty. The segment after `/folders/` in the Drive URL — **not a path**, the Drive API only knows identifiers. Survives renames and moves.                     |
 | `recursive`   | boolean | `true`  | Descend into subfolders. `false` indexes only the folder's root.                                                                                                  |
 | `groupBy`     | string  | `month` | `month` or `day`: how the grid is split on opening. `day` suits a trip, and it's the only split where day notes are displayed. Editable afterwards from `/admin`. |
+| `sortOrder`   | string  | `asc`   | `asc` or `desc`: the reading direction on opening. Editable afterwards from `/admin`.                                                                             |
 
 ### `sync` and `cache`
 
@@ -167,20 +168,20 @@ Everything happens through `/api/admin/*` (see [05](./05-api.md)), without a res
 without a file. `POST /api/admin/reload` and `AppContext.reloadConfig()` disappeared
 along with the file they used to reread.
 
-| Change                     | Immediate effect                                                                                                   |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Account, permissions, role | Reread on every request by `plugins/auth.ts` and `canSee()`.                                                       |
-| Album created/deleted      | Deletion: its media and its `sync_state` go with it.                                                               |
-| `folderId` changed         | The album's index is cleared and a resync starts if Drive is connected.                                            |
-| `cacheMaxSizeGB`           | `MediaCache.setMaxBytes()`, with immediate eviction if the limit drops.                                            |
-| `videoCacheMaxSizeGB`      | Same on the prepared-videos store, which has its own budget.                                                       |
-| `syncIntervalMinutes`      | `startScheduler` rearms its timer; rearming at an unchanged value is avoided, since that would push the sync back. |
-| `syncOnStartup`            | Only meaningful at startup — but it's read from the database, so it's picked up at the next one.                   |
-| `prewarmCache`             | Reread for every photo by `media/prewarm.ts`: unchecking it stops the pass in progress, not just the next one.     |
-| `transcodeVideos`          | Reread for every video by `media/transcode.ts`, the same way. No effect if `ffmpeg` is missing.                    |
-| `instanceName`             | The cached shell and manifest are dropped: the next navigation carries the new name in the tab and the manifest.   |
-| `primaryColor`             | Same, plus the generated icons are discarded — the mark's dot carries this colour (D260813).                       |
-| Logo uploaded or reset     | `BrandingStore` rewrites `DATA_DIR/branding/` and clears the derived sizes; every surface reads the same URL.      |
+| Change                     | Immediate effect                                                                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Account, permissions, role | Reread on every request by `plugins/auth.ts` and `canSee()`.                                                                      |
+| Album created/deleted      | Deletion: its media and its `sync_state` go with it.                                                                              |
+| Album scope changed        | `connectionId`, `folderId` or `recursive`: the album's index is cleared and a resync starts if that album's storage is connected. |
+| `cacheMaxSizeGB`           | `MediaCache.setMaxBytes()`, with immediate eviction if the limit drops.                                                           |
+| `videoCacheMaxSizeGB`      | Same on the prepared-videos store, which has its own budget.                                                                      |
+| `syncIntervalMinutes`      | `startScheduler` rearms its timer; rearming at an unchanged value is avoided, since that would push the sync back.                |
+| `syncOnStartup`            | Only meaningful at startup — but it's read from the database, so it's picked up at the next one.                                  |
+| `prewarmCache`             | Reread for every photo by `media/prewarm.ts`: unchecking it stops the pass in progress, not just the next one.                    |
+| `transcodeVideos`          | Reread for every video by `media/transcode.ts`, the same way. No effect if `ffmpeg` is missing.                                   |
+| `instanceName`             | The cached shell and manifest are dropped: the next navigation carries the new name in the tab and the manifest.                  |
+| `primaryColor`             | Same, plus the generated icons are discarded — the mark's dot carries this colour (D260813).                                      |
+| Logo uploaded or reset     | `BrandingStore` rewrites `DATA_DIR/branding/` and clears the derived sizes; every surface reads the same URL.                     |
 
 ## Dockerfile — three stages
 
@@ -430,7 +431,7 @@ service has no container, and under `set -e` that failure used to take
 anything. The update was then impossible because the application was not
 running, and the application was not running because the update could not run.
 The moment a backup matters most is the moment the instance is on the floor
-(D260812c).
+(D260812).
 
 **Why `deploy.sh` waits.** `docker compose up -d` returns as soon as the
 container is launched, not when it's working: a failing migration or a
@@ -477,9 +478,10 @@ applications there mixes them into the same authorisation request.
 | `pnpm hash-password`                                               | Prompts for a password without displaying it and prints the `passwordHash:` line to paste. Only used to prepare a bootstrap `albums.yaml`. An argument is accepted but leaves a trace in the shell history.                                                                              |
 | `pnpm --filter @lukarn/server seed-demo [number] [--photos <dir>]` | Fills the index **and** the cache with locally generated media, for working on the interface without a Drive account. Default: 240 per album. `--photos` uses real photographs from a directory instead of gradients.                                                                    |
 
-`seed-demo` inserts into **every** album in the database and writes the five
-cache variants (`t320`, `t640`, `t1280`, `full`, `hd`) so the pipeline never
-tries to reach Drive.
+`seed-demo` inserts into **every** album in the database and writes the cache
+variants the interface may request — `t320`, `t640` and `t1280`, plus `full` and
+`hd` for a photo — so the pipeline never tries to reach Drive. A video gets the
+three thumbnails alone: `full` and `hd` on one answer 415.
 
 `--photos <dir>` cycles through the images in a directory rather than drawing
 gradients, offsetting the cycle per album so two albums never open on the same

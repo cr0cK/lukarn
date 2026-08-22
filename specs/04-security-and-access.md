@@ -615,16 +615,16 @@ A configured but unreadable key **stops startup** (`env.ts`) instead of falling 
 switching silently would make the consent screen reappear where it had just been removed, without
 explaining why. A path not mounted in the container is the most likely error, and it must be visible.
 
-`/api/admin/oauth/start` and `/api/admin/drive/disconnect` return **409** in this mode: the first
-would save a token that nothing uses, while the second would suggest the instance is disconnected
-when it continues reading everything. /admin displays the service account address instead—the one
-to copy into Drive sharing.
+`/api/admin/storage/:id/oauth/start` and `/api/admin/storage/:id/disconnect` return **409** in this
+mode: the first would save a token that nothing uses, while the second would suggest the instance
+is disconnected when it continues reading everything. /admin displays the service account address
+instead—the one to copy into Drive sharing.
 
 ## OAuth consent
 
-- `GET /api/admin/oauth/start` requires an administrator session, generates a random 24-byte
-  `state`, stores it in a signed `lukarn_oauth_state` cookie (path `/api`, TTL 600 s), and returns the
-  consent URL.
+- `GET /api/admin/storage/:id/oauth/start` requires an administrator session, generates a random
+  24-byte `state`, stores it in a signed `lukarn_oauth_state` cookie (path `/api`, TTL 600 s), and
+  returns the consent URL.
 - `authUrl()` requests `access_type: 'offline'` and `prompt: 'consent'`: without the latter, a second
   authorisation would not return a refresh token and reconnection would fail without explanation.
 - `GET /api/oauth/callback` **requires the same administrator session** and compares the received
