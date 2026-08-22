@@ -19,7 +19,7 @@ import type { MediaCache } from './cache.js';
  * small server's CPU, hence **one reniced, single-threaded task at a time**; storage,
  * hence a separate bounded store; and the job queue, which is one more loop beside
  * prewarming whose shape and guards this module reuses. The measurements that changed
- * the decision are in D260809b.
+ * the decision are in D6.
  *
  * The original is never replaced: a browser that plays HEVC still receives it at full
  * quality, and the client chooses its source.
@@ -136,7 +136,7 @@ export function needsTranscoding(codec: string | null): boolean {
  * - `libx264` on `veryfast`, CRF 23 — the tradeoff that sustains real time on one
  *   core at 1080p. Output measured 1.5 times lighter than the HEVC original; space
  *   saving is a side effect, not the goal
- *   (D260809b).
+ *   (D6).
  * - `-maxrate`/`-bufsize` when `plafondKbps` is known — CRF alone is *variable*
  *   bitrate without an upper bound and may exceed a well-encoded source: in production,
  *   3 of 20 derivatives were larger, up to 50.1 MB becoming 66.8 MB. The cap affects

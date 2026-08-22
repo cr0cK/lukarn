@@ -314,7 +314,7 @@ export class LocalFolderService implements StorageProvider {
    * The parameters are omitted rather than ignored, which is the honest signature —
    * nothing about the answer depends on which file or which size is asked for. The
    * renderer treats it as it treats a Drive file with no thumbnail: it decodes the
-   * original, and for a video it asks ffmpeg (D260816).
+   * original, and for a video it asks ffmpeg (D92).
    */
   async preview(): Promise<Response | null> {
     return null;

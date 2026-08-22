@@ -36,7 +36,7 @@ const SILENT: CacheLogger = { warn: () => {} };
  * Inventory descends only into these, and clearing deletes only these. Without this
  * boundary, a cache mounted on `CACHE_DIR` would inventory the video store at
  * `CACHE_DIR/video` as its own — counting those bytes in its budget, while "clear
- * cache" from /admin would remove hours of transcoding with the thumbnails (D260809b).
+ * cache" from /admin would remove hours of transcoding with the thumbnails (D6).
  */
 const RAYON = /^[0-9a-f]{2}$/;
 

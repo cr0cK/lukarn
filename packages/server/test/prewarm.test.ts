@@ -255,7 +255,7 @@ describe('cache prewarming', () => {
 
     // This is what a local folder or a bucket looks like: the backend holds no
     // preview, so the poster comes from ffmpeg. Skipping it would leave every video
-    // in such an album without a tile (D260816).
+    // in such an album without a tile (D92).
     assert.deepEqual(rendus, ['clip-local']);
     assert.equal(origines.get('clip-local'), 'poster');
     assert.equal(resultat.rendered, 1);

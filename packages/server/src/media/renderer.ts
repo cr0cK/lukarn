@@ -71,7 +71,7 @@ export type RenderOrigin = 'original' | 'poster';
  * A function rather than a dependency on the transcoder: the renderer needs one image
  * and must not learn where ffmpeg lives, how it is reniced or where its temporary files
  * go. It answers `null` when no still can be cut — ffmpeg absent from the image — which
- * is the one remaining case where a video genuinely has no thumbnail (D260816). That is
+ * is the one remaining case where a video genuinely has no thumbnail (D92). That is
  * a question the renderer must ask at render time, not at construction: whether the
  * binary exists is discovered while the server starts, after every component is built.
  */
@@ -298,7 +298,7 @@ export class MediaRenderer {
    *
    * Drive is the only backend that holds one (D92), so outside it this always reaches
    * ffmpeg — the reason the route no longer refuses on `has_thumbnail` alone
-   * (D260816). The still costs a full download and is why it happens once: the result
+   * (D92). The still costs a full download and is why it happens once: the result
    * is cached under the same key as any other derivative.
    */
   private async poster(

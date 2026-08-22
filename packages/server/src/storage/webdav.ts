@@ -251,7 +251,7 @@ export class WebdavService implements StorageProvider {
    * Nextcloud does hold previews and serves them from `/index.php/core/preview`, which
    * is not WebDAV and exists on no other server — implementing it here would make one
    * product's private route part of a protocol backend. Video posters come from ffmpeg
-   * instead (D260816), and a HEIC or RAW file sharp cannot decode has no preview, which
+   * instead (D92), and a HEIC or RAW file sharp cannot decode has no preview, which
    * is a documented limit rather than a defect.
    */
   async preview(): Promise<Response | null> {

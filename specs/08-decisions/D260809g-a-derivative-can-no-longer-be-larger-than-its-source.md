@@ -1,6 +1,6 @@
 # D260809g — A derivative can no longer be larger than its source video
 
-**Context.** [D260809b](./D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md) anticipated a derivative
+**Context.** [D6](./D6-a-video-is-relayed-untouched-except-a-codec-no-browser.md) anticipated a derivative
 1.5 times smaller than its source, and the first production batch did yield that
 figure: 1,234 MB of originals for 818 MB of output across twenty videos. The
 average concealed a case nobody had considered — **three of those twenty
@@ -14,7 +14,7 @@ derivatives were larger than their originals**:
 
 This is the normal behaviour of `-crf`: a **variable** bit rate, with no upper
 bound. On a busy scene — handheld footage of foliage, the worst case already
-identified by D260809b — x264 spends whatever is needed to maintain the requested
+identified by D6 — x264 spends whatever is needed to maintain the requested
 quality, leaving an already well-encoded phone HEVC far behind. The store then
 keeps a file that costs disk space **and** bandwidth without providing anything
 in return.
@@ -57,7 +57,7 @@ actually encode, and Drive sometimes reports no size or a stale one.
 natural reaction, but it defeats the feature: the video becomes unplayable
 again, leaving only the Download button from
 [D79](./D79-an-unplayable-video-says-so-and-can-be-downloaded-instead.md).
-What is being bought is playability, not a smaller file — D260809b already says
+What is being bought is playability, not a smaller file — D6 already says
 so. It would also have required a persistent marker in the database, and
 therefore a migration; without one, the hourly pass would encode the file again
 each time only to discard it every time.

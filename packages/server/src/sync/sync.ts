@@ -364,7 +364,7 @@ export class Syncer {
     // Without a capture date (screenshots, re-encoded photos), the file's modification
     // time is the only chronological reference. Videos never carry one and are dated
     // from their file (D97), which also yields the codec in the same window pass
-    // (D260809b).
+    // (D6).
     const { takenAt, fromFile, videoCodec } =
       kind === 'video'
         ? await this.videoHeader(storage, album.id, id, entry)
@@ -439,7 +439,7 @@ export class Syncer {
   }
 
   /**
-   * Video capture date (D97) and video-track codec (D260809b), reconstructed from the
+   * Video capture date (D97) and video-track codec (D6), reconstructed from the
    * file in one read.
    *
    * The version shortcut makes video-album sync repeatable: a video already dated from

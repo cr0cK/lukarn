@@ -106,7 +106,7 @@ export class AppContext {
    * Another `MediaCache` rather than a directory in the image cache: inventory,
    * LRU, eviction and startup cleanup of `.tmp` files are exactly what is needed,
    * while sharing one LRU would let browsing the grid evict hours of transcoding
-   * work (D260809b).
+   * work (D6).
    */
   readonly videoStore: MediaCache;
   readonly renderer: MediaRenderer;

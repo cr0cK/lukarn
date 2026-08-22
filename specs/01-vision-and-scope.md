@@ -39,7 +39,7 @@ survives a rename, so a photograph dragged into another folder keeps its comment
 everywhere else a file is named by its path, and renaming it makes it a new
 photograph (D260816c). Drive also returns EXIF data and holds a preview inside its
 listing, where the others hold neither — the indexer reads the bytes, and a video
-poster is cut by ffmpeg (D260816, D260816b).
+poster is cut by ffmpeg (D92, D260816b).
 
 Reading **several accounts** was excluded for as long as `oauth_token` carried
 `CHECK (id = 1)`: one instance, one Drive. That was the schema stating a scope
@@ -95,20 +95,20 @@ reaching a screen (see [07](./07-frontend.md)).
 These omissions are not gaps to fill; they are choices that keep the project
 manageable.
 
-| Excluded                                                              | Why                                                                                                                                                                                                                                               |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals.      |
-| Editing, retouching, persisted rotation                               | The originals belong to the storage that holds them; the app only produces disposable derivatives.                                                                                                                                                |
-| Registration, forgotten passwords                                     | The owner creates every account from `/admin`, with a password or with an invitation sent to an address. An invitation changes who types the secret, never who may open the door: there is still no public form, and nobody signs themselves up.  |
-| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                          |
-| Facial recognition, tags                                              | Recognising a face means processing the content, and therefore downloading every original, which indexing is specifically designed to avoid. Searching does exist, over the text the library already holds rather than over the pixels (D96).     |
-| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                             |
-| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                         |
-| Transcoding a video the browser can already play                      | An `avc1` file is relayed as it stands, `Range` by `Range`, which gives native seeking at no processor cost (D6). Only a codec no current browser decodes — `hvc1`, `hev1` — is prepared, once, in the background and at low priority (D260809b). |
-| Query-built albums (dates, tags)                                      | An album names one container on one storage, and that is all. The mapping remains easy to verify visually in `/admin`.                                                                                                                            |
-| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                        |
-| A map                                                                 | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance. The name a day carries is searchable as text, like the rest of the library.            |
-| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                             |
+| Excluded                                                              | Why                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals.     |
+| Editing, retouching, persisted rotation                               | The originals belong to the storage that holds them; the app only produces disposable derivatives.                                                                                                                                               |
+| Registration, forgotten passwords                                     | The owner creates every account from `/admin`, with a password or with an invitation sent to an address. An invitation changes who types the secret, never who may open the door: there is still no public form, and nobody signs themselves up. |
+| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                         |
+| Facial recognition, tags                                              | Recognising a face means processing the content, and therefore downloading every original, which indexing is specifically designed to avoid. Searching does exist, over the text the library already holds rather than over the pixels (D96).    |
+| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                            |
+| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                        |
+| Transcoding a video the browser can already play                      | An `avc1` file is relayed as it stands, `Range` by `Range`, which gives native seeking at no processor cost. Only a codec no current browser decodes — `hvc1`, `hev1` — is prepared, once, in the background and at low priority (D6).           |
+| Query-built albums (dates, tags)                                      | An album names one container on one storage, and that is all. The mapping remains easy to verify visually in `/admin`.                                                                                                                           |
+| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                       |
+| A map                                                                 | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance. The name a day carries is searchable as text, like the rest of the library.           |
+| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                            |
 
 ## Constraints that shaped the design
 
@@ -155,11 +155,11 @@ not move afterwards (see [07](./07-frontend.md)).
   result is somewhere to go rather than a line of text to read, and the index is
   maintained by the schema, so a write path added later cannot forget it (D96).
 - **A video plays where it can, and is prepared where it cannot.** What the browser
-  decodes is relayed untouched, `Range` by `Range` (D6). What no browser decodes —
+  decodes is relayed untouched, `Range` by `Range`. What no browser decodes —
   an iPhone's HEVC — gets an H.264 version cut in the background, one at a time, at
-  low priority, and the original stays available throughout (D260809b). Its poster
+  low priority, and the original stays available throughout (D6). Its poster
   comes from the preview the storage holds, or from a still cut by ffmpeg where it
-  holds none (D92, D260816).
+  holds none (D92).
 - Per-photo comments with one reply level, moderated after the fact from `/admin`
   and notified by email. They are signed by an **identity** — a name and an address
   verified by code — separate from the access key, which a household can share.

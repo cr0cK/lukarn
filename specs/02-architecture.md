@@ -69,8 +69,8 @@ when it holds none**, and `preview()` returns `null` for the same reason. Both
 nulls describe Drive's privilege rather than a defect: `files.list` returns EXIF
 data and a `thumbnailLink` in the listing itself, which is what makes indexing
 free of downloads (D3) and gives HEIC, RAW and video a preview no other backend
-holds (D92). For a video, that is no longer the only source: where the backend
-holds none, the renderer cuts a still instead (D260816).
+holds. For a video it is one source of two: where the backend holds none, the
+renderer cuts a still instead (D92).
 
 Google Drive (`storage/drive.ts`) is the only file that imports `@googleapis/*`,
 and a **local folder** (`storage/local.ts`) is the second implementation.
@@ -83,7 +83,7 @@ what makes it the proof the interface fits more than Drive:
 | What Drive supplies    | What a folder supplies                                                                              |
 | ---------------------- | --------------------------------------------------------------------------------------------------- |
 | `imageMediaMetadata`   | `media: null` — the indexer reads the bytes                                                         |
-| `thumbnailLink`        | `preview()` returns `null` — the renderer decodes, and ffmpeg cuts a video's poster (D260816)       |
+| `thumbnailLink`        | `preview()` returns `null` — the renderer decodes, and ffmpeg cuts a video's poster (D92)           |
 | `md5Checksum`          | `version` is `size:mtimeMs`, the pair the filesystem guarantees moves when the bytes do             |
 | An id surviving a move | `refKind: 'path'` — the reference **is** the location, so a rename produces a new file to the index |
 
@@ -136,7 +136,7 @@ ways the interface was shaped to absorb, and in no others:
 
 `preview()` follows the second row: Drive holds a JPEG for anything it cannot
 otherwise show, a WebDAV server holds nothing, and a video poster is cut by ffmpeg
-instead (D260816).
+instead (D92).
 
 `storage/webdav.ts` asks for five properties with `Depth: 1` — `getcontenttype`,
 `getcontentlength`, `getlastmodified`, `getetag`, `resourcetype` — reads the reply
@@ -217,8 +217,8 @@ Key points:
   Drive file is replaced under the same identifier.
 - **A video has a thumbnail, never a full-screen render.** `serveRendered` asks
   for `render(..., 'poster')`, and the renderer owns the chain behind it: the
-  preview the backend already holds, which on Drive costs no download (D92), then
-  a still cut by ffmpeg for the backends holding none (D260816). Two cases return
+  preview the backend already holds, which on Drive costs no download, then a
+  still cut by ffmpeg for the backends holding none (D92). Two cases return
   415, and only these two: `full` or `hd` on a video, because there is nothing to
   enlarge, and a poster the renderer could produce by neither route, which reaches
   the route as `NoPreviewError`. **`has_thumbnail` does not decide it** — the
@@ -237,7 +237,7 @@ changed: the album index is then purged and rebuilt). The last two go through
 straight away" path, the most common one during installation.
 
 All these triggers go through `AppContext.syncThenPrewarm`: indexing is followed
-by thumbnail prewarming (D58), then preparation of unplayable videos (D260809b).
+by thumbnail prewarming (D58), then preparation of unplayable videos (D6).
 The order matters — thumbnails keep someone waiting in front of the grid, while
 transcoding prepares a video that nobody is watching yet.
 
@@ -263,10 +263,10 @@ transcoding prepares a video that nobody is watching yet.
 imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    opaque to the traversal. **No content is downloaded.** `hasThumbnail` becomes
    `StorageEntry.hasPreview`: whether the backend has produced a preview of the
-   file, which is what gives a Drive video its grid thumbnail for free (D92) and
-   avoids asking again on every page load when none exists. It is the storage's
-   answer, not the whole one — `MediaItem.hasPreview` widens it with the still
-   ffmpeg can cut (D260816).
+   file, which is what gives a Drive video its grid thumbnail for free and avoids
+   asking again on every page load when none exists. It is the storage's answer,
+   not the whole one — `MediaItem.hasPreview` widens it with the still ffmpeg can
+   cut (D92).
 6. `toUpsert` reads a `StorageEntry`, never a Drive field: `classify` excludes
    anything that is neither an image nor a video, and dimensions are swapped when
    `media.rotated` is set — otherwise portraits would break the layout. The
@@ -294,7 +294,7 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    `resolveVideoTakenAt` compares it with the timestamp in the file name. **The
    same window provides the video-track codec** — `readVideoCodec` descends
    `moov → trak → mdia → minf → stbl → stsd` and retains the first track whose
-   `hdlr` is `vide` (D260809b): both reads share the box, so separating them would
+   `hdlr` is `vide` (D6): both reads share the box, so separating them would
    double the number of requests needed to reread the same bytes. At most **four
    64 KB windows** per video, 2.3 on average in a real import, and **none** for an
    already dated video whose `md5` has not changed **and whose codec is set** —
@@ -322,8 +322,8 @@ imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
 ## Unplayable video flow
 
 An HEVC video plays in neither Chrome nor Firefox. D79 and D98 gave it an honest
-message and a **Download** button; D260809b makes it playable without reducing its
-quality where it could already be played.
+message and a **Download** button; D6 goes further and prepares an H.264 version,
+without reducing the quality of anything that could already be played.
 
 **Server-side, in the background.** `TranscodePass` is connected at the same
 points as prewarming — the end of `syncThenPrewarm` and the hourly housekeeping in

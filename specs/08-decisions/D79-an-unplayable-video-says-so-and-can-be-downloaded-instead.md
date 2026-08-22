@@ -1,8 +1,10 @@
 # D79 — An unplayable video says so and can be downloaded instead of loading forever
 
-**Context.** [D6](./D6-no-video-transcoding.md) rejects transcoding and states
-the consequence: "a format the browser cannot read is not playable at all — no
-fallback". The consequence was correct; the interface did not handle it. The
+**Context.** A video is relayed in its own format
+([D6](./D6-a-video-is-relayed-untouched-except-a-codec-no-browser.md)), and at the
+time nothing was prepared for the codecs a browser cannot read: such a file was
+not playable at all, with no fallback. That consequence was accepted; the
+interface did not handle it. The
 viewer's `<video>` element listened for `loadeddata` and nothing else. A playback
 failure therefore left `loaded` as `false` forever, with the spinner turning on a
 black screen without a word.
@@ -23,8 +25,10 @@ Two ordinary causes, both verified in a browser:
 lives in one place, tested across all combinations.
 
 The message names the format instead of saying "an error occurred": the video is
-almost always intact and playable on another device. Downloading is the only
-fallback D6 leaves — it is the original file, which the server already relays.
+almost always intact and playable on another device. Downloading is the fallback
+that always exists — it is the original file, which the server already relays —
+and it is what the viewer offers while D6's prepared version is still being cut,
+or where there is none.
 
 **Rejected.** Transcoding unsupported formats on the fly: exactly what D6
 rejects, and the reason has not changed. Also rejected: probing `canPlayType`

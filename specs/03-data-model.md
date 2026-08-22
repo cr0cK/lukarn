@@ -34,7 +34,7 @@ not a column here: it comes from the album (`albums.connection_id`), and
 | `duration_ms`                                                                                                 | INTEGER | Videos only.                                                                                                                                                                                                             |
 | `camera_make`, `camera_model`, `lens`, `iso_speed`, `exposure_time`, `aperture`, `focal_length`, `lat`, `lng` |         | EXIF, all nullable. Served by `/items/:mediaId`.                                                                                                                                                                         |
 | `md5`                                                                                                         | TEXT    | Whatever the backend guarantees changes with the bytes: a Drive `md5Checksum`, an ETag, `size:mtime`. Carries the URL and ETag version, forms part of the disk-cache key, and is what lets a resync skip rereading EXIF. |
-| `has_thumbnail`                                                                                               | INTEGER | 0/1: does the **storage** hold a preview? Drive is the only backend that says yes. It no longer decides whether a video has a thumbnail — D260816.                                                                       |
+| `has_thumbnail`                                                                                               | INTEGER | 0/1: does the **storage** hold a preview? Drive is the only backend that says yes. It no longer decides whether a video has a thumbnail — D92.                                                                           |
 | `video_codec`                                                                                                 | TEXT    | Codec of a video's video track, read from its `moov`. Three states; see below.                                                                                                                                           |
 | `source_path`                                                                                                 | TEXT    | Path inside the container, for a backend whose reference is a path — the only way to fetch the bytes back, since `id` is a hash. NULL for Drive, whose file id survives a rename.                                        |
 | `seen_at`                                                                                                     | TEXT    | Timestamp of the sync that saw this row. Basis for `deleteStale`.                                                                                                                                                        |
@@ -44,10 +44,8 @@ not a column here: it comes from the album (`albums.connection_id`), and
 **In practice, `has_thumbnail` applies only to videos.** A photo always has a
 render — the pipeline decodes it and falls back to the preview the backend holds
 when libvips cannot read it —, while a video's image comes either from that
-preview
-([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md))
-or, when the backend holds none, from a still cut by ffmpeg
-([D260816](./08-decisions/D260816-a-video-preview-is-cut-by-ffmpeg-when-the-backend.md)).
+preview or, when the backend holds none, from a still cut by ffmpeg
+([D92](./08-decisions/D92-a-video-poster-is-the-storage-s-preview-then-a-still.md)).
 
 The column records **what the storage said it holds**, which outside Drive is
 always no. The API therefore exposes not the column but the question being asked:
@@ -71,7 +69,7 @@ and a video already dated from its file is reread only when its `md5` changes.
 **`video_codec` has three states, and the distinction is not cosmetic.** It holds
 the four-letter code written in the video track's `stsd` — `avc1`, `hvc1`, `hev1`
 — and determines what the server prepares and which source the client requests
-([D260809b](./08-decisions/D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md)):
+([D6](./08-decisions/D6-a-video-is-relayed-untouched-except-a-codec-no-browser.md)):
 
 | Value       | Meaning                                                                            | Consequence                                                   |
 | ----------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -258,7 +256,7 @@ Key choices:
   mishap. The fallback is therefore calculated on reads by
   `MediaRepo.stats(albumId, chosenId)`: a photo missing from the index — or one
   that is a video — yields to the newest without erasing the choice. Videos have
-  had thumbnails since D92 and keep one even off Drive (D260816), but a poster can
+  had thumbnails since D92 and keep one even off Drive (D92), but a poster can
   still be absent — no preview on the backend and no ffmpeg in the image — while
   the cover is the only image whose absence is visible from the home page with no
   fallback. Because the Drive identifier is stable, a returning photo becomes the

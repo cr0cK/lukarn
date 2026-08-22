@@ -135,7 +135,7 @@ export interface MediaItem {
    *
    * This lets the client choose its source: `canPlayType` on `video/mp4` alone returns
    * `maybe` everywhere and reveals nothing (D98); with the real codec, the answer is
-   * decisive and an HEVC-capable browser keeps the full-quality original (D260809b).
+   * decisive and an HEVC-capable browser keeps the full-quality original (D6).
    */
   videoCodec: string | null;
   /**
@@ -1011,13 +1011,13 @@ export interface AppSettings {
   /**
    * Prepares a playable version of videos whose codec no current browser decodes. One
    * video at a time in the background at low priority: around one CPU minute per film
-   * minute (D260809b). Without `ffmpeg`, the setting has no effect.
+   * minute (D6). Without `ffmpeg`, the setting has no effect.
    */
   transcodeVideos: boolean;
   /**
    * Space for playable video versions, separate from thumbnails. Two budgets because
    * their costs differ: a thumbnail takes seconds to recreate, a video several CPU
-   * minutes — shared LRU would let grid browsing evict an hour of work (D260809b).
+   * minutes — shared LRU would let grid browsing evict an hour of work (D6).
    */
   videoCacheMaxSizeGB: number;
   /**

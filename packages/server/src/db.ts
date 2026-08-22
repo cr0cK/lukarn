@@ -499,7 +499,7 @@ export const MIGRATIONS: string[] = [
   `,
 
   // 14 — actual video-track codec, read from `moov` in the same window pass as its date.
-  // It decides what is transcoded and which source the client requests (D260809b).
+  // It decides what is transcoded and which source the client requests (D6).
   //
   // Three values whose distinction matters:
   //

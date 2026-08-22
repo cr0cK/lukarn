@@ -1025,10 +1025,9 @@ thumbnail grid. First-screen thumbnails use `loading="eager"`, the rest
 `lazy`.
 
 The `<img>` displays as soon as `item.hasPreview`, videos included: their poster
-comes from the preview the storage holds
-([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)),
-or from a still ffmpeg cuts where it holds none
-([D260816](./08-decisions/D260816-a-video-preview-is-cut-by-ffmpeg-when-the-backend.md)).
+comes from the preview the storage holds, or from a still ffmpeg cuts where it
+holds none
+([D92](./08-decisions/D92-a-video-poster-is-the-storage-s-preview-then-a-still.md)).
 The playback badge then sits **on top of** the image — a `bg-black/45` disc,
 white triangle, centred — because it is what distinguishes a video from a
 photo at a glance and it must stay legible over a light preview. With no
@@ -1332,7 +1331,7 @@ as the emergency exit.
   `canPlayType` on the **actual codec** of the video track, `video/mp4;
 codecs="hvc1"`, rather than the bare type, to which everyone answers `maybe`
   (D98). Empty response: the tag points to `/playable`, the H.264 version the
-  server has prepared (D260809b). Otherwise — including when the codec is
+  server has prepared (D6). Otherwise — including when the codec is
   unknown — it keeps `/original`, at full quality: that is what makes Safari
   and an iPhone, which decode HEVC, never see the transcoding. D98's detection
   remains the safety net behind this choice, for the browser that claims to
@@ -1397,8 +1396,8 @@ codecs="hvc1"`, rather than the bare type, to which everyone answers `maybe`
   announces. `1 / 120` precedes the date because that is the useful landmark
   when browsing an album, so the date is the one that must be trimmed first.
 - **Set as cover** only appears for an administrator, and never on a video: its
-  poster can be missing, whether it would have come from the storage (D92) or
-  from ffmpeg (D260816), and the cover is the one image whose absence shows from
+  poster can be missing, whether it would have come from the storage or from
+  ffmpeg (D92), and the cover is the one image whose absence shows from
   the home page, with no fallback. It is
   the only action with no keyboard shortcut — it is done once per album, and
   the `?` cheat sheet addresses everyone. It lights up when the open photo is

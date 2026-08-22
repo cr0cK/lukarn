@@ -42,7 +42,7 @@ describe('video source selection', () => {
   });
 
   it('asks the browser about the codec, never the bare type', () => {
-    // This is D260809b's contribution over D98: for `video/mp4` alone, every
+    // This is D6's contribution over D98: for `video/mp4` alone, every
     // browser returns `maybe`, which reveals nothing about the content.
     const demandes: string[] = [];
     chooseVideoSource('hvc1', (type) => {

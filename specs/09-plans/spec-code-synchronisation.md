@@ -13,13 +13,15 @@ first has landed; the other two are what this plan is for.
 
 ## Layer 1 — mechanical, on every push · **done**
 
-[D260822](../08-decisions/D260822-a-decision-that-narrows-another-sweeps-the-paragraphs.md):
-a decision declares what it narrows, and `check:specs` sends the author to every
-paragraph citing the narrowed one. Deterministic, no agent, runs inside `verify`.
+[D260822](../08-decisions/D260822-a-decision-states-the-rule-in-force-and-is-rewritten.md):
+a decision states the rule in force and is rewritten when that rule changes, and
+`check:specs` answers a rewrite with the list of everything that restates it.
+Deterministic, no agent, runs inside `verify`.
 
-- [x] `**Narrows.**` parsed, the graph computed, the sweep enforced per paragraph
-- [x] D260816 declared against D92, D260809b against D6, and the seven paragraphs
-      that failed swept
+- [x] The rewrite detected by its title, compared by identifier against the merge
+      base, and answered by a `Swept:` line that states what was checked
+- [x] D6 and D92 rewritten, each absorbing the decision that had replaced it, and
+      every paragraph the sweep named reread
 
 What it cannot see: prose that cites no decision, and drift that accumulated
 across several pull requests without any one of them contradicting anything.
