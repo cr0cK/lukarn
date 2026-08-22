@@ -378,12 +378,14 @@ the detail so the viewer can show "3" on its tab without loading a thread most
 visitors will never open.
 
 **`MediaItem.hasPreview`** — can the server render an image for this item? True
-for every photo, and for a video whose first-second preview Drive has produced
-([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)). It is a **question, not a
-column**: the front end asks for a thumbnail "when there is one" without
-replaying the photo/video rule on its side, and without requesting, on every
-grid load, an image doomed to a 415 for a video Drive has no preview for — a
-codec it does not read, or a file dropped too recently to have been processed.
+for every photo; for a video, true when its storage has produced a preview **or**
+when a still can be cut from the file itself, which depends on ffmpeg being in the
+image and is therefore settled once, at startup
+([D92](./08-decisions/D92-a-video-poster-is-the-storage-s-preview-then-a-still.md)).
+It is a **question, not a column**: the front end asks for a thumbnail "when there
+is one" without replaying the photo/video rule on its side, and without requesting,
+on every grid load, an image doomed to a 415 — a video on a storage holding no
+preview, in an image without ffmpeg.
 
 **`MediaItem.videoCodec`** — the four-letter code of a video's image-track
 codec, as written in the file: `avc1`, `hvc1`, `hev1`. `null` for a photo and for
@@ -395,7 +397,7 @@ It travels with the item because **the client chooses its own source**: with the
 real codec, `canPlayType` gives a straight answer where `video/mp4` alone
 answers `maybe` everywhere and learns nothing (D98). Chrome therefore requests
 `/playable`, while Safari and an iPhone keep `/original` at full quality
-(D260809b).
+(D6).
 
 **`MediaItem.description`** — the caption typed by hand on this photo, `null` if
 no one has written one. It is carried by the **(album, item)** pair: the same
@@ -741,31 +743,36 @@ All three respond:
 | 415  | `unsupported` — two cases, both specific to videos, detailed just below                                                                                     |
 | 503  | Storage disconnected or revoked                                                                                                                             |
 
-A video **does** have a thumbnail: the preview Drive produces of its first
-second, served like any other WebP derivative and disk-cached the same way
-([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)). Nothing is decoded locally.
+A video **does** have a thumbnail. On Drive it is the preview produced of its
+first second, which costs no download; on a storage holding no preview, ffmpeg
+cuts one from the file, once, and it is then served and disk-cached like any other
+WebP derivative
+([D92](./08-decisions/D92-a-video-poster-is-the-storage-s-preview-then-a-still.md)).
 The two refusals that remain:
 
-| Refusal                            | Why                                                                                                                                     |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `full` or `hd` on a video          | Drive's preview is a few hundred pixels: enlarging it would only show a blurry image, served `immutable` for a year.                    |
-| `thumb` on a video with no preview | `media.has_thumbnail` is 0 — Drive has no image to give. Knowing this avoids a call whose outcome is already known, on every grid load. |
+| Refusal                                         | Why                                                                                                                                                                                                            |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `full` or `hd` on a video                       | A poster is a few hundred pixels: enlarging it would only show a blurry image, served `immutable` for a year.                                                                                                  |
+| `thumb` on a video neither route can illustrate | The storage holds no preview and the image has no ffmpeg to cut one. The renderer raises `NoPreviewError`, which the route turns into this 415 once, rather than a 500 the client would retry on every scroll. |
 
 The front end normally never hits this: `MediaItem.hasPreview` tells it in
 advance whether there is an image to request.
 
-**`original`** — the file as-is, relayed from Drive without passing through the
-disk cache.
+**`original`** — the file as-is, relayed from the storage that holds it without
+passing through the disk cache. The bullets below say "the backend": for Drive,
+S3 and WebDAV that is an upstream response being copied through, and for a local
+folder it is `storage/local.ts` building the same shapes itself, which is why this
+route has no branch for it.
 
 - `?download=1` adds `Content-Disposition: attachment; filename*=UTF-8''…`.
 - The request's `Range` header is validated (`media/range.ts`) then forwarded
-  to Drive; the Drive response's `Content-Length` and `Content-Range` are
+  to the backend; its `Content-Length` and `Content-Range` are
   copied through unchanged. An invalid or multi-range `Range` is **ignored**
   and the whole file is served, in line with RFC 9110.
-- `206` response if Drive responded 206, otherwise `200`. Always
+- `206` response if the backend responded 206, otherwise `200`. Always
   `Accept-Ranges: bytes` — without which the browser would refuse video
   seeking.
-- **`416`** if Drive responded 416: the received `Content-Range` is copied
+- **`416`** if the backend responded 416: the received `Content-Range` is copied
   through and the body is empty. An unsatisfiable range — offset past the end,
   common when switching videos while a request is in flight — belongs to the
   normal `Range` protocol; turning it into a server error would give a 500
@@ -785,9 +792,9 @@ disk cache.
 
 **`playable`** — the H.264 version the server prepares for videos whose codec
 no mainstream browser decodes
-([D260809b](./08-decisions/D260809b-video-transcoding-rejected-by-d6-becomes-viable-with.md)). It comes
-from the disk store, not from Drive: ranges are therefore resolved here rather
-than relayed.
+([D6](./08-decisions/D6-a-video-is-relayed-untouched-except-a-codec-no-browser.md)). It comes
+from the disk store, not from the storage: ranges are therefore resolved here
+rather than relayed.
 
 | Code | When                                                                                                                           |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -1146,9 +1153,9 @@ with **explicit** access, wildcard holders not appearing in it.
 
 `UpdateAlbumRequest`'s `coverId` names the cover photo; `null` restores the
 automatic choice. The photo must be indexed **in this album** and must not be a
-video, otherwise `400 unknown_cover`. A video does have a thumbnail since D92 —
-but it belongs to Drive and can be missing on a re-encoded file, and the cover
-is the only image whose absence shows from the home page, with no fallback
+video, otherwise `400 unknown_cover`. A video does have a thumbnail, from its
+storage or cut by ffmpeg (D92) — but a poster can still be absent, and the
+cover is the only image whose absence shows from the home page, with no fallback
 (D80 only covers a photo that has left the index). Two identically named fields
 not to be confused — `AdminAlbum.coverId` is the **choice** (`null` = automatic),
 `Album.coverId` the cover **actually served**, which falls back to the most
@@ -1313,7 +1320,7 @@ latter two meaning "no alert", `ConfigRepo` folding them into the same `NULL`.
 `videoCacheMaxSizeGB` is a budget **separate** from `cacheMaxSizeGB`, not a
 share of it: the two derivatives do not cost the same to rebuild — a few
 seconds for a thumbnail, several minutes of processor time for a video. A
-shared LRU would let browsing the grid evict hours of work (D260809b).
+shared LRU would let browsing the grid evict hours of work (D6).
 
 **Settings apply without a restart**: the two `MediaCache` limits are adjusted
 straight away (with eviction if they are lowered), `main.ts`'s synchronisation

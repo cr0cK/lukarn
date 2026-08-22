@@ -57,7 +57,7 @@ same `readWindow` and the same failure handling.
   references are what tell them apart, and dropping them puts half the world in
   the wrong quarter of the map.
 - HEIC and RAW still have no preview on these backends — that is
-  [D260816](./D260816-a-video-preview-is-cut-by-ffmpeg-when-the-backend.md)'s
+  [D92](./D92-a-video-poster-is-the-storage-s-preview-then-a-still.md)'s
   territory and unrelated to reading their metadata.
 
 **Rejected.** Downloading the file and handing it to sharp, whose `metadata()`

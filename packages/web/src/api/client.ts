@@ -414,7 +414,7 @@ export const mediaUrl = {
   original: (id: string, version?: string | null) =>
     `/api/media/${encodeURIComponent(id)}/original${query(version)}`,
   /**
-   * Server-prepared version for codecs this browser cannot decode (D260809b).
+   * Server-prepared version for codecs this browser cannot decode (D6).
    * Responds with 404 until it exists — preparation is anticipated and slow,
    * not triggered by the request.
    */

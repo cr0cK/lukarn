@@ -92,8 +92,8 @@ export interface MediaUpsert {
  * `posters` answers one question for a video: can an image be obtained for it at all?
  *
  * It is not the same question as `has_thumbnail`, which records what the **storage**
- * said it holds — no for everything except a Drive. Since D260816 a video whose backend
- * holds no preview still gets one, cut by ffmpeg, so the interface must be told it may
+ * said it holds — no for everything except a Drive. A video whose backend holds no
+ * preview still gets one, cut by ffmpeg (D92), so the interface must be told it may
  * ask: without that, `Thumb` shows a grey tile and never requests the image that would
  * have been produced.
  */
@@ -112,7 +112,7 @@ function toItem(row: MediaRow, posters: boolean): MediaItem {
     durationMs: row.duration_ms,
     // A photo always has a render — the pipeline decodes it and falls back to the
     // preview the backend holds when libvips cannot read it. A video has one when its
-    // storage holds a preview (D92) or when a still can be cut from it (D260816).
+    // storage holds a preview, or when a still can be cut from it (D92).
     hasPreview: row.kind === 'photo' || row.has_thumbnail === 1 || posters,
     // Eight fingerprint characters distinguish successive versions of the same file
     // while keeping the URL readable.
@@ -492,9 +492,10 @@ export class MediaRepo {
       )
       .get(albumId) as { count: number; newest: string | null; oldest: string | null };
 
-    // `kind = 'photo'` on both sides: never a video. Videos have thumbnails since
-    // D92, but those belong to Drive and may be missing — while the cover is the one
-    // image whose absence is visible from the home page with no fallback.
+    // `kind = 'photo'` on both sides: never a video. A video has a poster (D92), but
+    // it can be absent — no preview on the backend and no ffmpeg here — while the
+    // cover is the one image whose absence is visible from the home page with no
+    // fallback.
     const chosen = chosenId
       ? (this.db
           .prepare(`SELECT id, md5 FROM media WHERE album_id = ? AND id = ? AND kind = 'photo'`)

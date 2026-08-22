@@ -66,6 +66,45 @@ exactly why nothing caught it. A paraphrase does not satisfy the check on
 purpose: the words a reader meets in the README are then the words they find in
 the form.
 
+**A decision states the rule in force, and is rewritten when that rule changes**
+(D260822). This directory answers "why is it built this way", in the present
+tense: `D6 — No video transcoding` sat on file while the application transcoded,
+and a reader had to reconstruct the truth from a chain of three documents. The
+history is in `git log`, complete and dated; restating it here is the duplication
+every other rule on this page forbids. What survives a rewrite is **why an
+alternative was rejected** — that does not age.
+
+**One question, one decision.** When the reasoning that changed a rule already
+lives in a newer file, fold it into the older one and delete the newer, replacing
+its identifier wherever it was cited. D6 absorbed D260809b and D92 absorbed
+D260816 that way. The identifier never moves: it is what a hundred code comments
+say, and it means "the current rule on this question".
+
+The title is the sentence stating the rule, so rewriting one changes the title and
+renames the file. `check:specs` notices, lists every paragraph of `specs/` and
+every source file citing that decision, and asks for a `Swept: D92 — <what you
+checked>` line in the commit body — the shape `check:changelog` already uses.
+
+This exists because every other check here proves that a mention **exists**, and
+none of them looks at the paragraph the new mention contradicts. D92 said a video
+poster comes from Drive; ffmpeg made that false; seven paragraphs across five
+documents went on saying it, three of them surviving a deliberate review of the
+whole corpus a week later. The pull request responsible had updated all seven
+specs — so "were the specs touched?" is worth nothing as a gate.
+
+What the sweep forces is **seeing the list**, not reading each paragraph, and it
+reaches only prose that cites a decision. A claim that names nothing is a claim
+nothing can hold to account, which is an argument for citing.
+
+**Rereading a whole document is `/spec-sync`.** The skill in
+`.claude/skills/spec-sync/` reads a document in `specs/` end to end against the
+code and corrects only what is false, citing the `file:line` that settles each
+correction. Bare it audits `01` through `07`, which is the full sync; named —
+`/spec-sync 04` — it audits those. `.github/workflows/spec-sync.yml` invokes it
+after a merge to `main`, narrowed to what that merge touched by the table below
+(D260822b). It never improves prose: an audit that also
+rewrites what is merely worded oddly cannot be reviewed.
+
 `pnpm check:changelog` guards a third reader. The specs are for whoever takes
 over the code; `CHANGELOG.md` is for whoever **runs** the application, and the
 section matching a `v*` tag becomes the body of its GitHub release — a feature

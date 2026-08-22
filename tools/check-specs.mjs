@@ -13,6 +13,7 @@
  *
  *   node tools/check-specs.mjs
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -284,6 +285,163 @@ for (const chemin of porteursDeRenvois) {
         );
       }
     });
+}
+
+/* ------------------------------------------- A rewritten decision is swept */
+
+/**
+ * When a decision is rewritten, the prose it seeded elsewhere is reread.
+ *
+ * Every check above proves that a mention **exists**. None of them looks at the
+ * paragraph the new mention contradicts, and that is where this documentation
+ * actually rots: D92 said a video poster comes from Drive and nothing is decoded
+ * here, ffmpeg made it false, and the sentence survived in five documents for a
+ * week. The pull request that did it had updated all seven specs, so no gate
+ * reading "were the specs touched?" could ever have seen it.
+ *
+ * A decision states the rule in force and is rewritten when that rule changes
+ * (D260822). Rewriting one is therefore the signal: this check lists every
+ * paragraph of `specs/` and every source file that cites it, and asks for a
+ * `Swept: D92 — <what was checked>` line in the commit body, in the shape
+ * `check-changelog.mjs` already uses for an escape hatch that states its reason.
+ *
+ * What this forces is **seeing the list**, not reading each paragraph. It is the
+ * honest limit of a mechanical check on prose, and the reason `specs/09-plans/`
+ * carries a second layer whose whole task is the reading.
+ */
+const SWEPT = /^Swept:\s*(D\d+[a-z]?)/gim;
+
+function git(...args) {
+  // stderr is discarded: `git show` on a path absent from a commit writes a fatal
+  // there before exiting non-zero, and `readAt` answers that case with an empty
+  // string rather than with a line of noise above a legible report.
+  return execFileSync('git', args, {
+    cwd: RACINE,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim();
+}
+
+/**
+ * The commit this branch grew from, or `null` when there is nothing to compare.
+ *
+ * Actions supplies the target branch through `GITHUB_BASE_REF`, and `verify.yml`
+ * checks out the full history so the merge base with it exists. The merge base
+ * rather than the branch tip: `main` moves while a branch is open, and its tip
+ * would attribute somebody else's rewrite — and their sweep — to this one.
+ */
+function baseCommit() {
+  const references = process.env.GITHUB_BASE_REF
+    ? [`origin/${process.env.GITHUB_BASE_REF}`]
+    : ['origin/main', 'main'];
+
+  for (const reference of references) {
+    try {
+      const fusion = git('merge-base', reference, 'HEAD');
+      return fusion === git('rev-parse', 'HEAD') ? null : fusion;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/** Identifier stated by a decision file's title, or `null`. */
+function identifierOf(contents) {
+  const titre = /^#\s+(D\d+[a-z]?)\s+—\s/m.exec(contents);
+  return titre ? titre[1] : null;
+}
+
+/** The whole title line, which is the sentence stating the rule. */
+function titleLine(contents) {
+  const titre = /^#\s+.*$/m.exec(contents);
+  return titre ? titre[0].trim() : '';
+}
+
+/** A file's contents at a commit, or `''` where it did not exist. */
+function readAt(commit, chemin) {
+  try {
+    return git('show', `${commit}:${chemin}`);
+  } catch {
+    return '';
+  }
+}
+
+const base = existsSync(join(RACINE, '.git')) ? baseCommit() : null;
+
+if (base) {
+  const prefix = 'specs/08-decisions/';
+  const rewritten = new Set();
+
+  // **The title is the signal, not the diff.** A title states the rule, so a rule
+  // that changed shows there and nowhere else. Firing on any edit to a decision
+  // file would have demanded a sweep of D79, D260809g and D260816b in this very
+  // change, whose only edit was a reference pointing at a renamed file — three
+  // false alarms out of five, which is how a check earns its way to being
+  // disabled.
+  //
+  // Titles are compared **by identifier**, never by path. Git's rename detection
+  // needs the two versions to still resemble each other, and a decision rewritten
+  // thoroughly enough to matter — one absorbing the newer decision that replaced
+  // it — reads to git as one file added and another deleted. Keying on the
+  // identifier the title states survives that, and survives a fold, where the
+  // identifier simply stops existing.
+  const before = new Map();
+  const after = new Map();
+
+  for (const chemin of git('diff', '--name-only', base, '--', prefix).split('\n')) {
+    if (!chemin || chemin.endsWith('README.md')) continue;
+
+    for (const [contenu, table] of [
+      [readAt(base, chemin), before],
+      [existsSync(join(RACINE, chemin)) ? lire(join(RACINE, chemin)) : '', after],
+    ]) {
+      const identifiant = contenu && identifierOf(contenu);
+      if (identifiant) table.set(identifiant, titleLine(contenu));
+    }
+  }
+
+  for (const [identifiant, titre] of before) {
+    if (after.get(identifiant) !== titre) rewritten.add(identifiant);
+  }
+
+  const declared = new Set(
+    [...git('log', '--format=%B', `${base}..HEAD`).matchAll(SWEPT)].map((m) => m[1]),
+  );
+
+  for (const identifiant of rewritten) {
+    if (declared.has(identifiant)) continue;
+
+    const cites = new RegExp(`\\b${identifiant}\\b`);
+    const sites = [];
+    const code = [];
+
+    for (const chemin of porteursDeRenvois) {
+      if (chemin.startsWith(`${join(SPECS, '08-decisions')}/`)) continue;
+      const texte = lire(chemin);
+      if (!cites.test(texte)) continue;
+      if (!chemin.startsWith(`${SPECS}/`)) {
+        code.push(relative(RACINE, chemin));
+        continue;
+      }
+      texte.split('\n').forEach((ligne, index) => {
+        if (cites.test(ligne)) sites.push(`${relative(RACINE, chemin)}:${index + 1}`);
+      });
+    }
+
+    // Nothing restates it, so there is nothing to reread. This is the ordinary
+    // shape of a fold, where the identifier stops existing and every citation has
+    // already moved — the reference check above guarantees it. Asking for a
+    // `Swept:` line there would be a demand with an empty list attached.
+    if (sites.length === 0 && code.length === 0) continue;
+
+    manques.push(
+      `"${identifiant}" was rewritten: reread what restates it, then say so with ` +
+        `"Swept: ${identifiant} — <what you checked>" in the commit body` +
+        (sites.length > 0 ? `\n      specs: ${sites.join(', ')}` : '') +
+        (code.length > 0 ? `\n      source: ${code.join(', ')}` : ''),
+    );
+  }
 }
 
 /* ------------------------------------------- References between spec files */

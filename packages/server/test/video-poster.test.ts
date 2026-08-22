@@ -23,7 +23,7 @@ import type { MediaUpsert } from '../src/repo.js';
  * the file, and turns "no image can be produced at all" into a 415 rather than a
  * 500. Whether such an image can be produced is the renderer's question, and
  * `renderer.test.ts` is where it is asked — the route stopped answering it from
- * `has_thumbnail` in D260816.
+ * `has_thumbnail` in D92.
  */
 
 const PASSWORD = 'mot-de-passe-de-test';
@@ -165,7 +165,7 @@ describe('video thumbnail', () => {
 
     // `has_thumbnail` is what the storage said at sync time, and outside Drive every
     // backend says no. Refusing on it would leave every album read from a folder or
-    // a bucket without a single video tile (D260816).
+    // a bucket without a single video tile (D92).
     assert.equal(response.statusCode, 200);
     assert.equal(response.headers['content-type'], 'image/webp');
   });

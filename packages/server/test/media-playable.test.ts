@@ -13,7 +13,7 @@ import { playableKey } from '../src/media/transcode.js';
 import type { MediaUpsert } from '../src/repo.js';
 
 /**
- * Playable version of a video (D260809b).
+ * Playable version of a video (D6).
  *
  * The file is local, unlike `/original`, which relays Drive: the route resolves
  * ranges, and this is where a defect would be costly — an incorrect

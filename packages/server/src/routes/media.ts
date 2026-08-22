@@ -98,7 +98,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
      * refusing on it would leave every album read from a folder or a bucket without a
      * single video poster. The renderer owns the chain instead — the preview the
      * backend holds, then a still cut by ffmpeg — and answers `NoPreviewError` when
-     * neither exists, which becomes the same 415 as before (D260816).
+     * neither exists, which becomes the same 415 as before (D92).
      */
     if (meta.kind === 'video' && variant.kind !== 'thumb') {
       return reply
@@ -202,7 +202,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     );
 
     /**
-     * Transcoded version served from the disk store (D260809b).
+     * Transcoded version served from the disk store (D6).
      *
      * **404 when it is absent**, as agreed with the front end: preparation is
      * anticipatory and slow, so a video added ten minutes ago may not have one yet.

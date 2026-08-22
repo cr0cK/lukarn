@@ -139,7 +139,7 @@ export function Lightbox({
   /**
    * Video source. The actual codec decides: this browser uses the server-prepared
    * version, while another that decodes HEVC — Safari or an iPhone — keeps the
-   * full-quality original (D260809b).
+   * full-quality original (D6).
    *
    * Detection from D98 remains the safeguard behind this choice, not only for
    * videos without a known codec: a browser claiming to support a format but
@@ -220,7 +220,7 @@ export function Lightbox({
    * Watches for the prepared version and restores the player when it arrives.
    *
    * Without this, the waiting message would remain until the photo was reopened.
-   * Preparation is anticipated and eventually completes (D260809b), but nobody
+   * Preparation is anticipated and eventually completes (D6), but nobody
    * waiting there would know — precisely the person who wanted this video.
    *
    * Request **one byte with `Range`** instead of reloading the element: it would
@@ -896,7 +896,7 @@ export function Lightbox({
                   When the codec is known to be unsupported here, a playable
                   version is also known to be on its way and the viewer watches
                   for it: the message says what will happen without asking for a
-                  return or reload (D260809b). */}
+                  return or reload (D6). */}
                 <p className="text-xs text-ink-400">
                   {t(transcoded ? 'viewer.videoTranscoding' : 'viewer.videoUnsupported')}
                 </p>

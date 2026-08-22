@@ -57,13 +57,19 @@ anywhere is involved, and nobody's family appears in a public README.
 ## What it does
 
 - **Photos and videos**: JPEG, PNG, WebP, HEIC, MP4, MOV. Videos stream with
-  native seeking, without transcoding.
+  native seeking and are relayed untouched. A codec no browser plays, such as an
+  iPhone's HEVC, gets an H.264 version prepared in the background, and the
+  original stays available.
 - **Accounts and albums administered from the application**, with per-user
   rights, no restart and no file to edit. No sign-up: the owner creates every
   account, with a password or with an invitation sent to an address.
 - **EXIF**: capture date, camera, lens, aperture, shutter speed, ISO,
   geolocation. Chronological ordering on the real capture date. A day can carry a
   note and a place, the latter derived from coordinates.
+- **Search across what the library knows**: album titles and descriptions, the
+  note and the place a day carries, the description written under a photo. Every
+  result is somewhere to go, and it only ever covers the albums the account may
+  open.
 - **Per-photo comments**, with one level of reply, and **email notifications**
   for replies and an album's new photos. Every message carries an unsubscribe
   link; administrators can hide and restore comments from `/admin`.
@@ -448,7 +454,8 @@ carries dimensions and EXIF, and elsewhere only the header of each file is read.
 The grid is therefore served locally, and knowing every proportion in advance
 lets it lay itself out before a single image loads. Second, **no storage URL ever
 reaches the browser**: thumbnails are rendered to WebP and cached on disk with
-LRU eviction, and videos are relayed `Range` by `Range` without transcoding.
+LRU eviction, and videos are relayed `Range` by `Range`, untouched wherever the
+browser can play them.
 
 Why it is built this way is in [`specs/`](./specs/). Start with
 [`specs/README.md`](./specs/README.md).

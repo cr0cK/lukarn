@@ -111,6 +111,16 @@ version:
 | Access rules, sessions, crypto               | `specs/04-security-and-access.md`          |
 | A trade-off you accepted, an option you cut  | `specs/08-decisions/`: **a new file**      |
 
+A decision states the rule **in force**, so when that rule changes you rewrite the
+decision rather than adding a second one beside it. Its title is the sentence
+stating the rule, so the title changes too and the file is renamed; the identifier
+stays, because that is what the code comments cite.
+
+`pnpm check:specs` notices the rewrite and lists every paragraph of `specs/` and
+every source file that restates that decision. Reread them, then say so with
+`Swept: D92 — <what you checked>` in the commit body. That paragraph nobody goes
+back to is the one that quietly became false.
+
 ## What someone will notice goes in the changelog
 
 A commit typed `feat`, `fix` or `perf` says somebody using the application will
@@ -155,8 +165,12 @@ the same letter, and nothing notices until both have merged. **Before pushing,
 duplicate only surfaces afterwards, as a failing check on everyone else's
 branches.
 
-Decisions are a journal: they are not rewritten. A decision that recounts how
-something used to be keeps the names it had at the time.
+Decisions are not a journal. Each one states the rule in force, in the present
+tense, and is rewritten when that rule changes — a log carrying `No video
+transcoding` while the application transcodes hands every future reader the job of
+working out which file to believe. Fold rather than accumulate: one question, one
+decision. What a rewrite keeps is why an alternative was rejected, which does not
+age; what it drops is what we believed at the time, which `git log` holds anyway.
 
 **A decision is written with the code it describes.** The log says how this
 application is built, so a file added before the work lands describes an instance
