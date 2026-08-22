@@ -258,7 +258,8 @@ Key choices:
   mishap. The fallback is therefore calculated on reads by
   `MediaRepo.stats(albumId, chosenId)`: a photo missing from the index — or one
   that is a video — yields to the newest without erasing the choice. Videos have
-  had thumbnails since D92, but those belong to Drive and may be missing, while
+  had thumbnails since D92 and keep one even off Drive (D260816), but a poster can
+  still be absent — no preview on the backend and no ffmpeg in the image — while
   the cover is the only image whose absence is visible from the home page with no
   fallback. Because the Drive identifier is stable, a returning photo becomes the
   cover again.

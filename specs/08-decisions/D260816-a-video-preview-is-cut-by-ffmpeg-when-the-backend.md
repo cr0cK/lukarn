@@ -1,5 +1,8 @@
 # D260816 — A video preview is cut by ffmpeg when the backend holds none
 
+**Narrows.** [D92](./D92-a-video-preview-comes-from-drive-not-local-decoding.md) —
+a video poster no longer comes from Drive alone, and bytes are decoded here.
+
 **Context.** [D92](./D92-a-video-preview-comes-from-drive-not-local-decoding.md)
 gave every video a tile by serving the preview Drive produces from its first
 second, and explicitly **rejected extracting a frame with ffmpeg** on the grounds

@@ -111,6 +111,19 @@ version:
 | Access rules, sessions, crypto               | `specs/04-security-and-access.md`          |
 | A trade-off you accepted, an option you cut  | `specs/08-decisions/`: **a new file**      |
 
+A decision that replaces part of an older one says so, under its title:
+
+```markdown
+**Narrows.** [D92](./D92-a-video-preview-comes-from-drive-not-local-decoding.md) —
+a video poster no longer comes from Drive alone.
+```
+
+`pnpm check:specs` then walks you through every paragraph of `specs/` that still
+cites D92, and asks you to cite the new decision there or drop the old reference.
+Either way you reread the sentence, which is the point: the paragraph that quietly
+became false is the one nobody goes back to. Declare it only when something the
+older decision concluded no longer holds, not because the two are related.
+
 ## What someone will notice goes in the changelog
 
 A commit typed `feat`, `fix` or `perf` says somebody using the application will

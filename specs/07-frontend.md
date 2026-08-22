@@ -1024,9 +1024,11 @@ the 320/640/1280 sizes that covers the display width multiplied by the DPR
 thumbnail grid. First-screen thumbnails use `loading="eager"`, the rest
 `lazy`.
 
-The `<img>` displays as soon as `item.hasPreview`, videos included: their
-preview comes from Drive
-([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)).
+The `<img>` displays as soon as `item.hasPreview`, videos included: their poster
+comes from the preview the storage holds
+([D92](./08-decisions/D92-a-video-preview-comes-from-drive-not-local-decoding.md)),
+or from a still ffmpeg cuts where it holds none
+([D260816](./08-decisions/D260816-a-video-preview-is-cut-by-ffmpeg-when-the-backend.md)).
 The playback badge then sits **on top of** the image — a `bg-black/45` disc,
 white triangle, centred — because it is what distinguishes a video from a
 photo at a glance and it must stay legible over a light preview. With no
@@ -1310,8 +1312,8 @@ as the emergency exit.
 - Videos: `<video controls autoPlay playsInline>`, native seeking via
   `Range`, and a `poster` set to the 1280 thumbnail when `item.hasPreview` —
   the grid's own, already in the disk cache and often in the browser cache
-  too: the black rectangle of the wait disappears with no extra request
-  (D92). The wait carries **no** indicator of its own: the `poster` occupies
+  too: the black rectangle of the wait disappears with no extra request.
+  The wait carries **no** indicator of its own: the `poster` occupies
   it, and the native controls already carry their own — stacking a second one
   on top made two spinners turn, one over the other
   ([D98](./08-decisions/D98-decoding-that-fails-without-an-error-and-one-spinner-too.md)).
@@ -1394,9 +1396,10 @@ codecs="hvc1"`, rather than the bare type, to which everyone answers `maybe`
   and the header grew to 92 px — it covered the top of the very photo it
   announces. `1 / 120` precedes the date because that is the useful landmark
   when browsing an album, so the date is the one that must be trimmed first.
-- **Set as cover** only appears for an administrator, and never on a video:
-  its preview belongs to Drive (D92) and can be missing, and the cover is the
-  one image whose absence shows from the home page, with no fallback. It is
+- **Set as cover** only appears for an administrator, and never on a video: its
+  poster can be missing, whether it would have come from the storage (D92) or
+  from ffmpeg (D260816), and the cover is the one image whose absence shows from
+  the home page, with no fallback. It is
   the only action with no keyboard shortcut — it is done once per album, and
   the `?` cheat sheet addresses everyone. It lights up when the open photo is
   already the cover; reselecting it is not a wasted click: it may have been

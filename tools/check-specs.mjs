@@ -286,6 +286,121 @@ for (const chemin of porteursDeRenvois) {
     });
 }
 
+/* ------------------------------------------ A decision that narrows another */
+
+/**
+ * When a decision replaces part of an older one, the prose the older one seeded
+ * has to be swept in the same piece of work.
+ *
+ * Every check above proves that a mention **exists**. None of them looks at the
+ * paragraph the new mention contradicts, and that is where this documentation
+ * actually rots: D92 said a video poster comes from Drive and nothing is decoded
+ * here, D260816 made it false, and the sentence survived in four documents for a
+ * week. The pull request that did it had updated all seven specs, so no gate
+ * reading "were the specs touched?" could ever have seen it.
+ *
+ * A decision therefore declares what it narrows, and every **paragraph** of
+ * `specs/` citing the narrowed decision must cite the narrowing one too — or stop
+ * citing the old one. Both are one word to write and neither can be written
+ * without reading the sentence, which is the whole point: the author is sent to
+ * the four paragraphs that are about to become false, not to the document that
+ * holds them.
+ *
+ * The unit is the paragraph rather than the file, and that is not fussiness. Run
+ * per file, this check passed `03-data-model.md` on the strength of one corrected
+ * paragraph while another still read "those belong to Drive" three hundred lines
+ * below. One acknowledgement must not absolve the paragraphs nobody reread.
+ *
+ * `08-decisions/` is exempt for the reason the spec-path check above is: a log
+ * names what it replaced.
+ *
+ * Code sites are named in the message but do not fail the check. A decision is
+ * cited from eighteen files on average at the top of the distribution, most of
+ * them comments explaining a mechanism the narrowing leaves untouched, and a
+ * check that demands eighteen edits to land one is a check people route around.
+ */
+const NARROWS = /^\*\*Narrows\.\*\*(.*)$/gm;
+
+/** Narrowed identifier → the decisions that narrow it. */
+const narrowedBy = new Map();
+
+for (const [identifier, origin] of definies) {
+  const file = join(RACINE, origin);
+  for (const [, line] of lire(file).matchAll(NARROWS)) {
+    for (const [narrowed] of line.matchAll(/\bD\d+[a-z]?\b/g)) {
+      if (narrowed === identifier) {
+        manques.push(`${origin}: a decision cannot narrow itself`);
+        continue;
+      }
+      if (!definies.has(narrowed)) continue; // already reported as a missing reference
+      const known = narrowedBy.get(narrowed) ?? new Set();
+      // A markdown link names its target twice, in the text and in the path.
+      known.add(identifier);
+      narrowedBy.set(narrowed, known);
+    }
+  }
+}
+
+/**
+ * For every line of `text`, the paragraph it belongs to.
+ *
+ * A blank line separates paragraphs, which is also how a table, a bullet chain and
+ * a fenced block group: close enough for prose whose unit of meaning is a sentence
+ * and its neighbours. The citation's own line is what gets reported — a bullet
+ * chain is one paragraph and can run for forty lines, so its first line would send
+ * the reader nowhere near the claim.
+ */
+function paragraphOfLine(text) {
+  const lines = text.split('\n');
+  const owner = new Array(lines.length);
+  let start = 0;
+  const close = (end) => {
+    const paragraphe = lines.slice(start, end).join('\n');
+    for (let i = start; i < end; i += 1) owner[i] = paragraphe;
+  };
+  lines.forEach((line, index) => {
+    if (line.trim() !== '') return;
+    close(index);
+    start = index + 1;
+  });
+  close(lines.length);
+  return owner;
+}
+
+for (const [narrowed, narrowers] of narrowedBy) {
+  const cites = new RegExp(`\\b${narrowed}\\b`);
+  const acknowledges = new RegExp(`\\b(${[...narrowers].join('|')})\\b`);
+  const code = [];
+  let unswept = 0;
+
+  for (const chemin of porteursDeRenvois) {
+    if (chemin.startsWith(`${join(SPECS, '08-decisions')}/`)) continue;
+    const text = lire(chemin);
+    if (!cites.test(text)) continue;
+
+    if (!chemin.startsWith(`${SPECS}/`)) {
+      code.push(relative(RACINE, chemin));
+      continue;
+    }
+    const owner = paragraphOfLine(text);
+    text.split('\n').forEach((ligne, index) => {
+      if (!cites.test(ligne) || acknowledges.test(owner[index])) return;
+      unswept += 1;
+      manques.push(
+        `${relative(RACINE, chemin)}:${index + 1} cites "${narrowed}" without ` +
+          `"${[...narrowers].join('" or "')}", which narrows it — reread the claim, ` +
+          `then acknowledge or drop the reference`,
+      );
+    });
+  }
+
+  // Only alongside a failure: on a green run this would be a paragraph of noise
+  // printed for every narrowing ever recorded.
+  if (unswept > 0 && code.length > 0) {
+    manques.push(`"${narrowed}" is also cited from source, worth a look: ${code.join(', ')}`);
+  }
+}
+
 /* ------------------------------------------- References between spec files */
 
 /**

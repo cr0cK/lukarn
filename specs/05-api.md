@@ -1155,9 +1155,9 @@ with **explicit** access, wildcard holders not appearing in it.
 
 `UpdateAlbumRequest`'s `coverId` names the cover photo; `null` restores the
 automatic choice. The photo must be indexed **in this album** and must not be a
-video, otherwise `400 unknown_cover`. A video does have a thumbnail since D92 —
-but it belongs to Drive and can be missing on a re-encoded file, and the cover
-is the only image whose absence shows from the home page, with no fallback
+video, otherwise `400 unknown_cover`. A video does have a thumbnail since D92,
+and one off Drive too since D260816 — but a poster can still be absent, and the
+cover is the only image whose absence shows from the home page, with no fallback
 (D80 only covers a photo that has left the index). Two identically named fields
 not to be confused — `AdminAlbum.coverId` is the **choice** (`null` = automatic),
 `Album.coverId` the cover **actually served**, which falls back to the most

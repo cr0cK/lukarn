@@ -66,6 +66,30 @@ exactly why nothing caught it. A paraphrase does not satisfy the check on
 purpose: the words a reader meets in the README are then the words they find in
 the form.
 
+**A decision that narrows an older one declares it, and sweeps what that one
+seeded.** Under the title, a `**Narrows.**` line links the older decision and
+says in one clause what no longer holds. `check:specs` then requires every
+**paragraph** of `specs/` citing that older decision—D92, say—
+to cite the new decision too, or to stop citing D92. Both are one word, and
+neither can be written without reading the sentence — which is the entire point
+(D260822).
+
+This exists because every other check here proves that a mention **exists**, and
+none of them looks at the paragraph the new mention contradicts. D92 said a video
+poster comes from Drive; D260816 made that false; seven paragraphs across five
+documents went on saying it, three of them surviving a deliberate review of the
+whole corpus a week later. The pull request responsible had updated all seven
+specs — so "were the specs touched?" is worth nothing as a gate, and this is what
+replaces it.
+
+Declare it only when a conclusion of the older decision **no longer holds**, never
+out of kinship. A decision covering two subjects gets cited for both, and a
+narrowing declared because the two are related flags every paragraph about the
+half that did not change. That is the noise that gets a check disabled.
+
+Prose citing no decision is beyond the sweep's reach, which is an argument for
+citing: a claim that names nothing is a claim nothing can hold to account.
+
 `pnpm check:changelog` guards a third reader. The specs are for whoever takes
 over the code; `CHANGELOG.md` is for whoever **runs** the application, and the
 section matching a `v*` tag becomes the body of its GitHub release — a feature

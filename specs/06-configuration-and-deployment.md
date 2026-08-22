@@ -534,7 +534,9 @@ files on `main` had strayed from it (D75).
 
 Four checks cover documentation, and three of them judge no prose:
 `tools/check-specs.mjs` compares what the code exposes to what the specs
-mention; `tools/check-links.mjs` resolves the relative links and anchors
+mention, and sends the author to every paragraph a freshly narrowed decision has
+just made doubtful (D260822); `tools/check-links.mjs` resolves the relative links
+and anchors
 of the three documents that reference one another (D64); and
 `tools/check-changelog.mjs` requires a visible change to say so. All four also run
 on `pre-push`. External links are not followed: that would require the

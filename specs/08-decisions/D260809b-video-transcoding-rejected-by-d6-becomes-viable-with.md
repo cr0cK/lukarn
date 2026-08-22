@@ -1,5 +1,8 @@
 # D260809b — Video transcoding, rejected by D6, becomes viable with figures
 
+**Narrows.** [D6](./D6-no-video-transcoding.md) — a codec no browser decodes is
+now prepared in the background. Everything else is still relayed untouched.
+
 **Context.** [D6](./D6-no-video-transcoding.md) rejected transcoding on
 three objections, expressed without measurements: "the CPU of a modest VPS
 cannot keep up, transcoded versions would have to be stored, and a job queue

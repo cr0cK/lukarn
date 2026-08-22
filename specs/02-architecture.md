@@ -68,7 +68,9 @@ bytes — and `media`, the metadata the backend already holds. **`media` is `nul
 when it holds none**, and `preview()` returns `null` for the same reason. Both
 nulls describe Drive's privilege rather than a defect: `files.list` returns EXIF
 data and a `thumbnailLink` in the listing itself, which is what makes indexing
-free of downloads (D3) and gives HEIC, RAW and video their only preview (D92).
+free of downloads (D3) and gives HEIC, RAW and video a preview no other backend
+holds (D92). For a video, that is no longer the only source: where the backend
+holds none, the renderer cuts a still instead (D260816).
 
 Google Drive (`storage/drive.ts`) is the only file that imports `@googleapis/*`,
 and a **local folder** (`storage/local.ts`) is the second implementation.
@@ -261,8 +263,10 @@ transcoding prepares a video that nobody is watching yet.
 imageMediaMetadata, videoMediaMetadata`, and the cursor is its `nextPageToken`,
    opaque to the traversal. **No content is downloaded.** `hasThumbnail` becomes
    `StorageEntry.hasPreview`: whether the backend has produced a preview of the
-   file, which is what allows a video to have a grid thumbnail (D92) and avoids
-   asking again on every page load when none exists.
+   file, which is what gives a Drive video its grid thumbnail for free (D92) and
+   avoids asking again on every page load when none exists. It is the storage's
+   answer, not the whole one — `MediaItem.hasPreview` widens it with the still
+   ffmpeg can cut (D260816).
 6. `toUpsert` reads a `StorageEntry`, never a Drive field: `classify` excludes
    anything that is neither an image nor a video, and dimensions are swapped when
    `media.rotated` is set — otherwise portraits would break the layout. The
