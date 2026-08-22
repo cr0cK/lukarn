@@ -8,8 +8,9 @@ keyboard navigation. Sharing a photo folder also assumes that the recipient has
 a Google account, while a Drive sharing link grants access to anyone who obtains
 it.
 
-The application replaces this preview with a self-hosted gallery that reads the
-owner's Drive and exposes it behind a username and password, one album at a time.
+The application replaces this preview with a self-hosted gallery that reads where
+the owner keeps their photographs and exposes it behind an account, one album at a
+time. Drive was the first place it read, and the section below names the others.
 
 ## More than one storage, and more than one kind
 
@@ -54,7 +55,7 @@ differ by who holds the credential rather than by what may be seen:
 
 | Role                        | How many         | What they do                                                                                      |
 | --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------- |
-| The owner                   | One per instance | Connects their Drive once via OAuth, manages accounts and albums from `/admin`                    |
+| The owner                   | One per instance | Declares the storages the instance reads, manages accounts and albums from `/admin`               |
 | An account that is a key    | A few accounts   | Signs in with a username and a password, which a household may pass around, and views its albums  |
 | An account that is a person | Any of those     | Invited by email, signs in with a code sent to that address, and is known by name on every device |
 
@@ -73,8 +74,9 @@ on a laptop alike, and entered with a code sent to that address rather than with
 a password
 ([D260819b](./08-decisions/D260819b-a-bound-account-signs-in-with-a-code-sent-to-its.md)).
 
-A visitor never has a Google account and never sees a Google URL. All content
-passes through the server, which obtains it with the owner's single token.
+A visitor never has a Google account and never sees a storage URL, signed or
+otherwise. All content passes through the server, which fetches it with the
+credential the album's connection holds.
 
 ## Two languages, chosen by the reader
 
@@ -93,27 +95,29 @@ reaching a screen (see [07](./07-frontend.md)).
 These omissions are not gaps to fill; they are choices that keep the project
 manageable.
 
-| Excluded                                                              | Why                                                                                                                                                                                                                                              |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals.     |
-| Editing, retouching, persisted rotation                               | The originals belong to Drive; the app only produces disposable derivatives.                                                                                                                                                                     |
-| Registration, forgotten passwords                                     | The owner creates every account from `/admin`, with a password or with an invitation sent to an address. An invitation changes who types the secret, never who may open the door: there is still no public form, and nobody signs themselves up. |
-| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                         |
-| Facial recognition, search, tags                                      | These would require processing the content — and therefore downloading every original, which indexing is specifically designed to avoid.                                                                                                         |
-| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                            |
-| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                        |
-| Video transcoding                                                     | ffmpeg on a modest VPS consumes CPU that is not available. `Range` requests are relayed unchanged to Drive. A video does have a thumbnail, but it comes from the Drive preview: no bytes are decoded here (D92).                                 |
-| Query-built albums (dates, tags)                                      | An album is a Drive folder, full stop. The mapping remains easy to verify visually in `/admin`.                                                                                                                                                  |
-| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                       |
-| Map, location search                                                  | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance.                                                                                       |
-| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                            |
+| Excluded                                                              | Why                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Writing anything to a storage                                         | The interface every backend implements has no write operation: the requested Drive scope is `drive.readonly`, and a local folder is mounted `:ro`, so the guarantee holds at the deployment level too. No app bug can destroy the originals.      |
+| Editing, retouching, persisted rotation                               | The originals belong to the storage that holds them; the app only produces disposable derivatives.                                                                                                                                                |
+| Registration, forgotten passwords                                     | The owner creates every account from `/admin`, with a password or with an invitation sent to an address. An invitation changes who types the secret, never who may open the door: there is still no public form, and nobody signs themselves up.  |
+| Public link sharing                                                   | Every media route requires a session. A link copied to a third party gives them nothing.                                                                                                                                                          |
+| Facial recognition, tags                                              | Recognising a face means processing the content, and therefore downloading every original, which indexing is specifically designed to avoid. Searching does exist, over the text the library already holds rather than over the pixels (D96).     |
+| Public comments, or comments signed with a Google account             | Commenting requires the session that already grants access to the album. A third-party identity would create a second population of users without permissions, which would need reconciling with `user_albums` (D33).                             |
+| **Unrestricted** comment editing, reactions, mentions, nested threads | This is what separates a conversation under a photo from a forum. Replies have only one level. Authors may correct a typo for **30 s** after posting (D57); after that, deletion remains the only remedy.                                         |
+| Transcoding a video the browser can already play                      | An `avc1` file is relayed as it stands, `Range` by `Range`, which gives native seeking at no processor cost (D6). Only a codec no current browser decodes — `hvc1`, `hev1` — is prepared, once, in the background and at low priority (D260809b). |
+| Query-built albums (dates, tags)                                      | An album names one container on one storage, and that is all. The mapping remains easy to verify visually in `/admin`.                                                                                                                            |
+| Correcting the location of **one photo**                              | Locations are corrected by day. Per-photo correction would require an override table outside `media` — which `upsertMany` rewrites entirely on every sync —, merging it wherever GPS data is read, and a map picker (D51).                        |
+| A map                                                                 | Coordinates are used to name a day, not for browsing. A map would require third-party tiles in an app that sends no browser requests outside the instance. The name a day carries is searchable as text, like the rest of the library.            |
+| Multi-tenancy                                                         | One instance serves one household. Several **storages** are supported since 1.2 — a table of connections, an album names one — but every account of an instance sees the same library, filtered by album permissions.                             |
 
 ## Constraints that shaped the design
 
 **A modest VPS.** The target: one container, a few hundred MB of RAM, no Postgres
 alongside it, no Redis, and no separate worker. Hence in-process SQLite, a disk
 cache with an in-memory inventory, in-memory login throttling, and sequential
-rather than parallel synchronisation. `docker-compose.yml` has only one service.
+rather than parallel synchronisation. The application is a single service in
+`docker-compose.yml`; the only other one is the reverse proxy that terminates TLS
+in front of it.
 
 **The Drive API quota.** Every call counts, and a gallery that queries Drive on
 every scroll burns through it quickly. The solution is a local index populated by
@@ -121,9 +125,11 @@ every scroll burns through it quickly. The solution is a local index populated b
 single byte of any photo (`packages/server/src/sync/sync.ts`). An album with
 several thousand photos can be indexed in a handful of requests.
 
-**A single Drive owner.** There is only one encrypted refresh token in a
-single-row table. This simplifies everything: no account selection, no
-user-to-token join, and only one point of failure to monitor in `/admin`.
+**One owner, however many storages.** A connection carries its own encrypted
+secret, and an album names the connection it reads (D260815g). Nobody chooses a
+storage while browsing: the album has already chosen, so there is still no account
+selection and no user-to-connection join. What `/admin` monitors is one line per
+connection rather than one for the instance.
 
 **The visitor's network.** The grid must be usable before a single image arrives:
 dimensions come from the index, so the layout is calculated while empty and does
@@ -144,6 +150,16 @@ not move afterwards (see [07](./07-frontend.md)).
 - Photos (JPEG, PNG, WebP, HEIC…) and videos (MP4, MOV) — anything `classify()`
   recognises as `image/*` or `video/*`.
 - WebP thumbnails generated on demand and cached on disk with LRU eviction.
+- **Searching what the library says about itself**: album titles and descriptions,
+  day notes, the places a day was given, and the description a photo carries. A
+  result is somewhere to go rather than a line of text to read, and the index is
+  maintained by the schema, so a write path added later cannot forget it (D96).
+- **A video plays where it can, and is prepared where it cannot.** What the browser
+  decodes is relayed untouched, `Range` by `Range` (D6). What no browser decodes —
+  an iPhone's HEVC — gets an H.264 version cut in the background, one at a time, at
+  low priority, and the original stays available throughout (D260809b). Its poster
+  comes from the preview the storage holds, or from a still cut by ffmpeg where it
+  holds none (D92, D260816).
 - Per-photo comments with one reply level, moderated after the fact from `/admin`
   and notified by email. They are signed by an **identity** — a name and an address
   verified by code — separate from the access key, which a household can share.
@@ -159,6 +175,12 @@ not move afterwards (see [07](./07-frontend.md)).
   conversation should not be discovered only by opening the right photo by chance:
   without this view, a message could appear and fade away without any of its
   recipients seeing it (see D82).
+- **Installable on a phone, in the theme of the room it is read in.** Added to the
+  home screen it opens without an address bar and without a password to type
+  again, its service worker holding the shell and never a photo (D71). The
+  interface follows the device between a light and a dark ramp until a reader
+  settles it for that browser, and an open photo keeps its near-black surround in
+  both (D260815d).
 - **Pairing a screen without a keyboard**: a television displays a QR code, an
   already signed-in phone approves it, and the screen receives the session. Typing
   a masked password with a remote control is the most painful way to open a family
