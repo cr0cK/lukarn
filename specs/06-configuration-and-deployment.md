@@ -534,7 +534,7 @@ files on `main` had strayed from it (D75).
 
 Four checks cover documentation, and three of them judge no prose:
 `tools/check-specs.mjs` compares what the code exposes to what the specs
-mention, and sends the author to every paragraph a freshly narrowed decision has
+mention, and sends the author to every paragraph a freshly rewritten decision has
 just made doubtful (D260822); `tools/check-links.mjs` resolves the relative links
 and anchors
 of the three documents that reference one another (D64); and
@@ -548,6 +548,15 @@ The fourth does judge prose, within limits it can defend.
 on two measurable things: em dashes past a budget per file, and a short list of
 constructions that state something by denying its opposite. It says nothing about
 whether a paragraph is any good (D260817b).
+
+**None of these reads a paragraph and asks whether it is still true**, which is
+the defect they leave open: nine claims were found false in August 2026, and every
+pull request responsible had updated the specs. `.github/workflows/spec-sync.yml`
+answers that one differently — it is triggered by a merge to `main`, maps the files
+it touched onto the documents that follow them, and rereads those documents **whole**
+against the code, opening a pull request only when something was false (D260822b).
+It runs the same Claude Code action as the review workflow, on the same credential,
+and blocks nothing.
 
 `check-specs.mjs` also covers **decision consistency**: an
 identifier defined twice, a file name that doesn't match its decision's

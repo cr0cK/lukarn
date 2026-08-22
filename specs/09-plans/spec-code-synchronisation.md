@@ -1,4 +1,4 @@
-# Plan — Keeping the specs true, in three layers
+# Plan — Keeping the specs true, in four layers
 
 A review of the whole corpus on 22 August 2026 found nine claims in `specs/` that
 the code had made false, some of them for six months. What the nine have in common
@@ -8,8 +8,9 @@ wrote all seven. None of them was careless, and no gate reading "were the specs
 touched?" would have caught a single one. The failure is never a missing edit, it
 is an edit made in the wrong paragraph while the contradicted one stays.
 
-Three layers follow from that, each catching what the one before it cannot. The
-first has landed; the other two are what this plan is for.
+Four layers follow from that, each catching what the one before it cannot. The
+first and the third have landed; this plan carries what is left of them and the
+two that have not.
 
 ## Layer 1 — mechanical, on every push · **done**
 
@@ -54,37 +55,26 @@ Open questions, to settle in the pull request that builds it:
   costs more than it saves. It needs a cheap way to be overruled, and a record of
   how often it is.
 
-## Layer 3 — periodic, over the whole corpus
+## Layer 3 — a whole document reread, after a merge · **done**
 
-The class neither of the layers above can see: a claim that became false
-gradually. `01` said "There is only one encrypted refresh token in a single-row
-table" until this week; #89, #91 and #93 each moved a piece, and no single one of
-them contradicted that sentence outright. Only a pass that reads a whole document
+The class neither of the layers above can see: a claim that became false gradually.
+`01` said "There is only one encrypted refresh token in a single-row table" until
+this week; #89, #91 and #93 each moved a piece, and no single one of them
+contradicted that sentence outright. Only a pass that reads a whole document
 against the code finds those.
 
-A scheduled job, reading everything committed since its own last run, and opening
-a pull request with what it found.
+[D260822b](../08-decisions/D260822b-the-specification-audit-is-triggered-by-a-merge-not.md):
+`.github/workflows/spec-sync.yml`, triggered by a merge to `main` rather than by a
+clock, scoped by the mapping table in `CLAUDE.md`, reading the mapped documents in
+full and opening a pull request only when something was false.
 
-- [ ] The workflow, its cadence, and how it remembers where it stopped
-- [ ] One run against the six months already on `main`, to size what it finds
-
-Open questions:
-
-- **Cadence.** Weekly is often enough that a run is small, rare enough that its
-  pull request gets read. A run per release is easier to justify and lets drift
-  live for a month.
-- **No inbox.** The idea of pull requests dropping notes into a directory for the
-  job to digest was considered and dropped: `git log` since the last run already
-  is that inbox, already reviewed, already in the repository's grammar. #93's
-  commit body contains the exact sentence that had to change in `05`. A second
-  store to keep synchronised is the failure being repaired, and
-  [D260809](../08-decisions/D260809-a-decision-is-numbered-by-its-date-and-lives-in-its.md)
-  refused an index for the same reason.
-- **What it may change on its own.** A job that rewrites prose unattended will
-  eventually rewrite something true. Opening a pull request and changing nothing
-  else is the conservative form, and the one this repository can review.
-- **How it knows where it stopped.** A tag, a file holding the last commit read,
-  or the merge base of its own previous pull request.
+- [x] The workflow, its trigger, and the brief that tells it to correct what is
+      false and leave what is merely worded oddly
+- [ ] Watch the first runs: what it finds, what it invents, and whether the
+      "correct only what is false" rule holds without a reviewer enforcing it
+- [ ] Fill the holes in the mapping table it scopes itself by — 28 of the 52
+      server modules have no row, and a change to one of them routes the audit
+      nowhere
 
 ## Layer 4 — the reverse direction, if the first three are not enough
 
