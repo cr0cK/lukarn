@@ -43,10 +43,9 @@ asks for a `Swept: D92 — <what was checked>` line in the commit body, in the s
 `check-changelog.mjs` already uses for an escape hatch that states its reason.
 
 The trigger is **the title changing**, compared by identifier between the merge
-base and the working tree. Not the file's diff: firing on any edit would have
-demanded a sweep of three untouched decisions in the very change that introduced
-this rule, whose only edit was a reference pointing at a renamed file. Three false
-alarms out of five is how a check earns its way to being disabled. And not git's
+base and the working tree. Not the file's diff: a decision whose only edit is a
+reference pointing at a renamed file has not moved, and demanding a sweep for it
+is how a check earns its way to being disabled. And not git's
 rename detection either: a decision rewritten thoroughly enough to matter reads as
 one file added and another deleted, which is exactly the case that must not slip
 through.
@@ -66,15 +65,8 @@ Folding costs a wide, mechanical diff — thirty-seven files for the two folds d
 here — and the reference check catches any identifier left behind, so the cost is
 paid once and verified.
 
-**Rejected.** Keeping the log append-only and adding a `**Narrows.**` line to
-declare what a new decision replaced. It was written and it worked, catching seven
-stale paragraphs where a human review had found four. It was dropped because it
-outsources to a check the job of compensating for a log that lies: the reader still
-had to follow a chain, and the citations still decayed. Removing the lie is
-cheaper than tooling around it.
-
-**A changelog section inside a decision**, saying what the rule used to be. It is
-history in the specs under another name, and `git log` already answers better. The
+**Rejected.** **A changelog section inside a decision**, saying what the rule used
+to be. It is history in the specs under another name, and `git log` already answers better. The
 reasons that mattered survive as **Context** and **Rejected**, which is where they
 were always going to be read.
 
