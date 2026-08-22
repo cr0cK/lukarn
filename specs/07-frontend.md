@@ -1909,7 +1909,7 @@ unnoticed from the bottom of the queue.
 | `UsersSection` / `UserForm`   | Account list and its four states, creation with a password or with an invitation, the language that invitation is written in, editing, re-invitation and confirmed deletion                                                                                              |
 | `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                                     |
 | `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
-| `SettingsSection`             | Sync interval, sync on startup, cache                                                                                                                                                                                                                                    |
+| `SettingsSection`             | Sync interval, sync on startup, prewarming, both cache budgets, video preparation, moderation address                                                                                                                                                                    |
 | `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                                    |
 | `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                           |
 | `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                               |
@@ -3252,7 +3252,7 @@ other cannot see.
 **`packages/web/test/` — the pure functions, under the native runner.** Layout
 arithmetic (`justify.ts`, `useGridLayout.ts` heights), zoom clamping
 (`zoom.ts`), gesture thresholds (`swipeTrack.ts`), thumbnail choice
-(`thumb.ts`), the catalogues (`i18n`), the stylesheet downgrade
+(`Thumb.tsx`), the catalogues (`i18n`), the stylesheet downgrade
 (`legacy-css.ts`). They are fast, they run in `pnpm verify`, and they answer
 questions with one right answer. What they cannot answer is whether any of it
 ever reaches a screen: none of them loads `index.html`.
