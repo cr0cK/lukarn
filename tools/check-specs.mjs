@@ -47,19 +47,25 @@ function fichiers(repertoire, filtre, acc = []) {
 }
 
 /**
- * Plans describe what the application is about to become, and are deleted by the
- * pull request that finishes them — see `specs/09-plans/`. They are therefore
- * excluded from the text the module check reads: a plan naming a file before it
- * exists would satisfy the check the day it is created, and the module would ship
- * documented by a page about to disappear.
+ * Two directories under `specs/` describe what does not exist yet, and both are
+ * excluded from the text the module check reads: a document naming a file before
+ * that file exists satisfies the check the day it is written, and the module then
+ * ships documented by nothing.
  *
- * Everything else still applies to them: they are read for `(Dxx)` references and
- * for cited spec files below.
+ * `specs/09-plans/` holds plans, which the pull request that finishes them deletes,
+ * so a module documented only by one would ship documented by a page about to
+ * disappear. `specs/10-prds/` holds product intent written ahead of the code, which
+ * is the same defect one step earlier: it names what somebody intends to build.
+ *
+ * Everything else still applies to both: they are read for `(Dxx)` references and
+ * for cited spec files below. `specs/10-prds/` need not exist — the exclusion is a
+ * prefix test, never a walk, so it costs nothing until the first PRD is written.
  */
 const PLANS = join(SPECS, '09-plans');
+const PRDS = join(SPECS, '10-prds');
 
 const texteSpecs = fichiers(SPECS, (n) => n.endsWith('.md'))
-  .filter((chemin) => !chemin.startsWith(`${PLANS}/`))
+  .filter((chemin) => ![PLANS, PRDS].some((dir) => chemin.startsWith(`${dir}/`)))
   .map(lire)
   .join('\n');
 const specApi = lire(join(SPECS, '05-api.md'));
