@@ -137,34 +137,34 @@ If a reported omission is a false positive—a trivial component whose role is
 described without its name appearing—add it to `MODULES_TOLERES` in
 `tools/check-specs.mjs`, with the reason. A noisy check eventually gets disabled.
 
-| If you change…                                                             | Update…                                                                            |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                                  |
-| `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                                   |
-| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-data-model.md`                                                           |
-| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-data-model.md`                                                           |
-| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-data-model.md`, `specs/04-security-and-access.md`                        |
-| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-data-model.md`, `specs/04-security-and-access.md`                        |
-| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-and-deployment.md`, and `08` if a trade-off changes        |
-| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-and-deployment.md`, and `README.md` if startup requires it |
-| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-data-model.md`, `specs/04-security-and-access.md`                        |
-| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-and-deployment.md`, and the install in `README.md`         |
-| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`                 |
-| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                                  |
-| `storage/provider.ts` (the interface, an error)                            | `specs/02-architecture.md` (the storage interface), `specs/05-api.md`              |
-| `storage/connections.ts`, `storage/registry.ts` (a connection, a kind)     | `specs/03-data-model.md`, `specs/04-security-and-access.md`, `specs/05-api.md`     |
-| `storage/drive.ts`, `sync/sync.ts`, `sync/metadata.ts`                     | `specs/02-architecture.md` (sync flow)                                             |
-| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                        |
-| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                             |
-| `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                            |
-| `packages/e2e/storages/` (a container, a backend, a claim)                 | `specs/07-frontend.md`, and `08` if a trade-off changes                            |
-| `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                          |
-| A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes                 |
-| `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                          |
-| `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                             |
-| An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—**a new file**; never rewrite old ones                       |
-| Work spanning several pull requests, between two of them                   | `specs/09-plans/`—the plan; the request that finishes it deletes it                |
-| The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                                     |
+| If you change…                                                             | Update…                                                                                  |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                                        |
+| `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                                         |
+| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-data-model.md`                                                                 |
+| `packages/server/src/repo.ts` (cursors, queries)                           | `specs/03-data-model.md`                                                                 |
+| `packages/server/src/comments.ts` (threads, moderation)                    | `specs/03-data-model.md`, `specs/04-security-and-access.md`                              |
+| `packages/server/src/commenters.ts` (identities, code verification)        | `specs/03-data-model.md`, `specs/04-security-and-access.md`                              |
+| `packages/server/src/mail.ts` (transport, queue, composition)              | `specs/06-configuration-and-deployment.md`, and `08` if a trade-off changes              |
+| `packages/server/src/env.ts`, `config.ts` or `bootstrap.ts`                | `specs/06-configuration-and-deployment.md`, and `README.md` if startup requires it       |
+| `packages/server/src/config-repo.ts` (accounts, albums, settings)          | `specs/03-data-model.md`, `specs/04-security-and-access.md`                              |
+| `Dockerfile`, `docker-compose.yml`, volumes                                | `specs/06-configuration-and-deployment.md`, and the install in `README.md`               |
+| `deploy/` (cloud-init, `backup.sh`, `deploy.sh`)                           | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`                       |
+| `plugins/auth.ts`, `sessions.ts`, `crypto.ts`, `throttle.ts`, access rules | `specs/04-security-and-access.md`                                                        |
+| `storage/provider.ts` (the interface, an error)                            | `specs/02-architecture.md` (the storage interface), `specs/05-api.md`                    |
+| `storage/connections.ts`, `storage/registry.ts` (a connection, a kind)     | `specs/03-data-model.md`, `specs/04-security-and-access.md`, `specs/05-api.md`           |
+| `storage/drive.ts`, `sync/sync.ts`, `sync/metadata.ts`                     | `specs/02-architecture.md` (sync flow)                                                   |
+| `media/renderer.ts`, `media/cache.ts`, `media/range.ts`                    | `specs/02-architecture.md`, and `08` if a trade-off changes                              |
+| `packages/web/src/lib/justify.ts`, `useGridLayout.ts`, components          | `specs/07-frontend.md`                                                                   |
+| `packages/e2e/` (a spec, the fixture, a project)                           | `specs/07-frontend.md`, and `08` if a trade-off changes                                  |
+| `packages/e2e/storages/` (a container, a backend, a claim)                 | `specs/07-frontend.md`, and `08` if a trade-off changes                                  |
+| `packages/server/src/shell.ts` (instance name, shell, manifest)            | `specs/05-api.md`, `specs/07-frontend.md`                                                |
+| A message shown to a person (interface, HTTP, email, page)                 | **both** catalogues of the pair, and `07` if the mechanism changes                       |
+| `plugins/locale.ts`, `i18n/`, `lib/i18n/` (how a language is resolved)     | `specs/05-api.md`, `specs/07-frontend.md`                                                |
+| `packages/web/src/styles.css` (`@theme` tokens)                            | `specs/07-frontend.md`                                                                   |
+| An accepted trade-off, rejected alternative or "why not X"                 | `specs/08-decisions/`—a new file per question; a rule that changed is rewritten in place |
+| Work spanning several pull requests, between two of them                   | `specs/09-plans/`—the plan; the request that finishes it deletes it                      |
+| The scope: a feature enters or leaves                                      | `specs/01-vision-and-scope.md`                                                           |
 
 `specs/09-plans/` is the one directory that describes what does not exist yet: a
 piece of work spanning several pull requests, so the next session starts from the
@@ -173,14 +173,30 @@ the pull request that finishes it**, and `check:specs` does not read it when
 looking for module mentions — a plan naming a file before it exists would
 otherwise satisfy the check the day it is created.
 
-It is also where a **decision still to be taken** lives. `08-decisions/` is a
-record of how this application is built, so a decision file added before its code
-describes an instance nobody is running: write the reasoning into the plan, and let
-the pull request that makes it true move it out under the identifier of the day it
-is written. The 1.2.0 storage work did exactly that — its plan carried the
-trade-offs, and each pull request wrote the decisions it had earned. Nothing checks
-this, and the shape that makes it easy to get wrong is a design session that
-produces the reasoning before any code exists.
+It is also where a **decision still to be taken** lives: an open question with its
+options, which is a different thing from an answered one.
+
+**An answered one is a decision file, and it may be written before its code
+exists.** A plan's constraints each cite a decision, and a rule nobody can cite is a
+rule nothing counts, so the work that decides what a unit binds on writes those
+decisions before the first line is typed. What keeps such a file from describing an
+instance nobody is running is a line on the file itself:
+
+```markdown
+**Not built yet.** Decided 2026-08-25; no code implements this.
+```
+
+It is mandatory on any decision written ahead of its code. It goes when the
+implementation lets the file be rewritten to `observed`, and that rewrite is the
+only thing that removes it. So `grep -rl 'Not built yet' specs/08-decisions`
+answers "what has been decided and is not built", and the present tense the rest of
+this directory is written in stays true of every file without that line.
+
+The rule this replaces sent the reasoning to a plan and let the pull request that
+made it true write the decision, as the 1.2.0 storage work did. It protected the
+right property by the wrong means: absence leaves nothing to grep, so nothing could
+tell a decision waiting for its code from one nobody ever wrote. A marker can be
+read, and a marker left behind on shipped code is a defect somebody can find.
 
 Five documents, five readers, no duplication between them:
 

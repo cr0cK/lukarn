@@ -70,6 +70,25 @@ Every section is written in the present tense, about the application as it stand
 "Three of that decision's four load-bearing facts have since changed" belongs in
 the commit that changes them, not in the file it leaves behind.
 
+## A decision written before its code
+
+A decision may be written before anything implements it. A plan's constraints each
+cite one, and a rule nobody can cite is a rule nothing counts, so what a piece of
+work binds on is decided before its first line is typed.
+
+Such a file carries one extra line, directly after the confidence line:
+
+```markdown
+**Not built yet.** Decided 2026-08-25; no code implements this.
+```
+
+It is mandatory there. It goes when the implementation lets the file be rewritten
+to `observed`, and that rewrite is the only thing that removes it, so
+`grep -rl 'Not built yet' .` answers "what has been decided and is not built". That
+is the one question the present tense of this directory cannot answer on its own:
+without the line, a rule waiting for its code and a rule the application follows
+read exactly alike.
+
 ## How the rule is known
 
 The line under the title says where the rule was read from. It exists because a
