@@ -17,6 +17,7 @@ so that a developer who was not involved in its design can take it over.
 | [07 — Frontend](./07-frontend.md)                                         | Routing, state, justified layout, virtualisation, keyboard, and theme                 |
 | [08 — Decisions](./08-decisions/)                                         | Log of technical decisions and rejected alternatives, one per file                    |
 | [09 — Plans](./09-plans/)                                                 | Work decided and not finished, one file per release. Deleted when it lands            |
+| [10 — Product intents](./10-prds/Index.md)                                | What has been decided to build, before the code and in the language of whoever asked  |
 
 ## Where to start
 
