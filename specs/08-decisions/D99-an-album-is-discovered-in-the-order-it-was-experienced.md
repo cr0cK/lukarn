@@ -1,5 +1,7 @@
 # D99 — An album is discovered in the order it was experienced
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Reading order was a global constant — `desc`, newest first — and
 lived **only** in the URL. Two separate defects, the first already solved for
 grouping (`albums.group_by`, migration 7):

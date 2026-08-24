@@ -1,5 +1,7 @@
 # D63 — The repository favours no hosting provider and creates no personal account
 
+**Confidence.** observed — deploy/backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** D52 gave the repository cloud-init and two scripts, but wrote them
 for the machine at hand: `README.md` presented a Scaleway procedure as if it were
 the only one, cloud-init mentioned `scw` in its header, the rescue console was

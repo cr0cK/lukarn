@@ -1,5 +1,7 @@
 # D12 — 404 and never 403 for albums and media
 
+**Confidence.** observed — packages/server/test/access.test.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Several users share an instance and must not learn that other
 users' albums exist.
 

@@ -1,5 +1,7 @@
 # D260812b — The project is called lukarn
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** D260811 named the project **nonni**, Italian for grandparents, and
 gave a good reason: the people it was written for. The reason held; the word did
 not. Two objections, and neither is a matter of taste alone.

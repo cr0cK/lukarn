@@ -1,5 +1,7 @@
 # D26 — Changing an album's `folderId` clears its index
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Changing the Drive folder of an existing album leaves media that
 belong to the old folder in the database.
 

@@ -1,5 +1,7 @@
 # D260812 — A backup runs on an instance that is down
 
+**Confidence.** observed — backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `backup.sh` stopped `app`, archived the volume and started `app`
 again, in that order and unconditionally. The order is right; the assumption
 underneath it was not. `docker compose start app` exits **1** when the service

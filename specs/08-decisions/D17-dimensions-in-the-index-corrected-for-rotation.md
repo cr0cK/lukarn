@@ -1,5 +1,7 @@
 # D17 — Dimensions in the index, corrected for rotation
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The justified grid needs the proportions of each image before it
 can be drawn.
 

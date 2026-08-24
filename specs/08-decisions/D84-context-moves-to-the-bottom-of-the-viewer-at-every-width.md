@@ -1,5 +1,7 @@
 # D84 — Context moves to the bottom of the viewer at every width
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Three texts describe an open photo, and none was present while it
 was viewed. The album description only lives at the top of the grid. The day note
 only appeared in the viewer from `md` upwards (D70), never on a phone. And the

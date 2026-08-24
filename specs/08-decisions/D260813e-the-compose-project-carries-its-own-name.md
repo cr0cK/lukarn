@@ -1,5 +1,7 @@
 # D260813e — The compose project carries its own name
 
+**Confidence.** observed — deploy.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** D53 gave the four volumes an explicit `name:` so they would stop
 depending on the clone directory. The project name itself was left alone, and it
 is derived the same way: compose names it after the directory holding the

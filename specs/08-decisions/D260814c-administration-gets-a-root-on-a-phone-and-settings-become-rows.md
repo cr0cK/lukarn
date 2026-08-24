@@ -1,5 +1,7 @@
 # D260814c — Administration gets a root on a phone, and settings become rows
 
+**Confidence.** observed — ui.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.**
 [D66](./D66-administration-is-navigated-by-sections-one-per-url.md) split
 administration into six sections, one URL each, with a sticky column from `md`

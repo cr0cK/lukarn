@@ -1,5 +1,7 @@
 # D51 — The place is corrected per day, never per photo
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Reverse geocoding is sometimes off: a neighbouring municipality, a
 local place name Nominatim does not know, or a photo taken in a car between two
 stops. It must be possible to correct it.

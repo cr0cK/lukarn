@@ -1,5 +1,7 @@
 # D260815c — The reader gets a screen of their own
 
+**Confidence.** observed — ui.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The interface became translatable in
 [D260812c](./D260812c-the-interface-is-translated-by-two-typed-catalogues.md), and
 the language went where there was room at the time: the account menu, as a group

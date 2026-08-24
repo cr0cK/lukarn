@@ -1,5 +1,7 @@
 # D260815g — The single-row `oauth_token` table becomes a table of connections
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-16
+
 **Context.** `oauth_token` carried `CHECK (id = 1)`. One row, one Google account,
 one instance — and [01](../01-vision-and-scope.md) listed "multiple Drives" among
 the things this project deliberately does not do, naming that constraint as the

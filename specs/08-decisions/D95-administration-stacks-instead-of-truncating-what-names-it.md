@@ -1,5 +1,7 @@
 # D95 — Administration stacks instead of truncating what names it
 
+**Confidence.** observed — ui.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `/admin` was bounded by `max-w-5xl`, or 64 rem. On a 1495 px laptop
 screen, the content column fell to 760 px after `AdminNav`'s 12 rem and margins,
 while a third of the window remained empty on both sides. Every row — album,

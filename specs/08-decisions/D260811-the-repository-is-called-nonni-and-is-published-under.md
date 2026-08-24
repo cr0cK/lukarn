@@ -1,5 +1,7 @@
 # D260811 — The repository is called nonni and is published under AGPL-3.0
 
+**Confidence.** observed — deploy/backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The repository is becoming open source, and two omissions prevented
 that. The first is legal: without a licence file, the code remains fully
 copyrighted, and nobody can legally run, modify, or redistribute it — a public

@@ -1,5 +1,7 @@
 # D70 — A day's note leaves the viewer header on mobile
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** A day's note appears in two places: its section header in the grid,
 and the viewer header, so opening a photo does not lose what gives it meaning
 (D68 describes the adjacent feature, collapsing). On a phone, this second

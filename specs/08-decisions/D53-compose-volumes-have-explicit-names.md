@@ -1,5 +1,7 @@
 # D53 — Compose volumes have explicit names
 
+**Confidence.** observed — deploy/backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The volumes were declared as `gdv-data`, `gdv-cache`, `caddy-data`,
 and `caddy-config`. Compose prefixes them with the project name, meaning the
 working directory: they were actually named `googledrive-viewer_gdv-data`, and

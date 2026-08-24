@@ -1,5 +1,7 @@
 # D45 — The cache is prepared in advance, but always comes second
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 > **Two points in this entry were revised by D58**: the pass now prepares
 > **thumbnails**, not the `full` variant, and it **is** connected to the end of
 > every synchronisation. The three safeguards below **remain in force** — they

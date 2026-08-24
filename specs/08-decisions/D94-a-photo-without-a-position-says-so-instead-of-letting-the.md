@@ -1,5 +1,7 @@
 # D94 — A photo without a position says so instead of letting the row disappear
 
+**Confidence.** observed — lib/exifRows.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The information panel only displays what it has: each row without a
 value disappears, avoiding a table of dashes for a screenshot with no EXIF. The
 position followed this rule, and it is the only case where it fails. Two very

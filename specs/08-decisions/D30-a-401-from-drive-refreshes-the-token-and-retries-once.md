@@ -1,5 +1,7 @@
 # D30 — A 401 from Drive refreshes the token and retries once
 
+**Confidence.** observed — packages/server/test/revocation.test.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** A file is downloaded through `fetch` with an access token in the
 header. When the owner revokes access, Google stops accepting that access token
 **before** it expires: Drive responds with 401, but nothing surfaces as

@@ -1,5 +1,7 @@
 # D72 — The instance name lives in `.env`, and the server puts it in the shell
 
+**Confidence.** observed — shell.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Once installed, the application was named "Photos" under its icon,
 whatever the instance. This is the most important name in the entire project: it
 is the only one seen by someone who did not install it themselves, and two

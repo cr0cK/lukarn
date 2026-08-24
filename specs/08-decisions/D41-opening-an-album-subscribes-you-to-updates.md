@@ -1,5 +1,7 @@
 # D41 — Opening an album subscribes you to updates
 
+**Confidence.** observed — main.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Nobody spontaneously returns to a self-hosted gallery: the comments
 delivered with D38 remain empty until someone learns that there is something new.
 The difficulty is that **nothing links a person to an album**: access comes from

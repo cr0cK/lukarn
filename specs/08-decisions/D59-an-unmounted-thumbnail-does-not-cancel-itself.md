@@ -1,5 +1,7 @@
 # D59 — An unmounted thumbnail does not cancel itself
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The reported symptom was misleading: a non-administrator account
 remained on "Loading photos" where the administrator account displayed the
 album. Everything pointed to access control. It was not: the requests were not

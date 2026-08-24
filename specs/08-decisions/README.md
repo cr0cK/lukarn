@@ -1,3 +1,7 @@
+---
+type: decision-store
+---
+
 # 08 — Decision log
 
 One decision per file: its context, the decision, what was rejected, and why.
@@ -51,6 +55,8 @@ The filename uses the identifier from the title, followed by a slug:
 ```markdown
 # D<YYMMDD> — A sentence stating the decision, not the problem
 
+**Confidence.** <stated|observed|inferred> — <evidence> · <YYYY-MM-DD>
+
 **Context.** What made the decision necessary.
 
 **Decision.** What is decided and why.
@@ -64,10 +70,30 @@ Every section is written in the present tense, about the application as it stand
 "Three of that decision's four load-bearing facts have since changed" belongs in
 the commit that changes them, not in the file it leaves behind.
 
+## How the rule is known
+
+The line under the title says where the rule was read from. It exists because a
+decision read off the implementation and a decision somebody wrote down from memory
+used to look identical, and both were read with the same authority.
+
+| Level      | Means                                                | Evidence names                                      |
+| ---------- | ---------------------------------------------------- | --------------------------------------------------- |
+| `observed` | read off the implementation                          | a `path:line`, or a command and the output it gives |
+| `stated`   | somebody decided it and said so                      | who, and where they said it                         |
+| `inferred` | interpreted from a document, so possibly an accident | the document it was read out of                     |
+
+The first two bind: work may not knowingly contradict them. `inferred` is advisory,
+and work that goes against it owes an account of why. A line that is absent or
+malformed reads `inferred`, which is the direction that costs least when it is
+wrong.
+
 ## Rewriting a decision
 
 The rule changed, so the sentence stating it changes, so the title changes and the
-file is renamed to match its new slug. The identifier does not move.
+file is renamed to match its new slug. The identifier does not move, and the
+confidence line is rewritten with fresh evidence and that day's date. It never moves
+down: a decision the code has contradicted is rewritten to say what is true now, and
+reads `observed`.
 
 `check:links` then reports every document linking to the old filename, which is
 the point: each one is a paragraph that restated the old rule and is now worth
@@ -117,3 +143,8 @@ the specs and code leads to an existing decision. This last rule applies
 everywhere, including in an example: an identifier written for illustration is
 an identifier the check expects to find. Use `D<YYMMDD>` when no specific
 decision is intended.
+
+The confidence line is not checked. Nothing verifies that the evidence it names
+still exists, or that a rewritten decision refreshed it, so a line that has gone
+stale is the writer's responsibility in the same way the paragraph that has become
+false is.

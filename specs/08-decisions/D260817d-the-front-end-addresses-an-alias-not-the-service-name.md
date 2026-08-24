@@ -1,5 +1,7 @@
 # D260817d — The front end addresses the `lukarn` alias, never the service name
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-18
+
 **Context.** The `Caddyfile` proxied to `app:8080`, which is the name of the service in
 `docker-compose.yml`. That is unambiguous for as long as lukarn is alone on its compose
 network, and it stops being so the moment the front end is shared: a machine hosting a

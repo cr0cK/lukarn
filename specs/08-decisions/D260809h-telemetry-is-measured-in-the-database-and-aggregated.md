@@ -1,5 +1,7 @@
 # D260809h — Telemetry is measured in the database and aggregated on write
 
+**Confidence.** observed — device.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The running instance said nothing about its use.
 `sessions.created_at` was the only existing trace, and it answers only "someone
 logged in once" — not "do I have visitors this week?", nor "who opens which

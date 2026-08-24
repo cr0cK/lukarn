@@ -1,5 +1,7 @@
 # D260816f — A WebDAV listing arrives whole and is read by its decoded path
 
+**Confidence.** observed — storage/webdav.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `storage/webdav.ts` lists a collection with a `PROPFIND` at `Depth: 1`
 and receives a `<d:multistatus>` in which every entry names itself with an
 `<d:href>`. That href is the only thing tying an entry to the file `fetch()` will

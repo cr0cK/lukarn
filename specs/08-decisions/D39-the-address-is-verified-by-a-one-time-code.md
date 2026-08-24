@@ -1,5 +1,7 @@
 # D39 — The address is verified by a one-time code
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The identity in D38 is declarative: behind a shared password,
 anyone can claim to be "Mamie". And declaring a third party's address would
 make them receive notifications from a gallery where they had requested

@@ -1,5 +1,7 @@
 # D260812d — The language travels in `Accept-Language` and is recorded against the identity
 
+**Confidence.** observed — plugins/locale.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The interface knows which language it speaks: the browser chose it,
 or the reader did, from the account menu. The server does not. Yet it writes two
 kinds of text a person reads — the message accompanying a refusal, and the emails

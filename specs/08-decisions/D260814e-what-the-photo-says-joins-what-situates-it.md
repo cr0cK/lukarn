@@ -1,5 +1,7 @@
 # D260814e — What the photo says joins what situates it
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-14
+
 **Context.**
 [D260814d](./D260814d-the-phone-rule-reaches-the-viewer-and-the-pinch-reaches-the-photo.md)
 gave the phone's viewer a bottom row of actions and left the caption where D84

@@ -1,5 +1,7 @@
 # D260816g — Storage becomes a section, and a draft is a union
 
+**Confidence.** observed — packages/web/src/lib/storageDraft.ts, git ls-files → exit 0 · 2026-08-23
+
 ## Context
 
 Three pull requests made storage a first-class notion in the data: a

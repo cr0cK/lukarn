@@ -1,5 +1,7 @@
 # D38 — An access key is not a person
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** D33 had the comment signed by the account that opens the album,
 with a `display_name` and an `email` placed on `users`. This conflated two
 things: `albums.yaml` has always allowed **one** identifier to be entrusted to

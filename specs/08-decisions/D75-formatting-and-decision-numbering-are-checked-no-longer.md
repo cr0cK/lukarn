@@ -1,5 +1,7 @@
 # D75 — Formatting and decision numbering are checked, no longer left to vigilance
 
+**Confidence.** observed — check-specs.mjs, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Two silent drifts took hold, each because nothing measured it.
 
 First, formatting. `pnpm verify` ran typecheck, lint, tests, `check:specs`, and

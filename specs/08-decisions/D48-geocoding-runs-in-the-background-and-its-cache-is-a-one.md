@@ -1,5 +1,7 @@
 # D48 — Geocoding runs in the background, and its cache is a one-kilometre cell
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Photos carry their position in their EXIF data, which is already
 indexed (`media.lat/lng`). Nobody could see it: a dated grid says neither what
 was done nor where. Turning a coordinate pair into "Bonifacio, Corse" requires

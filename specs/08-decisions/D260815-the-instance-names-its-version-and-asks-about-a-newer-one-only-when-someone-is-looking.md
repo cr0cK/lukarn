@@ -1,5 +1,7 @@
 # D260815 — The instance names its version, and asks about a newer one only when someone is looking
 
+**Confidence.** observed — deploy.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** A running instance could not say what it was. The version existed in
 three places — the tag that triggered `release.yml`, the section of `CHANGELOG.md`
 that became the release body, the OCI labels on the image — and in none of them

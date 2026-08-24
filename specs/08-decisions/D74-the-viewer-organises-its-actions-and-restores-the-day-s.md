@@ -1,5 +1,7 @@
 # D74 — The viewer organises its actions and restores the day's note to the photo
 
+**Confidence.** observed — components/ActionMenu.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Two defects in the same place on a phone. The six header actions
 left only 121 px for the title, so the date remained truncated even after
 tightening the icons. More importantly, **opening a photo made its description

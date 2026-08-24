@@ -1,5 +1,7 @@
 # D260814g — A release is gated by a browser
 
+**Confidence.** observed — env.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Everything the repository checked before a release compiled the
 front end and never loaded it. `pnpm verify` runs 522 unit tests, of which
 nineteen belong to `packages/web`, and all nineteen cover extracted pure

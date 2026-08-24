@@ -1,5 +1,7 @@
 # D260815e — The README installs from the image, deploy/ runs the server
 
+**Confidence.** observed — backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** [D64](./D64-the-deployment-procedure-lives-beside-the-scripts-not-in.md)
 moved the whole server procedure out of the root README and left it four things
 to say: what the application is, what it does, how to run it locally, and where

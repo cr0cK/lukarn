@@ -1,5 +1,7 @@
 # D2 — Local index rather than on-the-fly Drive calls
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The grid must paginate 10,000 photos and sort by the date they were taken.
 
 **Decision.** Traversing the folders populates a `media` table; the grid reads only from

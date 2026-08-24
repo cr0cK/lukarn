@@ -1,5 +1,7 @@
 # D9 — `wildcard: true` on `@fastify/static`
 
+**Confidence.** observed — app.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Serving Vite bundles whose names contain a hash that changes with every
 build.
 

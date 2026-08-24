@@ -1,5 +1,7 @@
 # D260814 — The mobile shell moves to a bottom tab bar
 
+**Confidence.** observed — components/BottomTabs.tsx, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Every threshold in the interface was chosen from the desktop
 downwards. `TopBar` reserved 65 px at every width and carried, on one row,
 everything the application can do: back, title, subtitle, activity with its

@@ -1,5 +1,7 @@
 # D24 — Configuration moves to the database, YAML becomes bootstrap data
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Accounts and albums lived in `config/albums.yaml`, read again at
 startup or via a button. The owner wants to administer their instance from the
 application, without editing a file on the VPS or restarting a container.

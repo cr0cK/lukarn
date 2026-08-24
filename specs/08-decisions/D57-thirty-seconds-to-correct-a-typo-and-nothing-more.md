@@ -1,5 +1,7 @@
 # D57 — Thirty seconds to correct a typo, and nothing more
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** A one-sentence comment is posted from a phone, often with one thumb,
 and the typo becomes visible a second after sending it. The only remedy was to
 delete and rewrite it — which, for a reply, also removes the thread others had

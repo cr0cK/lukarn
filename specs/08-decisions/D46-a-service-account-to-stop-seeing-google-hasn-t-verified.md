@@ -1,5 +1,7 @@
 # D46 — A service account to stop seeing "Google hasn't verified this app"
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `drive.readonly` is a scope that Google classifies as **restricted**:
 until the application is verified, every consent displays a red warning screen
 that recommends not continuing and hides the real link behind "Advanced

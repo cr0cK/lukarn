@@ -1,5 +1,7 @@
 # D260811b — The entire repository moves to English, and governance is written down
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The existing rule divided languages by audience: English for what
 was read from GitHub — the two `README.md` files, commits, and PRs — and French
 for everything else, including code, comments, tests, interface, logs, and

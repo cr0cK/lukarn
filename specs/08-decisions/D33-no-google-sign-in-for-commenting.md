@@ -1,5 +1,7 @@
 # D33 — No Google sign-in for commenting
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Comments needed an identity attached to them. The initial
 assumption was "sign in with Google", as consumer services do.
 

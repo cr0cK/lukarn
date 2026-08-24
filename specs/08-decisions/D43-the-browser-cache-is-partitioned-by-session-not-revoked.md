@@ -1,5 +1,7 @@
 # D43 — The browser cache is partitioned by session, not revoked
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Found during cross-review. Media responses are served with
 `private, max-age=31536000, immutable`: the browser never revalidates them. A
 photo that has already loaded therefore remains displayable from the cache after

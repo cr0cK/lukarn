@@ -1,5 +1,7 @@
 # D4 — Media proxy rather than signed Google links
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Images stored in Drive must be displayed to visitors who do not have a
 Google account.
 

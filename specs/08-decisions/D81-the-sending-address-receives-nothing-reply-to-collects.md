@@ -1,5 +1,7 @@
 # D81 — The sending address receives nothing: `Reply-To` collects replies
 
+**Confidence.** observed — env.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `MAIL_FROM` contains an address from the instance's domain, for
 example `Gallery <gallery@example.com>`. The transactional relay that emits it
 sends but does not receive. And the sending domain does not necessarily have a

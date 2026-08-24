@@ -1,5 +1,7 @@
 # D98 — Decoding that fails without an error, and one spinner too many
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** Of those same forty videos, twenty-seven use HEVC (`hvc1`). Chromium
 decodes the AAC track and ignores the video track: sound plays, no image arrives,
 `videoWidth` remains 0, and `totalVideoFrames` remains 0 — with **no `MediaError`

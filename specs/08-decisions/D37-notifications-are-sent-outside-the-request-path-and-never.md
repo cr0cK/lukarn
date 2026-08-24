@@ -1,5 +1,7 @@
 # D37 — Notifications are sent outside the request path and never fail it
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** A comment must notify the instance owner, and a thread's author
 when someone replies. Until then, the application had no email-sending
 dependency — "no email to send" even appeared in the out-of-scope section of

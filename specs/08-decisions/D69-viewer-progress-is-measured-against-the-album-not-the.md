@@ -1,5 +1,7 @@
 # D69 — Viewer progress is measured against the album, not the loaded list
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The viewer displayed `index + 1 / items.length`. `items` is the
 **paginated** list: it grows during scrolling and preloading. The denominator
 therefore increased along the way — "40 / 50" became "40 / 100" before the

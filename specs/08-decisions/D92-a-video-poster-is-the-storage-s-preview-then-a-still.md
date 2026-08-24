@@ -1,5 +1,7 @@
 # D92 — A video poster is the storage's preview, then a still cut by ffmpeg
 
+**Confidence.** observed — media/transcode.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** A video had no image. `serveRendered` answered 415 whenever
 `kind !== 'photo'`, prewarming skipped it, the grid showed a grey tile with a play
 icon, and the viewer opened on a black rectangle while the stream started. In a

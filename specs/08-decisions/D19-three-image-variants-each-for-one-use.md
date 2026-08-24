@@ -1,5 +1,7 @@
 # D19 — Three image variants, each for one use
 
+**Confidence.** observed — components/ZoomableImage.tsx, git ls-files → exit 0 · 2026-08-23
+
 | Variant | Maximum side     | WebP quality | Use                |
 | ------- | ---------------- | ------------ | ------------------ |
 | `thumb` | 320 / 640 / 1280 | 78           | Grid, album covers |

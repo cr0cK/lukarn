@@ -1,5 +1,7 @@
 # D25 — In-memory configuration snapshot
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `canSee()` is called on every media request, and therefore for every
 thumbnail in a grid of several hundred tiles. Replacing the in-memory config was
 cost-free.

@@ -1,5 +1,7 @@
 # D260816k — A storage backend is held to account by the server it claims to speak to
 
+**Confidence.** observed — s3.test.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Four storage kinds now sit behind the interface
 [D260815f](./D260815f-a-storage-interface-and-drive-as-its-first.md) declared, and
 three of them arrived with thorough tests: `s3.test.ts` and `webdav.test.ts` answer

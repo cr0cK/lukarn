@@ -1,5 +1,7 @@
 # D47 — The TLS frontend joins Compose; headers remain in the code
 
+**Confidence.** observed — plugins/headers.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The selected hosting is an ordinary VPS (rejected: Fly.io, whose
 volumes at $0.15/GB/month charge thirty times the price of Drive to store what a
 VPS disk includes — and whose egress billing does not reward the media proxy,

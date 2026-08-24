@@ -1,5 +1,7 @@
 # D79 — An unplayable video says so and can be downloaded instead of loading forever
 
+**Confidence.** observed — lib/preview.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** A video is relayed in its own format
 ([D6](./D6-a-video-is-relayed-untouched-except-a-codec-no-browser.md)), and at the
 time nothing was prepared for the codecs a browser cannot read: such a file was

@@ -1,5 +1,7 @@
 # D66 — Administration is navigated by sections, one per URL
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** `/admin` stacked six sections in a single column. While the
 moderation queue fitted on one screen, the page was navigable; since it became
 paginated, the page has no end, and "Settings" and "Maintenance" sit behind

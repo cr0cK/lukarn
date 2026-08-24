@@ -1,5 +1,7 @@
 # D260816j — An album container is optional, except on Drive
 
+**Confidence.** observed — s3.ts, git ls-files → exit 0 · 2026-08-23
+
 ## Context
 
 Creating an album on a bucket, a folder or a WebDAV server required naming a

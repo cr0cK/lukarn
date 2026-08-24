@@ -1,5 +1,7 @@
 # D71 — The service worker caches the shell, never the photos
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The application is viewed in a tab: its URL must be remembered and
 retyped, while the browser bar consumes part of a phone screen. A relative should
 be able to place its icon on their home screen and open photos like any other

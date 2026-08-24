@@ -1,5 +1,7 @@
 # D97 — A video's date comes from the file, not its upload date
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** An import of forty videos was grouped entirely under "Today".
 Drive exposes no capture date for video — `videoMediaMetadata` is limited to
 `{width, height, durationMillis}`, while `imageMediaMetadata` carries a photo's

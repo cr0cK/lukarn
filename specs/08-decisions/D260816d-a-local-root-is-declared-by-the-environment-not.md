@@ -1,5 +1,7 @@
 # D260816d — A local root is declared by the environment, not chosen in /admin
 
+**Confidence.** observed — storage/local.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `storage/local.ts` reads a folder on the machine. Unlike Drive, whose
 references are opaque identifiers issued by a service that already enforces its own
 access rules, this backend resolves paths itself, on the same filesystem that holds

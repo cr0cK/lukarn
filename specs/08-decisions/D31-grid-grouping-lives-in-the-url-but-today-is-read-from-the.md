@@ -1,5 +1,7 @@
 # D31 — Grid grouping lives in the URL, but "today" is read from the local clock
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The grid used to split photos into hard-coded months. On a holiday
 album — three thousand photos over three weeks — this produces one or two
 sections, which provides no meaningful landmark. Splitting by day gives useful

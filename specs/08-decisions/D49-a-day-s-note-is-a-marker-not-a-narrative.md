@@ -1,5 +1,7 @@
 # D49 — A day's note is a marker, not a narrative
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** A grid section header must be able to carry a place and a note. But
 `computeLayout` positions every photo **before** any DOM node exists: this is what
 provides the correct scroll bar on the first render and makes virtualisation

@@ -1,5 +1,7 @@
 # D260813b — The logo lives in `DATA_DIR` and every upload is rasterised
 
+**Confidence.** observed — packages/server/src/branding/store.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** An instance may want its own logo rather than the Lukarn mark: a
 family crest, an association's badge, a photograph. Accepting one raises three
 questions that are usually answered badly — where it is stored, what it is

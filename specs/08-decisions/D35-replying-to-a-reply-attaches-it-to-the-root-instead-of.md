@@ -1,5 +1,7 @@
 # D35 — Replying to a reply attaches it to the root instead of rejecting it
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** The requirement was "a single reply level". It remained to decide
 what the server does when `parentId` points to a reply.
 

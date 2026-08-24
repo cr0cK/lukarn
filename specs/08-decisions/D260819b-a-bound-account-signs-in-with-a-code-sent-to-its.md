@@ -1,5 +1,7 @@
 # D260819b — A bound account signs in with a code sent to its address and holds no password
 
+**Confidence.** observed — config.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** [D260819](./D260819-an-account-may-be-bound-to-a-person-rather-than-a.md)
 binds an account to a person. What that account is entered with is a separate
 question, and a password drags in the one thing [01](../01-vision-and-scope.md)

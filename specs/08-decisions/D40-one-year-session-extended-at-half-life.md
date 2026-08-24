@@ -1,5 +1,7 @@
 # D40 — One-year session, extended at half-life
 
+**Confidence.** observed — plugins/auth.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** The 30-day TTL required a shared password to be re-entered several
 times a year for a family gallery visited irregularly. The request was "a
 session that never ends".

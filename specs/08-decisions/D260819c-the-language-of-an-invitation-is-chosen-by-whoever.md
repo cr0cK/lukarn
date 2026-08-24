@@ -1,5 +1,7 @@
 # D260819c — The language of an invitation is chosen by whoever sends it, and followed to the end
 
+**Confidence.** observed — plugins/locale.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** [D260812d](./D260812d-the-language-travels-in-accept-language-and-is.md)
 settled how this instance knows which language to write to somebody in: the browser
 announces it with `Accept-Language` on every request, and the language is recorded

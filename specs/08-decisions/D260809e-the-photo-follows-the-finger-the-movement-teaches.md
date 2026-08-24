@@ -1,5 +1,7 @@
 # D260809e — The photo follows the finger: the movement teaches the gesture
 
+**Confidence.** observed — lib/useSwipe.ts, git ls-files → exit 0 · 2026-08-23
+
 **Context.** Horizontal swiping had existed in the viewer through
 `lib/useSwipe.ts`, and it worked: 50 px clearly in the horizontal direction in
 under 800 ms, and the next photo replaced the previous one. But **nothing showed

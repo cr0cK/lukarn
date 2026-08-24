@@ -1,5 +1,7 @@
 # D76 — The backup includes `config/` because a service account key cannot be downloaded again
 
+**Confidence.** observed — deploy/backup.sh, git ls-files → exit 0 · 2026-08-23
+
 **Context.** `deploy/backup.sh` backed up the `lukarn-data` volume and `.env`. The
 two belong together, as D14 explains: the refresh token is encrypted and only
 `TOKEN_KEY` decrypts it, so an archive without its `.env` requires new consent.

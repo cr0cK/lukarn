@@ -1,5 +1,7 @@
 # D5 — `@googleapis/drive` rather than `googleapis`
 
+**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+
 **Context.** A Drive v3 client and an OAuth2 client are needed.
 
 **Decision.** The targeted `@googleapis/drive` and `@googleapis/oauth2` packages.
