@@ -39,8 +39,16 @@ a link marked indexable and then revoked stays in a search index, where nothing 
 does can reach it.
 
 **Consequences.** The share route is registered outside the guard that sends an unauthenticated
-visitor to the sign-in screen, beside `/diagnostic`, and above the catch-all — which otherwise turns
-a mistyped share address into a sign-in form.
+visitor to the sign-in screen, beside `/diagnostic`. Ordering does not come into it: this router
+matches by computed rank, so the catch-all sorts last wherever it is written.
+
+**A link opens one page, and the guard has to say so.** The session a link opens answers
+`/api/auth/me` like any other (D260825), and the front-end guard admits anybody that call answers
+for — so on its own that session would render the album list, the settings screen and the account
+menu with its sign-out control, which is the whole of what this decision refuses. The guard is
+therefore told what kind of session it is holding, rather than only whether it is holding one, and
+a link's session reaches the share page and nothing else. The server refuses the rest in any case;
+what is at stake here is that the recipient is never shown it.
 
 The mark needs a way to render unlinked. That block has two states today and both assume an album
 list exists.

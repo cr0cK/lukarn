@@ -1,6 +1,6 @@
 # D66 — Administration is navigated by sections, one per URL
 
-**Confidence.** stated — owner: Alexis Mineaud, pre-pipeline hand-authored store · 2026-08-12
+**Confidence.** observed — packages/web/src/components/admin/AdminNav.tsx:20, packages/web/src/pages/AdminPage.tsx:60 · 2026-08-25
 
 **Context.** `/admin` stacked six sections in a single column. While the
 moderation queue fitted on one screen, the page was navigable; since it became
@@ -32,7 +32,16 @@ section, six for six, which reproduces in the margin the list being shortened.
 bar button remain valid. The OAuth callback now redirects to
 `/admin/server?oauth=<reason>`, the section containing the connection button.
 The "Users" section becomes "Accounts", aligning with "New account" and the
-section label. A section added later is written in `ADMIN_TABS` and nowhere else;
-however, moving a section from one group to another changes a URL someone may
-have bookmarked — the price of putting the section in the URL, and a small one
-compared with what it enables.
+section label. Moving a section from one group to another changes a URL someone
+may have bookmarked, which is the price of putting the section in the URL and a
+small one compared with what it enables.
+
+**`ADMIN_TABS` is the only list, not the only edit.** Navigation, the phone
+list, the group headings and the validation of the `:tab` parameter all derive
+from it, so no second enumeration of the sections exists. A section still costs
+three files: its entry here, a `case` in `AdminPage`'s `switch`, which is
+exhaustive over `AdminTab` and has no `default`, and its label in both message
+catalogues, because the entry's `label` is typed `MessageKey`. The compiler
+reports the last two, which is why the distinction is safe to state plainly
+rather than defend: what would rot silently is a second list of sections, and
+there is not one.
