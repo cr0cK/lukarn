@@ -3,7 +3,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — build: full dependencies, compiling the front end and the server.
 # ---------------------------------------------------------------------------
-FROM node:24-slim AS builder
+FROM node:25-slim AS builder
 
 # Needed whenever a native module (better-sqlite3, argon2, sharp) has no prebuilt
 # binary for this platform and has to be compiled.
@@ -34,7 +34,7 @@ RUN pnpm build
 # ---------------------------------------------------------------------------
 # Stage 2 — production dependencies only.
 # ---------------------------------------------------------------------------
-FROM node:24-slim AS deps
+FROM node:25-slim AS deps
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
@@ -56,7 +56,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # ---------------------------------------------------------------------------
 # Stage 3 — final image.
 # ---------------------------------------------------------------------------
-FROM node:24-slim AS runtime
+FROM node:25-slim AS runtime
 
 # OCI metadata. `org.opencontainers.image.source` is what ties the published image
 # to its repository on GHCR — without it the package page shows neither README nor
