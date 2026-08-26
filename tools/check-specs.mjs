@@ -474,6 +474,7 @@ const citantDesSpecs = [
   ),
   join(RACINE, 'README.md'),
   join(RACINE, 'CLAUDE.md'),
+  ...(existsSync(join(RACINE, 'AGENTS.md')) ? [join(RACINE, 'AGENTS.md')] : []),
   join(RACINE, 'deploy/README.md'),
 ];
 
