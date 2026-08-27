@@ -25,6 +25,7 @@ import { ActionMenu } from './ActionMenu';
 import { MediaCaption } from './MediaCaption';
 import { Sheet, type SheetStop } from './Sheet';
 import { PanelBody, SidePanel, type PanelTab } from './SidePanel';
+import { ShareModal } from './ShareModal';
 import { ZoomableImage } from './ZoomableImage';
 
 /**
@@ -184,6 +185,7 @@ export function Lightbox({
    * arrows are how a mouse navigates, and there is no screen edge to reclaim.
    */
   const [bare, setBare] = useState(() => window.matchMedia(COARSE_POINTER_QUERY).matches);
+  const [showShare, setShowShare] = useState(false);
   const phone = useMediaQuery(PHONE_QUERY);
   const coarse = useMediaQuery(COARSE_POINTER_QUERY);
 
@@ -249,7 +251,7 @@ export function Lightbox({
     if (!mediaId || !transcoded || !failed) return;
 
     const controller = new AbortController();
-    const url = mediaUrl.playable(mediaId, mediaVersion);
+    const url = mediaUrl.playable(mediaId, mediaVersion, scope);
 
     const probe = async (): Promise<void> => {
       try {
@@ -399,7 +401,7 @@ export function Lightbox({
       .filter((neighbour) => neighbour?.kind === 'photo')
       .map((neighbour) => {
         const image = new Image();
-        image.src = mediaUrl.full(neighbour!.id, neighbour!.version);
+        image.src = mediaUrl.full(neighbour!.id, neighbour!.version, scope);
         return image;
       });
 
@@ -408,7 +410,7 @@ export function Lightbox({
       // the photo actually displayed.
       for (const image of pending) image.src = '';
     };
-  }, [index, items, direction]);
+  }, [index, items, direction, scope]);
 
   useEffect(() => {
     if (index >= items.length - PRELOAD_AHEAD - 2) onNeedMore();
@@ -429,12 +431,12 @@ export function Lightbox({
     // Use a synthetic anchor rather than window.open to avoid popup blocking and
     // let the browser manage download progress.
     const anchor = document.createElement('a');
-    anchor.href = mediaUrl.download(item.id, item.version);
+    anchor.href = mediaUrl.download(item.id, item.version, scope);
     anchor.download = item.name;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-  }, [item]);
+  }, [item, scope]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -561,7 +563,7 @@ export function Lightbox({
      * overflow menu. Matching on `label` would break the day somebody translates
      * it, and silently: the menu would simply hold one entry more.
      */
-    key: 'info' | 'zoom' | 'download' | 'fullscreen' | 'bare' | 'cover';
+    key: 'info' | 'zoom' | 'download' | 'fullscreen' | 'bare' | 'cover' | 'share';
     label: string;
     /** Absent for an action without a shortcut: see "Set as cover". */
     shortcut?: string;
@@ -606,6 +608,22 @@ export function Lightbox({
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
+    ...(isAdmin && scope.kind === 'album'
+      ? [
+          {
+            key: 'share' as const,
+            label: t('shares.sharePhoto'),
+            onSelect: () => setShowShare(true),
+            icon: (
+              <>
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'fullscreen',
       label: t('viewer.fullscreen'),
@@ -902,8 +920,8 @@ export function Lightbox({
                 from neighbour preloading and therefore the browser cache: they
                 appear without another request. Keeping them outside a swipe
                 would decode two more full-screen images per photo viewed. */}
-            {swipe.active && <SwipeNeighbour item={items[index - 1]} side="left" />}
-            {swipe.active && <SwipeNeighbour item={items[index + 1]} side="right" />}
+            {swipe.active && <SwipeNeighbour item={items[index - 1]} side="left" scope={scope} />}
+            {swipe.active && <SwipeNeighbour item={items[index + 1]} side="right" scope={scope} />}
 
             {isVideo && failed ? (
               <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
@@ -934,13 +952,15 @@ export function Lightbox({
                 key={item.id}
                 src={
                   transcoded
-                    ? mediaUrl.playable(item.id, item.version)
-                    : mediaUrl.original(item.id, item.version)
+                    ? mediaUrl.playable(item.id, item.version, scope)
+                    : mediaUrl.original(item.id, item.version, scope)
                 }
                 // Use the same thumbnail as the grid, already in the disk cache
                 // and often the browser cache: the black waiting rectangle
                 // disappears without another request (D92).
-                poster={item.hasPreview ? mediaUrl.thumb(item.id, 1280, item.version) : undefined}
+                poster={
+                  item.hasPreview ? mediaUrl.thumb(item.id, 1280, item.version, scope) : undefined
+                }
                 controls
                 autoPlay
                 playsInline
@@ -959,9 +979,9 @@ export function Lightbox({
                 // Remounting the component for each photo resets zoom and framing
                 // without resetting them manually.
                 key={item.id}
-                src={mediaUrl.full(item.id, item.version)}
-                hdSrc={mediaUrl.hd(item.id, item.version)}
-                placeholderSrc={mediaUrl.thumb(item.id, 320, item.version)}
+                src={mediaUrl.full(item.id, item.version, scope)}
+                hdSrc={mediaUrl.hd(item.id, item.version, scope)}
+                placeholderSrc={mediaUrl.thumb(item.id, 320, item.version, scope)}
                 alt={item.name}
                 naturalWidth={item.width}
                 naturalHeight={item.height}
@@ -1169,6 +1189,17 @@ export function Lightbox({
           )}
         </Sheet>
       )}
+
+      {scope.kind === 'album' && (
+        <ShareModal
+          albumId={scope.albumId}
+          albumTitle={albumTitle}
+          mediaId={item.id}
+          mediaName={item.name}
+          isOpen={showShare}
+          onClose={() => setShowShare(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1327,18 +1358,20 @@ function SheetAction({
 function SwipeNeighbour({
   item,
   side,
+  scope,
 }: {
   item: ShareItem | undefined;
   side: 'left' | 'right';
+  scope?: Scope;
 }): ReactElement | null {
   if (!item) return null;
 
   const src =
     item.kind === 'video'
       ? item.hasPreview
-        ? mediaUrl.thumb(item.id, 1280, item.version)
+        ? mediaUrl.thumb(item.id, 1280, item.version, scope)
         : null
-      : mediaUrl.full(item.id, item.version);
+      : mediaUrl.full(item.id, item.version, scope);
 
   return (
     <div

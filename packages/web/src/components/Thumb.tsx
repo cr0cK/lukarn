@@ -1,6 +1,6 @@
 import { THUMB_SIZES, type ShareItem, type ThumbSize } from '@lukarn/shared';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
-import { mediaUrl } from '../api/client';
+import { mediaUrl, type Scope } from '../api/client';
 import { formatDuration } from '../lib/format';
 import { useT } from '../lib/i18n';
 import { releaseIfDetached } from '../lib/imageRelease';
@@ -30,6 +30,7 @@ interface ThumbProps {
   item: ShareItem;
   width: number;
   height: number;
+  scope?: Scope;
   /** `true` for the thumbnail beneath the keyboard cursor. */
   selected?: boolean;
   onOpen: () => void;
@@ -41,6 +42,7 @@ export function Thumb({
   item,
   width,
   height,
+  scope,
   selected = false,
   onOpen,
   eager = false,
@@ -116,7 +118,7 @@ export function Thumb({
           // and because a 503 has no cache header the browser returns to the server.
           key={attempt}
           ref={image}
-          src={mediaUrl.thumb(item.id, pickThumbSize(width), item.version)}
+          src={mediaUrl.thumb(item.id, pickThumbSize(width), item.version, scope)}
           alt=""
           width={width}
           height={height}

@@ -2,6 +2,7 @@ import {
   COMMENT_MAX_LENGTH,
   DEFAULT_SORT_ORDER,
   SHARE_TOKEN_PATTERN,
+  isThumbSize,
   type Comment,
   type CommentsPage,
   type ShareDetail,
@@ -16,6 +17,13 @@ import { classifyDevice } from '../device.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 import { shareKind, shareState, type ShareLink } from '../shares.js';
 import { notifyComment } from './comments.js';
+import {
+  handleMediaError,
+  serveOriginal,
+  servePlayable,
+  serveRendered,
+  thumbQuery,
+} from './media.js';
 
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 500;
@@ -101,6 +109,8 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
   }
 
   return async (app) => {
+    app.setErrorHandler(handleMediaError);
+
     /**
      * Opening the link. The one route that mints a session, and the only address its
      * recipient was ever given.
@@ -335,6 +345,81 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
       });
 
       return reply.code(201).send(comment);
+    });
+
+    /**
+     * Media bytes scoped under this share token.
+     *
+     * Scoping media under the token in the URL ensures that concurrent visits to
+     * different shared albums across browser tabs never collide on session cookies.
+     * Access is authorized by the token and whether the link covers the media item.
+     */
+    app.get('/:token/media/:mediaId/thumb', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+      const { mediaId } = request.params as { mediaId: string };
+      if (!context.shares.covers(link, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+      const query = thumbQuery.safeParse(request.query);
+      const size = query.success ? query.data.s : 320;
+      if (!isThumbSize(size)) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.unsupportedThumbSize') });
+      }
+      return serveRendered(context, request, reply, { kind: 'thumb', size }, mediaId);
+    });
+
+    app.get('/:token/media/:mediaId/full', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+      const { mediaId } = request.params as { mediaId: string };
+      if (!context.shares.covers(link, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+      return serveRendered(context, request, reply, { kind: 'full' }, mediaId);
+    });
+
+    app.get('/:token/media/:mediaId/hd', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+      const { mediaId } = request.params as { mediaId: string };
+      if (!context.shares.covers(link, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+      return serveRendered(context, request, reply, { kind: 'hd' }, mediaId);
+    });
+
+    app.get('/:token/media/:mediaId/playable', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+      const { mediaId } = request.params as { mediaId: string };
+      if (!context.shares.covers(link, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+      return servePlayable(context, request, reply, mediaId);
+    });
+
+    app.get('/:token/media/:mediaId/original', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+      const { mediaId } = request.params as { mediaId: string };
+      if (!context.shares.covers(link, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+      const wantsDownload = (request.query as { download?: string }).download === '1';
+      return serveOriginal(context, request, reply, mediaId, wantsDownload);
     });
   };
 }

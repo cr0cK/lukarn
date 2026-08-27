@@ -45,6 +45,11 @@ export interface CreateShareInput {
   expiresAt: string | null;
 }
 
+export interface UpdateShareInput {
+  label?: string | null;
+  expiresAt?: string | null;
+}
+
 interface Row {
   token: string;
   album_id: string;
@@ -178,6 +183,30 @@ export class ShareLinkRepo {
       .run(now.toISOString(), token).changes;
     if (changed > 0) this.closeSessions(token);
     return changed > 0;
+  }
+
+  /**
+   * Updates a share link's mutable attributes (label, expiry).
+   *
+   * Returns `null` if the token does not exist.
+   */
+  update(token: string, input: UpdateShareInput): ShareLink | null {
+    const existing = this.find(token);
+    if (!existing) return null;
+
+    const label = input.label !== undefined ? input.label : existing.label;
+    const expiresAt = input.expiresAt !== undefined ? input.expiresAt : existing.expiresAt;
+
+    this.db
+      .prepare(
+        `UPDATE share_links
+            SET label = ?,
+                expires_at = ?
+          WHERE token = ?`,
+      )
+      .run(label, expiresAt, token);
+
+    return this.find(token);
   }
 
   /**

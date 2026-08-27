@@ -336,6 +336,11 @@ const shareSchema = z.object({
   expiresAt: z.string().datetime().nullish(),
 });
 
+const updateShareSchema = z.object({
+  label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
+  expiresAt: z.string().datetime().nullish(),
+});
+
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   const secureCookies = context.env.publicUrl.startsWith('https://');
 
@@ -1375,6 +1380,35 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // building one row's shape twice is how the two stop agreeing.
       const created = context.shares.list().find((row) => row.token === link.token)!;
       return reply.code(201).send(created);
+    });
+
+    /**
+     * Updating a share link's label or expiration.
+     */
+    app.patch('/shares/:token', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const parsed = updateShareSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: parsed.error.issues[0]?.message ?? request.t('error.invalidParameters'),
+        });
+      }
+
+      const updated = context.shares.update(token, {
+        label: parsed.data.label === undefined ? undefined : (parsed.data.label ?? null),
+        expiresAt:
+          parsed.data.expiresAt === undefined ? undefined : (parsed.data.expiresAt ?? null),
+      });
+      if (!updated) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.shareUnknown') });
+      }
+
+      request.log.info('Share link updated');
+      const item = context.shares.list().find((row) => row.token === token)!;
+      return reply.send(item);
     });
 
     /**

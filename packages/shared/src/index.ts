@@ -1316,3 +1316,12 @@ export interface CreateShareRequest {
   /** ISO 8601 date after which the link answers 410, or `null` for no expiry. */
   expiresAt?: string | null;
 }
+
+/**
+ * Updating an existing share link's label or expiration.
+ */
+export interface UpdateShareRequest {
+  label?: string | null;
+  /** ISO 8601 date after which the link answers 410, or `null` to clear expiry. */
+  expiresAt?: string | null;
+}

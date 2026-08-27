@@ -300,6 +300,23 @@ describe('what a link covers, and what it does not', () => {
     assert.equal(other.statusCode, 404);
   });
 
+  it('serves media bytes through the token prefix without relying on cookie', async () => {
+    const token = mint({ mediaId: 'img-1' });
+
+    // Request without any cookie header: authenticated purely by token & coverage
+    const covered = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/media/img-1/thumb?s=320`,
+    });
+    const other = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/media/img-2/thumb?s=320`,
+    });
+
+    assert.notEqual(covered.statusCode, 404);
+    assert.equal(other.statusCode, 404);
+  });
+
   it('keeps Vary: Cookie on media, so a link cache is its own', async () => {
     const token = mint({ mediaId: 'img-1' });
     const cookie = await open(token);
@@ -670,6 +687,50 @@ describe('administration', () => {
 
     // Otherwise the link would answer 410 the moment its recipient opened it, and
     // whoever issued it would learn that from them.
+    assert.equal(response.statusCode, 404);
+  });
+
+  it('updates a share link label and expiration date', async () => {
+    const cookie = await adminCookie();
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { albumId: 'corse', label: 'Initial' },
+    });
+    const token = created.json().token as string;
+
+    const updated = await server.inject({
+      method: 'PATCH',
+      url: `/api/admin/shares/${token}`,
+      headers: { cookie },
+      payload: { label: 'Updated label', expiresAt: '2030-01-01T00:00:00.000Z' },
+    });
+    assert.equal(updated.statusCode, 200, updated.body);
+    assert.equal(updated.json().label, 'Updated label');
+    assert.equal(updated.json().expiresAt, '2030-01-01T00:00:00.000Z');
+
+    // Clearing expiration with null
+    const cleared = await server.inject({
+      method: 'PATCH',
+      url: `/api/admin/shares/${token}`,
+      headers: { cookie },
+      payload: { expiresAt: null },
+    });
+    assert.equal(cleared.statusCode, 200, cleared.body);
+    assert.equal(cleared.json().label, 'Updated label');
+    assert.equal(cleared.json().expiresAt, null);
+  });
+
+  it('returns 404 when updating an unknown share link', async () => {
+    const cookie = await adminCookie();
+    const response = await server.inject({
+      method: 'PATCH',
+      url: '/api/admin/shares/unknown-token-1234567890123456789012',
+      headers: { cookie },
+      payload: { label: 'Something' },
+    });
     assert.equal(response.statusCode, 404);
   });
 });

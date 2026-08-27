@@ -2006,6 +2006,15 @@ removes both (D260825b). The form carries no `kind`: a photograph identifier mak
 a photograph link and leaving it empty makes it an album link, so the two cannot
 disagree about what was asked for.
 
+### Contextual sharing — `components/ShareModal.tsx`
+
+Administrators can also issue and copy a link without visiting the administration tab:
+
+- **`AlbumPage`** carries a "Share album" action in the `TopBar` when the viewer is an administrator.
+- **`Lightbox`** carries a "Share photograph" action in its action list and sheet when an administrator views a photograph in an album.
+
+`ShareModal` lets the administrator set an optional recipient label and choose an expiration duration (7 days, 30 days, or no expiry). Issuing the link immediately copies its full URL (`${window.location.origin}/s/${token}`) to the clipboard and presents confirmation feedback.
+
 ### Storage — `components/admin/storage/`
 
 **Its own section, at the head of the Library group**

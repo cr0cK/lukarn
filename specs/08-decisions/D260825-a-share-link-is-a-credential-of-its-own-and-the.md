@@ -32,8 +32,9 @@ whole comment stack work through a link without being told a link exists. What t
 adjusted, not extended — there is no username to report, and `admin` is false.
 
 **Authorisation stays at the choke point.** `routes/media.ts` mounts `requireAuth` then `authorize`
-across the `/media` prefix, and every media route inherits both. A link is read there, beside the
-account, rather than on a parallel set of routes that would start out identical and drift.
+across the `/media` prefix for accounts. For share links, media are scoped under
+`/api/share/:token/media/:mediaId/*`, reusing the shared media renderer while isolating sessions so
+that two links opened concurrently in different tabs never collide on cookies.
 
 **Rejected.** _A link as a hidden `users` row_, with no password and one album granted through
 `user_albums`. Everything downstream would work untouched, which is a genuine and large saving, and

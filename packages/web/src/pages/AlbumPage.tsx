@@ -15,6 +15,7 @@ import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { JustifiedGrid } from '../components/JustifiedGrid';
 import { Lightbox } from '../components/Lightbox';
+import { ShareModal } from '../components/ShareModal';
 import { ShortcutsOverlay } from '../components/ShortcutsOverlay';
 import { isPanelTab, type PanelTab } from '../components/SidePanel';
 import { Spinner } from '../components/Spinner';
@@ -92,6 +93,7 @@ export default function AlbumPage(): ReactElement {
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const activity = useActivityFeed();
 
   // Collapsed sections by key. Memory-only deliberately: a list of collapsed
@@ -367,6 +369,22 @@ export default function AlbumPage(): ReactElement {
         back
         feed={{ unread: activity.unread, onOpen: activity.open }}
         actions={[
+          ...(me?.admin
+            ? [
+                {
+                  label: t('shares.shareAlbum'),
+                  action: t('shares.shareAlbum'),
+                  onSelect: () => setShowShare(true),
+                  icon: (
+                    <>
+                      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                      <polyline points="16 6 12 2 8 6" />
+                      <line x1="12" y1="2" x2="12" y2="15" />
+                    </>
+                  ),
+                },
+              ]
+            : []),
           {
             label: orderLabel,
             action: orderAction,
@@ -482,6 +500,13 @@ export default function AlbumPage(): ReactElement {
       )}
 
       {showShortcuts && <ShortcutsOverlay onClose={() => setShowShortcuts(false)} />}
+
+      <ShareModal
+        albumId={albumId}
+        albumTitle={album.data?.title}
+        isOpen={showShare}
+        onClose={() => setShowShare(false)}
+      />
     </div>
   );
 }

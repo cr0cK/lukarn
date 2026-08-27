@@ -190,6 +190,7 @@ export default function SharePage(): ReactElement {
       {items.length > 0 && (
         <JustifiedGrid
           grid={grid}
+          scope={scope}
           // No album to annotate, and nobody here who could: both halves say the
           // same thing, and the grid folds them together.
           albumId={null}

@@ -558,6 +558,31 @@ if (!kindsSupportes) {
       manques.push(`README.md never names "${libelle[1]}", which /admin offers as a storage kind`);
     }
   }
+
+  const tabsNav = lire(join(RACINE, 'packages/web/src/components/admin/AdminNav.tsx'));
+  const tabsMatch = /ADMIN_TABS\s*=\s*\[([\s\S]*?)\]\s*as const/.exec(tabsNav);
+
+  if (!tabsMatch) {
+    manques.push('AdminNav.tsx no longer declares ADMIN_TABS as a literal array');
+  } else {
+    const readmeMin = readme.toLowerCase();
+    const MOTS_CLEFS_TABS = {
+      storage: ['storage'],
+      albums: ['album'],
+      shares: ['share', 'sharing', 'link'],
+      accounts: ['account'],
+      comments: ['comment'],
+    };
+
+    for (const [, slug, group] of tabsMatch[1].matchAll(
+      /slug:\s*'([a-z0-9]+)',.*?group:\s*'(admin\.group(?:Library|People))'/g,
+    )) {
+      const mots = MOTS_CLEFS_TABS[slug] ?? [slug];
+      if (!mots.some((mot) => readmeMin.includes(mot))) {
+        manques.push(`README.md does not describe "${slug}", which /admin offers in ${group}`);
+      }
+    }
+  }
 }
 
 /* --------------------------------------------------------------- Verdict */

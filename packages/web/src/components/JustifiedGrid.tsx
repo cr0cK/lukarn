@@ -1,5 +1,6 @@
 import type { AlbumDay } from '@lukarn/shared';
 import { type ReactElement, useEffect } from 'react';
+import type { Scope } from '../api/client';
 import type { GridLayout } from '../lib/useGridLayout';
 import { SectionHeader } from './SectionHeader';
 import { Thumb } from './Thumb';
@@ -9,6 +10,7 @@ const LOAD_MORE_MARGIN_PX = 1500;
 
 interface JustifiedGridProps {
   grid: GridLayout;
+  scope?: Scope;
   /**
    * The album a day note would be written in, `null` when a share link is showing
    * this grid. `canAnnotate` folds it in, so nothing below takes an administrator's
@@ -37,6 +39,7 @@ interface JustifiedGridProps {
  */
 export function JustifiedGrid({
   grid,
+  scope,
   albumId,
   days,
   canAnnotate,
@@ -83,6 +86,7 @@ export function JustifiedGrid({
                     item={cell.item}
                     width={cell.width}
                     height={cell.height}
+                    scope={scope}
                     selected={cell.index === selectedIndex}
                     // Load first-screen thumbnails without waiting for the native
                     // lazy-loading IntersectionObserver.
