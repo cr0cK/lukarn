@@ -57,8 +57,8 @@ importers:
         specifier: ^8.0.3
         version: 8.3.0
       '@googleapis/drive':
-        specifier: ^20.2.0
-        version: 20.2.0
+        specifier: ^21.0.0
+        version: 21.0.0
       '@googleapis/oauth2':
         specifier: ^6.0.0
         version: 6.0.0
@@ -638,8 +638,8 @@ packages:
   '@fastify/static@8.3.0':
     resolution: {integrity: sha512-yKxviR5PH1OKNnisIzZKmgZSus0r2OZb8qCSbqmw34aolT4g3UlzYfeBRym+HJ1J471CR8e2ldNub4PubD1coA==}
 
-  '@googleapis/drive@20.2.0':
-    resolution: {integrity: sha512-6xPjqqLl34jBXWYMO34ywLVQsT8FgH948x8YI9o6Tdqs7+n4QRyvkC+BcvVQaAPNc+pyqsvZAXcbdMEcGgDUGw==}
+  '@googleapis/drive@21.0.0':
+    resolution: {integrity: sha512-vebQpAqn+FZcmDWh1TEQTcYdkKftcSaHc7kO2ZxrINBb+ZMcFu1UybD3+maeqdLs60HrRDYwyzJ6TgZ7/Vn2Rg==}
     engines: {node: '>=12.0.0'}
 
   '@googleapis/oauth2@6.0.0':
@@ -2914,7 +2914,7 @@ snapshots:
       fastq: 1.20.1
       glob: 11.1.0
 
-  '@googleapis/drive@20.2.0':
+  '@googleapis/drive@21.0.0':
     dependencies:
       googleapis-common: 8.0.3
     transitivePeerDependencies:
