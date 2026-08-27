@@ -689,13 +689,18 @@ An album, or one photograph, opened by somebody with no account (D260825). This
 is the **only** prefix a link's session reads from, and the only one whose
 addresses carry no album identifier.
 
-| Method | Path                                  | Access   | Response         |
-| ------ | ------------------------------------- | -------- | ---------------- |
-| GET    | `/api/share/:token`                   | **none** | `ShareView`      |
-| GET    | `/api/share/:token/items`             | **none** | `ShareItemsPage` |
-| GET    | `/api/share/:token/items/:mediaId`    | **none** | `ShareDetail`    |
-| GET    | `/api/share/:token/comments/:mediaId` | **none** | `CommentsPage`   |
-| POST   | `/api/share/:token/comments/:mediaId` | **none** | `201 Comment`    |
+| Method | Path                                        | Access   | Response              |
+| ------ | ------------------------------------------- | -------- | --------------------- |
+| GET    | `/api/share/:token`                         | **none** | `ShareView`           |
+| GET    | `/api/share/:token/items`                   | **none** | `ShareItemsPage`      |
+| GET    | `/api/share/:token/items/:mediaId`          | **none** | `ShareDetail`         |
+| GET    | `/api/share/:token/comments/:mediaId`       | **none** | `CommentsPage`        |
+| POST   | `/api/share/:token/comments/:mediaId`       | **none** | `201 Comment`         |
+| GET    | `/api/share/:token/media/:mediaId/thumb`    | **none** | binary thumbnail JPEG |
+| GET    | `/api/share/:token/media/:mediaId/full`     | **none** | binary full JPEG      |
+| GET    | `/api/share/:token/media/:mediaId/hd`       | **none** | binary HD JPEG        |
+| GET    | `/api/share/:token/media/:mediaId/playable` | **none** | `200` / `206` MP4     |
+| GET    | `/api/share/:token/media/:mediaId/original` | **none** | binary stream         |
 
 `none` because the caller holds a link and no session, and `GET /api/share/:token`
 is the route that opens one for them. Everything else here re-reads the token from
@@ -748,10 +753,10 @@ comment records the **link** in `comments.account`: a link is a credential and n
 person, its author stays a `commenters` identity, and no address reaches the thread
 (D38). Hidden comments stay hidden: `admin` is false on a link's session.
 
-**Media bytes are not served here.** They come from the `/media` prefix, where the
-link is read beside the account at the one `preHandler` every media route inherits
-(D260825). A parallel set of media routes would start out identical to those and
-lose the inherited check on the first change to either.
+**Media bytes.** Media for a share link are served scoped under `/api/share/:token/media/:mediaId/*`
+rather than through the global `/media` prefix alone (D260825). Scoping media under the token avoids
+session cookie collisions when two different links are opened concurrently in different browser
+tabs, while reusing the same underlying media renderer, transcoding store, and storage streaming logic.
 
 **What a link's session reaches elsewhere: nothing.** `/api/albums/*`, `/api/search`,
 the album-keyed comment routes, `/api/version` and the two pairing routes that

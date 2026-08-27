@@ -35,7 +35,7 @@ const IMMUTABLE = 'private, max-age=31536000, immutable';
  */
 const VARY_COOKIE = 'Cookie';
 
-const thumbQuery = z.object({ s: z.coerce.number().int().default(320) });
+export const thumbQuery = z.object({ s: z.coerce.number().int().default(320) });
 
 /**
  * Clamps a requested range to the file's actual bounds.
@@ -51,6 +51,228 @@ function resolveRange(range: ByteRange, size: number): { start: number; end: num
   }
   if (range.start >= size) return null;
   return { start: range.start, end: Math.min(range.end ?? size - 1, size - 1) };
+}
+
+export async function handleMediaError(
+  error: unknown,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<FastifyReply | undefined> {
+  // Not a fault: the backend holds no preview of this video and the image has no
+  // ffmpeg to cut one. 415 says so once instead of a 500 the client retries.
+  if (error instanceof NoPreviewError) {
+    return reply
+      .code(415)
+      .send({ error: 'unsupported', message: request.t('error.noVideoPreview') });
+  }
+  if (error instanceof StorageRevokedError) {
+    return reply.code(503).send({ error: 'storage_revoked', message: error.message });
+  }
+  // Not connected and not configured land on the same code deliberately: from a
+  // grid, both mean "this storage cannot serve anything, and /admin is where it is
+  // fixed". The message says which of the two it is.
+  if (error instanceof StorageNotConnectedError || error instanceof StorageNotConfiguredError) {
+    return reply.code(503).send({ error: 'storage_disconnected', message: error.message });
+  }
+  // Timeout or rate limit: **transient**. The 503 and `Retry-After` tell the client
+  // to return, whereas a default 500 would make it abandon the thumbnail until
+  // the next page reload. No cache header is set because a failure must never be
+  // retained.
+  if (error instanceof StorageUnavailableError) {
+    return reply
+      .code(503)
+      .header('Retry-After', String(error.retryAfterSeconds))
+      .send({ error: 'storage_unavailable', message: error.message });
+  }
+  throw error;
+}
+
+export async function serveRendered(
+  context: AppContext,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  variant: Variant,
+  mediaId: string,
+): Promise<FastifyReply | undefined> {
+  const meta = context.media.getFileMeta(mediaId);
+  if (!meta) {
+    return reply.code(404).send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+  }
+  /**
+   * A video has a thumbnail but nothing larger: `full` and `hd` would enlarge an
+   * image only a few hundred pixels wide.
+   *
+   * Whether that thumbnail exists is **not** decided here. `has_thumbnail` records
+   * what the storage said it holds, and outside Drive every backend says no (D92);
+   * refusing on it would leave every album read from a folder or a bucket without a
+   * single video poster. The renderer owns the chain instead — the preview the
+   * backend holds, then a still cut by ffmpeg — and answers `NoPreviewError` when
+   * neither exists, which becomes the same 415 as before (D92).
+   */
+  if (meta.kind === 'video' && variant.kind !== 'thumb') {
+    return reply
+      .code(415)
+      .send({ error: 'unsupported', message: request.t('error.noFullscreenForVideo') });
+  }
+
+  /**
+   * The ETag distinguishes variants — otherwise `full` and `hd` would share the
+   * same browser-cache entry and zoom would serve the low-resolution image again —
+   * and content versions, because Drive keeps the same identifier when a file is
+   * replaced by a new version.
+   */
+  const version = meta.md5 ?? 'v0';
+  const etag = `"${mediaId}-${version}-${variant.kind === 'thumb' ? variant.size : variant.kind}"`;
+  if (request.headers['if-none-match'] === etag) {
+    return reply
+      .code(304)
+      .header('Cache-Control', IMMUTABLE)
+      .header('Vary', VARY_COOKIE)
+      .header('ETag', etag)
+      .send();
+  }
+
+  const rendered = await context.renderer.render(
+    context.storage.get(meta.connectionId),
+    mediaRef(mediaId, meta.sourcePath),
+    variant,
+    meta.md5,
+    meta.kind === 'video' ? 'poster' : 'original',
+  );
+  return reply
+    .header('Content-Type', rendered.contentType)
+    .header('Cache-Control', IMMUTABLE)
+    .header('Vary', VARY_COOKIE)
+    .header('ETag', etag)
+    .send(createReadStream(rendered.path));
+}
+
+export async function servePlayable(
+  context: AppContext,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  mediaId: string,
+): Promise<FastifyReply | undefined> {
+  const meta = context.media.getFileMeta(mediaId);
+  if (!meta) {
+    return reply.code(404).send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+  }
+
+  const path = context.videoStore.hit(playableKey(mediaId, meta.md5));
+  // The inventory may reference a file that is no longer present — concurrent
+  // eviction or manual volume cleanup. `stat` settles this before headers are set,
+  // whereas `createReadStream` would fail afterwards.
+  const size = path
+    ? await stat(path).then(
+        (info) => info.size,
+        () => null,
+      )
+    : null;
+  if (path === null || size === null) {
+    return reply.code(404).send({ error: 'not_ready', message: request.t('error.videoNotReady') });
+  }
+
+  const etag = `"${mediaId}-${meta.md5 ?? 'v0'}-playable"`;
+  if (request.headers['if-none-match'] === etag) {
+    return reply
+      .code(304)
+      .header('Cache-Control', IMMUTABLE)
+      .header('Vary', VARY_COOKIE)
+      .header('ETag', etag)
+      .send();
+  }
+
+  reply
+    // Always H.264 MP4 regardless of the original container: this is what ffmpeg
+    // just produced, and advertising `video/quicktime` would confuse a player
+    // receiving exactly what it knows how to play.
+    .header('Content-Type', 'video/mp4')
+    .header('Accept-Ranges', 'bytes')
+    .header('Cache-Control', IMMUTABLE)
+    .header('Vary', VARY_COOKIE)
+    .header('ETag', etag);
+
+  const asked = parseRange(request.headers.range);
+  if (!asked) {
+    return reply.header('Content-Length', String(size)).send(createReadStream(path));
+  }
+
+  const range = resolveRange(asked, size);
+  if (!range) {
+    return reply.code(416).header('Content-Range', `bytes */${size}`).send();
+  }
+
+  return reply
+    .code(206)
+    .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`)
+    .header('Content-Length', String(range.end - range.start + 1))
+    .send(createReadStream(path, { start: range.start, end: range.end }));
+}
+
+export async function serveOriginal(
+  context: AppContext,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  mediaId: string,
+  wantsDownload: boolean,
+): Promise<FastifyReply | undefined> {
+  const meta = context.media.getFileMeta(mediaId);
+  if (!meta) {
+    return reply.code(404).send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+  }
+
+  const range = parseRange(request.headers.range);
+  // Which storage holds this file comes from its album, resolved once per request:
+  // one instance now serves a photo from a Drive and the next from a bucket.
+  const storage = context.storage.get(meta.connectionId);
+  // Through `guard`, like every other read: a revoked authorisation must become the
+  // 503 the error handler below already knows how to phrase, not a bare 500.
+  const upstream = await storage.guard(() =>
+    storage.fetch(mediaRef(mediaId, meta.sourcePath).ref, range ? formatRange(range) : undefined),
+  );
+
+  /**
+   * Unsatisfiable range: the player requested an offset beyond the file's end,
+   * which commonly happens when changing videos while a request is in flight.
+   * The response is relayed as-is — its `Content-Range` carries the actual file
+   * size, telling the player where to restart where a 500 would teach it nothing.
+   */
+  if (upstream.status === 416) {
+    const contentRange = upstream.headers.get('content-range');
+    reply.code(416).header('Accept-Ranges', 'bytes');
+    if (contentRange) reply.header('Content-Range', contentRange);
+    return reply.send();
+  }
+
+  if (!upstream.body) {
+    return reply
+      .code(502)
+      .send({ error: 'bad_gateway', message: request.t('error.emptyFromStorage') });
+  }
+
+  reply
+    .code(upstream.status === 206 ? 206 : 200)
+    .header('Content-Type', meta.mimeType)
+    // Required for the browser to allow seeking within the video.
+    .header('Accept-Ranges', 'bytes')
+    .header('Cache-Control', IMMUTABLE)
+    .header('Vary', VARY_COOKIE);
+
+  // Content-Length / Content-Range come from Drive: copying them verbatim ensures
+  // they describe the relayed body exactly.
+  for (const header of ['content-length', 'content-range'] as const) {
+    const value = upstream.headers.get(header);
+    if (value) reply.header(header, value);
+  }
+
+  if (wantsDownload) {
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(meta.name)}`,
+    );
+  }
+
+  return reply.send(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]));
 }
 
 export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
@@ -86,108 +308,16 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     return true;
   }
 
-  async function serveRendered(
-    request: FastifyRequest,
-    reply: FastifyReply,
-    variant: Variant,
-  ): Promise<FastifyReply | undefined> {
-    const { mediaId } = request.params as { mediaId: string };
-
-    const meta = context.media.getFileMeta(mediaId);
-    if (!meta) {
-      return reply
-        .code(404)
-        .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
-    }
-    /**
-     * A video has a thumbnail but nothing larger: `full` and `hd` would enlarge an
-     * image only a few hundred pixels wide.
-     *
-     * Whether that thumbnail exists is **not** decided here. `has_thumbnail` records
-     * what the storage said it holds, and outside Drive every backend says no (D92);
-     * refusing on it would leave every album read from a folder or a bucket without a
-     * single video poster. The renderer owns the chain instead — the preview the
-     * backend holds, then a still cut by ffmpeg — and answers `NoPreviewError` when
-     * neither exists, which becomes the same 415 as before (D92).
-     */
-    if (meta.kind === 'video' && variant.kind !== 'thumb') {
-      return reply
-        .code(415)
-        .send({ error: 'unsupported', message: request.t('error.noFullscreenForVideo') });
-    }
-
-    /**
-     * The ETag distinguishes variants — otherwise `full` and `hd` would share the
-     * same browser-cache entry and zoom would serve the low-resolution image again —
-     * and content versions, because Drive keeps the same identifier when a file is
-     * replaced by a new version.
-     */
-    const version = meta.md5 ?? 'v0';
-    const etag = `"${mediaId}-${version}-${variant.kind === 'thumb' ? variant.size : variant.kind}"`;
-    if (request.headers['if-none-match'] === etag) {
-      return reply
-        .code(304)
-        .header('Cache-Control', IMMUTABLE)
-        .header('Vary', VARY_COOKIE)
-        .header('ETag', etag)
-        .send();
-    }
-
-    const rendered = await context.renderer.render(
-      context.storage.get(meta.connectionId),
-      mediaRef(mediaId, meta.sourcePath),
-      variant,
-      meta.md5,
-      meta.kind === 'video' ? 'poster' : 'original',
-    );
-    return reply
-      .header('Content-Type', rendered.contentType)
-      .header('Cache-Control', IMMUTABLE)
-      .header('Vary', VARY_COOKIE)
-      .header('ETag', etag)
-      .send(createReadStream(rendered.path));
-  }
-
   return async (app) => {
     app.addHook('preHandler', requireAuth);
     app.addHook('preHandler', async (request, reply) => {
       await authorize(request, reply);
     });
 
-    // Storage unavailable: an explicit message rather than an opaque 500 repeated for
-    // every grid thumbnail. The two cases are distinguished so the administrator
-    // knows whether to connect or reconnect.
-    app.setErrorHandler(async (error, request, reply) => {
-      // Not a fault: the backend holds no preview of this video and the image has no
-      // ffmpeg to cut one. 415 says so once instead of a 500 the client retries.
-      if (error instanceof NoPreviewError) {
-        return reply
-          .code(415)
-          .send({ error: 'unsupported', message: request.t('error.noVideoPreview') });
-      }
-      if (error instanceof StorageRevokedError) {
-        return reply.code(503).send({ error: 'storage_revoked', message: error.message });
-      }
-      // Not connected and not configured land on the same code deliberately: from a
-      // grid, both mean "this storage cannot serve anything, and /admin is where it is
-      // fixed". The message says which of the two it is.
-      if (error instanceof StorageNotConnectedError || error instanceof StorageNotConfiguredError) {
-        return reply.code(503).send({ error: 'storage_disconnected', message: error.message });
-      }
-      // Timeout or rate limit: **transient**. The 503 and `Retry-After` tell the client
-      // to return, whereas a default 500 would make it abandon the thumbnail until
-      // the next page reload. No cache header is set because a failure must never be
-      // retained.
-      if (error instanceof StorageUnavailableError) {
-        return reply
-          .code(503)
-          .header('Retry-After', String(error.retryAfterSeconds))
-          .send({ error: 'storage_unavailable', message: error.message });
-      }
-      throw error;
-    });
+    app.setErrorHandler(handleMediaError);
 
     app.get('/:mediaId/thumb', async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
       const query = thumbQuery.safeParse(request.query);
       const size = query.success ? query.data.s : 320;
       if (!isThumbSize(size)) {
@@ -195,21 +325,23 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
           .code(400)
           .send({ error: 'bad_request', message: request.t('error.unsupportedThumbSize') });
       }
-      return serveRendered(request, reply, { kind: 'thumb', size });
+      return serveRendered(context, request, reply, { kind: 'thumb', size }, mediaId);
     });
 
-    app.get('/:mediaId/full', async (request, reply) =>
-      serveRendered(request, reply, { kind: 'full' }),
-    );
+    app.get('/:mediaId/full', async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      return serveRendered(context, request, reply, { kind: 'full' }, mediaId);
+    });
 
     /**
      * High-resolution render requested only on first zoom. Capped at 4096 px, it
      * weighs a fraction of the original — a few hundred KB where a camera JPEG often
      * exceeds 9 MB — while showing the same on-screen detail.
      */
-    app.get('/:mediaId/hd', async (request, reply) =>
-      serveRendered(request, reply, { kind: 'hd' }),
-    );
+    app.get('/:mediaId/hd', async (request, reply) => {
+      const { mediaId } = request.params as { mediaId: string };
+      return serveRendered(context, request, reply, { kind: 'hd' }, mediaId);
+    });
 
     /**
      * Transcoded version served from the disk store (D6).
@@ -224,64 +356,7 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
      */
     app.get('/:mediaId/playable', async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
-      const meta = context.media.getFileMeta(mediaId);
-      if (!meta) {
-        return reply
-          .code(404)
-          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
-      }
-
-      const path = context.videoStore.hit(playableKey(mediaId, meta.md5));
-      // The inventory may reference a file that is no longer present — concurrent
-      // eviction or manual volume cleanup. `stat` settles this before headers are set,
-      // whereas `createReadStream` would fail afterwards.
-      const size = path
-        ? await stat(path).then(
-            (info) => info.size,
-            () => null,
-          )
-        : null;
-      if (path === null || size === null) {
-        return reply
-          .code(404)
-          .send({ error: 'not_ready', message: request.t('error.videoNotReady') });
-      }
-
-      const etag = `"${mediaId}-${meta.md5 ?? 'v0'}-playable"`;
-      if (request.headers['if-none-match'] === etag) {
-        return reply
-          .code(304)
-          .header('Cache-Control', IMMUTABLE)
-          .header('Vary', VARY_COOKIE)
-          .header('ETag', etag)
-          .send();
-      }
-
-      reply
-        // Always H.264 MP4 regardless of the original container: this is what ffmpeg
-        // just produced, and advertising `video/quicktime` would confuse a player
-        // receiving exactly what it knows how to play.
-        .header('Content-Type', 'video/mp4')
-        .header('Accept-Ranges', 'bytes')
-        .header('Cache-Control', IMMUTABLE)
-        .header('Vary', VARY_COOKIE)
-        .header('ETag', etag);
-
-      const asked = parseRange(request.headers.range);
-      if (!asked) {
-        return reply.header('Content-Length', String(size)).send(createReadStream(path));
-      }
-
-      const range = resolveRange(asked, size);
-      if (!range) {
-        return reply.code(416).header('Content-Range', `bytes */${size}`).send();
-      }
-
-      return reply
-        .code(206)
-        .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`)
-        .header('Content-Length', String(range.end - range.start + 1))
-        .send(createReadStream(path, { start: range.start, end: range.end }));
+      return servePlayable(context, request, reply, mediaId);
     });
 
     /**
@@ -291,69 +366,8 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
      */
     app.get('/:mediaId/original', async (request, reply) => {
       const { mediaId } = request.params as { mediaId: string };
-      const meta = context.media.getFileMeta(mediaId);
-      if (!meta) {
-        return reply
-          .code(404)
-          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
-      }
-
       const wantsDownload = (request.query as { download?: string }).download === '1';
-      const range = parseRange(request.headers.range);
-      // Which storage holds this file comes from its album, resolved once per request:
-      // one instance now serves a photo from a Drive and the next from a bucket.
-      const storage = context.storage.get(meta.connectionId);
-      // Through `guard`, like every other read: a revoked authorisation must become the
-      // 503 the error handler below already knows how to phrase, not a bare 500.
-      const upstream = await storage.guard(() =>
-        storage.fetch(
-          mediaRef(mediaId, meta.sourcePath).ref,
-          range ? formatRange(range) : undefined,
-        ),
-      );
-
-      /**
-       * Unsatisfiable range: the player requested an offset beyond the file's end,
-       * which commonly happens when changing videos while a request is in flight.
-       * The response is relayed as-is — its `Content-Range` carries the actual file
-       * size, telling the player where to restart where a 500 would teach it nothing.
-       */
-      if (upstream.status === 416) {
-        const contentRange = upstream.headers.get('content-range');
-        reply.code(416).header('Accept-Ranges', 'bytes');
-        if (contentRange) reply.header('Content-Range', contentRange);
-        return reply.send();
-      }
-
-      if (!upstream.body) {
-        return reply
-          .code(502)
-          .send({ error: 'bad_gateway', message: request.t('error.emptyFromStorage') });
-      }
-
-      reply
-        .code(upstream.status === 206 ? 206 : 200)
-        .header('Content-Type', meta.mimeType)
-        // Required for the browser to allow seeking within the video.
-        .header('Accept-Ranges', 'bytes')
-        .header('Cache-Control', IMMUTABLE)
-        .header('Vary', VARY_COOKIE);
-
-      // Content-Length / Content-Range come from Drive: copying them verbatim ensures
-      // they describe the relayed body exactly.
-      for (const header of ['content-length', 'content-range'] as const) {
-        const value = upstream.headers.get(header);
-        if (value) reply.header(header, value);
-      }
-
-      if (wantsDownload) {
-        reply.header(
-          'Content-Disposition',
-          `attachment; filename*=UTF-8''${encodeURIComponent(meta.name)}`,
-        );
-      }
-
-      return reply.send(Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]));
+      return serveOriginal(context, request, reply, mediaId, wantsDownload);
     });
   };
 }

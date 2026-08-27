@@ -464,29 +464,32 @@ export function errorText(error: unknown, fallback: string): string {
 const query = (version?: string | null): string => (version ? `?v=${version}` : '');
 const suffix = (version?: string | null): string => (version ? `&v=${version}` : '');
 
+const mediaPrefix = (scope?: Scope | null): string =>
+  scope?.kind === 'share' ? `/api/share/${encodeURIComponent(scope.token)}/media` : '/api/media';
+
 /** Media URLs — built client-side and served by the Fastify proxy. */
 export const mediaUrl = {
-  thumb: (id: string, size: ThumbSize, version?: string | null) =>
-    `/api/media/${encodeURIComponent(id)}/thumb?s=${size}${suffix(version)}`,
-  full: (id: string, version?: string | null) =>
-    `/api/media/${encodeURIComponent(id)}/full${query(version)}`,
+  thumb: (id: string, size: ThumbSize, version?: string | null, scope?: Scope | null) =>
+    `${mediaPrefix(scope)}/${encodeURIComponent(id)}/thumb?s=${size}${suffix(version)}`,
+  full: (id: string, version?: string | null, scope?: Scope | null) =>
+    `${mediaPrefix(scope)}/${encodeURIComponent(id)}/full${query(version)}`,
   /** 4096 px render, requested only while zooming. */
-  hd: (id: string, version?: string | null) =>
-    `/api/media/${encodeURIComponent(id)}/hd${query(version)}`,
-  original: (id: string, version?: string | null) =>
-    `/api/media/${encodeURIComponent(id)}/original${query(version)}`,
+  hd: (id: string, version?: string | null, scope?: Scope | null) =>
+    `${mediaPrefix(scope)}/${encodeURIComponent(id)}/hd${query(version)}`,
+  original: (id: string, version?: string | null, scope?: Scope | null) =>
+    `${mediaPrefix(scope)}/${encodeURIComponent(id)}/original${query(version)}`,
   /**
    * Server-prepared version for codecs this browser cannot decode (D6).
    * Responds with 404 until it exists — preparation is anticipated and slow,
    * not triggered by the request.
    */
-  playable: (id: string, version?: string | null) =>
-    `/api/media/${encodeURIComponent(id)}/playable${query(version)}`,
+  playable: (id: string, version?: string | null, scope?: Scope | null) =>
+    `${mediaPrefix(scope)}/${encodeURIComponent(id)}/playable${query(version)}`,
   /**
    * The download carries the version like the others: served as `immutable`, it
    * would otherwise return the old content of a replaced Drive file from cache
    * for a year while the photo displayed beside it is the new one.
    */
-  download: (id: string, version?: string | null) =>
-    `/api/media/${encodeURIComponent(id)}/original?download=1${suffix(version)}`,
+  download: (id: string, version?: string | null, scope?: Scope | null) =>
+    `${mediaPrefix(scope)}/${encodeURIComponent(id)}/original?download=1${suffix(version)}`,
 };

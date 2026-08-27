@@ -300,6 +300,23 @@ describe('what a link covers, and what it does not', () => {
     assert.equal(other.statusCode, 404);
   });
 
+  it('serves media bytes through the token prefix without relying on cookie', async () => {
+    const token = mint({ mediaId: 'img-1' });
+
+    // Request without any cookie header: authenticated purely by token & coverage
+    const covered = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/media/img-1/thumb?s=320`,
+    });
+    const other = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/media/img-2/thumb?s=320`,
+    });
+
+    assert.notEqual(covered.statusCode, 404);
+    assert.equal(other.statusCode, 404);
+  });
+
   it('keeps Vary: Cookie on media, so a link cache is its own', async () => {
     const token = mint({ mediaId: 'img-1' });
     const cookie = await open(token);
