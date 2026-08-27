@@ -19,11 +19,13 @@ Sending photographs to somebody outside the household meant giving them an accou
 or attaching files to a message. Neither is right for a grandmother who will look
 once, or for a friend who is in one picture.
 
-**Administration → Links** issues a link. Choose an album, or type the identifier of
-a single photograph, give it a label so you remember who it went to, and optionally a
-date after which it stops working. The address it produces is copied with one button
-and sent the way you would send the photographs themselves. Anybody holding it can
-open it; that address is the whole credential.
+**Administration → Links** issues a link, and administrators can also share directly
+from the album header or the photograph viewer. Choose an album, or type the
+identifier of a single photograph, give it a label so you remember who it went to,
+and optionally a date after which it stops working. A link's label and expiration date
+can be updated at any time without revoking and recreating it. The address it produces
+is copied with one button and sent the way you would send the photographs themselves.
+Anybody holding it can open it; that address is the whole credential.
 
 What the recipient opens carries your instance's name and its logo above what you
 shared. No album list, no sign-in form, no sign that anything else is here. They can browse the album, open a photograph, zoom it and download it,

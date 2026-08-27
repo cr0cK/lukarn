@@ -13,6 +13,8 @@ Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment. An
 account can also belong to one person, invited by email: they sign in with a code
 sent to that address, and their comments carry their name on every device.
+An album, or one photograph, can also be shared with anyone through a link without
+creating an account for them.
 From `/admin`, the owner connects the storages, declares which of their folders
 become albums and who may open them. That is enough to share one album without
 exposing the rest of the account.
@@ -63,6 +65,11 @@ anywhere is involved, and nobody's family appears in a public README.
 - **Accounts and albums administered from the application**, with per-user
   rights, no restart and no file to edit. No sign-up: the owner creates every
   account, with a password or with an invitation sent to an address.
+- **Sharing by link without an account**: an album or a single photograph can be
+  shared with a link, with an optional expiration date and label. Links can be
+  issued from `/admin` or directly from an album or the viewer, and revoked or
+  extended at any time. Recipients open only what was shared, with no access to
+  other albums or instance URLs.
 - **EXIF**: capture date, camera, lens, aperture, shutter speed, ISO,
   geolocation. Chronological ordering on the real capture date. A day can carry a
   note and a place, the latter derived from coordinates.
