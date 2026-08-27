@@ -26,6 +26,7 @@ import {
   type MediaItem,
   type AdminShareLink,
   type CreateShareRequest,
+  type UpdateShareRequest,
   type ModerationFilter,
   type SearchHit,
   type ShareDetail,
@@ -426,6 +427,12 @@ export const api = {
 
   createShare: (body: CreateShareRequest) =>
     request<AdminShareLink>('/admin/shares', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateShare: (token: string, body: UpdateShareRequest) =>
+    request<AdminShareLink>(`/admin/shares/${encodeURIComponent(token)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   /** Keeps the row and its record of use; only deletion removes those (D260825b). */
   revokeShare: (token: string) =>

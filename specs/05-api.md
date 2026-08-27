@@ -1393,6 +1393,7 @@ go back from.
 | ------ | --------------------------------- | -------------------- |
 | GET    | `/api/admin/shares`               | `AdminShareLink[]`   |
 | POST   | `/api/admin/shares`               | `201 AdminShareLink` |
+| PATCH  | `/api/admin/shares/:token`        | `AdminShareLink`     |
 | POST   | `/api/admin/shares/:token/revoke` | `{ ok: true }`       |
 | DELETE | `/api/admin/shares/:token`        | `{ ok: true }`       |
 
@@ -1408,6 +1409,10 @@ would answer 410 the moment its recipient opened it, and whoever issued it would
 learn that from them. `expiresAt` is an ISO instant or `null` for a link that never
 expires, evaluated against the row rather than baked into the token, so a date can be
 changed or removed after the link was sent (D260825b).
+
+`PATCH` takes `UpdateShareRequest` = `{ label?, expiresAt? }`. It modifies the link's
+label or expiration date (`null` clears expiry), returning the refreshed `AdminShareLink`,
+or `404` if the token is unknown.
 
 `AdminShareLink` carries the **token** — this response's reader already holds every
 credential this instance has, and a link nobody can copy is a link nobody can send —

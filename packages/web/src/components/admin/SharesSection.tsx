@@ -1,7 +1,13 @@
 import { SHARE_LABEL_MAX_LENGTH, type AdminAlbum, type AdminShareLink } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useState } from 'react';
 import { errorText } from '../../api/client';
-import { useAdminShares, useCreateShare, useDeleteShare, useRevokeShare } from '../../api/hooks';
+import {
+  useAdminShares,
+  useCreateShare,
+  useDeleteShare,
+  useRevokeShare,
+  useUpdateShare,
+} from '../../api/hooks';
 import { formatLocalDateTime, formatRelative } from '../../lib/format';
 import { useT, type MessageKey, type Translate } from '../../lib/i18n';
 import { Spinner } from '../Spinner';
@@ -16,6 +22,19 @@ import {
   TextField,
   type Notify,
 } from './ui';
+
+function toLocalDatetimeInput(isoString: string | null): string {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const yyyy = date.getFullYear();
+  const MM = pad(date.getMonth() + 1);
+  const dd = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  return `${yyyy}-${MM}-${dd}T${hh}:${mm}`;
+}
 
 /** What the confirmation dialog is about, since revoking and deleting differ (D260825b). */
 type Pending = { link: AdminShareLink; action: 'revoke' | 'delete' };
@@ -41,6 +60,7 @@ export function SharesSection({
   const t = useT();
   const links = useAdminShares();
   const [pending, setPending] = useState<Pending | null>(null);
+  const [editing, setEditing] = useState<AdminShareLink | null>(null);
   const revoke = useRevokeShare();
   const remove = useDeleteShare();
 
@@ -96,6 +116,7 @@ export function SharesSection({
 
           <div className={ROW_ACTIONS_CLASS}>
             <CopyButton token={link.token} />
+            <Button onClick={() => setEditing(link)}>{t('shares.edit')}</Button>
             {link.state === 'live' && (
               <Button onClick={() => setPending({ link, action: 'revoke' })}>
                 {t('shares.revoke')}
@@ -107,6 +128,10 @@ export function SharesSection({
           </div>
         </div>
       ))}
+
+      {editing && (
+        <EditShareDialog link={editing} onClose={() => setEditing(null)} notify={notify} />
+      )}
 
       {pending && (
         <ConfirmDialog
@@ -122,6 +147,96 @@ export function SharesSection({
         </ConfirmDialog>
       )}
     </Section>
+  );
+}
+
+function EditShareDialog({
+  link,
+  onClose,
+  notify,
+}: {
+  link: AdminShareLink;
+  onClose: () => void;
+  notify: Notify;
+}): ReactElement {
+  const t = useT();
+  const update = useUpdateShare();
+  const [label, setLabel] = useState(link.label ?? '');
+  const [expiresAt, setExpiresAt] = useState(toLocalDatetimeInput(link.expiresAt));
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    update.mutate(
+      {
+        token: link.token,
+        body: {
+          label: label.trim() || null,
+          expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        },
+      },
+      {
+        onSuccess: () => {
+          onClose();
+        },
+        onError: (error) => {
+          notify({ tone: 'error', text: errorText(error, t('shares.updateFailed')) });
+        },
+      },
+    );
+  };
+
+  return (
+    <div
+      role="presentation"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-share-title"
+        className="w-full max-w-md rounded-xl border border-ink-800 bg-surface-base p-6 shadow-2xl"
+      >
+        <h2 id="edit-share-title" className="text-base font-medium text-ink-100">
+          {t('shares.editTitle')}
+        </h2>
+        <p className="mt-1 truncate text-xs text-ink-400">
+          {link.albumTitle ?? link.albumId}
+          {link.mediaName ? ` — ${link.mediaName}` : ''}
+        </p>
+
+        <form onSubmit={submit} className="mt-4 space-y-4">
+          <TextField
+            id="edit-share-label"
+            label={t('shares.label')}
+            value={label}
+            onChange={(value) => setLabel(value.slice(0, SHARE_LABEL_MAX_LENGTH))}
+            hint={t('shares.labelHint')}
+            disabled={update.isPending}
+          />
+          <TextField
+            id="edit-share-expires"
+            label={t('shares.expiresAt')}
+            type="datetime-local"
+            value={expiresAt}
+            onChange={setExpiresAt}
+            hint={t('shares.expiresHint')}
+            disabled={update.isPending}
+          />
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button onClick={onClose} disabled={update.isPending}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" variant="primary" disabled={update.isPending}>
+              {t('shares.save')}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

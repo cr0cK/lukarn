@@ -6,6 +6,7 @@ import {
   type CodeVerifyRequest,
   type CreateAlbumRequest,
   type CreateShareRequest,
+  type UpdateShareRequest,
   type CreateStorageRequest,
   type CreateCommentRequest,
   type FeedComment,
@@ -949,6 +950,15 @@ export function useCreateShare() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateShareRequest) => api.createShare(body),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+export function useUpdateShare() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, body }: { token: string; body: UpdateShareRequest }) =>
+      api.updateShare(token, body),
     onSuccess: () => invalidateShares(queryClient),
   });
 }
