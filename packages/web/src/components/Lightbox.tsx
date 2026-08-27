@@ -25,6 +25,7 @@ import { ActionMenu } from './ActionMenu';
 import { MediaCaption } from './MediaCaption';
 import { Sheet, type SheetStop } from './Sheet';
 import { PanelBody, SidePanel, type PanelTab } from './SidePanel';
+import { ShareModal } from './ShareModal';
 import { ZoomableImage } from './ZoomableImage';
 
 /**
@@ -184,6 +185,7 @@ export function Lightbox({
    * arrows are how a mouse navigates, and there is no screen edge to reclaim.
    */
   const [bare, setBare] = useState(() => window.matchMedia(COARSE_POINTER_QUERY).matches);
+  const [showShare, setShowShare] = useState(false);
   const phone = useMediaQuery(PHONE_QUERY);
   const coarse = useMediaQuery(COARSE_POINTER_QUERY);
 
@@ -561,7 +563,7 @@ export function Lightbox({
      * overflow menu. Matching on `label` would break the day somebody translates
      * it, and silently: the menu would simply hold one entry more.
      */
-    key: 'info' | 'zoom' | 'download' | 'fullscreen' | 'bare' | 'cover';
+    key: 'info' | 'zoom' | 'download' | 'fullscreen' | 'bare' | 'cover' | 'share';
     label: string;
     /** Absent for an action without a shortcut: see "Set as cover". */
     shortcut?: string;
@@ -606,6 +608,22 @@ export function Lightbox({
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
+    ...(isAdmin && scope.kind === 'album'
+      ? [
+          {
+            key: 'share' as const,
+            label: t('shares.sharePhoto'),
+            onSelect: () => setShowShare(true),
+            icon: (
+              <>
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                <polyline points="16 6 12 2 8 6" />
+                <line x1="12" y1="2" x2="12" y2="15" />
+              </>
+            ),
+          },
+        ]
+      : []),
     {
       key: 'fullscreen',
       label: t('viewer.fullscreen'),
@@ -1170,6 +1188,17 @@ export function Lightbox({
             />
           )}
         </Sheet>
+      )}
+
+      {scope.kind === 'album' && (
+        <ShareModal
+          albumId={scope.albumId}
+          albumTitle={albumTitle}
+          mediaId={item.id}
+          mediaName={item.name}
+          isOpen={showShare}
+          onClose={() => setShowShare(false)}
+        />
       )}
     </div>
   );

@@ -208,23 +208,41 @@ function EditShareDialog({
         </p>
 
         <form onSubmit={submit} className="mt-4 space-y-4">
-          <TextField
-            id="edit-share-label"
-            label={t('shares.label')}
-            value={label}
-            onChange={(value) => setLabel(value.slice(0, SHARE_LABEL_MAX_LENGTH))}
-            hint={t('shares.labelHint')}
-            disabled={update.isPending}
-          />
-          <TextField
-            id="edit-share-expires"
-            label={t('shares.expiresAt')}
-            type="datetime-local"
-            value={expiresAt}
-            onChange={setExpiresAt}
-            hint={t('shares.expiresHint')}
-            disabled={update.isPending}
-          />
+          <div>
+            <label
+              htmlFor="edit-share-label"
+              className="mb-1 block text-xs font-medium text-ink-300"
+            >
+              {t('shares.label')}
+            </label>
+            <input
+              id="edit-share-label"
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value.slice(0, SHARE_LABEL_MAX_LENGTH))}
+              disabled={update.isPending}
+              className="w-full rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm text-ink-100 outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60"
+            />
+            <p className="mt-1 text-xs text-ink-400">{t('shares.labelHint')}</p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="edit-share-expires"
+              className="mb-1 block text-xs font-medium text-ink-300"
+            >
+              {t('shares.expiresAt')}
+            </label>
+            <input
+              id="edit-share-expires"
+              type="datetime-local"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              disabled={update.isPending}
+              className="w-full rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm text-ink-100 outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60"
+            />
+            <p className="mt-1 text-xs text-ink-400">{t('shares.expiresHint')}</p>
+          </div>
 
           <div className="flex justify-end gap-3 pt-2">
             <Button onClick={onClose} disabled={update.isPending}>

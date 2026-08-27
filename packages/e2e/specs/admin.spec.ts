@@ -171,6 +171,69 @@ test.describe('Links', () => {
     expect(copied[0]).toContain('/s/');
     expect(copied[0]).not.toContain(ALBUMS.day.id);
   });
+
+  test('a share link can be edited to change its label', async ({ page }) => {
+    await page.goto('/admin');
+    const sections = page.getByRole('navigation', { name: 'Administration sections' });
+    await sections.getByRole('link', { name: 'Links', exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/shares$/);
+
+    // Issue a link first
+    await page.getByRole('button', { name: /^Album/ }).click();
+    await page.getByLabel('Album', { exact: true }).selectOption(ALBUMS.day.id);
+    await page.getByLabel('Label').fill('Original label');
+    await page.getByRole('button', { name: 'Issue the link' }).click();
+    await expect(page.getByText('Original label')).toBeVisible();
+
+    // Click Edit on the top row
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    const editModal = page.getByRole('dialog');
+    await expect(editModal).toBeVisible();
+
+    await editModal.locator('input#edit-share-label').fill('Updated label');
+    await editModal.getByRole('button', { name: 'Save' }).click();
+    await expect(editModal).toBeHidden();
+
+    await expect(page.getByText('Updated label')).toBeVisible();
+  });
+
+  test('a share link is issued contextually from the album page', async ({ page }) => {
+    const copied: string[] = [];
+    await page.exposeFunction('recordCopyAlbum', (text: string) => void copied.push(text));
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string) =>
+            (window as unknown as { recordCopyAlbum: (value: string) => void }).recordCopyAlbum(
+              text,
+            ),
+        },
+      });
+    });
+
+    await page.goto(`/album/${ALBUMS.day.id}`);
+    await expect(page.getByRole('heading', { name: ALBUMS.day.title })).toBeVisible();
+
+    // TopBar Share button for administrator (handles mobile View menu or desktop icon button)
+    const viewButton = page.getByRole('button', { name: 'View' });
+    if (await viewButton.isVisible()) {
+      await viewButton.click();
+      await page.getByRole('menuitem', { name: 'Share album' }).click();
+    } else {
+      await page.getByRole('button', { name: /Share album/ }).click();
+    }
+
+    const shareModal = page.getByRole('dialog');
+    await expect(shareModal).toBeVisible();
+
+    await shareModal.locator('input#share-modal-label').fill('Friend on album page');
+    await shareModal.getByRole('button', { name: 'Issue the link' }).click();
+
+    await expect(shareModal.getByText('Link created and copied to clipboard.')).toBeVisible();
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toContain('/s/');
+  });
 });
 
 /**
