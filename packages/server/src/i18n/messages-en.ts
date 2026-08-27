@@ -36,6 +36,16 @@ export const en = {
   'error.invalidSearch': 'Invalid search',
   'error.validation': (details: string) => `Invalid request — ${details}`,
 
+  // A share link and the four things it can answer. The status carries the
+  // distinction (404 unknown, 410 once worked) and these carry it in words: whoever
+  // reads one was sent this address by somebody they know, and cannot otherwise tell
+  // a mistyped address from one that was taken back (D260825b).
+  'error.shareUnknown': 'This link does not lead anywhere.',
+  'error.shareRevoked': 'This link was taken back.',
+  'error.shareExpired': 'This link has expired.',
+  'error.shareGone': 'The photograph this link was made from is no longer in the gallery.',
+  'error.notFound': 'Not found',
+
   'error.incompleteLink': 'Incomplete link',
   'error.invalidLink': 'Invalid link',
   'error.invalidOrExpiredLink': 'Invalid or expired link',

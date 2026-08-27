@@ -59,15 +59,25 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
    * several albums (nested folders): access is granted as soon as one of those albums
    * is visible to the user.
    *
+   * **A share link is read here, beside the account** (D260825), rather than on a
+   * parallel set of media routes that would start out identical to these and drift on
+   * the first change to either. The two credentials answer two questions and neither
+   * is asked of the other: an account asks `ConfigRepo.canSee`, a link is asked what
+   * it covers, and `canSee` is not taught that links exist.
+   *
    * A refusal returns 404 rather than 403 — the existence of media in an unauthorised
    * album must not be observable.
    */
   async function authorize(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
     const { mediaId } = request.params as { mediaId: string };
-    const username = request.user!.username;
+    const link = request.share;
 
-    const albums = context.media.albumsContaining(mediaId);
-    const allowed = albums.some((albumId) => context.canSee(username, albumId));
+    const allowed =
+      link !== null
+        ? context.shares.covers(link, mediaId)
+        : context.media
+            .albumsContaining(mediaId)
+            .some((albumId) => context.canSee(request.user!.username!, albumId));
 
     if (!allowed) {
       await reply.code(404).send({ error: 'not_found', message: request.t('error.mediaNotFound') });

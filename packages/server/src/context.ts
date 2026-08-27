@@ -20,6 +20,7 @@ import { ffmpegAvailable, spawnFfmpeg, TranscodePass, VideoTranscoder } from './
 import { MediaRepo, SyncStateRepo } from './repo.js';
 import { SearchRepo } from './search.js';
 import { SessionStore } from './sessions.js';
+import { ShareLinkRepo } from './shares.js';
 import { StorageConnectionRepo } from './storage/connections.js';
 import { StorageRegistry } from './storage/registry.js';
 import { Syncer } from './sync/sync.js';
@@ -72,6 +73,11 @@ export class AppContext {
   readonly transcoder: TranscodePass;
   readonly syncState: SyncStateRepo;
   readonly sessions: SessionStore;
+  /**
+   * Share links: an album, or one photograph, opened by somebody with no account.
+   * A credential of its own — `canSee` is never asked about one (D260825).
+   */
+  readonly shares: ShareLinkRepo;
   /**
    * Visit counters aggregated on write: who opens which album, and when.
    * Their purge runs with hourly housekeeping in `main.ts` (D260809h).
@@ -135,6 +141,7 @@ export class AppContext {
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
+    this.shares = new ShareLinkRepo(this.db);
     this.visits = new VisitLog(this.db);
     this.pairings = new PairingStore(this.db, env.sessionSecret);
     this.days = new AlbumDayRepo(this.db);

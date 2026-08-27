@@ -1,4 +1,5 @@
-import type { AlbumDay, MediaDetail } from '@lukarn/shared';
+import type { AlbumDay, ShareDetail } from '@lukarn/shared';
+import type { Scope } from '../api/client';
 import type { ReactElement } from 'react';
 import { useT } from '../lib/i18n';
 import { CommentsPanel } from './CommentsPanel';
@@ -36,7 +37,7 @@ export function isPanelTab(value: string | null): value is PanelTab {
  * lives in its own component rather than behind a prop on this one.
  */
 export function SidePanel({
-  albumId,
+  scope,
   mediaId,
   mediaName,
   detail,
@@ -45,10 +46,10 @@ export function SidePanel({
   onTabChange,
   onClose,
 }: {
-  albumId: string;
+  scope: Scope;
   mediaId: string;
   mediaName: string;
-  detail: MediaDetail | undefined;
+  detail: ShareDetail | undefined;
   /** Photo day, when it carries a note or place. */
   day: AlbumDay | undefined;
   tab: PanelTab;
@@ -98,7 +99,7 @@ export function SidePanel({
       </header>
 
       <PanelBody
-        albumId={albumId}
+        scope={scope}
         mediaId={mediaId}
         detail={detail}
         day={day}
@@ -117,7 +118,7 @@ export function SidePanel({
  * leave the comment count on one of the two.
  */
 export function PanelBody({
-  albumId,
+  scope,
   mediaId,
   detail,
   day,
@@ -125,9 +126,9 @@ export function PanelBody({
   onTabChange,
   tabs = true,
 }: {
-  albumId: string;
+  scope: Scope;
   mediaId: string;
-  detail: MediaDetail | undefined;
+  detail: ShareDetail | undefined;
   day: AlbumDay | undefined;
   tab: PanelTab;
   onTabChange: (tab: PanelTab) => void;
@@ -177,7 +178,7 @@ export function PanelBody({
         // No `overflow-y-auto` here: the comments panel manages its own scrolling
         // to keep the form anchored at the bottom.
         <div id="panel-comments" role="tabpanel" className="flex min-h-0 flex-1 flex-col">
-          <CommentsPanel albumId={albumId} mediaId={mediaId} />
+          <CommentsPanel scope={scope} mediaId={mediaId} />
         </div>
       )}
     </>

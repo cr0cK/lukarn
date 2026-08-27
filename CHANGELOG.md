@@ -13,6 +13,41 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### An album, or one photograph, opened by a link
+
+Sending photographs to somebody outside the household meant giving them an account,
+or attaching files to a message. Neither is right for a grandmother who will look
+once, or for a friend who is in one picture.
+
+**Administration → Links** issues a link. Choose an album, or type the identifier of
+a single photograph, give it a label so you remember who it went to, and optionally a
+date after which it stops working. The address it produces is copied with one button
+and sent the way you would send the photographs themselves. Anybody holding it can
+open it; that address is the whole credential.
+
+What the recipient opens carries your instance's name and its logo above what you
+shared. No album list, no sign-in form, no sign that anything else is here. They can browse the album, open a photograph, zoom it and download it,
+exactly as an account does. If you shared a single photograph, they never see which
+album it came from: not on the page, not in the address, not in any message the
+gallery sends them afterwards.
+
+They can comment, and that still costs a verified email address. They give one, type
+the six digits sent to it, and their name signs the message. It lands in the same
+conversation an account sees on that photograph. Somebody who opens a shared **album**
+is subscribed to its new photos, as anyone opening it would be. Somebody sent a single
+photograph is subscribed to nothing, since they were not given an album.
+
+The list shows, for every link, whether it still works and when it was last opened,
+which is what tells you a message arrived. **Revoking** a link closes it immediately
+for whoever holds it, including a browser already open on it, and keeps the record of
+when it was used. **Deleting** it removes the link and that record together. Somebody
+opening a link you took back is told so in those words, rather than being shown a page
+that says the address does not exist; the difference matters when they were sent it a
+month ago by somebody they know.
+
+A link is a credential of its own. It never appears in the account list, and it
+grants exactly what you chose when you made it.
+
 ### An account can be one person, invited by email
 
 Until now an account was a password, and whoever had it was whoever had it. A

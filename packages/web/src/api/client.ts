@@ -23,11 +23,14 @@ import {
   type DevicePollResult,
   type IdentityRequest,
   type InviteUserRequest,
-  type ItemsPage,
-  type MediaDetail,
   type MediaItem,
+  type AdminShareLink,
+  type CreateShareRequest,
   type ModerationFilter,
   type SearchHit,
+  type ShareDetail,
+  type ShareItemsPage,
+  type ShareView,
   type SessionUser,
   type SortOrder,
   type StorageConnectionStatus,
@@ -45,6 +48,38 @@ import {
   type VisitsOverview,
 } from '@lukarn/shared';
 import { activeLocale } from '../lib/i18n/locale';
+
+/**
+ * What a page reads photographs and threads from.
+ *
+ * An album an account opened, or a **share link**. The two are served by different
+ * address families on purpose: a shared photograph must have its album named nowhere
+ * its recipient can reach, and that includes the addresses their own requests use
+ * (D260825e). Threading this instead of a bare album identifier is what makes the
+ * grid, the viewer and the comment stack serve both without knowing which they are on.
+ */
+export type Scope = { kind: 'album'; albumId: string } | { kind: 'share'; token: string };
+
+export const albumScope = (albumId: string): Scope => ({ kind: 'album', albumId });
+export const shareScope = (token: string): Scope => ({ kind: 'share', token });
+
+/** Where this scope's items, details and threads are served from. */
+function scopePath(scope: Scope): string {
+  return scope.kind === 'album'
+    ? `/albums/${encodeURIComponent(scope.albumId)}`
+    : `/share/${encodeURIComponent(scope.token)}`;
+}
+
+/**
+ * The scope as one cache-key segment.
+ *
+ * Prefixed by kind so an album and a link can never collide: both identifiers are
+ * opaque strings, and a shared key would let one scope serve the other's pages out
+ * of cache. Also the browser-storage key for reading order and seen comments.
+ */
+export function scopeKey(scope: Scope): string {
+  return scope.kind === 'album' ? `album:${scope.albumId}` : `share:${scope.token}`;
+}
 
 /** API error carrying the HTTP status, to distinguish a 401 from a real failure. */
 export class ApiError extends Error {
@@ -168,15 +203,26 @@ export const api = {
 
   album: (albumId: string) => request<Album>(`/albums/${encodeURIComponent(albumId)}`),
 
+  /** What a link opens: an album's heading, or the one photograph it was made from. */
+  share: (token: string) => request<ShareView>(`/share/${encodeURIComponent(token)}`),
+
+  /**
+   * One page of the grid, from either scope.
+   *
+   * Typed as `ShareItemsPage`, the narrower of the two: an album's page carries an
+   * `albumId` on every item that a link's does not, and nothing downstream reads it.
+   * Declaring the wider shape here would let a component start doing so and break on
+   * the share page only.
+   */
   items: (
-    albumId: string,
+    scope: Scope,
     cursor: string | null,
     order: SortOrder = DEFAULT_SORT_ORDER,
     limit = 250,
   ) => {
     const params = new URLSearchParams({ limit: String(limit), order });
     if (cursor) params.set('cursor', cursor);
-    return request<ItemsPage>(`/albums/${encodeURIComponent(albumId)}/items?${params}`);
+    return request<ShareItemsPage>(`${scopePath(scope)}/items?${params}`);
   },
 
   albumDays: (albumId: string) =>
@@ -198,10 +244,8 @@ export const api = {
       { method: 'PATCH', body: JSON.stringify(body) },
     ),
 
-  itemDetail: (albumId: string, mediaId: string) =>
-    request<MediaDetail>(
-      `/albums/${encodeURIComponent(albumId)}/items/${encodeURIComponent(mediaId)}`,
-    ),
+  itemDetail: (scope: Scope, mediaId: string) =>
+    request<ShareDetail>(`${scopePath(scope)}/items/${encodeURIComponent(mediaId)}`),
 
   /** Same split as `updateAlbumDay`: edit in the gallery, write under `/api/admin`. */
   updateMedia: (albumId: string, mediaId: string, body: UpdateMediaRequest) =>
@@ -221,9 +265,11 @@ export const api = {
 
   forgetIdentity: () => request<SessionUser>('/identity/forget', { method: 'POST' }),
 
-  comments: (albumId: string, mediaId: string) =>
+  comments: (scope: Scope, mediaId: string) =>
     request<CommentsPage>(
-      `/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`,
+      scope.kind === 'album'
+        ? `/comments/${encodeURIComponent(scope.albumId)}/${encodeURIComponent(mediaId)}`
+        : `/share/${encodeURIComponent(scope.token)}/comments/${encodeURIComponent(mediaId)}`,
     ),
 
   commentCounts: (albumId: string) =>
@@ -241,11 +287,13 @@ export const api = {
     return request<CommentsFeedPage>(`/comments/feed?${params}`);
   },
 
-  createComment: (albumId: string, mediaId: string, body: CreateCommentRequest) =>
-    request<Comment>(`/comments/${encodeURIComponent(albumId)}/${encodeURIComponent(mediaId)}`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  createComment: (scope: Scope, mediaId: string, body: CreateCommentRequest) =>
+    request<Comment>(
+      scope.kind === 'album'
+        ? `/comments/${encodeURIComponent(scope.albumId)}/${encodeURIComponent(mediaId)}`
+        : `/share/${encodeURIComponent(scope.token)}/comments/${encodeURIComponent(mediaId)}`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
 
   updateComment: (commentId: number, body: UpdateCommentRequest) =>
     request<Comment>(`/comments/${commentId}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -371,6 +419,20 @@ export const api = {
     request<{ custom: boolean }>('/admin/branding/logo', { method: 'PUT', body: file }),
 
   resetLogo: () => request<{ custom: boolean }>('/admin/branding/logo', { method: 'DELETE' }),
+
+  /* Share links — every mutation under the one prefix that answers 403 (D12, D50). */
+
+  adminShares: () => request<AdminShareLink[]>('/admin/shares'),
+
+  createShare: (body: CreateShareRequest) =>
+    request<AdminShareLink>('/admin/shares', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Keeps the row and its record of use; only deletion removes those (D260825b). */
+  revokeShare: (token: string) =>
+    request<{ ok: true }>(`/admin/shares/${encodeURIComponent(token)}/revoke`, { method: 'POST' }),
+
+  deleteShare: (token: string) =>
+    request<{ ok: true }>(`/admin/shares/${encodeURIComponent(token)}`, { method: 'DELETE' }),
 };
 
 /**

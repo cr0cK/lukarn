@@ -1,4 +1,4 @@
-import { THUMB_SIZES, type MediaItem, type ThumbSize } from '@lukarn/shared';
+import { THUMB_SIZES, type ShareItem, type ThumbSize } from '@lukarn/shared';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
 import { formatDuration } from '../lib/format';
@@ -27,7 +27,7 @@ export function pickThumbSize(displayWidth: number, dpr = window.devicePixelRati
 }
 
 interface ThumbProps {
-  item: MediaItem;
+  item: ShareItem;
   width: number;
   height: number;
   /** `true` for the thumbnail beneath the keyboard cursor. */

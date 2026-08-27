@@ -2,8 +2,6 @@
 
 **Confidence.** stated — owner: Alexis Mineaud, /do-plan challenge on Sharing-without-an-account · 2026-08-25
 
-**Not built yet.** Decided 2026-08-25; no code implements this.
-
 **Context.** D12 answers a refusal with 404 rather than 403 so that nobody learns by probing that
 other people's albums exist. Carried over to a share link unchanged, it answers a revoked link with
 "page not found", which is what a mistyped address also answers. The person reading it was sent

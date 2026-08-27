@@ -2,8 +2,6 @@
 
 **Confidence.** stated — owner: Alexis Mineaud, /do-plan challenge on Sharing-without-an-account · 2026-08-25
 
-**Not built yet.** Decided 2026-08-25; no code implements this.
-
 **Context.** D260809h measures this instance in `album_visits`, a table aggregated on write with
 one row per `(album_id, username, session_id, day)`. It names the exact time of every gesture as a
 loss accepted on grounds of scale: one album visit is a grid request, two hundred thumbnails and a

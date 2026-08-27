@@ -215,7 +215,7 @@ describe('message composition', () => {
   it('links to the commented photo and escapes the body in HTML', () => {
     const message = buildCommentMail(
       { ...notification, body: '<script>alert(1)</script>' },
-      { email: 'papi2@exemple.fr', reason: 'reply', locale: 'en' },
+      { email: 'papi2@exemple.fr', reason: 'reply', share: null, locale: 'en' },
       'Chez les Martin',
       env,
     );
@@ -232,13 +232,13 @@ describe('message composition', () => {
   it('adds an unsubscribe link only for a person', () => {
     const versAuteur = buildCommentMail(
       notification,
-      { email: 'papi2@exemple.fr', reason: 'reply', locale: 'en' },
+      { email: 'papi2@exemple.fr', reason: 'reply', share: null, locale: 'en' },
       'Chez les Martin',
       env,
     );
     const versModeration = buildCommentMail(
       notification,
-      { email: 'moderation@exemple.fr', reason: 'moderation', locale: 'en' },
+      { email: 'moderation@exemple.fr', reason: 'moderation', share: null, locale: 'en' },
       'Chez les Martin',
       env,
     );
@@ -250,6 +250,70 @@ describe('message composition', () => {
     // The moderation address is not an identity: it is removed from /admin, not
     // through a link that would disable instance alerts.
     assert.ok(!versModeration.text.includes('unsubscribe'));
+  });
+
+  it('writes to a link recipient at their link, and names the album only when they hold one', () => {
+    const album = buildCommentMail(
+      notification,
+      {
+        email: 'mamie@exemple.fr',
+        reason: 'reply',
+        share: { token: 'jeton-album', namesAlbum: true },
+        locale: 'en',
+      },
+      'Chez les Martin',
+      env,
+    );
+    const photo = buildCommentMail(
+      notification,
+      {
+        email: 'tante@exemple.fr',
+        reason: 'reply',
+        share: { token: 'jeton-photo', namesAlbum: false },
+        locale: 'en',
+      },
+      'Chez les Martin',
+      env,
+    );
+
+    // `/album/<id>` answers 404 to a link's session, so the ordinary address opens
+    // nothing for the one recipient this message was written for.
+    for (const message of [album, photo]) {
+      assert.ok(!message.text.includes('/album/vacances'));
+      assert.match(message.text, /\/s\/jeton-/);
+    }
+
+    // A shared album's recipient was sent the album and reads its title on their
+    // page; a shared photograph's recipient must not meet it anywhere, and that
+    // includes what is sent to them afterwards (D260825e).
+    assert.match(album.text, /Vacances/);
+    assert.ok(!photo.text.includes('Vacances'));
+    assert.ok(!photo.html.includes('Vacances'));
+    // The photograph itself is still named: it is what they were sent.
+    assert.match(photo.text, /IMG_0042\.jpg/);
+  });
+
+  it('still keeps the album out of a deleted photograph link', () => {
+    // Deleting a link removes its row, and the comment it carried stays — that is
+    // what `comments.account` having no foreign key is for. Falling back to the
+    // album address here would spell out, for the recipient of one photograph, the
+    // name they were never sent (D260825e). `/s/<token>` answers 404 now, which is
+    // what deleting means, and 404 says nothing.
+    const message = buildCommentMail(
+      notification,
+      {
+        email: 'tante@exemple.fr',
+        reason: 'reply',
+        share: { token: 'jeton-supprime', namesAlbum: false },
+        locale: 'en',
+      },
+      'Chez les Martin',
+      env,
+    );
+
+    assert.ok(!message.text.includes('Vacances'));
+    assert.ok(!message.html.includes('Vacances'));
+    assert.ok(!message.text.includes('/album/vacances'));
   });
 
   it('keeps the verification code out of the subject, which names the instance', () => {

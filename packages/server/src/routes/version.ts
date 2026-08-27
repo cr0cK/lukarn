@@ -1,7 +1,7 @@
 import type { VersionInfo } from '@lukarn/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import type { AppContext } from '../context.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAccount } from '../plugins/auth.js';
 import { CHANGELOG_URL } from '../updates.js';
 
 /**
@@ -19,7 +19,9 @@ import { CHANGELOG_URL } from '../updates.js';
  */
 export function createVersionRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
-    app.get('/version', { preHandler: requireAuth }, async (request, reply) => {
+    // An account, never a share link: what this instance runs is a property of the
+    // instance, and a link's recipient was given one album (D260825d).
+    app.get('/version', { preHandler: requireAccount }, async (request, reply) => {
       const info: VersionInfo = {
         version: context.env.appVersion,
         changelogUrl: CHANGELOG_URL,

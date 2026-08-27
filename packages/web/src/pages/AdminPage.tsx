@@ -12,6 +12,7 @@ import { TopBar } from '../components/TopBar';
 import { AdminMenu, AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
 import { CommentsSection } from '../components/admin/CommentsSection';
+import { SharesSection } from '../components/admin/SharesSection';
 import { OAUTH_MESSAGES, StorageSection } from '../components/admin/storage/StorageSection';
 import { IdentitySection } from '../components/admin/IdentitySection';
 import { MaintenanceSection } from '../components/admin/MaintenanceSection';
@@ -65,6 +66,8 @@ export default function AdminPage(): ReactElement {
         ));
       case 'accounts':
         return avecAlbums((liste) => <UsersSection albums={liste} notify={setNotice} />);
+      case 'shares':
+        return avecAlbums((liste) => <SharesSection albums={liste} notify={setNotice} />);
       case 'comments':
         return <CommentsSection notify={setNotice} />;
       case 'identity':

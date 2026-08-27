@@ -36,7 +36,14 @@ const SEEN_AFTER_MS = 60 * 60 * 1000;
 
 export interface SessionRecord {
   id: string;
-  username: string;
+  /**
+   * The access key this session belongs to, or `null` when a **share link** opened
+   * it (D260825). Exactly one of this and `shareToken` is set, which the table
+   * states as a CHECK rather than leaving to whoever writes a row next.
+   */
+  username: string | null;
+  /** The link that opened this session, `null` for every session an account opened. */
+  shareToken: string | null;
   expiresAt: string;
   /** Remembered commenter identity, `null` if nobody has identified themselves. */
   commenterId: number | null;
@@ -101,20 +108,47 @@ export class SessionStore {
    * during a session.
    */
   create(username: string, device: DeviceKind | null = null): SessionRecord {
+    return this.open({ username, shareToken: null }, device);
+  }
+
+  /**
+   * Opens a session for a share link.
+   *
+   * The result answers `/api/auth/me` with the same shape an account's session does,
+   * which is what lets the identity form, the six-digit code and the whole comment
+   * stack work through a link without being told a link exists (D260825).
+   */
+  createForShare(shareToken: string, device: DeviceKind | null = null): SessionRecord {
+    return this.open({ username: null, shareToken }, device);
+  }
+
+  private open(
+    credential: { username: string | null; shareToken: string | null },
+    device: DeviceKind | null,
+  ): SessionRecord {
     const id = randomBytes(32).toString('base64url');
     const now = new Date();
     const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
 
     this.db
       .prepare(
-        `INSERT INTO sessions (id, username, created_at, expires_at, last_seen_at, device)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, username, created_at, expires_at, last_seen_at, device,
+                               share_token)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(id, username, now.toISOString(), expiresAt.toISOString(), now.toISOString(), device);
+      .run(
+        id,
+        credential.username,
+        now.toISOString(),
+        expiresAt.toISOString(),
+        now.toISOString(),
+        device,
+        credential.shareToken,
+      );
 
     return {
       id,
-      username,
+      ...credential,
       expiresAt: expiresAt.toISOString(),
       commenterId: null,
       lastSeenAt: now.toISOString(),
@@ -132,8 +166,8 @@ export class SessionStore {
     // request to check the expiry, so only one column is added to the SELECT.
     const row = this.db
       .prepare(
-        `SELECT id, username, expires_at AS expiresAt, commenter_id AS commenterId,
-                last_seen_at AS lastSeenAt
+        `SELECT id, username, share_token AS shareToken, expires_at AS expiresAt,
+                commenter_id AS commenterId, last_seen_at AS lastSeenAt
            FROM sessions WHERE id = ?`,
       )
       .get(id) as Omit<SessionRecord, 'renewed'> | undefined;

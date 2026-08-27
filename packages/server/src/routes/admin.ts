@@ -13,6 +13,7 @@ import {
   LOCALES,
   MEDIA_DESCRIPTION_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
+  SHARE_LABEL_MAX_LENGTH,
   slugifyAlbumId,
   USERNAME_MAX_LENGTH,
   USERNAME_PATTERN,
@@ -320,6 +321,20 @@ function badRequest(reply: FastifyReply, error: z.ZodError, t: Translate): Fasti
     .join(' ; ');
   return reply.code(400).send({ error: 'bad_request', message: t('error.validation', details) });
 }
+
+/**
+ * Making a share link. `mediaId` present covers that photograph, absent covers the
+ * whole album — one field rather than a `kind` beside it, because the two would then
+ * be able to disagree.
+ */
+const shareSchema = z.object({
+  albumId: z.string().min(1).max(USERNAME_MAX_LENGTH),
+  mediaId: z.string().min(1).max(256).nullish(),
+  label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
+  // An instant rather than a day: the row is compared against `Date.now()`, and a
+  // bare date would expire at whatever hour the string happened to parse to.
+  expiresAt: z.string().datetime().nullish(),
+});
 
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   const secureCookies = context.env.publicUrl.startsWith('https://');
@@ -774,7 +789,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       // Hiding twice is not an error but must not rewrite the date: the original
       // decision date is what matters.
-      if (!context.comments.hide(id, request.user!.username)) {
+      if (!context.comments.hide(id, request.user!.username!)) {
         const existing = context.comments.byId(id, { commenterId: null, admin: true });
         if (!existing) {
           return reply
@@ -783,7 +798,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         }
       }
 
-      request.log.info(`Commentaire ${id} hidden by "${request.user!.username}"`);
+      request.log.info(`Commentaire ${id} hidden by "${request.user!.username!}"`);
       return reply.send({ ok: true });
     });
 
@@ -801,7 +816,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.commentNotFound') });
       }
 
-      request.log.info(`Commentaire ${id} rendu visible par "${request.user!.username}"`);
+      request.log.info(`Commentaire ${id} rendu visible par "${request.user!.username!}"`);
       return reply.send({ ok: true });
     });
 
@@ -830,9 +845,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.identityNotFound') });
       }
 
-      const affected = context.comments.hideAllFrom(id, request.user!.username);
+      const affected = context.comments.hideAllFrom(id, request.user!.username!);
       request.log.info(
-        `${affected} comment(s) from identity ${id} hidden by "${request.user!.username}"`,
+        `${affected} comment(s) from identity ${id} hidden by "${request.user!.username!}"`,
       );
       return reply.send({ affected });
     });
@@ -853,7 +868,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const affected = context.comments.showAllFrom(id);
       request.log.info(
         `${affected} comment(s) from identity ${id} made visible again by ` +
-          `"${request.user!.username}"`,
+          `"${request.user!.username!}"`,
       );
       return reply.send({ affected });
     });
@@ -1308,6 +1323,85 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
     app.post('/cache/clear', async (_request, reply) => {
       await context.cache.clear();
+      return reply.send({ ok: true });
+    });
+
+    /* --------------------------------------------------------------------------
+     * Share links
+     *
+     * Every mutation on a link lives here, under the one prefix that answers 403
+     * (D12, D50): issuing, revoking and deleting are administration, and the
+     * recipient's own surface at `/api/share` reads and writes nothing about the
+     * link itself.
+     * ----------------------------------------------------------------------- */
+
+    /** Every link this instance has issued, newest first, with its record of use. */
+    app.get('/shares', async (_request, reply) => reply.send(context.shares.list()));
+
+    app.post('/shares', async (request, reply) => {
+      const parsed = shareSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: parsed.error.issues[0]?.message ?? request.t('error.invalidParameters'),
+        });
+      }
+
+      const { albumId, mediaId, label, expiresAt } = parsed.data;
+      if (!context.findAlbum(albumId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+      }
+
+      // A link to a photograph that is not in that album would answer 410 to its
+      // recipient the moment it was opened, and the person issuing it would learn
+      // that from them. Checked here instead.
+      if (mediaId && !context.media.getDetail(albumId, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+
+      const link = context.shares.create({
+        albumId,
+        mediaId: mediaId ?? null,
+        label: label ?? null,
+        createdBy: request.user!.username!,
+        expiresAt: expiresAt ?? null,
+      });
+      request.log.info({ album: albumId }, 'Share link issued');
+      // The full listing rather than the row: the caller displays a list, and
+      // building one row's shape twice is how the two stop agreeing.
+      const created = context.shares.list().find((row) => row.token === link.token)!;
+      return reply.code(201).send(created);
+    });
+
+    /**
+     * Revoking. The row stays, and its record of use with it: with the row gone,
+     * revoked and never-existed become the same state (D260825b), and the history is
+     * what the person deciding to cut a link off was reading.
+     */
+    app.post('/shares/:token/revoke', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      if (!context.shares.revoke(token)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.shareUnknown') });
+      }
+      request.log.info('Share link revoked');
+      return reply.send({ ok: true });
+    });
+
+    /** Deleting outright — the one gesture that also erases the openings. */
+    app.delete('/shares/:token', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      if (!context.shares.remove(token)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.shareUnknown') });
+      }
+      request.log.info('Share link deleted');
       return reply.send({ ok: true });
     });
   };

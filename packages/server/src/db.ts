@@ -738,6 +738,176 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE verification_codes ADD COLUMN locale TEXT;
   `,
+
+  // 20 — an album, or one photograph, opened by somebody with no account.
+  //
+  // A link is a **fourth** credential beside the owner's Google consent, the access
+  // key and the person who comments (D260825). It is a row rather than a signed
+  // token because it is defined by being revocable: the three tokens already minted
+  // here carry no row, which is what makes them impossible to take back.
+  //
+  // Two existing tables are recreated, for one reason between them: both assumed the
+  // only credential was an access key. SQLite can drop neither a NOT NULL nor a
+  // foreign key in place.
+  `
+  CREATE TABLE share_links (
+    -- Thirty-two bytes from randomBytes, base64url, exactly as a session identifier
+    -- is. Never an HMAC over what it grants: the rights live in this row, so
+    -- revoking is a write that lands on the next request (D260825).
+    token       TEXT PRIMARY KEY,
+    -- The album the link covers, or the album its photograph was taken from. Never
+    -- sent to the recipient of a single photograph (D260825e); it is here because
+    -- the thread still resolves through (album_id, media_id) like every other (D34).
+    --
+    -- ON DELETE CASCADE: a link to a deleted album grants nothing, and keeping the
+    -- row would leave administration listing a credential for content that is gone.
+    album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    -- NULL for an album link, the shared photograph otherwise. No foreign key, for
+    -- the reason comments carry none: deleteStale removes a photo whenever a sync
+    -- misses it, and an indexing incident must not silently destroy a link somebody
+    -- has already sent.
+    media_id    TEXT,
+    -- What the issuer calls it. Administration only: nothing the recipient reads
+    -- carries it, so it may name the person it was sent to.
+    label       TEXT,
+    created_at  TEXT NOT NULL,
+    -- The account that issued it, retained because it says who let this content out.
+    -- No foreign key, so a deleted account leaves the record true rather than blank —
+    -- the argument D260809h already makes for album_visits.
+    created_by  TEXT NOT NULL COLLATE NOCASE,
+    -- NULL for a link that never expires. Evaluated against this row rather than
+    -- baked into the token, so a date can be changed or removed after the link was
+    -- sent (D260825b).
+    expires_at  TEXT,
+    -- Set rather than deleted: with the row gone, revoked and never-existed become
+    -- the same state and the server has nothing left to tell them apart with
+    -- (D260825b).
+    revoked_at  TEXT
+  );
+
+  -- Supports administration's list, ordered newest first within an album, and the
+  -- cascade above.
+  CREATE INDEX idx_share_links_album ON share_links (album_id);
+
+  -- One row per opening, carrying the link, the session and the time (D260825c).
+  --
+  -- Not album_visits: that table is WITHOUT ROWID on a key whose second column is a
+  -- username, and a link has none. Its aggregation to the day was accepted on
+  -- grounds of scale that are absent here — a link is opened by a handful of people
+  -- a handful of times, and the question asked an hour after sending an album is
+  -- whether it arrived.
+  --
+  -- The primary key **is** the once-per-session-per-hour rule, following the
+  -- threshold sessions.last_seen_at already uses: a reader who refreshes the page
+  -- does not turn one visit into six.
+  --
+  -- The boundary D260809h drew does not move: never the photograph looked at, never
+  -- an address, never an IP. session_id is a bucket for telling two visitors apart,
+  -- as it already is in album_visits, and not a link to anything.
+  CREATE TABLE share_openings (
+    -- ON DELETE CASCADE, unlike album_visits, which deliberately has no foreign key:
+    -- deleting a link is the one gesture that must erase its history, and revoking
+    -- keeps both because the history is what justified the decision (D260825b).
+    token      TEXT NOT NULL REFERENCES share_links (token) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    -- 'YYYY-MM-DDTHH' in UTC, like every other date here.
+    hour       TEXT NOT NULL,
+    opened_at  TEXT NOT NULL,
+    PRIMARY KEY (token, session_id, hour)
+  ) WITHOUT ROWID;
+
+  -- sessions: a session a link opened points at it and carries no username. Every
+  -- column is carried over unchanged; only the NOT NULL goes.
+  CREATE TABLE sessions_next (
+    id           TEXT PRIMARY KEY,
+    username     TEXT,
+    created_at   TEXT NOT NULL,
+    expires_at   TEXT NOT NULL,
+    commenter_id INTEGER REFERENCES commenters (id) ON DELETE SET NULL,
+    last_seen_at TEXT,
+    device       TEXT,
+    -- ON DELETE CASCADE: deleting a link closes the sessions it opened, for the
+    -- reason changing a password does. Revoking does the same through a DELETE the
+    -- repository issues, since the row itself stays (D260825b).
+    share_token  TEXT REFERENCES share_links (token) ON DELETE CASCADE,
+    -- The invariant the rest of the server would otherwise only be trusted to keep:
+    -- a session belongs to exactly one credential, never both and never neither.
+    CHECK ((username IS NULL) <> (share_token IS NULL))
+  );
+
+  INSERT INTO sessions_next (id, username, created_at, expires_at, commenter_id,
+                             last_seen_at, device, share_token)
+    SELECT id, username, created_at, expires_at, commenter_id,
+           last_seen_at, device, NULL
+      FROM sessions;
+
+  DROP TABLE sessions;
+  ALTER TABLE sessions_next RENAME TO sessions;
+
+  CREATE INDEX idx_sessions_expires ON sessions (expires_at);
+  -- Supports closing a link's sessions when it is revoked, which is what revoking is
+  -- for: an already-open browser has to stop.
+  CREATE INDEX idx_sessions_share ON sessions (share_token);
+
+  -- comments: account holds the credential that carried the message, which is now
+  -- either an access key or a link (D38, D260825). It therefore loses its foreign
+  -- key to users — a token is not a username — and with it the ON DELETE SET NULL
+  -- that blanked the column when an account was removed.
+  --
+  -- Losing that is the right way round, and album_visits already made the argument:
+  -- what wrote a comment stays true after the credential is gone, and moderation
+  -- reads this column to answer "which invitation delivered this", which a blank
+  -- cannot answer. Nothing dereferences it — it is displayed, never joined.
+  --
+  -- parent_id is declared against comments_next so the rename below rewrites it to
+  -- the final name; declared against the live table it would point at the one this
+  -- migration is replacing.
+  CREATE TABLE comments_next (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    album_id     TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    media_id     TEXT NOT NULL,
+    parent_id    INTEGER REFERENCES comments_next (id) ON DELETE SET NULL,
+    commenter_id INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
+    account      TEXT COLLATE NOCASE,
+    body         TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    hidden_at    TEXT,
+    hidden_by    TEXT COLLATE NOCASE
+  );
+
+  -- ORDER BY id so a reply never arrives before the comment it answers: this foreign
+  -- key is immediate, not deferred, and rowid order is only incidentally the same.
+  INSERT INTO comments_next (id, album_id, media_id, parent_id, commenter_id,
+                             account, body, created_at, hidden_at, hidden_by)
+    SELECT id, album_id, media_id, parent_id, commenter_id,
+           account, body, created_at, hidden_at, hidden_by
+      FROM comments ORDER BY id;
+
+  -- The rows are copied; the **counter** is not, and it has to be. AUTOINCREMENT
+  -- never reissues an identifier because a notification email links to one and
+  -- sits in an inbox for months, where a recycled one would point an old message at
+  -- somebody else's conversation (migration 4). The copy only ever reaches max(id),
+  -- which is lower than the old counter whenever the newest comment had been
+  -- deleted — measured on a moderated database: 5 became 3, and the next comment
+  -- took 4 back.
+  --
+  -- The INSERT covers a table whose every comment had been deleted: nothing was
+  -- copied, so comments_next has no counter of its own for the UPDATE to raise.
+  INSERT INTO sqlite_sequence (name, seq)
+    SELECT 'comments_next', 0
+     WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'comments_next');
+
+  UPDATE sqlite_sequence
+     SET seq = MAX(seq, COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'comments'), 0))
+   WHERE name = 'comments_next';
+
+  DROP TABLE comments;
+  ALTER TABLE comments_next RENAME TO comments;
+
+  CREATE INDEX idx_comments_thread ON comments (album_id, media_id, id);
+  CREATE INDEX idx_comments_parent ON comments (parent_id);
+  CREATE INDEX idx_comments_commenter ON comments (commenter_id);
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

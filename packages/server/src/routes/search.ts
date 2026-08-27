@@ -2,7 +2,7 @@ import { SEARCH_MIN_LENGTH, type SearchHit } from '@lukarn/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAccount } from '../plugins/auth.js';
 
 /**
  * Beyond this, it is no longer a search: every word becomes another term in the FTS
@@ -17,7 +17,9 @@ const querySchema = z.object({
 
 export function createSearchRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
-    app.addHook('preHandler', requireAuth);
+    // An account, never a share link: the scope of a search is the albums a username
+    // may see, and a link is not one of those (D260825).
+    app.addHook('preHandler', requireAccount);
 
     /**
      * Searches for navigable entities — an album, a day, a photo — in albums assigned
@@ -35,7 +37,7 @@ export function createSearchRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'bad_request', message: request.t('error.invalidSearch') });
       }
 
-      const albumIds = context.albumsFor(request.user!.username).map((album) => album.id);
+      const albumIds = context.albumsFor(request.user!.username!).map((album) => album.id);
       const hits: SearchHit[] = context.search.search(albumIds, query.data.q);
       return reply.send(hits);
     });

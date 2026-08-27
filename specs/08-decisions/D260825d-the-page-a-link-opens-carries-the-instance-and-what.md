@@ -2,8 +2,6 @@
 
 **Confidence.** stated — owner: Alexis Mineaud, /do-spec Decision Record Q4 on Sharing-without-an-account · 2026-08-25
 
-**Not built yet.** Decided 2026-08-25; no code implements this.
-
 **Context.** The person opening a link did not choose this application, holds no password, and is
 reading a message on a phone. Two failures are available and they pull in opposite directions. A
 page carrying nothing but photographs has no sender: it has the shape of a phishing message, and the

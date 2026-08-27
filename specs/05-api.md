@@ -683,6 +683,86 @@ not the front end, which would redirect to the sign-in screen. An invalid token
 responds `400`; an account deleted since the email was sent renders the page
 saying so.
 
+## Share links — `routes/share.ts` and `shares.ts`
+
+An album, or one photograph, opened by somebody with no account (D260825). This
+is the **only** prefix a link's session reads from, and the only one whose
+addresses carry no album identifier.
+
+| Method | Path                                  | Access   | Response         |
+| ------ | ------------------------------------- | -------- | ---------------- |
+| GET    | `/api/share/:token`                   | **none** | `ShareView`      |
+| GET    | `/api/share/:token/items`             | **none** | `ShareItemsPage` |
+| GET    | `/api/share/:token/items/:mediaId`    | **none** | `ShareDetail`    |
+| GET    | `/api/share/:token/comments/:mediaId` | **none** | `CommentsPage`   |
+| POST   | `/api/share/:token/comments/:mediaId` | **none** | `201 Comment`    |
+
+`none` because the caller holds a link and no session, and `GET /api/share/:token`
+is the route that opens one for them. Everything else here re-reads the token from
+the URL, so a stolen cookie without the address reaches nothing.
+
+**What each token answers.** A token outside the minted shape — thirty-two random
+bytes as base64url, `SHARE_TOKEN_PATTERN` — is refused before the database is
+touched. A token nothing ever minted answers `404 not_found`, exactly as any other
+unknown address does. A token that **existed** and no longer works answers
+`410`, with `share_revoked` or `share_expired` saying which happened (D260825b).
+Reaching that 410 requires already holding the thirty-two bytes, which is the same
+thing as having been sent the link. A live link whose photograph has left the index
+answers `410 share_gone`.
+
+**Opening.** `GET /api/share/:token` mints a session pointing at the link, sets the
+same signed cookie an account gets, and records the opening once per session and
+hour (D260825c). **A session that already serves the content is left alone**:
+there is one session cookie per browser, so minting would sign the owner out of
+their own instance for having checked the link they just issued, and their visit is
+not counted either — what the openings answer is whether the link reached the person
+it was sent to. `canSee` decides that, asked about the **account** and never about
+the link. An account that cannot see the album — somebody was sent a link to one
+nobody gave them — is a recipient like any other and gets a link session, because
+the `/media` prefix would otherwise refuse every photograph on the page just drawn. It returns what was shared: an album's title, description, item
+count and cover for an album link, or the photograph itself for a photograph link.
+**Neither branch carries an album identifier** — a shared photograph names its album
+nowhere its recipient can reach (D260825e), and one shape for both kinds is what
+stops a later field arriving on one path and being forgotten on the other. Opening
+an **album** link subscribes a verified visitor to that album's updates exactly as
+opening it with an account does; a photograph link subscribes nobody, because no
+album was opened (D41). On a link the whole visit is one opening, so verifying an
+address reopens it — the front end invalidates the share query — and that is when
+the subscription happens. A request that has just replaced one link's session with
+another subscribes nobody: the identity it arrived with belongs to the credential it
+is leaving.
+
+**The grid and the viewer.** `/items` paginates a shared album with the same cursor
+and `order` parameters `/api/albums/:albumId/items` uses, and answers `404` on a
+photograph link, which has no grid. `/items/:mediaId` serves one photograph's record
+when the link covers it: an album link covers whatever its album indexes now, so a
+photograph added by a later sync is covered without the link being reissued, while a
+photograph link covers exactly one file. Anything else is `404`.
+
+**Comments.** The thread resolves through `(album_id, media_id)` like every other, so
+a comment written through a link lands in the conversation an account sees (D34).
+Writing still costs a verified identity — `403 identity_required`, the standing
+exception to the 404 doctrine — and the six-digit code comes from `/api/identity`,
+which names no album and therefore works through a link unchanged (D39). The created
+comment records the **link** in `comments.account`: a link is a credential and not a
+person, its author stays a `commenters` identity, and no address reaches the thread
+(D38). Hidden comments stay hidden: `admin` is false on a link's session.
+
+**Media bytes are not served here.** They come from the `/media` prefix, where the
+link is read beside the account at the one `preHandler` every media route inherits
+(D260825). A parallel set of media routes would start out identical to those and
+lose the inherited check on the first change to either.
+
+**What a link's session reaches elsewhere: nothing.** `/api/albums/*`, `/api/search`,
+the album-keyed comment routes, `/api/version` and the two pairing routes that
+delegate an account's access all wear `requireAccount`, which answers `404` for a
+link — never 403, which stays reserved for `/api/admin/*` and `identity_required`
+(D12, D50). Pairing is the one where it is more than tidiness: it writes the
+approver's username into `device_pairings`, and a link has none to write. `/api/auth/me` answers with the same `SessionUser` shape an account
+gets, carrying `username: null` and `admin: false`: what the shape holds is adjusted
+rather than extended, which is what lets the identity form and the comment stack
+work through a link without being told a link exists (D260825).
+
 ## Subscriptions — `routes/subscriptions.ts`
 
 | Method | Path                             | Access   | Response  |
@@ -1301,6 +1381,40 @@ one is reported rather than inferred from the image: the built-in mark and an
 upload are served at the same URL, so nothing in the picture says which it is,
 and "back to the built-in mark" must only be offered when there is something to
 go back from.
+
+### Share links
+
+| Method | Path                              | Response             |
+| ------ | --------------------------------- | -------------------- |
+| GET    | `/api/admin/shares`               | `AdminShareLink[]`   |
+| POST   | `/api/admin/shares`               | `201 AdminShareLink` |
+| POST   | `/api/admin/shares/:token/revoke` | `{ ok: true }`       |
+| DELETE | `/api/admin/shares/:token`        | `{ ok: true }`       |
+
+Every mutation on a link lives under this prefix, the only one that answers 403
+(D12, D50). The recipient's own surface at `/api/share` reads and writes nothing
+about the link itself.
+
+`POST` takes `CreateShareRequest` = `{ albumId, mediaId?, label?, expiresAt? }`.
+A `mediaId` makes it a photograph link and its absence makes it an album link —
+one field rather than a `kind` beside it, so the two cannot disagree. An unknown
+album, or a photograph that is not indexed in it, answers `404`: otherwise the link
+would answer 410 the moment its recipient opened it, and whoever issued it would
+learn that from them. `expiresAt` is an ISO instant or `null` for a link that never
+expires, evaluated against the row rather than baked into the token, so a date can be
+changed or removed after the link was sent (D260825b).
+
+`AdminShareLink` carries the **token** — this response's reader already holds every
+credential this instance has, and a link nobody can copy is a link nobody can send —
+along with `kind`, `state` (`live` / `revoked` / `expired`), the album and photograph
+it covers with their titles, `label`, who issued it and when, and its record of use:
+`openingCount` and the two most recent `openings` (D260825c).
+
+**Revoking keeps the row and its openings**; only deleting removes them. With the row
+gone, revoked and never-existed become the same state and the server has nothing left
+to tell them apart with (D260825b), and the history is what the person deciding
+whether to cut a link off was reading. Both close the sessions the link had opened:
+the whole point of taking a link back is that an already-open browser stops.
 
 ### Settings
 

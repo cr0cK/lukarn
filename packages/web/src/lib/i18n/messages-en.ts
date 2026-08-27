@@ -424,6 +424,52 @@ export const en = {
   'admin.tabIdentity': 'Identity',
   'admin.tabServer': 'Server',
   'admin.tabVisits': 'Visits',
+  /* Share links — the page a link opens, and the section that lists them.
+   *
+   * The page is read by one person who was written to, so it addresses them: the
+   * link came from somebody they know, in a message. The administration section is
+   * a screen nobody was addressed on and keeps the impersonal register the rest of
+   * `/admin` uses. */
+  'share.revoked': 'This link was taken back.',
+  'share.expired': 'This link has expired.',
+  'share.gone': 'The photograph this link was made from is no longer in the gallery.',
+  'share.unknown': 'This link does not lead anywhere. Check the address you were sent.',
+  'share.elsewhere': 'Open the link you were sent to see the photographs.',
+
+  'admin.tabShares': 'Links',
+  'shares.title': 'Share links',
+  'shares.intro':
+    'A link opens one album, or one photograph, for somebody with no account here. Anybody holding it can open it, so send it the way you would send the photographs themselves.',
+  'shares.none': 'No link has been issued yet.',
+  'shares.newTitle': 'New link',
+  'shares.album': 'Album',
+  'shares.mediaId': 'One photograph (identifier)',
+  'shares.mediaHint': 'Leave empty to share the whole album.',
+  'shares.label': 'Label',
+  'shares.labelHint': 'Who it was sent to. Nothing the recipient reads carries it.',
+  'shares.expiresAt': 'Expires on',
+  'shares.expiresHint': 'Leave empty for a link that never expires.',
+  'shares.create': 'Issue the link',
+  'shares.copy': 'Copy the address',
+  'shares.copied': 'Copied',
+  'shares.revoke': 'Revoke',
+  'shares.delete': 'Delete',
+  'shares.confirmRevoke':
+    'Revoking closes it for whoever holds it, and keeps the record of when it was opened.',
+  'shares.confirmDelete': 'Deleting removes the link and the record of when it was opened.',
+  'shares.stateLive': 'Working',
+  'shares.stateRevoked': 'Taken back',
+  'shares.stateExpired': 'Expired',
+  'shares.kindAlbum': 'Whole album',
+  'shares.kindMedia': 'One photograph',
+  'shares.neverOpened': 'Never opened',
+  'shares.lastOpened': (when: string) => `Last opened ${when}`,
+  'shares.openings': (count: number) =>
+    count === 1 ? '1 opening recorded' : `${count} openings recorded`,
+  'shares.issuedBy': (who: string, when: string) => `Issued by ${who} on ${when}`,
+  'shares.expiresOn': (when: string) => `Expires on ${when}`,
+  'shares.createFailed': 'Cannot issue this link.',
+
   'admin.statusFailed': 'Cannot load the server state.',
   'admin.oauthConnected': 'Google Drive is connected. The first sync has started.',
   'admin.oauthDenied': 'Authorisation refused on the Google side.',

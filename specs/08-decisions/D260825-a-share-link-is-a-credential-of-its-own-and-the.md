@@ -2,8 +2,6 @@
 
 **Confidence.** stated — owner: Alexis Mineaud, /do-plan census on Sharing-without-an-account · 2026-08-25
 
-**Not built yet.** Decided 2026-08-25; no code implements this.
-
 **Context.** Authorisation has exactly one entry point. `ConfigRepo.canSee(username, albumId)`
 answers every album, media, comment and search question, and `albumsFor(username)` supplies the
 scope wherever a list is built. Both take a username, and a session without one is destroyed on

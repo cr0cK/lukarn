@@ -5,7 +5,7 @@ import {
   type CommentThread,
 } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react';
-import { errorText } from '../api/client';
+import { errorText, type Scope } from '../api/client';
 import {
   useComments,
   useCreateComment,
@@ -27,15 +27,9 @@ import { Spinner } from './Spinner';
  * editing, reactions or mentions — that separates a conversation beneath a
  * photo from a forum and keeps everything readable at a glance.
  */
-export function CommentsPanel({
-  albumId,
-  mediaId,
-}: {
-  albumId: string;
-  mediaId: string;
-}): ReactElement {
+export function CommentsPanel({ scope, mediaId }: { scope: Scope; mediaId: string }): ReactElement {
   const t = useT();
-  const { data, isPending, error } = useComments(albumId, mediaId, true);
+  const { data, isPending, error } = useComments(scope, mediaId, true);
   const [replyTo, setReplyTo] = useState<number | null>(null);
 
   if (isPending) {
@@ -65,7 +59,7 @@ export function CommentsPanel({
               <ThreadView
                 key={thread.root.id}
                 thread={thread}
-                albumId={albumId}
+                scope={scope}
                 mediaId={mediaId}
                 replyTo={replyTo}
                 onReplyTo={setReplyTo}
@@ -83,7 +77,7 @@ export function CommentsPanel({
           application occupies the full height and the input would otherwise
           fall beneath the iPhone home bar. */}
       <div className="border-t border-ink-800 px-5 pt-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))]">
-        <Composer albumId={albumId} mediaId={mediaId} />
+        <Composer scope={scope} mediaId={mediaId} />
       </div>
     </div>
   );
@@ -97,7 +91,7 @@ export function CommentsPanel({
  * This is the only time providing an address has an obvious purpose for the
  * person being asked.
  */
-function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): ReactElement {
+function Composer({ scope, mediaId }: { scope: Scope; mediaId: string }): ReactElement {
   const t = useT();
   const { data: me } = useMe();
   const [identifying, setIdentifying] = useState(false);
@@ -106,7 +100,7 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
     return (
       <>
         <CommentForm
-          albumId={albumId}
+          scope={scope}
           mediaId={mediaId}
           parentId={null}
           placeholder={t('comments.placeholder', me.identity.displayName)}
@@ -154,13 +148,13 @@ function Composer({ albumId, mediaId }: { albumId: string; mediaId: string }): R
 
 function ThreadView({
   thread,
-  albumId,
+  scope,
   mediaId,
   replyTo,
   onReplyTo,
 }: {
   thread: CommentThread;
-  albumId: string;
+  scope: Scope;
   mediaId: string;
   replyTo: number | null;
   onReplyTo: (id: number | null) => void;
@@ -176,7 +170,7 @@ function ThreadView({
     <li className="px-5 py-4">
       <CommentView
         comment={thread.root}
-        albumId={albumId}
+        scope={scope}
         mediaId={mediaId}
         onReply={canReply ? () => onReplyTo(open ? null : thread.root.id) : undefined}
       />
@@ -188,7 +182,7 @@ function ThreadView({
               {/* No "Reply" button on a reply: the server would attach the
                   message to the root, and offering an action whose result does
                   not match what is shown would be misleading. */}
-              <CommentView comment={reply} albumId={albumId} mediaId={mediaId} />
+              <CommentView comment={reply} scope={scope} mediaId={mediaId} />
             </li>
           ))}
         </ul>
@@ -197,7 +191,7 @@ function ThreadView({
       {open && (
         <div className="mt-3 border-l border-ink-800 pl-4">
           <CommentForm
-            albumId={albumId}
+            scope={scope}
             mediaId={mediaId}
             parentId={thread.root.id}
             placeholder={t('comments.replyPlaceholder', thread.root.author.displayName)}
@@ -243,18 +237,18 @@ function useEditWindow(comment: Comment): number | null {
 
 function CommentView({
   comment,
-  albumId,
+  scope,
   mediaId,
   onReply,
 }: {
   comment: Comment;
-  albumId: string;
+  scope: Scope;
   mediaId: string;
   onReply?: () => void;
 }): ReactElement {
   const t = useT();
-  const remove = useDeleteComment(albumId, mediaId);
-  const update = useUpdateComment(albumId, mediaId);
+  const remove = useDeleteComment(scope, mediaId);
+  const update = useUpdateComment(scope, mediaId);
   const [editing, setEditing] = useState(false);
   const secondsLeft = useEditWindow(comment);
 
@@ -483,14 +477,14 @@ function EmojiPicker({ onPick }: { onPick: (emoji: string) => void }): ReactElem
 }
 
 function CommentForm({
-  albumId,
+  scope,
   mediaId,
   parentId,
   placeholder,
   autoFocus = false,
   onDone,
 }: {
-  albumId: string;
+  scope: Scope;
   mediaId: string;
   parentId: number | null;
   placeholder: string;
@@ -499,7 +493,7 @@ function CommentForm({
 }): ReactElement {
   const t = useT();
   const [body, setBody] = useState('');
-  const create = useCreateComment(albumId, mediaId);
+  const create = useCreateComment(scope, mediaId);
   const fieldRef = useRef<HTMLTextAreaElement>(null);
 
   /**

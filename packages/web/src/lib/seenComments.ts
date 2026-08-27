@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { scopeKey, type Scope } from '../api/client';
 
 /** Number of seen comments by media identifier. */
 export type SeenCounts = Record<string, number>;
@@ -144,11 +145,17 @@ function loadFeedMarker(): number {
 /**
  * Album reading markers remembered between visits.
  *
- * One object per album rather than one key per photo: markers for a deleted album
+ * One object per scope rather than one key per photo: markers for a deleted album
  * can still be cleared or inspected by hand, and `localStorage` entry count does
  * not follow the number of viewed photos.
+ *
+ * A share link is a scope of its own, so the same photograph read through a link and
+ * through an account keeps two markers. That is the right answer: they are two
+ * readers as far as this browser knows, and merging them would mark unread what one
+ * of them never saw.
  */
-export function useSeenComments(albumId: string): SeenComments {
+export function useSeenComments(scope: Scope): SeenComments {
+  const albumId = scopeKey(scope);
   const [seen, setSeen] = useState<SeenCounts>(() => load(albumId));
 
   /**

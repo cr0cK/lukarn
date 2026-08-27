@@ -20,6 +20,9 @@ import { useT, type MessageKey } from '../../lib/i18n';
 export const ADMIN_TABS = [
   { slug: 'storage', label: 'admin.tabStorage', group: 'admin.groupLibrary' },
   { slug: 'albums', label: 'admin.tabAlbums', group: 'admin.groupLibrary' },
+  // Beside Albums rather than under People: a link opens content, and what it opens
+  // is chosen from the library. Nobody is granted anything (D260825).
+  { slug: 'shares', label: 'admin.tabShares', group: 'admin.groupLibrary' },
   { slug: 'accounts', label: 'admin.tabAccounts', group: 'admin.groupPeople' },
   { slug: 'comments', label: 'admin.tabComments', group: 'admin.groupPeople' },
   { slug: 'identity', label: 'admin.tabIdentity', group: 'admin.groupInstance' },

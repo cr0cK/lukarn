@@ -16,6 +16,7 @@ import { createCommentRoutes } from './routes/comments.js';
 import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
 import { createSearchRoutes } from './routes/search.js';
+import { createShareRoutes } from './routes/share.js';
 import { createSubscriptionRoutes } from './routes/subscriptions.js';
 import { createVersionRoutes } from './routes/version.js';
 import { renderManifest, renderShell } from './shell.js';
@@ -80,6 +81,9 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
       await api.register(createCommentRoutes(context), { prefix: '/comments' });
       await api.register(createIdentityRoutes(context), { prefix: '/identity' });
       await api.register(createSubscriptionRoutes(context), { prefix: '/subscriptions' });
+      // Public, like the unsubscribe pages: its caller holds a link and no session,
+      // and this is the route that opens one for them (D260825).
+      await api.register(createShareRoutes(context), { prefix: '/share' });
       await api.register(createBrandingRoutes(context), { prefix: '/branding' });
       await api.register(createAdminRoutes(context), { prefix: '/admin' });
       // A sibling of `/admin` rather than a block inside it: its body is raw image

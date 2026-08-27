@@ -308,6 +308,36 @@ describe('through the API', () => {
     assert.deepEqual(context.visits.overview(7).albums, []);
   });
 
+  it('leaves out the sessions a share link opened', async () => {
+    // A link is not an access key. Its openings are a different question, recorded
+    // at the hour in `share_openings` and read in the Links section (D260825c),
+    // while this tab answers "which key visited, and on what" (D260809h).
+    //
+    // Without the exclusion these sessions group under a NULL username and arrive
+    // as a visitor with no name, which is a 500 on this screen rather than a wrong
+    // number — measured before the clause was added.
+    context.config.createAlbum({ id: 'lien', title: 'Lien', folderId: 'f9', recursive: true });
+    const link = context.shares.create({
+      albumId: 'lien',
+      mediaId: null,
+      label: null,
+      createdBy: 'famille',
+      expiresAt: null,
+    });
+    const opened = await server.inject({ method: 'GET', url: `/api/share/${link.token}` });
+    assert.equal(opened.statusCode, 200, opened.body);
+
+    const apercu = context.visits.overview(7);
+    assert.ok(
+      apercu.visitors.every((visiteur) => typeof visiteur.username === 'string'),
+      'no visitor arrives without a name',
+    );
+    assert.ok(!apercu.visitors.some((visiteur) => visiteur.username === null));
+
+    context.db.prepare('DELETE FROM share_links WHERE token = ?').run(link.token);
+    context.config.deleteAlbum('lien');
+  });
+
   it('stores the device class and latest request, never the user agent', async () => {
     await connexion('famille', UA_TELEVISEUR);
 
@@ -331,6 +361,10 @@ describe('through the API', () => {
       'commenter_id',
       'last_seen_at',
       'device',
+      // The share link that opened this session, NULL for every account's
+      // (D260825). A credential, like `username` beside it, and no more of a
+      // fingerprint than that one is.
+      'share_token',
     ]);
   });
 

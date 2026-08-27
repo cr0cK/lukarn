@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaDetail } from '@lukarn/shared';
+import type { AlbumDay, ShareDetail } from '@lukarn/shared';
 import {
   formatAperture,
   formatBytes,
@@ -28,7 +28,7 @@ export interface ExifRow {
  * cases — data present, absent, or absent and stated — and the only one verifiable
  * without the DOM.
  */
-export function exifRows(detail: MediaDetail, day: AlbumDay | undefined, t: Translate): ExifRow[] {
+export function exifRows(detail: ShareDetail, day: AlbumDay | undefined, t: Translate): ExifRow[] {
   const rows: ExifRow[] = [];
   const push = (label: string, value: string | null | undefined, href?: string): void => {
     if (value) rows.push(href ? { label, value, href } : { label, value });

@@ -2,8 +2,6 @@
 
 **Confidence.** stated — owner: Alexis Mineaud, /do-spec on Sharing-without-an-account · 2026-08-25
 
-**Not built yet.** Decided 2026-08-25; no code implements this.
-
 **Context.** Sharing one photograph is the case where a link is sent to somebody outside the
 household about a picture they are in. What they were given is that picture. An album name is a
 sentence somebody wrote about a family occasion, and it says who was there, when, and that there are
