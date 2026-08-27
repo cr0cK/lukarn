@@ -1,4 +1,4 @@
-import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type MediaItem } from '@lukarn/shared';
+import { DEFAULT_GROUP_BY, type AlbumDay, type GroupBy, type ShareItem } from '@lukarn/shared';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useT } from './i18n';
 import { computeLayout, targetRowHeightFor, type Layout } from './justify';
@@ -130,7 +130,7 @@ export function placeLabelOf(day: AlbumDay | undefined): string | null {
  * different forms (`2026-07` versus `2026-07-14`) and cannot collide in one set.
  */
 export function useGridLayout(
-  items: MediaItem[],
+  items: ShareItem[],
   groupBy: GroupBy = DEFAULT_GROUP_BY,
   days?: Map<string, AlbumDay>,
   collapsedKeys?: ReadonlySet<string>,

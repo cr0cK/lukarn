@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaItem } from '@lukarn/shared';
+import type { AlbumDay, ShareItem } from '@lukarn/shared';
 import {
   type ReactElement,
   type ReactNode,
@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { errorText, mediaUrl } from '../api/client';
+import { errorText, mediaUrl, type Scope } from '../api/client';
 import { useCommentCounts, useMediaDetail, useUpdateAlbum } from '../api/hooks';
 import { useCaptionHidden } from '../lib/caption';
 import { useT, type Translate } from '../lib/i18n';
@@ -69,14 +69,19 @@ const VIEWER_SHEET_STOPS: readonly SheetStop[] = ['auto', 0.85];
 const VIDEO_SHEET_STOPS: readonly SheetStop[] = [0.85];
 
 interface LightboxProps {
-  albumId: string;
+  /**
+   * Where the photographs and their threads come from: an album, or a share link.
+   * The viewer never learns which — everything it asks for goes through this
+   * (D260825e).
+   */
+  scope: Scope;
   /**
    * Album title at the start of the context trail. The viewer is a view in its
    * own right — a shared link can lead there without showing the grid — and
    * without the title the photo no longer says which album it comes from.
    */
   albumTitle: string;
-  items: MediaItem[];
+  items: ShareItem[];
   index: number;
   /**
    * Album total, not `items.length`: the list grows page by page, so progress
@@ -119,7 +124,7 @@ interface LightboxProps {
  * at every width. The exact timestamp remains in the `i` panel with the filename.
  */
 export function Lightbox({
-  albumId,
+  scope,
   albumTitle,
   items,
   index,
@@ -197,7 +202,12 @@ export function Lightbox({
    * preloading covers images, not detail, so neighbours are not requested.
    * Beside rendering the image itself, two indexed reads are negligible.
    */
-  const { data: detail } = useMediaDetail(albumId, item ? item.id : null);
+  const { data: detail } = useMediaDetail(scope, item ? item.id : null);
+
+  // The album a caption would be written in, absent when a link is showing this
+  // photograph. `MediaCaption` folds it into its own permission rather than taking
+  // an administrator's word for it.
+  const albumId = scope.kind === 'album' ? scope.albumId : null;
 
   const setCover = useUpdateAlbum();
   // Do not carry failure to the next photo: the message would refer to an image
@@ -209,11 +219,17 @@ export function Lightbox({
    * "Comments" button badge. The total comes from one album-wide call and the
    * browser reading marker: see `lib/seenComments.ts`.
    */
-  const { data: commentCounts } = useCommentCounts(albumId);
-  const { seen, markSeen } = useSeenComments(albumId);
+  const { data: commentCounts } = useCommentCounts(scope);
+  const { seen, markSeen } = useSeenComments(scope);
   const mediaId = item?.id;
   const mediaVersion = item?.version;
-  const commentTotal = (mediaId && commentCounts?.counts[mediaId]) || 0;
+  // A link has no album-wide counts to ask for, so the count travelling with this
+  // photograph's detail stands in. One number per photograph opened rather than one
+  // per album, which is the whole reason the album path asks for them in bulk.
+  const commentTotal =
+    (mediaId === undefined ? undefined : commentCounts?.counts[mediaId]) ??
+    detail?.commentCount ??
+    0;
   const unread = unreadCount(commentTotal, mediaId ? seen[mediaId] : 0);
 
   /**
@@ -622,13 +638,17 @@ export function Lightbox({
     // /admin button. Reconfirming the current cover is therefore not a wasted
     // click: it may have been selected by default, and this pins it so the next
     // synchronised photo no longer replaces it.
-    ...(isAdmin && !isVideo
+    //
+    // `scope.kind === 'album'` beside `isAdmin` because the mutation needs an album
+    // identifier and a link carries none. Both conditions are true of the same
+    // person in practice; the compiler is what makes the second one stated.
+    ...(isAdmin && !isVideo && scope.kind === 'album'
       ? [
           {
             key: 'cover' as const,
             label: t(isCover ? 'viewer.cover' : 'viewer.setCover'),
             active: isCover,
-            onSelect: () => setCover.mutate({ albumId, body: { coverId: item.id } }),
+            onSelect: () => setCover.mutate({ albumId: scope.albumId, body: { coverId: item.id } }),
             icon: (
               <>
                 <rect x="3" y="4" width="18" height="16" rx="2" />
@@ -1071,7 +1091,7 @@ export function Lightbox({
           the panel can stay open from one photo to the next. */}
       {!phone && panel && (
         <SidePanel
-          albumId={albumId}
+          scope={scope}
           mediaId={item.id}
           mediaName={item.name}
           detail={detail}
@@ -1095,7 +1115,7 @@ export function Lightbox({
           label={t('panel.label')}
         >
           <PanelBody
-            albumId={albumId}
+            scope={scope}
             mediaId={item.id}
             detail={detail}
             day={days.get(dayKey(item.takenAt))}
@@ -1137,7 +1157,7 @@ export function Lightbox({
               would hold that draft for every photo scrolled past. */}
           {panel && (
             <PanelBody
-              albumId={albumId}
+              scope={scope}
               mediaId={item.id}
               detail={detail}
               day={days.get(dayKey(item.takenAt))}
@@ -1308,7 +1328,7 @@ function SwipeNeighbour({
   item,
   side,
 }: {
-  item: MediaItem | undefined;
+  item: ShareItem | undefined;
   side: 'left' | 'right';
 }): ReactElement | null {
   if (!item) return null;

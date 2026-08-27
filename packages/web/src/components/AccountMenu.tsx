@@ -105,7 +105,16 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
         // The identifier opens albums and may be shared by a household; the
         // address says who signs comments. Show both when they differ — precisely
         // when someone wonders which name they write under.
-        entete={user ? [user.username, ...(user.identity ? [user.identity.email] : [])] : undefined}
+        // A link's session has no identifier to show, and never reaches this menu
+        // in any case: the share page mounts no chrome at all (D260825d).
+        entete={
+          user
+            ? [
+                ...(user.username === null ? [] : [user.username]),
+                ...(user.identity ? [user.identity.email] : []),
+              ]
+            : undefined
+        }
         // The same person the badge and the tab draw, at the size the entries
         // below use: without it the identifier started to the left of every
         // action it applies to, and read as a stray label rather than the head

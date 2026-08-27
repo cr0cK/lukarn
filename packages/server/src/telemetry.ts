@@ -107,13 +107,20 @@ export class VisitLog {
     // same string as above: `last_seen_at` is an ISO instant, and
     // "2026-08-09T12:00:00.000Z" > "2026-08-09" in SQLite's lexicographic order —
     // the boundary day is therefore included, as it is for visits.
+    //
+    // **`username IS NOT NULL` excludes the sessions a share link opened.** This tab
+    // answers "which access key visited, and on what" (D260809h), and a link is not
+    // an access key — its openings are a different question, recorded at the hour in
+    // `share_openings` and read in the Links section (D260825c). Without the clause
+    // a link's sessions group under NULL and arrive here as a visitor with no name,
+    // which is a 500 on this screen rather than a wrong number.
     const vues = this.db
       .prepare(
         `SELECT username,
                 MAX(last_seen_at)      AS lastSeenAt,
                 GROUP_CONCAT(DISTINCT device) AS devices
            FROM sessions
-          WHERE last_seen_at >= ?
+          WHERE last_seen_at >= ? AND username IS NOT NULL
           GROUP BY username`,
       )
       .all(since) as { username: string; lastSeenAt: string; devices: string | null }[];

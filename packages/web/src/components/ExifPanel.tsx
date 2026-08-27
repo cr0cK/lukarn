@@ -1,4 +1,4 @@
-import type { AlbumDay, MediaDetail } from '@lukarn/shared';
+import type { AlbumDay, ShareDetail } from '@lukarn/shared';
 import type { ReactElement } from 'react';
 import { exifRows } from '../lib/exifRows';
 import { useT } from '../lib/i18n';
@@ -15,7 +15,7 @@ export function ExifPanel({
   detail,
   day,
 }: {
-  detail: MediaDetail | undefined;
+  detail: ShareDetail | undefined;
   day: AlbumDay | undefined;
 }): ReactElement {
   const t = useT();

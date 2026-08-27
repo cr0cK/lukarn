@@ -16,7 +16,7 @@ import type { AppContext } from '../context.js';
 import type { Translate } from '../i18n/index.js';
 import { classifyDevice } from '../device.js';
 import { buildInvitationMail, buildSignInMail } from '../mail.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAccount } from '../plugins/auth.js';
 import { SESSION_COOKIE, sessionCookieOptions, type SessionRecord } from '../sessions.js';
 import type { CodePurpose } from '../verification-codes.js';
 
@@ -444,7 +444,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           session.id,
           sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
         )
-        .send(sessionUser(context.config.user(session.username)!));
+        .send(sessionUser(context.config.user(session.username!)!));
     });
 
     /* ------------------------------------------------------------------------
@@ -536,7 +536,10 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
     /** What the phone displays before approval. */
     app.get<{ Params: { userCode: string } }>(
       '/device/:userCode',
-      { preHandler: requireAuth },
+      // An **account**, never a share link. Pairing delegates existing access, and a
+      // link has none to delegate: `approve` would write its null username into
+      // `device_pairings` and consume somebody's pending request for nothing.
+      { preHandler: requireAccount },
       async (request, reply) => {
         const userCode = normalizeUserCode(request.params.userCode);
         const attempt = { ip: request.ip, username: userCode };
@@ -566,7 +569,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
      */
     app.post<{ Params: { userCode: string } }>(
       '/device/:userCode/approve',
-      { preHandler: requireAuth },
+      { preHandler: requireAccount },
       async (request, reply) => {
         const userCode = normalizeUserCode(request.params.userCode);
         const attempt = { ip: request.ip, username: userCode };
@@ -574,7 +577,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         if (blocked) return blocked;
 
         const result = USER_CODE_PATTERN.test(userCode)
-          ? context.pairings.approve(userCode, request.user!.username)
+          ? context.pairings.approve(userCode, request.user!.username!)
           : 'unknown';
 
         if (result === 'unknown') {

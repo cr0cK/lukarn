@@ -20,7 +20,15 @@ import { useT } from '../lib/i18n';
  * immediately noticeable.
  */
 interface MediaCaptionProps {
-  albumId: string;
+  /**
+   * The album this photograph may be described in, `null` when a share link is
+   * showing it: describing is an administrator's, and a link carries no album.
+   *
+   * The album identifier rather than the viewer's `Scope`, because this file already
+   * calls the breadth of a caption line its scope — photo or day — and one word
+   * meaning two things in one file is a word nobody trusts.
+   */
+  albumId: string | null;
   mediaId: string;
   /** The two candidate texts. An empty or whitespace-only string means absent. */
   description: string | null;
@@ -56,7 +64,7 @@ export function MediaCaption({
   mediaId,
   description,
   day,
-  editable,
+  editable: mayEdit,
   hidden,
   onHiddenChange,
   editing,
@@ -74,6 +82,10 @@ export function MediaCaption({
 
   const entries = captionEntries({ description, day }, t);
   const inHeader = variant === 'header';
+  // Both halves of the same permission, folded once: an administrator may write a
+  // caption, and there has to be an album to write it in. A share link satisfies
+  // neither, and this is what keeps the editor below from taking a null.
+  const editable = mayEdit && albumId !== null;
 
   // Nothing to say or write: not even a ghost button inviting discovery of an
   // empty bar.
@@ -172,7 +184,7 @@ export function MediaCaption({
         </div>
       </div>
 
-      {editing && (
+      {editing && editable && (
         <CaptionEditor
           albumId={albumId}
           mediaId={mediaId}

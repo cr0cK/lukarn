@@ -1,11 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { LOCAL_CONNECTION } from '../fixtures/instance.js';
+import { ALBUMS, LOCAL_CONNECTION } from '../fixtures/instance.js';
 import { signIn } from '../fixtures/session.js';
 
 /** Every section, and the group each belongs to on a phone. */
 const SECTIONS = [
   { group: 'Library', name: 'Storage' },
   { group: 'Library', name: 'Albums' },
+  { group: 'Library', name: 'Links' },
   { group: 'People', name: 'Accounts' },
   { group: 'People', name: 'Comments' },
   { group: 'This instance', name: 'Identity' },
@@ -109,6 +110,66 @@ test.describe('Storage is a section of its own', () => {
     // unmoved section would still answer here.
     await expect(page.getByRole('button', { name: 'Add a storage' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Delete the storage/ })).toHaveCount(0);
+  });
+});
+
+/**
+ * Issuing a share link, which is the one half `share.spec.ts` cannot cover: no page
+ * in that file ever signs in, because the recipient of a link is a stranger.
+ */
+test.describe('Links', () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+  });
+
+  test('a link is issued from the library group, and copied as an address', async ({ page }) => {
+    // The clipboard is stubbed rather than granted: WebKit knows no
+    // `clipboard-write` permission, and what is under test is the value the button
+    // hands over, not the platform's clipboard.
+    const copied: string[] = [];
+    await page.exposeFunction('recordCopy', (text: string) => void copied.push(text));
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: (text: string) =>
+            (window as unknown as { recordCopy: (value: string) => void }).recordCopy(text),
+        },
+      });
+    });
+
+    await page.goto('/admin');
+
+    const sections = page.getByRole('navigation', { name: 'Administration sections' });
+    // Beside Albums rather than under People: a link opens content, and what it
+    // opens is chosen from the library. Nobody is granted anything (D260825).
+    await sections.getByRole('link', { name: 'Links', exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/shares$/);
+
+    // The row carries its value and opens onto the field, as every setting does on
+    // a phone. `exact`, because the back arrow is labelled "Back to the albums" and
+    // `getByLabel` matches on a substring.
+    await page.getByRole('button', { name: /^Album/ }).click();
+    await page.getByLabel('Album', { exact: true }).selectOption(ALBUMS.day.id);
+    await page.getByLabel('Label').fill('For the e2e run');
+    await page.getByRole('button', { name: 'Issue the link' }).click();
+
+    const row = page.getByText('For the e2e run');
+    await expect(row).toBeVisible();
+    // Working, and never opened: the record of use is what the person deciding
+    // whether to cut a link off is reading (D260825c).
+    await expect(page.getByText('Working').first()).toBeVisible();
+    await expect(page.getByText('Never opened').first()).toBeVisible();
+
+    await page.getByRole('button', { name: 'Copy the address' }).first().click();
+    await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
+
+    // What the button copies is what an administrator actually sends, so it has to
+    // be an address and not a token — and it must not carry the album, since the
+    // same button copies a photograph link (D260825e).
+    expect(copied).toHaveLength(1);
+    expect(copied[0]).toContain('/s/');
+    expect(copied[0]).not.toContain(ALBUMS.day.id);
   });
 });
 

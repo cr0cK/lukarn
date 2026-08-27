@@ -9,7 +9,12 @@ const LOAD_MORE_MARGIN_PX = 1500;
 
 interface JustifiedGridProps {
   grid: GridLayout;
-  albumId: string;
+  /**
+   * The album a day note would be written in, `null` when a share link is showing
+   * this grid. `canAnnotate` folds it in, so nothing below takes an administrator's
+   * word for there being an album.
+   */
+  albumId: string | null;
   /** Annotated days indexed by section key. Empty when grouping by month. */
   days: Map<string, AlbumDay>;
   /** Enables header editing for administrators when grouping by day. */
@@ -58,10 +63,13 @@ export function JustifiedGrid({
       {visibleSections.map((section) => (
         <div key={section.key}>
           <SectionHeader
-            albumId={albumId}
+            albumId={albumId ?? ''}
             section={section}
             day={days.get(section.key)}
-            editable={canAnnotate}
+            // Both halves of one permission: an administrator may annotate a day,
+            // and there has to be an album to annotate it in. A share link has
+            // neither, so the editor never opens and the identifier is never read.
+            editable={canAnnotate && albumId !== null}
             descriptionLines={descriptionLines.get(section.key) ?? 0}
             onToggle={() => onToggleSection(section.key)}
           />

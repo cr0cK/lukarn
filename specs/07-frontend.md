@@ -6,12 +6,13 @@ the view lives in the URL, the rest is local `useState`.
 
 ## Routing
 
-`App.tsx`, seven routes plus a catch-all.
+`App.tsx`, eight routes plus a catch-all.
 
 | Path              | Page             | Guard                                 |
 | ----------------- | ---------------- | ------------------------------------- |
 | `/login`          | `LoginPage`      | none (redirects if already signed in) |
 | `/diagnostic`     | `DiagnosticPage` | none                                  |
+| `/s/:token`       | `SharePage`      | none                                  |
 | `/pair`           | `PairPage`       | `RequireAuth`                         |
 | `/`               | `AlbumsPage`     | `RequireAuth`                         |
 | `/album/:albumId` | `AlbumPage`      | `RequireAuth`                         |
@@ -25,6 +26,20 @@ server already refuses every protected route. It avoids showing a blank page
 while waiting for the 401, and remembers the destination in
 `location.state.from` to return to it after signing in.
 
+**It also refuses a session a share link opened**, sending it back to `/s/:token`
+via the catch-all. That is not a security control either — the server answers 404
+to a link everywhere outside `/api/share` and `/media`. It exists because
+`/api/auth/me` answers for a link exactly as it does for an account (D260825), so a
+guard reading only "is there a session" would draw the album list, the settings
+screen and the account menu with its sign-out control for somebody who was given
+one album. The guard is therefore told **what kind** of session it holds:
+`user.username === null` is a link, and a link reaches its own page and no other
+(D260825d).
+
+Ordering is not the lever for `/s/:token` being unguarded, and neither is its
+position in the file: this router matches by computed rank, so the catch-all sorts
+last wherever it is written.
+
 The return after signing in carries both `pathname` **and** `search`. This is
 essential coming from `/pair?code=…`: the pairing code lives in the search
 string, and returning to the path alone would land on a page that no longer
@@ -33,6 +48,54 @@ knows what to approve.
 The server serves `index.html` for every URL that is neither `/api` nor
 `/assets`, so reloading directly on `/album/vacances` works (see
 [05](./05-api.md)).
+
+### What a link opens — `pages/SharePage.tsx`
+
+`/s/:token` is the page a share link opens, and the only page its session reaches.
+It carries **the instance's name, its logo, and what was shared** — no album list,
+no sign-in control, nothing indicating that other content exists (D260825d). Two
+failures were available and they pull in opposite directions: a page carrying
+nothing but photographs has no sender and has the shape of a phishing message,
+while a page carrying the whole application advertises to somebody who was given
+one album that this instance has accounts and passwords behind it.
+
+It therefore mounts none of the chrome — no `TopBar`, no `BottomTabs`, no
+`AccountMenu` — in the way `/pair` and `/diagnostic` already mount none. The mark is
+deliberately **not** a link: `TopBar` wraps it in a route to the album list, which is
+the one place this page must not offer.
+
+**One path for both kinds of link.** A photograph link is a grid of one, opening the
+same viewer. Two shapes here would be two things to keep in step for a difference
+nobody reading the page can see.
+
+A link that has stopped working shows its sentence **on this same page** rather than
+on a generic error screen — "this link was taken back", "this link has expired" —
+which is the only way its reader learns what happened without being offered a
+password field to guess at (D260825b). The server distinguishes the cases with a
+status and an error code; the page says which in words, from the interface
+catalogue, because it is read in a browser whose language the interface already
+knows.
+
+### The scope a page reads from — `api/client.ts`
+
+The grid, the viewer and the comment stack take a **`Scope`** rather than an album
+identifier: `{ kind: 'album', albumId }` or `{ kind: 'share', token }`. It decides
+the address every request builds, and it is the one cache-key segment those queries
+share — prefixed by kind, since both identifiers are opaque strings and a shared key
+would let one scope serve the other's pages out of cache. It is also the
+browser-storage key for reading order and seen comments, so the same photograph read
+through a link and through an account keeps two markers. That is the right answer:
+they are two readers as far as this browser knows.
+
+Threading it is what lets `AlbumPage` and `SharePage` share one component tree while
+no address a link's session uses names an album (D260825e). The two places that
+genuinely need an album — writing a photo's caption, annotating a day — take a
+nullable album identifier instead and fold it into their own permission, so nothing
+below takes an administrator's word for there being an album.
+
+`ShareItem` is `MediaItem` without `albumId`, and the whole grid path is typed on it:
+the narrower of the two shapes, so no component can start reading an album and break
+on the share page only.
 
 ### Browser survey — `pages/DiagnosticPage.tsx`
 
@@ -1845,6 +1908,7 @@ Administration is navigated by **sections, one per URL** (D66):
 | -------- | ----------------- | --------------------------------------- |
 | Storage  | `/admin/storage`  | `StorageSection`                        |
 | Albums   | `/admin/albums`   | `AlbumsSection`                         |
+| Links    | `/admin/shares`   | `SharesSection`                         |
 | Accounts | `/admin/accounts` | `UsersSection`                          |
 | Comments | `/admin/comments` | `CommentsSection`                       |
 | Identity | `/admin/identity` | `IdentitySection`                       |
@@ -1859,7 +1923,7 @@ redirects rather than showing a blank page.
 ([D260814c](./08-decisions/D260814c-administration-gets-a-root-on-a-phone-and-settings-become-rows.md)).
 From `md` it still redirects to `/admin/albums`, exactly as D66 left it — which
 is also what lets `AdminNav` read its selected entry from the router rather than
-from a path comparison. Below `md` it is a screen: `AdminMenu`, the seven sections
+from a path comparison. Below `md` it is a screen: `AdminMenu`, the eight sections
 as a list grouped into Library, People and This instance, a chevron per row and
 the activity count on Comments. A section's back arrow then returns there rather
 than to the gallery, through `TopBar`'s `backTo`.
@@ -1870,7 +1934,7 @@ nothing announced, and the row cost a line of every administration screen at all
 times. A phone shows one level per screen; this is that level.
 
 `ADMIN_TABS` carries a `group` read only by that list. The sidebar ignores it: a
-twelve-rem column has no room for headings, and at that width the seven rows are
+twelve-rem column has no room for headings, and at that width the eight rows are
 read at once anyway.
 
 **The badge on Comments counts activity, not a queue.** There is no moderation
@@ -1899,7 +1963,7 @@ unnoticed from the bottom of the queue.
 
 | Component                     | Role                                                                                                                                                                                                                                                                     |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AdminNav`                    | Navigation between the seven sections, as `NavLink`                                                                                                                                                                                                                      |
+| `AdminNav`                    | Navigation between the eight sections, as `NavLink`                                                                                                                                                                                                                      |
 | `StorageSection`              | The storages this instance reads: the list, and the confirmed deletion                                                                                                                                                                                                   |
 | `StorageRow`                  | One connection: its state, and the buttons its `authorization` allows                                                                                                                                                                                                    |
 | `StorageForm`                 | Name, kind, then the fields of the kind chosen                                                                                                                                                                                                                           |
@@ -1911,14 +1975,36 @@ unnoticed from the bottom of the queue.
 | `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
 | `SettingsSection`             | Sync interval, sync on startup, prewarming, both cache budgets, video preparation, moderation address                                                                                                                                                                    |
 | `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                                    |
+| `SharesSection`               | Every share link this instance has issued: what each covers, whether it still works, when it was last opened, and the two gestures that stop one                                                                                                                         |
 | `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                           |
 | `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                               |
 | `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                           |
-| `AdminMenu`                   | The same seven sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                                  |
+| `AdminMenu`                   | The same eight sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                                  |
 | `ui.tsx`                      | Shared primitives: button, field, checkbox, `Choice`, section box, row geometry, `SettingRow`. Every control sits on `ink-800`, one rung off the `ink-850/50` panel — on the same rung a field was drawn by its border alone, and that border disappears on a dim screen |
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
+
+### Links — `components/admin/SharesSection.tsx`
+
+**Beside Albums in the Library group**, not under People: a link opens content, and
+what it opens is chosen from the library. Nobody is granted anything (D260825).
+
+The section is the one screen that shows a link's **token**, because its reader
+already holds every credential this instance has and a link nobody can copy is a link
+nobody can send. The Copy button builds the address from `window.location.origin`
+rather than a configured public URL: what is copied has to be what the
+administrator's own browser reached this page on, or a link sent from a machine on
+the local network would carry an address nobody outside it can open.
+
+Each row states what the link covers, whether it still works, who issued it and when,
+and its record of use — never opened, or when last and how many openings (D260825c).
+
+**Two gestures, and the difference between them is stated in the confirmation.**
+Revoking closes the link for whoever holds it and keeps its record of use; deleting
+removes both (D260825b). The form carries no `kind`: a photograph identifier makes it
+a photograph link and leaving it empty makes it an album link, so the two cannot
+disagree about what was asked for.
 
 ### Storage — `components/admin/storage/`
 

@@ -200,7 +200,11 @@ interface TextFieldProps {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  type?: 'text' | 'password' | 'email';
+  /**
+   * `datetime-local` for a link's expiry: the only date this interface asks somebody
+   * to choose, and a text field would put the parsing on the person typing.
+   */
+  type?: 'text' | 'password' | 'email' | 'datetime-local';
   hint?: ReactNode;
   error?: string | null;
   placeholder?: string;

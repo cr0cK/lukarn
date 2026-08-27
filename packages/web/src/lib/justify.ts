@@ -1,4 +1,4 @@
-import { DEFAULT_GROUP_BY, type GroupBy, type MediaItem } from '@lukarn/shared';
+import { DEFAULT_GROUP_BY, type GroupBy, type ShareItem } from '@lukarn/shared';
 import { formatDate, formatMonthYear } from './format';
 import type { Translate } from './i18n/translate';
 
@@ -50,7 +50,7 @@ export interface LayoutOptions {
 }
 
 export interface LayoutCell {
-  item: MediaItem;
+  item: ShareItem;
   /** Index in the original list, used by keyboard navigation and the viewer. */
   index: number;
   x: number;
@@ -98,7 +98,7 @@ const FALLBACK_RATIO = 4 / 3;
 const MAX_RATIO = 3.5;
 const MIN_RATIO = 0.4;
 
-function ratioOf(item: MediaItem): number {
+function ratioOf(item: ShareItem): number {
   if (!item.width || !item.height) return FALLBACK_RATIO;
   return Math.min(MAX_RATIO, Math.max(MIN_RATIO, item.width / item.height));
 }
@@ -181,7 +181,7 @@ export function sectionLabelOf(key: string, groupBy: GroupBy, t: Translate): str
   return groupBy === 'day' ? dayLabel(key, t) : monthLabel(key, t);
 }
 
-export function computeLayout(items: MediaItem[], options: LayoutOptions): Layout {
+export function computeLayout(items: ShareItem[], options: LayoutOptions): Layout {
   const {
     containerWidth,
     targetRowHeight,
@@ -218,7 +218,7 @@ export function computeLayout(items: MediaItem[], options: LayoutOptions): Layou
     let rowY = cursorY + sectionHeaderHeight;
     const rows: LayoutRow[] = [];
 
-    let buffer: { item: MediaItem; index: number; ratio: number }[] = [];
+    let buffer: { item: ShareItem; index: number; ratio: number }[] = [];
     let ratioSum = 0;
 
     const flush = (justified: boolean): void => {

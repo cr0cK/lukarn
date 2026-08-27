@@ -8,7 +8,7 @@ import {
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import type { AppContext } from '../context.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAccount } from '../plugins/auth.js';
 import { buildAlbum } from '../repo.js';
 
 const DEFAULT_LIMIT = 200;
@@ -25,10 +25,17 @@ const querySchema = z.object({
 
 export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
-    app.addHook('preHandler', requireAuth);
+    /**
+     * An **account**, never a share link. Every route here is keyed on an album
+     * identifier, and letting a link through would need a second predicate beside
+     * `ConfigRepo.canSee` — which is how one of the two gets updated alone. What a
+     * link may reach lives under `/api/share`, whose addresses name no album
+     * (D260825, D260825e).
+     */
+    app.addHook('preHandler', requireAccount);
 
     app.get('/', async (request, reply) => {
-      const username = request.user!.username;
+      const username = request.user!.username!;
       const albums: Album[] = context
         .albumsFor(username)
         .map((album) => buildAlbum(album, context.media, context.syncState));
@@ -41,7 +48,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
 
       // A forbidden album and a non-existent album return the same response so nobody
       // can infer another person's album list.
-      if (!album || !context.canSee(request.user!.username, albumId)) {
+      if (!album || !context.canSee(request.user!.username!, albumId)) {
         return reply
           .code(404)
           .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -59,7 +66,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
      */
     app.get('/:albumId/days', async (request, reply) => {
       const { albumId } = request.params as { albumId: string };
-      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
+      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username!, albumId)) {
         return reply
           .code(404)
           .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -71,7 +78,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/:albumId/items', async (request, reply) => {
       const { albumId } = request.params as { albumId: string };
-      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
+      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username!, albumId)) {
         return reply
           .code(404)
           .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -96,7 +103,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
         // Same action and condition, but independent of identity where subscription
         // requires a verified commenter: this counts visits, not subscribers
         // (D260809h).
-        context.visits.recordAlbumOpen(albumId, request.user!.username, request.sessionId!);
+        context.visits.recordAlbumOpen(albumId, request.user!.username!, request.sessionId!);
       }
 
       const page: ItemsPage = context.media.listItems(
@@ -110,7 +117,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/:albumId/items/:mediaId', async (request, reply) => {
       const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
-      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username, albumId)) {
+      if (!context.findAlbum(albumId) || !context.canSee(request.user!.username!, albumId)) {
         return reply
           .code(404)
           .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -125,7 +132,7 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
 
       // After the 404 check, never before: counting an invented identifier as opened
       // would create visits nobody made.
-      context.visits.recordPhotoOpen(albumId, request.user!.username, request.sessionId!);
+      context.visits.recordPhotoOpen(albumId, request.user!.username!, request.sessionId!);
 
       // The count travels with details: the viewer displays it on its tab without
       // loading a thread that most visitors will not open.

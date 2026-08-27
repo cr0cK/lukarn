@@ -2,14 +2,21 @@
 
 ## Three distinct things, not to be confused
 
-|                  | What it is                               | What it grants                           |
-| ---------------- | ---------------------------------------- | ---------------------------------------- |
-| **Google OAuth** | The owner's consent                      | Server-side read access to _their_ Drive |
-| **`users`**      | An **access key**, possibly shared       | The assigned albums                      |
-| **`commenters`** | A **person**, address verified by a code | The right to sign a comment              |
+|                   | What it is                                   | What it grants                              |
+| ----------------- | -------------------------------------------- | ------------------------------------------- |
+| **Google OAuth**  | The owner's consent                          | Server-side read access to _their_ Drive    |
+| **`users`**       | An **access key**, possibly shared           | The assigned albums                         |
+| **`commenters`**  | A **person**, address verified by a code     | The right to sign a comment                 |
+| **`share_links`** | A **link**, sent to somebody with no account | Exactly what its row says, and nothing else |
 
-The distinction between the last two is recent and structural: credentials entrusted to an entire
+The distinction between the middle two is structural: credentials entrusted to an entire
 household do not identify who is writing. See D38.
+
+The fourth arrived with 1.3 and is a credential of its own (D260825). It is a row rather than a
+signed token, because it is defined by being revocable: revoking is a write that lands on the next
+request. `ConfigRepo.canSee` is **never asked about a link** — asking a link what it covers is a
+different question, and two functions answering "may this caller see this album" is how one of them
+gets updated alone.
 
 Since 1.3 the last two may be **joined on one account**: `users.commenter_id` names the person an
 access key is, or is `NULL` and that key stays what it has always been. There is one axis rather
@@ -230,6 +237,27 @@ Which administration operations close a session, and which do not:
 
 The cost is one SQLite read per request—negligible in-process.
 
+**An account that can already see the content keeps its account.** One session cookie per browser
+means minting would sign the owner out of their own instance for having checked the link they just
+issued. The link's page renders for them, and their visit is not recorded — what the openings answer
+is whether the link reached the person it was sent to (D260825c). `canSee` decides it, asked about
+the account and never about the link: an account sent a link to an album nobody gave it is a
+recipient like any other and gets a link session, or the media prefix would refuse every photograph
+on the page it just drew.
+
+**A session a share link opened carries no username, and points at the link instead** (D260825).
+`sessions.username` is `NULL` in that case, `share_token` names the row, and a `CHECK` states the
+invariant the rest of the server would otherwise only be trusted to keep: exactly one credential,
+never both and never neither. The `onRequest` hook resolves it the same way it resolves an account —
+it rereads the link on every request, so a revoked or expired one destroys the session exactly as a
+deleted account does. Everything downstream of that hook applies unchanged: the commenter identity,
+the recorded language, the cookie renewal.
+
+`/api/auth/me` answers for it with the same `SessionUser` shape, carrying `username: null` and
+`admin: false`. The shape is **adjusted, not extended**: that is what lets the identity form, the
+six-digit code and the whole comment stack work through a link without being told a link exists, and
+the `null` is what makes the compiler name every reader that meant "the account behind this request".
+
 ## Pairing a screen without a keyboard
 
 `packages/server/src/pairings.ts` holds the state, and `routes/auth.ts` the four routes. The full
@@ -308,6 +336,13 @@ anyone—the instance would become impossible to administer and require shell ac
 `authorize`. The latter calls `media.albumsContaining(mediaId)` and grants access as soon as one of
 those albums is visible to the user.
 
+**A share link is read here too, beside the account** (D260825). It is asked what it covers rather
+than put through `canSee`, and the answer replaces the album sweep rather than adding to it: an
+album link covers whatever its album indexes now, a photograph link covers one file. Mounting a
+parallel set of media routes for links would have started out identical to these and lost the
+inherited check on the first change to either — which is why every media route stays under this one
+prefix.
+
 The rule: **a denial returns 404, never 403.** A 403 would confirm that the resource exists, making
 the structure of other people's albums observable by probing. The same response therefore covers
 three cases that are indistinguishable from the outside: nonexistent media, unindexed media, and
@@ -320,6 +355,29 @@ for a forbidden album just as for a nonexistent one.
 The accepted exception: `/api/admin/*` returns **403** to a logged-in non-administrator. The
 existence of the administration area is not secret—it is announced in the README and by a link in
 the top bar.
+
+**`/api/oauth/callback` carries the same 403 from the same guard**, and it is the one place that
+answer is given outside the prefix. Its URL is fixed in the Google Cloud console, so it cannot live
+under `/admin`; `requireAdmin` is mounted on it all the same, because the callback completes a
+consent an administrator started and a third party must not be able to finish it with a code
+obtained elsewhere. Nothing is revealed that the prefix does not already reveal. Stated here
+because the rule is otherwise read as "one prefix and nothing else", and the sentence has to survive
+somebody grepping for `code(403)`.
+
+**A share link's session answers 404 everywhere outside `/api/share` and `/media`.** `requireAccount`
+is the `preHandler` that says so, on `/api/albums`, `/api/search`, the album-keyed comment routes,
+`/api/version`, and the two pairing routes. Pairing is the one where it protects something rather
+than tidying: approval writes the approver's username into `device_pairings`, and a link has none —
+it would consume somebody's pending request and grant nothing. It is a 404 rather than a 403 for the same reason as everything else here, and a link
+reaching `/api/admin/*` gets the documented 403 because `admin` is false on its session.
+
+**A link that once worked answers 410, and says which of revoked or expired happened** (D260825b).
+This is not an exception to the rule above: D12's question is what an **album or a media item**
+answers when the caller may not have it, and that answer is still 404 here. What 410 answers is a
+different question on a surface D12 predates — what a **credential** says once it has stopped
+working. Reaching it requires already holding thirty-two random bytes, which is the same thing as
+having been sent the link; guessing is not a route to it, and the answer confirms only what its
+reader was already told by the person who sent it. A token that never existed answers 404.
 
 **The browser cache is partitioned by session.** Media responses include `Vary: Cookie` in addition
 to `Cache-Control: private, …, immutable`. Without it, two accounts used in succession in the same
@@ -647,6 +705,15 @@ failure is ignored).
 | —                                                                             | Visit telemetry: who came and what others viewed                         |
 | Comments on photos in their albums, and their authors' display names          | Comments on an unassigned album, and comments hidden by an administrator |
 
+**What a share link's recipient sees is narrower still**: what the link covers, and no indication
+that anything else exists. No album list, no sign-in control, no `/api/albums`, no search, no
+activity feed. The recipient of a single **photograph** additionally never meets its album's name —
+not on the page, not in the address they were sent, not in the addresses their comment requests use,
+and not in the mail carrying their verification code (D260825e). The album keeps doing its work
+underneath: the thread still resolves through `(album_id, media_id)`, so a comment written through
+the link lands in the conversation an account sees. What changes is that the identifier never leaves
+the server on that path.
+
 ## Visit telemetry: what is and is not recorded
 
 `packages/server/src/telemetry.ts` holds the counters, and `device.ts` the device class. Measurement
@@ -669,6 +736,23 @@ Two points support everything else:
 - **Never the media item.** Counting photo by photo would produce someone's viewing history in an
   application where an entire household shares a password. The counters stop at "how many photos
   were opened in this album on that day".
+
+**The sessions a share link opens are left out of this table entirely**, and the "Visits" tab
+therefore still answers about access keys alone. A link is not one, and its `sessions` row carries no
+username: included, it would group under NULL and reach the screen as a visitor with no name.
+
+**A share link's openings are recorded separately, and at the hour** (D260825c). `share_openings`
+holds one row per link, session and hour — the link, the session, and the time, and nothing else.
+The boundary above does not move: never the photograph looked at, never an address, never an IP.
+What moves is the **precision**, and only for this question: `album_visits` aggregates to the day on
+grounds of scale that are absent for a credential opened by a handful of people a handful of times,
+and the question asked an hour after sending an album is whether it arrived.
+
+The cost is written down rather than rediscovered. A named link with a timestamp is a record of when
+one identified person looked at the photographs, and D260809h declined to build that for shared keys
+on the grounds that a household is not a person. A link is aimed at somebody, so it does identify.
+What keeps it proportionate is that it is read by the one person who issued the link, and that it
+stops at the door.
 
 **The counters did not change in 1.3, and their justification did.** A bound account is one person,
 so the sentence above no longer holds on its own: what was "the counters cannot identify a person"

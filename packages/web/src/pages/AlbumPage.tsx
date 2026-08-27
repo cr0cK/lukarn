@@ -5,9 +5,10 @@ import {
   type GroupBy,
   type SortOrder,
 } from '@lukarn/shared';
-import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { albumScope } from '../api/client';
 import { useAlbum, useAlbumDays, useAlbumItems, useMe } from '../api/hooks';
 import { AlbumDescription } from '../components/AlbumDescription';
 import { BottomTabs } from '../components/BottomTabs';
@@ -43,6 +44,9 @@ export default function AlbumPage(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const album = useAlbum(albumId);
+  // What the grid, the viewer and the comment stack read from. An album here; the
+  // share page hands the same components a link (D260825e).
+  const scope = useMemo(() => albumScope(albumId), [albumId]);
   const { data: me } = useMe();
 
   // Reading order comes from three sources in order: the URL — a shared link
@@ -63,7 +67,7 @@ export default function AlbumPage(): ReactElement {
   const groupBy: GroupBy = isGroupBy(groupParam) ? groupParam : albumGroupBy;
 
   const { items, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } = useAlbumItems(
-    albumId,
+    scope,
     order ?? undefined,
     order !== null,
   );
@@ -453,7 +457,7 @@ export default function AlbumPage(): ReactElement {
 
       {isOpen && (
         <Lightbox
-          albumId={albumId}
+          scope={scope}
           albumTitle={album.data?.title ?? ''}
           items={items}
           index={openedIndex}

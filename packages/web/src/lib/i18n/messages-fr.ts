@@ -404,6 +404,51 @@ export const fr: Messages = {
   'admin.tabIdentity': 'Identité',
   'admin.tabServer': 'Serveur',
   'admin.tabVisits': 'Visites',
+  /* Liens de partage — la page qu’ouvre un lien, et la section qui les liste.
+   *
+   * La page est lue par une personne à qui l’on a écrit : elle s’adresse à elle.
+   * La section d’administration est un écran, au registre impersonnel du reste
+   * d’`/admin`. */
+  'share.revoked': 'Ce lien a été retiré.',
+  'share.expired': 'Ce lien a expiré.',
+  'share.gone': 'La photo de ce lien ne se trouve plus dans la galerie.',
+  'share.unknown': 'Ce lien ne mène nulle part. Vérifiez l’adresse que l’on vous a envoyée.',
+  'share.elsewhere': 'Ouvrez le lien que l’on vous a envoyé pour voir les photos.',
+
+  'admin.tabShares': 'Liens',
+  'shares.title': 'Liens de partage',
+  'shares.intro':
+    'Un lien ouvre un album, ou une photo, à quelqu’un qui n’a pas de compte ici. Quiconque le détient peut l’ouvrir : l’envoyer comme on enverrait les photos elles-mêmes.',
+  'shares.none': 'Aucun lien émis pour l’instant.',
+  'shares.newTitle': 'Nouveau lien',
+  'shares.album': 'Album',
+  'shares.mediaId': 'Une seule photo (identifiant)',
+  'shares.mediaHint': 'Laisser vide pour partager tout l’album.',
+  'shares.label': 'Intitulé',
+  'shares.labelHint': 'À qui il a été envoyé. Rien de ce que lit le destinataire ne le porte.',
+  'shares.expiresAt': 'Expire le',
+  'shares.expiresHint': 'Laisser vide pour un lien sans date de fin.',
+  'shares.create': 'Émettre le lien',
+  'shares.copy': 'Copier l’adresse',
+  'shares.copied': 'Copié',
+  'shares.revoke': 'Retirer',
+  'shares.delete': 'Supprimer',
+  'shares.confirmRevoke':
+    'Retirer ferme le lien pour qui le détient, et conserve la trace de ses ouvertures.',
+  'shares.confirmDelete': 'Supprimer efface le lien et la trace de ses ouvertures.',
+  'shares.stateLive': 'En service',
+  'shares.stateRevoked': 'Retiré',
+  'shares.stateExpired': 'Expiré',
+  'shares.kindAlbum': 'Album entier',
+  'shares.kindMedia': 'Une photo',
+  'shares.neverOpened': 'Jamais ouvert',
+  'shares.lastOpened': (when: string) => `Dernière ouverture ${when}`,
+  'shares.openings': (count: number) =>
+    count === 1 ? '1 ouverture enregistrée' : `${count} ouvertures enregistrées`,
+  'shares.issuedBy': (who: string, when: string) => `Émis par ${who} le ${when}`,
+  'shares.expiresOn': (when: string) => `Expire le ${when}`,
+  'shares.createFailed': 'Impossible d’émettre ce lien.',
+
   'admin.statusFailed': 'Impossible de charger l’état du serveur.',
   'admin.oauthConnected': 'Google Drive est connecté. La première synchronisation a démarré.',
   'admin.oauthDenied': 'Autorisation refusée du côté de Google.',

@@ -5,16 +5,17 @@ import {
   type CodeRequest,
   type CodeVerifyRequest,
   type CreateAlbumRequest,
+  type CreateShareRequest,
   type CreateStorageRequest,
   type CreateCommentRequest,
   type FeedComment,
   type IdentityRequest,
   type InviteUserRequest,
   type CreateUserRequest,
-  type ItemsPage,
   type Locale,
-  type MediaDetail,
-  type MediaItem,
+  type ShareDetail,
+  type ShareItem,
+  type ShareItemsPage,
   type SessionUser,
   type SortOrder,
   type UpdateAlbumDayRequest,
@@ -37,7 +38,7 @@ import {
 import { useMemo } from 'react';
 import { logoChanged } from '../lib/branding';
 import { useAdoptLocale } from '../lib/i18n';
-import { ApiError, api, type AdminCommentsQuery } from './client';
+import { ApiError, api, scopeKey, type AdminCommentsQuery, type Scope } from './client';
 
 export const queryKeys = {
   me: ['me'] as const,
@@ -47,21 +48,22 @@ export const queryKeys = {
   // Sort order is part of the key: without it, TanStack Query would reuse pages
   // already loaded in the other direction, and accumulated cursors would keep
   // paginating backwards.
-  items: (id: string, order: SortOrder) => ['items', id, order] as const,
+  items: (scope: Scope, order: SortOrder) => ['items', scopeKey(scope), order] as const,
   // Unlike media, no `order` is needed here: an album has the same annotated
   // days regardless of reading direction.
   days: (id: string) => ['days', id] as const,
-  detail: (albumId: string, mediaId: string) => ['detail', albumId, mediaId] as const,
-  comments: (albumId: string, mediaId: string) => ['comments', albumId, mediaId] as const,
+  detail: (scope: Scope, mediaId: string) => ['detail', scopeKey(scope), mediaId] as const,
+  comments: (scope: Scope, mediaId: string) => ['comments', scopeKey(scope), mediaId] as const,
   // Use the same `comments` prefix as threads: a broad invalidation (identity
   // change, moderation) must include their counts. Put the literal **after** the
   // album rather than before it: in front, it would collide with the thread for
   // an album named "counts", an identifier that nothing forbids.
-  commentCounts: (albumId: string) => ['comments', albumId, 'counts'] as const,
+  commentCounts: (albumId: string) => ['comments', `album:${albumId}`, 'counts'] as const,
   // Use the same construction as counts for the same reason: literal last. `''`
   // carries the global scope — an album identifier cannot be empty, so nothing
   // can be confused with it.
-  commentsFeed: (albumId: string | null) => ['comments', albumId ?? '', 'feed'] as const,
+  commentsFeed: (albumId: string | null) =>
+    ['comments', albumId === null ? '' : `album:${albumId}`, 'feed'] as const,
   // Everything that restricts the queue belongs in the key, including the
   // cursor: adjacent pages are separate cache entries, making the return to the
   // previous page immediate. Invalidation remains broad — the
@@ -77,6 +79,7 @@ export const queryKeys = {
   // its page without a request, and all three coexist in the cache.
   visits: (days: number) => ['admin', 'visits', days] as const,
   adminUsers: ['admin', 'users'] as const,
+  adminShares: ['admin', 'shares'] as const,
   adminAlbums: ['admin', 'albums'] as const,
   settings: ['admin', 'settings'] as const,
 };
@@ -246,6 +249,48 @@ export function useLogout() {
   });
 }
 
+/**
+ * What a share link opens — an album's heading, or the one photograph it was made
+ * from.
+ *
+ * `retry: false`: the two answers that matter here are refusals, 404 for a token
+ * that never existed and 410 for one that stopped working (D260825b). Retrying them
+ * three times only delays the sentence the page is there to show.
+ *
+ * **No `staleTime`**, unlike the other read-once queries here, because this request
+ * is not only a read: it is what opens the session and records the opening. Held
+ * fresh forever, returning to a link already in the cache would render its page
+ * while the request that gives the visitor a session never runs, and every
+ * photograph on it would answer 401.
+ */
+export function useShare(token: string) {
+  const queryClient = useQueryClient();
+  return useQuery({
+    queryKey: ['share', token],
+    queryFn: async () => {
+      const view = await api.share(token);
+      // Here rather than in an effect, because this **is** the moment the session
+      // changed: the response that just arrived may have set a new cookie, for a
+      // visitor who had none or who was carrying another link's. `me` is held for
+      // a minute and would then describe a credential this browser no longer has,
+      // which is the one thing the route guard reads. An effect keyed on success
+      // would also fire for a cached success, dropping `me` when nothing moved.
+      //
+      // Dropped rather than refetched: nothing on this page asks who you are, so
+      // the next page that does is the one that should pay for it.
+      queryClient.removeQueries({ queryKey: queryKeys.me });
+      return view;
+    },
+    retry: false,
+    // Explicitly, against the client's own 60 seconds: this request is not only a
+    // read, it is what opens the session and records the opening. Served from
+    // cache, the page would render while the request that gives the visitor a
+    // session never runs — and after opening a second link, every photograph on
+    // the first would answer 404.
+    staleTime: 0,
+  });
+}
+
 export function useAlbums() {
   return useQuery({ queryKey: queryKeys.albums, queryFn: api.albums });
 }
@@ -264,20 +309,16 @@ export function useAlbum(albumId: string) {
  * load two hundred items in a direction discarded by the next response; the
  * query stays `pending`, so the grid Spinner covers the wait.
  */
-export function useAlbumItems(
-  albumId: string,
-  order: SortOrder = DEFAULT_SORT_ORDER,
-  enabled = true,
-) {
+export function useAlbumItems(scope: Scope, order: SortOrder = DEFAULT_SORT_ORDER, enabled = true) {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.items(albumId, order),
-    queryFn: ({ pageParam }) => api.items(albumId, pageParam, order),
+    queryKey: queryKeys.items(scope, order),
+    queryFn: ({ pageParam }) => api.items(scope, pageParam, order),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled,
   });
 
-  const items = useMemo<MediaItem[]>(
+  const items = useMemo<ShareItem[]>(
     () => query.data?.pages.flatMap((page) => page.items) ?? [],
     [query.data],
   );
@@ -355,10 +396,10 @@ export function useSearch(q: string) {
   });
 }
 
-export function useMediaDetail(albumId: string, mediaId: string | null) {
+export function useMediaDetail(scope: Scope, mediaId: string | null) {
   return useQuery({
-    queryKey: queryKeys.detail(albumId, mediaId ?? ''),
-    queryFn: () => api.itemDetail(albumId, mediaId!),
+    queryKey: queryKeys.detail(scope, mediaId ?? ''),
+    queryFn: () => api.itemDetail(scope, mediaId!),
     enabled: mediaId !== null,
     staleTime: Infinity,
   });
@@ -381,8 +422,8 @@ export function useUpdateMedia(albumId: string) {
     mutationFn: ({ mediaId, body }: { mediaId: string; body: UpdateMediaRequest }) =>
       api.updateMedia(albumId, mediaId, body),
     onSuccess: (saved) => {
-      queryClient.setQueriesData<InfiniteData<ItemsPage>>(
-        { queryKey: ['items', albumId] },
+      queryClient.setQueriesData<InfiniteData<ShareItemsPage>>(
+        { queryKey: ['items', `album:${albumId}`] },
         (current) =>
           current && {
             ...current,
@@ -396,8 +437,9 @@ export function useUpdateMedia(albumId: string) {
       // Detail carries the same description, and the `i` panel may be open when
       // saving. Because `MediaDetail` extends `MediaItem`, replace only the item
       // portion: EXIF and the comment count do not come from this response.
-      queryClient.setQueryData<MediaDetail>(queryKeys.detail(albumId, saved.id), (current) =>
-        current ? { ...current, ...saved } : current,
+      queryClient.setQueryData<ShareDetail>(
+        queryKeys.detail({ kind: 'album', albumId }, saved.id),
+        (current) => (current ? { ...current, ...saved } : current),
       );
     },
   });
@@ -426,6 +468,13 @@ export function useVerifyIdentity() {
       // Already loaded threads carry `canDelete` computed for an anonymous user:
       // identifying restores control over one's own messages.
       void queryClient.invalidateQueries({ queryKey: ['comments'] });
+      // And a share link's page reopens, which is what subscribes its visitor to
+      // the album's updates (D41): the server does that on the opening request, for
+      // an identity that is **already verified**, and on a link the whole visit is
+      // one opening — verify after it and nothing would ever subscribe. In an album
+      // the next visit catches it, because people come back to an album; nobody
+      // reopens a link they were sent once.
+      void queryClient.invalidateQueries({ queryKey: ['share'] });
     },
   });
 }
@@ -450,10 +499,10 @@ export function useForgetIdentity() {
  * without reading comments, and the count shown on the tab already comes from
  * media detail.
  */
-export function useComments(albumId: string, mediaId: string | null, enabled: boolean) {
+export function useComments(scope: Scope, mediaId: string | null, enabled: boolean) {
   return useQuery({
-    queryKey: queryKeys.comments(albumId, mediaId ?? ''),
-    queryFn: () => api.comments(albumId, mediaId!),
+    queryKey: queryKeys.comments(scope, mediaId ?? ''),
+    queryFn: () => api.comments(scope, mediaId!),
     enabled: enabled && mediaId !== null,
   });
 }
@@ -465,10 +514,14 @@ export function useComments(albumId: string, mediaId: string | null, enabled: bo
  * badge must be present before anything is opened, and moving through an album
  * with the arrow keys would otherwise trigger one request per photo.
  */
-export function useCommentCounts(albumId: string) {
+export function useCommentCounts(scope: Scope) {
   return useQuery({
-    queryKey: queryKeys.commentCounts(albumId),
-    queryFn: () => api.commentCounts(albumId),
+    // A link has no album-wide counts to ask for, and no route that would serve
+    // them without naming the album (D260825e). The viewer falls back to the count
+    // media detail already carries, which is one number per photograph opened.
+    queryKey: queryKeys.commentCounts(scope.kind === 'album' ? scope.albumId : ''),
+    queryFn: () => api.commentCounts(scope.kind === 'album' ? scope.albumId : ''),
+    enabled: scope.kind === 'album',
     // Shorter than the default 60 seconds: a conversation starting while the
     // album is being viewed is precisely what the badge is meant to signal.
     //
@@ -514,11 +567,11 @@ export function useCommentsFeed(albumId: string | null, enabled = true) {
  * latter carries the count shown on the tab, which would otherwise remain one
  * behind until the photo is reopened.
  */
-export function useCreateComment(albumId: string, mediaId: string) {
+export function useCreateComment(scope: Scope, mediaId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateCommentRequest) => api.createComment(albumId, mediaId, body),
-    onSuccess: () => invalidateThread(queryClient, albumId, mediaId),
+    mutationFn: (body: CreateCommentRequest) => api.createComment(scope, mediaId, body),
+    onSuccess: () => invalidateThread(queryClient, scope, mediaId),
   });
 }
 
@@ -526,37 +579,46 @@ export function useCreateComment(albumId: string, mediaId: string) {
  * Corrects a comment. Only the thread is invalidated, not the counts: a
  * correction changes neither the number of messages nor what remains unread.
  */
-export function useUpdateComment(albumId: string, mediaId: string) {
+export function useUpdateComment(scope: Scope, mediaId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ commentId, body }: { commentId: number; body: string }) =>
       api.updateComment(commentId, { body }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.comments(albumId, mediaId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.comments(scope, mediaId) });
     },
   });
 }
 
-export function useDeleteComment(albumId: string, mediaId: string) {
+export function useDeleteComment(scope: Scope, mediaId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (commentId: number) => api.deleteComment(commentId),
-    onSuccess: () => invalidateThread(queryClient, albumId, mediaId),
+    onSuccess: () => invalidateThread(queryClient, scope, mediaId),
   });
 }
 
-function invalidateThread(queryClient: QueryClient, albumId: string, mediaId: string): void {
-  void queryClient.invalidateQueries({ queryKey: queryKeys.comments(albumId, mediaId) });
-  void queryClient.invalidateQueries({ queryKey: queryKeys.detail(albumId, mediaId) });
+function invalidateThread(queryClient: QueryClient, scope: Scope, mediaId: string): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.comments(scope, mediaId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.detail(scope, mediaId) });
   // Album counts supply the viewer badge: without this invalidation, posting
   // from the panel would leave the badge showing the previous state, even on
-  // the photo currently displayed.
-  void queryClient.invalidateQueries({ queryKey: queryKeys.commentCounts(albumId) });
+  // the photo currently displayed. A link's scope has none, which the empty
+  // identifier says — `useCommentCounts` never issues that query, so this
+  // invalidation matches nothing and costs nothing.
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.commentCounts(scope.kind === 'album' ? scope.albumId : ''),
+  });
   // Invalidate both activity-feed scopes, global and album: the newly
   // written message must appear in them, and both may be cached at once. The
   // cost is refetching drawer pages already visited — bounded by how far it
   // was scrolled, and the drawer is almost always closed while writing.
-  void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(albumId) });
+  // The feed is an account's screen and a link never reaches it, so a link's write
+  // invalidates only the global scope — which its own session cannot read either,
+  // and an account's browser will refetch on its next visit.
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.commentsFeed(scope.kind === 'album' ? scope.albumId : null),
+  });
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(null) });
 }
 
@@ -816,9 +878,12 @@ export function useDeleteAlbum() {
     mutationFn: (albumId: string) => api.deleteAlbum(albumId),
     onSuccess: (_result, albumId) => {
       invalidateAlbums(queryClient);
-      // The album's media have just disappeared from the index.
+      // The album's media have just disappeared from the index. The prefix is the
+      // scope key, not the bare identifier: item entries are keyed `['items',
+      // 'album:<id>', order]` since a link scopes them too, and the old prefix
+      // matched nothing at all.
       queryClient.removeQueries({ queryKey: queryKeys.album(albumId) });
-      queryClient.removeQueries({ queryKey: ['items', albumId] });
+      queryClient.removeQueries({ queryKey: ['items', `album:${albumId}`] });
     },
   });
 }
@@ -870,4 +935,44 @@ export function useUpdateSettings() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.adminStatus });
     },
   });
+}
+
+/* --------------------------------------------------------------------------
+ * Share links — every mutation under `/api/admin` (D12, D50)
+ * ------------------------------------------------------------------------ */
+
+export function useAdminShares() {
+  return useQuery({ queryKey: queryKeys.adminShares, queryFn: api.adminShares });
+}
+
+export function useCreateShare() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateShareRequest) => api.createShare(body),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+/**
+ * Revoking keeps the row and its record of use, so the list still shows what the
+ * link did before it was cut off (D260825b). Deleting removes both.
+ */
+export function useRevokeShare() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => api.revokeShare(token),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+export function useDeleteShare() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => api.deleteShare(token),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+function invalidateShares(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: queryKeys.adminShares });
 }

@@ -2,19 +2,21 @@ import {
   COMMENTS_FEED_PAGE_SIZE,
   COMMENT_MAX_LENGTH,
   EMAIL_MAX_LENGTH,
+  SHARE_TOKEN_PATTERN,
   type AlbumCommentCounts,
   type Comment,
   type CommentsFeedPage,
   type CommentsPage,
 } from '@lukarn/shared';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { EditWindowClosedError, UnknownParentError } from '../comments.js';
 import type { AppContext } from '../context.js';
 import type { Translate } from '../i18n/index.js';
 import { verifyUnsubscribeToken } from '../crypto.js';
 import { buildCommentMail, type Recipient } from '../mail.js';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAccount, requireAuth } from '../plugins/auth.js';
+import { shareKind } from '../shares.js';
 
 const createSchema = z.object({
   // `trim` before the lower bound: a comment containing three spaces is empty.
@@ -86,7 +88,17 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     await app.register(async (scoped) => {
-      scoped.addHook('preHandler', requireAuth);
+      /**
+       * An **account**, not merely a session: every route below is keyed on an album
+       * identifier, and a share link is not asked what it covers here. What a link
+       * may reach lives under `/api/share`, whose addresses name no album (D260825e).
+       *
+       * The two routes taking a comment identifier are the exception and sit outside
+       * this scope: correcting a typo and removing what you wrote are the reader's,
+       * whatever credential opened the session, and a numeric comment identifier
+       * names no album.
+       */
+      scoped.addHook('preHandler', requireAccount);
 
       /**
        * Activity feed: latest comments across all albums and photos.
@@ -113,7 +125,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 
         if (
           album !== undefined &&
-          (!context.findAlbum(album) || !context.canSee(account.username, album))
+          (!context.findAlbum(album) || !context.canSee(account.username!, album))
         ) {
           return reply
             .code(404)
@@ -123,7 +135,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const albumIds =
           album !== undefined
             ? [album]
-            : context.albumsFor(account.username).map((visible) => visible.id);
+            : context.albumsFor(account.username!).map((visible) => visible.id);
 
         const page: CommentsFeedPage = context.comments.listFeed({
           albumIds,
@@ -149,7 +161,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       scoped.get('/:albumId', async (request, reply) => {
         const { albumId } = request.params as { albumId: string };
         const account = request.user!;
-        if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
+        if (!context.findAlbum(albumId) || !context.canSee(account.username!, albumId)) {
           return reply
             .code(404)
             .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -162,7 +174,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
       scoped.get('/:albumId/:mediaId', async (request, reply) => {
         const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
         const account = request.user!;
-        if (!context.findAlbum(albumId) || !context.canSee(account.username, albumId)) {
+        if (!context.findAlbum(albumId) || !context.canSee(account.username!, albumId)) {
           return reply
             .code(404)
             .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -179,7 +191,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const { albumId, mediaId } = request.params as { albumId: string; mediaId: string };
         const account = request.user!;
         const album = context.findAlbum(albumId);
-        if (!album || !context.canSee(account.username, albumId)) {
+        if (!album || !context.canSee(account.username!, albumId)) {
           return reply
             .code(404)
             .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -220,7 +232,10 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
             albumId,
             mediaId,
             commenterId,
-            account: account.username,
+            // The credential that carried the message. `requireAccount` guarantees
+            // one here; a link's comment goes through `/api/share` and records the
+            // token in this same column (D38).
+            account: account.username!,
             body: parsed.data.body,
             parentId: parsed.data.parentId ?? null,
           });
@@ -233,7 +248,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
           throw error;
         }
 
-        notify(context, {
+        notifyComment(context, {
           comment,
           commenterId,
           albumId,
@@ -244,6 +259,18 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 
         return reply.code(201).send(comment);
       });
+    });
+
+    /**
+     * Correcting and removing what you wrote, whatever credential opened the session.
+     *
+     * These two take a comment identifier and no album, so a share link reaches them
+     * without an address naming one (D260825e). Reach is `mayReach` rather than
+     * `canSee` alone: a link is asked what it covers, and `canSee` is not taught that
+     * links exist (D260825).
+     */
+    await app.register(async (scoped) => {
+      scoped.addHook('preHandler', requireAuth);
 
       /**
        * Editing by the author within the window following publication.
@@ -271,10 +298,10 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         }
 
         // Same guard as deletion: revoked access must not leave write permission on
-        // an album that is no longer visible.
+        // an album that is no longer visible, and a revoked link must not either.
         const account = request.user!;
         const location = context.comments.locate(id);
-        if (!location || !context.canSee(account.username, location.albumId)) {
+        if (!location || !mayReach(context, request, location)) {
           return reply
             .code(404)
             .send({ error: 'not_found', message: request.t('error.commentNotFound') });
@@ -319,10 +346,10 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         }
 
         const account = request.user!;
-        // Deletion is only allowed in an album still visible to the requester:
+        // Deletion is only allowed on something the requester can still reach:
         // otherwise revoked access would leave a surviving write permission.
         const location = context.comments.locate(id);
-        if (!location || (!account.admin && !context.canSee(account.username, location.albumId))) {
+        if (!location || (!account.admin && !mayReach(context, request, location))) {
           return reply
             .code(404)
             .send({ error: 'not_found', message: request.t('error.commentNotFound') });
@@ -342,10 +369,31 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
 }
 
 /**
+ * Whether this request may still reach the comment it names.
+ *
+ * Two credentials, two questions, and neither is asked of the other: an account asks
+ * `ConfigRepo.canSee`, a link is asked what it covers (D260825). A link covering one
+ * photograph reaches only that photograph's thread; one covering an album reaches
+ * whatever the album indexes now.
+ */
+function mayReach(
+  context: AppContext,
+  request: FastifyRequest,
+  location: { albumId: string; mediaId: string },
+): boolean {
+  const link = request.share;
+  if (link === null) return context.canSee(request.user!.username!, location.albumId);
+  return link.albumId === location.albumId && context.shares.covers(link, location.mediaId);
+}
+
+/**
  * Queues notifications for a new comment outside the response path, so the author
  * sees the published message without waiting for the SMTP server.
+ *
+ * Exported because two routes create a comment — an album's and a link's — and who
+ * gets written to when one appears is one decision, not two that drift.
  */
-function notify(
+export function notifyComment(
   context: AppContext,
   input: {
     comment: Comment;
@@ -369,6 +417,8 @@ function notify(
     recipients.push({
       email: moderation,
       reason: 'moderation',
+      // The owner reads this one, so it takes the album address as it always has.
+      share: null,
       locale: context.env.defaultLocale,
     });
   }
@@ -380,6 +430,7 @@ function notify(
       recipients.push({
         email: author.email,
         reason: 'reply',
+        share: shareBehind(context, input.comment.parentId),
         locale: author.locale ?? context.env.defaultLocale,
       });
     }
@@ -431,4 +482,48 @@ function unsubscribePage(publicUrl: string, found: boolean, t: Translate): strin
     </p>
   </body>
 </html>`;
+}
+
+/**
+ * The share link a comment was written through, whatever it covers and whatever
+ * state it is now in.
+ *
+ * Two things follow from it, and both are the reason to look it up rather than
+ * details of doing so. **`/album/<id>` answers 404 to a link's session**, so the
+ * ordinary notification address opens nothing for the one recipient it was written
+ * for — that is true of an album link exactly as it is of a photograph one. And a
+ * shared photograph names its album nowhere its recipient can reach, which includes
+ * anything sent to them afterwards (D260825e).
+ *
+ * **State is not consulted, deliberately.** A revoked link opens its own page and
+ * says it was taken back (D260825b), which is what its reader should be told;
+ * falling back to the album address would answer them with a 404 and, on a
+ * photograph link, spell out the album name on the way.
+ *
+ * `null` for a comment written from an account: `account` then holds a username, and
+ * no link is found for it.
+ */
+function shareBehind(
+  context: AppContext,
+  parentCommentId: number,
+): { token: string; namesAlbum: boolean } | null {
+  const credential = context.comments.credentialOf(parentCommentId);
+  if (credential === null) return null;
+
+  const link = context.shares.find(credential);
+  if (link) return { token: link.token, namesAlbum: shareKind(link) === 'album' };
+
+  // **A link that has been deleted still carried this comment.** `comments.account`
+  // keeps no foreign key precisely so that stays true, and the message must not
+  // fall back to the album address — that would spell out for the recipient of one
+  // photograph the album name they were never sent (D260825e). The address answers
+  // 404 now, which is what deleting a link means, and 404 says nothing.
+  //
+  // Told apart from a username by shape **and** by the absence of an account: the
+  // pattern alone would misread a forty-three-character username, which
+  // `USERNAME_PATTERN` permits. `namesAlbum` is false because the row that would
+  // have said otherwise is gone, and the conservative half of that guess is the one
+  // that leaks nothing.
+  const wasALink = SHARE_TOKEN_PATTERN.test(credential) && !context.config.user(credential);
+  return wasALink ? { token: credential, namesAlbum: false } : null;
 }

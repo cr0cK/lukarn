@@ -40,6 +40,14 @@ export const fr: Messages = {
   'error.invalidSearch': 'Recherche invalide',
   'error.validation': (details: string) => `Requête invalide — ${details}`,
 
+  // Le registre est celui d’un message adressé : ce lien a été envoyé à quelqu’un
+  // par quelqu’un, comme celui d’un email (D260825b).
+  'error.shareUnknown': 'Ce lien ne mène nulle part.',
+  'error.shareRevoked': 'Ce lien a été retiré.',
+  'error.shareExpired': 'Ce lien a expiré.',
+  'error.shareGone': 'La photo de ce lien ne se trouve plus dans la galerie.',
+  'error.notFound': 'Introuvable',
+
   'error.incompleteLink': 'Lien incomplet',
   'error.invalidLink': 'Lien invalide',
   'error.invalidOrExpiredLink': 'Lien invalide ou expiré',

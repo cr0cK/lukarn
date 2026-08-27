@@ -353,6 +353,20 @@ export class CommentRepo {
   }
 
   /** Album and media carrying this comment, used to reconstruct a link. */
+  /**
+   * The credential that carried one comment: an access key, a share link's token, or
+   * `null` for a comment written before the column existed.
+   *
+   * Read to decide what a notification about that comment may name (D260825e). It is
+   * displayed and compared, never joined — no foreign key holds it, so what wrote a
+   * message stays true after the credential is gone.
+   */
+  credentialOf(id: number): string | null {
+    const row = this.db.prepare('SELECT account FROM comments WHERE id = ?').get(id) as
+      { account: string | null } | undefined;
+    return row?.account ?? null;
+  }
+
   locate(id: number): { albumId: string; mediaId: string } | null {
     const row = this.db.prepare('SELECT album_id, media_id FROM comments WHERE id = ?').get(id) as
       { album_id: string; media_id: string } | undefined;

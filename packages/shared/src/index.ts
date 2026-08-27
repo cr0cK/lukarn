@@ -230,7 +230,17 @@ export type SyncStatus = 'never' | 'running' | 'ok' | 'error';
  * `identity` identifies someone — self-declared and verified by email.
  */
 export interface SessionUser {
-  username: string;
+  /**
+   * `null` when a **share link** opened this session rather than an account (D260825).
+   *
+   * A link is a credential and not a person: it grants what its row says it grants,
+   * and there is no access key to report. The shape stays the one an account gets
+   * so the identity form and the comment stack branch on this response alone —
+   * but every reader that meant "the account behind this request" is made to say
+   * so by this `null`, which is the point of adjusting the field rather than
+   * adding one beside it.
+   */
+  username: string | null;
   admin: boolean;
   /** `null` until someone identifies themselves in this session. */
   identity: CommenterIdentity | null;
@@ -1195,4 +1205,114 @@ export function slugifyAlbumId(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
   return slug.slice(0, USERNAME_MAX_LENGTH);
+}
+
+/* ---------------------------------------------------------------------------
+ * Share links — an album, or one photograph, opened by somebody with no account
+ * ------------------------------------------------------------------------ */
+
+/** What a link covers: a whole album, or the single photograph it was made from. */
+export type ShareKind = 'album' | 'media';
+
+/**
+ * Why a link no longer works. `live` is the only state that serves anything;
+ * the other two answer 410 and say which happened, because the person reading
+ * was sent this address by somebody they know and cannot otherwise tell a
+ * mistyped address from one that was taken back (D260825b).
+ */
+export type ShareState = 'live' | 'revoked' | 'expired';
+
+/**
+ * Thirty-two random bytes, base64url — the length `randomBytes(32)` produces.
+ * Checked before the database is touched so a malformed address costs no query.
+ */
+export const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** What the issuer calls a link in administration. Never shown to its recipient. */
+export const SHARE_LABEL_MAX_LENGTH = 120;
+
+/**
+ * A media item as a link serves it.
+ *
+ * Everything `MediaItem` carries except `albumId`: an album name says who was
+ * there, when, and that there are more — the thing deliberately not sent when one
+ * photograph is shared (D260825e). One shape for both kinds of link rather than
+ * two, so no future field can arrive on the album path and be forgotten on the
+ * other.
+ */
+export type ShareItem = Omit<MediaItem, 'albumId'>;
+
+/** A media item's full record as a link serves it. See `ShareItem`. */
+export type ShareDetail = Omit<MediaDetail, 'albumId'>;
+
+/** One page of a shared album's grid. Mirrors `ItemsPage` without the album. */
+export interface ShareItemsPage {
+  items: ShareItem[];
+  nextCursor: string | null;
+}
+
+/**
+ * What a link opens, as its recipient receives it.
+ *
+ * The album's identifier appears in neither branch. A shared album shows its
+ * title because that is what was shared; nothing here needs the identifier, and
+ * a field nobody reads is a field that leaks on the day somebody logs it.
+ */
+export type ShareView =
+  | {
+      kind: 'album';
+      title: string;
+      description: string | null;
+      itemCount: number;
+      coverId: string | null;
+      coverVersion: string | null;
+      groupBy: GroupBy;
+      sortOrder: SortOrder;
+    }
+  | { kind: 'media'; item: ShareDetail };
+
+/** One recorded opening, as administration lists it (D260825c). */
+export interface ShareOpening {
+  openedAt: string;
+}
+
+/**
+ * A link as its issuer sees it: what it covers, whether it still works, and when
+ * it was last opened.
+ *
+ * `token` is present here and only here — this response is `/api/admin/*`, so its
+ * reader already holds every credential this instance has.
+ */
+export interface AdminShareLink {
+  token: string;
+  kind: ShareKind;
+  state: ShareState;
+  /** The album a link covers, or the album its photograph came from. */
+  albumId: string;
+  /** `null` when the album has been deleted since the link was made. */
+  albumTitle: string | null;
+  /** The shared photograph, `null` for an album link. */
+  mediaId: string | null;
+  /** File name of the shared photograph, `null` for an album link or a stale one. */
+  mediaName: string | null;
+  label: string | null;
+  createdAt: string;
+  createdBy: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  /** Openings counted once per session and hour, newest first, most recent two. */
+  openings: ShareOpening[];
+  openingCount: number;
+}
+
+/**
+ * Making a link. One of `mediaId` or nothing: with it the link covers that
+ * photograph, without it the whole album.
+ */
+export interface CreateShareRequest {
+  albumId: string;
+  mediaId?: string | null;
+  label?: string | null;
+  /** ISO 8601 date after which the link answers 410, or `null` for no expiry. */
+  expiresAt?: string | null;
 }

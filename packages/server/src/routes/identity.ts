@@ -50,7 +50,10 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
 
     /** Rebuilds the session as returned by `/auth/me` after a change. */
     const sessionUser = (
-      username: string,
+      // `null` when a share link opened this session: commenting through a link still
+      // costs a code sent to an address (D39), so these routes serve it unchanged and
+      // there is simply no access key to report (D260825).
+      username: string | null,
       admin: boolean,
       commenterId: number | null,
     ): SessionUser => {

@@ -161,7 +161,8 @@ stated where its message can be read.
 ### `sessions`
 
 `id` (PK, 32 random bytes in base64url), `username`, `created_at`, `expires_at`,
-`commenter_id`, `last_seen_at`, `device`. One-year TTL (`sessions.ts`), extended
+`commenter_id`, `last_seen_at`, `device`, `share_token`. One-year TTL
+(`sessions.ts`), extended
 by the same amount once a session passes its half-life — the cookie is reissued at
 the same time, otherwise the browser would discard its copy on the original date
 and the extension would achieve nothing.
@@ -179,6 +180,17 @@ The last two columns hold visit telemetry (D260809h):
   discarded**. The full user-agent is stored nowhere: it is a fingerprint, while
   one of four classes cannot re-identify anyone. `NULL` when the login request has
   no header, and for sessions predating the migration.
+
+**`username` is `NULL` when a share link opened the session, and `share_token`
+names that link** (D260825). A `CHECK` states the invariant rather than leaving it
+to whoever writes a row next: a session belongs to **exactly one** credential,
+never both and never neither. `share_token` uses `ON DELETE CASCADE`, so deleting
+a link closes the sessions it opened, for the reason changing a password does;
+revoking does the same through a `DELETE` the repository issues, since the row
+itself stays (D260825b).
+
+Migration 20 recreates this table for that one column: SQLite cannot drop a
+`NOT NULL` in place. Nothing else about it changes, column for column.
 
 ### `device_pairings`
 
@@ -474,7 +486,7 @@ A discussion thread per media item **and per album**.
 | `album_id`, `media_id`   | The pair to which the thread belongs                                                                                                    |
 | `parent_id`              | `NULL` for a root, otherwise the root ID — never any deeper                                                                             |
 | `commenter_id`           | The **author**, FK to `commenters` `ON DELETE CASCADE` — a person, not an access key                                                    |
-| `account`                | The access key used to write, `COLLATE NOCASE`, FK to `users` `ON DELETE SET NULL` — retained for moderation                            |
+| `account`                | The **credential** used to write, `COLLATE NOCASE`: an access key, or a share link's token — retained for moderation                    |
 | `body`                   | The message. **The only column rewritten afterwards**, and only by its author within 30 s (D57)                                         |
 | `created_at`             | Publication date. **Never** changes, even after a correction: the message must retain its place in a thread others were already reading |
 | `hidden_at`, `hidden_by` | Moderation after publication                                                                                                            |
@@ -499,11 +511,20 @@ Structural choices:
 - **`parent_id` uses `ON DELETE SET NULL`, not `CASCADE`.** Deleting an identity
   removes its messages (cascade on `commenter_id`), but replies written by others
   belong to them: they move to the top level rather than disappearing with it.
-- **`account` uses `ON DELETE SET NULL`.** This is the access key used when
-  writing, retained for moderation: it identifies which shared password a
-  problematic message came through, and therefore which one to change. Deleting
-  an account must not remove comments that do not belong to it — they belong to
-  their author.
+- **`account` carries no foreign key**, since migration 20. It is the credential
+  used when writing, retained for moderation: it identifies which shared password
+  or which invitation a problematic message came through, and therefore which one
+  to change. A **share link** records its token here — a link is a credential and
+  not a person, so its author stays a `commenters` identity (D38, D260825) — and a
+  token is not a username, which is what the key to `users` insisted on.
+
+  Losing that key also loses the `ON DELETE SET NULL` that blanked the column when
+  an account was removed, and that is the right way round: `album_visits` already
+  makes the argument. What wrote a comment stays true after the credential is gone,
+  and a blank cannot answer the question moderation reads this column for. Nothing
+  dereferences it — it is displayed and compared, never joined. Deleting an account
+  still removes no comment: they belong to their author.
+
 - **`album_id` uses `ON DELETE CASCADE`.** Deleting an album removes its comments:
   they referred to content that is no longer exposed.
 
@@ -565,6 +586,90 @@ Three key choices:
 What is **not** stored: no IP address, no raw user-agent, and never the opened
 media item — that would be someone's viewing history in an application where an
 access key is shared.
+
+### `share_links`
+
+A link that opens an album, or one photograph, for somebody with no account
+(D260825). Written by `shares.ts` from `/api/admin/shares`, read by
+`routes/share.ts` and by the `/media` prefix `preHandler`.
+
+| Column       | Role                                                                             |
+| ------------ | -------------------------------------------------------------------------------- |
+| `token`      | PK, 32 random bytes in base64url — the credential itself                         |
+| `album_id`   | The album covered, or the album the photograph came from. FK `ON DELETE CASCADE` |
+| `media_id`   | The shared photograph, `NULL` for an album link. **No foreign key** — see below  |
+| `label`      | What the issuer calls it. Administration only                                    |
+| `created_at` | When it was issued                                                               |
+| `created_by` | The account that issued it, `COLLATE NOCASE`. **No foreign key**                 |
+| `expires_at` | ISO instant, or `NULL` for a link that never expires                             |
+| `revoked_at` | Set rather than deleted — see below                                              |
+
+- **The token is random and its rights live in the row.** Never a signed value
+  describing what it grants. The three tokens this application already mints — the
+  two unsubscribe links and the code fingerprint — carry no row, which is what
+  makes them cheap and what makes them impossible to revoke. A link is defined by
+  being revocable, so it takes the opposite trade: the row is the truth, and
+  revoking is a write that lands on the next request, exactly as removing an album
+  from an account does.
+- **Revocation sets a date; it does not delete the row.** With the row gone,
+  revoked and never-existed become the same state and the server has nothing left
+  to tell them apart with — which is what `410` versus `404` depends on (D260825b).
+  Deleting the link outright is a separate gesture and the only one that removes
+  both it and its openings.
+- **No foreign key on `media_id`**, for the reason `comments` carries none:
+  `deleteStale` removes a photo whenever a synchronisation misses it, and an
+  indexing incident must not silently destroy a link somebody has already sent.
+  A live link whose photograph has gone answers `410 share_gone` in words.
+- **No foreign key on `created_by`**, so a deleted account leaves the record true
+  rather than blank — the argument D260809h already makes for `album_visits`.
+- **`album_id` cascades**: a link to a deleted album grants nothing, and keeping
+  the row would leave administration listing a credential for content that is gone.
+
+`telemetry.ts` reads `sessions` for the "Visits" tab and excludes the rows a link opened: that tab
+answers about access keys, and a link has no username to group under.
+
+`ConfigRepo.canSee` is never asked about a link. Asking a link what it covers is a
+different question, and a second predicate over accounts and their albums is how
+one of the two gets updated alone (D260825). An album link covers whatever its
+album indexes now — so a photograph added by a later synchronisation is covered
+without the link being reissued — while a photograph link covers exactly one file.
+
+### `share_openings`
+
+When each link was opened (D260825c).
+
+| Column       | Role                                                        |
+| ------------ | ----------------------------------------------------------- |
+| `token`      | The link. FK to `share_links` `ON DELETE CASCADE`           |
+| `session_id` | The browser. A bucket for telling two visitors apart        |
+| `hour`       | `YYYY-MM-DDTHH` in UTC                                      |
+| `opened_at`  | ISO instant of the opening that created this row            |
+| **PK**       | `(token, session_id, hour)`, table declared `WITHOUT ROWID` |
+
+- **One row per opening, not an aggregate.** `album_visits` aggregates to the day
+  on grounds of scale — one album visit is a grid request, two hundred thumbnails
+  and a few dozen openings — and that scale is absent here: a link is opened by a
+  handful of people a handful of times. Deciding whether to cut a link off is a
+  different question asked at a different moment, and the one asked an hour after
+  sending an album is whether it arrived. D260809h stands unchanged; `album_visits`
+  could not have held this in any case, since its key's second column is a username
+  and a link has none.
+- **The primary key is the once-per-session-per-hour rule**, following the
+  threshold `sessions.last_seen_at` already uses: a reader who refreshes the page
+  does not turn one visit into six.
+- **A foreign key, unlike `album_visits`.** Deleting a link is the one gesture that
+  must erase its history; revoking keeps both, because the history is what
+  justified the decision (D260825b).
+- **No purge.** A link's first opening is part of what administration reports, so
+  the four-hundred-day window `album_visits` gets would make the oldest links
+  quietly start lying. The volume does not need pruning.
+
+What is **not** stored: never the photograph looked at, never an address, never an
+IP. What is recorded is that a link was opened. The cost accepted here and written
+down rather than rediscovered: a named link with a timestamp does identify, where
+D260809h declined to build that for shared keys because a household is not a
+person. A link is aimed at somebody. What keeps it proportionate is that it is read
+by the one person who issued the link, and that it stops at the door.
 
 ### `album_days` and `geo_places`
 
@@ -782,6 +887,34 @@ Current state:
 | 17      | `storage_connections`, from `oauth_token`; `albums.connection_id`; `media.source_path`. |
 | 18      | `users.commenter_id`; `verification_codes`; the four code columns leave `commenters`.   |
 | 19      | `verification_codes.locale`: the language an invitation is written in.                  |
+| 20      | `share_links`, `share_openings`; `sessions` and `comments` recreated — see below.       |
+
+**Migration 20 recreates two tables**, and that is the whole of its risk: adding
+`share_links` and `share_openings` cannot lose data, while copying `sessions` and
+`comments` can. Both are recreated for one reason between them — each assumed the
+only credential was an access key. `sessions.username` has to become nullable and
+`comments.account` has to lose its foreign key to `users`, and SQLite can drop
+neither a `NOT NULL` nor a key in place. The copy of `comments` is ordered by `id`
+so a reply never arrives before the comment it answers: that foreign key is
+immediate rather than deferred, and rowid order is only incidentally the same.
+The copy carries the rows **and the counter**: `sqlite_sequence` is raised to the
+old table's value before the drop. Copying only reaches `max(id)`, which is lower
+than the counter whenever the newest comments were moderated away — measured on such
+a database, 5 became 3 and the next comment took 4 back. That is precisely what
+migration 4's `AUTOINCREMENT` exists to prevent: a notification email links to a
+comment and sits in an inbox for months, where a reissued identifier would point an
+old message at somebody else's conversation.
+
+`packages/server/test/migrate.test.ts` verifies it on a version 19 database holding
+a thread and one deleted comment: every comment survives with its identifier, its
+author and its reply structure, open sessions are not invalidated, and the next
+identifier is the one after the deleted comment rather than the deleted comment's
+own.
+
+Those tests run with **`foreign_keys = ON`**, as `openDb` does. They did not until
+this migration, which meant they judged every earlier one under weaker rules than a
+real upgrade — a migration violating a foreign key would have passed there and
+failed on the first instance to apply it.
 
 Migration 19 is additive and touches no row: the column arrives as `NULL` on every
 code, and the instance's `DEFAULT_LOCALE` keeps applying to the invitations already

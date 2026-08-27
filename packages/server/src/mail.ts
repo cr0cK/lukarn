@@ -168,6 +168,21 @@ export interface Recipient {
    * belongs to no identity (D260812d).
    */
   locale: Locale;
+  /**
+   * The **share link** this person knows the photographs through, when they wrote
+   * their comment through one.
+   *
+   * Set, the message links to that link's page rather than to `/album/<id>`, which
+   * answers 404 to a link's session — the ordinary address opens nothing for the one
+   * recipient it was written for. `namesAlbum` then says whether the album may be
+   * spelled out beside the photograph: an album link's recipient was sent the album
+   * and is reading its title on the page, while a shared photograph names its album
+   * nowhere its recipient can reach, and that includes anything sent to them
+   * afterwards (D260825e).
+   *
+   * `null` for everybody else — an account's reply, and the moderation address.
+   */
+  share: { token: string; namesAlbum: boolean } | null;
 }
 
 /**
@@ -188,7 +203,11 @@ export function buildCommentMail(
   instanceName: string,
   env: Env,
 ): MailMessage {
-  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
+  // `&panel=comments` on both: this email announces a message, and landing on the
+  // image with the panel shut leaves the reader hunting for what it referred to.
+  const link = recipient.share
+    ? `${env.publicUrl}/s/${encodeURIComponent(recipient.share.token)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`
+    : `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
   /**
    * This link disables `commenters.notify`, and therefore **everything** the gallery
    * sends: replies to comments as well as new-photo announcements. The wording says
@@ -212,16 +231,23 @@ export function buildCommentMail(
     notification.authorDisplayName,
   );
 
-  const where = notification.mediaName
-    ? `${notification.mediaName} — ${notification.albumTitle}`
-    : notification.albumTitle;
+  // The album is dropped for the recipient of a single photograph, not merely hidden
+  // in the link: the title is a sentence somebody wrote about a family occasion, and
+  // it says who was there and that there are more (D260825e). A shared album's
+  // recipient keeps it — they were sent the album, and its title is on their page.
+  const namesAlbum = recipient.share?.namesAlbum ?? true;
+  const where = !namesAlbum
+    ? notification.mediaName
+    : notification.mediaName
+      ? `${notification.mediaName} — ${notification.albumTitle}`
+      : notification.albumTitle;
 
   const text = [
     `${subject}:`,
     '',
     quote(notification.body),
     '',
-    where,
+    ...(where ? [where] : []),
     link,
     ...(unsubscribe ? ['', '—', `${t('mail.unsubscribeAll')} : ${unsubscribe}`] : []),
   ].join('\n');
@@ -234,7 +260,7 @@ export function buildCommentMail(
       ${header(instanceName, env.publicUrl)}
       <p style="margin: 0 0 16px;">${escapeHtml(subject)}:</p>
       <blockquote style="margin: 0 0 16px; padding: 12px 16px; border-left: 3px solid #d4d4d4; background: #fafafa; white-space: pre-wrap;">${escapeHtml(notification.body)}</blockquote>
-      <p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>
+      ${where ? `<p style="margin: 0 0 8px; color: #666;">${escapeHtml(where)}</p>` : ''}
       <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">${t('mail.viewPhoto')}</a></p>
       ${
         unsubscribe

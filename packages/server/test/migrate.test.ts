@@ -9,9 +9,17 @@ import { MIGRATIONS, migrate } from '../src/db.js';
  * version, never from zero.
  */
 
-/** Database frozen at `version`, as after an older deployment. */
+/**
+ * Database frozen at `version`, as after an older deployment.
+ *
+ * **`foreign_keys = ON`, because `openDb` sets it.** Without it these tests run
+ * under weaker rules than any real upgrade: a migration that violates a foreign key
+ * passes here and fails on the first instance to apply it, which is the one place
+ * the failure cannot be undone.
+ */
 function databaseAtVersion(version: number): Database.Database {
   const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
   for (let index = 0; index < version; index++) db.exec(MIGRATIONS[index]!);
   db.pragma(`user_version = ${version}`);
   return db;
@@ -670,6 +678,110 @@ describe('migrations', () => {
           )
           .run(date),
       /UNIQUE/,
+    );
+
+    db.close();
+  });
+
+  it('carries a version 19 thread and its sessions through two recreated tables', () => {
+    const db = databaseAtVersion(19);
+    const date = '2026-01-01T00:00:00.000Z';
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('famille', '$argon2id$empreinte', 0, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, created_at, updated_at)
+       VALUES ('corse', 'Corse', 'f1', 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO commenters (email, display_name, created_at, verified_at)
+       VALUES ('tante@exemple.fr', 'Tante', ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO comments (id, album_id, media_id, parent_id, commenter_id, account, body, created_at)
+       VALUES (1, 'corse', 'img-1', NULL, 1, 'famille', 'Racine', ?)`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO comments (id, album_id, media_id, parent_id, commenter_id, account, body, created_at)
+       VALUES (2, 'corse', 'img-1', 1, 1, 'famille', 'Réponse', ?)`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO sessions (id, username, created_at, expires_at)
+       VALUES ('session-a', 'famille', ?, '2099-01-01T00:00:00.000Z')`,
+    ).run(date);
+
+    // A third comment, moderated away before the upgrade. This is what separates
+    // copying the rows from copying the **counter**: max(id) is now 2 while the
+    // sequence stands at 3.
+    db.prepare(
+      `INSERT INTO comments (id, album_id, media_id, commenter_id, account, body, created_at)
+       VALUES (3, 'corse', 'img-1', 1, 'famille', 'Retiré', ?)`,
+    ).run(date);
+    db.prepare('DELETE FROM comments WHERE id = 3').run();
+
+    migrate(db);
+
+    // Both tables are copied rather than altered, which is the whole of this
+    // migration's risk: a reply must not arrive before the comment it answers, and
+    // an open session must not be signed out by an upgrade.
+    const thread = db.prepare('SELECT id, parent_id, account FROM comments ORDER BY id').all();
+    assert.deepEqual(thread, [
+      { id: 1, parent_id: null, account: 'famille' },
+      { id: 2, parent_id: 1, account: 'famille' },
+    ]);
+    const session = db
+      .prepare("SELECT username, share_token FROM sessions WHERE id = 'session-a'")
+      .get();
+    assert.deepEqual(session, { username: 'famille', share_token: null });
+
+    // The **counter**, not just the rows. Copying a table carries max(id) across
+    // and leaves the rest of the sequence behind, so a database whose newest
+    // comments were moderated away would reissue their identifiers — and a
+    // notification email links to one for months (migration 4). Measured before the
+    // fix: 4 came back.
+    const counter = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'comments'").get() as {
+      seq: number;
+    };
+    assert.equal(counter.seq, 3);
+    const next = db
+      .prepare(
+        `INSERT INTO comments (album_id, media_id, commenter_id, account, body, created_at)
+         VALUES ('corse', 'img-1', 1, 'famille', 'Après', ?)`,
+      )
+      .run(date).lastInsertRowid;
+    // 4, never 3: measured before the fix, the copy left the sequence at 2 and this
+    // comment took the deleted identifier back.
+    assert.equal(next, 4);
+
+    // `comments.account` may now hold a share link's token, which is not a username:
+    // the key to `users` is what had to go (D38, D260825).
+    db.prepare(
+      `INSERT INTO comments (album_id, media_id, commenter_id, account, body, created_at)
+       VALUES ('corse', 'img-1', 1, 'un-jeton-qui-nest-pas-un-compte', 'Par un lien', ?)`,
+    ).run(date);
+
+    // A session belongs to exactly one credential, and the table says so itself
+    // rather than trusting whoever writes the next row.
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO sessions (id, username, created_at, expires_at, share_token)
+             VALUES ('session-b', 'famille', ?, '2099-01-01T00:00:00.000Z', 'jeton')`,
+          )
+          .run(date),
+      /CHECK/,
+    );
+    assert.throws(
+      () =>
+        db
+          .prepare(
+            `INSERT INTO sessions (id, username, created_at, expires_at, share_token)
+             VALUES ('session-c', NULL, ?, '2099-01-01T00:00:00.000Z', NULL)`,
+          )
+          .run(date),
+      /CHECK/,
     );
 
     db.close();
