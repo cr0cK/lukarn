@@ -30,6 +30,12 @@ const RACINE = fileURLToPath(new URL('..', import.meta.url));
 /** The types that promise somebody will notice, per Conventional Commits. */
 const TYPES_VISIBLES = /^(feat|fix|perf)(\([^)]*\))?!?:/;
 
+/**
+ * Types that can be dispensed when internal. `feat` is deliberately absent:
+ * a feature is by definition user-facing and cannot excuse itself from CHANGELOG.md.
+ */
+const TYPES_DISPENSABLES = /^(fix|perf)(\([^)]*\))?!?:/;
+
 /** Opts one commit out, and says why in the same breath. */
 const DISPENSE = /^Changelog:\s*none\b/im;
 
@@ -116,7 +122,9 @@ const journal = git('log', '--format=%H%x00%B%x00%x00', `${depuis}..HEAD`)
   });
 
 const reclament = journal.filter(
-  (commit) => TYPES_VISIBLES.test(commit.sujet) && !DISPENSE.test(commit.message),
+  (commit) =>
+    TYPES_VISIBLES.test(commit.sujet) &&
+    (!TYPES_DISPENSABLES.test(commit.sujet) || !DISPENSE.test(commit.message)),
 );
 
 if (reclament.length === 0) {
@@ -141,7 +149,8 @@ console.error(
   '\nAdd what they change under "## [Unreleased]", in the voice of the' +
     '\nfile: what it does for the reader, not what the diff does. The' +
     '\nsection of a `v*` tag becomes the body of its GitHub release.' +
-    '\n\nFor a change nobody outside this repository could observe, put' +
-    '\n"Changelog: none — <reason>" in the commit body.\n',
+    '\n\nFor a fix nobody outside this repository could observe, put' +
+    '\n"Changelog: none — <reason>" in the commit body. A "feat" commit' +
+    '\nalways demands an entry.\n',
 );
 process.exit(1);

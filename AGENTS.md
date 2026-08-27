@@ -57,14 +57,15 @@ unmerged after both had landed, and left three items unticked for code
 detected—all boxes ticked—so a plan whose items lie in the other direction is
 still yours to notice.
 
-**The README names every storage kind `SUPPORTED_KINDS` offers.** The anchor is
-that list paired with the label `messages-en.ts` gives each kind, so adding a
-backend forces the front door to mention it. The README claimed "Drive is the
-first storage it reads, and the only one it reads today" for as long as three
-other backends shipped—nothing breaks when the front door goes stale, which is
-exactly why nothing caught it. A paraphrase does not satisfy the check on
-purpose: the words a reader meets in the README are then the words they find in
-the form.
+**The README names every storage kind `SUPPORTED_KINDS` offers, and describes every
+core capability in `ADMIN_TABS`.** The anchor is that list paired with the label
+`messages-en.ts` gives each kind, and the tabs under Library and People. Adding a
+backend or a new administration section forces the front door to mention it. The
+README claimed "Drive is the first storage it reads, and the only one it reads today"
+for as long as three other backends shipped—nothing breaks when the front door goes
+stale, which is exactly why nothing caught it. A paraphrase does not satisfy the
+check on purpose: the words a reader meets in the README are then the words they find
+in the form.
 
 **A decision states the rule in force, and is rewritten when that rule changes**
 (D260822). This directory answers "why is it built this way", in the present
@@ -117,7 +118,8 @@ Conventional Commits already carry the answer: `feat`, `fix` and `perf` claim
 somebody will notice, and the section `## [Unreleased]` must have moved with
 them. Every other type says the opposite and is believed. For the `fix` nobody
 outside the repository could observe, a `Changelog: none — <reason>` line in the
-commit body excuses it; stating the reason is the point.
+commit body excuses it; stating the reason is the point. A `feat` commit always
+demands an entry and cannot be excused with `Changelog: none`.
 
 Write the entry **in the voice of the file**: what it does for the reader, and
 why it is better, never a restatement of the diff. That is the one thing this
@@ -139,6 +141,7 @@ described without its name appearing—add it to `MODULES_TOLERES` in
 
 | If you change…                                                             | Update…                                                                                  |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| A visible user-facing feature or capability                                | `CHANGELOG.md`, and `README.md` if it is a core product capability                       |
 | `packages/server/src/routes/*.ts` (route, status code, payload)            | `specs/05-api.md`                                                                        |
 | `packages/shared/src/index.ts`                                             | `specs/05-api.md`, and `03` if the model changes                                         |
 | `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)               | `specs/03-data-model.md`                                                                 |
