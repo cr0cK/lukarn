@@ -81,10 +81,14 @@ updates:
         patterns: ['*']
 
   # Watches the `node:24-slim` base image, which is where a patched OpenSSL or
-  # zlib reaches this application.
+  # zlib reaches this application. Major versions (e.g. Node 25) are ignored to
+  # stay on Node 24 Active LTS until the next LTS release.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     commit-message:
       prefix: chore
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
