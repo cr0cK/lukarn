@@ -34,5 +34,5 @@ so that a developer who was not involved in its design can take it over.
 ## Keeping these documents up to date
 
 The rule and the "if you change X, update Y" table are in the root
-[`CLAUDE.md`](../CLAUDE.md). In short: update the spec as part of the same work as
+[`AGENTS.md`](../AGENTS.md). In short: update the spec as part of the same work as
 the code, never afterwards.

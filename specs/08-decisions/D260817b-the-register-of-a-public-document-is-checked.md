@@ -49,7 +49,7 @@ vendor's idea of good writing. If the list stops paying for itself, it is one
 file to delete.
 
 **What it cannot check.** Whether a paragraph is true, whether it is useful, or
-whether the heading above it describes what changed. `CLAUDE.md` and
+whether the heading above it describes what changed. `AGENTS.md` and
 `CONTRIBUTING.md` carry that half of the rule, including the one about a heading
 stating the change rather than evoking it: "Three new storage backends alongside
 Google Drive" rather than "Photographs no longer have to live in Google Drive".

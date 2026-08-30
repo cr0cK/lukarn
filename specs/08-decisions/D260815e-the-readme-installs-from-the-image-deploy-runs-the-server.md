@@ -62,7 +62,7 @@ The install now depends on the release workflow continuing to publish `latest`,
 and states what nothing else stated where a prospective user would read it: the
 image is built for `linux/amd64` only.
 
-The update rule in `CLAUDE.md` gains a target. A change to the **installation
+The update rule in `AGENTS.md` gains a target. A change to the **installation
 surface** — the compose file, a variable required at startup, the command that
 creates the first administrator — updates the root README as well as
 `specs/06-configuration-and-deployment.md`, because that surface is now

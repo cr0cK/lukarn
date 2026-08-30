@@ -99,7 +99,7 @@ choice updates the matching spec in the same piece of work.** A spec updated
 routes, environment variables, migrations, modules) against what the specs
 mention, and fails on the gap.
 
-`CLAUDE.md` holds the table of which document follows which file. The short
+`AGENTS.md` holds the table of which document follows which file. The short
 version:
 
 | If you touch…                                | Update…                                    |
@@ -234,7 +234,7 @@ one is the body of a release page that already exists.
 
 **A note on language.** The repository is entirely in English: code, comments,
 interface and `specs/`. A few code identifiers predating the rule remain in
-French (see `CLAUDE.md`); renaming them is separate work, not to be folded into
+French (see `AGENTS.md`); renaming them is separate work, not to be folded into
 a prose-only change.
 
 What a reader sees is translated, and the register depends on who is being

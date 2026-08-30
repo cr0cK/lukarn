@@ -24,14 +24,14 @@ boundary where the readership was at the time.
 
 **Decision.** One language, English, everywhere: code, comments, test names,
 interface labels, error messages, logs, example configuration files, `specs/`,
-and `CLAUDE.md` included. The rule applies **from now on** to everything that is
+and `AGENTS.md` included. The rule applies **from now on** to everything that is
 written, with no requirement to translate the surrounding text when making a
 change — otherwise the smallest fix would entail a translation, and nobody
 would propose anything again.
 
 The migration proceeded from most-read to least-read: the installation surface
 first, then the interface and server messages, then comments, test names, and
-`specs/`. It is now complete, and `CLAUDE.md` states the rule in the present
+`specs/`. It is now complete, and `AGENTS.md` states the rule in the present
 tense rather than as a crossing under way. What remains in French is a handful of
 code identifiers, listed there — renaming a symbol is a different kind of change
 from translating a sentence, and it earns its own piece of work.
