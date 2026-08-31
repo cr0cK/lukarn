@@ -91,7 +91,7 @@ Rereading the whole corpus is what a run costs, since scope no longer narrows. T
 is affordable at the cadence of a release and would not have been at the cadence of a
 merge, which is what the machinery above was buying.
 
-The mapping table stays in `CLAUDE.md`, where it answers "I changed this, what do I
+The mapping table stays in `AGENTS.md`, where it answers "I changed this, what do I
 update?" for whoever is writing the change. What it no longer does is route an
 audit, so its holes stopped being work owed to this decision.
 

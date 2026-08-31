@@ -21,7 +21,7 @@ the procedure away from the scripts it describes, whereas the point of
 `deploy/README.md` is precisely to be read alongside `cloud-init.yaml` and
 `backup.sh`, and updated in the same change.
 
-**Consequences.** The update rule in `CLAUDE.md` changes target: a modification
+**Consequences.** The update rule in `AGENTS.md` changes target: a modification
 to `deploy/` updates `specs/06` **and `deploy/README.md`**, not the root. Links
 from `deploy/cloud-init.yaml` and `specs/06` now point to `deploy/README.md`.
 `tools/check-specs.mjs` is unaffected: it reads no README; it compares code with

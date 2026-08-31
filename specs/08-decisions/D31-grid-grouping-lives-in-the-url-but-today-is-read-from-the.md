@@ -5,7 +5,7 @@
 **Context.** The grid used to split photos into hard-coded months. On a holiday
 album — three thousand photos over three weeks — this produces one or two
 sections, which provides no meaningful landmark. Splitting by day gives useful
-headers, but the entire front end displays dates in UTC (see `CLAUDE.md`), and
+headers, but the entire front end displays dates in UTC (see `AGENTS.md`), and
 splitting by day in local time would move late-evening photos between sections.
 
 **Decision.** `GroupBy = 'month' | 'day'` in `@lukarn/shared`, `?group=day` in

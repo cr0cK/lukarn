@@ -473,7 +473,8 @@ const citantDesSpecs = [
     (c) => !c.includes(`${join(SPECS, '08-decisions')}/`),
   ),
   join(RACINE, 'README.md'),
-  join(RACINE, 'CLAUDE.md'),
+  ...(existsSync(join(RACINE, 'CLAUDE.md')) ? [join(RACINE, 'CLAUDE.md')] : []),
+  ...(existsSync(join(RACINE, 'GEMINI.md')) ? [join(RACINE, 'GEMINI.md')] : []),
   ...(existsSync(join(RACINE, 'AGENTS.md')) ? [join(RACINE, 'AGENTS.md')] : []),
   join(RACINE, 'deploy/README.md'),
 ];
@@ -495,7 +496,7 @@ for (const chemin of citantDesSpecs) {
  * A plan whose every item is ticked should no longer exist.
  *
  * `specs/09-plans/` is the one directory describing what does not exist yet, and
- * CLAUDE.md says the pull request that finishes a plan deletes it. Nothing
+ * AGENTS.md says the pull request that finishes a plan deletes it. Nothing
  * enforced that, and a finished plan is worse than no plan: it keeps naming
  * branches that were merged and states as pending work that shipped, which is
  * exactly what the last one did — three items still unticked on `main` for code
@@ -597,7 +598,7 @@ if (manques.length === 0) {
 console.error(`\nDocumentation has drifted from code — ${manques.length} issue(s):\n`);
 for (const manque of manques) console.error(`  · ${manque}`);
 console.error(
-  '\nCLAUDE.md states which document tracks each file. A code change' +
+  '\nAGENTS.md states which document tracks each file. A code change' +
     '\nwithout a spec change is not complete.\n',
 );
 process.exit(1);

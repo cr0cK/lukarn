@@ -138,7 +138,7 @@ if (failures.length === 0) {
 console.error(`\nThe register of a public document has drifted — ${failures.length} issue(s):\n`);
 for (const failure of failures) console.error(`  · ${failure}`);
 console.error(
-  '\nThese documents address a stranger, and the tone rule is in CLAUDE.md' +
+  '\nThese documents address a stranger, and the tone rule is in AGENTS.md' +
     '\nand CONTRIBUTING.md. Raising a budget is a decision, not a fix.\n',
 );
 process.exit(1);

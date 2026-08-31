@@ -59,4 +59,4 @@ _Keeping the French strings in the components and extracting only what changes._
 Half a translation is worse than none: the interface then mixes both languages
 on the same screen, and there is no way to tell what remains untranslated other
 than reading every file — which is exactly how batch 5b was found wanting
-(CLAUDE.md, "Language").
+(AGENTS.md, "Language and internationalization").

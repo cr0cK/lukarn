@@ -152,7 +152,7 @@ document is written as `[03](../03-data-model.md)`, never `./`.
 The reverse case escapes every check: a spec that refers to a decision but
 targets the wrong file sends the reader to a decision about something else, and
 the link still resolves. This is the "paragraph that became false" from
-`CLAUDE.md`: the writer is responsible for it.
+`AGENTS.md`: the writer is responsible for it.
 
 ## What is checked
 
