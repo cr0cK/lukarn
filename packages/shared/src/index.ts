@@ -294,6 +294,10 @@ export interface VerifyIdentityRequest {
   code: string;
 }
 
+export interface UpdateProfileRequest {
+  displayName: string;
+}
+
 /** Length of the emailed code. Six digits entered by hand. */
 export const VERIFICATION_CODE_LENGTH = 6;
 
@@ -927,6 +931,33 @@ export interface InviteUserRequest {
   locale?: Locale;
 }
 
+/** Input constraints shared for identical validation on both sides. */
+export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
+export const USERNAME_MAX_LENGTH = 64;
+export const ALBUM_ID_PATTERN = USERNAME_PATTERN;
+export const PASSWORD_MIN_LENGTH = 8;
+export const DISPLAY_NAME_MAX_LENGTH = 64;
+/** Maximum address length as specified by RFC 5321. */
+export const EMAIL_MAX_LENGTH = 254;
+
+/**
+ * Member invitation request: provisions an account by email and optionally binds
+ * albums, display name, and preferred locale.
+ */
+export interface InviteUserInput {
+  email: string;
+  displayName?: string;
+  albums?: string[];
+  locale?: Locale;
+}
+
+/** Response from POST /api/admin/users/invite */
+export interface AdminInviteResponse {
+  user: AdminUser;
+  /** Direct magic onboarding link when mailer is inactive, or for offline sharing. */
+  inviteUrl: string | null;
+}
+
 export interface AdminAlbum {
   id: string;
   title: string;
@@ -1173,15 +1204,6 @@ export const VISIT_WINDOWS = [7, 30, 90] as const;
 /** Default for `GET /api/admin/visits` and its accepted upper bound. */
 export const VISIT_WINDOW_DEFAULT = 30;
 export const VISIT_WINDOW_MAX = 365;
-
-/** Input constraints shared for identical validation on both sides. */
-export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]*$/i;
-export const USERNAME_MAX_LENGTH = 64;
-export const ALBUM_ID_PATTERN = USERNAME_PATTERN;
-export const PASSWORD_MIN_LENGTH = 8;
-export const DISPLAY_NAME_MAX_LENGTH = 64;
-/** Maximum address length as specified by RFC 5321. */
-export const EMAIL_MAX_LENGTH = 254;
 
 /**
  * Derives an identifier from what a person typed — an album title, a storage name.

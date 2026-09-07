@@ -20,6 +20,8 @@ import { useT } from '../../lib/i18n';
 import type { MessageKey, Translate } from '../../lib/i18n/translate';
 import { Spinner } from '../Spinner';
 import { ConfirmDialog } from './ConfirmDialog';
+import { InviteLinkModal } from './InviteLinkModal';
+import { InviteMemberModal } from './InviteMemberModal';
 import { UserForm } from './UserForm';
 import {
   Button,
@@ -101,9 +103,11 @@ export function UsersSection({
   const mailConfigured = status?.mailConfigured !== false;
 
   const [creating, setCreating] = useState(false);
+  const [invitingMember, setInvitingMember] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<AdminUser | null>(null);
   const [converting, setConverting] = useState<AdminUser | null>(null);
+  const [offlineInviteUrl, setOfflineInviteUrl] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   // The language whoever is inviting reads themselves: they are usually about to
   // speak to that person in it.
@@ -140,9 +144,13 @@ export function UsersSection({
     invite.mutate(
       { username: user.username, body: { email, locale } },
       {
-        onSuccess: () => {
-          notify({ tone: 'ok', text: t('adminUsers.invited', user.username, email) });
+        onSuccess: (res) => {
           setConverting(null);
+          if (res && typeof res === 'object' && 'inviteUrl' in res && res.inviteUrl) {
+            setOfflineInviteUrl(res.inviteUrl as string);
+          } else {
+            notify({ tone: 'ok', text: t('adminUsers.invited', user.username, email) });
+          }
         },
         onError: (inviteError) => {
           notify({ tone: 'error', text: errorText(inviteError, t('adminUsers.inviteFailed')) });
@@ -156,7 +164,13 @@ export function UsersSection({
     invite.mutate(
       { username: user.username, body: {} },
       {
-        onSuccess: () => notify({ tone: 'ok', text: t('adminUsers.resent', user.username) }),
+        onSuccess: (res) => {
+          if (res && typeof res === 'object' && 'inviteUrl' in res && res.inviteUrl) {
+            setOfflineInviteUrl(res.inviteUrl as string);
+          } else {
+            notify({ tone: 'ok', text: t('adminUsers.resent', user.username) });
+          }
+        },
         onError: (inviteError) =>
           notify({ tone: 'error', text: errorText(inviteError, t('adminUsers.inviteFailed')) }),
       },
@@ -168,18 +182,37 @@ export function UsersSection({
       title={t('adminUsers.title')}
       description={t('adminUsers.description')}
       action={
-        <Button
-          variant="primary"
-          onClick={() => {
-            setEditing(null);
-            setCreating(true);
-          }}
-          disabled={creating}
-        >
-          {t('adminUsers.new')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            onClick={() => {
+              setEditing(null);
+              setCreating(false);
+              setInvitingMember(true);
+            }}
+          >
+            {t('adminUsers.inviteMember')}
+          </Button>
+          <Button
+            onClick={() => {
+              setEditing(null);
+              setInvitingMember(false);
+              setCreating(true);
+            }}
+            disabled={creating}
+          >
+            {t('adminUsers.new')}
+          </Button>
+        </div>
       }
     >
+      {invitingMember && (
+        <InviteMemberModal
+          albums={albums}
+          onClose={() => setInvitingMember(false)}
+          notify={notify}
+        />
+      )}
       {creating && (
         <UserForm
           albums={albums}
@@ -296,9 +329,7 @@ export function UsersSection({
                 ) : (
                   <Button
                     onClick={() => openConversion(user)}
-                    disabled={!mailConfigured}
                     ariaLabel={t('adminUsers.inviteAccount', user.username)}
-                    title={mailConfigured ? undefined : t('userForm.byEmailNoMail')}
                   >
                     {t('adminUsers.invite')}
                   </Button>
@@ -377,6 +408,14 @@ export function UsersSection({
             hint={t('userForm.localeHint')}
           />
         </ConfirmDialog>
+      )}
+
+      {offlineInviteUrl && (
+        <InviteLinkModal
+          inviteUrl={offlineInviteUrl}
+          onClose={() => setOfflineInviteUrl(null)}
+          notify={notify}
+        />
       )}
     </Section>
   );

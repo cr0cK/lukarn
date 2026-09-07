@@ -341,7 +341,7 @@ export class ShareLinkRepo {
    */
   restore(token: string, input?: RestoreShareInput): ShareLink | null {
     const existing = this.find(token);
-    if (!existing) return null;
+    if (!existing || existing.revokedAt === null) return null;
 
     const expiresAt = input && input.expiresAt !== undefined ? input.expiresAt : existing.expiresAt;
 

@@ -832,7 +832,7 @@ export class ConfigRepo {
     for (const albumId of albumIds) statement.run(username, albumId);
   }
 
-  private invalidate(): void {
+  invalidate(): void {
     this.snapshot = null;
   }
 
@@ -975,7 +975,7 @@ function usable(user: StoredUser): boolean {
 }
 
 /** `['*', 'a']` means wildcard: the most permissive value wins without silent error. */
-function splitAlbums(albums: string[]): { allAlbums: boolean; ids: string[] } {
+export function splitAlbums(albums: string[]): { allAlbums: boolean; ids: string[] } {
   const allAlbums = albums.includes(ALL_ALBUMS);
   return { allAlbums, ids: allAlbums ? [] : [...new Set(albums)] };
 }

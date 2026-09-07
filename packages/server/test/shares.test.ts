@@ -784,6 +784,25 @@ describe('administration', () => {
     });
     assert.equal(response.statusCode, 404);
   });
+
+  it('returns 404 when restoring an active (non-revoked) share link', async () => {
+    const cookie = await adminCookie();
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { albumId: 'corse', label: 'Active not revoked' },
+    });
+    const token = created.json().token as string;
+
+    const response = await server.inject({
+      method: 'POST',
+      url: `/api/admin/shares/${token}/restore`,
+      headers: { cookie },
+      payload: {},
+    });
+    assert.equal(response.statusCode, 404);
+  });
 });
 
 describe('a link to a selection of photographs', () => {

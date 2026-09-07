@@ -12,6 +12,7 @@ import {
   INSTANCE_NAME_MAX_LENGTH,
   LOCALES,
   MEDIA_DESCRIPTION_MAX_LENGTH,
+  DISPLAY_NAME_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   SHARE_LABEL_MAX_LENGTH,
   slugifyAlbumId,
@@ -20,6 +21,7 @@ import {
   VISIT_WINDOW_DEFAULT,
   VISIT_WINDOW_MAX,
   type AdminAlbum,
+  type AdminInviteResponse,
   type AdminStatus,
   type AdminUser,
   type AppSettings,
@@ -35,6 +37,7 @@ import { z } from 'zod';
 import type { StoredAlbum, StoredUser } from '../config-repo.js';
 import { toAdminUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
+import { NO_PASSWORD_HASH } from '../crypto.js';
 import type { Translate } from '../i18n/index.js';
 import { buildInvitationMail } from '../mail.js';
 import { requireAdmin } from '../plugins/auth.js';
@@ -110,11 +113,45 @@ const createUserSchema = z
     message: 'exactly one of password and email',
   });
 
-/** Inviting an existing account. Without an address, the pending invitation is remade. */
+/**
+ * Member invitation request: provisions an account by email and optionally binds
+ * albums, display name, and preferred locale.
+ */
 const inviteUserSchema = z.object({
+  email: invitedEmail,
+  displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH).optional(),
+  albums: z.array(z.string()).default([]),
+  locale: invitationLocale.optional(),
+});
+
+/** Inviting an existing account. Without an address, the pending invitation is remade. */
+const reinviteUserSchema = z.object({
   email: invitedEmail.optional(),
   locale: invitationLocale.optional(),
 });
+
+/**
+ * Derives a clean, URL-safe and unique username from an invited member's email prefix.
+ * e.g. "mamie@example.com" -> "mamie", or "mamie-2" if already taken.
+ */
+function deriveUniqueUsername(email: string, isTaken: (name: string) => boolean): string {
+  const prefix = email.split('@')[0] ?? 'user';
+  const base = prefix
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/^[^a-z0-9]+/g, '')
+    .replace(/[^a-z0-9]+$/g, '')
+    .slice(0, 40);
+  const root = base || 'user';
+  if (!isTaken(root)) return root;
+  let counter = 2;
+  while (isTaken(`${root}-${counter}`)) {
+    counter++;
+  }
+  return `${root}-${counter}`;
+}
 
 const updateUserSchema = z
   .object({
@@ -561,6 +598,134 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
+     * Member invitation: provisions an account with no password by email, assigns albums,
+     * seeds the commenter display name if provided, automatically registers album subscriptions,
+     * and either queues an invitation email or generates an offline invite link.
+     */
+    app.post('/users/invite', async (request, reply) => {
+      const retryAfter = context.throttle.blockedForIp(request.ip);
+      if (retryAfter > 0) return tooSoon(reply, retryAfter, request.t);
+      context.throttle.countCall(request.ip);
+
+      const parsed = inviteUserSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
+
+      const { email, displayName, albums: requestedAlbums, locale } = parsed.data;
+
+      // Verify email is not already bound to another account
+      const holder = context.config.userForEmail(email);
+      if (holder) {
+        return reply.code(409).send({
+          error: 'identity_taken',
+          message: request.t('error.identityTaken', holder.username),
+        });
+      }
+
+      // Verify email has no active pending invitation
+      const pendingInvite = context.codes.find(email, 'invite');
+      if (pendingInvite) {
+        return reply.code(409).send({
+          error: 'identity_taken',
+          message: request.t('error.identityTaken', pendingInvite.username ?? ''),
+        });
+      }
+
+      // Verify requested albums exist
+      if (requestedAlbums && requestedAlbums.length > 0) {
+        const missing = requestedAlbums.find((id) => id !== ALL_ALBUMS && !context.findAlbum(id));
+        if (missing) {
+          return reply.code(400).send({
+            error: 'unknown_album',
+            message: request.t('error.albumNotFound'),
+          });
+        }
+      }
+
+      // Rate limit check on target address
+      const last = context.db
+        .prepare('SELECT MAX(sent_at) AS sentAt FROM verification_codes WHERE target = ?')
+        .get(email.trim()) as { sentAt: string | null };
+      if (last?.sentAt) {
+        const elapsed = Date.now() - new Date(last.sentAt).getTime();
+        if (elapsed < 60 * 1000) {
+          return tooSoon(reply, 60 * 1000 - elapsed, request.t);
+        }
+      }
+
+      const isUsernameTaken = (name: string) =>
+        Boolean(context.config.user(name)) ||
+        Boolean(
+          context.db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(name),
+        );
+      const username = deriveUniqueUsername(email, isUsernameTaken);
+
+      const minted = context.db.transaction(() => {
+        // 1. Create user with NO_PASSWORD_HASH and link albums
+        context.config.createUser({
+          username,
+          passwordHash: NO_PASSWORD_HASH,
+          admin: false,
+          albums: requestedAlbums ?? [],
+        });
+
+        // 2. Declare commenter
+        let commenter = context.commenters.byEmail(email);
+        if (displayName) {
+          commenter = context.commenters.declare(email, displayName);
+          context.db
+            .prepare('UPDATE commenters SET pending_display_name = ? WHERE id = ?')
+            .run(displayName.trim().slice(0, DISPLAY_NAME_MAX_LENGTH), commenter.id);
+        } else if (!commenter) {
+          commenter = context.commenters.declare(email, '');
+        } else if (commenter.verifiedAt === null) {
+          context.db
+            .prepare(
+              'UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?',
+            )
+            .run('', commenter.id);
+        }
+
+        // 3. Mint invitation token
+        const mintResult = context.codes.mintInviteToken(email, username, {
+          locale,
+          bypassRateLimit: true,
+        });
+        if ('failure' in mintResult) {
+          throw new Error('Unexpected rate limit failure during mint');
+        }
+        return mintResult;
+      })();
+
+      context.config.invalidate();
+      const user = context.config.user(username)!;
+      const inviteUrl = `${context.env.publicUrl}/invite/${minted.token}`;
+
+      if (context.mailer.enabled) {
+        context.mailer.queue(
+          buildInvitationMail(
+            email,
+            minted.token,
+            locale ?? context.env.defaultLocale,
+            context.settings.instanceName,
+            context.env,
+            inviteUrl,
+          ),
+        );
+        request.log.info({ username, email }, 'Member invitation created and email queued');
+        return reply.code(201).send({
+          user: adminUser(user),
+          inviteUrl: null,
+        } satisfies AdminInviteResponse);
+      }
+
+      request.log.info({ username, email }, 'Member invitation created with offline link');
+      return reply.code(201).send({
+        user: adminUser(user),
+        inviteUrl,
+      } satisfies AdminInviteResponse);
+    });
+
+    /**
      * Invites an account that already exists, and sends its invitation again.
      *
      * With an address it invites that account. Without one it mints a fresh code for
@@ -578,7 +743,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.accountNotFound') });
       }
 
-      const parsed = inviteUserSchema.safeParse(request.body ?? {});
+      const parsed = reinviteUserSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
       // Refused on a bound account: that would be changing somebody's address, which
@@ -589,13 +754,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(409).send({
           error: 'already_bound',
           message: request.t('error.accountAlreadyBound', stored.username),
-        });
-      }
-
-      if (!context.mailer.enabled) {
-        return reply.code(503).send({
-          error: 'mail_not_configured',
-          message: request.t('error.mailNotConfigured'),
         });
       }
 
@@ -625,6 +783,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // request overrides it: that is the sender changing their mind, which is the
       // one thing allowed to.
       const locale = parsed.data.locale ?? pending?.locale ?? null;
+
+      if (!context.mailer.enabled) {
+        const minted = context.codes.mintInviteToken(email, stored.username, { locale });
+        if ('failure' in minted) return tooSoon(reply, minted.retryAfterMs, request.t);
+        const inviteUrl = `${context.env.publicUrl}/invite/${minted.token}`;
+        request.log.info(`Account "${stored.username}" invited offline`);
+        return reply.send({ inviteUrl });
+      }
 
       const minted = context.codes.mint(email, 'invite', { username: stored.username, locale });
       if ('failure' in minted) return tooSoon(reply, minted.retryAfterMs, request.t);

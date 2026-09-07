@@ -4,6 +4,7 @@ import {
   USER_CODE_LENGTH,
   VERIFICATION_CODE_LENGTH,
   normalizeUserCode,
+  type Album,
   type Locale,
   type SessionUser,
 } from '@lukarn/shared';
@@ -16,7 +17,8 @@ import type { AppContext } from '../context.js';
 import type { Translate } from '../i18n/index.js';
 import { classifyDevice } from '../device.js';
 import { buildInvitationMail, buildSignInMail } from '../mail.js';
-import { requireAccount } from '../plugins/auth.js';
+import { requireAccount, requireAuth } from '../plugins/auth.js';
+import { buildAlbum } from '../repo.js';
 import { SESSION_COOKIE, sessionCookieOptions, type SessionRecord } from '../sessions.js';
 import type { CodePurpose } from '../verification-codes.js';
 
@@ -445,6 +447,138 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
         )
         .send(sessionUser(context.config.user(session.username!)!));
+    });
+
+    /**
+     * Magic onboarding: consumes an invitation token from the URL, binds the commenter
+     * and account, sets the 1-year session cookie, and returns the session user and their albums.
+     */
+    app.post('/invite/:token', async (request, reply) => {
+      const blocked = blockedReply(reply, throttle.blockedForIp(request.ip), request.t);
+      if (blocked) return blocked;
+      throttle.countCall(request.ip);
+
+      const { token } = request.params as { token: string };
+      if (!token || typeof token !== 'string') {
+        return reply.code(400).send({
+          error: 'invalid_token',
+          message: request.t('error.invalidCode'),
+        });
+      }
+
+      const outcome = context.codes.verifyAndConsumeInviteToken(token);
+      if (!outcome.ok) {
+        if (
+          outcome.failure === 'identity_taken' ||
+          (outcome as { error?: string }).error === 'identity_taken'
+        ) {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', outcome.username ?? ''),
+          });
+        }
+        if (outcome.failure === 'expired') {
+          return reply.code(400).send({
+            error: 'token_expired',
+            message: request.t('error.codeWrongOrExpired'),
+          });
+        }
+        if (outcome.failure === 'too_many_attempts') {
+          return reply.code(400).send({
+            error: 'too_many_attempts',
+            message: request.t('error.codeWrongOrExpired'),
+          });
+        }
+        return reply.code(404).send({
+          error: 'invalid_token',
+          message: request.t('error.invalidCode'),
+        });
+      }
+
+      context.config.invalidate();
+      const user = context.config.user(outcome.data.username);
+      if (!user) {
+        return reply.code(404).send({
+          error: 'account_not_found',
+          message: request.t('error.accountNotFound'),
+        });
+      }
+
+      // Auto-subscribe to granted albums upon acceptance
+      const albumsToSubscribe = user.allAlbums
+        ? context.albums.map((a) => a.id)
+        : (
+            context.db
+              .prepare('SELECT album_id FROM user_albums WHERE username = ?')
+              .all(user.username) as { album_id: string }[]
+          ).map((r) => r.album_id);
+
+      const nowIso = new Date().toISOString();
+      const subStmt = context.db.prepare(
+        `INSERT OR IGNORE INTO album_subscriptions (commenter_id, album_id, state, created_at)
+         VALUES (?, ?, 'auto', ?)`,
+      );
+      for (const albumId of albumsToSubscribe) {
+        subStmt.run(outcome.data.commenterId, albumId, nowIso);
+      }
+
+      const device = classifyDevice(request.headers['user-agent']);
+      const session = context.sessions.create(user.username, device);
+      const albums: Album[] = context
+        .albumsFor(user.username)
+        .map((album) => buildAlbum(album, context.media, context.syncState));
+
+      return reply
+        .setCookie(
+          SESSION_COOKIE,
+          session.id,
+          sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
+        )
+        .send({ user: sessionUser(user), albums });
+    });
+
+    /**
+     * Updates the commenter display name for the authenticated member account.
+     */
+    app.patch('/profile', { preHandler: requireAuth }, async (request, reply) => {
+      const blocked = blockedReply(reply, throttle.blockedForIp(request.ip), request.t);
+      if (blocked) return blocked;
+      throttle.countCall(request.ip);
+
+      if (!request.user || request.user.username === null) {
+        return reply.code(403).send({
+          error: 'forbidden',
+          message: request.t('error.authRequired'),
+        });
+      }
+
+      const user = context.config.user(request.user.username);
+      if (!user || user.commenterId === null) {
+        return reply.code(400).send({
+          error: 'no_identity',
+          message: request.t('error.invalidIdentity'),
+        });
+      }
+
+      const parsed = z
+        .object({ displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH) })
+        .safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: request.t('error.invalidIdentity'),
+        });
+      }
+
+      const commenterId = user.commenterId;
+      const { displayName } = parsed.data;
+      context.db
+        .prepare('UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?')
+        .run(displayName, commenterId);
+
+      context.config.invalidate();
+      const freshUser = context.config.user(request.user.username)!;
+      return reply.send(sessionUser(freshUser));
     });
 
     /* ------------------------------------------------------------------------

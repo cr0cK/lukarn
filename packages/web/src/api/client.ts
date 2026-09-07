@@ -2,6 +2,7 @@ import {
   DEFAULT_SORT_ORDER,
   type AdminAlbum,
   type AdminCommentsPage,
+  type AdminInviteResponse,
   type AdminStatus,
   type AdminUser,
   type Album,
@@ -22,6 +23,7 @@ import {
   type DevicePairingState,
   type DevicePollResult,
   type IdentityRequest,
+  type InviteUserInput,
   type InviteUserRequest,
   type MediaItem,
   type AdminShareLink,
@@ -42,6 +44,7 @@ import {
   type UpdateAlbumRequest,
   type UpdateCommentRequest,
   type UpdateMediaRequest,
+  type UpdateProfileRequest,
   type UpdateSettingsRequest,
   type UpdateStorageRequest,
   type UpdateUserRequest,
@@ -178,6 +181,22 @@ export const api = {
   /** Spends the code, and this is what opens the session. */
   verifySignInCode: (body: CodeVerifyRequest) =>
     request<SessionUser>('/auth/code/verify', { method: 'POST', body: JSON.stringify(body) }),
+
+  /**
+   * Magic onboarding: consumes an invitation token from the URL, sets the session cookie,
+   * and returns the session user and their granted albums.
+   */
+  consumeInvite: (token: string) =>
+    request<{ user: SessionUser; albums: Album[] }>(`/auth/invite/${encodeURIComponent(token)}`, {
+      method: 'POST',
+    }),
+
+  /** Updates commenter display name for the authenticated session. */
+  updateProfile: (body: UpdateProfileRequest) =>
+    request<SessionUser>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   /* Pairing a screen without a keyboard — see D260809c. */
 
@@ -373,6 +392,16 @@ export const api = {
   createUser: (body: CreateUserRequest) =>
     request<AdminUser>('/admin/users', { method: 'POST', body: JSON.stringify(body) }),
 
+  /**
+   * Invites a new member by email, automatically provisioning their account, album access,
+   * and subscriptions. Returns the user and offline inviteUrl if mailer is inactive.
+   */
+  inviteMember: (body: InviteUserInput) =>
+    request<AdminInviteResponse>('/admin/users/invite', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   updateUser: (username: string, body: UpdateUserRequest) =>
     request<AdminUser>(`/admin/users/${encodeURIComponent(username)}`, {
       method: 'PATCH',
@@ -385,10 +414,13 @@ export const api = {
    * already pending, which is what the row offers when the first message went unread.
    */
   inviteUser: (username: string, body: InviteUserRequest) =>
-    request<AdminUser>(`/admin/users/${encodeURIComponent(username)}/invite`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+    request<AdminUser | { inviteUrl: string }>(
+      `/admin/users/${encodeURIComponent(username)}/invite`,
+      {
+        method: 'POST',
+        body: JSON.stringify(body),
+      },
+    ),
 
   deleteUser: (username: string) =>
     request<{ ok: true }>(`/admin/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),

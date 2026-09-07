@@ -95,6 +95,24 @@ export class SubscriptionRepo {
            JOIN commenters c ON c.id = s.commenter_id
           WHERE s.album_id = ? AND s.state = 'auto'
             AND c.verified_at IS NOT NULL AND c.notify = 1
+            AND (
+              NOT EXISTS (SELECT 1 FROM users u WHERE u.commenter_id = c.id)
+              OR EXISTS (
+                SELECT 1 FROM users u
+                WHERE u.commenter_id = c.id
+                  AND (u.all_albums = 1 OR EXISTS (
+                    SELECT 1 FROM user_albums ua WHERE ua.username = u.username AND ua.album_id = s.album_id
+                  ))
+              )
+              OR EXISTS (
+                SELECT 1 FROM share_links sl
+                WHERE sl.revoked_at IS NULL
+                  AND (sl.expires_at IS NULL OR sl.expires_at > datetime('now'))
+                  AND (sl.album_id = s.album_id OR EXISTS (
+                    SELECT 1 FROM share_link_items sli WHERE sli.token = sl.token AND sli.album_id = s.album_id
+                  ))
+              )
+            )
           ORDER BY c.id`,
       )
       .all(albumId) as {
