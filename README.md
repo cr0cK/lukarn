@@ -11,10 +11,11 @@ theme.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment. An
-account can also belong to one person, invited by email: they sign in with a code
-sent to that address, and their comments carry their name on every device.
-An album, or one photograph, can also be shared with anyone through a link without
-creating an account for them.
+account can also be created by inviting someone (by email, or with a one-click
+link to copy when no mail server is configured) who joins without a password;
+their comments carry their name on every device. An album, a single photograph, or
+an arbitrary selection of photographs can also be shared with anyone through a
+link without creating an account for them.
 From `/admin`, the owner connects the storages, declares which of their folders
 become albums and who may open them. That is enough to share one album without
 exposing the rest of the account.
@@ -63,13 +64,16 @@ anywhere is involved, and nobody's family appears in a public README.
   iPhone's HEVC, gets an H.264 version prepared in the background, and the
   original stays available.
 - **Accounts and albums administered from the application**, with per-user
-  rights, no restart and no file to edit. No sign-up: the owner creates every
-  account, with a password or with an invitation sent to an address.
-- **Sharing by link without an account**: an album or a single photograph can be
-  shared with a link, with an optional expiration date and label. Links can be
-  issued from `/admin` or directly from an album or the viewer, and revoked or
-  extended at any time. Recipients open only what was shared, with no access to
-  other albums or instance URLs.
+  rights, no restart and no file to edit. No sign-up: accounts can be created
+  with a password or with an invitation delivered by email, or, when the server
+  has no mail configured, a one-click link to copy; invited members join without
+  a password and receive notifications for their assigned albums.
+- **Sharing by link without an account**: an album, a single photograph, or a
+  custom selection of photographs across albums can be shared with a link, with
+  an optional expiration date and label. Links can be issued from `/admin` (with
+  a photo picker grid) or directly from an album or the viewer, revoked,
+  restored, or extended at any time. Recipients open only what was shared, with
+  no access to other albums or instance URLs.
 - **EXIF**: capture date, camera, lens, aperture, shutter speed, ISO,
   geolocation. Chronological ordering on the real capture date. A day can carry a
   note and a place, the latter derived from coordinates.
@@ -356,7 +360,7 @@ The gallery behaves the same on all four. Two things underneath do not:
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Update                                    | `docker compose pull && docker compose up -d`                                                                                                                                                                                                                                                                                                                                               |
 | Decide when to update                     | Replace `latest` with a release number: a `pull` then changes nothing until you raise it                                                                                                                                                                                                                                                                                                    |
-| Enable comments                           | `SMTP_URL` and `MAIL_FROM` in the `.env`. Without a mail server, nobody can confirm their address                                                                                                                                                                                                                                                                                           |
+| Enable comments                           | `SMTP_URL` and `MAIL_FROM` in the `.env`. Without a mail server, visitors cannot confirm their address to comment, and notifications will not go out (invited members have their address verified upon onboarding)                                                                                                                                                                          |
 | Reach it from a domain, over TLS          | [`deploy/README.md`](./deploy/README.md): certificate, backups, a machine of its own                                                                                                                                                                                                                                                                                                        |
 | Put it behind a proxy you already run     | `PUBLIC_URL=https://photos.example.com` in the `.env`, proxy to port 8080, and leave the binding on `127.0.0.1` so the proxy is the only way in. Security headers come from the application, so nothing to add on that side                                                                                                                                                                 |
 | Put it behind a proxy that runs in docker | Publish no port at all. Join that proxy's network and let it reach the container by its alias, `lukarn:8080`, which is the name to use rather than the service name: on a network shared with another application, `app` answers from whichever container got there first. The `Caddyfile` here is written to be imported by such a front end, so lukarn's routing stays in this repository |
