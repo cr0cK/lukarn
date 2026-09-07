@@ -787,6 +787,120 @@ describe('migrations', () => {
     db.close();
   });
 
+  it('recreates share_links with nullable album_id and adds share_link_items', () => {
+    const db = databaseAtVersion(20);
+    const date = '2026-07-01T00:00:00.000Z';
+
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+       VALUES ('admin', '$argon2id$empreinte', 1, 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, created_at, updated_at)
+       VALUES ('corse', 'Corse', 'f1', 1, ?, ?)`,
+    ).run(date, date);
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, created_at, updated_at)
+       VALUES ('noel', 'Noël', 'f2', 1, ?, ?)`,
+    ).run(date, date);
+
+    // Existing v20 share links: an album link and a media link
+    db.prepare(
+      `INSERT INTO share_links (token, album_id, media_id, label, created_at, created_by)
+       VALUES ('token-album', 'corse', NULL, 'Album link', ?, 'admin')`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO share_links (token, album_id, media_id, label, created_at, created_by)
+       VALUES ('token-media', 'corse', 'img-1', 'Media link', ?, 'admin')`,
+    ).run(date);
+
+    // Existing opening and session referencing token-album
+    db.prepare(
+      `INSERT INTO share_openings (token, session_id, hour, opened_at)
+       VALUES ('token-album', 'session-share', '2026-07-01T12', ?)`,
+    ).run(date);
+    db.prepare(
+      `INSERT INTO sessions (id, username, created_at, expires_at, share_token)
+       VALUES ('session-share', NULL, ?, '2099-01-01T00:00:00.000Z', 'token-album')`,
+    ).run(date);
+
+    migrate(db);
+
+    // 1. Existing links and child references are preserved
+    const links = db
+      .prepare('SELECT token, album_id, media_id, label FROM share_links ORDER BY token')
+      .all();
+    assert.deepEqual(links, [
+      { token: 'token-album', album_id: 'corse', media_id: null, label: 'Album link' },
+      { token: 'token-media', album_id: 'corse', media_id: 'img-1', label: 'Media link' },
+    ]);
+
+    const opening = db
+      .prepare("SELECT token, session_id FROM share_openings WHERE token = 'token-album'")
+      .get();
+    assert.deepEqual(opening, { token: 'token-album', session_id: 'session-share' });
+
+    // 2. Multi-photo / cross-album selection link with album_id = NULL
+    db.prepare(
+      `INSERT INTO share_links (token, album_id, media_id, label, created_at, created_by)
+       VALUES ('token-selection', NULL, NULL, 'Selection link', ?, 'admin')`,
+    ).run(date);
+
+    db.prepare(
+      `INSERT INTO share_link_items (token, album_id, media_id, position)
+       VALUES ('token-selection', 'corse', 'img-1', 0),
+              ('token-selection', 'noel', 'img-9', 1)`,
+    ).run();
+
+    const items = db
+      .prepare(
+        'SELECT token, album_id, media_id, position FROM share_link_items WHERE token = ? ORDER BY position',
+      )
+      .all('token-selection');
+    assert.deepEqual(items, [
+      { token: 'token-selection', album_id: 'corse', media_id: 'img-1', position: 0 },
+      { token: 'token-selection', album_id: 'noel', media_id: 'img-9', position: 1 },
+    ]);
+
+    // Foreign keys remain strictly valid
+    assert.deepEqual(db.pragma('foreign_key_check'), []);
+
+    // 3. Cascades
+    // Deleting an album cascades to share_link_items
+    db.prepare("DELETE FROM albums WHERE id = 'noel'").run();
+    assert.equal(
+      (
+        db.prepare("SELECT COUNT(*) AS n FROM share_link_items WHERE album_id = 'noel'").get() as {
+          n: number;
+        }
+      ).n,
+      0,
+    );
+
+    // Deleting a link cascades to share_link_items and share_openings
+    db.prepare("DELETE FROM share_links WHERE token = 'token-selection'").run();
+    assert.equal(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM share_link_items WHERE token = 'token-selection'")
+          .get() as { n: number }
+      ).n,
+      0,
+    );
+
+    db.prepare("DELETE FROM share_links WHERE token = 'token-album'").run();
+    assert.equal(
+      (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM share_openings WHERE token = 'token-album'")
+          .get() as { n: number }
+      ).n,
+      0,
+    );
+
+    db.close();
+  });
+
   it('is idempotent', () => {
     const db = databaseAtVersion(0);
     migrate(db);

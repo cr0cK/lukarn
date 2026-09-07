@@ -1,6 +1,14 @@
 import { expect, test } from '@playwright/test';
 import { ALBUMS } from '../fixtures/instance.js';
-import { firstPhotoId, issueShare, restoreShare, revokeShare } from '../fixtures/share.js';
+import { openDayAlbum } from '../fixtures/session.js';
+import {
+  firstPhotoId,
+  issueSelectionShare,
+  issueShare,
+  photoIds,
+  restoreShare,
+  revokeShare,
+} from '../fixtures/share.js';
 
 /**
  * What a share link opens, driven by a browser that has never held a session
@@ -136,4 +144,109 @@ test('a revoked link restored can be reopened under the same address', async ({
   await page.goto(address);
   await expect(page.getByRole('heading', { name: ALBUMS.day.title })).toBeVisible();
   await expect(page.locator('main img').first()).toBeVisible();
+});
+
+test('a multi-photo selection share opens under the instance, renders only selected photos, and hides album provenance', async ({
+  page,
+  request,
+}) => {
+  const ids = await photoIds(request, 3);
+  expect(ids).toHaveLength(3);
+
+  const items = ids.map((mediaId) => ({ albumId: ALBUMS.day.id, mediaId }));
+  const address = await issueSelectionShare(request, items, { label: 'Weekend Trip' });
+
+  await page.goto(address);
+
+  // Instance branding and share label are visible
+  await expect(page.getByRole('heading', { name: 'Weekend Trip' })).toBeVisible();
+  await expect(page.getByText('Lukarn e2e')).toBeVisible();
+
+  // Exactly the 3 shared photographs are rendered
+  const photos = page.locator('main img');
+  await expect(photos).toHaveCount(3);
+  await expect(photos.first()).toBeVisible();
+
+  // Album provenance is never leaked (D260825e)
+  await expect(page.getByText(ALBUMS.day.title)).toHaveCount(0);
+  expect(await page.locator('body').innerText()).not.toContain(ALBUMS.day.id);
+  expect(address).not.toContain(ALBUMS.day.id);
+
+  // Click first photo to open Lightbox
+  await photos.first().click();
+  const viewer = page.getByRole('dialog');
+  await expect(viewer).toBeVisible();
+  // On mobile the viewer opens bare; a tap brings the chrome back
+  if (await viewer.getByRole('button', { name: /chrome/i }).isVisible()) {
+    await viewer.locator('img').last().click();
+  }
+
+  // Viewer displays share label and selection total, never origin album
+  await expect(viewer.getByText('Weekend Trip')).toBeVisible();
+  await expect(viewer.getByText(ALBUMS.day.title)).toHaveCount(0);
+
+  // Back closes viewer and returns to the grid
+  await page.goBack();
+  await expect(viewer).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Weekend Trip' })).toBeVisible();
+});
+
+test('selecting photos in AlbumPage opens ShareModal and generates a multi-photo link', async ({
+  page,
+  browser,
+}) => {
+  // Sign in as admin and open the day album
+  await openDayAlbum(page);
+
+  // Activate selection mode from TopBar (handles mobile View menu or desktop button)
+  const viewButton = page.getByRole('button', { name: 'View' });
+  if (await viewButton.isVisible()) {
+    await viewButton.click();
+    await page.getByRole('menuitem', { name: /Select/i }).click();
+  } else {
+    await page.getByRole('button', { name: /Select/i }).click();
+  }
+
+  // Click 3 photo thumbnails
+  const thumbnails = page.locator('main button[role="checkbox"]');
+  await expect(thumbnails.first()).toBeVisible();
+  await thumbnails.nth(0).click();
+  await thumbnails.nth(1).click();
+  await thumbnails.nth(2).click();
+
+  // Floating bottom action bar appears with count and share action
+  const floatingBar = page.getByRole('complementary', { name: 'Photo selection' });
+  await expect(floatingBar).toBeVisible();
+  await expect(floatingBar.getByText('3 photos selected')).toBeVisible();
+
+  // Click share selection
+  await floatingBar.getByRole('button', { name: 'Share selection' }).click();
+
+  // ShareModal is visible with pre-filled selection details
+  const shareModal = page.getByRole('dialog');
+  await expect(shareModal).toBeVisible();
+  await expect(shareModal.getByRole('heading', { name: 'Share selection' })).toBeVisible();
+  await expect(shareModal.getByText('3 photos selected')).toBeVisible();
+
+  // Provide a label and issue the link
+  await shareModal.locator('input#share-modal-label').fill('Family highlights');
+  await shareModal.getByRole('button', { name: 'Issue the link' }).click();
+
+  // Created share input contains the URL
+  const linkInput = shareModal.locator('input#share-link-url');
+  await expect(linkInput).toBeVisible();
+  const shareUrl = await linkInput.inputValue();
+  expect(shareUrl).toContain('/s/');
+
+  // Open the link in a fresh unauthenticated browser context
+  const strangerContext = await browser.newContext();
+  const strangerPage = await strangerContext.newPage();
+  try {
+    await strangerPage.goto(shareUrl);
+    await expect(strangerPage.getByRole('heading', { name: 'Family highlights' })).toBeVisible();
+    await expect(strangerPage.locator('main img')).toHaveCount(3);
+    await expect(strangerPage.getByText(ALBUMS.day.title)).toHaveCount(0);
+  } finally {
+    await strangerContext.close();
+  }
 });

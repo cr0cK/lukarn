@@ -593,16 +593,33 @@ A link that opens an album, or one photograph, for somebody with no account
 (D260825). Written by `shares.ts` from `/api/admin/shares`, read by
 `routes/share.ts` and by the `/media` prefix `preHandler`.
 
-| Column       | Role                                                                             |
-| ------------ | -------------------------------------------------------------------------------- |
-| `token`      | PK, 32 random bytes in base64url — the credential itself                         |
-| `album_id`   | The album covered, or the album the photograph came from. FK `ON DELETE CASCADE` |
-| `media_id`   | The shared photograph, `NULL` for an album link. **No foreign key** — see below  |
-| `label`      | What the issuer calls it. Administration only                                    |
-| `created_at` | When it was issued                                                               |
-| `created_by` | The account that issued it, `COLLATE NOCASE`. **No foreign key**                 |
-| `expires_at` | ISO instant, or `NULL` for a link that never expires                             |
-| `revoked_at` | Set rather than deleted — see below                                              |
+| Column       | Role                                                                                           |
+| ------------ | ---------------------------------------------------------------------------------------------- |
+| `token`      | PK, 32 random bytes in base64url — the credential itself                                       |
+| `album_id`   | The album covered, or the photograph origin, or `NULL` for cross-album selection. FK on delete |
+| `media_id`   | The shared photograph, `NULL` for album or selection links. **No foreign key** — see below     |
+| `label`      | What the issuer calls it. Administration only                                                  |
+| `created_at` | When it was issued                                                                             |
+| `created_by` | The account that issued it, `COLLATE NOCASE`. **No foreign key**                               |
+| `expires_at` | ISO instant, or `NULL` for a link that never expires                                           |
+| `revoked_at` | Set rather than deleted — see below                                                            |
+
+### `share_link_items`
+
+The ordered list of photographs belonging to a multi-photo selection share link. Written by `shares.ts` from `/api/admin/shares`, read by `shares.ts` and `routes/share.ts`.
+
+| Column     | Role                                                                    |
+| ---------- | ----------------------------------------------------------------------- |
+| `token`    | The link. FK to `share_links (token)` `ON DELETE CASCADE`               |
+| `album_id` | Origin album of the photograph. FK to `albums (id)` `ON DELETE CASCADE` |
+| `media_id` | The shared photograph. **No foreign key** — see below                   |
+| `position` | 0-based ordering position within the selection link                     |
+| **PK**     | `(token, media_id)`                                                     |
+
+- **Supports cross-album selections without exposing album boundaries to recipients** (D-01, D-02).
+- **Index**: `CREATE INDEX idx_share_link_items_token ON share_link_items (token, position)`.
+- **Cascade**: Deleting the share link cascades and removes all its items. Deleting an album cascades and removes items that originated from that album.
+- **No foreign key on `media_id`**: An indexing incident where a file is temporarily unindexed must not silently delete rows from a curated selection share link.
 
 - **The token is random and its rights live in the row.** Never a signed value
   describing what it grants. The three tokens this application already mints — the
@@ -888,6 +905,14 @@ Current state:
 | 18      | `users.commenter_id`; `verification_codes`; the four code columns leave `commenters`.   |
 | 19      | `verification_codes.locale`: the language an invitation is written in.                  |
 | 20      | `share_links`, `share_openings`; `sessions` and `comments` recreated — see below.       |
+| 21      | `share_links` recreated with nullable `album_id`; `share_link_items` table.             |
+
+**Migration 21 recreates `share_links`** to make `album_id` nullable, enabling multi-photo
+and cross-album selection links without fixing a single album on the link row (D-01).
+Existing rows are copied across with all columns intact, and child tables (`share_openings`,
+`sessions`) preserve their foreign keys through the rename. The new `share_link_items` table
+stores the ordered `(token, media_id)` items with their origin `album_id` and `position`,
+cascading on both link and album deletions.
 
 **Migration 20 recreates two tables**, and that is the whole of its risk: adding
 `share_links` and `share_openings` cannot lose data, while copying `sessions` and

@@ -146,8 +146,14 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
        * recipient like any other and gets a link session, because the `/media`
        * prefix would otherwise refuse every photograph on the page it just drew.
        */
+      const username = request.user?.username;
       const account =
-        request.user?.username != null && context.canSee(request.user.username, link.albumId);
+        username != null &&
+        (link.albumId !== null
+          ? context.canSee(username, link.albumId)
+          : context.shares
+              .findItemAlbumIds(link.token)
+              .every((id) => context.canSee(username, id)));
 
       let sessionId = sessionFor(request, link);
       if (sessionId === null && !account) {
@@ -184,6 +190,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
         // reopens the link, which is when this fires for them.
         if (
           link.mediaId === null &&
+          link.albumId !== null &&
           sessionId === request.sessionId &&
           request.commenterId !== null
         ) {
@@ -198,7 +205,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/items', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
-      if (link.mediaId !== null) {
+      if (link.albumId === null || link.mediaId !== null) {
         return reply.code(404).send({ error: 'not_found', message: request.t('error.notFound') });
       }
 
@@ -228,9 +235,20 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
       if (!link) return reply;
 
       const { mediaId } = request.params as { mediaId: string };
-      const detail = context.shares.covers(link, mediaId)
-        ? context.media.getDetail(link.albumId, mediaId)
-        : null;
+      if (!context.shares.covers(link, mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+
+      const albumId = link.albumId ?? context.shares.findItemAlbumId(link.token, mediaId);
+      if (!albumId) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+
+      const detail = context.media.getDetail(albumId, mediaId);
       if (!detail) {
         return reply
           .code(404)
@@ -240,7 +258,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
       const { albumId: _covered, ...item } = detail;
       const body: ShareDetail = {
         ...item,
-        commentCount: context.comments.countFor(link.albumId, mediaId),
+        commentCount: context.comments.countFor(albumId, mediaId),
       };
       return reply.send(body);
     });
@@ -263,9 +281,16 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
+      const albumId = link.albumId ?? context.shares.findItemAlbumId(link.token, mediaId);
+      if (!albumId) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+
       // `admin` is false for a link by construction, so hidden comments stay hidden
       // and the reader may delete only what it wrote.
-      const page: CommentsPage = context.comments.thread(link.albumId, mediaId, {
+      const page: CommentsPage = context.comments.thread(albumId, mediaId, {
         commenterId: request.commenterId,
         admin: false,
       });
@@ -298,7 +323,14 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'identity_required', message: request.t('error.identityRequired') });
       }
 
-      const detail = context.media.getDetail(link.albumId, mediaId);
+      const albumId = link.albumId ?? context.shares.findItemAlbumId(link.token, mediaId);
+      if (!albumId) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+
+      const detail = context.media.getDetail(albumId, mediaId);
       if (!detail) {
         return reply
           .code(404)
@@ -316,7 +348,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
       let comment: Comment;
       try {
         comment = context.comments.create({
-          albumId: link.albumId,
+          albumId,
           mediaId,
           commenterId,
           // The credential that carried the message, which is the link (D38). The
@@ -338,8 +370,8 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
       notifyComment(context, {
         comment,
         commenterId,
-        albumId: link.albumId,
-        albumTitle: context.findAlbum(link.albumId)?.title ?? link.albumId,
+        albumId,
+        albumTitle: context.findAlbum(albumId)?.title ?? albumId,
         mediaId,
         mediaName: detail.name,
       });
@@ -429,11 +461,12 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
  * the index no longer holds. The album's identifier is in neither branch.
  */
 function view(context: AppContext, link: ShareLink): ShareView | null {
-  if (shareKind(link) === 'album') {
+  const kind = shareKind(link);
+  if (kind === 'album') {
     // Non-null: `share_links.album_id` cascades with the album, so a live link
     // always has one.
-    const album = context.findAlbum(link.albumId)!;
-    const stats = context.media.stats(link.albumId, album.coverMediaId);
+    const album = context.findAlbum(link.albumId!)!;
+    const stats = context.media.stats(link.albumId!, album.coverMediaId);
     return {
       kind: 'album',
       title: album.title,
@@ -446,12 +479,23 @@ function view(context: AppContext, link: ShareLink): ShareView | null {
     };
   }
 
-  const detail = context.media.getDetail(link.albumId, link.mediaId!);
+  if (kind === 'selection') {
+    const items = context.shares.findItems(link.token);
+    if (items.length === 0) return null;
+    return {
+      kind: 'selection',
+      items,
+      label: link.label,
+      itemCount: items.length,
+    };
+  }
+
+  const detail = context.media.getDetail(link.albumId!, link.mediaId!);
   if (!detail) return null;
 
   const { albumId: _covered, ...item } = detail;
   return {
     kind: 'media',
-    item: { ...item, commentCount: context.comments.countFor(link.albumId, link.mediaId!) },
+    item: { ...item, commentCount: context.comments.countFor(link.albumId!, link.mediaId!) },
   };
 }

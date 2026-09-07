@@ -20,18 +20,20 @@ or attaching files to a message. Neither is right for a grandmother who will loo
 once, or for a friend who is in one picture.
 
 **Administration → Links** issues a link, and administrators can also share directly
-from the album header or the photograph viewer. Choose an album, or type the
-identifier of a single photograph, give it a label so you remember who it went to,
-and optionally a date after which it stops working. A link's label and expiration date
-can be updated at any time without revoking and recreating it. The address it produces
-is copied with one button and sent the way you would send the photographs themselves.
-Anybody holding it can open it; that address is the whole credential.
+from the album header or the photograph viewer. Choose an album, select photographs
+across albums, or provide a single photograph, give it a label so you remember who it
+went to, and optionally a date after which it stops working. A link's label and
+expiration date can be updated at any time without revoking and recreating it. The
+address it produces is copied with one button and sent the way you would send the
+photographs themselves. Anybody holding it can open it; that address is the whole
+credential.
 
 What the recipient opens carries your instance's name and its logo above what you
-shared. No album list, no sign-in form, no sign that anything else is here. They can browse the album, open a photograph, zoom it and download it,
-exactly as an account does. If you shared a single photograph, they never see which
-album it came from: not on the page, not in the address, not in any message the
-gallery sends them afterwards.
+shared. No album list, no sign-in form, no sign that anything else is here. They can
+browse the album or selection, open a photograph, zoom it and download it, exactly
+as an account does. If you shared a single photograph or a selection, they never see
+which album each photograph came from: not on the page, not in the address, not in
+any message the gallery sends them afterwards.
 
 They can comment, and that still costs a verified email address. They give one, type
 the six digits sent to it, and their name signs the message. It lands in the same

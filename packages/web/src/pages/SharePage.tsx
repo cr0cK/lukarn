@@ -78,10 +78,17 @@ export default function SharePage(): ReactElement {
   // `ready`, so no page is requested on a cookie that belongs to another link.
   const page = useAlbumItems(scope, order, isAlbum && ready);
 
-  // A photograph link serves its one item with the link itself; only an album has
-  // pages to fetch. Both then feed the same grid.
+  // A photograph link serves its one item with the link itself; a selection link
+  // serves its array of items; only an album has pages to fetch.
   const items = useMemo<ShareItem[]>(
-    () => (view === undefined ? [] : view.kind === 'album' ? page.items : [view.item]),
+    () =>
+      view === undefined
+        ? []
+        : view.kind === 'album'
+          ? page.items
+          : view.kind === 'selection'
+            ? view.items
+            : [view.item],
     [view, page.items],
   );
 
@@ -172,7 +179,9 @@ export default function SharePage(): ReactElement {
   }
 
   return (
-    <ShareFrame title={view.kind === 'album' ? view.title : null}>
+    <ShareFrame
+      title={view.kind === 'album' ? view.title : view.kind === 'selection' ? view.label : null}
+    >
       {view.kind === 'album' && view.description && (
         <p className="mb-4 max-w-prose text-sm whitespace-pre-line text-ink-300">
           {view.description}
@@ -201,7 +210,7 @@ export default function SharePage(): ReactElement {
           onSelect={setSelectedIndex}
           onOpen={openAt}
           onLoadMore={loadMore}
-          hasMore={page.hasNextPage}
+          hasMore={isAlbum ? page.hasNextPage : false}
         />
       )}
 
@@ -214,13 +223,15 @@ export default function SharePage(): ReactElement {
       {openedIndex >= 0 && (
         <Lightbox
           scope={scope}
-          // The album title for an album link, which is what was shared; empty for a
-          // photograph, whose album is named nowhere its recipient can reach
-          // (D260825e).
-          albumTitle={view.kind === 'album' ? view.title : ''}
+          // The album title for an album link, which is what was shared; the share label
+          // for a selection link; empty for a photograph, whose album is named nowhere
+          // its recipient can reach (D260825e).
+          albumTitle={
+            view.kind === 'album' ? view.title : view.kind === 'selection' ? (view.label ?? '') : ''
+          }
           items={items}
           index={openedIndex}
-          total={view.kind === 'album' ? view.itemCount : 1}
+          total={view.kind === 'album' ? view.itemCount : items.length}
           days={NO_DAYS}
           coverId={null}
           // Never: a link is a credential, not a person, and `admin` is false on the

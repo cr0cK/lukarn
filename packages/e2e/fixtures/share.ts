@@ -70,3 +70,32 @@ export async function firstPhotoId(request: APIRequestContext): Promise<string> 
   const page = (await response.json()) as { items: { id: string }[] };
   return page.items[0]!.id;
 }
+
+/** The first N photograph IDs of the day album. */
+export async function photoIds(request: APIRequestContext, count = 3): Promise<string[]> {
+  await asAdmin(request);
+  const response = await request.get(`/api/albums/${ALBUMS.day.id}/items?limit=${count}`);
+  expect(response.ok(), await response.text()).toBeTruthy();
+  const page = (await response.json()) as { items: { id: string }[] };
+  return page.items.slice(0, count).map((item) => item.id);
+}
+
+/** Issues a selection share link for multiple items. */
+export async function issueSelectionShare(
+  request: APIRequestContext,
+  items: { albumId: string; mediaId: string }[],
+  options: { label?: string } = {},
+): Promise<string> {
+  await asAdmin(request);
+
+  const created = await request.post('/api/admin/shares', {
+    data: {
+      items,
+      label: options.label ?? null,
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+
+  const { token } = (await created.json()) as { token: string };
+  return `/s/${token}`;
+}

@@ -64,9 +64,10 @@ It therefore mounts none of the chrome — no `TopBar`, no `BottomTabs`, no
 deliberately **not** a link: `TopBar` wraps it in a route to the album list, which is
 the one place this page must not offer.
 
-**One path for both kinds of link.** A photograph link is a grid of one, opening the
-same viewer. Two shapes here would be two things to keep in step for a difference
-nobody reading the page can see.
+**One path for all kinds of link.** A photograph link is a grid of one, a multi-photo
+selection link renders the curated photos, and an album link paginates the album grid,
+opening the same viewer. For single photo and selection shares, origin album identifiers
+and names are withheld (D260825e); only the instance branding and optional share label appear.
 
 A link that has stopped working shows its sentence **on this same page** rather than
 on a generic error screen — "this link was taken back", "this link has expired" —
@@ -1993,7 +1994,7 @@ what it opens is chosen from the library. Nobody is granted anything (D260825).
 The section is organized into two **sub-tabs**:
 
 - **Existing links**: the default view, displaying link count badges, real-time search filtering, and the listing of issued links.
-- **Create a link**: dedicated creation form with album selector, optional photograph identifier, recipient label, and duration picker.
+- **Create a link**: dedicated creation form supporting either a whole album (optionally narrowed to a single photograph identifier) or a multi-photo selection. In photo selection mode, an interactive thumbnail gallery allows filtering by album and toggling photos across albums into an accumulated selection with checkmark indicators and count badge.
 
 The section is the one screen that shows a link's **token**, because its reader
 already holds every credential this instance has and a link nobody can copy is a link
@@ -2012,9 +2013,7 @@ and its record of use — never opened, or when last and how many openings (D260
 - `expired`: `[Copy address]`, `[Extend]`, and `[Delete]`. Extending opens `EditShareDialog` focused on setting a renewed expiration date.
 
 **Revoking vs deleting:** Revoking closes the link for whoever holds it and keeps its
-record of use; deleting removes both (D260825b). The form carries no `kind`: a photograph
-identifier makes it a photograph link and leaving it empty makes it an album link, so
-the two cannot disagree about what was asked for.
+record of use; deleting removes both (D260825b).
 
 ### Expiry selector — `components/DateTimePicker.tsx`
 
@@ -2024,10 +2023,10 @@ Offers quick duration presets (7 days, 30 days, No expiry, Custom date). On desk
 
 Administrators can also issue and copy a link without visiting the administration tab:
 
-- **`AlbumPage`** carries a "Share album" action in the `TopBar` when the viewer is an administrator.
+- **`AlbumPage`** carries "Select" and "Share album" actions in the `TopBar` when the viewer is an administrator. Entering selection mode replaces photo click navigation with checkmark toggling and reveals a floating bottom action bar with photo count, cancel action, and a "Share selection" button.
 - **`Lightbox`** carries a "Share photograph" action in its action list and sheet when an administrator views a photograph in an album.
 
-`ShareModal` lets the administrator set an optional recipient label and choose an expiration duration (7 days, 30 days, or no expiry). Issuing the link immediately copies its full URL (`${window.location.origin}/s/${token}`) to the clipboard and presents confirmation feedback.
+`ShareModal` lets the administrator set an optional recipient label and choose an expiration duration (7 days, 30 days, or no expiry). It supports whole albums, individual photographs, and pre-selected arrays of items (`items`). Issuing the link immediately copies its full URL (`${window.location.origin}/s/${token}`) to the clipboard and presents confirmation feedback.
 
 ### Storage — `components/admin/storage/`
 

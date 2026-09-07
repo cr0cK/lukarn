@@ -33,6 +33,10 @@ interface ThumbProps {
   scope?: Scope;
   /** `true` for the thumbnail beneath the keyboard cursor. */
   selected?: boolean;
+  /** `true` when selection mode is active in the gallery. */
+  selectable?: boolean;
+  /** `true` when this thumbnail is currently checked/selected. */
+  checked?: boolean;
   onOpen: () => void;
   /** Immediate loading for the first rows, deferred for the rest. */
   eager?: boolean;
@@ -44,6 +48,8 @@ export function Thumb({
   height,
   scope,
   selected = false,
+  selectable = false,
+  checked = false,
   onOpen,
   eager = false,
 }: ThumbProps): ReactElement {
@@ -99,6 +105,8 @@ export function Thumb({
     <button
       type="button"
       onClick={onOpen}
+      role={selectable ? 'checkbox' : undefined}
+      aria-checked={selectable ? checked : undefined}
       // The tile the viewer grows out of is found by this attribute rather than
       // by a ref: the grid is virtualised, and a ref per cell would have to
       // survive the rows being unmounted while scrolling.
@@ -109,9 +117,33 @@ export function Thumb({
       aria-label={item.name}
       className={`group absolute overflow-hidden bg-ink-850 transition-[outline-color] ${
         selected ? 'outline outline-2 outline-offset-2 outline-accent' : 'outline-none'
-      }`}
+      } ${selectable && checked ? 'ring-2 ring-accent ring-inset' : ''}`}
       style={{ width, height, transform: 'translateZ(0)' }}
     >
+      {selectable && (
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute top-2 left-2 z-10 flex size-6 items-center justify-center rounded-full transition-all ${
+            checked
+              ? 'bg-accent text-accent-ink shadow-md'
+              : 'border-2 border-white/80 bg-black/40 backdrop-blur-xs group-hover:border-white'
+          }`}
+        >
+          {checked && (
+            <svg
+              className="size-3.5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+        </span>
+      )}
       {showImage && (
         <img
           // Remounting the element restarts the request: the URL does not change,

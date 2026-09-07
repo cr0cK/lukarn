@@ -141,7 +141,7 @@ export class AppContext {
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);
     this.sessions = new SessionStore(this.db);
-    this.shares = new ShareLinkRepo(this.db);
+    this.shares = new ShareLinkRepo(this.db, () => this.ffmpeg);
     this.visits = new VisitLog(this.db);
     this.pairings = new PairingStore(this.db, env.sessionSecret);
     this.days = new AlbumDayRepo(this.db);

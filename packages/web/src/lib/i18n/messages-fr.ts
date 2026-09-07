@@ -242,6 +242,9 @@ export const fr: Messages = {
   'album.editDescription': 'Modifier la description de l’album',
   'album.descriptionPlaceholder': 'Ce que contient cet album',
   'album.descriptionLabel': 'Description de l’album',
+  'album.select': 'Sélectionner',
+  'album.cancelSelection': 'Annuler',
+  'album.selectionActions': 'Sélection de photos',
 
   /* ------------------------------------------------------ Grid and sections */
 
@@ -479,6 +482,18 @@ export const fr: Messages = {
   'shares.nextMonth': 'Mois suivant',
   'shares.time': 'Heure',
   'shares.date': 'Date',
+  'shares.modeWholeAlbum': 'Album entier',
+  'shares.modePhotoSelection': 'Sélection de photos',
+  'shares.filterAlbum': 'Filtrer l’album',
+  'shares.selectPhotosHint': 'Cliquer sur les photos pour les ajouter ou les retirer du lien.',
+  'shares.selectedCount': (count: number) =>
+    `${count} photo${count === 1 ? '' : 's'} sélectionnée${count === 1 ? '' : 's'}`,
+  'shares.selectionItemCount': (count: number) => `${count} photo${count === 1 ? '' : 's'}`,
+  'shares.noPhotosInAlbum': 'Aucune photo dans cet album.',
+  'shares.loadMorePhotos': 'Charger plus de photos',
+  'shares.clearSelection': 'Tout désélectionner',
+  'shares.kindSelection': 'Sélection',
+  'shares.shareSelection': 'Partager la sélection',
 
   'admin.statusFailed': 'Impossible de charger l’état du serveur.',
 
