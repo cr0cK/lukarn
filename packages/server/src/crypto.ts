@@ -127,6 +127,17 @@ export function hashDeviceCode(deviceCode: string, secret: string): string {
 }
 
 /**
+ * Fingerprint of a member invitation token.
+ *
+ * It lives for seven days and authenticates member onboarding directly from URL.
+ * Storing only its HMAC in verification_codes ensures a database dump yields no usable
+ * login or onboarding tokens.
+ */
+export function hashInviteToken(token: string, secret: string): string {
+  return createHmac('sha256', secret).update(`invite:${token}`).digest('base64url');
+}
+
+/**
  * The hash `users.password_hash` carries when the account has no password.
  *
  * `password_hash` is `NOT NULL` and stays that way, so "no password" is one

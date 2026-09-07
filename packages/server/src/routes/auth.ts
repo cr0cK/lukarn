@@ -4,6 +4,7 @@ import {
   USER_CODE_LENGTH,
   VERIFICATION_CODE_LENGTH,
   normalizeUserCode,
+  type Album,
   type Locale,
   type SessionUser,
 } from '@lukarn/shared';
@@ -17,6 +18,7 @@ import type { Translate } from '../i18n/index.js';
 import { classifyDevice } from '../device.js';
 import { buildInvitationMail, buildSignInMail } from '../mail.js';
 import { requireAccount } from '../plugins/auth.js';
+import { buildAlbum } from '../repo.js';
 import { SESSION_COOKIE, sessionCookieOptions, type SessionRecord } from '../sessions.js';
 import type { CodePurpose } from '../verification-codes.js';
 
@@ -445,6 +447,63 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
         )
         .send(sessionUser(context.config.user(session.username!)!));
+    });
+
+    /**
+     * Magic onboarding: consumes an invitation token from the URL, binds the commenter
+     * and account, sets the 1-year session cookie, and returns the session user and their albums.
+     */
+    app.post('/invite/:token', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      if (!token || typeof token !== 'string') {
+        return reply.code(400).send({
+          error: 'invalid_token',
+          message: request.t('error.invalidCode'),
+        });
+      }
+
+      const outcome = context.codes.verifyAndConsumeInviteToken(token);
+      if (!outcome.ok) {
+        if (outcome.failure === 'expired') {
+          return reply.code(400).send({
+            error: 'token_expired',
+            message: request.t('error.codeWrongOrExpired'),
+          });
+        }
+        if (outcome.failure === 'too_many_attempts') {
+          return reply.code(400).send({
+            error: 'too_many_attempts',
+            message: request.t('error.codeWrongOrExpired'),
+          });
+        }
+        return reply.code(404).send({
+          error: 'invalid_token',
+          message: request.t('error.invalidCode'),
+        });
+      }
+
+      context.config.invalidate();
+      const user = context.config.user(outcome.data.username);
+      if (!user) {
+        return reply.code(404).send({
+          error: 'account_not_found',
+          message: request.t('error.accountNotFound'),
+        });
+      }
+
+      const device = classifyDevice(request.headers['user-agent']);
+      const session = context.sessions.create(user.username, device);
+      const albums: Album[] = context
+        .albumsFor(user.username)
+        .map((album) => buildAlbum(album, context.media, context.syncState));
+
+      return reply
+        .setCookie(
+          SESSION_COOKIE,
+          session.id,
+          sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
+        )
+        .send({ user: sessionUser(user), albums });
     });
 
     /* ------------------------------------------------------------------------

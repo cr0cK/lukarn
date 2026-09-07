@@ -19,7 +19,9 @@ import {
   USERNAME_PATTERN,
   VISIT_WINDOW_DEFAULT,
   VISIT_WINDOW_MAX,
+  inviteUserSchema,
   type AdminAlbum,
+  type AdminInviteResponse,
   type AdminStatus,
   type AdminUser,
   type AppSettings,
@@ -33,8 +35,9 @@ import argon2 from 'argon2';
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { StoredAlbum, StoredUser } from '../config-repo.js';
-import { toAdminUser } from '../config-repo.js';
+import { splitAlbums, toAdminUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
+import { NO_PASSWORD_HASH } from '../crypto.js';
 import type { Translate } from '../i18n/index.js';
 import { buildInvitationMail } from '../mail.js';
 import { requireAdmin } from '../plugins/auth.js';
@@ -111,10 +114,33 @@ const createUserSchema = z
   });
 
 /** Inviting an existing account. Without an address, the pending invitation is remade. */
-const inviteUserSchema = z.object({
+const reinviteUserSchema = z.object({
   email: invitedEmail.optional(),
   locale: invitationLocale.optional(),
 });
+
+/**
+ * Derives a clean, URL-safe and unique username from an invited member's email prefix.
+ * e.g. "mamie@example.com" -> "mamie", or "mamie-2" if already taken.
+ */
+function deriveUniqueUsername(email: string, isTaken: (name: string) => boolean): string {
+  const prefix = email.split('@')[0] ?? 'user';
+  const base = prefix
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/^[^a-z0-9]+/g, '')
+    .replace(/[^a-z0-9]+$/g, '')
+    .slice(0, 40);
+  const root = base || 'user';
+  if (!isTaken(root)) return root;
+  let counter = 2;
+  while (isTaken(`${root}-${counter}`)) {
+    counter++;
+  }
+  return `${root}-${counter}`;
+}
 
 const updateUserSchema = z
   .object({
@@ -561,6 +587,125 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
+     * Member invitation: provisions an account with no password by email, assigns albums,
+     * seeds the commenter display name if provided, automatically registers album subscriptions,
+     * and either queues an invitation email or generates an offline invite link.
+     */
+    app.post('/users/invite', async (request, reply) => {
+      const parsed = inviteUserSchema.safeParse(request.body ?? {});
+      if (!parsed.success) return badRequest(reply, parsed.error, request.t);
+
+      const { email, displayName, albums: requestedAlbums, locale } = parsed.data;
+
+      // Verify email is not already bound to another account
+      const holder = context.config.userForEmail(email);
+      if (holder) {
+        return reply.code(409).send({
+          error: 'identity_taken',
+          message: request.t('error.identityTaken', holder.username),
+        });
+      }
+
+      // Verify requested albums exist
+      if (requestedAlbums && requestedAlbums.length > 0) {
+        const missing = requestedAlbums.find((id) => id !== ALL_ALBUMS && !context.findAlbum(id));
+        if (missing) {
+          return reply.code(400).send({
+            error: 'unknown_album',
+            message: request.t('error.albumNotFound'),
+          });
+        }
+      }
+
+      // Rate limit check on target address
+      const last = context.db
+        .prepare('SELECT MAX(sent_at) AS sentAt FROM verification_codes WHERE target = ?')
+        .get(email.trim()) as { sentAt: string | null };
+      if (last?.sentAt) {
+        const elapsed = Date.now() - new Date(last.sentAt).getTime();
+        if (elapsed < 60 * 1000) {
+          return tooSoon(reply, 60 * 1000 - elapsed, request.t);
+        }
+      }
+
+      const username = deriveUniqueUsername(email, (name) => Boolean(context.config.user(name)));
+      const { allAlbums, ids } = splitAlbums(requestedAlbums);
+      const now = new Date().toISOString();
+
+      const minted = context.db.transaction(() => {
+        // 1. Insert user with NO_PASSWORD_HASH
+        context.db
+          .prepare(
+            `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
+             VALUES (?, ?, 0, ?, ?, ?)`,
+          )
+          .run(username, NO_PASSWORD_HASH, allAlbums ? 1 : 0, now, now);
+
+        // 2. Link albums
+        const linkStmt = context.db.prepare(
+          'INSERT OR IGNORE INTO user_albums (username, album_id) VALUES (?, ?)',
+        );
+        for (const id of ids) linkStmt.run(username, id);
+
+        // 3. Declare commenter (seeds display_name if provided, or empty string)
+        let commenter = context.commenters.byEmail(email);
+        if (displayName) {
+          commenter = context.commenters.declare(email, displayName);
+        } else if (!commenter) {
+          commenter = context.commenters.declare(email, '');
+        }
+
+        // 4. Auto-subscribe to granted albums
+        const albumsToSubscribe = allAlbums ? context.albums.map((a) => a.id) : ids;
+        const subStmt = context.db.prepare(
+          `INSERT OR IGNORE INTO album_subscriptions (commenter_id, album_id, state, created_at)
+           VALUES (?, ?, 'auto', ?)`,
+        );
+        for (const albumId of albumsToSubscribe) {
+          subStmt.run(commenter.id, albumId, now);
+        }
+
+        // 5. Mint invitation token
+        const mintResult = context.codes.mintInviteToken(email, username, {
+          locale,
+          bypassRateLimit: true,
+        });
+        if ('failure' in mintResult) {
+          throw new Error('Unexpected rate limit failure during mint');
+        }
+        return mintResult;
+      })();
+
+      context.config.invalidate();
+      const user = context.config.user(username)!;
+      const inviteUrl = `${context.env.publicUrl}/invite/${minted.token}`;
+
+      if (context.mailer.enabled) {
+        context.mailer.queue(
+          buildInvitationMail(
+            email,
+            minted.token,
+            locale ?? context.env.defaultLocale,
+            context.settings.instanceName,
+            context.env,
+            inviteUrl,
+          ),
+        );
+        request.log.info({ username, email }, 'Member invitation created and email queued');
+        return reply.code(201).send({
+          user: adminUser(user),
+          inviteUrl: null,
+        } satisfies AdminInviteResponse);
+      }
+
+      request.log.info({ username, email }, 'Member invitation created with offline link');
+      return reply.code(201).send({
+        user: adminUser(user),
+        inviteUrl,
+      } satisfies AdminInviteResponse);
+    });
+
+    /**
      * Invites an account that already exists, and sends its invitation again.
      *
      * With an address it invites that account. Without one it mints a fresh code for
@@ -578,7 +723,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.accountNotFound') });
       }
 
-      const parsed = inviteUserSchema.safeParse(request.body ?? {});
+      const parsed = reinviteUserSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
       // Refused on a bound account: that would be changing somebody's address, which
@@ -589,13 +734,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(409).send({
           error: 'already_bound',
           message: request.t('error.accountAlreadyBound', stored.username),
-        });
-      }
-
-      if (!context.mailer.enabled) {
-        return reply.code(503).send({
-          error: 'mail_not_configured',
-          message: request.t('error.mailNotConfigured'),
         });
       }
 
@@ -625,6 +763,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // request overrides it: that is the sender changing their mind, which is the
       // one thing allowed to.
       const locale = parsed.data.locale ?? pending?.locale ?? null;
+
+      if (!context.mailer.enabled) {
+        const minted = context.codes.mintInviteToken(email, stored.username, { locale });
+        if ('failure' in minted) return tooSoon(reply, minted.retryAfterMs, request.t);
+        const inviteUrl = `${context.env.publicUrl}/invite/${minted.token}`;
+        request.log.info(`Account "${stored.username}" invited offline`);
+        return reply.send({ inviteUrl });
+      }
 
       const minted = context.codes.mint(email, 'invite', { username: stored.username, locale });
       if ('failure' in minted) return tooSoon(reply, minted.retryAfterMs, request.t);

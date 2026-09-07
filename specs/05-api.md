@@ -112,6 +112,7 @@ variables.
 | GET    | `/api/auth/setup-state`              | none    |
 | POST   | `/api/auth/code/request`             | none    |
 | POST   | `/api/auth/code/verify`              | none    |
+| POST   | `/api/auth/invite/:token`            | none    |
 | POST   | `/api/auth/device/start`             | none    |
 | POST   | `/api/auth/device/poll`              | none    |
 | GET    | `/api/auth/device/:userCode`         | session |
@@ -231,6 +232,22 @@ so anybody behind a shared key can pre-seed an address with wording of their
 choosing. Only an **already verified** identity is adopted as it stands, keeping
 the comments it has already signed, and `displayName` is ignored on that path
 rather than renaming it (D42).
+
+**`POST /api/auth/invite/:token`** — no body. Single-step magic onboarding for
+invited members following an invitation link.
+
+| Code | Body                                     | When                                                             |
+| ---- | ---------------------------------------- | ---------------------------------------------------------------- |
+| 200  | `{ user: SessionUser, albums: Album[] }` | Success. Sets 1-year `lukarn_session` cookie and binds account.  |
+| 400  | `token_expired`                          | Invitation token exceeded its 7-day lifetime.                    |
+| 404  | `not_found`                              | Token unknown or already spent (single-use).                     |
+| 409  | `identity_taken`                         | Address was bound to another account between invite and onboard. |
+
+The token is a 64-character hex string representing an HMAC-signed token minted
+during member invitation. On success, the token is consumed immediately, the
+commenter identity is marked verified, the user account is bound to the commenter
+identity, and a 1-year persistent session cookie is issued alongside the user
+profile and accessible albums.
 
 ### Pairing a screen — `pairings.ts`
 
@@ -906,32 +923,33 @@ produces a new store key, hence a new derivative.
 
 `requireAdmin` as a `preHandler` on the whole `/api/admin` prefix.
 
-| Method | Path                                   | Response                                                                                                                                        |
-| ------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/admin/status`                    | `200 AdminStatus`                                                                                                                               |
-| GET    | `/api/admin/visits`                    | `200 VisitsOverview` · `400`                                                                                                                    |
-| GET    | `/api/admin/users`                     | `200 AdminUser[]`                                                                                                                               |
-| POST   | `/api/admin/users`                     | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured`              |
-| POST   | `/api/admin/users/:username/invite`    | `200 AdminUser` · `400` · `404` · `409 already_bound` · `409 no_invitation` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured` |
-| PATCH  | `/api/admin/users/:username`           | `200 AdminUser` · `400` · `404` · `409 last_admin` · `409 password_on_bound_account`                                                            |
-| DELETE | `/api/admin/users/:username`           | `200 { ok: true }` · `404` · `409 last_admin`                                                                                                   |
-| GET    | `/api/admin/albums`                    | `200 AdminAlbum[]`                                                                                                                              |
-| POST   | `/api/admin/albums`                    | `201 AdminAlbum` · `400` · `409 conflict`                                                                                                       |
-| PATCH  | `/api/admin/albums/:id`                | `200 AdminAlbum` · `400` · `404`                                                                                                                |
-| DELETE | `/api/admin/albums/:id`                | `200 { ok: true }` · `404`                                                                                                                      |
-| PATCH  | `/api/admin/albums/:id/days/:day`      | `200 AlbumDay` · `400` · `404`                                                                                                                  |
-| PATCH  | `/api/admin/albums/:id/items/:mediaId` | `200 MediaItem` · `400` · `404`                                                                                                                 |
-| GET    | `/api/admin/settings`                  | `200 AppSettings`                                                                                                                               |
-| PATCH  | `/api/admin/settings`                  | `200 AppSettings` · `400`                                                                                                                       |
-| GET    | `/api/admin/storage`                   | `200 StorageConnectionStatus[]`                                                                                                                 |
-| POST   | `/api/admin/storage`                   | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409`                                                                                  |
-| PATCH  | `/api/admin/storage/:id`               | `200 StorageConnectionStatus` · `400` · `404`                                                                                                   |
-| DELETE | `/api/admin/storage/:id`               | `200 { ok: true }` · `404` · `409 storage_in_use`                                                                                               |
-| POST   | `/api/admin/storage/:id/test`          | `200 StorageProbeResult` · `404`                                                                                                                |
-| GET    | `/api/admin/storage/:id/oauth/start`   | `200 { url }` · `400 oauth_not_configured` · `404` · `409`                                                                                      |
-| POST   | `/api/admin/storage/:id/disconnect`    | `200 { ok: true }` · `404` · `409 service_account_mode`                                                                                         |
-| POST   | `/api/admin/resync`                    | `202 { started: string[] }` · `400` · `404` · `503`                                                                                             |
-| POST   | `/api/admin/cache/clear`               | `200 { ok: true }`                                                                                                                              |
+| Method | Path                                   | Response                                                                                                                                  |
+| ------ | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/admin/status`                    | `200 AdminStatus`                                                                                                                         |
+| GET    | `/api/admin/visits`                    | `200 VisitsOverview` · `400`                                                                                                              |
+| GET    | `/api/admin/users`                     | `200 AdminUser[]`                                                                                                                         |
+| POST   | `/api/admin/users`                     | `201 AdminUser` · `400` · `400 unknown_album` · `409 conflict` · `409 identity_taken` · `429 too_soon` · `503 mail_not_configured`        |
+| POST   | `/api/admin/users/invite`              | `201 AdminInviteResponse` · `400` · `400 unknown_album` · `409 identity_taken` · `429 too_soon`                                           |
+| POST   | `/api/admin/users/:username/invite`    | `200 AdminUser` · `200 { inviteUrl }` · `400` · `404` · `409 already_bound` · `409 no_invitation` · `409 identity_taken` · `429 too_soon` |
+| PATCH  | `/api/admin/users/:username`           | `200 AdminUser` · `400` · `404` · `409 last_admin` · `409 password_on_bound_account`                                                      |
+| DELETE | `/api/admin/users/:username`           | `200 { ok: true }` · `404` · `409 last_admin`                                                                                             |
+| GET    | `/api/admin/albums`                    | `200 AdminAlbum[]`                                                                                                                        |
+| POST   | `/api/admin/albums`                    | `201 AdminAlbum` · `400` · `409 conflict`                                                                                                 |
+| PATCH  | `/api/admin/albums/:id`                | `200 AdminAlbum` · `400` · `404`                                                                                                          |
+| DELETE | `/api/admin/albums/:id`                | `200 { ok: true }` · `404`                                                                                                                |
+| PATCH  | `/api/admin/albums/:id/days/:day`      | `200 AlbumDay` · `400` · `404`                                                                                                            |
+| PATCH  | `/api/admin/albums/:id/items/:mediaId` | `200 MediaItem` · `400` · `404`                                                                                                           |
+| GET    | `/api/admin/settings`                  | `200 AppSettings`                                                                                                                         |
+| PATCH  | `/api/admin/settings`                  | `200 AppSettings` · `400`                                                                                                                 |
+| GET    | `/api/admin/storage`                   | `200 StorageConnectionStatus[]`                                                                                                           |
+| POST   | `/api/admin/storage`                   | `201 StorageConnectionStatus` · `400 unsupported_kind` · `409`                                                                            |
+| PATCH  | `/api/admin/storage/:id`               | `200 StorageConnectionStatus` · `400` · `404`                                                                                             |
+| DELETE | `/api/admin/storage/:id`               | `200 { ok: true }` · `404` · `409 storage_in_use`                                                                                         |
+| POST   | `/api/admin/storage/:id/test`          | `200 StorageProbeResult` · `404`                                                                                                          |
+| GET    | `/api/admin/storage/:id/oauth/start`   | `200 { url }` · `400 oauth_not_configured` · `404` · `409`                                                                                |
+| POST   | `/api/admin/storage/:id/disconnect`    | `200 { ok: true }` · `404` · `409 service_account_mode`                                                                                   |
+| POST   | `/api/admin/resync`                    | `202 { started: string[] }` · `400` · `404` · `503`                                                                                       |
+| POST   | `/api/admin/cache/clear`               | `200 { ok: true }`                                                                                                                        |
 
 **`status`** — `AdminStatus`: `storage` (every connection, see below),
 `storageKinds` (the kinds this build can create), `storageLocalRoot` (the
@@ -1159,6 +1177,24 @@ comments is still the `moderationEmail` setting, and it binds nothing.
   and consuming an invitation close them too, and delete the account's approved
   pairings with them.
 
+**`POST /api/admin/users/invite`** — body `InviteUserInput` =
+`{ email, displayName?, albums: string[], locale? }`. Creates a member account
+with an auto-derived slug username, sentinel password hash, and album
+subscriptions, and mints an invitation token.
+
+| Code | Body                  | When                                                              |
+| ---- | --------------------- | ----------------------------------------------------------------- |
+| 201  | `AdminInviteResponse` | Success (`{ user: AdminUser, inviteUrl?: string }`).              |
+| 400  | `bad_request`         | Invalid email or empty album list.                                |
+| 400  | `unknown_album`       | One or more album IDs do not exist.                               |
+| 409  | `identity_taken`      | The email address is already bound to another account.            |
+| 429  | `too_soon`            | Invitation was dispatched to this address within the last minute. |
+
+When SMTP is active, the invitation email (containing both the onboarding link
+and 6-digit verification code) is queued and `{ user }` is returned. When SMTP
+is not configured, offline link generation mints an invitation token and returns
+`{ user, inviteUrl }` so the administrator can share the onboarding link manually.
+
 **`POST /api/admin/users/:username/invite`** — body `InviteUserRequest` =
 `{ email?, locale? }`. Converts an account that already exists, and sends an invitation
 again. With an address it invites that account; without one it mints a fresh code
@@ -1179,8 +1215,9 @@ row already holds the language they were written to in (D260819c).
 It answers `409 already_bound` on an account that is already bound. Changing
 somebody's address is out of scope for this release, and it is the shape of the
 impersonation this design exists to prevent. The other refusals are the ones
-above: `404` for an unknown account, `409 identity_taken`, `429 too_soon`,
-`503 mail_not_configured`.
+above: `404` for an unknown account, `409 identity_taken`, `429 too_soon`.
+When the mailer is not configured, it generates an offline invitation token and
+returns `200 { inviteUrl: string }` instead of failing with `503`.
 
 The account keeps its password throughout. An invitation to convert that nobody
 takes up leaves a working shared key exactly as it was, and the conversion happens

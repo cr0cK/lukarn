@@ -1,6 +1,6 @@
 import { isLocale, VERIFICATION_CODE_LENGTH, type Locale } from '@lukarn/shared';
-import { randomInt } from 'node:crypto';
-import { hashVerificationCode, safeEqual } from './crypto.js';
+import { randomBytes, randomInt } from 'node:crypto';
+import { hashInviteToken, hashVerificationCode, NO_PASSWORD_HASH, safeEqual } from './crypto.js';
 import type { Db } from './db.js';
 
 /**
@@ -309,4 +309,150 @@ export class VerificationCodeRepo {
       )
       .run(target, purpose, hash, expiresAt, sentAt, locale);
   }
+
+  /**
+   * Issues a high-entropy URL-safe invitation token associated with `purpose = 'invite'`.
+   * Stored as an HMAC with 7-day expiration.
+   */
+  mintInviteToken(
+    target: string,
+    username: string,
+    options: { locale?: Locale | null; bypassRateLimit?: boolean } = {},
+  ): { token: string } | { failure: MintFailure; retryAfterMs: number } {
+    const normalized = target.trim();
+    const locale = options.locale ?? null;
+
+    const now = Date.now();
+    if (!options.bypassRateLimit) {
+      const last = this.db
+        .prepare('SELECT MAX(sent_at) AS sentAt FROM verification_codes WHERE target = ?')
+        .get(normalized) as { sentAt: string | null };
+      if (last?.sentAt) {
+        const elapsed = now - new Date(last.sentAt).getTime();
+        if (elapsed < RESEND_DELAY_MS) {
+          return { failure: 'too_soon', retryAfterMs: RESEND_DELAY_MS - elapsed };
+        }
+      }
+    }
+
+    const token = randomBytes(32).toString('base64url');
+    const sentAt = new Date(now).toISOString();
+    const expiresAt = new Date(now + TTL_MS.invite).toISOString();
+    const hash = hashInviteToken(token, this.secret);
+
+    this.replaceInvite(normalized, username, hash, expiresAt, sentAt, locale);
+    return { token };
+  }
+
+  /**
+   * Validates and consumes an invitation token, binding the commenter and user.
+   */
+  verifyAndConsumeInviteToken(token: string): ConsumeInviteOutcome {
+    return verifyAndConsumeInviteToken(this.db, token, this.secret);
+  }
+}
+
+export interface ConsumeInviteResult {
+  email: string;
+  username: string;
+  locale: Locale | null;
+  commenterId: number;
+}
+
+export type ConsumeInviteOutcome =
+  | { ok: true; data: ConsumeInviteResult }
+  | { ok: false; failure: 'unknown' | 'expired' | 'too_many_attempts' };
+
+/**
+ * Validates and consumes an invitation token against the database:
+ * 1. Checks existence, expiration, and attempt ceilings on the token hash.
+ * 2. Consumes the invitation token row (single-use).
+ * 3. Finds or creates commenter record for the verified email.
+ * 4. Seeds preferred locale if present.
+ * 5. Binds account (`users.commenter_id`), sets sentinel password hash.
+ * 6. Closes prior sessions and pairings for the username.
+ */
+export function verifyAndConsumeInviteToken(
+  db: Db,
+  token: string,
+  secret = '',
+): ConsumeInviteOutcome {
+  const hash = hashInviteToken(token, secret);
+  const row = db
+    .prepare("SELECT * FROM verification_codes WHERE purpose = 'invite' AND code_hash = ?")
+    .get(hash) as CodeRow | undefined;
+
+  if (!row) return { ok: false, failure: 'unknown' };
+  if (row.attempts >= MAX_ATTEMPTS) return { ok: false, failure: 'too_many_attempts' };
+  if (new Date(row.expires_at).getTime() <= Date.now()) return { ok: false, failure: 'expired' };
+
+  return db.transaction(() => {
+    // 1. Consume token (single use)
+    db.prepare("DELETE FROM verification_codes WHERE purpose = 'invite' AND target = ?").run(
+      row.target,
+    );
+
+    // 2. Find or create commenter record for the verified email
+    const normalizedEmail = row.target.trim();
+    let commenter = db.prepare('SELECT * FROM commenters WHERE email = ?').get(normalizedEmail) as
+      | {
+          id: number;
+          display_name: string;
+          pending_display_name: string | null;
+          verified_at: string | null;
+        }
+      | undefined;
+
+    const nowIso = new Date().toISOString();
+    if (!commenter) {
+      const ins = db
+        .prepare(
+          'INSERT INTO commenters (email, display_name, verified_at, created_at) VALUES (?, ?, ?, ?)',
+        )
+        .run(normalizedEmail, '', nowIso, nowIso);
+      commenter = {
+        id: Number(ins.lastInsertRowid),
+        display_name: '',
+        pending_display_name: null,
+        verified_at: nowIso,
+      };
+    } else {
+      const effectiveName = commenter.pending_display_name || commenter.display_name;
+      db.prepare(
+        `UPDATE commenters
+            SET verified_at = COALESCE(verified_at, ?),
+                display_name = ?,
+                pending_display_name = NULL
+          WHERE id = ?`,
+      ).run(nowIso, effectiveName, commenter.id);
+    }
+
+    // 3. Seed locale
+    if (row.locale) {
+      db.prepare('UPDATE commenters SET locale = ? WHERE id = ? AND locale IS NULL').run(
+        row.locale,
+        commenter.id,
+      );
+    }
+
+    // 4. Bind commenter to user
+    db.prepare(
+      `UPDATE users SET commenter_id = ?, password_hash = ?, updated_at = ?
+        WHERE username = ?`,
+    ).run(commenter.id, NO_PASSWORD_HASH, nowIso, row.username);
+
+    // 5. Delete prior sessions and pairings for username
+    db.prepare('DELETE FROM sessions WHERE username = ?').run(row.username);
+    db.prepare('DELETE FROM device_pairings WHERE username = ?').run(row.username);
+
+    return {
+      ok: true as const,
+      data: {
+        email: row.target,
+        username: row.username!,
+        locale: isLocale(row.locale) ? row.locale : null,
+        commenterId: commenter.id,
+      },
+    };
+  })();
 }

@@ -514,47 +514,58 @@ export function buildInvitationMail(
   locale: Locale,
   instanceName: string,
   env: Env,
+  inviteUrl?: string,
 ): MailMessage {
   const t = translator(locale);
   const host = new URL(env.publicUrl).host;
   const subject = t('mail.inviteSubject', host);
-  const link = `${env.publicUrl}/login?email=${encodeURIComponent(email)}`;
+  const link = inviteUrl ?? `${env.publicUrl}/login?email=${encodeURIComponent(email)}`;
 
-  // The page first, the code second. A recipient handed six digits before being told
-  // where they go has to work out what to do with them, and the invitation is read by
-  // somebody who has never seen this instance. Ordering it the other way put the
-  // answer after the question.
-  const text = [
-    t('mail.inviteIntro', host),
-    '',
-    t('mail.inviteOpen'),
-    link,
-    '',
-    t('mail.inviteThen'),
-    '',
-    code,
-    '',
-    t('mail.inviteValidity'),
-    '',
-    '—',
-    t('mail.inviteIgnore'),
-  ].join('\n');
+  // The page first, the code second. When inviteUrl is passed (e.g. member magic link),
+  // clicking the link directly activates the account without typing a 6-digit code.
+  const text = inviteUrl
+    ? [
+        t('mail.inviteIntro', host),
+        '',
+        t('mail.inviteOpen'),
+        link,
+        '',
+        t('mail.inviteValidity'),
+        '',
+        '—',
+        t('mail.inviteIgnore'),
+      ].join('\n')
+    : [
+        t('mail.inviteIntro', host),
+        '',
+        t('mail.inviteOpen'),
+        link,
+        '',
+        t('mail.inviteThen'),
+        '',
+        code,
+        '',
+        t('mail.inviteValidity'),
+        '',
+        '—',
+        t('mail.inviteIgnore'),
+      ].join('\n');
 
   const html = `
     <div style="font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.5; color: #1a1a1a;">
       ${header(instanceName, env.publicUrl)}
       <p style="margin: 0 0 16px;">${escapeHtml(t('mail.inviteIntro', host))}</p>
-      <!-- The address is shown rather than hidden behind a label: this message carries a
-           code, and a reader deciding whether to trust it should be able to read where
-           the link goes. A styled button would also resemble the magic link D260819b
-           rejects, which this deliberately is not. -->
       <p style="margin: 0 0 20px;">
         ${escapeHtml(t('mail.inviteOpen'))}
         <br>
         <a href="${escapeHtml(link)}" style="color: #2563eb;">${escapeHtml(link)}</a>
       </p>
-      <p style="margin: 0 0 8px;">${escapeHtml(t('mail.inviteThen'))}</p>
-      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>
+      ${
+        inviteUrl
+          ? ''
+          : `<p style="margin: 0 0 8px;">${escapeHtml(t('mail.inviteThen'))}</p>
+      <p style="margin: 0 0 16px; font-size: 28px; font-weight: 600; letter-spacing: 0.15em;">${escapeHtml(code)}</p>`
+      }
       <p style="margin: 0 0 24px; color: #666;">${t('mail.inviteValidity')}</p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">${t('mail.inviteIgnore')}</p>

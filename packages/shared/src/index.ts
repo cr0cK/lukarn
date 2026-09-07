@@ -27,8 +27,11 @@ export function isThumbSize(value: number): value is ThumbSize {
  * resolved back to `DEFAULT_LOCALE` rather than rejected — an unsupported language
  * must degrade to a readable page, never to an error.
  */
+import { z } from 'zod';
+
 export const LOCALES = ['en', 'fr'] as const;
 export type Locale = (typeof LOCALES)[number];
+export const localeSchema = z.enum(LOCALES);
 
 /**
  * Language used when nothing else answers: an unrecognised browser preference, or a
@@ -925,6 +928,25 @@ export interface InviteUserRequest {
    * invitation was minted with is repeated rather than reread from the sender.
    */
   locale?: Locale;
+}
+
+/**
+ * Member invitation request: provisions an account by email and optionally binds
+ * albums, display name, and preferred locale.
+ */
+export const inviteUserSchema = z.object({
+  email: z.string().email(),
+  displayName: z.string().trim().min(1).max(50).optional(),
+  albums: z.array(z.string()).default([]),
+  locale: localeSchema.optional(),
+});
+export type InviteUserInput = z.infer<typeof inviteUserSchema>;
+
+/** Response from POST /api/admin/users/invite */
+export interface AdminInviteResponse {
+  user: AdminUser;
+  /** Direct magic onboarding link when mailer is inactive, or for offline sharing. */
+  inviteUrl: string | null;
 }
 
 export interface AdminAlbum {
