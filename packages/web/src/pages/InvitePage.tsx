@@ -93,9 +93,7 @@ export default function InvitePage(): ReactElement {
           <h1 className="mt-4 text-base font-semibold text-ink-100">
             {t('invitePage.invalidOrExpired')}
           </h1>
-          <p className="mt-2 text-xs text-ink-400">
-            {t('invitePage.requestNew')}
-          </p>
+          <p className="mt-2 text-xs text-ink-400">{t('invitePage.requestNew')}</p>
           <div className="mt-6">
             <button
               type="button"
@@ -114,12 +112,17 @@ export default function InvitePage(): ReactElement {
     <div className="flex min-h-screen items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
         <Brand className="mb-5" />
-        <h1 className="mb-1 text-2xl font-semibold tracking-tight">{t('invitePage.welcomeTitle')}</h1>
+        <h1 className="mb-1 text-2xl font-semibold tracking-tight">
+          {t('invitePage.welcomeTitle')}
+        </h1>
         <p className="mb-6 text-sm text-ink-400">{t('invitePage.welcomeSubtitle')}</p>
 
         <form onSubmit={submitName} className="space-y-4">
           <div>
-            <label htmlFor="invite-display-name" className="mb-1.5 block text-xs font-medium text-ink-300">
+            <label
+              htmlFor="invite-display-name"
+              className="mb-1.5 block text-xs font-medium text-ink-300"
+            >
               {t('invitePage.promptDisplayName')}
             </label>
             <input
@@ -133,11 +136,7 @@ export default function InvitePage(): ReactElement {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={updateProfile.isPending}
-            className={primaryClass}
-          >
+          <button type="submit" disabled={updateProfile.isPending} className={primaryClass}>
             {updateProfile.isPending ? t('common.saving') : t('invitePage.continueToGallery')}
           </button>
 

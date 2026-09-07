@@ -376,7 +376,10 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
     const token = match[1]!;
 
     // Before onboarding: not verified, so not in subscribers
-    assert.equal(context.subscriptions.subscribers('famille').some((s) => s.email === 'scoped@exemple.fr'), false);
+    assert.equal(
+      context.subscriptions.subscribers('famille').some((s) => s.email === 'scoped@exemple.fr'),
+      false,
+    );
 
     // 2. Member consumes token
     const onboardRes = await server.inject({
@@ -386,14 +389,20 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
     assert.equal(onboardRes.statusCode, 200);
 
     // Now verified and bound to user: present in subscribers for 'famille'
-    assert.equal(context.subscriptions.subscribers('famille').some((s) => s.email === 'scoped@exemple.fr'), true);
+    assert.equal(
+      context.subscriptions.subscribers('famille').some((s) => s.email === 'scoped@exemple.fr'),
+      true,
+    );
 
     // Manually add subscription to 'vacances' (album they do NOT have permission for)
     const commenter = context.commenters.byEmail('scoped@exemple.fr')!;
     context.subscriptions.subscribe(commenter.id, 'vacances');
 
     // Should NOT be returned in subscribers for 'vacances' because user has no permission
-    assert.equal(context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'), false);
+    assert.equal(
+      context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'),
+      false,
+    );
   });
 });
 

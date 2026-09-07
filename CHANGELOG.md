@@ -13,6 +13,18 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### Member invitations, offline magic links, and passwordless onboarding
+
+Inviting family members and close friends to view albums no longer requires setting up a manual password or configuring full administrative accounts.
+
+Administrators can click **Invite a member** in **Administration → Accounts** to invite someone using their email address, an optional first name or nickname, and their assigned albums. One-click shortcuts allow selecting or clearing all albums at once.
+
+When an email relay is configured, an invitation email is sent directly to the recipient with a single-use magic link. When email delivery is not configured, or when offline sharing is preferred, the gallery generates a magic onboarding link that can be copied directly and shared through messaging apps.
+
+Following the link takes the recipient to an onboarding screen that automatically authenticates them without asking for a password. If the administrator did not provide a display name, the member is invited to choose how their name should appear under comments before continuing to their assigned albums.
+
+Members who have access to an album automatically receive email updates when new photographs are added, while subscriptions stay strictly scoped to the albums each member is permitted to see.
+
 ### An album, or one photograph, opened by a link
 
 Sending photographs to somebody outside the household meant giving them an account,

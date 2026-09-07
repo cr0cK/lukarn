@@ -56,9 +56,7 @@ export function InviteLinkModal({
           {t('adminUsers.offlineModalTitle')}
         </h2>
 
-        <p className="mt-2 text-sm text-ink-300">
-          {t('adminUsers.offlineModalExplain')}
-        </p>
+        <p className="mt-2 text-sm text-ink-300">{t('adminUsers.offlineModalExplain')}</p>
 
         <div className="mt-4 flex gap-2">
           <input

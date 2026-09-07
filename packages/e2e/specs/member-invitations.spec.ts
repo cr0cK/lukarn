@@ -94,13 +94,17 @@ test('admin creates invitation with offline link copy mode and recipient onboard
 
   const db = openDb(DATA_DIR);
   // Insert user with no password hash for 'cousin' first to satisfy foreign key
-  db.prepare(`
+  db.prepare(
+    `
     INSERT OR REPLACE INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
     VALUES ('cousin', 'NO_PASSWORD', 0, 0, datetime('now'), datetime('now'))
-  `).run();
-  db.prepare(`
+  `,
+  ).run();
+  db.prepare(
+    `
     INSERT OR IGNORE INTO user_albums (username, album_id) VALUES ('cousin', ?)
-  `).run(ALBUMS.day.id);
+  `,
+  ).run(ALBUMS.day.id);
 
   // Mint a real invite token in the DB to test offline onboarding
   const codes = new VerificationCodeRepo(db, instanceEnv().SESSION_SECRET!);

@@ -5,14 +5,7 @@ import { useInviteMember } from '../../api/hooks';
 import { validateEmail } from '../../lib/adminForm';
 import { useT } from '../../lib/i18n';
 import { InviteLinkModal } from './InviteLinkModal';
-import {
-  Button,
-  FormError,
-  SelectField,
-  TextField,
-  localeOptions,
-  type Notify,
-} from './ui';
+import { Button, FormError, SelectField, TextField, localeOptions, type Notify } from './ui';
 
 interface InviteMemberModalProps {
   albums: AdminAlbum[];
@@ -88,13 +81,7 @@ export function InviteMemberModal({
   };
 
   if (offlineUrl) {
-    return (
-      <InviteLinkModal
-        inviteUrl={offlineUrl}
-        onClose={onClose}
-        notify={notify}
-      />
-    );
+    return <InviteLinkModal inviteUrl={offlineUrl} onClose={onClose} notify={notify} />;
   }
 
   return (
@@ -118,9 +105,7 @@ export function InviteMemberModal({
             <h2 id={titleId} className="text-base font-medium text-ink-100">
               {t('adminUsers.inviteMemberTitle')}
             </h2>
-            <p className="mt-1 text-xs text-ink-400">
-              {t('adminUsers.inviteMemberExplain')}
-            </p>
+            <p className="mt-1 text-xs text-ink-400">{t('adminUsers.inviteMemberExplain')}</p>
           </div>
           <button
             type="button"
@@ -180,9 +165,7 @@ export function InviteMemberModal({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-ink-300">
-                {t('access.legend')}
-              </span>
+              <span className="text-xs font-medium text-ink-300">{t('access.legend')}</span>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -222,9 +205,7 @@ export function InviteMemberModal({
                         className="rounded border-ink-600 text-accent focus:ring-accent"
                       />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-ink-200">
-                          {album.title}
-                        </p>
+                        <p className="truncate text-xs font-medium text-ink-200">{album.title}</p>
                         <p className="text-[11px] text-ink-400">
                           {t('access.albumDetail', album.id, album.itemCount)}
                         </p>
@@ -240,11 +221,7 @@ export function InviteMemberModal({
             <Button onClick={onClose} disabled={invite.isPending}>
               {t('common.cancel')}
             </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              disabled={invite.isPending}
-            >
+            <Button variant="primary" type="submit" disabled={invite.isPending}>
               {invite.isPending ? t('common.sending') : t('adminUsers.sendMemberInvite')}
             </Button>
           </div>

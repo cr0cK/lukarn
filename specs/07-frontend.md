@@ -6,13 +6,14 @@ the view lives in the URL, the rest is local `useState`.
 
 ## Routing
 
-`App.tsx`, eight routes plus a catch-all.
+`App.tsx`, nine routes plus a catch-all.
 
 | Path              | Page             | Guard                                 |
 | ----------------- | ---------------- | ------------------------------------- |
 | `/login`          | `LoginPage`      | none (redirects if already signed in) |
 | `/diagnostic`     | `DiagnosticPage` | none                                  |
 | `/s/:token`       | `SharePage`      | none                                  |
+| `/invite/:token`  | `InvitePage`     | none                                  |
 | `/pair`           | `PairPage`       | `RequireAuth`                         |
 | `/`               | `AlbumsPage`     | `RequireAuth`                         |
 | `/album/:albumId` | `AlbumPage`      | `RequireAuth`                         |
@@ -76,6 +77,24 @@ password field to guess at (D260825b). The server distinguishes the cases with a
 status and an error code; the page says which in words, from the interface
 catalogue, because it is read in a browser whose language the interface already
 knows.
+
+### Member onboarding — `pages/InvitePage.tsx`
+
+`/invite/:token` is the magic onboarding page reached from invitation links (both email and
+copied links). It mounts no application chrome (`TopBar`, `BottomTabs`).
+
+On mount, it validates and consumes the one-time token via `POST /api/auth/invite/:token`
+(`useConsumeInvite`), establishing the authenticated session cookie.
+
+- If the member already has a display name registered (either chosen at invitation or
+  previously recorded), the page immediately redirects to `/` with no intermediate clicks.
+- If no display name is recorded, it presents a welcoming display name prompt
+  ("How would you like your name to appear under comments?") allowing the person to enter
+  their preferred name (`PATCH /api/auth/profile`, `useUpdateProfile`) or skip directly to
+  the gallery.
+- If the token is invalid, expired, or already consumed, the page presents a dedicated error
+  card explaining that the invitation link is invalid or has expired, with a button leading
+  to `/login`.
 
 ### The scope a page reads from — `api/client.ts`
 
@@ -1962,26 +1981,26 @@ The message banner stays in the content column, stuck under the top bar: the
 comments section always scrolls, and a message shown at the very top would go
 unnoticed from the bottom of the queue.
 
-| Component                     | Role                                                                                                                                                                                                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AdminNav`                    | Navigation between the eight sections, as `NavLink`                                                                                                                                                                                                                      |
-| `StorageSection`              | The storages this instance reads: the list, and the confirmed deletion                                                                                                                                                                                                   |
-| `StorageRow`                  | One connection: its state, and the buttons its `authorization` allows                                                                                                                                                                                                    |
-| `StorageForm`                 | Name, kind, then the fields of the kind chosen                                                                                                                                                                                                                           |
-| `LocalFields`                 | The subpath under `STORAGE_LOCAL_ROOT`                                                                                                                                                                                                                                   |
-| `S3Fields`                    | Endpoint, region, bucket, prefix, key pair, path-style                                                                                                                                                                                                                   |
-| `WebdavFields`                | Address, folder, credentials                                                                                                                                                                                                                                             |
-| `UsersSection` / `UserForm`   | Account list and its four states, creation with a password or with an invitation, the language that invitation is written in, editing, re-invitation and confirmed deletion                                                                                              |
-| `AlbumsSection` / `AlbumForm` | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                                     |
-| `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
-| `SettingsSection`             | Sync interval, sync on startup, prewarming, both cache budgets, video preparation, moderation address                                                                                                                                                                    |
-| `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                                    |
-| `SharesSection`               | Every share link this instance has issued: sub-tabs for existing links and creation, search filter, and lifecycle gestures (restore, revoke, extend, delete)                                                                                                             |
-| `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                           |
-| `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                               |
-| `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                           |
-| `AdminMenu`                   | The same eight sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                                  |
-| `ui.tsx`                      | Shared primitives: button, field, checkbox, `Choice`, section box, row geometry, `SettingRow`. Every control sits on `ink-800`, one rung off the `ink-850/50` panel — on the same rung a field was drawn by its border alone, and that border disappears on a dim screen |
+| Component                                                             | Role                                                                                                                                                                                                                                                                     |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AdminNav`                                                            | Navigation between the eight sections, as `NavLink`                                                                                                                                                                                                                      |
+| `StorageSection`                                                      | The storages this instance reads: the list, and the confirmed deletion                                                                                                                                                                                                   |
+| `StorageRow`                                                          | One connection: its state, and the buttons its `authorization` allows                                                                                                                                                                                                    |
+| `StorageForm`                                                         | Name, kind, then the fields of the kind chosen                                                                                                                                                                                                                           |
+| `LocalFields`                                                         | The subpath under `STORAGE_LOCAL_ROOT`                                                                                                                                                                                                                                   |
+| `S3Fields`                                                            | Endpoint, region, bucket, prefix, key pair, path-style                                                                                                                                                                                                                   |
+| `WebdavFields`                                                        | Address, folder, credentials                                                                                                                                                                                                                                             |
+| `UsersSection` / `UserForm` / `InviteMemberModal` / `InviteLinkModal` | Account list and its four states, creation with a password or with an invitation, member invitation modal with album selection helpers, offline link sharing modal, editing, re-invitation and confirmed deletion                                                        |
+| `AlbumsSection` / `AlbumForm`                                         | Album list, sync status, its storage, default grouping, revert to automatic cover, creation, editing                                                                                                                                                                     |
+| `IdentitySection`                                                     | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
+| `SettingsSection`                                                     | Sync interval, sync on startup, prewarming, both cache budgets, video preparation, moderation address                                                                                                                                                                    |
+| `MaintenanceSection`                                                  | Cache usage and purge                                                                                                                                                                                                                                                    |
+| `SharesSection`                                                       | Every share link this instance has issued: sub-tabs for existing links and creation, search filter, and lifecycle gestures (restore, revoke, extend, delete)                                                                                                             |
+| `VisitsSection`                                                       | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                           |
+| `AlbumAccessPicker`                                                   | Assigning albums to an account (see below)                                                                                                                                                                                                                               |
+| `ConfirmDialog`                                                       | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                           |
+| `AdminMenu`                                                           | The same eight sections as a grouped list, below `md`, filling `/admin`                                                                                                                                                                                                  |
+| `ui.tsx`                                                              | Shared primitives: button, field, checkbox, `Choice`, section box, row geometry, `SettingRow`. Every control sits on `ink-800`, one rung off the `ink-850/50` panel — on the same rung a field was drawn by its border alone, and that border disappears on a dim screen |
 
 Each section carries its own mutations, and `ui.tsx` exists so forms do not
 reinvent either the classes or the `label` / `aria-describedby` link.
@@ -2383,6 +2402,26 @@ unbind-and-set in one act (see [04](./04-security-and-access.md)). The field is
 therefore labelled "Password, replacing the person", and its hint names the address
 about to be released along with the sessions and the paired screens that close with
 it. Left empty, it changes nothing.
+
+### Member invitations and offline sharing — `components/admin/InviteMemberModal.tsx` and `InviteLinkModal.tsx`
+
+Alongside creating accounts with explicit usernames and passwords, administrators can invite
+members directly via `InviteMemberModal.tsx` ("Invite a member" primary action in `UsersSection`).
+
+- **Email & Name Input**: Takes an email address and an optional first name or display name.
+  The username is automatically derived from the email prefix (`deriveUsername`), simplifying
+  account creation without requiring manual username or credential configuration.
+- **Album Access Shortcuts**: Embeds `AlbumAccessPicker` with "Select all" and "Clear all"
+  quick actions, allowing one-click selection of albums.
+- **Delivery Mode**: When SMTP is configured, submitting the form dispatches an invitation email
+  and reports confirmation. When SMTP is not configured, the invitation endpoint returns an
+  `inviteUrl` which opens `InviteLinkModal.tsx`.
+- **`InviteLinkModal.tsx`**: Displays the generated `/invite/:token` link with a read-only input
+  and a "Copy link" action with copied feedback, allowing administrators to share magic links
+  directly via messaging apps or SMS.
+- **Re-invitation Link Sharing**: In `UsersSection.tsx`, accounts in the `invited` state also
+  allow copying the invite link via `InviteLinkModal.tsx` when re-issuing an invitation in
+  offline setups.
 
 ### Album assignment is a choice between two regimes
 
