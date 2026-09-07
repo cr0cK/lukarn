@@ -354,4 +354,45 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
     assert.equal(response.statusCode, 400);
     assert.equal(response.json<{ error: string }>().error, 'token_expired');
   });
+
+  it('enforces album permissions on subscription digests for invited members', async () => {
+    // 1. Admin invites member for 'famille' only
+    const inviteRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'scoped@exemple.fr',
+        displayName: 'Scoped User',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(inviteRes.statusCode, 201);
+    const body = inviteRes.json<AdminInviteResponse>();
+    assert.equal(body.inviteUrl, null);
+    assert.equal(sent.length, 1);
+    const match = sent[0]!.text.match(/\/invite\/([a-zA-Z0-9_-]+)/);
+    assert.ok(match, 'invite link in email');
+    const token = match[1]!;
+
+    // Before onboarding: not verified, so not in subscribers
+    assert.equal(context.subscriptions.subscribers('famille').some((s) => s.email === 'scoped@exemple.fr'), false);
+
+    // 2. Member consumes token
+    const onboardRes = await server.inject({
+      method: 'POST',
+      url: `/api/auth/invite/${token}`,
+    });
+    assert.equal(onboardRes.statusCode, 200);
+
+    // Now verified and bound to user: present in subscribers for 'famille'
+    assert.equal(context.subscriptions.subscribers('famille').some((s) => s.email === 'scoped@exemple.fr'), true);
+
+    // Manually add subscription to 'vacances' (album they do NOT have permission for)
+    const commenter = context.commenters.byEmail('scoped@exemple.fr')!;
+    context.subscriptions.subscribe(commenter.id, 'vacances');
+
+    // Should NOT be returned in subscribers for 'vacances' because user has no permission
+    assert.equal(context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'), false);
+  });
 });
