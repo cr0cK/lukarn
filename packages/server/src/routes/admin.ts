@@ -12,6 +12,7 @@ import {
   INSTANCE_NAME_MAX_LENGTH,
   LOCALES,
   MEDIA_DESCRIPTION_MAX_LENGTH,
+  DISPLAY_NAME_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   SHARE_LABEL_MAX_LENGTH,
   slugifyAlbumId,
@@ -35,7 +36,7 @@ import argon2 from 'argon2';
 import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import type { StoredAlbum, StoredUser } from '../config-repo.js';
-import { splitAlbums, toAdminUser } from '../config-repo.js';
+import { toAdminUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
 import { NO_PASSWORD_HASH } from '../crypto.js';
 import type { Translate } from '../i18n/index.js';
@@ -606,6 +607,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
+      // Verify email has no active pending invitation
+      const pendingInvite = context.codes.find(email, 'invite');
+      if (pendingInvite) {
+        return reply.code(409).send({
+          error: 'identity_taken',
+          message: request.t('error.identityTaken', pendingInvite.username ?? ''),
+        });
+      }
+
       // Verify requested albums exist
       if (requestedAlbums && requestedAlbums.length > 0) {
         const missing = requestedAlbums.find((id) => id !== ALL_ALBUMS && !context.findAlbum(id));
@@ -628,44 +638,40 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         }
       }
 
-      const username = deriveUniqueUsername(email, (name) => Boolean(context.config.user(name)));
-      const { allAlbums, ids } = splitAlbums(requestedAlbums);
-      const now = new Date().toISOString();
+      const isUsernameTaken = (name: string) =>
+        Boolean(context.config.user(name)) ||
+        Boolean(
+          context.db.prepare('SELECT 1 FROM users WHERE username = ? COLLATE NOCASE').get(name),
+        );
+      const username = deriveUniqueUsername(email, isUsernameTaken);
 
       const minted = context.db.transaction(() => {
-        // 1. Insert user with NO_PASSWORD_HASH
-        context.db
-          .prepare(
-            `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
-             VALUES (?, ?, 0, ?, ?, ?)`,
-          )
-          .run(username, NO_PASSWORD_HASH, allAlbums ? 1 : 0, now, now);
+        // 1. Create user with NO_PASSWORD_HASH and link albums
+        context.config.createUser({
+          username,
+          passwordHash: NO_PASSWORD_HASH,
+          admin: false,
+          albums: requestedAlbums ?? [],
+        });
 
-        // 2. Link albums
-        const linkStmt = context.db.prepare(
-          'INSERT OR IGNORE INTO user_albums (username, album_id) VALUES (?, ?)',
-        );
-        for (const id of ids) linkStmt.run(username, id);
-
-        // 3. Declare commenter (seeds display_name if provided, or empty string)
+        // 2. Declare commenter
         let commenter = context.commenters.byEmail(email);
         if (displayName) {
           commenter = context.commenters.declare(email, displayName);
+          context.db
+            .prepare('UPDATE commenters SET pending_display_name = ? WHERE id = ?')
+            .run(displayName.trim().slice(0, DISPLAY_NAME_MAX_LENGTH), commenter.id);
         } else if (!commenter) {
           commenter = context.commenters.declare(email, '');
+        } else if (commenter.verifiedAt === null) {
+          context.db
+            .prepare(
+              'UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?',
+            )
+            .run('', commenter.id);
         }
 
-        // 4. Auto-subscribe to granted albums
-        const albumsToSubscribe = allAlbums ? context.albums.map((a) => a.id) : ids;
-        const subStmt = context.db.prepare(
-          `INSERT OR IGNORE INTO album_subscriptions (commenter_id, album_id, state, created_at)
-           VALUES (?, ?, 'auto', ?)`,
-        );
-        for (const albumId of albumsToSubscribe) {
-          subStmt.run(commenter.id, albumId, now);
-        }
-
-        // 5. Mint invitation token
+        // 3. Mint invitation token
         const mintResult = context.codes.mintInviteToken(email, username, {
           locale,
           bypassRateLimit: true,

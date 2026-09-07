@@ -91,7 +91,7 @@ after(async () => {
 });
 
 describe('POST /api/admin/users/invite', () => {
-  it('creates member with sentinel hash, derives username, auto-subscribes albums, and queues email', async () => {
+  it('creates member with sentinel hash, derives username, queues email, and defers subscriptions', async () => {
     const response = await server.inject({
       method: 'POST',
       url: '/api/admin/users/invite',
@@ -121,12 +121,15 @@ describe('POST /api/admin/users/invite', () => {
     assert.ok(commenter);
     assert.equal(commenter.displayName, 'Mamie Gateau');
 
-    // Auto-subscription registered in album_subscriptions
+    // Auto-subscription is NOT registered prematurely at invite creation
     const sub = context.db
       .prepare('SELECT * FROM album_subscriptions WHERE commenter_id = ? AND album_id = ?')
       .get(commenter.id, 'famille') as { state: string } | undefined;
-    assert.ok(sub);
-    assert.equal(sub.state, 'auto');
+    assert.equal(
+      sub,
+      undefined,
+      'Subscriptions must not be created prematurely at invite creation',
+    );
 
     // Invitation mail queued
     await context.mailer.drain();
@@ -201,6 +204,31 @@ describe('POST /api/admin/users/invite', () => {
 
     assert.equal(response.statusCode, 409);
     assert.equal(response.json<{ error: string }>().error, 'identity_taken');
+  });
+
+  it('refuses to invite an email with an active pending invite (409 identity_taken)', async () => {
+    const res1 = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'pending_dup@exemple.fr',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(res1.statusCode, 201);
+
+    const res2 = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'pending_dup@exemple.fr',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(res2.statusCode, 409);
+    assert.equal(res2.json<{ error: string }>().error, 'identity_taken');
   });
 
   it('refuses invalid album with 400 unknown_album', async () => {
@@ -297,6 +325,98 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
     const user = context.config.user('onboarder');
     assert.ok(user);
     assert.equal(user.commenterId, commenter.id);
+
+    // Auto-subscription registered in album_subscriptions on acceptance
+    const sub = context.db
+      .prepare('SELECT * FROM album_subscriptions WHERE commenter_id = ? AND album_id = ?')
+      .get(commenter.id, 'famille') as { state: string } | undefined;
+    assert.ok(sub);
+    assert.equal(sub.state, 'auto');
+  });
+
+  it('does not promote unverified existing commenter display names without admin intent', async () => {
+    // 1. Attacker calls /request-code on identity route to set an unverified display name
+    await server.inject({
+      method: 'POST',
+      url: '/api/identity/request-code',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'victim@exemple.fr',
+        displayName: 'AttackerChosenName',
+      },
+    });
+
+    const unverifiedCommenter = context.commenters.byEmail('victim@exemple.fr')!;
+    assert.equal(unverifiedCommenter.displayName, 'AttackerChosenName');
+    assert.equal(unverifiedCommenter.verifiedAt, null);
+
+    // Backdate rate limit so admin invite is not throttled
+    context.db
+      .prepare(
+        "UPDATE verification_codes SET sent_at = '2020-01-01T00:00:00.000Z' WHERE target = ?",
+      )
+      .run('victim@exemple.fr');
+
+    // 2. Admin invites victim WITHOUT specifying displayName
+    const inviteRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'victim@exemple.fr',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(inviteRes.statusCode, 201);
+    const token = sent[sent.length - 1]!.text.match(/\/invite\/([a-zA-Z0-9_-]+)/)![1]!;
+
+    // 3. Invitee consumes the token
+    const onboardRes = await server.inject({
+      method: 'POST',
+      url: `/api/auth/invite/${token}`,
+    });
+    assert.equal(onboardRes.statusCode, 200);
+    const body = onboardRes.json<{ user: SessionUser }>();
+
+    // 4. Unverified display name was NOT promoted
+    assert.equal(body.user.identity?.displayName, '', 'Attacker display name must not be promoted');
+    const finalCommenter = context.commenters.byEmail('victim@exemple.fr')!;
+    assert.equal(finalCommenter.displayName, '');
+  });
+
+  it('returns 409 identity_taken if address was bound to another account before onboarding', async () => {
+    // 1. Admin invites member
+    const inviteRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'racing@exemple.fr',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(inviteRes.statusCode, 201);
+    const token = sent[sent.length - 1]!.text.match(/\/invite\/([a-zA-Z0-9_-]+)/)![1]!;
+
+    // 2. Another account binds this commenter before the token is consumed
+    context.config.createUser({
+      username: 'competing-user',
+      passwordHash: 'dummy',
+      admin: false,
+      albums: ['famille'],
+    });
+    const commenter = context.commenters.byEmail('racing@exemple.fr')!;
+    context.db
+      .prepare('UPDATE users SET commenter_id = ? WHERE username = ?')
+      .run(commenter.id, 'competing-user');
+
+    // 3. Consuming token should return 409 identity_taken
+    const onboardRes = await server.inject({
+      method: 'POST',
+      url: `/api/auth/invite/${token}`,
+    });
+    assert.equal(onboardRes.statusCode, 409);
+    assert.equal(onboardRes.json<{ error: string }>().error, 'identity_taken');
   });
 
   it('enforces single-use consumption (second use fails with 404)', async () => {
@@ -451,5 +571,51 @@ describe('PATCH /api/auth/profile', () => {
       payload: { displayName: 'Hacker' },
     });
     assert.equal(res.statusCode, 401);
+  });
+
+  it('rejects share-link sessions with 403 forbidden', async () => {
+    const shareLink = context.shares.create({
+      albumId: 'famille',
+      mediaId: null,
+      label: null,
+      createdBy: 'admin',
+      expiresAt: null,
+    });
+    const shareRes = await server.inject({ method: 'GET', url: `/api/share/${shareLink.token}` });
+    const shareCookie = shareRes.cookies.find((entry) => entry.name === 'lukarn_session')!;
+
+    const patchRes = await server.inject({
+      method: 'PATCH',
+      url: '/api/auth/profile',
+      headers: { cookie: `lukarn_session=${shareCookie.value}` },
+      payload: { displayName: 'ShareLinkUser' },
+    });
+    assert.equal(patchRes.statusCode, 403);
+    assert.equal(patchRes.json<{ error: string }>().error, 'forbidden');
+  });
+
+  it('rejects unbound account with 400 no_identity', async () => {
+    context.config.createUser({
+      username: 'unbounduser',
+      passwordHash: await argon2.hash('password123', { type: argon2.argon2id }),
+      admin: false,
+      albums: ['famille'],
+    });
+
+    const loginRes = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'unbounduser', password: 'password123' },
+    });
+    const userCookie = loginRes.cookies.find((entry) => entry.name === 'lukarn_session')!;
+
+    const patchRes = await server.inject({
+      method: 'PATCH',
+      url: '/api/auth/profile',
+      headers: { cookie: `lukarn_session=${userCookie.value}` },
+      payload: { displayName: 'New Name' },
+    });
+    assert.equal(patchRes.statusCode, 400);
+    assert.equal(patchRes.json<{ error: string }>().error, 'no_identity');
   });
 });

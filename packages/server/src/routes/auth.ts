@@ -464,6 +464,15 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
 
       const outcome = context.codes.verifyAndConsumeInviteToken(token);
       if (!outcome.ok) {
+        if (
+          outcome.failure === 'identity_taken' ||
+          (outcome as { error?: string }).error === 'identity_taken'
+        ) {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', outcome.username ?? ''),
+          });
+        }
         if (outcome.failure === 'expired') {
           return reply.code(400).send({
             error: 'token_expired',
@@ -491,6 +500,24 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
+      // Auto-subscribe to granted albums upon acceptance
+      const albumsToSubscribe = user.allAlbums
+        ? context.albums.map((a) => a.id)
+        : (
+            context.db
+              .prepare('SELECT album_id FROM user_albums WHERE username = ?')
+              .all(user.username) as { album_id: string }[]
+          ).map((r) => r.album_id);
+
+      const nowIso = new Date().toISOString();
+      const subStmt = context.db.prepare(
+        `INSERT OR IGNORE INTO album_subscriptions (commenter_id, album_id, state, created_at)
+         VALUES (?, ?, 'auto', ?)`,
+      );
+      for (const albumId of albumsToSubscribe) {
+        subStmt.run(outcome.data.commenterId, albumId, nowIso);
+      }
+
       const device = classifyDevice(request.headers['user-agent']);
       const session = context.sessions.create(user.username, device);
       const albums: Album[] = context
@@ -507,9 +534,24 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Updates the commenter display name for the authenticated session or member account.
+     * Updates the commenter display name for the authenticated member account.
      */
     app.patch('/profile', { preHandler: requireAuth }, async (request, reply) => {
+      if (!request.user || request.user.username === null) {
+        return reply.code(403).send({
+          error: 'forbidden',
+          message: request.t('error.authRequired'),
+        });
+      }
+
+      const user = context.config.user(request.user.username);
+      if (!user || user.commenterId === null) {
+        return reply.code(400).send({
+          error: 'no_identity',
+          message: request.t('error.invalidIdentity'),
+        });
+      }
+
       const parsed = z
         .object({ displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH) })
         .safeParse(request.body);
@@ -520,36 +562,15 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const commenterId =
-        (request.user?.username ? context.config.user(request.user.username)?.commenterId : null) ??
-        request.commenterId;
-
-      if (!commenterId) {
-        return reply.code(400).send({
-          error: 'no_identity',
-          message: request.t('error.invalidIdentity'),
-        });
-      }
-
+      const commenterId = user.commenterId;
       const { displayName } = parsed.data;
       context.db
         .prepare('UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?')
         .run(displayName, commenterId);
 
       context.config.invalidate();
-      if (request.user?.username) {
-        const freshUser = context.config.user(request.user.username)!;
-        return reply.send(sessionUser(freshUser));
-      }
-
-      const commenter = context.commenters.byId(commenterId);
-      return reply.send({
-        username: null,
-        admin: false,
-        identity: commenter ? toIdentity(commenter) : null,
-        identityBound: false,
-        commentsEnabled: context.mailer.enabled,
-      } satisfies SessionUser);
+      const freshUser = context.config.user(request.user.username)!;
+      return reply.send(sessionUser(freshUser));
     });
 
     /* ------------------------------------------------------------------------

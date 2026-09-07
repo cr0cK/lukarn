@@ -361,7 +361,12 @@ export interface ConsumeInviteResult {
 
 export type ConsumeInviteOutcome =
   | { ok: true; data: ConsumeInviteResult }
-  | { ok: false; failure: 'unknown' | 'expired' | 'too_many_attempts' };
+  | {
+      ok: false;
+      failure: 'unknown' | 'expired' | 'too_many_attempts' | 'identity_taken';
+      error?: 'identity_taken';
+      username?: string;
+    };
 
 /**
  * Validates and consumes an invitation token against the database:
@@ -375,7 +380,7 @@ export type ConsumeInviteOutcome =
 export function verifyAndConsumeInviteToken(
   db: Db,
   token: string,
-  secret = '',
+  secret: string,
 ): ConsumeInviteOutcome {
   const hash = hashInviteToken(token, secret);
   const row = db
@@ -417,7 +422,12 @@ export function verifyAndConsumeInviteToken(
         verified_at: nowIso,
       };
     } else {
-      const effectiveName = commenter.pending_display_name || commenter.display_name;
+      // If the commenter was not yet verified, do NOT promote unverified display_name
+      // (which could have been set by an attacker via /api/identity/request-code).
+      // Only promote pending_display_name (set when admin explicitly provided a display name).
+      const effectiveName =
+        commenter.pending_display_name ??
+        (commenter.verified_at !== null ? commenter.display_name : '');
       db.prepare(
         `UPDATE commenters
             SET verified_at = COALESCE(verified_at, ?),
@@ -436,10 +446,30 @@ export function verifyAndConsumeInviteToken(
     }
 
     // 4. Bind commenter to user
-    db.prepare(
-      `UPDATE users SET commenter_id = ?, password_hash = ?, updated_at = ?
-        WHERE username = ?`,
-    ).run(commenter.id, NO_PASSWORD_HASH, nowIso, row.username);
+    try {
+      db.prepare(
+        `UPDATE users SET commenter_id = ?, password_hash = ?, updated_at = ?
+          WHERE username = ?`,
+      ).run(commenter.id, NO_PASSWORD_HASH, nowIso, row.username);
+    } catch (err: unknown) {
+      if (
+        err !== null &&
+        typeof err === 'object' &&
+        'code' in err &&
+        (err as { code: string }).code === 'SQLITE_CONSTRAINT_UNIQUE'
+      ) {
+        const boundUser = db
+          .prepare('SELECT username FROM users WHERE commenter_id = ?')
+          .get(commenter.id) as { username: string } | undefined;
+        return {
+          ok: false as const,
+          failure: 'identity_taken' as const,
+          error: 'identity_taken' as const,
+          username: boundUser?.username,
+        };
+      }
+      throw err;
+    }
 
     // 5. Delete prior sessions and pairings for username
     db.prepare('DELETE FROM sessions WHERE username = ?').run(row.username);

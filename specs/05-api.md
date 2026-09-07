@@ -251,13 +251,14 @@ identity, and a 1-year persistent session cookie is issued alongside the user
 profile and accessible albums.
 
 **`PATCH /api/auth/profile`** — body `{ displayName: string }`. Updates the commenter
-display name for the active member session or account.
+display name for the active member account.
 
 | Code | Body           | When                                                             |
 | ---- | -------------- | ---------------------------------------------------------------- |
 | 200  | `SessionUser`  | Success. Updates display name in `commenters` and returns user.  |
-| 400  | `bad_request`  | Invalid payload or session lacks an attached commenter identity. |
+| 400  | `bad_request`  | Invalid payload or account lacks an attached commenter identity. |
 | 401  | `unauthorized` | No active authenticated session.                                 |
+| 403  | `forbidden`    | Share-link session: updating profile requires an account.        |
 
 ### Pairing a screen — `pairings.ts`
 
