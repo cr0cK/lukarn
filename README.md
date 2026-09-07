@@ -11,11 +11,11 @@ theme.
 
 Access is by username and password, and a credential can be handed to several
 people; each person then declares a name and an address in order to comment. An
-account can also be created by inviting someone (by email or with a link copied
-offline) who joins in one click without a password; their comments carry their name
-on every device. An album, a single photograph, or an arbitrary selection of
-photographs can also be shared with anyone through a link without creating an
-account for them.
+account can also be created by inviting someone (by email, or with a one-click
+link to copy when no mail server is configured) who joins without a password;
+their comments carry their name on every device. An album, a single photograph, or
+an arbitrary selection of photographs can also be shared with anyone through a
+link without creating an account for them.
 From `/admin`, the owner connects the storages, declares which of their folders
 become albums and who may open them. That is enough to share one album without
 exposing the rest of the account.
@@ -65,9 +65,9 @@ anywhere is involved, and nobody's family appears in a public README.
   original stays available.
 - **Accounts and albums administered from the application**, with per-user
   rights, no restart and no file to edit. No sign-up: accounts can be created
-  with a password or with an invitation sent by email or copied as a one-click
-  link; invited members join without a password and receive notifications for
-  their assigned albums.
+  with a password or with an invitation delivered by email, or, when the server
+  has no mail configured, a one-click link to copy; invited members join without
+  a password and receive notifications for their assigned albums.
 - **Sharing by link without an account**: an album, a single photograph, or a
   custom selection of photographs across albums can be shared with a link, with
   an optional expiration date and label. Links can be issued from `/admin` (with
