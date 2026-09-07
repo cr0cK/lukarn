@@ -95,6 +95,17 @@ async function open(token: string): Promise<string> {
   return `lukarn_session=${cookie.value}`;
 }
 
+async function adminCookie(): Promise<string> {
+  const response = await server.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { username: 'patron', password: PASSWORD },
+  });
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
+  assert.ok(cookie);
+  return `lukarn_session=${cookie.value}`;
+}
+
 before(async () => {
   const built = await buildApp(env);
   server = built.server;
@@ -639,17 +650,6 @@ describe('commenting through a link', () => {
 });
 
 describe('administration', () => {
-  async function adminCookie(): Promise<string> {
-    const response = await server.inject({
-      method: 'POST',
-      url: '/api/auth/login',
-      payload: { username: 'patron', password: PASSWORD },
-    });
-    const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
-    assert.ok(cookie);
-    return `lukarn_session=${cookie.value}`;
-  }
-
   it('issues a link and lists it with its record of use', async () => {
     const cookie = await adminCookie();
 
@@ -783,5 +783,288 @@ describe('administration', () => {
       payload: {},
     });
     assert.equal(response.statusCode, 404);
+  });
+});
+
+describe('a link to a selection of photographs', () => {
+  it('creates a selection link across multiple albums and validates coverage', async () => {
+    const cookie = await adminCookie();
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        items: [
+          { albumId: 'corse', mediaId: 'img-1' },
+          { albumId: 'corse', mediaId: 'img-2' },
+          { albumId: 'noel', mediaId: 'img-9' },
+        ],
+        label: 'Sélection vacances',
+      },
+    });
+
+    assert.equal(created.statusCode, 201, created.body);
+    const body = created.json();
+    assert.equal(body.kind, 'selection');
+    assert.equal(body.itemCount, 3);
+    assert.equal(body.albumId, null);
+    assert.equal(body.label, 'Sélection vacances');
+    const token = body.token;
+
+    // Listing in admin shares reports kind selection and item count
+    const listed = await server.inject({
+      method: 'GET',
+      url: '/api/admin/shares',
+      headers: { cookie },
+    });
+    const linkEntry = listed.json().find((e: { token: string }) => e.token === token);
+    assert.ok(linkEntry);
+    assert.equal(linkEntry.kind, 'selection');
+    assert.equal(linkEntry.albumId, null);
+    assert.equal(linkEntry.itemCount, 3);
+
+    // Opening the selection link
+    const viewRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}`,
+    });
+    assert.equal(viewRes.statusCode, 200, viewRes.body);
+    const view = viewRes.json();
+    assert.equal(view.kind, 'selection');
+    assert.equal(view.label, 'Sélection vacances');
+    assert.equal(view.itemCount, 3);
+    assert.equal(view.items.length, 3);
+    assert.equal(view.items[0].id, 'img-1');
+    assert.equal(view.items[1].id, 'img-2');
+    assert.equal(view.items[2].id, 'img-9');
+    // None of the items or the root view name origin albums (D260825e)
+    assert.equal('albumId' in view, false);
+    for (const item of view.items) {
+      assert.equal('albumId' in item, false);
+      assert.equal('sourcePath' in item, false);
+    }
+
+    // Detail endpoint GET /api/share/:token/items/:mediaId works for covered items
+    for (const mediaId of ['img-1', 'img-2', 'img-9']) {
+      const detailRes = await server.inject({
+        method: 'GET',
+        url: `/api/share/${token}/items/${mediaId}`,
+      });
+      assert.equal(detailRes.statusCode, 200);
+      assert.equal(detailRes.json().id, mediaId);
+      assert.equal('albumId' in detailRes.json(), false);
+    }
+    const unknownDetail = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/items/unknown-photo`,
+    });
+    assert.equal(unknownDetail.statusCode, 404);
+
+    // Items list endpoint GET /api/share/:token/items answers 404 for selection links
+    const itemsRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/items`,
+    });
+    assert.equal(itemsRes.statusCode, 404);
+
+    // Media bytes: streams all 3 photos across both albums through token prefix
+    for (const mediaId of ['img-1', 'img-2', 'img-9']) {
+      const mediaRes = await server.inject({
+        method: 'GET',
+        url: `/api/share/${token}/media/${mediaId}/thumb?s=320`,
+      });
+      assert.notEqual(mediaRes.statusCode, 404, `media ${mediaId} should be served`);
+    }
+    const forbiddenMedia = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/media/non-existent/thumb?s=320`,
+    });
+    assert.equal(forbiddenMedia.statusCode, 404);
+
+    // Cookie-based media access
+    const shareCookie = viewRes.cookies.find((entry) => entry.name === 'lukarn_session');
+    assert.ok(shareCookie);
+    const sessionCookieHeader = `lukarn_session=${shareCookie.value}`;
+    for (const mediaId of ['img-1', 'img-2', 'img-9']) {
+      const mediaRes = await server.inject({
+        method: 'GET',
+        url: `/api/media/${mediaId}/thumb?s=320`,
+        headers: { cookie: sessionCookieHeader },
+      });
+      assert.notEqual(mediaRes.statusCode, 404);
+    }
+  });
+
+  it('validates creation payload when creating a selection link', async () => {
+    const cookie = await adminCookie();
+
+    // Empty items array
+    const emptyRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { items: [] },
+    });
+    assert.equal(emptyRes.statusCode, 400);
+
+    // Neither albumId nor items
+    const neitherRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { label: 'Empty' },
+    });
+    assert.equal(neitherRes.statusCode, 400);
+
+    // Unknown album
+    const unknownAlbumRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { items: [{ albumId: 'inconnu', mediaId: 'img-1' }] },
+    });
+    assert.equal(unknownAlbumRes.statusCode, 404);
+
+    // Media not in album
+    const wrongAlbumRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { items: [{ albumId: 'corse', mediaId: 'img-9' }] },
+    });
+    assert.equal(wrongAlbumRes.statusCode, 404);
+  });
+
+  it('comments on photographs within a multi-photo selection without leaking album', async () => {
+    const cookie = await adminCookie();
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        items: [
+          { albumId: 'corse', mediaId: 'img-1' },
+          { albumId: 'noel', mediaId: 'img-9' },
+        ],
+      },
+    });
+    const token = created.json().token as string;
+    const shareCookieHeader = await open(token);
+
+    // Attempt commenting without verified commenter identity -> 403
+    const unauthComment = await server.inject({
+      method: 'POST',
+      url: `/api/share/${token}/comments/img-1`,
+      headers: { cookie: shareCookieHeader },
+      payload: { body: 'Belle photo' },
+    });
+    assert.equal(unauthComment.statusCode, 403);
+    assert.equal(unauthComment.json().error, 'identity_required');
+
+    // Attach verified commenter to share session
+    const commenter = context.commenters.declare('cousin@exemple.fr', 'Cousin');
+    context.commenters.markVerified('cousin@exemple.fr');
+    const sessionRow = context.db
+      .prepare('SELECT id FROM sessions WHERE share_token = ?')
+      .get(token) as { id: string };
+    context.sessions.attachCommenter(sessionRow.id, commenter.id);
+
+    // Comment on img-1 (corse album)
+    const postCorse = await server.inject({
+      method: 'POST',
+      url: `/api/share/${token}/comments/img-1`,
+      headers: { cookie: shareCookieHeader },
+      payload: { body: 'La Corse est magnifique' },
+    });
+    assert.equal(postCorse.statusCode, 201);
+
+    // Comment on img-9 (noel album)
+    const postNoel = await server.inject({
+      method: 'POST',
+      url: `/api/share/${token}/comments/img-9`,
+      headers: { cookie: shareCookieHeader },
+      payload: { body: 'Joyeux Noël !' },
+    });
+    assert.equal(postNoel.statusCode, 201);
+
+    // Verify comments in DB are mapped to the respective albums and author = token
+    const dbComments = context.db
+      .prepare('SELECT album_id, media_id, account, body FROM comments ORDER BY created_at ASC')
+      .all() as Array<{ album_id: string; media_id: string; account: string; body: string }>;
+    assert.equal(dbComments.length, 2);
+    assert.equal(dbComments[0]!.album_id, 'corse');
+    assert.equal(dbComments[0]!.media_id, 'img-1');
+    assert.equal(dbComments[0]!.account, token);
+    assert.equal(dbComments[0]!.body, 'La Corse est magnifique');
+    assert.equal(dbComments[1]!.album_id, 'noel');
+    assert.equal(dbComments[1]!.media_id, 'img-9');
+    assert.equal(dbComments[1]!.account, token);
+    assert.equal(dbComments[1]!.body, 'Joyeux Noël !');
+
+    // Retrieve comments through share link
+    const getCorse = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/comments/img-1`,
+      headers: { cookie: shareCookieHeader },
+    });
+    assert.equal(getCorse.statusCode, 200);
+    assert.equal(getCorse.json().threads.length, 1);
+    assert.equal(getCorse.json().threads[0].root.body, 'La Corse est magnifique');
+
+    const getNoel = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/comments/img-9`,
+      headers: { cookie: shareCookieHeader },
+    });
+    assert.equal(getNoel.statusCode, 200);
+    assert.equal(getNoel.json().threads.length, 1);
+    assert.equal(getNoel.json().threads[0].root.body, 'Joyeux Noël !');
+
+    // Comment on uncovered media -> 404
+    const uncoveredComment = await server.inject({
+      method: 'POST',
+      url: `/api/share/${token}/comments/img-2`,
+      headers: { cookie: shareCookieHeader },
+      payload: { body: 'Not in selection' },
+    });
+    assert.equal(uncoveredComment.statusCode, 404);
+  });
+
+  it('answers 410 when a selection link is revoked or expired', async () => {
+    const cookie = await adminCookie();
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        items: [{ albumId: 'corse', mediaId: 'img-1' }],
+        expiresAt: '2020-01-01T00:00:00.000Z',
+      },
+    });
+    const expiredToken = created.json().token as string;
+
+    const expiredRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${expiredToken}`,
+    });
+    assert.equal(expiredRes.statusCode, 410);
+    assert.equal(expiredRes.json().error, 'share_expired');
+
+    const liveLink = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { items: [{ albumId: 'corse', mediaId: 'img-1' }] },
+    });
+    const liveToken = liveLink.json().token as string;
+    context.shares.revoke(liveToken);
+
+    const revokedRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${liveToken}`,
+    });
+    assert.equal(revokedRes.statusCode, 410);
+    assert.equal(revokedRes.json().error, 'share_revoked');
   });
 });

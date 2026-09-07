@@ -71,7 +71,7 @@ export function SharesSection({
     const q = search.trim().toLowerCase();
     return links.data.filter((link) => {
       const label = (link.label ?? describe(link, t)).toLowerCase();
-      const album = (link.albumTitle ?? link.albumId).toLowerCase();
+      const album = (link.albumTitle ?? link.albumId ?? '').toLowerCase();
       const media = (link.mediaName ?? '').toLowerCase();
       const token = link.token.toLowerCase();
       return label.includes(q) || album.includes(q) || media.includes(q) || token.includes(q);
@@ -584,5 +584,8 @@ function StateBadge({ state }: { state: AdminShareLink['state'] }): ReactElement
 
 /** What to call a link nobody gave a label. */
 function describe(link: AdminShareLink, t: Translate): string {
+  if (link.kind === 'selection') {
+    return link.itemCount ? `${link.itemCount} photos` : 'Sélection';
+  }
   return t(link.kind === 'album' ? 'shares.kindAlbum' : 'shares.kindMedia');
 }

@@ -1211,8 +1211,8 @@ export function slugifyAlbumId(title: string): string {
  * Share links — an album, or one photograph, opened by somebody with no account
  * ------------------------------------------------------------------------ */
 
-/** What a link covers: a whole album, or the single photograph it was made from. */
-export type ShareKind = 'album' | 'media';
+/** What a link covers: a whole album, the single photograph it was made from, or a selection. */
+export type ShareKind = 'album' | 'media' | 'selection';
 
 /**
  * Why a link no longer works. `live` is the only state that serves anything;
@@ -1269,7 +1269,13 @@ export type ShareView =
       groupBy: GroupBy;
       sortOrder: SortOrder;
     }
-  | { kind: 'media'; item: ShareDetail };
+  | { kind: 'media'; item: ShareDetail }
+  | {
+      kind: 'selection';
+      items: ShareItem[];
+      label: string | null;
+      itemCount: number;
+    };
 
 /** One recorded opening, as administration lists it (D260825c). */
 export interface ShareOpening {
@@ -1287,13 +1293,13 @@ export interface AdminShareLink {
   token: string;
   kind: ShareKind;
   state: ShareState;
-  /** The album a link covers, or the album its photograph came from. */
-  albumId: string;
-  /** `null` when the album has been deleted since the link was made. */
+  /** The album a link covers, or the album its photograph came from. `null` for cross-album selections. */
+  albumId: string | null;
+  /** `null` when the album has been deleted since the link was made, or for cross-album selections. */
   albumTitle: string | null;
-  /** The shared photograph, `null` for an album link. */
+  /** The shared photograph, `null` for an album or selection link. */
   mediaId: string | null;
-  /** File name of the shared photograph, `null` for an album link or a stale one. */
+  /** File name of the shared photograph, `null` for an album/selection link or a stale one. */
   mediaName: string | null;
   label: string | null;
   createdAt: string;
@@ -1303,15 +1309,23 @@ export interface AdminShareLink {
   /** Openings counted once per session and hour, newest first, most recent two. */
   openings: ShareOpening[];
   openingCount: number;
+  /** Number of items for a selection link. */
+  itemCount?: number;
+}
+
+export interface CreateShareItemInput {
+  albumId: string;
+  mediaId: string;
 }
 
 /**
- * Making a link. One of `mediaId` or nothing: with it the link covers that
- * photograph, without it the whole album.
+ * Making a link. One of `mediaId` (single photo), nothing (whole album), or
+ * `items` (curated selection of photos across albums).
  */
 export interface CreateShareRequest {
-  albumId: string;
+  albumId?: string | null;
   mediaId?: string | null;
+  items?: CreateShareItemInput[] | null;
   label?: string | null;
   /** ISO 8601 date after which the link answers 410, or `null` for no expiry. */
   expiresAt?: string | null;

@@ -908,6 +908,57 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX idx_comments_parent ON comments (parent_id);
   CREATE INDEX idx_comments_commenter ON comments (commenter_id);
   `,
+
+  // 21 — multi-photo and cross-album share links.
+  //
+  // A share link can now cover an arbitrary selection of photographs across one or
+  // more albums, alongside whole albums and single photographs (D-01).
+  //
+  // `share_links` is recreated with nullable `album_id` because a cross-album
+  // selection has no single album to point to. Child tables (`share_openings` and
+  // `sessions`) with ON DELETE CASCADE are preserved across the drop via temporary
+  // tables. `share_link_items` stores the ordered items belonging to a selection link.
+  `
+  CREATE TEMPORARY TABLE temp_share_openings AS SELECT * FROM share_openings;
+  CREATE TEMPORARY TABLE temp_share_sessions AS SELECT * FROM sessions WHERE share_token IS NOT NULL;
+
+  CREATE TABLE share_links_next (
+    token       TEXT PRIMARY KEY,
+    album_id    TEXT REFERENCES albums (id) ON DELETE CASCADE,
+    media_id    TEXT,
+    label       TEXT,
+    created_at  TEXT NOT NULL,
+    created_by  TEXT NOT NULL COLLATE NOCASE,
+    expires_at  TEXT,
+    revoked_at  TEXT
+  );
+
+  INSERT INTO share_links_next (token, album_id, media_id, label, created_at, created_by,
+                                expires_at, revoked_at)
+    SELECT token, album_id, media_id, label, created_at, created_by,
+           expires_at, revoked_at
+      FROM share_links;
+
+  DROP TABLE share_links;
+  ALTER TABLE share_links_next RENAME TO share_links;
+
+  CREATE INDEX idx_share_links_album ON share_links (album_id);
+
+  INSERT INTO share_openings SELECT * FROM temp_share_openings;
+  INSERT INTO sessions SELECT * FROM temp_share_sessions;
+  DROP TABLE temp_share_openings;
+  DROP TABLE temp_share_sessions;
+
+  CREATE TABLE share_link_items (
+    token       TEXT NOT NULL REFERENCES share_links (token) ON DELETE CASCADE,
+    album_id    TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    media_id    TEXT NOT NULL,
+    position    INTEGER NOT NULL,
+    PRIMARY KEY (token, media_id)
+  );
+
+  CREATE INDEX idx_share_link_items_token ON share_link_items (token, position);
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

@@ -78,10 +78,17 @@ export default function SharePage(): ReactElement {
   // `ready`, so no page is requested on a cookie that belongs to another link.
   const page = useAlbumItems(scope, order, isAlbum && ready);
 
-  // A photograph link serves its one item with the link itself; only an album has
-  // pages to fetch. Both then feed the same grid.
+  // A photograph link serves its one item with the link itself; a selection link
+  // serves its array of items; only an album has pages to fetch.
   const items = useMemo<ShareItem[]>(
-    () => (view === undefined ? [] : view.kind === 'album' ? page.items : [view.item]),
+    () =>
+      view === undefined
+        ? []
+        : view.kind === 'album'
+          ? page.items
+          : view.kind === 'selection'
+            ? view.items
+            : [view.item],
     [view, page.items],
   );
 

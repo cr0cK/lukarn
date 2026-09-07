@@ -322,19 +322,30 @@ function badRequest(reply: FastifyReply, error: z.ZodError, t: Translate): Fasti
   return reply.code(400).send({ error: 'bad_request', message: t('error.validation', details) });
 }
 
-/**
- * Making a share link. `mediaId` present covers that photograph, absent covers the
- * whole album — one field rather than a `kind` beside it, because the two would then
- * be able to disagree.
- */
-const shareSchema = z.object({
+const shareItemInputSchema = z.object({
   albumId: z.string().min(1).max(USERNAME_MAX_LENGTH),
-  mediaId: z.string().min(1).max(256).nullish(),
-  label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
-  // An instant rather than a day: the row is compared against `Date.now()`, and a
-  // bare date would expire at whatever hour the string happened to parse to.
-  expiresAt: z.string().datetime().nullish(),
+  mediaId: z.string().min(1).max(256),
 });
+
+/**
+ * Making a share link:
+ * - `items` present covers an explicit selection of photos across albums.
+ * - `mediaId` present covers that photograph.
+ * - absent covers the whole album.
+ */
+const shareSchema = z
+  .object({
+    albumId: z.string().min(1).max(USERNAME_MAX_LENGTH).optional(),
+    mediaId: z.string().min(1).max(256).nullish(),
+    items: z.array(shareItemInputSchema).min(1).optional(),
+    label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
+    // An instant rather than a day: the row is compared against `Date.now()`, and a
+    // bare date would expire at whatever hour the string happened to parse to.
+    expiresAt: z.string().datetime().nullish(),
+  })
+  .refine((data) => Boolean(data.albumId) || Boolean(data.items && data.items.length > 0), {
+    message: 'Either albumId or items must be provided',
+  });
 
 const updateShareSchema = z.object({
   label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
@@ -1356,8 +1367,36 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const { albumId, mediaId, label, expiresAt } = parsed.data;
-      if (!context.findAlbum(albumId)) {
+      const { albumId, mediaId, items, label, expiresAt } = parsed.data;
+
+      if (items && items.length > 0) {
+        for (const item of items) {
+          if (!context.findAlbum(item.albumId)) {
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+          }
+          if (!context.media.getDetail(item.albumId, item.mediaId)) {
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+          }
+        }
+
+        const link = context.shares.create({
+          albumId: null,
+          mediaId: null,
+          items,
+          label: label ?? null,
+          createdBy: request.user!.username!,
+          expiresAt: expiresAt ?? null,
+        });
+        request.log.info({ count: items.length }, 'Share link issued for selection');
+        const created = context.shares.list().find((row) => row.token === link.token)!;
+        return reply.code(201).send(created);
+      }
+
+      if (!context.findAlbum(albumId!)) {
         return reply
           .code(404)
           .send({ error: 'not_found', message: request.t('error.albumNotFound') });
@@ -1366,14 +1405,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       // A link to a photograph that is not in that album would answer 410 to its
       // recipient the moment it was opened, and the person issuing it would learn
       // that from them. Checked here instead.
-      if (mediaId && !context.media.getDetail(albumId, mediaId)) {
+      if (mediaId && !context.media.getDetail(albumId!, mediaId)) {
         return reply
           .code(404)
           .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
       const link = context.shares.create({
-        albumId,
+        albumId: albumId!,
         mediaId: mediaId ?? null,
         label: label ?? null,
         createdBy: request.user!.username!,
