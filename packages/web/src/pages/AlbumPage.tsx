@@ -2,6 +2,7 @@ import {
   DEFAULT_GROUP_BY,
   DEFAULT_SORT_ORDER,
   isGroupBy,
+  type CreateShareItemInput,
   type GroupBy,
   type SortOrder,
 } from '@lukarn/shared';
@@ -94,6 +95,25 @@ export default function AlbumPage(): ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [shareSelectionItems, setShareSelectionItems] = useState<CreateShareItemInput[] | null>(
+    null,
+  );
+
+  const cancelSelection = useCallback(() => {
+    setIsSelecting(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const toggleItemSelection = useCallback((id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
+
   const activity = useActivityFeed();
 
   // Collapsed sections by key. Memory-only deliberately: a list of collapsed
@@ -311,7 +331,11 @@ export default function AlbumPage(): ReactElement {
         openAt(selectedIndex);
       } else if (event.key === 'Escape') {
         event.preventDefault();
-        void navigate('/');
+        if (isSelecting) {
+          cancelSelection();
+        } else {
+          void navigate('/');
+        }
       }
     };
 
@@ -326,6 +350,8 @@ export default function AlbumPage(): ReactElement {
     selectedIndex,
     openAt,
     navigate,
+    isSelecting,
+    cancelSelection,
   ]);
 
   // Read layout through a ref and **not** as a dependency: it is new on every
@@ -371,6 +397,20 @@ export default function AlbumPage(): ReactElement {
         actions={[
           ...(me?.admin
             ? [
+                {
+                  label: isSelecting ? t('album.cancelSelection') : t('album.select'),
+                  action: isSelecting ? t('album.cancelSelection') : t('album.select'),
+                  onSelect: () => {
+                    if (isSelecting) cancelSelection();
+                    else setIsSelecting(true);
+                  },
+                  icon: (
+                    <>
+                      <path d="M9 11l3 3L22 4" />
+                      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </>
+                  ),
+                },
                 {
                   label: t('shares.shareAlbum'),
                   action: t('shares.shareAlbum'),
@@ -452,13 +492,16 @@ export default function AlbumPage(): ReactElement {
             albumId={albumId}
             days={byDay}
             // A note belongs to a day: with month grouping, no header exists to attach it to.
-            canAnnotate={Boolean(me?.admin) && groupBy === 'day'}
+            canAnnotate={Boolean(me?.admin) && groupBy === 'day' && !isSelecting}
             onToggleSection={toggleSection}
             selectedIndex={selectedIndex}
             onSelect={setSelectedIndex}
             onOpen={openAt}
             onLoadMore={loadMore}
             hasMore={hasNextPage}
+            selectionMode={isSelecting}
+            selectedIds={selectedIds}
+            onToggleSelection={toggleItemSelection}
           />
         )}
 
@@ -468,6 +511,40 @@ export default function AlbumPage(): ReactElement {
           </div>
         )}
       </main>
+
+      {isSelecting && (
+        <aside
+          aria-label={t('album.selectionActions')}
+          className="fixed bottom-20 md:bottom-8 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-full border border-ink-700 bg-surface-elevated/95 backdrop-blur px-4 py-2 shadow-2xl"
+        >
+          <button
+            type="button"
+            onClick={cancelSelection}
+            className="rounded-lg px-2 py-1 text-xs font-medium text-ink-300 transition-colors hover:text-ink-100"
+          >
+            {t('common.cancel')}
+          </button>
+          <span className="h-4 w-px bg-ink-700" />
+          <span className="text-xs font-medium text-ink-200 whitespace-nowrap">
+            {t('shares.selectedCount', selectedIds.size)}
+          </span>
+          <button
+            type="button"
+            disabled={selectedIds.size === 0}
+            onClick={() => {
+              const itemsToShare = Array.from(selectedIds).map((id) => ({
+                albumId,
+                mediaId: id,
+              }));
+              setShareSelectionItems(itemsToShare);
+              setShowShare(true);
+            }}
+            className="rounded-full bg-accent px-3 py-1.5 text-xs font-semibold text-accent-ink transition-opacity hover:opacity-90 disabled:opacity-40 whitespace-nowrap"
+          >
+            {t('shares.shareSelection')}
+          </button>
+        </aside>
+      )}
 
       {/* The open viewer still belongs to Albums: it covers the grid rather than
           leaving it, and Back returns there. */}
@@ -504,8 +581,15 @@ export default function AlbumPage(): ReactElement {
       <ShareModal
         albumId={albumId}
         albumTitle={album.data?.title}
+        items={shareSelectionItems}
         isOpen={showShare}
-        onClose={() => setShowShare(false)}
+        onClose={() => {
+          setShowShare(false);
+          if (shareSelectionItems) {
+            setShareSelectionItems(null);
+            cancelSelection();
+          }
+        }}
       />
     </div>
   );

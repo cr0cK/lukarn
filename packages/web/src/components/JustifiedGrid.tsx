@@ -28,6 +28,10 @@ interface JustifiedGridProps {
   onOpen: (index: number) => void;
   onLoadMore: () => void;
   hasMore: boolean;
+  /** When true, clicking thumbnails toggles selection rather than opening Lightbox. */
+  selectionMode?: boolean;
+  selectedIds?: ReadonlySet<string>;
+  onToggleSelection?: (id: string) => void;
 }
 
 /**
@@ -49,6 +53,9 @@ export function JustifiedGrid({
   onOpen,
   onLoadMore,
   hasMore,
+  selectionMode = false,
+  selectedIds,
+  onToggleSelection,
 }: JustifiedGridProps): ReactElement {
   const { layout, visibleFrom, visibleTo, viewportHeight, descriptionLines } = grid;
 
@@ -88,12 +95,18 @@ export function JustifiedGrid({
                     height={cell.height}
                     scope={scope}
                     selected={cell.index === selectedIndex}
+                    selectable={selectionMode}
+                    checked={selectedIds?.has(cell.item.id)}
                     // Load first-screen thumbnails without waiting for the native
                     // lazy-loading IntersectionObserver.
                     eager={cell.y < viewportHeight}
                     onOpen={() => {
-                      onSelect(cell.index);
-                      onOpen(cell.index);
+                      if (selectionMode && onToggleSelection) {
+                        onToggleSelection(cell.item.id);
+                      } else {
+                        onSelect(cell.index);
+                        onOpen(cell.index);
+                      }
                     }}
                   />
                 </div>

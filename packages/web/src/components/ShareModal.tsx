@@ -1,4 +1,8 @@
-import { SHARE_LABEL_MAX_LENGTH, type AdminShareLink } from '@lukarn/shared';
+import {
+  SHARE_LABEL_MAX_LENGTH,
+  type AdminShareLink,
+  type CreateShareItemInput,
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useEffect, useId, useRef, useState } from 'react';
 import { errorText } from '../api/client';
 import { useCreateShare } from '../api/hooks';
@@ -6,10 +10,11 @@ import { useT } from '../lib/i18n';
 import { Spinner } from './Spinner';
 
 interface ShareModalProps {
-  albumId: string;
+  albumId?: string | null;
   albumTitle?: string;
   mediaId?: string | null;
   mediaName?: string | null;
+  items?: CreateShareItemInput[] | null;
   isOpen: boolean;
   onClose: () => void;
 }
@@ -17,14 +22,15 @@ interface ShareModalProps {
 type ExpiryOption = '7d' | '30d' | 'never';
 
 /**
- * Contextual share modal: lets an administrator issue and copy a link to an album
- * or a single photograph directly from the gallery or the viewer.
+ * Contextual share modal: lets an administrator issue and copy a link to an album,
+ * a single photograph, or a multi-photo selection directly from the gallery or viewer.
  */
 export function ShareModal({
   albumId,
   albumTitle,
   mediaId,
   mediaName,
+  items,
   isOpen,
   onClose,
 }: ShareModalProps): ReactElement | null {
@@ -56,9 +62,16 @@ export function ShareModal({
 
   if (!isOpen) return null;
 
+  const isSelection = Boolean(items && items.length > 0);
   const isMedia = Boolean(mediaId);
-  const modalTitle = t(isMedia ? 'shares.sharePhoto' : 'shares.shareAlbum');
-  const targetName = isMedia ? (mediaName ?? mediaId) : (albumTitle ?? albumId);
+  const modalTitle = t(
+    isSelection ? 'shares.shareSelection' : isMedia ? 'shares.sharePhoto' : 'shares.shareAlbum',
+  );
+  const targetName = isSelection
+    ? t('shares.selectedCount', items!.length)
+    : isMedia
+      ? (mediaName ?? mediaId)
+      : (albumTitle ?? albumId);
 
   const getExpiresAt = (): string | null => {
     if (expiry === '7d') return new Date(Date.now() + 7 * 86_400_000).toISOString();
@@ -80,23 +93,28 @@ export function ShareModal({
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     setError(null);
-    create.mutate(
-      {
-        albumId,
-        mediaId: mediaId ?? null,
-        label: label.trim() || null,
-        expiresAt: getExpiresAt(),
+    const body = isSelection
+      ? {
+          items: items!,
+          label: label.trim() || null,
+          expiresAt: getExpiresAt(),
+        }
+      : {
+          albumId: albumId ?? '',
+          mediaId: mediaId ?? null,
+          label: label.trim() || null,
+          expiresAt: getExpiresAt(),
+        };
+
+    create.mutate(body, {
+      onSuccess: (link) => {
+        setCreated(link);
+        void copyUrl(link.token);
       },
-      {
-        onSuccess: (link) => {
-          setCreated(link);
-          void copyUrl(link.token);
-        },
-        onError: (err) => {
-          setError(errorText(err, t('shares.createFailed')));
-        },
+      onError: (err) => {
+        setError(errorText(err, t('shares.createFailed')));
       },
-    );
+    });
   };
 
   const shareUrl = created ? `${window.location.origin}/s/${created.token}` : '';

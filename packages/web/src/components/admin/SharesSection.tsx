@@ -1,8 +1,14 @@
-import { SHARE_LABEL_MAX_LENGTH, type AdminAlbum, type AdminShareLink } from '@lukarn/shared';
+import {
+  SHARE_LABEL_MAX_LENGTH,
+  type AdminAlbum,
+  type AdminShareLink,
+  type CreateShareItemInput,
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { errorText } from '../../api/client';
+import { albumScope, errorText, mediaUrl } from '../../api/client';
 import {
   useAdminShares,
+  useAlbumItems,
   useCreateShare,
   useDeleteShare,
   useRestoreShare,
@@ -164,8 +170,9 @@ export function SharesSection({
                   <StateBadge state={link.state} />
                 </p>
                 <p className="mt-1 truncate text-xs text-ink-400">
-                  {link.albumTitle ?? link.albumId}
-                  {link.mediaName ? ` — ${link.mediaName}` : ''}
+                  {link.kind === 'selection'
+                    ? t('shares.selectionItemCount', link.itemCount ?? 0)
+                    : `${link.albumTitle ?? link.albumId ?? ''}${link.mediaName ? ` — ${link.mediaName}` : ''}`}
                 </p>
                 <p className="mt-1 text-xs text-ink-400">
                   {t('shares.issuedBy', link.createdBy, formatLocalDateTime(link.createdAt, t))}
@@ -303,7 +310,10 @@ function RestoreShareDialog({
           {t('shares.restoreTitle')}
         </h2>
         <p className="mt-1 truncate text-xs text-ink-400">
-          {link.label ?? describe(link, t)} · {link.albumTitle ?? link.albumId}
+          {link.label ?? describe(link, t)} ·{' '}
+          {link.kind === 'selection'
+            ? t('shares.selectionItemCount', link.itemCount ?? 0)
+            : (link.albumTitle ?? link.albumId)}
         </p>
 
         <form onSubmit={submit} className="mt-4 space-y-4">
@@ -397,8 +407,9 @@ function EditShareDialog({
           {t('shares.editTitle')}
         </h2>
         <p className="mt-1 truncate text-xs text-ink-400">
-          {link.albumTitle ?? link.albumId}
-          {link.mediaName ? ` — ${link.mediaName}` : ''}
+          {link.kind === 'selection'
+            ? t('shares.selectionItemCount', link.itemCount ?? 0)
+            : `${link.albumTitle ?? link.albumId ?? ''}${link.mediaName ? ` — ${link.mediaName}` : ''}`}
         </p>
 
         <form onSubmit={submit} className="mt-4 space-y-4">
@@ -443,10 +454,11 @@ function EditShareDialog({
   );
 }
 
+type ShareMode = 'album' | 'selection';
+
 /**
- * Issuing one. The form carries no `kind`: a photograph identifier makes it a
- * photograph link and leaving it empty makes it an album link, so the two cannot
- * disagree about what was asked for.
+ * Issuing one. Offers choosing between a whole album (optionally narrowed to a single photo)
+ * or an interactive multi-photo selection across any albums.
  */
 function ShareForm({
   albums,
@@ -459,52 +471,217 @@ function ShareForm({
 }): ReactElement {
   const t = useT();
   const create = useCreateShare();
+  const [mode, setMode] = useState<ShareMode>('album');
   const [albumId, setAlbumId] = useState(albums[0]?.id ?? '');
   const [mediaId, setMediaId] = useState('');
   const [label, setLabel] = useState('');
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
 
+  // Selection mode state
+  const [filterAlbumId, setFilterAlbumId] = useState(albums[0]?.id ?? '');
+  const [selectedItems, setSelectedItems] = useState<CreateShareItemInput[]>([]);
+
+  const filterScope = useMemo(() => albumScope(filterAlbumId), [filterAlbumId]);
+  const {
+    items: albumPhotos,
+    isPending: loadingPhotos,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useAlbumItems(filterScope, 'desc', mode === 'selection' && Boolean(filterAlbumId));
+
+  const selectedMediaIds = useMemo(
+    () => new Set(selectedItems.map((item) => item.mediaId)),
+    [selectedItems],
+  );
+
+  const togglePhoto = (mediaIdToToggle: string): void => {
+    setSelectedItems((current) => {
+      if (current.some((item) => item.mediaId === mediaIdToToggle)) {
+        return current.filter((item) => item.mediaId !== mediaIdToToggle);
+      }
+      return [...current, { albumId: filterAlbumId, mediaId: mediaIdToToggle }];
+    });
+  };
+
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    create.mutate(
-      {
-        albumId,
-        mediaId: mediaId.trim() || null,
-        label: label.trim() || null,
-        expiresAt,
+    const payload =
+      mode === 'selection'
+        ? {
+            items: selectedItems,
+            label: label.trim() || null,
+            expiresAt,
+          }
+        : {
+            albumId,
+            mediaId: mediaId.trim() || null,
+            label: label.trim() || null,
+            expiresAt,
+          };
+
+    create.mutate(payload, {
+      onSuccess: () => {
+        setMediaId('');
+        setLabel('');
+        setExpiresAt(null);
+        setSelectedItems([]);
+        notify({ tone: 'ok', text: t('shares.createSuccess') });
+        onCreated?.();
       },
-      {
-        onSuccess: () => {
-          setMediaId('');
-          setLabel('');
-          setExpiresAt(null);
-          notify({ tone: 'ok', text: t('shares.createSuccess') });
-          onCreated?.();
-        },
-        onError: (error) =>
-          notify({ tone: 'error', text: errorText(error, t('shares.createFailed')) }),
-      },
-    );
+      onError: (error) =>
+        notify({ tone: 'error', text: errorText(error, t('shares.createFailed')) }),
+    });
   };
+
+  const canSubmit = mode === 'selection' ? selectedItems.length > 0 : Boolean(albumId);
 
   return (
     <form onSubmit={submit} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
-      <SelectField
-        id="share-album"
-        label={t('shares.album')}
-        value={albumId}
-        options={albums.map((album) => ({ value: album.id, label: album.title }))}
-        onChange={setAlbumId}
-        disabled={create.isPending}
-      />
-      <TextField
-        id="share-media"
-        label={t('shares.mediaId')}
-        value={mediaId}
-        onChange={setMediaId}
-        hint={t('shares.mediaHint')}
-        disabled={create.isPending}
-      />
+      <div className="sm:col-span-2">
+        <div className="flex gap-1 rounded-lg border border-ink-700 bg-ink-850 p-0.5 w-fit">
+          <button
+            type="button"
+            onClick={() => setMode('album')}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              mode === 'album' ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-200'
+            }`}
+          >
+            {t('shares.modeWholeAlbum')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('selection')}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              mode === 'selection' ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-200'
+            }`}
+          >
+            {t('shares.modePhotoSelection')}
+          </button>
+        </div>
+      </div>
+
+      {mode === 'album' ? (
+        <>
+          <SelectField
+            id="share-album"
+            label={t('shares.album')}
+            value={albumId}
+            options={albums.map((album) => ({ value: album.id, label: album.title }))}
+            onChange={setAlbumId}
+            disabled={create.isPending}
+          />
+          <TextField
+            id="share-media"
+            label={t('shares.mediaId')}
+            value={mediaId}
+            onChange={setMediaId}
+            hint={t('shares.mediaHint')}
+            disabled={create.isPending}
+          />
+        </>
+      ) : (
+        <div className="sm:col-span-2 space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="w-full sm:w-64">
+              <SelectField
+                id="share-filter-album"
+                label={t('shares.filterAlbum')}
+                value={filterAlbumId}
+                options={albums.map((album) => ({ value: album.id, label: album.title }))}
+                onChange={setFilterAlbumId}
+                disabled={create.isPending}
+              />
+            </div>
+            <div className="flex items-center gap-2 pb-1">
+              <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
+                {t('shares.selectedCount', selectedItems.length)}
+              </span>
+              {selectedItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedItems([])}
+                  className="text-xs text-ink-400 transition-colors hover:text-ink-200"
+                >
+                  {t('shares.clearSelection')}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <p className="text-xs text-ink-400">{t('shares.selectPhotosHint')}</p>
+
+          <div className="max-h-80 overflow-y-auto rounded-xl border border-ink-800 bg-ink-900/50 p-3">
+            {loadingPhotos && (
+              <div className="flex justify-center py-8">
+                <Spinner />
+              </div>
+            )}
+            {!loadingPhotos && albumPhotos.length === 0 && (
+              <p className="py-8 text-center text-xs text-ink-400">{t('shares.noPhotosInAlbum')}</p>
+            )}
+            {!loadingPhotos && albumPhotos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
+                {albumPhotos.map((photo) => {
+                  const isSelected = selectedMediaIds.has(photo.id);
+                  return (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      onClick={() => togglePhoto(photo.id)}
+                      className={`group relative aspect-square overflow-hidden rounded-lg bg-ink-800 transition-all ${
+                        isSelected
+                          ? 'ring-2 ring-accent ring-offset-2 ring-offset-ink-900'
+                          : 'hover:opacity-90'
+                      }`}
+                    >
+                      <img
+                        src={mediaUrl.thumb(photo.id, 320, photo.version, filterScope)}
+                        alt=""
+                        loading="lazy"
+                        className="size-full object-cover"
+                      />
+                      <div
+                        className={`absolute top-1.5 right-1.5 flex size-5 items-center justify-center rounded-full transition-colors ${
+                          isSelected
+                            ? 'bg-accent text-accent-ink shadow'
+                            : 'border border-white/80 bg-black/40 opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        {isSelected && (
+                          <svg
+                            className="size-3.5"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {hasNextPage && (
+              <div className="flex justify-center pt-3">
+                <Button
+                  type="button"
+                  onClick={() => void fetchNextPage()}
+                  disabled={isFetchingNextPage}
+                >
+                  {isFetchingNextPage ? t('common.loading') : t('shares.loadMorePhotos')}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <TextField
         id="share-label"
         label={t('shares.label')}
@@ -524,7 +701,7 @@ function ShareForm({
         />
       </div>
       <div className="sm:col-span-2">
-        <Button type="submit" variant="primary" disabled={!albumId || create.isPending}>
+        <Button type="submit" variant="primary" disabled={!canSubmit || create.isPending}>
           {t('shares.create')}
         </Button>
       </div>
@@ -585,7 +762,9 @@ function StateBadge({ state }: { state: AdminShareLink['state'] }): ReactElement
 /** What to call a link nobody gave a label. */
 function describe(link: AdminShareLink, t: Translate): string {
   if (link.kind === 'selection') {
-    return link.itemCount ? `${link.itemCount} photos` : 'Sélection';
+    return link.itemCount
+      ? t('shares.selectionItemCount', link.itemCount)
+      : t('shares.kindSelection');
   }
   return t(link.kind === 'album' ? 'shares.kindAlbum' : 'shares.kindMedia');
 }

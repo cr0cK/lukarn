@@ -262,6 +262,9 @@ export const en = {
   'album.editDescription': 'Edit the album description',
   'album.descriptionPlaceholder': 'What this album contains',
   'album.descriptionLabel': 'Album description',
+  'album.select': 'Select',
+  'album.cancelSelection': 'Cancel',
+  'album.selectionActions': 'Photo selection',
 
   /* ------------------------------------------------------ Grid and sections */
 
@@ -500,6 +503,17 @@ export const en = {
   'shares.nextMonth': 'Next month',
   'shares.time': 'Time',
   'shares.date': 'Date',
+  'shares.modeWholeAlbum': 'Whole album',
+  'shares.modePhotoSelection': 'Photo selection',
+  'shares.filterAlbum': 'Filter album',
+  'shares.selectPhotosHint': 'Click photos to add or remove them from your share link.',
+  'shares.selectedCount': (count: number) => `${count} photo${count === 1 ? '' : 's'} selected`,
+  'shares.selectionItemCount': (count: number) => `${count} photo${count === 1 ? '' : 's'}`,
+  'shares.noPhotosInAlbum': 'No photos in this album.',
+  'shares.loadMorePhotos': 'Load more photos',
+  'shares.clearSelection': 'Clear selection',
+  'shares.kindSelection': 'Selection',
+  'shares.shareSelection': 'Share selection',
 
   'admin.statusFailed': 'Cannot load the server state.',
 
