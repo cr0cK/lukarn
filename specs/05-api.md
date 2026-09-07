@@ -113,6 +113,7 @@ variables.
 | POST   | `/api/auth/code/request`             | none    |
 | POST   | `/api/auth/code/verify`              | none    |
 | POST   | `/api/auth/invite/:token`            | none    |
+| PATCH  | `/api/auth/profile`                  | session |
 | POST   | `/api/auth/device/start`             | none    |
 | POST   | `/api/auth/device/poll`              | none    |
 | GET    | `/api/auth/device/:userCode`         | session |
@@ -248,6 +249,16 @@ during member invitation. On success, the token is consumed immediately, the
 commenter identity is marked verified, the user account is bound to the commenter
 identity, and a 1-year persistent session cookie is issued alongside the user
 profile and accessible albums.
+
+**`PATCH /api/auth/profile`** — body `{ displayName: string }`. Updates the commenter
+display name for the active member session or account.
+
+| Code | Body          | When                                                                |
+| ---- | ------------- | ------------------------------------------------------------------- |
+| 200  | `SessionUser` | Success. Updates display name in `commenters` and returns user.     |
+| 400  | `bad_request` | Invalid payload or session lacks an attached commenter identity.     |
+| 401  | `unauthorized`| No active authenticated session.                                    |
+
 
 ### Pairing a screen — `pairings.ts`
 

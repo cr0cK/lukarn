@@ -396,3 +396,51 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
     assert.equal(context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'), false);
   });
 });
+
+describe('PATCH /api/auth/profile', () => {
+  it('updates display name for authenticated member', async () => {
+    // 1. Invite and onboard a user without display name
+    const inviteRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'profiletest@exemple.fr',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(inviteRes.statusCode, 201);
+    const token = sent[0]!.text.match(/\/invite\/([a-zA-Z0-9_-]+)/)![1]!;
+
+    const onboardRes = await server.inject({
+      method: 'POST',
+      url: `/api/auth/invite/${token}`,
+    });
+    assert.equal(onboardRes.statusCode, 200);
+    const sessionCookie = onboardRes.cookies.find((c) => c.name === 'lukarn_session')!;
+
+    // 2. Call PATCH /api/auth/profile
+    const patchRes = await server.inject({
+      method: 'PATCH',
+      url: '/api/auth/profile',
+      headers: { cookie: `lukarn_session=${sessionCookie.value}` },
+      payload: { displayName: 'Mamie Suzy' },
+    });
+    assert.equal(patchRes.statusCode, 200);
+    const updated = patchRes.json<SessionUser>();
+    assert.equal(updated.identity?.displayName, 'Mamie Suzy');
+
+    // 3. Verify in database
+    const commenter = context.commenters.byEmail('profiletest@exemple.fr')!;
+    assert.equal(commenter.displayName, 'Mamie Suzy');
+  });
+
+  it('rejects unauthenticated request with 401', async () => {
+    const res = await server.inject({
+      method: 'PATCH',
+      url: '/api/auth/profile',
+      payload: { displayName: 'Hacker' },
+    });
+    assert.equal(res.statusCode, 401);
+  });
+});

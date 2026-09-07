@@ -17,7 +17,7 @@ import type { AppContext } from '../context.js';
 import type { Translate } from '../i18n/index.js';
 import { classifyDevice } from '../device.js';
 import { buildInvitationMail, buildSignInMail } from '../mail.js';
-import { requireAccount } from '../plugins/auth.js';
+import { requireAccount, requireAuth } from '../plugins/auth.js';
 import { buildAlbum } from '../repo.js';
 import { SESSION_COOKIE, sessionCookieOptions, type SessionRecord } from '../sessions.js';
 import type { CodePurpose } from '../verification-codes.js';
@@ -504,6 +504,52 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
         )
         .send({ user: sessionUser(user), albums });
+    });
+
+    /**
+     * Updates the commenter display name for the authenticated session or member account.
+     */
+    app.patch('/profile', { preHandler: requireAuth }, async (request, reply) => {
+      const parsed = z
+        .object({ displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH) })
+        .safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: request.t('error.invalidIdentity'),
+        });
+      }
+
+      const commenterId =
+        (request.user?.username ? context.config.user(request.user.username)?.commenterId : null) ??
+        request.commenterId;
+
+      if (!commenterId) {
+        return reply.code(400).send({
+          error: 'no_identity',
+          message: request.t('error.invalidIdentity'),
+        });
+      }
+
+      const { displayName } = parsed.data;
+      context.db
+        .prepare('UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?')
+        .run(displayName, commenterId);
+
+      context.config.invalidate();
+      if (request.user?.username) {
+        const freshUser = context.config.user(request.user.username)!;
+        return reply.send(sessionUser(freshUser));
+      }
+
+      const commenter = context.commenters.byId(commenterId);
+      return reply.send({
+        username: null,
+        admin: false,
+        identity: commenter ? toIdentity(commenter) : null,
+        identityBound: false,
+        commentsEnabled: context.mailer.enabled,
+      } satisfies SessionUser);
     });
 
     /* ------------------------------------------------------------------------
