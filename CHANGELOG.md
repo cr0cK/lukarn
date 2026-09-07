@@ -50,6 +50,12 @@ month ago by somebody they know.
 A link is a credential of its own. It never appears in the account list, and it
 grants exactly what you chose when you made it.
 
+### Share links administration: tabs, re-enabling revoked links, and ergonomic expiration picker
+
+The administration Links section is now organized into two tabs: **Existing links**, with real-time search filtering and link count badges, and **Create a link**, with a dedicated creation form.
+
+A revoked link can now be **re-enabled** under its original address without issuing a new token. If its expiration date had passed, the administrator is prompted to set a new date or make it permanent. Expired links offer an immediate **Extend** gesture. Expiration dates across the administration interface are now selected with quick duration presets (7 days, 30 days, no expiry, or a custom date) and a dark-theme calendar on desktop, falling back to the browser's native picker on touch screens.
+
 ### An account can be one person, invited by email
 
 Until now an account was a password, and whoever had it was whoever had it. A

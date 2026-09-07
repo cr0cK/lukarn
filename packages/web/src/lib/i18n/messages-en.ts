@@ -481,8 +481,28 @@ export const en = {
   'shares.expiry30Days': '30 days',
   'shares.expiryNever': 'No expiry',
   'shares.shareCreated': 'Link created and copied to clipboard.',
+  'shares.tabExisting': 'Existing links',
+  'shares.tabCreate': 'Create a link',
+  'shares.searchPlaceholder': 'Search links…',
+  'shares.noSearchResults': 'No links match your search.',
+  'shares.createSuccess': 'Share link issued.',
+  'shares.restore': 'Re-enable',
+  'shares.restoreTitle': 'Re-enable share link',
+  'shares.confirmRestore':
+    'Re-enabling this link will allow it to be opened again under its original address.',
+  'shares.restoreExpiredWarning':
+    'This link has passed its previous expiration date. Please choose a new expiration date or re-enable it permanently.',
+  'shares.restoreFailed': 'Cannot re-enable this link.',
+  'shares.restoreSuccess': 'Share link re-enabled.',
+  'shares.extend': 'Extend',
+  'shares.expiryCustom': 'Custom date',
+  'shares.previousMonth': 'Previous month',
+  'shares.nextMonth': 'Next month',
+  'shares.time': 'Time',
+  'shares.date': 'Date',
 
   'admin.statusFailed': 'Cannot load the server state.',
+
   'admin.oauthConnected': 'Google Drive is connected. The first sync has started.',
   'admin.oauthDenied': 'Authorisation refused on the Google side.',
   'admin.oauthInvalid': 'Incomplete response from Google. Start the connection again.',

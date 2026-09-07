@@ -49,6 +49,19 @@ export async function revokeShare(request: APIRequestContext, address: string): 
   expect(response.ok(), await response.text()).toBeTruthy();
 }
 
+/** Restores a revoked link by its address, using the same request context that issued it. */
+export async function restoreShare(
+  request: APIRequestContext,
+  address: string,
+  options: { expiresAt?: string | null } = {},
+): Promise<void> {
+  const token = address.slice('/s/'.length);
+  const response = await request.post(`/api/admin/shares/${token}/restore`, {
+    data: { expiresAt: options.expiresAt ?? null },
+  });
+  expect(response.ok(), await response.text()).toBeTruthy();
+}
+
 /** The first photograph of the day album, as the grid serves it. */
 export async function firstPhotoId(request: APIRequestContext): Promise<string> {
   await asAdmin(request);

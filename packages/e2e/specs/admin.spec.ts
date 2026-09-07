@@ -146,6 +146,9 @@ test.describe('Links', () => {
     await sections.getByRole('link', { name: 'Links', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/shares$/);
 
+    // Switch to create tab
+    await page.getByRole('tab', { name: 'Create a link' }).click();
+
     // The row carries its value and opens onto the field, as every setting does on
     // a phone. `exact`, because the back arrow is labelled "Back to the albums" and
     // `getByLabel` matches on a substring.
@@ -179,6 +182,7 @@ test.describe('Links', () => {
     await expect(page).toHaveURL(/\/admin\/shares$/);
 
     // Issue a link first
+    await page.getByRole('tab', { name: 'Create a link' }).click();
     await page.getByRole('button', { name: /^Album/ }).click();
     await page.getByLabel('Album', { exact: true }).selectOption(ALBUMS.day.id);
     await page.getByLabel('Label').fill('Original label');
@@ -195,6 +199,47 @@ test.describe('Links', () => {
     await expect(editModal).toBeHidden();
 
     await expect(page.getByText('Updated label')).toBeVisible();
+  });
+
+  test('revoking a link removes edit and shows re-enable, which restores it', async ({ page }) => {
+    await page.goto('/admin');
+    const sections = page.getByRole('navigation', { name: 'Administration sections' });
+    await sections.getByRole('link', { name: 'Links', exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/shares$/);
+
+    // Issue a link
+    await page.getByRole('tab', { name: 'Create a link' }).click();
+    await page.getByRole('button', { name: /^Album/ }).click();
+    await page.getByLabel('Album', { exact: true }).selectOption(ALBUMS.day.id);
+    await page.getByLabel('Label').fill('To revoke and restore');
+    await page.getByRole('button', { name: 'Issue the link' }).click();
+
+    const targetRow = page.locator('div.border-t', { hasText: 'To revoke and restore' });
+    await expect(targetRow).toBeVisible();
+    await expect(targetRow.getByText('Working')).toBeVisible();
+
+    // Revoke
+    await targetRow.getByRole('button', { name: 'Revoke' }).click();
+    const confirmDialog = page.getByRole('dialog');
+    await expect(confirmDialog).toBeVisible();
+    await confirmDialog.getByRole('button', { name: 'Revoke' }).click();
+    await expect(confirmDialog).toBeHidden();
+
+    // Revoked state: says "Taken back", no "Edit" button, shows "Re-enable"
+    await expect(targetRow.getByText('Taken back')).toBeVisible();
+    await expect(targetRow.getByRole('button', { name: 'Edit' })).toHaveCount(0);
+    const reEnableButton = targetRow.getByRole('button', { name: 'Re-enable' });
+    await expect(reEnableButton).toBeVisible();
+
+    // Re-enable
+    await reEnableButton.click();
+    const restoreDialog = page.getByRole('dialog');
+    await expect(restoreDialog).toBeVisible();
+    await restoreDialog.getByRole('button', { name: 'Re-enable' }).click();
+    await expect(restoreDialog).toBeHidden();
+
+    // Restored back to "Working"
+    await expect(targetRow.getByText('Working')).toBeVisible();
   });
 
   test('a share link is issued contextually from the album page', async ({ page }) => {

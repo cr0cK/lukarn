@@ -25,6 +25,7 @@ import {
   type InviteUserRequest,
   type MediaItem,
   type AdminShareLink,
+  type AdminShareRestoreInput,
   type CreateShareRequest,
   type UpdateShareRequest,
   type ModerationFilter,
@@ -437,6 +438,13 @@ export const api = {
   /** Keeps the row and its record of use; only deletion removes those (D260825b). */
   revokeShare: (token: string) =>
     request<{ ok: true }>(`/admin/shares/${encodeURIComponent(token)}/revoke`, { method: 'POST' }),
+
+  /** Restoring clears revoked_at and optionally updates expiry (D260825b). */
+  restoreShare: (token: string, body?: AdminShareRestoreInput) =>
+    request<AdminShareLink>(`/admin/shares/${encodeURIComponent(token)}/restore`, {
+      method: 'POST',
+      body: body ? JSON.stringify(body) : undefined,
+    }),
 
   deleteShare: (token: string) =>
     request<{ ok: true }>(`/admin/shares/${encodeURIComponent(token)}`, { method: 'DELETE' }),

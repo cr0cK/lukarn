@@ -733,4 +733,55 @@ describe('administration', () => {
     });
     assert.equal(response.statusCode, 404);
   });
+
+  it('restores a revoked share link and allows reopening it', async () => {
+    const cookie = await adminCookie();
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { albumId: 'corse', label: 'To restore' },
+    });
+    const token = created.json().token as string;
+
+    // Revoke
+    const revoked = await server.inject({
+      method: 'POST',
+      url: `/api/admin/shares/${token}/revoke`,
+      headers: { cookie },
+    });
+    assert.equal(revoked.statusCode, 200);
+
+    // Verify it answers 410
+    const check410 = await server.inject({ method: 'GET', url: `/api/share/${token}` });
+    assert.equal(check410.statusCode, 410);
+
+    // Restore with new expiration
+    const restored = await server.inject({
+      method: 'POST',
+      url: `/api/admin/shares/${token}/restore`,
+      headers: { cookie },
+      payload: { expiresAt: '2035-01-01T00:00:00.000Z' },
+    });
+    assert.equal(restored.statusCode, 200, restored.body);
+    assert.equal(restored.json().state, 'live');
+    assert.equal(restored.json().revokedAt, null);
+    assert.equal(restored.json().expiresAt, '2035-01-01T00:00:00.000Z');
+
+    // Verify reopening with the same token answers 200
+    const check200 = await server.inject({ method: 'GET', url: `/api/share/${token}` });
+    assert.equal(check200.statusCode, 200);
+  });
+
+  it('returns 404 when restoring an unknown share link', async () => {
+    const cookie = await adminCookie();
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares/unknown-token-1234567890123456789012/restore',
+      headers: { cookie },
+      payload: {},
+    });
+    assert.equal(response.statusCode, 404);
+  });
 });

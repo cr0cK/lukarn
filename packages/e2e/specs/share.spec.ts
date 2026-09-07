@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ALBUMS } from '../fixtures/instance.js';
-import { firstPhotoId, issueShare, revokeShare } from '../fixtures/share.js';
+import { firstPhotoId, issueShare, restoreShare, revokeShare } from '../fixtures/share.js';
 
 /**
  * What a share link opens, driven by a browser that has never held a session
@@ -116,4 +116,24 @@ test('an address nothing ever issued says exactly that', async ({ page }) => {
   await page.goto(`/s/${'z'.repeat(43)}`);
 
   await expect(page.getByText('This link does not lead anywhere.')).toBeVisible();
+});
+
+test('a revoked link restored can be reopened under the same address', async ({
+  page,
+  request,
+}) => {
+  const address = await issueShare(request, { label: 'To be restored' });
+  await revokeShare(request, address);
+
+  // When revoked, answers 410 and says taken back
+  await page.goto(address);
+  await expect(page.getByText('This link was taken back.')).toBeVisible();
+
+  // Restore the link
+  await restoreShare(request, address);
+
+  // Reload/reopen: now answers 200 and displays album content again
+  await page.goto(address);
+  await expect(page.getByRole('heading', { name: ALBUMS.day.title })).toBeVisible();
+  await expect(page.locator('main img').first()).toBeVisible();
 });

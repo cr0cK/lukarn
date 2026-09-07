@@ -460,8 +460,28 @@ export const fr: Messages = {
   'shares.expiry30Days': '30 jours',
   'shares.expiryNever': 'Sans expiration',
   'shares.shareCreated': 'Lien créé et copié dans le presse-papiers.',
+  'shares.tabExisting': 'Liens existants',
+  'shares.tabCreate': 'Créer un lien',
+  'shares.searchPlaceholder': 'Rechercher des liens…',
+  'shares.noSearchResults': 'Aucun lien ne correspond à votre recherche.',
+  'shares.createSuccess': 'Lien de partage émis.',
+  'shares.restore': 'Réactiver',
+  'shares.restoreTitle': 'Réactiver le lien de partage',
+  'shares.confirmRestore':
+    'Réactiver ce lien permettra de l’ouvrir à nouveau avec son adresse d’origine.',
+  'shares.restoreExpiredWarning':
+    'Ce lien a dépassé sa date d’expiration précédente. Choisissez une nouvelle date d’expiration ou réactivez-le de façon permanente.',
+  'shares.restoreFailed': 'Impossible de réactiver ce lien.',
+  'shares.restoreSuccess': 'Lien de partage réactivé.',
+  'shares.extend': 'Prolonger',
+  'shares.expiryCustom': 'Date personnalisée',
+  'shares.previousMonth': 'Mois précédent',
+  'shares.nextMonth': 'Mois suivant',
+  'shares.time': 'Heure',
+  'shares.date': 'Date',
 
   'admin.statusFailed': 'Impossible de charger l’état du serveur.',
+
   'admin.oauthConnected': 'Google Drive est connecté. La première synchronisation a démarré.',
   'admin.oauthDenied': 'Autorisation refusée du côté de Google.',
   'admin.oauthInvalid': 'Réponse incomplète de Google. Relancer la connexion.',

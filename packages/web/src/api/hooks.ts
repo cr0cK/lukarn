@@ -7,6 +7,7 @@ import {
   type CreateAlbumRequest,
   type CreateShareRequest,
   type UpdateShareRequest,
+  type AdminShareRestoreInput,
   type CreateStorageRequest,
   type CreateCommentRequest,
   type FeedComment,
@@ -971,6 +972,18 @@ export function useRevokeShare() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (token: string) => api.revokeShare(token),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+/**
+ * Restoring re-enables a revoked link under its original token (D260825b).
+ */
+export function useRestoreShare() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, body }: { token: string; body?: AdminShareRestoreInput }) =>
+      api.restoreShare(token, body),
     onSuccess: () => invalidateShares(queryClient),
   });
 }
