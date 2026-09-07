@@ -104,6 +104,14 @@ export class SubscriptionRepo {
                     SELECT 1 FROM user_albums ua WHERE ua.username = u.username AND ua.album_id = s.album_id
                   ))
               )
+              OR EXISTS (
+                SELECT 1 FROM share_links sl
+                WHERE sl.revoked_at IS NULL
+                  AND (sl.expires_at IS NULL OR sl.expires_at > datetime('now'))
+                  AND (sl.album_id = s.album_id OR EXISTS (
+                    SELECT 1 FROM share_link_items sli WHERE sli.token = sl.token AND sli.album_id = s.album_id
+                  ))
+              )
             )
           ORDER BY c.id`,
       )

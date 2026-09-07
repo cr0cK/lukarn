@@ -417,6 +417,10 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
     });
     assert.equal(onboardRes.statusCode, 409);
     assert.equal(onboardRes.json<{ error: string }>().error, 'identity_taken');
+
+    // 4. Invariant: Transaction rolled back atomically; invite token was NOT burned
+    const storedInvite = context.codes.find('racing@exemple.fr', 'invite');
+    assert.ok(storedInvite, 'Invite token row must be preserved by transaction rollback');
   });
 
   it('enforces single-use consumption (second use fails with 404)', async () => {
@@ -523,6 +527,56 @@ describe('POST /api/auth/invite/:token (Magic Onboarding)', () => {
       context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'),
       false,
     );
+
+    // Guest subscription with active share link persists notifications even if user becomes a member of another album
+    const shareLink = context.shares.create({
+      albumId: 'vacances',
+      mediaId: null,
+      label: 'Guest link',
+      createdBy: 'admin',
+      expiresAt: null,
+    });
+    assert.equal(
+      context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'),
+      true,
+      'Active share link covering the album preserves notifications',
+    );
+
+    // Revoking the share link silences notifications
+    context.shares.revoke(shareLink.token);
+    assert.equal(
+      context.subscriptions.subscribers('vacances').some((s) => s.email === 'scoped@exemple.fr'),
+      false,
+      'Revoked share link must not preserve notifications',
+    );
+  });
+
+  it('token consumption is not blocked by 6-digit attempts count', async () => {
+    const inviteRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users/invite',
+      headers: { cookie: adminCookie },
+      payload: {
+        email: 'attempts-immunity@exemple.fr',
+        albums: ['famille'],
+      },
+    });
+    assert.equal(inviteRes.statusCode, 201);
+    const token = sent[sent.length - 1]!.text.match(/\/invite\/([a-zA-Z0-9_-]+)/)![1]!;
+
+    // Exhaust 6-digit attempts count on this target email
+    context.db
+      .prepare("UPDATE verification_codes SET attempts = 5 WHERE purpose = 'invite' AND target = ?")
+      .run('attempts-immunity@exemple.fr');
+
+    // Consuming high-entropy 256-bit invite token must succeed despite attempts count
+    const onboardRes = await server.inject({
+      method: 'POST',
+      url: `/api/auth/invite/${token}`,
+    });
+    assert.equal(onboardRes.statusCode, 200, onboardRes.body);
+    const body = onboardRes.json<{ user: { username: string } }>();
+    assert.ok(body.user.username);
   });
 });
 

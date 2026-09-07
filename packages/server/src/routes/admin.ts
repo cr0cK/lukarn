@@ -20,7 +20,6 @@ import {
   USERNAME_PATTERN,
   VISIT_WINDOW_DEFAULT,
   VISIT_WINDOW_MAX,
-  inviteUserSchema,
   type AdminAlbum,
   type AdminInviteResponse,
   type AdminStatus,
@@ -113,6 +112,17 @@ const createUserSchema = z
   .refine((input) => (input.password === undefined) !== (input.email === undefined), {
     message: 'exactly one of password and email',
   });
+
+/**
+ * Member invitation request: provisions an account by email and optionally binds
+ * albums, display name, and preferred locale.
+ */
+const inviteUserSchema = z.object({
+  email: invitedEmail,
+  displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH).optional(),
+  albums: z.array(z.string()).default([]),
+  locale: invitationLocale.optional(),
+});
 
 /** Inviting an existing account. Without an address, the pending invitation is remade. */
 const reinviteUserSchema = z.object({

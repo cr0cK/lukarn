@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactElement, useEffect, useState } from 'react';
+import { type FormEvent, type ReactElement, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useConsumeInvite, useUpdateProfile } from '../api/hooks';
 import { Brand } from '../components/Brand';
@@ -19,9 +19,11 @@ export default function InvitePage(): ReactElement {
 
   const [displayName, setDisplayName] = useState('');
   const [promptName, setPromptName] = useState(false);
+  const consumedRef = useRef(false);
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || consumedRef.current) return;
+    consumedRef.current = true;
     consume.mutate(token, {
       onSuccess: (data) => {
         // If display name is already populated, proceed directly to home
