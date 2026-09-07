@@ -19,7 +19,8 @@ to a decision that exists.
 A row is **appended and never edited**. What changes is the link, when the work
 that a document describes lands and the document moves.
 
-| Intent                                                            | Written    | The need                                                                                                                           |
-| ----------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| [Sharing without an account](./Sharing-without-an-account.md)     | 2026-08-24 | Show an album, or one photograph, to somebody who has no password, and take it back without an argument                            |
-| [Knowing that somebody looked](./Knowing-that-somebody-looked.md) | 2026-08-24 | Learn that a shared album or a photograph was opened, from a screen that answers and a message that arrives, without going to look |
+| Intent                                                                            | Written    | The need                                                                                                                                                |
+| --------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Sharing without an account](./Sharing-without-an-account.md)                     | 2026-08-24 | Show an album, or one photograph, to somebody who has no password, and take it back without an argument                                                 |
+| [Knowing that somebody looked](./Knowing-that-somebody-looked.md)                 | 2026-08-24 | Learn that a shared album or a photograph was opened, from a screen that answers and a message that arrives, without going to look                      |
+| [Inviting a viewer without a password](./Inviting-somebody-without-a-password.md) | 2026-09-07 | Invite a relative to their albums with a single click, without a password to invent or remember, and keep them notified of new photographs and comments |
