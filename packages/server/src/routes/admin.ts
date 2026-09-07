@@ -593,6 +593,10 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
      * and either queues an invitation email or generates an offline invite link.
      */
     app.post('/users/invite', async (request, reply) => {
+      const retryAfter = context.throttle.blockedForIp(request.ip);
+      if (retryAfter > 0) return tooSoon(reply, retryAfter, request.t);
+      context.throttle.countCall(request.ip);
+
       const parsed = inviteUserSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 

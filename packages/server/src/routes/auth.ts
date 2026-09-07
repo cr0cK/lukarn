@@ -454,6 +454,10 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
      * and account, sets the 1-year session cookie, and returns the session user and their albums.
      */
     app.post('/invite/:token', async (request, reply) => {
+      const blocked = blockedReply(reply, throttle.blockedForIp(request.ip), request.t);
+      if (blocked) return blocked;
+      throttle.countCall(request.ip);
+
       const { token } = request.params as { token: string };
       if (!token || typeof token !== 'string') {
         return reply.code(400).send({
@@ -537,6 +541,10 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
      * Updates the commenter display name for the authenticated member account.
      */
     app.patch('/profile', { preHandler: requireAuth }, async (request, reply) => {
+      const blocked = blockedReply(reply, throttle.blockedForIp(request.ip), request.t);
+      if (blocked) return blocked;
+      throttle.countCall(request.ip);
+
       if (!request.user || request.user.username === null) {
         return reply.code(403).send({
           error: 'forbidden',
