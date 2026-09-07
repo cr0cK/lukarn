@@ -1,5 +1,5 @@
 import { SHARE_LABEL_MAX_LENGTH, type AdminAlbum, type AdminShareLink } from '@lukarn/shared';
-import { type FormEvent, type ReactElement, useMemo, useState } from 'react';
+import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { errorText } from '../../api/client';
 import {
   useAdminShares,
@@ -125,7 +125,14 @@ export function SharesSection({
       </div>
 
       {tab === 'create' && (
-        <ShareForm albums={albums} notify={notify} onCreated={() => setTab('existing')} />
+        <ShareForm
+          albums={albums}
+          notify={notify}
+          onCreated={() => {
+            setSearch('');
+            setTab('existing');
+          }}
+        />
       )}
 
       {tab === 'existing' && (
@@ -239,6 +246,14 @@ function RestoreShareDialog({
 }): ReactElement {
   const t = useT();
   const restore = useRestoreShare();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => previous?.focus();
+  }, []);
+
   const isPastExpiry = Boolean(link.expiresAt && new Date(link.expiresAt).getTime() <= Date.now());
   const [expiresAt, setExpiresAt] = useState<string | null>(() => {
     if (isPastExpiry) {
@@ -277,10 +292,12 @@ function RestoreShareDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="restore-share-title"
-        className="w-full max-w-md rounded-xl border border-ink-800 bg-surface-base p-6 shadow-2xl"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-xl border border-ink-800 bg-surface-base p-6 shadow-2xl outline-none"
       >
         <h2 id="restore-share-title" className="text-base font-medium text-ink-100">
           {t('shares.restoreTitle')}
@@ -328,6 +345,14 @@ function EditShareDialog({
 }): ReactElement {
   const t = useT();
   const update = useUpdateShare();
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => previous?.focus();
+  }, []);
+
   const [label, setLabel] = useState(link.label ?? '');
   const [expiresAt, setExpiresAt] = useState<string | null>(link.expiresAt);
 
@@ -361,10 +386,12 @@ function EditShareDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="edit-share-title"
-        className="w-full max-w-md rounded-xl border border-ink-800 bg-surface-base p-6 shadow-2xl"
+        tabIndex={-1}
+        className="w-full max-w-md rounded-xl border border-ink-800 bg-surface-base p-6 shadow-2xl outline-none"
       >
         <h2 id="edit-share-title" className="text-base font-medium text-ink-100">
           {t('shares.editTitle')}

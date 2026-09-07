@@ -65,10 +65,14 @@ export function DateTimePicker({
       const d = new Date(Date.now() + 7 * 86_400_000);
       d.setSeconds(0, 0);
       onChange(d.toISOString());
+      setViewYear(d.getFullYear());
+      setViewMonth(d.getMonth());
     } else if (newPreset === '30d') {
       const d = new Date(Date.now() + 30 * 86_400_000);
       d.setSeconds(0, 0);
       onChange(d.toISOString());
+      setViewYear(d.getFullYear());
+      setViewMonth(d.getMonth());
     } else if (newPreset === 'custom') {
       if (!value) {
         const d = new Date(Date.now() + 7 * 86_400_000);
@@ -76,6 +80,12 @@ export function DateTimePicker({
         onChange(d.toISOString());
         setViewYear(d.getFullYear());
         setViewMonth(d.getMonth());
+      } else {
+        const d = new Date(value);
+        if (!isNaN(d.getTime())) {
+          setViewYear(d.getFullYear());
+          setViewMonth(d.getMonth());
+        }
       }
     }
   };
