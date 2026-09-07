@@ -337,7 +337,7 @@ const shareSchema = z
   .object({
     albumId: z.string().min(1).max(USERNAME_MAX_LENGTH).optional(),
     mediaId: z.string().min(1).max(256).nullish(),
-    items: z.array(shareItemInputSchema).min(1).optional(),
+    items: z.array(shareItemInputSchema).min(1).max(500).optional(),
     label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
     // An instant rather than a day: the row is compared against `Date.now()`, and a
     // bare date would expire at whatever hour the string happened to parse to.

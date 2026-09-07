@@ -146,10 +146,14 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
        * recipient like any other and gets a link session, because the `/media`
        * prefix would otherwise refuse every photograph on the page it just drew.
        */
+      const username = request.user?.username;
       const account =
-        request.user?.username != null &&
-        link.albumId !== null &&
-        context.canSee(request.user.username, link.albumId);
+        username != null &&
+        (link.albumId !== null
+          ? context.canSee(username, link.albumId)
+          : context.shares
+              .findItemAlbumIds(link.token)
+              .every((id) => context.canSee(username, id)));
 
       let sessionId = sessionFor(request, link);
       if (sessionId === null && !account) {

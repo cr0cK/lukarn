@@ -208,14 +208,15 @@ export class ShareLinkRepo {
     if (link.mediaId !== null) return link.mediaId === mediaId;
     if (link.albumId === null) {
       const item = this.db
-        .prepare('SELECT 1 AS ok FROM share_link_items WHERE token = ? AND media_id = ?')
+        .prepare(
+          `SELECT 1 AS ok
+             FROM share_link_items
+             JOIN media ON media.album_id = share_link_items.album_id AND media.id = share_link_items.media_id
+            WHERE share_link_items.token = ? AND share_link_items.media_id = ?`,
+        )
         .get(link.token, mediaId) as { ok: number } | undefined;
       return item !== undefined;
     }
-    const item = this.db
-      .prepare('SELECT 1 AS ok FROM share_link_items WHERE token = ? AND media_id = ?')
-      .get(link.token, mediaId) as { ok: number } | undefined;
-    if (item !== undefined) return true;
 
     const row = this.db
       .prepare('SELECT 1 AS ok FROM media WHERE album_id = ? AND id = ?')
@@ -234,6 +235,16 @@ export class ShareLinkRepo {
       .prepare('SELECT album_id FROM share_link_items WHERE token = ? AND media_id = ?')
       .get(token, mediaId) as { album_id: string } | undefined;
     return row ? row.album_id : null;
+  }
+
+  /**
+   * Returns the distinct album identifiers covered by a selection link.
+   */
+  findItemAlbumIds(token: string): string[] {
+    const rows = this.db
+      .prepare('SELECT DISTINCT album_id FROM share_link_items WHERE token = ?')
+      .all(token) as Array<{ album_id: string }>;
+    return rows.map((row) => row.album_id);
   }
 
   /**

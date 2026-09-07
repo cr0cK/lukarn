@@ -934,6 +934,19 @@ describe('a link to a selection of photographs', () => {
       payload: { items: [{ albumId: 'corse', mediaId: 'img-9' }] },
     });
     assert.equal(wrongAlbumRes.statusCode, 404);
+
+    // Items array exceeding 500 items limit
+    const tooManyItems = Array.from({ length: 501 }, (_, i) => ({
+      albumId: 'corse',
+      mediaId: `img-${i}`,
+    }));
+    const tooManyRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: { items: tooManyItems },
+    });
+    assert.equal(tooManyRes.statusCode, 400);
   });
 
   it('comments on photographs within a multi-photo selection without leaking album', async () => {
@@ -1066,5 +1079,103 @@ describe('a link to a selection of photographs', () => {
     });
     assert.equal(revokedRes.statusCode, 410);
     assert.equal(revokedRes.json().error, 'share_revoked');
+  });
+
+  it('preserves admin session and does not increment openings when opening a selection link', async () => {
+    const cookie = await adminCookie();
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        items: [
+          { albumId: 'corse', mediaId: 'img-1' },
+          { albumId: 'noel', mediaId: 'img-9' },
+        ],
+        label: 'Admin selection',
+      },
+    });
+    assert.equal(created.statusCode, 201);
+    const { token } = created.json();
+
+    // Verify findItemAlbumIds helper
+    const albumIds = context.shares.findItemAlbumIds(token);
+    assert.deepEqual(albumIds.sort(), ['corse', 'noel']);
+
+    const res = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}`,
+      headers: { cookie },
+    });
+
+    assert.equal(res.statusCode, 200);
+    // Preserves the admin session: no new session cookie is set
+    assert.equal(
+      res.cookies.find((entry) => entry.name === 'lukarn_session'),
+      undefined,
+    );
+
+    // Verify session in database is still the admin user and not converted to a share session
+    const session = context.db
+      .prepare('SELECT username, share_token FROM sessions WHERE username = ?')
+      .get('patron') as {
+      username: string;
+      share_token: string | null;
+    };
+    assert.ok(session);
+    assert.equal(session.username, 'patron');
+    assert.equal(session.share_token, null);
+
+    // Openings are not incremented for the issuer testing their own link
+    const openings = context.db
+      .prepare('SELECT COUNT(*) AS n FROM share_openings WHERE token = ?')
+      .get(token) as { n: number };
+    assert.equal(openings.n, 0);
+  });
+
+  it('revokes coverage immediately if a media item is deleted from the index', async () => {
+    const cookie = await adminCookie();
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        items: [
+          { albumId: 'corse', mediaId: 'img-1' },
+          { albumId: 'corse', mediaId: 'img-2' },
+        ],
+      },
+    });
+    const { token } = created.json();
+    const link = context.shares.find(token)!;
+    assert.equal(context.shares.covers(link, 'img-1'), true);
+    assert.equal(context.shares.covers(link, 'img-2'), true);
+
+    // Remove img-2 from media table
+    context.db.prepare('DELETE FROM media WHERE id = ?').run('img-2');
+
+    try {
+      // covers() now returns false for img-2 because it is no longer in media
+      assert.equal(context.shares.covers(link, 'img-2'), false);
+
+      // Accessing item detail returns 404
+      const detailRes = await server.inject({
+        method: 'GET',
+        url: `/api/share/${token}/items/img-2`,
+      });
+      assert.equal(detailRes.statusCode, 404);
+
+      // Streaming returns 404
+      const mediaRes = await server.inject({
+        method: 'GET',
+        url: `/api/share/${token}/media/img-2/thumb?s=320`,
+      });
+      assert.equal(mediaRes.statusCode, 404);
+    } finally {
+      // Restore img-2 so subsequent tests or runs are unaffected
+      context.media.upsertMany([photo('corse', 'img-2')], '2026-07-01T00:00:00.000Z');
+    }
   });
 });
