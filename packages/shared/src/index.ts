@@ -1325,3 +1325,11 @@ export interface UpdateShareRequest {
   /** ISO 8601 date after which the link answers 410, or `null` to clear expiry. */
   expiresAt?: string | null;
 }
+
+/**
+ * Restoring a revoked share link. Optionally updates or clears the expiration date.
+ */
+export interface AdminShareRestoreInput {
+  /** ISO 8601 date after which the link answers 410, or `null` for no expiry. */
+  expiresAt?: string | null;
+}

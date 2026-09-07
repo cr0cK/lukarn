@@ -341,6 +341,10 @@ const updateShareSchema = z.object({
   expiresAt: z.string().datetime().nullish(),
 });
 
+const restoreShareSchema = z.object({
+  expiresAt: z.string().datetime().nullish(),
+});
+
 export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
   const secureCookies = context.env.publicUrl.startsWith('https://');
 
@@ -1425,6 +1429,31 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       }
       request.log.info('Share link revoked');
       return reply.send({ ok: true });
+    });
+
+    /**
+     * Restoring a revoked share link. Clears revoked_at and optionally updates expires_at.
+     */
+    app.post('/shares/:token/restore', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const parsed = restoreShareSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: parsed.error.issues[0]?.message ?? request.t('error.invalidParameters'),
+        });
+      }
+
+      const restored = context.shares.restore(token, parsed.data);
+      if (!restored) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.shareUnknown') });
+      }
+
+      request.log.info('Share link restored');
+      const item = context.shares.list().find((row) => row.token === token)!;
+      return reply.send(item);
     });
 
     /** Deleting outright — the one gesture that also erases the openings. */

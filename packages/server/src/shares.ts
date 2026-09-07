@@ -50,6 +50,10 @@ export interface UpdateShareInput {
   expiresAt?: string | null;
 }
 
+export interface RestoreShareInput {
+  expiresAt?: string | null;
+}
+
 interface Row {
   token: string;
   album_id: string;
@@ -205,6 +209,29 @@ export class ShareLinkRepo {
           WHERE token = ?`,
       )
       .run(label, expiresAt, token);
+
+    return this.find(token);
+  }
+
+  /**
+   * Restores a revoked link: clears revoked_at and optionally updates expires_at.
+   *
+   * Returns null if the token does not exist.
+   */
+  restore(token: string, input?: RestoreShareInput): ShareLink | null {
+    const existing = this.find(token);
+    if (!existing) return null;
+
+    const expiresAt = input && input.expiresAt !== undefined ? input.expiresAt : existing.expiresAt;
+
+    this.db
+      .prepare(
+        `UPDATE share_links
+            SET revoked_at = NULL,
+                expires_at = ?
+          WHERE token = ?`,
+      )
+      .run(expiresAt, token);
 
     return this.find(token);
   }

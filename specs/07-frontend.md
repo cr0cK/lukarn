@@ -1975,7 +1975,7 @@ unnoticed from the bottom of the queue.
 | `IdentitySection`             | Instance name, primary colour with a live preview, logo upload and reset                                                                                                                                                                                                 |
 | `SettingsSection`             | Sync interval, sync on startup, prewarming, both cache budgets, video preparation, moderation address                                                                                                                                                                    |
 | `MaintenanceSection`          | Cache usage and purge                                                                                                                                                                                                                                                    |
-| `SharesSection`               | Every share link this instance has issued: what each covers, whether it still works, when it was last opened, and the two gestures that stop one                                                                                                                         |
+| `SharesSection`               | Every share link this instance has issued: sub-tabs for existing links and creation, search filter, and lifecycle gestures (restore, revoke, extend, delete)                                                                                                             |
 | `VisitsSection`               | Who came, and which albums were opened, over 7, 30, or 90 days                                                                                                                                                                                                           |
 | `AlbumAccessPicker`           | Assigning albums to an account (see below)                                                                                                                                                                                                                               |
 | `ConfirmDialog`               | Named confirmation, replacing `window.confirm`                                                                                                                                                                                                                           |
@@ -1990,6 +1990,11 @@ reinvent either the classes or the `label` / `aria-describedby` link.
 **Beside Albums in the Library group**, not under People: a link opens content, and
 what it opens is chosen from the library. Nobody is granted anything (D260825).
 
+The section is organized into two **sub-tabs**:
+
+- **Existing links**: the default view, displaying link count badges, real-time search filtering, and the listing of issued links.
+- **Create a link**: dedicated creation form with album selector, optional photograph identifier, recipient label, and duration picker.
+
 The section is the one screen that shows a link's **token**, because its reader
 already holds every credential this instance has and a link nobody can copy is a link
 nobody can send. The Copy button builds the address from `window.location.origin`
@@ -2000,11 +2005,20 @@ the local network would carry an address nobody outside it can open.
 Each row states what the link covers, whether it still works, who issued it and when,
 and its record of use — never opened, or when last and how many openings (D260825c).
 
-**Two gestures, and the difference between them is stated in the confirmation.**
-Revoking closes the link for whoever holds it and keeps its record of use; deleting
-removes both (D260825b). The form carries no `kind`: a photograph identifier makes it
-a photograph link and leaving it empty makes it an album link, so the two cannot
-disagree about what was asked for.
+**Lifecycle actions per link state:**
+
+- `live`: `[Copy address]`, `[Edit]`, `[Revoke]`, and `[Delete]`.
+- `revoked`: `[Copy address]`, `[Re-enable]`, and `[Delete]` (the useless edit action is omitted). Re-enabling opens `RestoreShareDialog`, warning if the previous expiration has passed and allowing a new expiration or permanent re-enable under the original token (D260825b).
+- `expired`: `[Copy address]`, `[Extend]`, and `[Delete]`. Extending opens `EditShareDialog` focused on setting a renewed expiration date.
+
+**Revoking vs deleting:** Revoking closes the link for whoever holds it and keeps its
+record of use; deleting removes both (D260825b). The form carries no `kind`: a photograph
+identifier makes it a photograph link and leaving it empty makes it an album link, so
+the two cannot disagree about what was asked for.
+
+### Expiry selector — `components/DateTimePicker.tsx`
+
+Offers quick duration presets (7 days, 30 days, No expiry, Custom date). On desktop, renders a clean dark-theme calendar grid and time selector styled with `@theme` tokens. On mobile and touch screens (`(pointer: coarse)`), falls back to the browser's native `datetime-local` input. Used in `SharesSection` for creation, editing, and restoring share links.
 
 ### Contextual sharing — `components/ShareModal.tsx`
 

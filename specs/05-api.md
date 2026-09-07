@@ -1389,13 +1389,14 @@ go back from.
 
 ### Share links
 
-| Method | Path                              | Response             |
-| ------ | --------------------------------- | -------------------- |
-| GET    | `/api/admin/shares`               | `AdminShareLink[]`   |
-| POST   | `/api/admin/shares`               | `201 AdminShareLink` |
-| PATCH  | `/api/admin/shares/:token`        | `AdminShareLink`     |
-| POST   | `/api/admin/shares/:token/revoke` | `{ ok: true }`       |
-| DELETE | `/api/admin/shares/:token`        | `{ ok: true }`       |
+| Method | Path                               | Response             |
+| ------ | ---------------------------------- | -------------------- |
+| GET    | `/api/admin/shares`                | `AdminShareLink[]`   |
+| POST   | `/api/admin/shares`                | `201 AdminShareLink` |
+| PATCH  | `/api/admin/shares/:token`         | `AdminShareLink`     |
+| POST   | `/api/admin/shares/:token/revoke`  | `{ ok: true }`       |
+| POST   | `/api/admin/shares/:token/restore` | `AdminShareLink`     |
+| DELETE | `/api/admin/shares/:token`         | `{ ok: true }`       |
 
 Every mutation on a link lives under this prefix, the only one that answers 403
 (D12, D50). The recipient's own surface at `/api/share` reads and writes nothing
@@ -1413,6 +1414,11 @@ changed or removed after the link was sent (D260825b).
 `PATCH` takes `UpdateShareRequest` = `{ label?, expiresAt? }`. It modifies the link's
 label or expiration date (`null` clears expiry), returning the refreshed `AdminShareLink`,
 or `404` if the token is unknown.
+
+`POST /api/admin/shares/:token/restore` takes `AdminShareRestoreInput` = `{ expiresAt? }`.
+It clears `revoked_at` to re-enable a revoked link under its original token and optionally
+sets or clears `expiresAt`, returning the refreshed `AdminShareLink`, or `404` if the token
+is unknown.
 
 `AdminShareLink` carries the **token** — this response's reader already holds every
 credential this instance has, and a link nobody can copy is a link nobody can send —
