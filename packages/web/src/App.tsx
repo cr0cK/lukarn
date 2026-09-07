@@ -7,6 +7,7 @@ import AdminPage from './pages/AdminPage';
 import AlbumPage from './pages/AlbumPage';
 import AlbumsPage from './pages/AlbumsPage';
 import DiagnosticPage from './pages/DiagnosticPage';
+import InvitePage from './pages/InvitePage';
 import LoginPage from './pages/LoginPage';
 import PairPage from './pages/PairPage';
 import SettingsPage from './pages/SettingsPage';
@@ -90,6 +91,9 @@ export default function App(): ReactElement {
           this router matches by computed rank, so the catch-all sorts last wherever
           it is written (D260825d). */}
       <Route path="/s/:token" element={<SharePage />} />
+      {/* Unguarded: recipient arrives with an invitation token and no session, and this
+          route consumes the token and opens the session. */}
+      <Route path="/invite/:token" element={<InvitePage />} />
       {/* Screen approval, opened from the phone. Guarded like the rest: without
           a session, /login brings the visitor back here with the code. */}
       <Route

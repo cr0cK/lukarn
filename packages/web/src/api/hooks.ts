@@ -12,6 +12,7 @@ import {
   type CreateCommentRequest,
   type FeedComment,
   type IdentityRequest,
+  type InviteUserInput,
   type InviteUserRequest,
   type CreateUserRequest,
   type Locale,
@@ -22,6 +23,7 @@ import {
   type SortOrder,
   type UpdateAlbumDayRequest,
   type UpdateAlbumRequest,
+  type UpdateProfileRequest,
   type UpdateStorageRequest,
   type UpdateMediaRequest,
   type UpdateSettingsRequest,
@@ -181,6 +183,31 @@ export function useVerifySignInCode() {
   return useMutation({
     mutationFn: (body: CodeVerifyRequest) => api.verifySignInCode(body),
     onSuccess: (user) => settleSession(queryClient, user, adopt),
+  });
+}
+
+/**
+ * Consumes an invitation token and opens the session.
+ */
+export function useConsumeInvite() {
+  const queryClient = useQueryClient();
+  const adopt = useAdoptLocale();
+  return useMutation({
+    mutationFn: (token: string) => api.consumeInvite(token),
+    onSuccess: (data) => settleSession(queryClient, data.user, adopt),
+  });
+}
+
+/**
+ * Updates the commenter display name for the authenticated session.
+ */
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateProfileRequest) => api.updateProfile(body),
+    onSuccess: (user) => {
+      queryClient.setQueryData(queryKeys.me, user);
+    },
   });
 }
 
@@ -818,6 +845,17 @@ export function useCreateUser() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateUserRequest) => api.createUser(body),
+    onSuccess: () => invalidateAccess(queryClient),
+  });
+}
+
+/**
+ * Invites a new member by email, provisioning their account and album access.
+ */
+export function useInviteMember() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: InviteUserInput) => api.inviteMember(body),
     onSuccess: () => invalidateAccess(queryClient),
   });
 }

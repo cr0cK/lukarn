@@ -666,6 +666,36 @@ export const en = {
   'adminUsers.inviteRevives':
     'This account holds no password today, so nothing is lost by trying again.',
 
+  'adminUsers.inviteMember': 'Invite a member',
+  'adminUsers.inviteMemberTitle': 'Invite a member to the gallery',
+  'adminUsers.inviteMemberExplain':
+    'The invited person will receive an invitation to access their albums without a password.',
+  'adminUsers.memberEmail': 'Email address',
+  'adminUsers.memberEmailPlaceholder': 'name@example.com',
+  'adminUsers.memberDisplayName': 'First name or display name (optional)',
+  'adminUsers.memberDisplayNamePlaceholder': 'e.g. Grandma Suzy',
+  'adminUsers.sendMemberInvite': 'Invite',
+  'adminUsers.memberInvited': (email: string) => `Invitation sent by email to ${email}.`,
+  'adminUsers.offlineModalTitle': 'Invitation link generated',
+  'adminUsers.offlineModalExplain':
+    'No email server is configured. Copy the invitation link below and share it directly.',
+  'adminUsers.copyInviteLink': 'Copy link',
+  'adminUsers.inviteLinkCopied': 'Invitation link copied to clipboard.',
+  'adminUsers.selectAll': 'Select all',
+  'adminUsers.clearAll': 'Clear all',
+
+  'invitePage.validating': 'Validating your invitation…',
+  'invitePage.welcomeTitle': 'Welcome to the gallery!',
+  'invitePage.welcomeSubtitle':
+    'Your invitation has been accepted. You can choose how your name appears under photos.',
+  'invitePage.promptDisplayName': 'How would you like your name to appear under comments?',
+  'invitePage.displayNamePlaceholder': 'Your name or nickname',
+  'invitePage.continueToGallery': 'Access the gallery',
+  'invitePage.skipAndContinue': 'Continue',
+  'invitePage.invalidOrExpired': 'This invitation link is invalid or has expired.',
+  'invitePage.requestNew': 'Please ask the administrator for a new invitation link.',
+  'invitePage.goToLogin': 'Go to sign in',
+
   'userForm.username': 'Username',
   'userForm.usernameFixed':
     'The username does not change; delete and recreate the account if needed.',

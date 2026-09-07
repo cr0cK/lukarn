@@ -642,6 +642,36 @@ export const fr: Messages = {
   'adminUsers.inviteRevives':
     'Ce compte n’a aujourd’hui aucun mot de passe : réessayer ne fait rien perdre.',
 
+  'adminUsers.inviteMember': 'Inviter un membre',
+  'adminUsers.inviteMemberTitle': 'Inviter un membre dans la galerie',
+  'adminUsers.inviteMemberExplain':
+    'La personne invitée recevra une invitation pour accéder à ses albums sans mot de passe.',
+  'adminUsers.memberEmail': 'Adresse email',
+  'adminUsers.memberEmailPlaceholder': 'nom@exemple.fr',
+  'adminUsers.memberDisplayName': 'Prénom ou nom affiché (optionnel)',
+  'adminUsers.memberDisplayNamePlaceholder': 'ex. Mamie Suzy',
+  'adminUsers.sendMemberInvite': 'Inviter',
+  'adminUsers.memberInvited': (email: string) => `Invitation envoyée par email à ${email}.`,
+  'adminUsers.offlineModalTitle': 'Lien d’invitation généré',
+  'adminUsers.offlineModalExplain':
+    'Aucun serveur d’envoi d’email n’est configuré. Copiez le lien d’invitation ci-dessous et transmettez-le directement.',
+  'adminUsers.copyInviteLink': 'Copier le lien',
+  'adminUsers.inviteLinkCopied': 'Lien d’invitation copié dans le presse-papiers.',
+  'adminUsers.selectAll': 'Tout sélectionner',
+  'adminUsers.clearAll': 'Tout désélectionner',
+
+  'invitePage.validating': 'Validation de votre invitation…',
+  'invitePage.welcomeTitle': 'Bienvenue dans la galerie !',
+  'invitePage.welcomeSubtitle':
+    'Votre invitation a été acceptée. Vous pouvez choisir comment votre nom apparaîtra sous les photos.',
+  'invitePage.promptDisplayName': 'Quel nom souhaitez-vous afficher sous vos commentaires ?',
+  'invitePage.displayNamePlaceholder': 'Votre prénom ou surnom',
+  'invitePage.continueToGallery': 'Accéder à la galerie',
+  'invitePage.skipAndContinue': 'Continuer',
+  'invitePage.invalidOrExpired': 'Ce lien d’invitation est invalide ou a expiré.',
+  'invitePage.requestNew': 'Veuillez demander un nouveau lien à l’administrateur.',
+  'invitePage.goToLogin': 'Se connecter',
+
   'userForm.username': 'Identifiant',
   'userForm.usernameFixed':
     'L’identifiant ne change pas ; supprimer et recréer le compte si nécessaire.',

@@ -297,6 +297,10 @@ export interface VerifyIdentityRequest {
   code: string;
 }
 
+export interface UpdateProfileRequest {
+  displayName: string;
+}
+
 /** Length of the emailed code. Six digits entered by hand. */
 export const VERIFICATION_CODE_LENGTH = 6;
 
