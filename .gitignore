@@ -42,3 +42,6 @@ packages/e2e/playwright-report/
 
 # Local scratch: per-PR babysit state, never committed
 .local/
+
+# Archived plan folders
+.archives/

@@ -1,7 +1,10 @@
 ---
 type: prd
+status: completed
 target-repos:
   - lukarn
+brainstorm-folders:
+  - sharing-without-an-account
 ---
 
 # Sharing an album, or one photograph, with somebody who has no account
@@ -167,3 +170,13 @@ Six questions over two rounds. Six struck as already answered by the decision lo
   last opened.
 - A comment written through a link can be traced to the invitation that carried it,
   without asking its author anything.
+
+## Shipped implementation & Deviations
+
+Landed in PR #120 (feat(shares): an album, or one photograph, opened by a link) and follow-up PR #121 (feat(shares): improvements to link sharing).
+Key implementation deviations and details absorbed from journal:
+
+- Media bytes scoped under share token (/api/share/:token/media/...) to enforce session isolation (D260825).
+- Link duration prolongation and label editing via PATCH /api/admin/shares/:token.
+- Contextual share shortcuts on AlbumPage TopBar and Lightbox.
+- Deferred follow-ups: visitor subscription email link adaptation and comment cache key explicit segmentation.
