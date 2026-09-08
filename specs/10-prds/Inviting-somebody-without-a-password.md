@@ -1,7 +1,11 @@
 ---
 type: prd
+status: completed
 target-repos:
   - lukarn
+brainstorm-folders:
+  - member-invitations-and-notifications
+  - profile-settings-and-share-polish
 ---
 
 # Inviting a viewer to their albums without a password
@@ -109,3 +113,13 @@ This intent does not replace or modify shared links:
   no account and should not see the rest of the library or receive album updates.
 - **Member invitations** (`/invite/:token`) grant a persistent member identity, a
   curated personal library of albums, and automated notifications.
+
+## Shipped implementation & Deviations
+
+Landed in PR #133 (`feat(users): member invitations without passwords, magic onboarding, and scoped notifications`) and follow-up PR #136 (`feat(settings): profile and notification preferences for members and share polish`).
+
+Key implementation details and deviations absorbed from outbox and build logs:
+
+- **Notification and profile self-management**: In addition to magic onboarding display name selection, members can update their display name and toggle email notification preferences at any time in `/settings`, persisted through `PATCH /api/auth/profile` and `commenters.setNotify`.
+- **Offline invitation links**: Direct copyable links in administration (`/invite/:token`) when external mail is unconfigured, allowing distribution over messaging apps.
+- **Account binding**: Accounts created with no password (`D260819b`), bound to verified identity in `commenters` on first visit.
