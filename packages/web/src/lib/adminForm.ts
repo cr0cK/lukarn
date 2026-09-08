@@ -133,6 +133,17 @@ export function validateDisplayName(value: string, t: Translate): string | null 
   return null;
 }
 
+/**
+ * Checks whether member profile form fields differ from their recorded identity values.
+ */
+export function isProfileDirty(
+  displayName: string,
+  notify: boolean,
+  identity: { displayName: string; notify: boolean },
+): boolean {
+  return displayName.trim() !== identity.displayName || notify !== identity.notify;
+}
+
 /** Error message for the instance name, or `null`. */
 export function validateInstanceName(value: string, t: Translate): string | null {
   const name = value.trim();

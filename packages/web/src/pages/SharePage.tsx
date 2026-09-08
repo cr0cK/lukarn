@@ -1,4 +1,9 @@
-import { DEFAULT_GROUP_BY, DEFAULT_SORT_ORDER, type ShareItem } from '@lukarn/shared';
+import {
+  DEFAULT_GROUP_BY,
+  DEFAULT_SORT_ORDER,
+  type ShareItem,
+  type ShareView,
+} from '@lukarn/shared';
 import {
   type ReactElement,
   type ReactNode,
@@ -178,12 +183,7 @@ export default function SharePage(): ReactElement {
     );
   }
 
-  const pageTitle =
-    view.kind === 'album'
-      ? view.title
-      : view.kind === 'selection'
-        ? view.label?.trim() || t('shares.selectionDefaultTitle')
-        : null;
+  const pageTitle = resolveShareTitle(view, t);
 
   return (
     <ShareFrame title={pageTitle}>
@@ -296,4 +296,18 @@ function deadLinkText(error: unknown, t: Translate): string {
   if (code === 'share_expired') return t('share.expired');
   if (code === 'share_gone') return t('share.gone');
   return t('share.unknown');
+}
+
+/**
+ * Resolves the page and lightbox title for a share view.
+ *
+ * Album shares use the album title; multi-photo selections use their custom
+ * label (trimmed) or fall back to the localized default title; single-photo
+ * shares display no title.
+ */
+export function resolveShareTitle(view: ShareView | undefined, t: Translate): string | null {
+  if (!view) return null;
+  if (view.kind === 'album') return view.title;
+  if (view.kind === 'selection') return view.label?.trim() || t('shares.selectionDefaultTitle');
+  return null;
 }

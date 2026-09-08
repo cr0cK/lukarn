@@ -140,4 +140,11 @@ test.describe('Settings, on a phone', () => {
       'rgb(255, 255, 255)',
     );
   });
+
+  test('household account without commenter identity does not show profile section', async ({
+    page,
+  }) => {
+    await page.goto('/settings');
+    await expect(page.getByRole('heading', { name: 'Profile & Notifications' })).toHaveCount(0);
+  });
 });

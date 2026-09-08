@@ -15,7 +15,7 @@ import {
   type Notice,
   type SelectOption,
 } from '../components/admin/ui';
-import { validateDisplayName } from '../lib/adminForm';
+import { isProfileDirty, validateDisplayName } from '../lib/adminForm';
 import { useLocale, useT } from '../lib/i18n';
 import { THEMES, isTheme, readStoredTheme, setTheme, useTheme, type Theme } from '../lib/theme';
 
@@ -46,7 +46,7 @@ function ProfileSection({
 
   const nameError = touched ? validateDisplayName(displayName, t) : null;
   const isValid = validateDisplayName(displayName, t) === null;
-  const isDirty = displayName.trim() !== identity.displayName || notify !== identity.notify;
+  const isDirty = isProfileDirty(displayName, notify, identity);
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();

@@ -170,6 +170,37 @@ test('admin creates invitation with offline link copy mode and recipient onboard
   await expect(offlinePage).toHaveURL(new RegExp(`${BASE_URL}/?$`));
   await expect(offlinePage.getByRole('heading', { name: ALBUMS.day.title })).toBeVisible();
 
+  // Member navigates to /settings and views Profile & Notifications section
+  await offlinePage.goto('/settings');
+  await expect(offlinePage.getByRole('heading', { name: 'Profile & Notifications' })).toBeVisible();
+
+  // Verify email and display name across phone (SettingRow) and desktop layouts
+  const emailRow = offlinePage.getByRole('button', { name: /^Email address/ });
+  if (await emailRow.isVisible()) {
+    await expect(emailRow).toContainText('cousin@example.com');
+    const nameRow = offlinePage.getByRole('button', { name: /^Display name/ });
+    await expect(nameRow).toContainText('Cousin Pierre');
+    await nameRow.click();
+  } else {
+    await expect(offlinePage.locator('#prefs-email')).toHaveValue('cousin@example.com');
+  }
+
+  await expect(offlinePage.locator('#prefs-notify')).toBeChecked();
+
+  // Updates display name and saves
+  await offlinePage.locator('#prefs-display-name').fill('Pierre Durand');
+  await offlinePage.getByRole('button', { name: 'Save' }).click();
+  await expect(offlinePage.getByRole('status')).toContainText('Profile updated');
+
+  // Reloads and verifies persistence
+  await offlinePage.reload();
+  const reloadedNameRow = offlinePage.getByRole('button', { name: /^Display name/ });
+  if (await reloadedNameRow.isVisible()) {
+    await expect(reloadedNameRow).toContainText('Pierre Durand');
+  } else {
+    await expect(offlinePage.locator('#prefs-display-name')).toHaveValue('Pierre Durand');
+  }
+
   await offlineContext.close();
 });
 

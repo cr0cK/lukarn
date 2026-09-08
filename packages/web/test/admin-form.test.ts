@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   extractFolderId,
   formatAlbumAccess,
+  isProfileDirty,
   parseNumber,
   slugifyAlbumId,
   validateAlbumId,
@@ -198,5 +199,26 @@ describe('validateDisplayName', () => {
       validateDisplayName('x'.repeat(65), t),
       'A name cannot be longer than 64 characters.',
     );
+  });
+});
+
+describe('isProfileDirty', () => {
+  const identity = { displayName: 'Mamie Suzy', notify: true };
+
+  it('returns false when values match the recorded identity', () => {
+    assert.equal(isProfileDirty('Mamie Suzy', true, identity), false);
+    assert.equal(isProfileDirty('  Mamie Suzy  ', true, identity), false);
+  });
+
+  it('returns true when display name differs', () => {
+    assert.equal(isProfileDirty('Grand-mère Suzy', true, identity), true);
+  });
+
+  it('returns true when notification preference differs', () => {
+    assert.equal(isProfileDirty('Mamie Suzy', false, identity), true);
+  });
+
+  it('returns true when both display name and notifications differ', () => {
+    assert.equal(isProfileDirty('Suzy', false, identity), true);
   });
 });

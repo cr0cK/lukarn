@@ -191,6 +191,34 @@ test('a multi-photo selection share opens under the instance, renders only selec
   await expect(page.getByRole('heading', { name: 'Weekend Trip' })).toBeVisible();
 });
 
+test('a multi-photo selection share without a label displays the fallback title', async ({
+  page,
+  request,
+}) => {
+  const ids = await photoIds(request, 2);
+  expect(ids).toHaveLength(2);
+
+  const items = ids.map((mediaId) => ({ albumId: ALBUMS.day.id, mediaId }));
+  const address = await issueSelectionShare(request, items);
+
+  await page.goto(address);
+
+  // Fallback title is used in page heading
+  await expect(page.getByRole('heading', { name: 'Shared photographs' })).toBeVisible();
+  await expect(page.locator('main img')).toHaveCount(2);
+
+  // Click first photo to open Lightbox
+  await page.locator('main img').first().click();
+  const viewer = page.getByRole('dialog');
+  await expect(viewer).toBeVisible();
+  if (await viewer.getByRole('button', { name: /chrome/i }).isVisible()) {
+    await viewer.locator('img').last().click();
+  }
+
+  // Lightbox header displays fallback title as well
+  await expect(viewer.getByText('Shared photographs')).toBeVisible();
+});
+
 test('selecting photos in AlbumPage opens ShareModal and generates a multi-photo link', async ({
   page,
   browser,
