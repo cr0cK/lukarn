@@ -250,12 +250,12 @@ commenter identity is marked verified, the user account is bound to the commente
 identity, and a 1-year persistent session cookie is issued alongside the user
 profile and accessible albums.
 
-**`PATCH /api/auth/profile`** — body `{ displayName: string }`. Updates the commenter
-display name for the active member account.
+**`PATCH /api/auth/profile`** — body `{ displayName?: string, notify?: boolean }`. Updates the commenter
+display name or notification preferences for the active member account.
 
 | Code | Body           | When                                                             |
 | ---- | -------------- | ---------------------------------------------------------------- |
-| 200  | `SessionUser`  | Success. Updates display name in `commenters` and returns user.  |
+| 200  | `SessionUser`  | Success. Updates identity in `commenters` and returns user.      |
 | 400  | `bad_request`  | Invalid payload or account lacks an attached commenter identity. |
 | 401  | `unauthorized` | No active authenticated session.                                 |
 | 403  | `forbidden`    | Share-link session: updating profile requires an account.        |

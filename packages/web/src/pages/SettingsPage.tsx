@@ -1,11 +1,144 @@
-import { isLocale } from '@lukarn/shared';
-import type { ReactElement } from 'react';
+import { DISPLAY_NAME_MAX_LENGTH, isLocale, type CommenterIdentity } from '@lukarn/shared';
+import { type FormEvent, type ReactElement, useEffect, useState } from 'react';
+import { errorText } from '../api/client';
+import { useMe, useUpdateProfile } from '../api/hooks';
 import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { TopBar } from '../components/TopBar';
-import { SelectField, Section, localeOptions, type SelectOption } from '../components/admin/ui';
+import {
+  Button,
+  Checkbox,
+  Section,
+  SelectField,
+  TextField,
+  localeOptions,
+  type Notice,
+  type SelectOption,
+} from '../components/admin/ui';
+import { validateDisplayName } from '../lib/adminForm';
 import { useLocale, useT } from '../lib/i18n';
 import { THEMES, isTheme, readStoredTheme, setTheme, useTheme, type Theme } from '../lib/theme';
+
+/**
+ * Member identity and notification preferences.
+ *
+ * Shown only when the active session is bound to a verified commenter identity.
+ * Shared household accounts without an individual identity do not see this section.
+ */
+function ProfileSection({
+  identity,
+  updateProfile,
+}: {
+  identity: CommenterIdentity;
+  updateProfile: ReturnType<typeof useUpdateProfile>;
+}): ReactElement {
+  const t = useT();
+  const [displayName, setDisplayName] = useState(identity.displayName);
+  const [notify, setNotify] = useState(identity.notify);
+  const [touched, setTouched] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+
+  // Synchronize local form state if identity data changes from the server
+  useEffect(() => {
+    setDisplayName(identity.displayName);
+    setNotify(identity.notify);
+  }, [identity.displayName, identity.notify]);
+
+  const nameError = touched ? validateDisplayName(displayName, t) : null;
+  const isValid = validateDisplayName(displayName, t) === null;
+  const isDirty = displayName.trim() !== identity.displayName || notify !== identity.notify;
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault();
+    setTouched(true);
+    const trimmed = displayName.trim();
+    if (!isValid || !isDirty || updateProfile.isPending) return;
+
+    updateProfile.mutate(
+      { displayName: trimmed, notify },
+      {
+        onSuccess: () => {
+          setNotice({ tone: 'ok', text: t('prefs.profileSaved') });
+          setTouched(false);
+        },
+        onError: (err) => {
+          setNotice({ tone: 'error', text: errorText(err, t('common.saveFailed')) });
+        },
+      },
+    );
+  };
+
+  return (
+    <Section title={t('prefs.profileSection')} description={t('prefs.profileScope')}>
+      <form onSubmit={submit} className="space-y-4 px-4 py-4">
+        {notice && (
+          <p
+            role="status"
+            className={`rounded-lg px-4 py-3 text-sm ${
+              notice.tone === 'ok'
+                ? 'bg-emerald-500/15 text-emerald-300'
+                : 'bg-red-500/15 text-red-300'
+            }`}
+          >
+            {notice.text}
+            <button
+              type="button"
+              onClick={() => setNotice(null)}
+              className="ml-3 text-xs underline underline-offset-2 opacity-70 hover:opacity-100"
+            >
+              {t('common.hide')}
+            </button>
+          </p>
+        )}
+
+        <TextField
+          id="prefs-email"
+          label={t('prefs.email')}
+          value={identity.email}
+          onChange={() => {}}
+          readOnly
+          hint={t('prefs.emailHint')}
+        />
+
+        <TextField
+          id="prefs-display-name"
+          label={t('prefs.displayName')}
+          value={displayName}
+          onChange={(val) => {
+            setDisplayName(val.slice(0, DISPLAY_NAME_MAX_LENGTH));
+            setTouched(true);
+          }}
+          placeholder={t('identity.namePlaceholder')}
+          hint={t('prefs.displayNameHint')}
+          error={nameError}
+          disabled={updateProfile.isPending}
+        />
+
+        <Checkbox
+          id="prefs-notify"
+          label={t('prefs.notify')}
+          hint={t('prefs.notifyHint')}
+          checked={notify}
+          onChange={(val) => {
+            setNotify(val);
+            setTouched(true);
+          }}
+          disabled={updateProfile.isPending}
+        />
+
+        <div className="pt-2">
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={!isDirty || !isValid || updateProfile.isPending}
+          >
+            {updateProfile.isPending ? t('common.saving') : t('common.save')}
+          </Button>
+        </div>
+      </form>
+    </Section>
+  );
+}
 
 /**
  * What the reader decides for themselves, at `/settings`.
@@ -23,6 +156,8 @@ import { THEMES, isTheme, readStoredTheme, setTheme, useTheme, type Theme } from
  */
 export default function SettingsPage(): ReactElement {
   const t = useT();
+  const { data: user } = useMe();
+  const updateProfile = useUpdateProfile();
   const { locale, setLocale } = useLocale();
   const theme = useTheme();
   // Administration carries the tab bar on a phone and so does this screen: a tab
@@ -44,6 +179,10 @@ export default function SettingsPage(): ReactElement {
       {/* The tab bar is `fixed` and therefore outside the flow: the page reserves
           its height itself, or the last setting would end underneath it. */}
       <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 pb-[calc(5rem_+_env(safe-area-inset-bottom))] sm:px-6 md:pb-6">
+        {user?.identity && (
+          <ProfileSection identity={user.identity} updateProfile={updateProfile} />
+        )}
+
         {/* One box rather than one per setting: they are all answers to the same
             question — how this browser shows the gallery — and the description
             states once, for both, where the answer is kept. */}

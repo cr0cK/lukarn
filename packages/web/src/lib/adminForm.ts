@@ -10,6 +10,7 @@
 import {
   ALBUM_ID_PATTERN,
   ALL_ALBUMS,
+  DISPLAY_NAME_MAX_LENGTH,
   EMAIL_MAX_LENGTH,
   HEX_COLOR_PATTERN,
   INSTANCE_NAME_MAX_LENGTH,
@@ -120,6 +121,16 @@ export function validatePassword(value: string, required: boolean, t: Translate)
 /** Error message, or `null`. */
 export function validateTitle(value: string, t: Translate): string | null {
   return value.trim() ? null : t('validate.title');
+}
+
+/** Error message for display name, or `null`. */
+export function validateDisplayName(value: string, t: Translate): string | null {
+  const name = value.trim();
+  if (!name) return t('validate.displayName');
+  if (name.length > DISPLAY_NAME_MAX_LENGTH) {
+    return t('validate.displayNameLength', DISPLAY_NAME_MAX_LENGTH);
+  }
+  return null;
 }
 
 /** Error message for the instance name, or `null`. */

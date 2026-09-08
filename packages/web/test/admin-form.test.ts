@@ -8,6 +8,7 @@ import {
   slugifyAlbumId,
   validateAlbumId,
   validateCacheSizeGB,
+  validateDisplayName,
   validateFolderInput,
   validateIntervalMinutes,
   validatePassword,
@@ -177,5 +178,25 @@ describe('formatAlbumAccess', () => {
 
   it('falls back to the raw identifier of a missing album', () => {
     assert.equal(formatAlbumAccess(['z'], titles, t), 'z');
+  });
+});
+
+describe('validateDisplayName', () => {
+  it('accepts valid display names', () => {
+    assert.equal(validateDisplayName('Mamie Suzy', t), null);
+    assert.equal(validateDisplayName('A', t), null);
+    assert.equal(validateDisplayName('x'.repeat(64), t), null);
+  });
+
+  it('rejects empty or whitespace-only names', () => {
+    assert.equal(validateDisplayName('', t), 'Enter a display name.');
+    assert.equal(validateDisplayName('   ', t), 'Enter a display name.');
+  });
+
+  it('rejects names exceeding 64 characters', () => {
+    assert.equal(
+      validateDisplayName('x'.repeat(65), t),
+      'A name cannot be longer than 64 characters.',
+    );
   });
 });

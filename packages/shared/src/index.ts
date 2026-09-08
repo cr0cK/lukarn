@@ -295,7 +295,8 @@ export interface VerifyIdentityRequest {
 }
 
 export interface UpdateProfileRequest {
-  displayName: string;
+  displayName?: string;
+  notify?: boolean;
 }
 
 /** Length of the emailed code. Six digits entered by hand. */

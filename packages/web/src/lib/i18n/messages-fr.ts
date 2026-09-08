@@ -754,6 +754,8 @@ export const fr: Messages = {
   'validate.passwordLength': (min: number) =>
     `Un mot de passe doit faire au moins ${min} caractères.`,
   'validate.title': 'Saisir un titre.',
+  'validate.displayName': 'Saisir un nom affiché.',
+  'validate.displayNameLength': (max: number) => `Un nom ne peut pas dépasser ${max} caractères.`,
   'validate.email': 'Saisir une adresse email.',
   'validate.emailLength': (max: number) => `Une adresse ne peut pas dépasser ${max} caractères.`,
   'validate.emailPattern': 'Une adresse ressemble à prenom@exemple.org.',

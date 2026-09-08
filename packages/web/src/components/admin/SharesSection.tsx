@@ -539,7 +539,7 @@ function ShareForm({
   return (
     <form onSubmit={submit} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
-        <div className="flex gap-1 rounded-lg border border-ink-700 bg-ink-850 p-0.5 w-fit">
+        <div className="flex max-w-full flex-wrap gap-1 rounded-lg border border-ink-700 bg-ink-850 p-0.5 w-fit">
           <button
             type="button"
             onClick={() => setMode('album')}
@@ -582,18 +582,26 @@ function ShareForm({
         </>
       ) : (
         <div className="sm:col-span-2 space-y-3">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="w-full sm:w-64">
-              <SelectField
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="w-full min-w-0 sm:w-64">
+              <label htmlFor="share-filter-album" className="mb-1.5 block text-sm text-ink-300">
+                {t('shares.filterAlbum')}
+              </label>
+              <select
                 id="share-filter-album"
-                label={t('shares.filterAlbum')}
                 value={filterAlbumId}
-                options={albums.map((album) => ({ value: album.id, label: album.title }))}
-                onChange={setFilterAlbumId}
+                onChange={(event) => setFilterAlbumId(event.target.value)}
                 disabled={create.isPending}
-              />
+                className="w-full min-w-0 truncate rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm text-ink-100 outline-none transition-colors focus:border-accent-dim disabled:opacity-60"
+              >
+                {albums.map((album) => (
+                  <option key={album.id} value={album.id}>
+                    {album.title}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="flex items-center gap-2 pb-1">
+            <div className="flex items-center justify-between gap-2 pb-1 sm:justify-end">
               <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
                 {t('shares.selectedCount', selectedItems.length)}
               </span>

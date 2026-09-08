@@ -779,6 +779,8 @@ export const en = {
   'validate.password': 'Enter a password.',
   'validate.passwordLength': (min: number) => `A password must be at least ${min} characters.`,
   'validate.title': 'Enter a title.',
+  'validate.displayName': 'Enter a display name.',
+  'validate.displayNameLength': (max: number) => `A name cannot be longer than ${max} characters.`,
   'validate.email': 'Enter an email address.',
   'validate.emailLength': (max: number) => `An address cannot be longer than ${max} characters.`,
   'validate.emailPattern': 'An address looks like someone@example.org.',
