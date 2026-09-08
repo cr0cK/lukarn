@@ -178,10 +178,15 @@ export default function SharePage(): ReactElement {
     );
   }
 
+  const pageTitle =
+    view.kind === 'album'
+      ? view.title
+      : view.kind === 'selection'
+        ? view.label?.trim() || t('shares.selectionDefaultTitle')
+        : null;
+
   return (
-    <ShareFrame
-      title={view.kind === 'album' ? view.title : view.kind === 'selection' ? view.label : null}
-    >
+    <ShareFrame title={pageTitle}>
       {view.kind === 'album' && view.description && (
         <p className="mb-4 max-w-prose text-sm whitespace-pre-line text-ink-300">
           {view.description}
@@ -224,11 +229,9 @@ export default function SharePage(): ReactElement {
         <Lightbox
           scope={scope}
           // The album title for an album link, which is what was shared; the share label
-          // for a selection link; empty for a photograph, whose album is named nowhere
+          // (or fallback title) for a selection link; empty for a photograph, whose album is named nowhere
           // its recipient can reach (D260825e).
-          albumTitle={
-            view.kind === 'album' ? view.title : view.kind === 'selection' ? (view.label ?? '') : ''
-          }
+          albumTitle={pageTitle ?? ''}
           items={items}
           index={openedIndex}
           total={view.kind === 'album' ? view.itemCount : items.length}

@@ -92,6 +92,17 @@ export const en = {
   // Shown only while nothing has been chosen — afterwards it would describe a
   // rule that no longer applies to this browser.
   'prefs.themeHint': 'Following your device until you choose here.',
+  'prefs.profileSection': 'Profile & Notifications',
+  'prefs.profileScope':
+    'How your name appears under comments, and notification preferences for your assigned albums.',
+  'prefs.email': 'Email address',
+  'prefs.emailHint': 'Comments and album notifications are tied to this verified address.',
+  'prefs.displayName': 'Display name',
+  'prefs.displayNameHint': 'How your name is signed on comments.',
+  'prefs.notify': 'Email notifications',
+  'prefs.notifyHint':
+    'Receive email updates for new photos in your albums and replies to your comments.',
+  'prefs.profileSaved': 'Profile updated',
 
   /* ------------------------------------------------------------ Sheets */
 
@@ -514,6 +525,7 @@ export const en = {
   'shares.clearSelection': 'Clear selection',
   'shares.kindSelection': 'Selection',
   'shares.shareSelection': 'Share selection',
+  'shares.selectionDefaultTitle': 'Shared photographs',
 
   'admin.statusFailed': 'Cannot load the server state.',
 
