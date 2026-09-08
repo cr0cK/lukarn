@@ -69,6 +69,10 @@ the one place this page must not offer.
 selection link renders the curated photos, and an album link paginates the album grid,
 opening the same viewer. For single photo and selection shares, origin album identifiers
 and names are withheld (D260825e); only the instance branding and optional share label appear.
+When a multi-photo selection share is issued without a label (`view.label` is omitted or
+whitespace), it defaults to the localized fallback title "Shared photographs" /
+"Photographies partagées" (`shares.selectionDefaultTitle`), displayed both in `ShareFrame`
+and in the `Lightbox` header.
 
 A link that has stopped working shows its sentence **on this same page** rather than
 on a generic error screen — "this link was taken back", "this link has expired" —
@@ -1856,8 +1860,32 @@ would move in the direction of the drag while the marker pulls it elsewhere.
 ## Settings — `pages/SettingsPage.tsx`
 
 What the reader decides for themselves, at `/settings`. Guarded like every other
-screen but **not by `admin`**: nothing here touches the instance, only how this
-browser shows it.
+screen but **not by `admin`**: an account without the administrator flag reaches it.
+
+### Profile and notifications
+
+When the active session is bound to a verified commenter identity (`user.identity !== null`),
+the page renders a dedicated **Profile & Notifications** section (`ProfileSection`) ahead of
+the general browser preferences. Shared household accounts without an individual identity
+(`user.identity === null`) do not see this section.
+
+The section provides:
+
+- **Verified email**: A read-only text field displaying `identity.email` with an explanatory
+  hint (`prefs.emailHint`). Comments and album notifications are tied to this address.
+- **Display name**: An editable text field (`1` to `64` characters, validated by
+  `validateDisplayName`) with character truncation and inline error messages, defining how
+  the member's name appears on comments across all albums.
+- **Email notifications**: A checkbox toggle (`prefs.notify`) controlling whether the
+  commenter receives email updates for new photographs added to their assigned albums and
+  replies to their comments.
+
+Changes are persisted to the server via `PATCH /api/auth/profile` (`useUpdateProfile`). The
+primary "Save" button is enabled only when form fields are valid and differ from the current
+identity values (`isProfileDirty`), updating the commenter record in SQLite and refreshing
+the active session user query.
+
+### General preferences
 
 | Setting  | Values            | Kept in                                    |
 | -------- | ----------------- | ------------------------------------------ |

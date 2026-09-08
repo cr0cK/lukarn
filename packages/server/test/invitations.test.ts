@@ -602,20 +602,35 @@ describe('PATCH /api/auth/profile', () => {
     assert.equal(onboardRes.statusCode, 200);
     const sessionCookie = onboardRes.cookies.find((c) => c.name === 'lukarn_session')!;
 
-    // 2. Call PATCH /api/auth/profile
+    // 2. Call PATCH /api/auth/profile with both displayName and notify
     const patchRes = await server.inject({
       method: 'PATCH',
       url: '/api/auth/profile',
       headers: { cookie: `lukarn_session=${sessionCookie.value}` },
-      payload: { displayName: 'Mamie Suzy' },
+      payload: { displayName: 'Mamie Suzy', notify: false },
     });
     assert.equal(patchRes.statusCode, 200);
     const updated = patchRes.json<SessionUser>();
     assert.equal(updated.identity?.displayName, 'Mamie Suzy');
+    assert.equal(updated.identity?.notify, false);
 
     // 3. Verify in database
     const commenter = context.commenters.byEmail('profiletest@exemple.fr')!;
     assert.equal(commenter.displayName, 'Mamie Suzy');
+    assert.equal(commenter.notify, false);
+
+    // 4. Update notify alone
+    const patchNotifyRes = await server.inject({
+      method: 'PATCH',
+      url: '/api/auth/profile',
+      headers: { cookie: `lukarn_session=${sessionCookie.value}` },
+      payload: { notify: true },
+    });
+    assert.equal(patchNotifyRes.statusCode, 200);
+    const updatedNotify = patchNotifyRes.json<SessionUser>();
+    assert.equal(updatedNotify.identity?.displayName, 'Mamie Suzy');
+    assert.equal(updatedNotify.identity?.notify, true);
+    assert.equal(context.commenters.byEmail('profiletest@exemple.fr')!.notify, true);
   });
 
   it('rejects unauthenticated request with 401', async () => {

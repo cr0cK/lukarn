@@ -83,6 +83,18 @@ export const fr: Messages = {
   'prefs.themeDark': 'Sombre',
   'prefs.themeLight': 'Clair',
   'prefs.themeHint': "Suit votre appareil tant que vous n'avez pas choisi ici.",
+  'prefs.profileSection': 'Profil & Notifications',
+  'prefs.profileScope':
+    'Nom affiché sous les commentaires et préférences de notification pour vos albums.',
+  'prefs.email': 'Adresse email',
+  'prefs.emailHint':
+    'Les commentaires et les notifications d’albums sont associés à cette adresse vérifiée.',
+  'prefs.displayName': 'Nom affiché',
+  'prefs.displayNameHint': 'Signature affichée sous vos commentaires.',
+  'prefs.notify': 'Notifications par email',
+  'prefs.notifyHint':
+    'Recevoir des alertes par email lors de l’ajout de photos et de réponses à vos commentaires.',
+  'prefs.profileSaved': 'Profil mis à jour',
 
   /* ------------------------------------------------------------ Sheets */
 
@@ -494,6 +506,7 @@ export const fr: Messages = {
   'shares.clearSelection': 'Tout désélectionner',
   'shares.kindSelection': 'Sélection',
   'shares.shareSelection': 'Partager la sélection',
+  'shares.selectionDefaultTitle': 'Photographies partagées',
 
   'admin.statusFailed': 'Impossible de charger l’état du serveur.',
 
@@ -741,6 +754,8 @@ export const fr: Messages = {
   'validate.passwordLength': (min: number) =>
     `Un mot de passe doit faire au moins ${min} caractères.`,
   'validate.title': 'Saisir un titre.',
+  'validate.displayName': 'Saisir un nom affiché.',
+  'validate.displayNameLength': (max: number) => `Un nom ne peut pas dépasser ${max} caractères.`,
   'validate.email': 'Saisir une adresse email.',
   'validate.emailLength': (max: number) => `Une adresse ne peut pas dépasser ${max} caractères.`,
   'validate.emailPattern': 'Une adresse ressemble à prenom@exemple.org.',

@@ -561,7 +561,13 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       const parsed = z
-        .object({ displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH) })
+        .object({
+          displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH).optional(),
+          notify: z.boolean().optional(),
+        })
+        .refine((data) => data.displayName !== undefined || data.notify !== undefined, {
+          message: 'At least one field must be provided',
+        })
         .safeParse(request.body);
       if (!parsed.success) {
         return reply.code(400).send({
@@ -571,10 +577,17 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       const commenterId = user.commenterId;
-      const { displayName } = parsed.data;
-      context.db
-        .prepare('UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?')
-        .run(displayName, commenterId);
+      const { displayName, notify } = parsed.data;
+      if (displayName !== undefined) {
+        context.db
+          .prepare(
+            'UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?',
+          )
+          .run(displayName, commenterId);
+      }
+      if (notify !== undefined) {
+        context.commenters.setNotify(commenterId, notify);
+      }
 
       context.config.invalidate();
       const freshUser = context.config.user(request.user.username)!;

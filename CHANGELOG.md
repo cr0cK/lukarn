@@ -13,6 +13,12 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### Member profile preferences and selection share titles
+
+Members can adjust their display name and toggle email notifications for album updates and comments directly from `/settings`. The profile section appears automatically for authenticated members with a verified identity, with changes reflected immediately across comments and notifications.
+
+Multi-photo share links created without a custom label now display a localized fallback title ("Shared photographs") in the header and lightbox instead of leaving the title blank.
+
 ### Member invitations, offline magic links, and passwordless onboarding
 
 Inviting family members and close friends to view albums no longer requires setting up a manual password or configuring full administrative accounts.

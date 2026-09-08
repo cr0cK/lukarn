@@ -4,10 +4,12 @@ import { describe, it } from 'node:test';
 import {
   extractFolderId,
   formatAlbumAccess,
+  isProfileDirty,
   parseNumber,
   slugifyAlbumId,
   validateAlbumId,
   validateCacheSizeGB,
+  validateDisplayName,
   validateFolderInput,
   validateIntervalMinutes,
   validatePassword,
@@ -177,5 +179,46 @@ describe('formatAlbumAccess', () => {
 
   it('falls back to the raw identifier of a missing album', () => {
     assert.equal(formatAlbumAccess(['z'], titles, t), 'z');
+  });
+});
+
+describe('validateDisplayName', () => {
+  it('accepts valid display names', () => {
+    assert.equal(validateDisplayName('Mamie Suzy', t), null);
+    assert.equal(validateDisplayName('A', t), null);
+    assert.equal(validateDisplayName('x'.repeat(64), t), null);
+  });
+
+  it('rejects empty or whitespace-only names', () => {
+    assert.equal(validateDisplayName('', t), 'Enter a display name.');
+    assert.equal(validateDisplayName('   ', t), 'Enter a display name.');
+  });
+
+  it('rejects names exceeding 64 characters', () => {
+    assert.equal(
+      validateDisplayName('x'.repeat(65), t),
+      'A name cannot be longer than 64 characters.',
+    );
+  });
+});
+
+describe('isProfileDirty', () => {
+  const identity = { displayName: 'Mamie Suzy', notify: true };
+
+  it('returns false when values match the recorded identity', () => {
+    assert.equal(isProfileDirty('Mamie Suzy', true, identity), false);
+    assert.equal(isProfileDirty('  Mamie Suzy  ', true, identity), false);
+  });
+
+  it('returns true when display name differs', () => {
+    assert.equal(isProfileDirty('Grand-mère Suzy', true, identity), true);
+  });
+
+  it('returns true when notification preference differs', () => {
+    assert.equal(isProfileDirty('Mamie Suzy', false, identity), true);
+  });
+
+  it('returns true when both display name and notifications differ', () => {
+    assert.equal(isProfileDirty('Suzy', false, identity), true);
   });
 });
