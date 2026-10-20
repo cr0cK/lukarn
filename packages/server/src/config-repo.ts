@@ -219,8 +219,8 @@ interface Snapshot {
   users: Map<string, StoredUser>;
   /** Same key, with a set of IDs for constant-time `canSee`. */
   granted: Map<string, Set<string>>;
-  /** Whole albums granted via active shares in `commenter_shares`. */
-  sharedAlbums: Map<string, Set<string>>;
+  /** Whole albums granted via active shares in `commenter_shares`, mapped to max expiry ms. */
+  sharedAlbums: Map<string, Map<string, number>>;
   /** Whether the user has a verified email on their linked `commenters` row. */
   hasVerifiedEmail: Map<string, boolean>;
   settings: AppSettings;
@@ -436,6 +436,22 @@ export class ConfigRepo {
     return row ? this.user(row.username) : undefined;
   }
 
+  /**
+   * Whether the account was auto-created solely for a share-link visitor (`ensureUserForCommenter`)
+   * with no password, no admin role, and no direct album permissions.
+   */
+  isShareVisitorAccount(username: string): boolean {
+    const u = this.user(username);
+    if (!u || u.commenterId === null) return false;
+    if (!hasNoPassword(u.passwordHash) || u.admin || u.allAlbums || u.albums.length > 0) {
+      return false;
+    }
+    const hasShare = this.db
+      .prepare('SELECT 1 FROM commenter_shares WHERE commenter_id = ? LIMIT 1')
+      .get(u.commenterId);
+    return hasShare !== undefined;
+  }
+
   /** Albums visible to this account, in display order. */
   albumsFor(username: string): StoredAlbum[] {
     const snapshot = this.read();
@@ -446,7 +462,12 @@ export class ConfigRepo {
     if (user.allAlbums) return snapshot.albums;
     const granted = snapshot.granted.get(key);
     const shared = snapshot.sharedAlbums.get(key);
-    return snapshot.albums.filter((album) => granted?.has(album.id) || shared?.has(album.id));
+    const nowMs = Date.now();
+    return snapshot.albums.filter((album) => {
+      if (granted?.has(album.id)) return true;
+      const exp = shared?.get(album.id);
+      return exp !== undefined && exp > nowMs;
+    });
   }
 
   canSee(username: string, albumId: string): boolean {
@@ -455,11 +476,9 @@ export class ConfigRepo {
     const user = snapshot.users.get(key);
     if (!user) return false;
     if (!user.roleViewer && !user.admin) return false;
-    return (
-      user.allAlbums ||
-      (snapshot.granted.get(key)?.has(albumId) ?? false) ||
-      (snapshot.sharedAlbums.get(key)?.has(albumId) ?? false)
-    );
+    if (user.allAlbums || (snapshot.granted.get(key)?.has(albumId) ?? false)) return true;
+    const exp = snapshot.sharedAlbums.get(key)?.get(albumId);
+    return exp !== undefined && exp > Date.now();
   }
 
   /** Albums reading this storage connection — what makes deleting it a 409. */
@@ -621,6 +640,7 @@ export class ConfigRepo {
         if (normalizedEmail) {
           const existingCommenter = this.identities.byEmail(normalizedEmail);
           if (existingCommenter) {
+            this.absorbShareVisitorIfCompeting(existingCommenter.id, input.username);
             const boundUser = this.db
               .prepare('SELECT username FROM users WHERE commenter_id = ?')
               .get(existingCommenter.id) as { username: string } | undefined;
@@ -722,6 +742,7 @@ export class ConfigRepo {
         if (normalizedEmail !== null) {
           const existingByEmail = this.identities.byEmail(normalizedEmail);
           if (existingByEmail && existingByEmail.id !== commenterId) {
+            this.absorbShareVisitorIfCompeting(existingByEmail.id, stored.username);
             const otherUser = this.db
               .prepare('SELECT username FROM users WHERE commenter_id = ? AND username != ?')
               .get(existingByEmail.id, stored.username) as { username: string } | undefined;
@@ -891,6 +912,8 @@ export class ConfigRepo {
       }
 
       if (input.locale) this.identities.seedLocale(identity.id, input.locale);
+
+      this.absorbShareVisitorIfCompeting(identity.id, stored.username);
 
       // If this user previously had an auto-created password-only commenter row
       // (email === null), migrate its records to `identity.id` and clean it up.
@@ -1069,6 +1092,34 @@ export class ConfigRepo {
 
   /* ------------------------------------------------------------------- internal */
 
+  private absorbShareVisitorIfCompeting(commenterId: number, targetUsername: string): void {
+    const other = this.db
+      .prepare(
+        `SELECT username, password_hash, admin, all_albums
+           FROM users
+          WHERE commenter_id = ? AND username != ? COLLATE NOCASE`,
+      )
+      .get(commenterId, targetUsername) as
+      { username: string; password_hash: string; admin: number; all_albums: number } | undefined;
+    if (!other) return;
+    const hasAlbums = this.db
+      .prepare('SELECT 1 FROM user_albums WHERE username = ? LIMIT 1')
+      .get(other.username);
+    const hasShares = this.db
+      .prepare('SELECT 1 FROM commenter_shares WHERE commenter_id = ? LIMIT 1')
+      .get(commenterId);
+    if (
+      hasNoPassword(other.password_hash) &&
+      other.admin === 0 &&
+      other.all_albums === 0 &&
+      hasAlbums === undefined &&
+      hasShares !== undefined
+    ) {
+      this.closeAccess(other.username);
+      this.db.prepare('DELETE FROM users WHERE username = ?').run(other.username);
+    }
+  }
+
   private migrateCommenterRecords(fromId: number, toId: number): void {
     if (fromId === toId) return;
     this.db
@@ -1174,7 +1225,7 @@ export class ConfigRepo {
 
     const sharedAlbumRows = this.db
       .prepare(
-        `SELECT DISTINCT u.username, sla.album_id
+        `SELECT u.username, sla.album_id, s.expires_at
            FROM users u
            JOIN commenter_shares cs ON cs.commenter_id = u.commenter_id
            JOIN share_links s ON s.token = cs.token
@@ -1182,7 +1233,11 @@ export class ConfigRepo {
           WHERE s.revoked_at IS NULL
             AND (s.expires_at IS NULL OR s.expires_at > ?)`,
       )
-      .all(new Date().toISOString()) as Array<{ username: string; album_id: string }>;
+      .all(new Date().toISOString()) as Array<{
+      username: string;
+      album_id: string;
+      expires_at: string | null;
+    }>;
 
     const granted = new Map<string, Set<string>>();
     for (const link of linkRows) {
@@ -1192,12 +1247,14 @@ export class ConfigRepo {
       granted.set(key, set);
     }
 
-    const sharedAlbums = new Map<string, Set<string>>();
+    const sharedAlbums = new Map<string, Map<string, number>>();
     for (const row of sharedAlbumRows) {
       const key = row.username.toLowerCase();
-      const set = sharedAlbums.get(key) ?? new Set<string>();
-      set.add(row.album_id);
-      sharedAlbums.set(key, set);
+      const map = sharedAlbums.get(key) ?? new Map<string, number>();
+      const expMs = row.expires_at === null ? Infinity : Date.parse(row.expires_at);
+      const prev = map.get(row.album_id) ?? 0;
+      if (expMs > prev) map.set(row.album_id, expMs);
+      sharedAlbums.set(key, map);
     }
 
     const shareTokensByUser = new Map<string, string[]>();

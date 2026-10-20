@@ -557,6 +557,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const input = parsed.data;
 
+      if (input.email !== undefined) {
+        const existingByEmail = context.config.userForEmail(input.email);
+        if (existingByEmail && context.config.isShareVisitorAccount(existingByEmail.username)) {
+          context.sessions.destroyForUser(existingByEmail.username);
+          context.config.deleteUser(existingByEmail.username);
+        }
+      }
+
       // Overwriting an existing account would change its password and permissions
       // without anyone requesting it.
       if (context.config.user(input.username)) {
@@ -667,13 +675,18 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       const { email, displayName, albums: requestedAlbums, locale } = parsed.data;
 
-      // Verify email is not already bound to another account
+      // Verify email is not already bound to another member account
       const holder = context.config.userForEmail(email);
       if (holder) {
-        return reply.code(409).send({
-          error: 'identity_taken',
-          message: request.t('error.identityTaken', holder.username),
-        });
+        if (context.config.isShareVisitorAccount(holder.username)) {
+          context.sessions.destroyForUser(holder.username);
+          context.config.deleteUser(holder.username);
+        } else {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', holder.username),
+          });
+        }
       }
 
       // Verify email has no active pending invitation
@@ -829,10 +842,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
 
       const holder = context.config.userForEmail(email);
       if (holder) {
-        return reply.code(409).send({
-          error: 'identity_taken',
-          message: request.t('error.identityTaken', holder.username),
-        });
+        if (context.config.isShareVisitorAccount(holder.username)) {
+          context.sessions.destroyForUser(holder.username);
+          context.config.deleteUser(holder.username);
+        } else {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', holder.username),
+          });
+        }
       }
 
       const locale = parsed.data.locale ?? pending?.locale ?? null;

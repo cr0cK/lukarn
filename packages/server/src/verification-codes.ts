@@ -1,6 +1,12 @@
 import { isLocale, VERIFICATION_CODE_LENGTH, type Locale } from '@lukarn/shared';
 import { randomBytes, randomInt } from 'node:crypto';
-import { hashInviteToken, hashVerificationCode, NO_PASSWORD_HASH, safeEqual } from './crypto.js';
+import {
+  hashInviteToken,
+  hashVerificationCode,
+  hasNoPassword,
+  NO_PASSWORD_HASH,
+  safeEqual,
+} from './crypto.js';
 import type { Db } from './db.js';
 
 /**
@@ -447,13 +453,42 @@ export function verifyAndConsumeInviteToken(
         );
       }
 
-      // 4. Bind commenter to user (throws SQLITE_CONSTRAINT_UNIQUE if already bound)
+      // 4. Absorb any transient share-only visitor row holding this commenter_id
+      const other = db
+        .prepare(
+          `SELECT username, password_hash, admin, all_albums
+             FROM users
+            WHERE commenter_id = ? AND username != ? COLLATE NOCASE`,
+        )
+        .get(commenter.id, row.username) as
+        { username: string; password_hash: string; admin: number; all_albums: number } | undefined;
+      if (other) {
+        const hasAlbums = db
+          .prepare('SELECT 1 FROM user_albums WHERE username = ? LIMIT 1')
+          .get(other.username);
+        const hasShares = db
+          .prepare('SELECT 1 FROM commenter_shares WHERE commenter_id = ? LIMIT 1')
+          .get(commenter.id);
+        if (
+          hasNoPassword(other.password_hash) &&
+          other.admin === 0 &&
+          other.all_albums === 0 &&
+          hasAlbums === undefined &&
+          hasShares !== undefined
+        ) {
+          db.prepare('DELETE FROM sessions WHERE username = ?').run(other.username);
+          db.prepare('DELETE FROM device_pairings WHERE username = ?').run(other.username);
+          db.prepare('DELETE FROM users WHERE username = ?').run(other.username);
+        }
+      }
+
+      // 5. Bind commenter to user (throws SQLITE_CONSTRAINT_UNIQUE if already bound)
       db.prepare(
         `UPDATE users SET commenter_id = ?, password_hash = ?, updated_at = ?
           WHERE username = ?`,
       ).run(commenter.id, NO_PASSWORD_HASH, nowIso, row.username);
 
-      // 5. Delete prior sessions and pairings for username
+      // 6. Delete prior sessions and pairings for username
       db.prepare('DELETE FROM sessions WHERE username = ?').run(row.username);
       db.prepare('DELETE FROM device_pairings WHERE username = ?').run(row.username);
 

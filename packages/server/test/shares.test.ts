@@ -1414,4 +1414,126 @@ describe('a link to a selection of photographs', () => {
     assert.equal(idPatch.json().displayName, 'Lecteur Renommé');
     assert.equal(idPatch.json().notifyComments, true);
   });
+
+  it('enforces comment feed access controls, live share invalidation, hasPassword accuracy, and share-visitor invitation upgrade', async () => {
+    const cookie = await adminCookie();
+
+    // 1. Admin previewing a share link is never recorded as a subscriber
+    const adminCommenterId = context.config.ensureUserCommenter('patron');
+    const previewShare = context.shares.create({
+      albumId: 'corse',
+      mediaId: null,
+      label: 'Preview share',
+      createdBy: 'patron',
+      expiresAt: null,
+      allowComments: false,
+      requireIdentity: true,
+    });
+    const adminPreview = await server.inject({
+      method: 'GET',
+      url: `/api/share/${previewShare.token}`,
+      headers: { cookie },
+    });
+    assert.equal(adminPreview.statusCode, 200);
+    assert.equal(
+      context.shares.tokensForCommenter(adminCommenterId).includes(previewShare.token),
+      false,
+    );
+
+    // 2. Unidentified visitor on requireIdentity=true gets 403 identity_required on GET /api/comments/feed
+    const anonCookie = await open(previewShare.token);
+    const anonFeed = await server.inject({
+      method: 'GET',
+      url: '/api/comments/feed',
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(anonFeed.statusCode, 403);
+    assert.equal(anonFeed.json().error, 'identity_required');
+
+    // 3. Verified visitor on requireIdentity=true & allowComments=false still receives non-null identity in /api/auth/me
+    //    and empty comment lists on GET /:token/comments/:mediaId and GET /:token/comments
+    const visitor = context.commenters.declare('visiteur-strict@exemple.fr', 'Visiteur Strict');
+    context.commenters.markVerified('visiteur-strict@exemple.fr');
+    const sessionRow = context.db
+      .prepare('SELECT id FROM sessions WHERE share_token = ? ORDER BY created_at DESC LIMIT 1')
+      .get(previewShare.token) as { id: string };
+    context.sessions.attachCommenter(sessionRow.id, visitor.id);
+    const visitorUser = context.config.ensureUserForCommenter(
+      visitor.id,
+      'visiteur-strict@exemple.fr',
+      'Visiteur Strict',
+      previewShare.token,
+    );
+
+    const meShare = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(meShare.statusCode, 200);
+    assert.ok(
+      meShare.json().identity,
+      'identity must be present when requireIdentity=true and allowComments=false',
+    );
+    assert.equal(meShare.json().identity.email, 'visiteur-strict@exemple.fr');
+
+    const disabledThread = await server.inject({
+      method: 'GET',
+      url: `/api/share/${previewShare.token}/comments/img-1`,
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(disabledThread.statusCode, 200);
+    assert.deepEqual(disabledThread.json(), { threads: [], total: 0 });
+
+    const disabledShareFeed = await server.inject({
+      method: 'GET',
+      url: `/api/share/${previewShare.token}/comments`,
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(disabledShareFeed.statusCode, 200);
+    assert.deepEqual(disabledShareFeed.json(), { comments: [], nextCursor: null });
+
+    // 4. Passwordless account reports hasPassword: false on /api/auth/me andConfigRepo invalidates on share revoke
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), true);
+    const visitorAccountSession = context.sessions.create(visitorUser.username, 'desktop');
+    const signedVisitorCookie = `lukarn_session=${server.signCookie(visitorAccountSession.id)}`;
+    const meAccount = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: signedVisitorCookie },
+    });
+    assert.equal(meAccount.statusCode, 200);
+    assert.equal(meAccount.json().hasPassword, false);
+
+    // Revoking the share immediately revokes canSee via ShareLinkRepo.onMutate -> ConfigRepo.invalidate
+    context.shares.revoke(previewShare.token);
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), false);
+    context.shares.restore(previewShare.token);
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), true);
+
+    // Expiring the share immediately revokes canSee
+    context.shares.update(previewShare.token, { expiresAt: '2020-01-01T00:00:00.000Z' });
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), false);
+    context.shares.update(previewShare.token, { expiresAt: null });
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), true);
+
+    // 5. Upgrading a share-only visitor to an invited member absorbs the transient visitor account
+    //    without 409 identity_taken and preserves their shareTokens
+    const upgradeRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: { cookie },
+      payload: {
+        username: 'visiteur-membre',
+        displayName: 'Visiteur Membre',
+        email: 'visiteur-strict@exemple.fr',
+        admin: false,
+        albums: ['noel'],
+        sendInvite: false,
+      },
+    });
+    assert.equal(upgradeRes.statusCode, 201, upgradeRes.body);
+    assert.deepEqual(upgradeRes.json().albums, ['noel']);
+    assert.ok(upgradeRes.json().shareTokens.includes(previewShare.token));
+  });
 });

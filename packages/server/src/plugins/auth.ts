@@ -4,6 +4,7 @@ import fp from 'fastify-plugin';
 import { toIdentity } from '../commenters.js';
 import type { StoredUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
+import { hasNoPassword } from '../crypto.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 import { shareState, type ShareLink } from '../shares.js';
 
@@ -139,10 +140,10 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       );
     }
 
-    const canComment =
+    const showIdentity =
       account !== null
-        ? account.admin || account.roleCommenter || session.commenterId !== null
-        : (share?.allowComments ?? false) && commenter !== null;
+        ? account.admin || account.roleCommenter || hasBoundEmail || session.commenterId !== null
+        : commenter !== null;
 
     request.sessionId = session.id;
     request.share = share;
@@ -158,10 +159,10 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
         ? account.admin || account.roleCommenter
         : (share?.allowComments ?? false),
       email: commenter?.email ?? null,
-      hasPassword: account ? account.passwordHash !== '' : false,
+      hasPassword: account ? !hasNoPassword(account.passwordHash) : false,
       notifyPhotos: commenter?.notifyPhotos ?? true,
       notifyComments: commenter?.notifyComments ?? true,
-      identity: commenter && canComment ? toIdentity(commenter) : null,
+      identity: commenter && showIdentity ? toIdentity(commenter) : null,
       identityBound: hasBoundEmail,
       commentsEnabled:
         context.mailer.enabled || (account !== null && (account.admin || account.roleCommenter)),

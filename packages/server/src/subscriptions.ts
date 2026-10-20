@@ -466,9 +466,9 @@ export class SubscriptionRepo {
       return { allowed: false, shareToken: null };
     }
 
-    const fallbackLiveShare = this.db
+    const hasLiveAlbumShare = this.db
       .prepare(
-        `SELECT sl.token
+        `SELECT 1 AS ok
            FROM share_links sl
           WHERE sl.revoked_at IS NULL
             AND (sl.expires_at IS NULL OR sl.expires_at > @nowIso)
@@ -480,13 +480,12 @@ export class SubscriptionRepo {
                  WHERE sla.token = sl.token AND sla.album_id = @albumId
               )
             )
-          ORDER BY sl.created_at DESC
           LIMIT 1`,
       )
-      .get({ albumId, nowIso }) as { token: string } | undefined;
+      .get({ albumId, nowIso }) as { ok: number } | undefined;
 
-    if (fallbackLiveShare) {
-      return { allowed: true, shareToken: fallbackLiveShare.token };
+    if (hasLiveAlbumShare) {
+      return { allowed: true, shareToken: null };
     }
 
     if (userRow) {

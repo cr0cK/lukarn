@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { toIdentity } from '../commenters.js';
 import type { StoredUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
+import { hasNoPassword } from '../crypto.js';
 import type { Translate } from '../i18n/index.js';
 import { classifyDevice } from '../device.js';
 import { buildInvitationMail, buildSignInMail } from '../mail.js';
@@ -106,10 +107,10 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       roleViewer: user.admin || user.roleViewer,
       roleCommenter: user.admin || user.roleCommenter,
       email: commenter?.email ?? null,
-      hasPassword: user.passwordHash !== '',
+      hasPassword: !hasNoPassword(user.passwordHash),
       notifyPhotos: commenter?.notifyPhotos ?? true,
       notifyComments: commenter?.notifyComments ?? true,
-      identity: commenter && canComment ? toIdentity(commenter) : null,
+      identity: commenter && (canComment || hasBoundEmail) ? toIdentity(commenter) : null,
       identityBound: hasBoundEmail,
       commentsEnabled: context.mailer.enabled || canComment,
     };
@@ -639,7 +640,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         roleViewer: true,
         roleCommenter: true,
         email: freshCommenter?.email ?? null,
-        hasPassword: Boolean(user && user.passwordHash !== ''),
+        hasPassword: Boolean(user && !hasNoPassword(user.passwordHash)),
         notifyPhotos: freshCommenter?.notifyPhotos ?? true,
         notifyComments: freshCommenter?.notifyComments ?? true,
         identity: freshCommenter ? toIdentity(freshCommenter) : null,

@@ -117,6 +117,12 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
               .send({ error: 'not_found', message: request.t('error.albumNotFound') });
           }
 
+          if (link.requireIdentity && request.commenterId === null && account.username === null) {
+            return reply
+              .code(403)
+              .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+          }
+
           if (!link.allowComments) {
             return reply.send({ comments: [], nextCursor: null } satisfies CommentsFeedPage);
           }

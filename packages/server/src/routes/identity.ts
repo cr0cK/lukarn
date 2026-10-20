@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { toIdentity } from '../commenters.js';
 import type { AppContext } from '../context.js';
+import { hasNoPassword } from '../crypto.js';
 import { buildVerificationMail } from '../mail.js';
 import { requireAuth } from '../plugins/auth.js';
 
@@ -71,7 +72,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
         roleViewer: account ? account.admin || account.roleViewer : true,
         roleCommenter: account ? account.admin || account.roleCommenter : true,
         email: commenter?.email ?? null,
-        hasPassword: account ? account.passwordHash !== '' : false,
+        hasPassword: account ? !hasNoPassword(account.passwordHash) : false,
         notifyPhotos: commenter?.notifyPhotos ?? true,
         notifyComments: commenter?.notifyComments ?? true,
         identity: commenter ? toIdentity(commenter) : null,

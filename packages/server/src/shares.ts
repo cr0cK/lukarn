@@ -157,6 +157,7 @@ export class ShareLinkRepo {
   constructor(
     private readonly db: Db,
     private readonly posters: () => boolean = () => false,
+    private readonly onMutate: () => void = () => {},
   ) {}
 
   /**
@@ -240,6 +241,7 @@ export class ShareLinkRepo {
     });
 
     runCreate();
+    this.onMutate();
     return this.find(token)!;
   }
 
@@ -515,6 +517,7 @@ export class ShareLinkRepo {
       this.syncSingleAlbumColumn(token);
     })();
 
+    this.onMutate();
     return this.find(token);
   }
 
@@ -550,6 +553,7 @@ export class ShareLinkRepo {
       this.syncSingleAlbumColumn(token);
     })();
 
+    this.onMutate();
     return this.find(token);
   }
 
@@ -578,13 +582,14 @@ export class ShareLinkRepo {
    * Records a verified commenter who opened or subscribed to this share link.
    */
   recordSubscriber(commenterId: number, token: string, now = new Date()): void {
-    this.db
+    const changed = this.db
       .prepare(
         `INSERT INTO commenter_shares (commenter_id, token, notify_photos, notify_comments, created_at)
          VALUES (?, ?, 1, 1, ?)
          ON CONFLICT (commenter_id, token) DO NOTHING`,
       )
-      .run(commenterId, token, now.toISOString());
+      .run(commenterId, token, now.toISOString()).changes;
+    if (changed > 0) this.onMutate();
   }
 
   /**
@@ -611,15 +616,16 @@ export class ShareLinkRepo {
           : 0
         : existing.notify_comments;
 
-    return (
+    const changed =
       this.db
         .prepare(
           `UPDATE commenter_shares
               SET notify_photos = ?, notify_comments = ?
             WHERE commenter_id = ? AND token = ?`,
         )
-        .run(notifyPhotos, notifyComments, commenterId, token).changes > 0
-    );
+        .run(notifyPhotos, notifyComments, commenterId, token).changes > 0;
+    if (changed) this.onMutate();
+    return changed;
   }
 
   /**
@@ -685,7 +691,10 @@ export class ShareLinkRepo {
     const changed = this.db
       .prepare('UPDATE share_links SET revoked_at = ? WHERE token = ? AND revoked_at IS NULL')
       .run(now.toISOString(), token).changes;
-    if (changed > 0) this.closeSessions(token);
+    if (changed > 0) {
+      this.closeSessions(token);
+      this.onMutate();
+    }
     return changed > 0;
   }
 
@@ -727,6 +736,7 @@ export class ShareLinkRepo {
       this.closeSessions(token);
     }
 
+    this.onMutate();
     return this.find(token);
   }
 
@@ -750,6 +760,7 @@ export class ShareLinkRepo {
       )
       .run(expiresAt, token);
 
+    this.onMutate();
     return this.find(token);
   }
 
@@ -761,7 +772,10 @@ export class ShareLinkRepo {
    */
   remove(token: string): boolean {
     this.closeSessions(token);
-    return this.db.prepare('DELETE FROM share_links WHERE token = ?').run(token).changes > 0;
+    const changed =
+      this.db.prepare('DELETE FROM share_links WHERE token = ?').run(token).changes > 0;
+    if (changed) this.onMutate();
+    return changed;
   }
 
   /** Every link this instance has issued, newest first. */

@@ -196,7 +196,12 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
         context.shares.recordOpening(link.token, sessionId);
       }
 
-      if (request.commenterId !== null) {
+      if (
+        request.commenterId !== null &&
+        !account &&
+        !request.user?.admin &&
+        username !== link.createdBy
+      ) {
         context.shares.recordSubscriber(request.commenterId, link.token);
         if (link.mediaId === null) {
           for (const albumId of linkAlbumIds) {
@@ -325,6 +330,10 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
+      if (!link.allowComments) {
+        return reply.send({ threads: [], total: 0 } satisfies CommentsPage);
+      }
+
       // `admin` is false for a link by construction, so hidden comments stay hidden
       // and the reader may delete only what it wrote.
       const page: CommentsPage = context.comments.thread(albumId, mediaId, {
@@ -436,6 +445,9 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
         return reply
           .code(403)
           .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
+      if (!link.allowComments) {
+        return reply.send({ comments: [], nextCursor: null });
       }
 
       const query = feedQuerySchema.safeParse(request.query);
