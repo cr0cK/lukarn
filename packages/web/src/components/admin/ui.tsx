@@ -1,10 +1,17 @@
-import { type ReactElement, type ReactNode, useState } from 'react';
+import {
+  type InputHTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+  useState,
+} from 'react';
 import { AVAILABLE_LOCALES, LOCALE_NAMES, useT } from '../../lib/i18n';
 import { PHONE_QUERY, useMediaQuery } from '../../lib/useMediaQuery';
 import { PasswordInput } from '../PasswordInput';
 import { Chevron } from './AdminNav';
 
-/** Action outcome shown at the top of the administration page. */
+/** Action outcome shown at the top of the administration page or inside a `Toast`. */
 export interface Notice {
   tone: 'ok' | 'error';
   text: string;
@@ -13,32 +20,65 @@ export interface Notice {
 /** Reports an action outcome to the page. */
 export type Notify = (notice: Notice) => void;
 
-const BUTTON_VARIANTS = {
-  default: 'border border-ink-600 text-ink-200 hover:bg-tint',
-  primary: 'bg-accent text-accent-ink hover:opacity-90',
-  danger: 'border border-red-500/40 text-red-300 hover:bg-red-500/10',
+/**
+ * `shadcn/ui` v4 (`zinc`) + dynamic `--color-accent` pill button variants (D260813 / D260813c).
+ *
+ * - `primary`: dynamic instance `--color-accent` and `--color-accent-ink`.
+ * - `secondary`: soft borderless `zinc` fill (`#27272a` in dark, `#f4f4f5` in light).
+ * - `outline` / `default`: crisp `zinc` border (`border-zinc-800 bg-zinc-900` in dark,
+ *   `border-zinc-200 bg-white shadow-2xs` in light).
+ * - `danger`: destructive outline (`border-red-500/30 text-red-400` in dark,
+ *   `border-red-200 text-red-600` in light).
+ * - `ghost`: borderless hover tint.
+ */
+export const BUTTON_VARIANTS = {
+  default:
+    'border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 hover:text-zinc-50 light:border-zinc-200 light:bg-white light:text-zinc-900 light:shadow-2xs light:hover:bg-zinc-100',
+  outline:
+    'border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800 hover:text-zinc-50 light:border-zinc-200 light:bg-white light:text-zinc-900 light:shadow-2xs light:hover:bg-zinc-100',
+  primary: 'bg-accent text-accent-ink hover:bg-accent-dim',
+  secondary:
+    'bg-zinc-800 text-zinc-50 hover:bg-zinc-700 light:bg-zinc-100 light:text-zinc-900 light:hover:bg-zinc-200',
+  danger:
+    'border border-red-500/30 text-red-400 hover:bg-red-500/10 light:border-red-200 light:text-red-600 light:hover:bg-red-50',
   ghost: 'text-ink-300 hover:bg-tint hover:text-ink-100',
 } as const;
 
-interface ButtonProps {
+/** Pill button size presets (`text-sm` minimum floor across all text buttons). */
+export const BUTTON_SIZES = {
+  md: 'h-9 px-3.5 text-sm font-medium',
+  sm: 'h-8 px-3 text-sm font-medium',
+  icon: 'size-9 p-0 text-sm font-medium',
+} as const;
+
+/** Props for the pill `Button` primitive. */
+export interface ButtonProps {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   variant?: keyof typeof BUTTON_VARIANTS;
+  size?: keyof typeof BUTTON_SIZES;
   type?: 'button' | 'submit';
   /** Required when the visible label is insufficient outside its context. */
   ariaLabel?: string;
   title?: string;
+  className?: string;
 }
 
+/**
+ * Pill button (`rounded-full`) combining dynamic `--color-accent` for `primary`
+ * with `shadcn/ui` v4 (`zinc`) `secondary`, `outline`, `danger`, and `ghost` variants.
+ */
 export function Button({
   children,
   onClick,
   disabled = false,
   variant = 'default',
+  size = 'md',
   type = 'button',
   ariaLabel,
   title,
+  className = '',
 }: ButtonProps): ReactElement {
   return (
     <button
@@ -47,7 +87,7 @@ export function Button({
       disabled={disabled}
       aria-label={ariaLabel}
       title={title}
-      className={`rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_VARIANTS[variant]}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-full whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${BUTTON_SIZES[size]} ${BUTTON_VARIANTS[variant]} ${className}`.trim()}
     >
       {children}
     </button>
@@ -55,7 +95,9 @@ export function Button({
 }
 
 /**
- * Page block: a title, an optional description, an optional action and content.
+ * Page block: a title (`<h2>` at `text-xl font-semibold tracking-tight`), an optional
+ * `text-sm` description, an optional top-right primary CTA (`action`), and content.
+ *
  * Administration is built from these, and so is `/settings` — the reader's own
  * screen borrows the same primitives rather than growing a second look.
  */
@@ -71,13 +113,13 @@ export function Section({
   children: ReactNode;
 }): ReactElement {
   return (
-    <section className="rounded-xl border border-ink-800 bg-ink-850/50">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-850 px-4 py-3">
+    <section className="rounded-2xl border border-zinc-800 bg-ink-850/60 light:border-zinc-200 light:bg-white">
+      <header className="flex items-start justify-between gap-4 border-b border-zinc-800/80 px-5 py-4 light:border-zinc-200">
         <div className="min-w-0">
-          <h2 className="text-sm font-medium">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-ink-400">{description}</p>}
+          <h2 className="text-xl font-semibold tracking-tight text-ink-100">{title}</h2>
+          {description && <p className="mt-1 text-sm text-ink-400">{description}</p>}
         </div>
-        {action}
+        {action && <div className="shrink-0">{action}</div>}
       </header>
       {children}
     </section>
@@ -112,17 +154,206 @@ export const ROW_CLASS = 'flex flex-col gap-3 xl:flex-row xl:gap-4';
 export const ROW_ACTIONS_CLASS = 'flex flex-wrap items-center gap-2 xl:justify-end';
 
 /**
- * Every field, list and text area, so a form is one material rather than several.
+ * Shared class for `<input>`, `<select>`, and `<textarea>` controls.
  *
- * `ink-800` and not `ink-850`: a `Section` is already `ink-850/50`, so a control on
- * the same rung was a rectangle drawn by its border alone — legible on a bright
- * screen and gone on a dim one. `ink-800` is the rung whose documented role is a
- * raised surface, and it inverts with the ramp: a step up from the panel in the
- * dark theme, a step down in the light one, where a field reading as a well is the
- * shape paper takes.
+ * Uses the dedicated elevated input surface tokens (`--color-input: #222226`,
+ * `--color-input-hover: #27272c`, `--color-input-border: #3a3a42` in dark mode;
+ * crisp white in light mode) so fields stand out clearly above `--color-ink-850`
+ * cards instead of sinking into black.
+ *
+ * `text-base md:text-sm`: `16px` below `md` prevents iOS Safari from auto-zooming
+ * the viewport on focus, while `14px` (`md:text-sm`) matches the desktop body scale.
  */
-const CONTROL_CLASS =
-  'w-full rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-400 focus:border-accent-dim disabled:opacity-60 read-only:text-ink-300';
+export const FIELD_CLASS =
+  'w-full rounded-lg border border-input-border bg-input px-3 py-2 text-base md:text-sm text-ink-100 outline-none transition-colors placeholder:text-ink-400 hover:bg-input-hover focus:border-accent disabled:opacity-60 read-only:text-ink-300';
+
+const CONTROL_CLASS = FIELD_CLASS;
+
+/** Standardized form `<label>` (`text-sm font-medium text-ink-200`). */
+export function Label({
+  htmlFor,
+  children,
+  className = '',
+}: {
+  htmlFor?: string;
+  children: ReactNode;
+  className?: string;
+}): ReactElement {
+  return (
+    <label
+      htmlFor={htmlFor}
+      className={`mb-1.5 block text-sm font-medium text-ink-200 ${className}`.trim()}
+    >
+      {children}
+    </label>
+  );
+}
+
+/** Bare elevated `<input>` primitive using `FIELD_CLASS`. */
+export function Input({
+  className = '',
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement>): ReactElement {
+  return <input className={`${FIELD_CLASS} ${className}`.trim()} {...rest} />;
+}
+
+/** Bare elevated `<select>` primitive using `FIELD_CLASS`. */
+export function Select({
+  className = '',
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement>): ReactElement {
+  return (
+    <select className={`${FIELD_CLASS} ${className}`.trim()} {...rest}>
+      {children}
+    </select>
+  );
+}
+
+/** Bare elevated `<textarea>` primitive using `FIELD_CLASS`. */
+export function Textarea({
+  className = '',
+  ...rest
+}: TextareaHTMLAttributes<HTMLTextAreaElement>): ReactElement {
+  return <textarea className={`${FIELD_CLASS} ${className}`.trim()} {...rest} />;
+}
+
+/** Visual variants for `<Badge>` pills (`text-xs whitespace-nowrap`). */
+export const BADGE_VARIANTS = {
+  default:
+    'border border-zinc-700/80 bg-zinc-800/80 text-zinc-200 light:border-zinc-200 light:bg-zinc-100 light:text-zinc-800',
+  accent: 'border border-accent/30 bg-accent-soft text-accent',
+  emerald:
+    'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 light:border-emerald-200 light:bg-emerald-50 light:text-emerald-700',
+  amber:
+    'border border-amber-500/30 bg-amber-500/10 text-amber-300 light:border-amber-200 light:bg-amber-50 light:text-amber-700',
+  red: 'border border-red-500/30 bg-red-500/10 text-red-300 light:border-red-200 light:bg-red-50 light:text-red-700',
+  outline: 'border border-zinc-800 text-ink-300 light:border-zinc-200 light:text-zinc-700',
+} as const;
+
+/**
+ * Non-breaking status or role pill (`text-xs font-medium whitespace-nowrap`).
+ *
+ * Uses `whitespace-nowrap` so role pills (`Admin`, `Visiteur`, `Commentateur`) never wrap
+ * mid-word across two lines inside mobile cards or table cells.
+ */
+export function Badge({
+  variant = 'default',
+  children,
+  className = '',
+}: {
+  variant?: keyof typeof BADGE_VARIANTS;
+  children: ReactNode;
+  className?: string;
+}): ReactElement {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${BADGE_VARIANTS[variant]} ${className}`.trim()}
+    >
+      {children}
+    </span>
+  );
+}
+
+/**
+ * Clean `rounded-2xl` surface card without nested bordered sub-boxes.
+ *
+ * When `divide` is true, internal sections are separated by `1px` dividers
+ * (`divide-y divide-zinc-800 light:divide-zinc-200`).
+ */
+export function Card({
+  divide = false,
+  children,
+  className = '',
+}: {
+  divide?: boolean;
+  children: ReactNode;
+  className?: string;
+}): ReactElement {
+  return (
+    <div
+      className={`rounded-2xl border border-zinc-800 bg-ink-850/60 light:border-zinc-200 light:bg-white ${
+        divide ? 'divide-y divide-zinc-800 light:divide-zinc-200' : ''
+      } ${className}`.trim()}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Toggle switch (`w-9 h-5 rounded-full`) using dynamic `bg-accent` when checked
+ * and `bg-zinc-800` (dark) / `bg-zinc-200` (light) when unchecked.
+ */
+export function Switch({
+  id,
+  checked,
+  onChange,
+  label,
+  hint,
+  ariaLabel,
+  disabled = false,
+}: {
+  id?: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: ReactNode;
+  hint?: ReactNode;
+  ariaLabel?: string;
+  disabled?: boolean;
+}): ReactElement {
+  const hintId = id && hint ? `${id}-hint` : undefined;
+
+  const button = (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      aria-describedby={hintId}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? 'bg-accent' : 'bg-zinc-800 light:bg-zinc-200'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-block size-4 rounded-full bg-white shadow-xs transition-transform ${
+          checked ? 'translate-x-4' : 'translate-x-0.5'
+        }`}
+      />
+    </button>
+  );
+
+  if (!label) return button;
+
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        {id ? (
+          <label
+            htmlFor={id}
+            className={`block text-sm font-medium ${
+              disabled ? 'cursor-not-allowed text-ink-400' : 'cursor-pointer text-ink-100'
+            }`}
+          >
+            {label}
+          </label>
+        ) : (
+          <span className="block text-sm font-medium text-ink-100">{label}</span>
+        )}
+        {hint && (
+          <p id={hintId} className="mt-0.5 text-sm text-ink-400">
+            {hint}
+          </p>
+        )}
+      </div>
+      {button}
+    </div>
+  );
+}
 
 /**
  * One setting as a **row**: its name on the left, what it currently reads on the
@@ -542,7 +773,10 @@ export function Choice({
 export function FormError({ message }: { message: string | null }): ReactElement | null {
   if (!message) return null;
   return (
-    <p role="alert" className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-300">
+    <p
+      role="alert"
+      className="rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-2.5 text-sm text-red-300 light:border-red-200 light:bg-red-50 light:text-red-700"
+    >
       {message}
     </p>
   );

@@ -441,6 +441,22 @@ per-photo count fits in a single integer (D83). On the server side this is a
 `MediaDetail` inherits it by extending `MediaItem`: the `i` panel has nothing
 further to ask for.
 
+## Favorites — `routes/favorites.ts`
+
+`requireAuth` as a `preHandler` on the whole prefix.
+
+| Method | Path                               | Access  | Response       |
+| ------ | ---------------------------------- | ------- | -------------- |
+| PUT    | `/api/favorites/:albumId/:mediaId` | session | `{ ok: true }` |
+| DELETE | `/api/favorites/:albumId/:mediaId` | session | `{ ok: true }` |
+
+Marks or unmarks a photograph as a favorite for the current identity (`request.commenterId`,
+stored in `commenter_favorites` via `favorites.ts`). Returns `403 identity_required` if the
+session has no attached identity, and `404 not_found` if the album or media item is unknown or
+not covered by the caller's account or share link. `Album` (`GET /api/albums`, `GET /api/albums/:albumId`)
+and `ShareView` (`GET /api/share/:token`) include `favoriteMediaIds?: string[]` scoped to the
+current identity.
+
 ## Search — `routes/search.ts`
 
 `requireAuth` as a `preHandler` on the whole prefix.
@@ -523,13 +539,14 @@ is already open, the access key and the person being two distinct things.
 | POST   | `/api/identity/request-code` | `202`         |
 | POST   | `/api/identity/verify`       | `SessionUser` |
 | POST   | `/api/identity/forget`       | `SessionUser` |
+| PATCH  | `/api/identity`              | `SessionUser` |
 
-**All three answer `409 identity_bound` on a bound account**, refused by a second
+**`request-code`, `verify`, and `forget` answer `409 identity_bound` on a bound account**, refused by a second
 `preHandler` before any handler runs. The identity of such an account is not the
 session's to choose: `plugins/auth.ts` reads it from the account, so declaring
 another address would attach an identity the account contradicts, and forgetting
 one would silently do nothing. Changing the address of a bound account is out of
-scope for this release; here the way out is to sign out (D260819).
+scope for this release; here the way out is to sign out (D260819). `PATCH /api/identity` updates the current session's `displayName` and granular notification preferences (`notify`, `notifyPhotos`, `notifyComments`) on its linked `commenterId` (and `commenter_shares` when opened on a share session).
 
 **`request-code`** — body `IdentityRequest` = `{ email, displayName }`. Sends a
 six-digit code and responds `202` **whether the address is already known or
@@ -717,18 +734,20 @@ An album, or one photograph, opened by somebody with no account (D260825). This
 is the **only** prefix a link's session reads from, and the only one whose
 addresses carry no album identifier.
 
-| Method | Path                                        | Access   | Response              |
-| ------ | ------------------------------------------- | -------- | --------------------- |
-| GET    | `/api/share/:token`                         | **none** | `ShareView`           |
-| GET    | `/api/share/:token/items`                   | **none** | `ShareItemsPage`      |
-| GET    | `/api/share/:token/items/:mediaId`          | **none** | `ShareDetail`         |
-| GET    | `/api/share/:token/comments/:mediaId`       | **none** | `CommentsPage`        |
-| POST   | `/api/share/:token/comments/:mediaId`       | **none** | `201 Comment`         |
-| GET    | `/api/share/:token/media/:mediaId/thumb`    | **none** | binary thumbnail JPEG |
-| GET    | `/api/share/:token/media/:mediaId/full`     | **none** | binary full JPEG      |
-| GET    | `/api/share/:token/media/:mediaId/hd`       | **none** | binary HD JPEG        |
-| GET    | `/api/share/:token/media/:mediaId/playable` | **none** | `200` / `206` MP4     |
-| GET    | `/api/share/:token/media/:mediaId/original` | **none** | binary stream         |
+| Method | Path                                        | Access   | Response                                     |
+| ------ | ------------------------------------------- | -------- | -------------------------------------------- |
+| GET    | `/api/share/:token`                         | **none** | `ShareView`                                  |
+| GET    | `/api/share/:token/items`                   | **none** | `ShareItemsPage`                             |
+| GET    | `/api/share/:token/items/:mediaId`          | **none** | `ShareDetail`                                |
+| GET    | `/api/share/:token/comments`                | **none** | `CommentsFeedPage`                           |
+| GET    | `/api/share/:token/comments/:mediaId`       | **none** | `CommentsPage`                               |
+| POST   | `/api/share/:token/comments/:mediaId`       | **none** | `201 Comment`                                |
+| PATCH  | `/api/share/:token/subscription`            | **none** | `{ ok: true, notifyPhotos, notifyComments }` |
+| GET    | `/api/share/:token/media/:mediaId/thumb`    | **none** | binary thumbnail JPEG                        |
+| GET    | `/api/share/:token/media/:mediaId/full`     | **none** | binary full JPEG                             |
+| GET    | `/api/share/:token/media/:mediaId/hd`       | **none** | binary HD JPEG                               |
+| GET    | `/api/share/:token/media/:mediaId/playable` | **none** | `200` / `206` MP4                            |
+| GET    | `/api/share/:token/media/:mediaId/original` | **none** | binary stream                                |
 
 `none` because the caller holds a link and no session, and `GET /api/share/:token`
 is the route that opens one for them. Everything else here re-reads the token from
@@ -1443,6 +1462,8 @@ go back from.
 | GET    | `/api/admin/shares`                | `AdminShareLink[]`   |
 | POST   | `/api/admin/shares`                | `201 AdminShareLink` |
 | PATCH  | `/api/admin/shares/:token`         | `AdminShareLink`     |
+| POST   | `/api/admin/shares/:token/items`   | `AdminShareLink`     |
+| DELETE | `/api/admin/shares/:token/items`   | `AdminShareLink`     |
 | POST   | `/api/admin/shares/:token/revoke`  | `{ ok: true }`       |
 | POST   | `/api/admin/shares/:token/restore` | `AdminShareLink`     |
 | DELETE | `/api/admin/shares/:token`         | `{ ok: true }`       |
@@ -1451,18 +1472,22 @@ Every mutation on a link lives under this prefix, the only one that answers 403
 (D12, D50). The recipient's own surface at `/api/share` reads and writes nothing
 about the link itself.
 
-`POST` takes `CreateShareRequest` = `{ albumId?, mediaId?, items?, label?, expiresAt? }`.
-A `mediaId` makes it a photograph link, `items` makes it a multi-photo selection link
-covering photos across one or more albums, and their absence makes it an album link. An unknown
+`POST` takes `CreateShareRequest` = `{ albumId?, albumIds?, mediaId?, items?, label?, expiresAt?, allowComments?, requireIdentity? }`.
+A `mediaId` makes it a photograph link, `items` or multiple `albumIds` makes it a composable selection link
+covering photos and whole albums across one or more albums, and a single album makes it an album link. An unknown
 album, or a photograph that is not indexed in it, answers `404`: otherwise the link
 would answer 410 the moment its recipient opened it, and whoever issued it would
 learn that from them. `expiresAt` is an ISO instant or `null` for a link that never
 expires, evaluated against the row rather than baked into the token, so a date can be
 changed or removed after the link was sent (D260825b).
 
-`PATCH` takes `UpdateShareRequest` = `{ label?, expiresAt? }`. It modifies the link's
-label or expiration date (`null` clears expiry), returning the refreshed `AdminShareLink`,
+`PATCH` takes `UpdateShareRequest` = `{ label?, expiresAt?, allowComments?, requireIdentity?, revoked? }`. It modifies the link's
+label, expiration date (`null` clears expiry), comment/identity flags, or revocation state, returning the refreshed `AdminShareLink`,
 or `404` if the token is unknown.
+
+`POST /api/admin/shares/:token/items` and `DELETE /api/admin/shares/:token/items` take `ModifyShareItemsRequest` = `{ albumIds?, items? }`
+to append or remove whole albums (`share_link_albums`) and individual photographs (`share_link_items`) on an existing share link,
+returning the refreshed `AdminShareLink`.
 
 `POST /api/admin/shares/:token/restore` takes `AdminShareRestoreInput` = `{ expiresAt? }`.
 It clears `revoked_at` to re-enable a revoked link under its original token and optionally

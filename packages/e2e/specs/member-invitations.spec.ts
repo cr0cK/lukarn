@@ -225,7 +225,7 @@ test('album update notifications respect album permissions and auto-subscription
     SELECT c.email FROM album_subscriptions s
     JOIN commenters c ON c.id = s.commenter_id
     WHERE s.album_id = ? AND s.state = 'auto'
-      AND c.verified_at IS NOT NULL AND c.notify = 1
+      AND c.verified_at IS NOT NULL AND c.notify_photos = 1
       AND (
         NOT EXISTS (SELECT 1 FROM users u WHERE u.commenter_id = c.id)
         OR EXISTS (
@@ -248,7 +248,7 @@ test('album update notifications respect album permissions and auto-subscription
     SELECT c.email FROM album_subscriptions s
     JOIN commenters c ON c.id = s.commenter_id
     WHERE s.album_id = ? AND s.state = 'auto'
-      AND c.verified_at IS NOT NULL AND c.notify = 1
+      AND c.verified_at IS NOT NULL AND c.notify_photos = 1
       AND (
         NOT EXISTS (SELECT 1 FROM users u WHERE u.commenter_id = c.id)
         OR EXISTS (

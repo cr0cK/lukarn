@@ -414,7 +414,7 @@ export const fr: Messages = {
   'admin.groupInstance': 'Cette instance',
   'admin.tabStorage': 'Stockages',
   'admin.tabAlbums': 'Albums',
-  'admin.tabAccounts': 'Comptes',
+  'admin.tabAccounts': 'Utilisateurs',
   'admin.tabComments': 'Commentaires',
   'admin.tabIdentity': 'Identité',
   'admin.tabServer': 'Serveur',
@@ -424,14 +424,14 @@ export const fr: Messages = {
    * La page est lue par une personne à qui l’on a écrit : elle s’adresse à elle.
    * La section d’administration est un écran, au registre impersonnel du reste
    * d’`/admin`. */
-  'share.revoked': 'Ce lien a été retiré.',
+  'share.revoked': 'Ce lien de partage a été suspendu.',
   'share.expired': 'Ce lien a expiré.',
   'share.gone': 'La photo de ce lien ne se trouve plus dans la galerie.',
-  'share.unknown': 'Ce lien ne mène nulle part. Vérifiez l’adresse que l’on vous a envoyée.',
+  'share.unknown': 'Ce lien de partage est introuvable. Vérifiez l’adresse qui vous a été envoyée.',
   'share.elsewhere': 'Ouvrez le lien que l’on vous a envoyé pour voir les photos.',
 
-  'admin.tabShares': 'Liens',
-  'shares.title': 'Liens de partage',
+  'admin.tabShares': 'Partages',
+  'shares.title': 'Partages',
   'shares.intro':
     'Un lien ouvre un album, ou une photo, à quelqu’un qui n’a pas de compte ici. Quiconque le détient peut l’ouvrir : l’envoyer comme on enverrait les photos elles-mêmes.',
   'shares.none': 'Aucun lien émis pour l’instant.',
@@ -446,13 +446,14 @@ export const fr: Messages = {
   'shares.create': 'Émettre le lien',
   'shares.copy': 'Copier l’adresse',
   'shares.copied': 'Copié',
-  'shares.revoke': 'Retirer',
+  'shares.revoke': 'Suspendre',
   'shares.delete': 'Supprimer',
   'shares.confirmRevoke':
     'Retirer ferme le lien pour qui le détient, et conserve la trace de ses ouvertures.',
-  'shares.confirmDelete': 'Supprimer efface le lien et la trace de ses ouvertures.',
+  'shares.confirmDelete':
+    'Supprimer définitivement ce partage ? Son lien cessera immédiatement de fonctionner.',
   'shares.stateLive': 'En service',
-  'shares.stateRevoked': 'Retiré',
+  'shares.stateRevoked': 'Suspendu',
   'shares.stateExpired': 'Expiré',
   'shares.kindAlbum': 'Album entier',
   'shares.kindMedia': 'Une photo',
@@ -475,8 +476,7 @@ export const fr: Messages = {
   'shares.expiry30Days': '30 jours',
   'shares.expiryNever': 'Sans expiration',
   'shares.shareCreated': 'Lien créé et copié dans le presse-papiers.',
-  'shares.tabExisting': 'Liens existants',
-  'shares.tabCreate': 'Créer un lien',
+  'shares.new': '+ Nouveau partage',
   'shares.searchPlaceholder': 'Rechercher des liens…',
   'shares.noSearchResults': 'Aucun lien ne correspond à votre recherche.',
   'shares.createSuccess': 'Lien de partage émis.',
@@ -527,7 +527,7 @@ export const fr: Messages = {
   'adminAlbums.noStorageYet':
     'Aucun stockage. Un album est un dossier de l’un d’eux : commencer par en connecter un.',
   'adminAlbums.noStorageLink': 'Aller aux stockages',
-  'adminAlbums.new': 'Nouvel album',
+  'adminAlbums.new': '+ Ajouter un album',
   'adminAlbums.none': 'Aucun album. En créer un à partir d’un dossier du Drive.',
   'adminAlbums.syncStarted': (albums: string) => `Synchronisation lancée : ${albums}`,
   'adminAlbums.nothingToSync': 'Aucun album à synchroniser.',
@@ -583,7 +583,8 @@ export const fr: Messages = {
   'albumForm.storageEditHint':
     'En changer vide l’index de l’album et le réindexe : le même chemin ailleurs, ce sont d’autres fichiers.',
   'albumForm.folderExtracted': 'Identifiant retenu :',
-  'albumForm.folderHint': 'Coller l’URL du dossier : l’identifiant est le segment après /folders/.',
+  'albumForm.folderHint':
+    'Identifiant du dossier Google Drive (situé après /folders/ dans l’URL) ou URL complète.',
   'albumForm.recursive': 'Inclure les sous-dossiers',
   'albumForm.recursiveHint':
     'Décocher pour n’indexer que les fichiers placés directement dans le dossier.',
@@ -591,8 +592,7 @@ export const fr: Messages = {
   'albumForm.byDayHint':
     'Le bon découpage pour un voyage. Les notes de jour n’apparaissent que par jour. Un visiteur peut toujours revenir en arrière.',
   'albumForm.newestFirst': 'Ouvrir l’album les plus récentes d’abord',
-  'albumForm.newestFirstHint':
-    'Décoché, l’album se lit dans l’ordre où il a été vécu. Cocher pour une bibliothèque alimentée au fil de l’eau. Un visiteur peut inverser, et son navigateur s’en souvient.',
+  'albumForm.newestFirstHint': 'Afficher les photos les plus récentes en haut de l’album.',
   'albumForm.create': 'Créer l’album',
   'albumForm.created': (title: string) =>
     `Album « ${title} » créé. La synchronisation va le remplir.`,
@@ -600,9 +600,9 @@ export const fr: Messages = {
 
   /* ----------------------------------------------------- Administration: accounts */
 
-  'adminUsers.title': 'Comptes',
+  'adminUsers.title': 'Utilisateurs',
   'adminUsers.description': 'Qui peut se connecter, et à quels albums.',
-  'adminUsers.new': 'Nouveau compte',
+  'adminUsers.new': '+ Ajouter un utilisateur',
   'adminUsers.loading': 'Chargement des comptes',
   'adminUsers.loadFailed': 'Impossible de charger les comptes.',
   'adminUsers.none': 'Aucun compte. En créer un pour que quelqu’un puisse se connecter.',
@@ -620,11 +620,6 @@ export const fr: Messages = {
   'adminUsers.confirmSignIn': 'Ce compte ne pourra plus se connecter.',
   'adminUsers.confirmMedia': 'Les albums et les médias indexés ne sont pas touchés.',
 
-  'adminUsers.stateSharedKey': 'clé partagée',
-  'adminUsers.stateSharedKeyDetail': 'Un mot de passe, que plusieurs personnes peuvent connaître.',
-  'adminUsers.statePerson': 'personne',
-  'adminUsers.statePersonDetail': (displayName: string, email: string) =>
-    `Lié à ${displayName}, à l’adresse ${email}. La connexion se fait avec un code envoyé là.`,
   'adminUsers.stateInvited': 'invité',
   'adminUsers.stateInvitedDetail': (email: string, until: string) =>
     `Invitation envoyée à ${email}, valable jusqu’au ${until}.`,
@@ -693,7 +688,7 @@ export const fr: Messages = {
   'userForm.newPassword': 'Nouveau mot de passe',
   'userForm.passwordKeep': 'Laisser vide pour conserver le mot de passe actuel.',
   'userForm.passwordHint': (min: number) => `${min} caractères minimum.`,
-  'userForm.admin': 'Rôle administrateur',
+  'userForm.admin': 'Administrateur — gérer la galerie, les albums et les utilisateurs',
   'userForm.adminSelf':
     'Impossible de retirer son propre rôle : cette page a besoin d’un administrateur.',
   'userForm.adminHint':
@@ -720,9 +715,6 @@ export const fr: Messages = {
   'userForm.invite': 'Envoyer l’invitation',
   'userForm.invited': (username: string, email: string) =>
     `Compte « ${username} » créé et invité à ${email}.`,
-  'userForm.unbindPassword': 'Mot de passe, en remplacement de la personne',
-  'userForm.unbindHint': (email: string) =>
-    `Définir un mot de passe ici délie ${email} : le compte redevient une clé partagée, ses sessions se ferment, ses écrans appairés sont désappairés, et la connexion par code cesse de fonctionner. Laisser vide pour conserver le lien.`,
 
   'access.legend': 'Albums accessibles',
   'access.every': 'Tous les albums',
@@ -832,10 +824,10 @@ export const fr: Messages = {
 
   /* ------------------------------------------------------ Administration: stockage */
 
-  'storage.title': 'Stockage',
+  'storage.title': 'Stockages',
   'storage.description': 'Où vivent les albums. Une instance peut en lire plusieurs.',
   'storage.loadFailed': 'Impossible de charger les connexions de stockage.',
-  'storage.add': 'Ajouter un stockage',
+  'storage.add': '+ Ajouter un stockage',
   'storage.create': 'Ajouter',
   'storage.created': (label: string) => `Stockage « ${label} » ajouté.`,
   'storage.label': 'Nom',
@@ -903,7 +895,7 @@ export const fr: Messages = {
   'storage.disconnectFailed': 'Impossible de déconnecter ce stockage.',
   'storage.test': 'Tester',
   'storage.testing': 'Test en cours…',
-  'storage.testOk': (account: string) => `Il répond — ${account}.`,
+  'storage.testOk': (account: string) => `Connexion réussie — ${account}.`,
   'storage.testFailed': 'Ce stockage n’a pas répondu.',
   'storage.edit': 'Modifier',
   'storage.editOne': (label: string) => `Modifier le stockage ${label}`,
@@ -1046,4 +1038,122 @@ export const fr: Messages = {
   'diagnostic.answerNo': 'non',
   'diagnostic.layer': '@layer — plus nécessaire, aplati à la compilation',
   'diagnostic.measured': (property: string) => `${property} appliqué (mesuré)`,
+
+  /* --------------------------------------------------- Wave 4: Favorites, RBAC & Shares */
+
+  'favorites.filter': 'Favoris',
+  'favorites.filterTooltip': 'Afficher uniquement les favoris',
+  'favorites.filterActive': 'Favoris uniquement — Tout afficher',
+  'favorites.filterInactive': 'Afficher uniquement les favoris',
+  'favorites.add': 'Ajouter aux favoris',
+  'favorites.remove': 'Retirer des favoris',
+  'favorites.empty': 'Aucune photo favorite dans cette vue pour l’instant.',
+  'favorites.emptyHint': 'Marquer des photos en favori dans la grille ou la visionneuse.',
+  'favorites.showAll': 'Afficher toutes les photos',
+
+  'notifications.title': 'Notifications par email',
+  'notifications.tooltip': 'Notifications par email',
+  'notifications.sendingTo': (email: string) => `Notifications envoyées à ${email}`,
+  'notifications.verifyToSubscribe': 'Vérifier une adresse email pour s’abonner',
+  'notifications.verifyHint':
+    'Vérifier une adresse email pour recevoir des notifications lors de l’ajout de photos ou de commentaires.',
+  'notifications.newPhotos': 'Nouvelles photos ajoutées',
+  'notifications.newPhotosHint': 'Recevoir un email lors de l’ajout de nouvelles photos.',
+  'notifications.newComments': 'Nouveaux commentaires et réponses',
+  'notifications.newCommentsHint':
+    'Recevoir un email lors d’un nouveau commentaire ou d’une réponse.',
+  'notifications.saved': 'Préférences de notification mises à jour.',
+  'notifications.identifyPrompt':
+    'Vérifier une adresse email pour s’abonner aux nouvelles photos et aux commentaires.',
+  'notifications.subscribe': 'S’abonner aux nouveautés',
+
+  'prefs.notifyPhotos': 'Nouvelles photos ajoutées',
+  'prefs.notifyPhotosHint': 'Recevoir un email lors de l’ajout de photos aux albums suivis.',
+  'prefs.notifyComments': 'Nouveaux commentaires et réponses',
+  'prefs.notifyCommentsHint': 'Recevoir un email lorsqu’un commentaire ou une réponse est publié.',
+
+  'album.actions': 'Actions de l’album',
+  'album.selectPhotos': 'Sélectionner des photos',
+  'album.chooseCover': 'Choisir la photo de couverture',
+  'album.resetCover': 'Rétablir la couverture automatique',
+
+  'viewer.favorite': 'Favori (s)',
+  'viewer.unfavorite': 'Retirer des favoris (s)',
+  'viewer.addToShare': 'Ajouter à un partage existant',
+  'viewer.editCaption': 'Modifier la description',
+
+  'comments.commentingAs': (name: string) => `Commenter en tant que ${name}`,
+  'comments.readOnlyRole': 'Ce compte n’a pas la permission de publier des commentaires.',
+
+  'share.lockedTitle': 'S’identifier pour accéder à ce partage',
+  'share.lockedSubtitle':
+    'Le propriétaire de cette galerie demande de vérifier une adresse email avant de consulter ces photos.',
+  'share.lockedHint':
+    'Le propriétaire de cette galerie demande de vérifier une adresse email avant de consulter ces photos.',
+  'share.lockedHaveAccount': 'Déjà un compte ?',
+  'share.lockedHasAccount': 'Déjà un compte ?',
+  'share.lockedSignIn': 'Se connecter',
+
+  'shares.addNew': '+ Nouveau partage',
+  'shares.createTab': 'Créer un lien',
+  'shares.modeCreateNew': 'Créer un nouveau lien',
+  'shares.modeAddToExisting': 'Ajouter à un partage existant',
+  'shares.targetShare': 'Lien de partage existant',
+  'shares.addToShare': 'Ajouter au partage',
+  'shares.addedToShare': 'Ajouté au lien de partage.',
+  'shares.allowComments': 'Autoriser les commentaires',
+  'shares.allowCommentsHint':
+    'Les visiteurs disposant de ce lien peuvent lire et écrire des commentaires.',
+  'shares.requireIdentity': 'Identification par email requise',
+  'shares.requireIdentityHint':
+    'Les visiteurs doivent vérifier leur adresse email avant d’accéder aux photos.',
+  'shares.preview': 'Aperçu',
+  'shares.pause': 'Suspendre',
+  'shares.paused': 'En pause',
+  'shares.reactivate': 'Réactiver',
+  'shares.includedAlbums': 'Albums inclus',
+  'shares.addAlbum': '+ Ajouter un album',
+  'shares.individualPhotos': 'Photos individuelles',
+  'shares.addPhotos': '+ Ajouter des photos',
+  'shares.removeAlbum': (title?: string) =>
+    title ? `Retirer l’album ${title} du partage` : 'Retirer l’album du partage',
+  'shares.removePhoto': 'Retirer la photo du partage',
+  'shares.summaryStats': (albums: number, photos: number, visits: number, subscribers: number) =>
+    `${albums} album${albums > 1 ? 's' : ''} · ${photos} photo${photos > 1 ? 's' : ''} · ${visits} visite${visits > 1 ? 's' : ''} · ${subscribers} abonné${subscribers > 1 ? 's' : ''}`,
+  'shares.filterFavoritesOnly': 'Favoris uniquement',
+
+  'adminUsers.addUser': '+ Ajouter un utilisateur',
+  'adminUsers.editUserTitle': (username: string) => `Modifier ${username}`,
+  'adminUsers.createUserTitle': 'Ajouter un utilisateur',
+  'adminUsers.displayName': 'Nom affiché',
+  'adminUsers.displayNamePlaceholder': 'ex. Marie Dupont',
+  'adminUsers.rolesLegend': 'Rôles et permissions',
+  'adminUsers.roleAdmin': 'Admin',
+  'adminUsers.roleViewer': 'Lecteur',
+  'adminUsers.roleVisitor': 'Visiteur',
+  'adminUsers.roleCommenter': 'Commentateur',
+  'adminUsers.roleAdminHint': 'Administration complète et gestion de la bibliothèque.',
+  'adminUsers.roleViewerHint': 'Peut parcourir les albums et partages attribués.',
+  'adminUsers.roleCommenterHint': 'Peut publier des commentaires et marquer des favoris.',
+  'adminUsers.colUser': 'Utilisateur',
+  'adminUsers.colRoles': 'Rôles',
+  'adminUsers.colCredentials': 'Accès',
+  'adminUsers.colScope': 'Périmètre',
+  'adminUsers.colNotifications': 'Notifications',
+  'adminUsers.colActions': 'Actions',
+  'adminUsers.credPassword': 'Mot de passe',
+  'adminUsers.credEmail': 'Code email',
+  'adminUsers.credBoth': 'Mot de passe + Email',
+  'adminUsers.credInvited': 'Invité',
+  'adminUsers.credNone': 'Aucun accès',
+  'adminUsers.notifyPhotos': 'Photos',
+  'adminUsers.notifyComments': 'Commentaires',
+  'adminUsers.notifyPhotosLabel': 'Photos',
+  'adminUsers.notifyCommentsLabel': 'Comm.',
+  'adminUsers.sharesScope': (count: number) => `${count} partage${count > 1 ? 's' : ''}`,
+  'adminUsers.sendInviteCheckbox': 'Envoyer un email d’invitation maintenant',
+  'adminUsers.sendInviteHint': 'Envoie un lien de connexion valable 7 jours à cette adresse.',
+  'adminUsers.shareAccessLegend': 'Liens de partage accessibles',
+  'adminUsers.shareAccessHint':
+    'Partages optionnels également visibles dans la galerie de ce compte.',
 };

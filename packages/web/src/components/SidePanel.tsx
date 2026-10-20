@@ -39,22 +39,20 @@ export function isPanelTab(value: string | null): value is PanelTab {
 export function SidePanel({
   scope,
   mediaId,
-  mediaName,
   detail,
   day,
   tab,
   onTabChange,
-  onClose,
 }: {
   scope: Scope;
   mediaId: string;
-  mediaName: string;
+  mediaName?: string;
   detail: ShareDetail | undefined;
   /** Photo day, when it carries a note or place. */
   day: AlbumDay | undefined;
   tab: PanelTab;
   onTabChange: (tab: PanelTab) => void;
-  onClose: () => void;
+  onClose?: () => void;
 }): ReactElement {
   const t = useT();
 
@@ -73,31 +71,6 @@ export function SidePanel({
       className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-ink-700 bg-ink-850/95 backdrop-blur-sm md:relative md:z-0 md:w-80 md:shrink-0 md:bg-ink-850 md:backdrop-blur-none lg:w-96"
       aria-label={t('panel.label')}
     >
-      <header className="flex items-start justify-between gap-4 border-b border-ink-800 px-5 py-4">
-        <h3 className="min-w-0 text-sm font-medium break-words text-ink-100">{mediaName}</h3>
-        <button
-          type="button"
-          onClick={onClose}
-          // `-my-1 -mr-1` removes the padding that enlarges the click target from
-          // the flow without removing it from the target itself: the cross then
-          // aligns with the filename baseline and the panel's right margin.
-          // Without this, its 4 px placed it below the title and to the right of
-          // the content column — two offsets that are hard to name but visible.
-          className="-my-1 -mr-1 shrink-0 rounded p-1 text-ink-400 transition-colors hover:text-ink-100"
-          aria-label={t('panel.close')}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="size-5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M18 6 6 18M6 6l12 12" />
-          </svg>
-        </button>
-      </header>
-
       <PanelBody
         scope={scope}
         mediaId={mediaId}
@@ -105,6 +78,7 @@ export function SidePanel({
         day={day}
         tab={tab}
         onTabChange={onTabChange}
+        tabs={false}
       />
     </aside>
   );

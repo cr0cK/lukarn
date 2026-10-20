@@ -10,7 +10,7 @@ import {
 } from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useId, useState } from 'react';
 import { errorText } from '../../api/client';
-import { useCreateUser, useUpdateUser } from '../../api/hooks';
+import { useAdminShares, useCreateUser, useUpdateUser } from '../../api/hooks';
 import { validateEmail, validatePassword, validateUsername } from '../../lib/adminForm';
 import { useT } from '../../lib/i18n';
 import { AlbumAccessPicker } from './AlbumAccessPicker';
@@ -20,6 +20,7 @@ import {
   Choice,
   FormError,
   SelectField,
+  Switch,
   TextField,
   localeOptions,
   type Notify,
@@ -50,12 +51,12 @@ export function UserForm({
   const fieldId = useId();
   const create = useCreateUser();
   const update = useUpdateUser();
+  const { data: sharesData } = useAdminShares();
+  const activeShares = (sharesData ?? []).filter((s) => s.revokedAt === null);
   const editing = user !== undefined;
-  // A bound account is refused an ordinary password change by the server, and the
-  // single way through — unbind and set in one act — is what the field below offers.
-  const bound = user?.identity ?? null;
 
   const [username, setUsername] = useState(user?.username ?? '');
+  const [displayName, setDisplayName] = useState(user?.displayName ?? '');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
   // Whoever invites usually speaks to the person they are inviting in the language
@@ -66,7 +67,12 @@ export function UserForm({
   // a choice made up front is a rule the person reads rather than a refusal they meet.
   const [byEmail, setByEmail] = useState(false);
   const [admin, setAdmin] = useState(user?.admin ?? false);
+  const [roleViewer, setRoleViewer] = useState(user?.roleViewer ?? true);
+  const [roleCommenter, setRoleCommenter] = useState(user?.roleCommenter ?? true);
   const [userAlbums, setUserAlbums] = useState<string[]>(user?.albums ?? []);
+  const [userShares, setUserShares] = useState<string[]>(user?.shareTokens ?? []);
+  const [notifyPhotos, setNotifyPhotos] = useState(user?.notifyPhotos ?? true);
+  const [notifyComments, setNotifyComments] = useState(user?.notifyComments ?? true);
   const [touched, setTouched] = useState(false);
 
   const inviting = !editing && byEmail;
@@ -76,15 +82,30 @@ export function UserForm({
   const pending = create.isPending || update.isPending;
   const serverError = create.error ?? update.error;
 
+  const toggleShare = (shareToken: string, checked: boolean): void => {
+    setUserShares((prev) =>
+      checked ? [...prev, shareToken] : prev.filter((token) => token !== shareToken),
+    );
+  };
+
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     setTouched(true);
     if (usernameError || passwordError || emailError) return;
 
     if (!editing) {
+      const common = {
+        username: username.trim(),
+        ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+        admin,
+        roleViewer,
+        roleCommenter,
+        albums: userAlbums,
+        ...(userShares.length > 0 ? { shareTokens: userShares } : {}),
+      };
       const body: CreateUserRequest = inviting
-        ? { username: username.trim(), email: email.trim(), locale, admin, albums: userAlbums }
-        : { username: username.trim(), password, admin, albums: userAlbums };
+        ? { ...common, email: email.trim(), locale }
+        : { ...common, password };
 
       create.mutate(body, {
         onSuccess: (created) => {
@@ -102,20 +123,30 @@ export function UserForm({
 
     // An absent field preserves its value: sending only changes avoids overwriting
     // an edit made elsewhere in the meantime.
-    const fields: { admin?: boolean; albums?: string[] } = {};
-    if (admin !== user.admin) fields.admin = admin;
+    const fields: UpdateUserRequest = {};
+    if (displayName.trim() !== (user.displayName ?? '')) {
+      fields.displayName = displayName.trim();
+    }
+    if (admin !== user.admin) {
+      fields.admin = admin;
+    }
+    if (roleViewer !== (user.roleViewer ?? true)) {
+      fields.roleViewer = roleViewer;
+    }
+    if (roleCommenter !== (user.roleCommenter ?? true)) {
+      fields.roleCommenter = roleCommenter;
+    }
     if (!sameAlbums(userAlbums, user.albums)) fields.albums = userAlbums;
+    if (!sameAlbums(userShares, user.shareTokens ?? [])) fields.shareTokens = userShares;
+    if (notifyPhotos !== (user.notifyPhotos ?? true)) fields.notifyPhotos = notifyPhotos;
+    if (notifyComments !== (user.notifyComments ?? true)) fields.notifyComments = notifyComments;
 
     if (!password && Object.keys(fields).length === 0) {
       onClose();
       return;
     }
 
-    const body: UpdateUserRequest = !password
-      ? fields
-      : bound
-        ? { ...fields, password, unbind: true }
-        : { ...fields, password };
+    const body: UpdateUserRequest = !password ? fields : { ...fields, password };
 
     update.mutate(
       { username: user.username, body },
@@ -171,16 +202,20 @@ export function UserForm({
           hint={t(editing ? 'userForm.usernameFixed' : 'userForm.usernameHint')}
         />
 
+        <TextField
+          id={`${fieldId}-display-name`}
+          label={t('adminUsers.memberDisplayName')}
+          value={displayName}
+          onChange={setDisplayName}
+          autoComplete="off"
+          disabled={pending}
+          placeholder={t('adminUsers.memberDisplayNamePlaceholder')}
+        />
+
         {!inviting && (
           <TextField
             id={`${fieldId}-password`}
-            label={t(
-              bound
-                ? 'userForm.unbindPassword'
-                : editing
-                  ? 'userForm.newPassword'
-                  : 'userForm.password',
-            )}
+            label={t(editing ? 'userForm.newPassword' : 'userForm.password')}
             type="password"
             value={password}
             onChange={setPassword}
@@ -188,11 +223,7 @@ export function UserForm({
             disabled={pending}
             error={touched ? passwordError : null}
             hint={
-              bound
-                ? t('userForm.unbindHint', bound.email)
-                : editing
-                  ? t('userForm.passwordKeep')
-                  : t('userForm.passwordHint', PASSWORD_MIN_LENGTH)
+              editing ? t('userForm.passwordKeep') : t('userForm.passwordHint', PASSWORD_MIN_LENGTH)
             }
           />
         )}
@@ -230,14 +261,33 @@ export function UserForm({
         )}
       </div>
 
-      <Checkbox
-        id={`${fieldId}-admin`}
-        label={t('userForm.admin')}
-        checked={admin}
-        onChange={setAdmin}
-        disabled={pending || isSelf}
-        hint={t(isSelf ? 'userForm.adminSelf' : 'userForm.adminHint')}
-      />
+      <div className="space-y-2">
+        <p className="text-sm text-ink-300">{t('adminUsers.colRoles')}</p>
+        <div className="space-y-2">
+          <Checkbox
+            id={`${fieldId}-admin`}
+            label={t('userForm.admin')}
+            checked={admin}
+            onChange={setAdmin}
+            disabled={pending || isSelf}
+            hint={t(isSelf ? 'userForm.adminSelf' : 'userForm.adminHint')}
+          />
+          <Checkbox
+            id={`${fieldId}-role-visitor`}
+            label={t('adminUsers.roleVisitor')}
+            checked={roleViewer}
+            onChange={setRoleViewer}
+            disabled={pending}
+          />
+          <Checkbox
+            id={`${fieldId}-role-commenter`}
+            label={t('adminUsers.roleCommenter')}
+            checked={roleCommenter}
+            onChange={setRoleCommenter}
+            disabled={pending}
+          />
+        </div>
+      </div>
 
       <AlbumAccessPicker
         albums={albums}
@@ -245,6 +295,58 @@ export function UserForm({
         onChange={setUserAlbums}
         disabled={pending}
       />
+
+      {activeShares.length > 0 && (
+        <div className="space-y-2">
+          <span className="text-sm text-ink-300">{t('shares.title')}</span>
+          <div className="flex flex-wrap gap-2">
+            {activeShares.map((sh) => {
+              const checked = userShares.includes(sh.token);
+              const label = sh.label || sh.albumTitle || sh.mediaName || sh.token.slice(0, 12);
+              return (
+                <label
+                  key={sh.token}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors ${
+                    checked
+                      ? 'border-accent/40 bg-accent/10 text-ink-100'
+                      : 'border-ink-800 bg-ink-900/50 text-ink-400 hover:text-ink-200'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={pending}
+                    onChange={(e) => toggleShare(sh.token, e.target.checked)}
+                    className="rounded border-ink-600 text-accent focus:ring-accent"
+                  />
+                  <span>{label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {editing && (
+        <div className="space-y-2 rounded-xl border border-ink-800 bg-ink-850/40 p-3">
+          <Switch
+            id={`${fieldId}-notify-photos`}
+            checked={notifyPhotos}
+            onChange={setNotifyPhotos}
+            disabled={pending}
+            label={t('prefs.notifyPhotos')}
+            hint={t('prefs.notifyPhotosHint')}
+          />
+          <Switch
+            id={`${fieldId}-notify-comments`}
+            checked={notifyComments}
+            onChange={setNotifyComments}
+            disabled={pending}
+            label={t('prefs.notifyComments')}
+            hint={t('prefs.notifyCommentsHint')}
+          />
+        </div>
+      )}
 
       <FormError message={serverError ? errorText(serverError, t('common.saveFailed')) : null} />
 

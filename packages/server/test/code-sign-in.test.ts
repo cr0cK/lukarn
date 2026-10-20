@@ -155,19 +155,22 @@ describe('creating an account by address', () => {
     assert.doesNotMatch(message.text, /\d{6}\S*token|token=/i);
   });
 
-  it('refuses both a password and an address, and refuses neither', async () => {
-    for (const payload of [
-      { username: 'deux', password: PASSWORD, email: 'deux@example.com' },
-      { username: 'aucun' },
-    ]) {
-      const response = await server.inject({
-        method: 'POST',
-        url: '/api/admin/users',
-        headers: { cookie: adminCookie },
-        payload,
-      });
-      assert.equal(response.statusCode, 400, response.body);
-    }
+  it('accepts both a password and an address, and refuses neither', async () => {
+    const both = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: { cookie: adminCookie },
+      payload: { username: 'deux', password: PASSWORD, email: 'deux@example.com' },
+    });
+    assert.equal(both.statusCode, 201, both.body);
+
+    const neither = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: { cookie: adminCookie },
+      payload: { username: 'aucun' },
+    });
+    assert.equal(neither.statusCode, 400, neither.body);
   });
 
   it('refuses an address another account is already bound to, and names it', async () => {
@@ -383,7 +386,7 @@ describe('no administrator can assert a binding', () => {
     assert.equal(context.commenters.byId(identity)?.displayName, 'Aïeule');
   });
 
-  it('leaves every session of an invited account signing as nobody', async () => {
+  it('leaves every session of an invited account unbound from the invited address', async () => {
     verifiedIdentity('tante@example.com', 'Tante');
     await createByPassword('maison');
     const phone = await login('maison');
@@ -397,14 +400,17 @@ describe('no administrator can assert a binding', () => {
     });
     assert.equal(invited.statusCode, 200, invited.body);
 
-    // Binding here would hand every device already signed in with the shared key
-    // that person's name, without a code ever being entered.
+    // Binding here would hand every device already signed in with the password
+    // that person's verified address, without a code ever being entered.
     for (const cookie of [phone, laptop]) {
       const me = await server.inject({ method: 'GET', url: '/api/auth/me', headers: { cookie } });
-      assert.equal(me.json<SessionUser>().identity, null, 'a session started signing as somebody');
-      assert.equal(me.json<SessionUser>().identityBound, false);
+      assert.equal(
+        me.json<SessionUser>().identity?.email,
+        null,
+        'a session started signing with the invited address',
+      );
     }
-    assert.equal(context.config.user('maison')!.commenterId, null);
+    assert.equal(context.config.userForEmail('tante@example.com'), undefined);
   });
 
   it('writes no binding through any account route', async () => {
@@ -522,7 +528,11 @@ describe('taking up an invitation', () => {
 
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json<SessionUser>().username, 'filleule');
-    assert.equal(context.config.user('alexis')!.commenterId, null, 'the administrator was bound');
+    assert.equal(
+      context.commenters.byId(context.config.user('alexis')!.commenterId!)?.email,
+      null,
+      'the administrator was bound',
+    );
   });
 
   it('refuses the code a second time', async () => {
@@ -597,18 +607,19 @@ describe('an account that is a person', () => {
     }
   });
 
-  it('refuses a password, and accepts the unbind that comes with one', async () => {
+  it('accepts a password alongside a bound address, and accepts the unbind that comes with one', async () => {
     await createByEmail('rendue', 'rendue@example.com');
     const cookie = await takeUpInvitation('rendue@example.com', 'Rendue');
 
-    const refused = await server.inject({
+    const withPassword = await server.inject({
       method: 'PATCH',
       url: '/api/admin/users/rendue',
       headers: { cookie: adminCookie },
       payload: { password: PASSWORD },
     });
-    assert.equal(refused.statusCode, 409, refused.body);
-    assert.equal(refused.json<{ error: string }>().error, 'password_on_bound_account');
+    assert.equal(withPassword.statusCode, 200, withPassword.body);
+    assert.equal(withPassword.json<AdminUser>().hasPassword, true);
+    assert.equal(withPassword.json<AdminUser>().identity?.email, 'rendue@example.com');
 
     const unbound = await server.inject({
       method: 'PATCH',
@@ -798,9 +809,9 @@ describe('a code cannot be spent on the flow it was not sent for', () => {
     assert.equal(asked.statusCode, 202, asked.body);
     const code = await lastCode();
 
-    // Somebody behind a shared key submits it to the flow that attaches an identity
+    // Somebody behind a share link submits it to the flow that attaches an identity
     // to a session. It would otherwise sign their comments with that person's name.
-    const cookie = await login('alexis');
+    const cookie = await shareCookie();
     const response = await server.inject({
       method: 'POST',
       url: '/api/identity/verify',
@@ -819,7 +830,7 @@ describe('a code cannot be spent on the flow it was not sent for', () => {
   });
 
   it('does not let the sign-in route spend an identity code', async () => {
-    const cookie = await login('alexis');
+    const cookie = await shareCookie();
     sent.length = 0;
     const asked = await server.inject({
       method: 'POST',
@@ -848,15 +859,21 @@ describe('a code cannot be spent on the flow it was not sent for', () => {
   });
 });
 
-/**
- * The other half of the release: an account nobody bound is the shared access key of
- * 1.2, and every sentence written about it then still holds.
- */
-describe('an unbound account', () => {
-  it('signs in with its password and declares an identity per device', async () => {
+describe('a password account and a share visitor', () => {
+  it('signs in a password account with its unified identity, while a share visitor declares an identity per device', async () => {
     await createByPassword('salon');
-    const phone = await login('salon');
+    const accountSession = await login('salon');
 
+    const accountMe = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: accountSession },
+    });
+    assert.equal(accountMe.json<SessionUser>().identity?.displayName, 'salon');
+    assert.equal(accountMe.json<SessionUser>().identity?.email, null);
+    assert.equal(accountMe.json<SessionUser>().identityBound, false);
+
+    const phone = await shareCookie();
     const before = await server.inject({
       method: 'GET',
       url: '/api/auth/me',
@@ -881,14 +898,9 @@ describe('an unbound account', () => {
     });
     assert.equal(verified.statusCode, 200, verified.body);
     assert.equal(verified.json<SessionUser>().identity?.displayName, 'Salon');
-    // The identity belongs to the session, never to the key: that is the whole of
-    // D38, and the column stays empty.
     assert.equal(verified.json<SessionUser>().identityBound, false);
-    assert.equal(context.config.user('salon')!.commenterId, null);
 
-    // Another device signing in with the same password is nobody until it says who
-    // it is, and the first device may still forget.
-    const television = await login('salon');
+    const television = await shareCookie();
     const other = await server.inject({
       method: 'GET',
       url: '/api/auth/me',
@@ -905,6 +917,22 @@ describe('an unbound account', () => {
     assert.equal(forgotten.json<SessionUser>().identity, null);
   });
 });
+
+/** Opens a share session so anonymous session-level `/api/identity/*` routes can be exercised. */
+async function shareCookie(): Promise<string> {
+  const share = context.shares.create({
+    albumId: context.config.albums()[0]?.id ?? 'famille',
+    createdBy: 'alexis',
+  });
+  const response = await server.inject({
+    method: 'GET',
+    url: `/api/share/${share.token}`,
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const cookie = response.cookies.find((entry) => entry.name === 'lukarn_session');
+  assert.ok(cookie, 'no session cookie from share');
+  return `lukarn_session=${cookie.value}`;
+}
 
 /** Attempts recorded against this address's invitation, read straight from the table. */
 function attemptsOn(email: string): number {
@@ -960,10 +988,16 @@ function verifiedIdentity(email: string, displayName: string): number {
   return identity.id;
 }
 
-/** Accounts carrying a binding, read past the repository that maintains them. */
+/** Accounts carrying an email-bound identity, read past the repository that maintains them. */
 function boundAccounts(): string[] {
   return context.db
-    .prepare('SELECT username FROM users WHERE commenter_id IS NOT NULL ORDER BY username')
+    .prepare(
+      `SELECT u.username
+       FROM users u
+       JOIN commenters c ON c.id = u.commenter_id
+       WHERE c.email IS NOT NULL
+       ORDER BY u.username`,
+    )
     .all()
     .map((row) => (row as { username: string }).username);
 }

@@ -39,6 +39,26 @@ const createCommentSchema = z.object({
   parentId: z.number().int().positive().nullable().optional(),
 });
 
+const feedQuerySchema = z.object({
+  cursor: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  mediaId: z.string().min(1).max(128).optional(),
+});
+
+const updateSubscriptionSchema = z
+  .object({
+    notify: z.boolean().optional(),
+    notifyPhotos: z.boolean().optional(),
+    notifyComments: z.boolean().optional(),
+  })
+  .refine(
+    (data) =>
+      data.notify !== undefined ||
+      data.notifyPhotos !== undefined ||
+      data.notifyComments !== undefined,
+    { message: 'At least one notification preference must be provided' },
+  );
+
 /**
  * What a share link opens, and everything reachable through one.
  *
@@ -108,6 +128,20 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     return request.share?.token === link.token ? request.sessionId : null;
   }
 
+  async function ensureUnlocked(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    link: ShareLink,
+  ): Promise<boolean> {
+    if (link.requireIdentity && request.commenterId === null && request.user?.username == null) {
+      await reply
+        .code(403)
+        .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      return false;
+    }
+    return true;
+  }
+
   return async (app) => {
     app.setErrorHandler(handleMediaError);
 
@@ -119,7 +153,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
       const link = await resolve(request, reply);
       if (!link) return reply;
 
-      const opened = view(context, link);
+      const opened = view(context, link, request.commenterId);
       // The photograph left the index — a renamed folder, an interrupted sync. The
       // link is live and covers nothing, and saying so is the point: answering 404
       // here would tell its reader they got the address wrong.
@@ -127,33 +161,19 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(410).send({ error: 'share_gone', message: request.t('error.shareGone') });
       }
 
-      /**
-       * **An account that can already see this keeps its account.**
-       *
-       * There is one session cookie per browser, so minting here would sign the
-       * owner out of their own instance for having checked the link they just
-       * issued — and the cached `/api/auth/me` beside it would still say otherwise.
-       * Replacing a credential to show somebody what it already opens is a side
-       * effect nobody asked for.
-       *
-       * Their visit is not counted either. What the openings answer is "did it
-       * reach the person I sent it to" (D260825c), and the issuer testing their own
-       * link is exactly the reading that would make it lie.
-       *
-       * **`canSee` is asked about the account, never about the link.** It decides
-       * one thing here: whether this session already serves the content. An account
-       * that cannot — somebody sent a link to an album nobody gave them — is a
-       * recipient like any other and gets a link session, because the `/media`
-       * prefix would otherwise refuse every photograph on the page it just drew.
-       */
       const username = request.user?.username;
+      const linkAlbumIds =
+        link.mediaId === null
+          ? context.shares.findAlbumIds(link.token)
+          : link.albumId
+            ? [link.albumId]
+            : [];
+      const itemAlbumIds = context.shares.findItemAlbumIds(link.token);
+      const allLinkAlbums = [...new Set([...linkAlbumIds, ...itemAlbumIds])];
       const account =
         username != null &&
-        (link.albumId !== null
-          ? context.canSee(username, link.albumId)
-          : context.shares
-              .findItemAlbumIds(link.token)
-              .every((id) => context.canSee(username, id)));
+        allLinkAlbums.length > 0 &&
+        allLinkAlbums.every((id) => context.canSee(username, id));
 
       let sessionId = sessionFor(request, link);
       if (sessionId === null && !account) {
@@ -161,41 +181,42 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           link.token,
           classifyDevice(request.headers['user-agent']),
         );
+        if (request.commenterId !== null) {
+          context.sessions.attachCommenter(session.id, request.commenterId);
+        }
         sessionId = session.id;
         void reply.setCookie(
           SESSION_COOKIE,
           session.id,
           sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
         );
-        // A session that has just replaced another carries no identity yet: the
-        // commenter below belongs to the credential this request arrived with, not
-        // to the one it leaves with.
       }
 
       if (sessionId !== null && !account) {
-        // After the session exists, so the first opening is counted rather than
-        // lost, and once per session and hour, which the primary key enforces
-        // (D260825c).
         context.shares.recordOpening(link.token, sessionId);
+      }
 
-        // Opening an album subscribes a verified visitor to its updates, exactly as
-        // opening it with an account does (D41). A shared photograph subscribes
-        // nobody: no album was opened, which is D41's own condition rather than an
-        // exception to it (D260825e).
-        //
-        // `sessionId === request.sessionId` is what keeps it honest: on a request
-        // that just minted a session, `request.commenterId` still belongs to the
-        // link the visitor arrived on, and subscribing that person to this album
-        // would credit an interest they never expressed here. Verifying an address
-        // reopens the link, which is when this fires for them.
-        if (
-          link.mediaId === null &&
-          link.albumId !== null &&
-          sessionId === request.sessionId &&
-          request.commenterId !== null
-        ) {
-          context.subscriptions.subscribe(request.commenterId, link.albumId);
+      if (request.commenterId !== null) {
+        context.shares.recordSubscriber(request.commenterId, link.token);
+        if (link.mediaId === null) {
+          for (const albumId of linkAlbumIds) {
+            context.subscriptions.subscribe(request.commenterId, albumId);
+          }
         }
+      }
+
+      if (link.requireIdentity && request.commenterId === null && !account) {
+        const locked: ShareView = {
+          kind: 'locked',
+          label:
+            link.label ??
+            (link.mediaId === null && linkAlbumIds[0]
+              ? (context.findAlbum(linkAlbumIds[0])?.title ?? null)
+              : null),
+          requireIdentity: true,
+          allowComments: link.allowComments,
+        };
+        return reply.send(locked);
       }
 
       return reply.send(opened);
@@ -205,7 +226,13 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/items', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
-      if (link.albumId === null || link.mediaId !== null) {
+      if (link.requireIdentity && request.commenterId === null && request.user?.username == null) {
+        return reply
+          .code(403)
+          .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
+      const albumIds = context.shares.findAlbumIds(link.token);
+      if (link.mediaId !== null || albumIds.length === 0) {
         return reply.code(404).send({ error: 'not_found', message: request.t('error.notFound') });
       }
 
@@ -216,8 +243,8 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'bad_request', message: request.t('error.invalidParameters') });
       }
 
-      const page = context.media.listItems(
-        link.albumId,
+      const page = context.media.listItemsForAlbums(
+        albumIds,
         query.data.limit,
         query.data.cursor ?? null,
         query.data.order,
@@ -233,6 +260,11 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/items/:mediaId', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (link.requireIdentity && request.commenterId === null && request.user?.username == null) {
+        return reply
+          .code(403)
+          .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
 
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
@@ -241,7 +273,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
-      const albumId = link.albumId ?? context.shares.findItemAlbumId(link.token, mediaId);
+      const albumId = albumIdForMedia(context, link, mediaId);
       if (!albumId) {
         return reply
           .code(404)
@@ -273,6 +305,11 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/comments/:mediaId', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (link.requireIdentity && request.commenterId === null && request.user?.username == null) {
+        return reply
+          .code(403)
+          .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
 
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
@@ -281,7 +318,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
-      const albumId = link.albumId ?? context.shares.findItemAlbumId(link.token, mediaId);
+      const albumId = albumIdForMedia(context, link, mediaId);
       if (!albumId) {
         return reply
           .code(404)
@@ -313,6 +350,13 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
       }
 
+      if (!link.allowComments) {
+        return reply.code(403).send({
+          error: 'comments_disabled',
+          message: request.t('error.commentsDisabledOnShare'),
+        });
+      }
+
       // The same 403 the album path returns, and not a 404 for the same reason: it
       // concerns the state of the requester's own session, not another person's
       // resource whose existence has to stay hidden.
@@ -323,7 +367,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
           .send({ error: 'identity_required', message: request.t('error.identityRequired') });
       }
 
-      const albumId = link.albumId ?? context.shares.findItemAlbumId(link.token, mediaId);
+      const albumId = albumIdForMedia(context, link, mediaId);
       if (!albumId) {
         return reply
           .code(404)
@@ -380,6 +424,106 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
+     * Recent comments activity feed across everything covered by this share link.
+     *
+     * Respects D260825e privacy invariants: origin album identifiers and titles are
+     * suppressed for single-photograph and selection shares.
+     */
+    app.get('/:token/comments', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+      if (link.requireIdentity && request.commenterId === null && request.user?.username == null) {
+        return reply
+          .code(403)
+          .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
+
+      const query = feedQuerySchema.safeParse(request.query);
+      if (!query.success) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidParameters') });
+      }
+
+      if (query.data.mediaId !== undefined && !context.shares.covers(link, query.data.mediaId)) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      }
+
+      const page = context.comments.listFeedForShare({
+        token: link.token,
+        albumId: link.albumId,
+        mediaId: query.data.mediaId ?? link.mediaId,
+        viewer: {
+          commenterId: request.commenterId,
+          admin: Boolean(request.user?.admin),
+        },
+        cursor: query.data.cursor ?? null,
+        limit: query.data.limit,
+      });
+      return reply.send(page);
+    });
+
+    /**
+     * Updates granular notification preferences (`notifyPhotos`, `notifyComments`)
+     * for the identified subscriber of this share link.
+     */
+    app.patch('/:token/subscription', async (request, reply) => {
+      const link = await resolve(request, reply);
+      if (!link) return reply;
+
+      const commenterId = request.commenterId;
+      if (commenterId === null) {
+        return reply
+          .code(403)
+          .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
+
+      const parsed = updateSubscriptionSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidParameters') });
+      }
+
+      const notifyPhotos = parsed.data.notifyPhotos ?? parsed.data.notify;
+      const notifyComments = parsed.data.notifyComments ?? parsed.data.notify;
+
+      context.shares.recordSubscriber(commenterId, link.token);
+      context.shares.setSubscriberPrefs(commenterId, link.token, {
+        notifyPhotos,
+        notifyComments,
+      });
+      context.commenters.setNotifyPreferences(commenterId, {
+        notifyPhotos,
+        notifyComments,
+      });
+
+      if (link.mediaId === null) {
+        for (const albumId of context.shares.findAlbumIds(link.token)) {
+          context.subscriptions.setPreferences(commenterId, albumId, {
+            notifyPhotos,
+            notifyComments,
+          });
+        }
+      }
+
+      const subRow = context.db
+        .prepare(
+          'SELECT notify_photos, notify_comments FROM commenter_shares WHERE commenter_id = ? AND token = ?',
+        )
+        .get(commenterId, link.token) as
+        { notify_photos: number; notify_comments: number } | undefined;
+
+      return reply.send({
+        ok: true,
+        notifyPhotos: subRow ? subRow.notify_photos === 1 : true,
+        notifyComments: subRow ? subRow.notify_comments === 1 : true,
+      });
+    });
+
+    /**
      * Media bytes scoped under this share token.
      *
      * Scoping media under the token in the URL ensures that concurrent visits to
@@ -389,6 +533,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/media/:mediaId/thumb', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (!(await ensureUnlocked(request, reply, link))) return reply;
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
         return reply
@@ -408,6 +553,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/media/:mediaId/full', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (!(await ensureUnlocked(request, reply, link))) return reply;
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
         return reply
@@ -420,6 +566,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/media/:mediaId/hd', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (!(await ensureUnlocked(request, reply, link))) return reply;
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
         return reply
@@ -432,6 +579,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/media/:mediaId/playable', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (!(await ensureUnlocked(request, reply, link))) return reply;
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
         return reply
@@ -444,6 +592,7 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
     app.get('/:token/media/:mediaId/original', async (request, reply) => {
       const link = await resolve(request, reply);
       if (!link) return reply;
+      if (!(await ensureUnlocked(request, reply, link))) return reply;
       const { mediaId } = request.params as { mediaId: string };
       if (!context.shares.covers(link, mediaId)) {
         return reply
@@ -456,37 +605,83 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
   };
 }
 
+function albumIdForMedia(context: AppContext, link: ShareLink, mediaId: string): string | null {
+  if (link.albumId && context.media.getDetail(link.albumId, mediaId)) {
+    return link.albumId;
+  }
+  const itemAlbumId = context.shares.findItemAlbumId(link.token, mediaId);
+  if (itemAlbumId) return itemAlbumId;
+  for (const albumId of context.shares.findAlbumIds(link.token)) {
+    if (context.media.getDetail(albumId, mediaId)) return albumId;
+  }
+  return link.albumId;
+}
+
 /**
  * What the recipient receives, by kind, or `null` when the link covers a photograph
  * the index no longer holds. The album's identifier is in neither branch.
  */
-function view(context: AppContext, link: ShareLink): ShareView | null {
+function view(context: AppContext, link: ShareLink, commenterId: number | null): ShareView | null {
   const kind = shareKind(link);
   if (kind === 'album') {
-    // Non-null: `share_links.album_id` cascades with the album, so a live link
-    // always has one.
-    const album = context.findAlbum(link.albumId!)!;
-    const stats = context.media.stats(link.albumId!, album.coverMediaId);
+    const albumIds = context.shares.findAlbumIds(link.token);
+    const validAlbums = albumIds
+      .map((id) => context.findAlbum(id))
+      .filter((a): a is NonNullable<typeof a> => a !== undefined);
+    if (validAlbums.length === 0) return null;
+
+    const primary = validAlbums[0]!;
+    let itemCount = 0;
+    let coverId: string | null = null;
+    let coverVersion: string | null = null;
+    for (const album of validAlbums) {
+      const stats = context.media.stats(album.id, album.coverMediaId);
+      itemCount += stats.itemCount;
+      if (coverId === null && stats.coverId !== null) {
+        coverId = stats.coverId;
+        coverVersion = stats.coverVersion;
+      }
+    }
+
+    const favoriteMediaIds =
+      commenterId !== null
+        ? validAlbums.flatMap((album) => context.favorites.listForAlbum(commenterId, album.id))
+        : [];
+
     return {
       kind: 'album',
-      title: album.title,
-      description: album.description,
-      itemCount: stats.itemCount,
-      coverId: stats.coverId,
-      coverVersion: stats.coverVersion,
-      groupBy: album.groupBy,
-      sortOrder: album.sortOrder,
+      title: validAlbums.length > 1 && link.label ? link.label : primary.title,
+      description: validAlbums.length > 1 ? null : primary.description,
+      itemCount,
+      coverId,
+      coverVersion,
+      groupBy: primary.groupBy,
+      sortOrder: primary.sortOrder,
+      albumCount: validAlbums.length,
+      allowComments: link.allowComments,
+      requireIdentity: link.requireIdentity,
+      favoriteMediaIds,
     };
   }
 
   if (kind === 'selection') {
     const items = context.shares.findItems(link.token);
     if (items.length === 0) return null;
+    const favoriteMediaIds =
+      commenterId !== null
+        ? context.favorites.listForMediaIds(
+            commenterId,
+            items.map((item) => item.id),
+          )
+        : [];
     return {
       kind: 'selection',
       items,
       label: link.label,
       itemCount: items.length,
+      allowComments: link.allowComments,
+      requireIdentity: link.requireIdentity,
+      favoriteMediaIds,
     };
   }
 
@@ -494,8 +689,15 @@ function view(context: AppContext, link: ShareLink): ShareView | null {
   if (!detail) return null;
 
   const { albumId: _covered, ...item } = detail;
+  const favoriteMediaIds =
+    commenterId !== null && context.favorites.isFavorite(commenterId, link.albumId!, link.mediaId!)
+      ? [link.mediaId!]
+      : [];
   return {
     kind: 'media',
     item: { ...item, commentCount: context.comments.countFor(link.albumId!, link.mediaId!) },
+    allowComments: link.allowComments,
+    requireIdentity: link.requireIdentity,
+    favoriteMediaIds,
   };
 }

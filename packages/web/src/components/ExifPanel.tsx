@@ -23,6 +23,12 @@ export function ExifPanel({
 
   return (
     <dl className="divide-y divide-ink-800">
+      <div className="px-5 py-3">
+        <p className="text-sm font-medium break-words text-ink-100">{detail.name}</p>
+        {detail.description && (
+          <p className="mt-1 text-sm whitespace-pre-line text-ink-300">{detail.description}</p>
+        )}
+      </div>
       {exifRows(detail, day, t).map((row) => (
         // `items-baseline`: the label is 12 px and its value 14 px. Aligned by the
         // top of their boxes, their baselines differ by three pixels — enough to

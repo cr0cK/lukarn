@@ -29,7 +29,9 @@ import {
   type AdminShareLink,
   type AdminShareRestoreInput,
   type CreateShareRequest,
+  type ModifyShareItemsRequest,
   type UpdateShareRequest,
+  type UpdateShareSubscriptionRequest,
   type ModerationFilter,
   type SearchHit,
   type ShareDetail,
@@ -227,6 +229,30 @@ export const api = {
   /** What a link opens: an album's heading, or the one photograph it was made from. */
   share: (token: string) => request<ShareView>(`/share/${encodeURIComponent(token)}`),
 
+  /** Updates email notification preferences for a share link. */
+  updateShareSubscription: (token: string, body: UpdateShareSubscriptionRequest) =>
+    request<{ ok: true; notifyPhotos: boolean; notifyComments: boolean }>(
+      `/share/${encodeURIComponent(token)}/subscription`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+      },
+    ),
+
+  /** Adds a photo or video to the current user's favorites. */
+  addFavorite: (scope: Scope, mediaId: string) =>
+    request<{ ok: true }>(
+      `/favorites/${encodeURIComponent(scope.kind === 'album' ? scope.albumId : '_')}/${encodeURIComponent(mediaId)}`,
+      { method: 'PUT' },
+    ),
+
+  /** Removes a photo or video from the current user's favorites. */
+  removeFavorite: (scope: Scope, mediaId: string) =>
+    request<{ ok: true }>(
+      `/favorites/${encodeURIComponent(scope.kind === 'album' ? scope.albumId : '_')}/${encodeURIComponent(mediaId)}`,
+      { method: 'DELETE' },
+    ),
+
   /**
    * One page of the grid, from either scope.
    *
@@ -297,13 +323,13 @@ export const api = {
     request<AlbumCommentCounts>(`/comments/${encodeURIComponent(albumId)}`),
 
   /**
-   * Activity feed. `albumId` restricts it to one album; `null` takes everything
-   * the session may see — the server decides the scope, this parameter only
-   * narrows it.
+   * Activity feed. `albumId` restricts it to one album; `shareToken` restricts it
+   * to a share link; `null` takes everything the session may see.
    */
-  commentsFeed: (albumId: string | null, cursor: string | null) => {
+  commentsFeed: (albumId: string | null, cursor: string | null, shareToken?: string | null) => {
     const params = new URLSearchParams();
     if (albumId) params.set('album', albumId);
+    if (shareToken) params.set('shareToken', shareToken);
     if (cursor) params.set('cursor', cursor);
     return request<CommentsFeedPage>(`/comments/feed?${params}`);
   },
@@ -464,6 +490,18 @@ export const api = {
   updateShare: (token: string, body: UpdateShareRequest) =>
     request<AdminShareLink>(`/admin/shares/${encodeURIComponent(token)}`, {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  addShareItems: (token: string, body: ModifyShareItemsRequest) =>
+    request<AdminShareLink>(`/admin/shares/${encodeURIComponent(token)}/items`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  removeShareItems: (token: string, body: ModifyShareItemsRequest) =>
+    request<AdminShareLink>(`/admin/shares/${encodeURIComponent(token)}/items`, {
+      method: 'DELETE',
       body: JSON.stringify(body),
     }),
 

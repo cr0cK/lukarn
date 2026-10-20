@@ -8,6 +8,7 @@ import { CommenterRepo } from './commenters.js';
 import { ConfigRepo, type StoredAlbum } from './config-repo.js';
 import { type Db, openDb } from './db.js';
 import type { Env } from './env.js';
+import { FavoriteRepo } from './favorites.js';
 import { Geocoder } from './geocoder.js';
 import { Mailer } from './mail.js';
 import { MediaCache } from './media/cache.js';
@@ -46,6 +47,8 @@ export class AppContext {
   readonly comments: CommentRepo;
   /** Commenter identities — people, as opposed to access keys. */
   readonly commenters: CommenterRepo;
+  /** Per-user favorite photographs across albums and shares. */
+  readonly favorites: FavoriteRepo;
   /**
    * The codes sent to an address, whatever they prove. One table rather than four
    * columns per flow: `users` carries authorisation, `commenters` carries identity,
@@ -137,6 +140,7 @@ export class AppContext {
     this.media = new MediaRepo(this.db, () => this.ffmpeg);
     this.comments = new CommentRepo(this.db);
     this.commenters = new CommenterRepo(this.db);
+    this.favorites = new FavoriteRepo(this.db);
     this.codes = new VerificationCodeRepo(this.db, env.sessionSecret);
     this.subscriptions = new SubscriptionRepo(this.db);
     this.syncState = new SyncStateRepo(this.db);

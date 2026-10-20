@@ -99,18 +99,22 @@ const invitationLocale = z.enum(LOCALES);
 const createUserSchema = z
   .object({
     username: identifier,
+    displayName: z.string().trim().max(DISPLAY_NAME_MAX_LENGTH).optional(),
     password: password.optional(),
     email: invitedEmail.optional(),
     locale: invitationLocale.optional(),
     admin: z.boolean().default(false),
+    roleViewer: z.boolean().default(true),
+    roleCommenter: z.boolean().default(true),
     albums: albumList.default([]),
+    allAlbums: z.boolean().optional(),
+    albumIds: z.array(albumId).max(500).optional(),
+    shareTokens: z.array(z.string()).default([]),
+    sendInvite: z.boolean().optional(),
+    sendInviteEmail: z.boolean().default(true),
   })
-  // Exactly one, as `CreateUserRequest` says in the type system. A password creates
-  // the shared key of 1.2 and nothing about it changes; an address creates an account
-  // with no password and invites it. Both at once would be a key pretending to be a
-  // person, and neither would be an account nobody can enter.
-  .refine((input) => (input.password === undefined) !== (input.email === undefined), {
-    message: 'exactly one of password and email',
+  .refine((input) => input.password !== undefined || input.email !== undefined, {
+    message: 'at least one of password and email is required',
   });
 
 /**
@@ -155,16 +159,29 @@ function deriveUniqueUsername(email: string, isTaken: (name: string) => boolean)
 
 const updateUserSchema = z
   .object({
-    password: password.optional(),
+    displayName: z.string().trim().max(DISPLAY_NAME_MAX_LENGTH).optional(),
+    password: z.union([password, z.null()]).optional(),
+    email: z.union([invitedEmail, z.literal(''), z.null()]).optional(),
     admin: z.boolean().optional(),
+    roleViewer: z.boolean().optional(),
+    roleCommenter: z.boolean().optional(),
     albums: albumList.optional(),
+    allAlbums: z.boolean().optional(),
+    albumIds: z.array(albumId).max(500).optional(),
+    shareTokens: z.array(z.string()).optional(),
+    notifyPhotos: z.boolean().optional(),
+    notifyComments: z.boolean().optional(),
     unbind: z.literal(true).optional(),
   })
   // Unbinding without a password would leave an account with no identity and a hash
   // nobody can enter, the administrator included.
-  .refine((input) => input.unbind === undefined || input.password !== undefined, {
-    message: 'unbinding requires the password the account is entered with afterwards',
-  });
+  .refine(
+    (input) =>
+      input.unbind === undefined || (input.password !== undefined && input.password !== null),
+    {
+      message: 'unbinding requires the password the account is entered with afterwards',
+    },
+  );
 
 const moderationQuerySchema = z.object({
   filter: z.enum(['all', 'visible', 'hidden']).default('all'),
@@ -366,28 +383,54 @@ const shareItemInputSchema = z.object({
 
 /**
  * Making a share link:
- * - `items` present covers an explicit selection of photos across albums.
+ * - `albumIds` / `albumId` covers one or more whole albums.
+ * - `items` covers an explicit selection of photos across albums.
  * - `mediaId` present covers that photograph.
- * - absent covers the whole album.
  */
 const shareSchema = z
   .object({
     albumId: z.string().min(1).max(USERNAME_MAX_LENGTH).optional(),
+    albumIds: z.array(z.string().min(1).max(USERNAME_MAX_LENGTH)).max(100).optional(),
     mediaId: z.string().min(1).max(256).nullish(),
     items: z.array(shareItemInputSchema).min(1).max(500).optional(),
     label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
     // An instant rather than a day: the row is compared against `Date.now()`, and a
     // bare date would expire at whatever hour the string happened to parse to.
     expiresAt: z.string().datetime().nullish(),
+    allowComments: z.boolean().optional(),
+    requireIdentity: z.boolean().optional(),
   })
-  .refine((data) => Boolean(data.albumId) || Boolean(data.items && data.items.length > 0), {
-    message: 'Either albumId or items must be provided',
-  });
+  .refine(
+    (data) =>
+      Boolean(data.albumId) ||
+      Boolean(data.albumIds && data.albumIds.length > 0) ||
+      Boolean(data.items && data.items.length > 0),
+    {
+      message: 'Either albumId, albumIds, or items must be provided',
+    },
+  );
 
 const updateShareSchema = z.object({
   label: z.string().trim().max(SHARE_LABEL_MAX_LENGTH).nullish(),
   expiresAt: z.string().datetime().nullish(),
+  allowComments: z.boolean().optional(),
+  requireIdentity: z.boolean().optional(),
+  revoked: z.boolean().optional(),
 });
+
+const modifyShareItemsSchema = z
+  .object({
+    albumIds: z.array(z.string().min(1).max(USERNAME_MAX_LENGTH)).max(100).optional(),
+    items: z.array(shareItemInputSchema).max(500).optional(),
+  })
+  .refine(
+    (data) =>
+      Boolean(data.albumIds && data.albumIds.length > 0) ||
+      Boolean(data.items && data.items.length > 0),
+    {
+      message: 'Either albumIds or items must be provided',
+    },
+  );
 
 const restoreShareSchema = z.object({
   expiresAt: z.string().datetime().nullish(),
@@ -523,32 +566,27 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const missing = unknownAlbum(input.albums);
+      const effectiveAlbums = input.allAlbums ? [ALL_ALBUMS] : (input.albumIds ?? input.albums);
+      const shouldSendInvite = input.sendInvite ?? input.sendInviteEmail;
+
+      const missing = unknownAlbum(effectiveAlbums);
       if (missing) {
         return reply
           .code(400)
           .send({ error: 'unknown_album', message: request.t('error.unknownAlbum', missing) });
       }
 
-      // Created by address: the reserved hash and the invitation, together. No binding
-      // is written here and no existing `commenters` row is touched — a verified
-      // address proves that somebody controls an inbox, not that they accepted this
-      // account, and consuming the code is what proves the second. Adopting an
-      // identity that already signs comments is the good case, and it happens there.
-      if (input.email !== undefined) {
+      // Created by address only (no password): the reserved hash and the invitation,
+      // together. No binding is written here and no existing `commenters` row is
+      // touched — consuming the code is what proves inbox ownership.
+      if (input.email !== undefined && input.password === undefined && shouldSendInvite) {
         if (!context.mailer.enabled) {
-          // Refused rather than creating an account nobody can enter: with no relay
-          // the invitation is never sent, and the account would sit in the list with
-          // no password and no way to acquire one.
           return reply.code(503).send({
             error: 'mail_not_configured',
             message: request.t('error.mailNotConfigured'),
           });
         }
 
-        // Bound rows only. A pending invitation holds nothing: one invitation per
-        // address at a time, so a second one replaces the first and the account it
-        // named loses it — which the account list shows.
         const holder = context.config.userForEmail(input.email);
         if (holder) {
           return reply.code(409).send({
@@ -560,8 +598,12 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         const created = context.config.createInvitedUser(
           {
             username: input.username,
+            displayName: input.displayName,
             admin: input.admin,
-            albums: input.albums,
+            roleViewer: input.roleViewer,
+            roleCommenter: input.roleCommenter,
+            albums: effectiveAlbums,
+            shareTokens: input.shareTokens,
             email: input.email,
             locale: input.locale,
           },
@@ -573,9 +615,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
           buildInvitationMail(
             input.email,
             created.code,
-            // The sender's choice, and the instance default when they made none. The
-            // recipient has never made a request here, so there is nothing recorded
-            // to consult (D260812d) and nobody but the sender knows what they read.
             input.locale ?? context.env.defaultLocale,
             context.settings.instanceName,
             context.env,
@@ -585,12 +624,28 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         return reply.code(201).send(adminUser(created.user));
       }
 
+      if (input.email !== undefined) {
+        const holder = context.config.userForEmail(input.email);
+        if (holder) {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', holder.username),
+          });
+        }
+      }
+
       const user = context.config.createUser({
         username: input.username,
-        // Guaranteed by the schema: exactly one of the two is present.
-        passwordHash: await argon2.hash(input.password!, { type: argon2.argon2id }),
+        displayName: input.displayName,
+        email: input.email,
+        passwordHash: input.password
+          ? await argon2.hash(input.password, { type: argon2.argon2id })
+          : NO_PASSWORD_HASH,
         admin: input.admin,
-        albums: input.albums,
+        roleViewer: input.roleViewer,
+        roleCommenter: input.roleCommenter,
+        albums: effectiveAlbums,
+        shareTokens: input.shareTokens,
       });
 
       request.log.info(`Account "${user.username}" created`);
@@ -663,6 +718,7 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         // 1. Create user with NO_PASSWORD_HASH and link albums
         context.config.createUser({
           username,
+          displayName: displayName ?? undefined,
           passwordHash: NO_PASSWORD_HASH,
           admin: false,
           albums: requestedAlbums ?? [],
@@ -746,11 +802,14 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       const parsed = reinviteUserSchema.safeParse(request.body ?? {});
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
 
-      // Refused on a bound account: that would be changing somebody's address, which
-      // is out of scope for this release, and it is the shape of the impersonation
-      // this design exists to prevent — an administrator pointing an account at an
-      // inbox they read.
-      if (stored.commenterId !== null) {
+      // Refused on an account already bound to a verified email address.
+      const existingCommenter =
+        stored.commenterId !== null ? context.commenters.byId(stored.commenterId) : null;
+      if (
+        existingCommenter !== null &&
+        existingCommenter.email !== null &&
+        existingCommenter.verifiedAt !== null
+      ) {
         return reply.code(409).send({
           error: 'already_bound',
           message: request.t('error.accountAlreadyBound', stored.username),
@@ -776,12 +835,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      // Sending the invitation again repeats the language of the one already
-      // pending, so a second message never arrives in another language than the
-      // first — the recipient has read nothing yet, and a switch mid-conversation
-      // reads as a different message rather than the same one twice. A locale in the
-      // request overrides it: that is the sender changing their mind, which is the
-      // one thing allowed to.
       const locale = parsed.data.locale ?? pending?.locale ?? null;
 
       if (!context.mailer.enabled) {
@@ -821,13 +874,6 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       if (!parsed.success) return badRequest(reply, parsed.error, request.t);
       const patch = parsed.data;
 
-      // Removing the last administrator's role would make the instance impossible to
-      // administer: nobody could connect Drive, create an account or restore the role.
-      //
-      // The count excludes administrators nobody can sign in as, so the predicate has
-      // to move with it: refusing to demote a *pending* administrator while the working
-      // one remains is the new wrong answer. It guards when the target is itself usable
-      // and taking it away would leave none behind.
       if (
         patch.admin === false &&
         stored.admin &&
@@ -840,8 +886,15 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      if (patch.albums) {
-        const missing = unknownAlbum(patch.albums);
+      const effectiveAlbums =
+        patch.allAlbums !== undefined
+          ? patch.allAlbums
+            ? [ALL_ALBUMS]
+            : (patch.albumIds ?? patch.albums ?? [])
+          : (patch.albumIds ?? patch.albums);
+
+      if (effectiveAlbums) {
+        const missing = unknownAlbum(effectiveAlbums);
         if (missing) {
           return reply
             .code(400)
@@ -849,12 +902,17 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         }
       }
 
+      if (patch.email) {
+        const holder = context.config.userForEmail(patch.email);
+        if (holder && holder.username.toLowerCase() !== stored.username.toLowerCase()) {
+          return reply.code(409).send({
+            error: 'identity_taken',
+            message: request.t('error.identityTaken', holder.username),
+          });
+        }
+      }
+
       if (patch.unbind) {
-        // `{ unbind: true, password }` is the single way a bound account is given a
-        // password: in one transaction it clears the binding, writes the password,
-        // closes the sessions and forgets the paired screens. It is the administrator
-        // taking the account back and handing it over as the shared key it has become,
-        // and the answer to somebody losing access to their address.
         context.config.unbindUser(
           stored.username,
           await argon2.hash(patch.password!, { type: argon2.argon2id }),
@@ -864,44 +922,28 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         );
       }
 
-      let user: StoredUser;
-      try {
-        user = context.config.updateUser(stored.username, {
-          // The unbind above already wrote it, inside the transaction that closed the
-          // sessions: hashing it again would only rewrite the same column.
-          passwordHash:
-            patch.password && !patch.unbind
-              ? await argon2.hash(patch.password, { type: argon2.argon2id })
-              : undefined,
-          admin: patch.admin,
-          albums: patch.albums,
-        });
-      } catch (error) {
-        // The refusal belongs to `ConfigRepo` rather than here, because
-        // `pnpm reset-password` writes through it without passing any route. This asks
-        // and translates rather than restating the condition: a bound account being
-        // given a password is the only reason a well-formed patch is refused, so
-        // anything else is a fault and keeps travelling.
-        if (patch.password !== undefined && stored.commenterId !== null) {
-          return reply.code(409).send({
-            error: 'password_on_bound_account',
-            message: request.t('error.passwordOnBoundAccount', stored.username),
-          });
-        }
-        throw error;
+      let nextPasswordHash: string | undefined;
+      if (patch.password !== undefined && !patch.unbind) {
+        nextPasswordHash =
+          patch.password === null
+            ? NO_PASSWORD_HASH
+            : await argon2.hash(patch.password, { type: argon2.argon2id });
       }
 
-      /**
-       * Changing a password closes open sessions: otherwise an already signed-in
-       * browser would continue navigating with the old password, precisely the access
-       * being revoked.
-       *
-       * Removing the administrator role does not sign out: the account remains valid,
-       * and `plugins/auth.ts` rereads `admin` on every request, so /api/admin access
-       * disappears on the next request. Changing the album list does not sign out for
-       * the same reason.
-       */
-      if (patch.password && !patch.unbind) {
+      const user = context.config.updateUser(stored.username, {
+        displayName: patch.displayName,
+        email: patch.email,
+        passwordHash: nextPasswordHash,
+        admin: patch.admin,
+        roleViewer: patch.roleViewer,
+        roleCommenter: patch.roleCommenter,
+        albums: effectiveAlbums,
+        shareTokens: patch.shareTokens,
+        notifyPhotos: patch.notifyPhotos,
+        notifyComments: patch.notifyComments,
+      });
+
+      if (patch.password !== undefined && !patch.unbind) {
         context.sessions.destroyForUser(stored.username);
         request.log.info(`Sessions of "${stored.username}" closed after password change`);
       }
@@ -1533,7 +1575,26 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const { albumId, mediaId, items, label, expiresAt } = parsed.data;
+      const {
+        albumId,
+        albumIds,
+        mediaId,
+        items,
+        label,
+        expiresAt,
+        allowComments,
+        requireIdentity,
+      } = parsed.data;
+
+      const resolvedAlbumIds = [...new Set([...(albumIds ?? []), ...(albumId ? [albumId] : [])])];
+
+      for (const id of resolvedAlbumIds) {
+        if (!context.findAlbum(id)) {
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+        }
+      }
 
       if (items && items.length > 0) {
         for (const item of items) {
@@ -1548,51 +1609,37 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
               .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
           }
         }
-
-        const link = context.shares.create({
-          albumId: null,
-          mediaId: null,
-          items,
-          label: label ?? null,
-          createdBy: request.user!.username!,
-          expiresAt: expiresAt ?? null,
-        });
-        request.log.info({ count: items.length }, 'Share link issued for selection');
-        const created = context.shares.list().find((row) => row.token === link.token)!;
-        return reply.code(201).send(created);
       }
 
-      if (!context.findAlbum(albumId!)) {
-        return reply
-          .code(404)
-          .send({ error: 'not_found', message: request.t('error.albumNotFound') });
-      }
-
-      // A link to a photograph that is not in that album would answer 410 to its
-      // recipient the moment it was opened, and the person issuing it would learn
-      // that from them. Checked here instead.
-      if (mediaId && !context.media.getDetail(albumId!, mediaId)) {
-        return reply
-          .code(404)
-          .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+      if (mediaId && resolvedAlbumIds.length > 0) {
+        if (!context.media.getDetail(resolvedAlbumIds[0]!, mediaId)) {
+          return reply
+            .code(404)
+            .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+        }
       }
 
       const link = context.shares.create({
-        albumId: albumId!,
+        albumId: resolvedAlbumIds[0] ?? null,
+        albumIds: resolvedAlbumIds,
         mediaId: mediaId ?? null,
+        items,
         label: label ?? null,
         createdBy: request.user!.username!,
         expiresAt: expiresAt ?? null,
+        allowComments,
+        requireIdentity,
       });
-      request.log.info({ album: albumId }, 'Share link issued');
-      // The full listing rather than the row: the caller displays a list, and
-      // building one row's shape twice is how the two stop agreeing.
+      request.log.info(
+        { albums: resolvedAlbumIds, count: items?.length ?? 0 },
+        'Share link issued',
+      );
       const created = context.shares.list().find((row) => row.token === link.token)!;
       return reply.code(201).send(created);
     });
 
     /**
-     * Updating a share link's label or expiration.
+     * Updating a share link's label, expiration, access rules or revocation state.
      */
     app.patch('/shares/:token', async (request, reply) => {
       const { token } = request.params as { token: string };
@@ -1608,6 +1655,9 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
         label: parsed.data.label === undefined ? undefined : (parsed.data.label ?? null),
         expiresAt:
           parsed.data.expiresAt === undefined ? undefined : (parsed.data.expiresAt ?? null),
+        allowComments: parsed.data.allowComments,
+        requireIdentity: parsed.data.requireIdentity,
+        revoked: parsed.data.revoked,
       });
       if (!updated) {
         return reply
@@ -1616,6 +1666,79 @@ export function createAdminRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       request.log.info('Share link updated');
+      const item = context.shares.list().find((row) => row.token === token)!;
+      return reply.send(item);
+    });
+
+    /**
+     * Appending albums and/or individual photos to an existing share link.
+     */
+    app.post('/shares/:token/items', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const parsed = modifyShareItemsSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: parsed.error.issues[0]?.message ?? request.t('error.invalidParameters'),
+        });
+      }
+
+      if (parsed.data.albumIds) {
+        for (const id of parsed.data.albumIds) {
+          if (!context.findAlbum(id)) {
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+          }
+        }
+      }
+
+      if (parsed.data.items) {
+        for (const item of parsed.data.items) {
+          if (!context.findAlbum(item.albumId)) {
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+          }
+          if (!context.media.getDetail(item.albumId, item.mediaId)) {
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.mediaNotFound') });
+          }
+        }
+      }
+
+      const updated = context.shares.addItems(token, parsed.data);
+      if (!updated) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.shareUnknown') });
+      }
+
+      const item = context.shares.list().find((row) => row.token === token)!;
+      return reply.send(item);
+    });
+
+    /**
+     * Removing albums and/or individual photos from an existing share link.
+     */
+    app.delete('/shares/:token/items', async (request, reply) => {
+      const { token } = request.params as { token: string };
+      const parsed = modifyShareItemsSchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        return reply.code(400).send({
+          error: 'bad_request',
+          message: parsed.error.issues[0]?.message ?? request.t('error.invalidParameters'),
+        });
+      }
+
+      const updated = context.shares.removeItems(token, parsed.data);
+      if (!updated) {
+        return reply
+          .code(404)
+          .send({ error: 'not_found', message: request.t('error.shareUnknown') });
+      }
+
       const item = context.shares.list().find((row) => row.token === token)!;
       return reply.send(item);
     });

@@ -95,13 +95,19 @@ export class AlbumNotifier {
       // that arrived before they subscribed.
       this.deps.syncState.markNotified(album.id, latest);
 
-      const subscribers = this.deps.subscriptions.subscribers(album.id);
+      const nowIso = new Date(now).toISOString();
+      const subscribers = this.deps.subscriptions.subscribers(album.id, nowIso);
       if (subscribers.length === 0) continue;
 
       for (const subscriber of subscribers) {
         this.deps.mailer().queue(
           buildAlbumUpdateMail(
-            { albumId: album.id, albumTitle: album.title, count },
+            {
+              albumId: album.id,
+              albumTitle: album.title,
+              count,
+              shareToken: subscriber.shareToken ?? null,
+            },
             subscriber.email,
             // Someone who has never opened the gallery in a supported language
             // gets the instance default: an announcement written in a language
@@ -116,6 +122,40 @@ export class AlbumNotifier {
       announced++;
       this.deps.log.info(
         `Album "${album.id}": ${count} new photos announced to ${subscribers.length} subscriber(s)`,
+      );
+    }
+
+    const settleBeforeIso = new Date(now - QUIET_PERIOD_MS).toISOString();
+    const nowIso = new Date(now).toISOString();
+    for (const shareUpdate of this.deps.subscriptions.pendingShareItemUpdates(
+      settleBeforeIso,
+      nowIso,
+    )) {
+      this.deps.subscriptions.markShareNotified(shareUpdate.token, shareUpdate.latest);
+      const subscribers = this.deps.subscriptions.shareSubscribers(shareUpdate.token);
+      if (subscribers.length === 0) continue;
+
+      const title = shareUpdate.label?.trim() || this.deps.instanceName();
+      for (const subscriber of subscribers) {
+        this.deps.mailer().queue(
+          buildAlbumUpdateMail(
+            {
+              albumId: `share:${shareUpdate.token}`,
+              albumTitle: title,
+              count: shareUpdate.count,
+              shareToken: shareUpdate.token,
+            },
+            subscriber.email,
+            subscriber.locale ?? this.deps.env.defaultLocale,
+            this.deps.instanceName(),
+            this.deps.env,
+          ),
+        );
+      }
+
+      announced++;
+      this.deps.log.info(
+        `Share "${shareUpdate.token}": ${shareUpdate.count} new photos announced to ${subscribers.length} subscriber(s)`,
       );
     }
 

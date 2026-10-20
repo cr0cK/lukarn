@@ -1,12 +1,15 @@
 import {
   DEFAULT_SORT_ORDER,
   SEARCH_MIN_LENGTH,
+  type Album,
   type AlbumDay,
   type CodeRequest,
   type CodeVerifyRequest,
   type CreateAlbumRequest,
   type CreateShareRequest,
+  type ModifyShareItemsRequest,
   type UpdateShareRequest,
+  type UpdateShareSubscriptionRequest,
   type AdminShareRestoreInput,
   type CreateStorageRequest,
   type CreateCommentRequest,
@@ -19,6 +22,7 @@ import {
   type ShareDetail,
   type ShareItem,
   type ShareItemsPage,
+  type ShareView,
   type SessionUser,
   type SortOrder,
   type UpdateAlbumDayRequest,
@@ -66,8 +70,12 @@ export const queryKeys = {
   // Use the same construction as counts for the same reason: literal last. `''`
   // carries the global scope — an album identifier cannot be empty, so nothing
   // can be confused with it.
-  commentsFeed: (albumId: string | null) =>
-    ['comments', albumId === null ? '' : `album:${albumId}`, 'feed'] as const,
+  commentsFeed: (albumId: string | null, shareToken?: string | null) =>
+    [
+      'comments',
+      shareToken ? `share:${shareToken}` : albumId === null ? '' : `album:${albumId}`,
+      'feed',
+    ] as const,
   // Everything that restricts the queue belongs in the key, including the
   // cursor: adjacent pages are separate cache entries, making the return to the
   // previous page immediate. Invalidation remains broad — the
@@ -298,25 +306,65 @@ export function useShare(token: string) {
     queryKey: ['share', token],
     queryFn: async () => {
       const view = await api.share(token);
-      // Here rather than in an effect, because this **is** the moment the session
-      // changed: the response that just arrived may have set a new cookie, for a
-      // visitor who had none or who was carrying another link's. `me` is held for
-      // a minute and would then describe a credential this browser no longer has,
-      // which is the one thing the route guard reads. An effect keyed on success
-      // would also fire for a cached success, dropping `me` when nothing moved.
-      //
-      // Dropped rather than refetched: nothing on this page asks who you are, so
-      // the next page that does is the one that should pay for it.
-      queryClient.removeQueries({ queryKey: queryKeys.me });
+      // Invalidate `me` so active observers on the share page immediately learn
+      // the share session's identity and notification preferences.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.me });
       return view;
     },
     retry: false,
-    // Explicitly, against the client's own 60 seconds: this request is not only a
-    // read, it is what opens the session and records the opening. Served from
-    // cache, the page would render while the request that gives the visitor a
-    // session never runs — and after opening a second link, every photograph on
-    // the first would answer 404.
     staleTime: 0,
+  });
+}
+
+export function useUpdateShareSubscription(token: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateShareSubscriptionRequest) => api.updateShareSubscription(token, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+      void queryClient.invalidateQueries({ queryKey: ['share', token] });
+    },
+  });
+}
+
+/**
+ * Toggles a media item's favorite state with optimistic cache updates on the
+ * current album or share view.
+ */
+export function useToggleFavorite(scope: Scope) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ mediaId, favorite }: { mediaId: string; favorite: boolean }) =>
+      favorite ? api.addFavorite(scope, mediaId) : api.removeFavorite(scope, mediaId),
+    onMutate: async ({ mediaId, favorite }) => {
+      const toggleList = (ids: string[] | undefined): string[] => {
+        const current = ids ?? [];
+        if (favorite) return current.includes(mediaId) ? current : [...current, mediaId];
+        return current.filter((id) => id !== mediaId);
+      };
+
+      if (scope.kind === 'album') {
+        const key = queryKeys.album(scope.albumId);
+        await queryClient.cancelQueries({ queryKey: key });
+        queryClient.setQueryData<Album>(key, (old) =>
+          old ? { ...old, favoriteMediaIds: toggleList(old.favoriteMediaIds) } : old,
+        );
+      } else {
+        const key = ['share', scope.token] as const;
+        await queryClient.cancelQueries({ queryKey: key });
+        queryClient.setQueryData<ShareView>(key, (old) => {
+          if (!old || old.kind === 'locked') return old;
+          return { ...old, favoriteMediaIds: toggleList(old.favoriteMediaIds) };
+        });
+      }
+    },
+    onSettled: () => {
+      if (scope.kind === 'album') {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.album(scope.albumId) });
+      } else {
+        void queryClient.invalidateQueries({ queryKey: ['share', scope.token] });
+      }
+    },
   });
 }
 
@@ -573,10 +621,14 @@ export function useCommentCounts(scope: Scope) {
  * The same `staleTime` as album counts, for the same reason: a conversation
  * starting while its photos are being viewed is exactly what the badge announces.
  */
-export function useCommentsFeed(albumId: string | null, enabled = true) {
+export function useCommentsFeed(
+  albumId: string | null,
+  enabled = true,
+  shareToken?: string | null,
+) {
   const query = useInfiniteQuery({
-    queryKey: queryKeys.commentsFeed(albumId),
-    queryFn: ({ pageParam }) => api.commentsFeed(albumId, pageParam),
+    queryKey: queryKeys.commentsFeed(albumId, shareToken),
+    queryFn: ({ pageParam }) => api.commentsFeed(albumId, pageParam, shareToken),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     enabled,
@@ -646,7 +698,10 @@ function invalidateThread(queryClient: QueryClient, scope: Scope, mediaId: strin
   // invalidates only the global scope — which its own session cannot read either,
   // and an account's browser will refetch on its next visit.
   void queryClient.invalidateQueries({
-    queryKey: queryKeys.commentsFeed(scope.kind === 'album' ? scope.albumId : null),
+    queryKey: queryKeys.commentsFeed(
+      scope.kind === 'album' ? scope.albumId : null,
+      scope.kind === 'share' ? scope.token : null,
+    ),
   });
   void queryClient.invalidateQueries({ queryKey: queryKeys.commentsFeed(null) });
 }
@@ -998,6 +1053,24 @@ export function useUpdateShare() {
   return useMutation({
     mutationFn: ({ token, body }: { token: string; body: UpdateShareRequest }) =>
       api.updateShare(token, body),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+export function useAddShareItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, body }: { token: string; body: ModifyShareItemsRequest }) =>
+      api.addShareItems(token, body),
+    onSuccess: () => invalidateShares(queryClient),
+  });
+}
+
+export function useRemoveShareItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, body }: { token: string; body: ModifyShareItemsRequest }) =>
+      api.removeShareItems(token, body),
     onSuccess: () => invalidateShares(queryClient),
   });
 }

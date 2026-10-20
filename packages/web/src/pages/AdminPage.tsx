@@ -1,15 +1,22 @@
 import type { AdminAlbum } from '@lukarn/shared';
 import { type ReactElement, useState } from 'react';
-import { Navigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { errorText } from '../api/client';
 import { useAdminAlbums, useAdminStatus } from '../api/hooks';
 import { BottomTabs } from '../components/BottomTabs';
 import { CommentsFeed, useActivityFeed } from '../components/CommentsFeed';
 import { Spinner } from '../components/Spinner';
+import { ActionMenu } from '../components/ActionMenu';
 import { useT } from '../lib/i18n';
 import { PHONE_QUERY, useMediaQuery } from '../lib/useMediaQuery';
 import { TopBar } from '../components/TopBar';
-import { AdminMenu, AdminNav, type AdminTab, isAdminTab } from '../components/admin/AdminNav';
+import {
+  ADMIN_TABS,
+  AdminMenu,
+  AdminNav,
+  type AdminTab,
+  isAdminTab,
+} from '../components/admin/AdminNav';
 import { AlbumsSection } from '../components/admin/AlbumsSection';
 import { CommentsSection } from '../components/admin/CommentsSection';
 import { SharesSection } from '../components/admin/SharesSection';
@@ -24,6 +31,7 @@ import { FormError, Section, type Notice } from '../components/admin/ui';
 
 export default function AdminPage(): ReactElement {
   const t = useT();
+  const navigate = useNavigate();
   const { tab } = useParams<{ tab: string }>();
   const status = useAdminStatus();
   const albums = useAdminAlbums();
@@ -129,7 +137,25 @@ export default function AdminPage(): ReactElement {
       {/* The back arrow follows the level above, which differs by width: a phone
           came from the list of sections, a desktop from the gallery, where
           `/admin` was never a screen of its own. */}
-      <TopBar title={t('admin.title')} back backTo={phone && !root ? '/admin' : '/'} />
+      <TopBar
+        title={t('admin.title')}
+        back
+        backTo={phone && !root ? '/admin' : '/'}
+        menu={
+          phone && !root ? (
+            <ActionMenu
+              label={t('admin.sections')}
+              groupes={[
+                ADMIN_TABS.map((entry) => ({
+                  label: `${tab === entry.slug ? '✓ ' : ''}${t(entry.label)}`,
+                  icon: null,
+                  onSelect: () => navigate(`/admin/${entry.slug}`),
+                })),
+              ]}
+            />
+          ) : undefined
+        }
+      />
 
       {/* Use 90 rem rather than the original 64 rem: the content column grows from
           760 to 1170 px on a laptop, where album rows truncated their title while

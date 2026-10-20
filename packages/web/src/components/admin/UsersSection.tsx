@@ -13,6 +13,7 @@ import {
   useDeleteUser,
   useInviteUser,
   useMe,
+  useUpdateUser,
 } from '../../api/hooks';
 import { formatAlbumAccess, validateEmail } from '../../lib/adminForm';
 import { formatDate } from '../../lib/format';
@@ -50,27 +51,19 @@ const STATE_BADGE: Record<AccountState, string> = {
   no_way_in: 'border border-red-500/40 bg-red-500/15 font-medium text-red-300',
 };
 
-const STATE_LABEL = {
-  shared_key: 'adminUsers.stateSharedKey',
-  person: 'adminUsers.statePerson',
-  invited: 'adminUsers.stateInvited',
-  no_way_in: 'adminUsers.stateNoWayIn',
-} as const satisfies Record<AccountState, MessageKey>;
+function credentialLabel(user: AdminUser): MessageKey {
+  if (user.state === 'invited') return 'adminUsers.stateInvited';
+  if (user.state === 'no_way_in') return 'adminUsers.stateNoWayIn';
+  if (user.hasPassword && user.identity) return 'adminUsers.credBoth';
+  if (user.identity) return 'adminUsers.credEmail';
+  return 'adminUsers.credPassword';
+}
 
-/**
- * The sentence under the badge: what that state means for this account.
- *
- * Driven by `state` rather than by whichever field happens to be filled, because an
- * invitation is also in flight on accounts whose state is `shared_key` — reading
- * `invitation` first printed the invitation sentence twice on those rows, once here
- * and once on the line below that exists for exactly that case.
- */
-function stateDetail(user: AdminUser, t: Translate): string {
+function stateDetail(user: AdminUser, t: Translate): string | null {
   switch (user.state) {
     case 'person':
-      return user.identity
-        ? t('adminUsers.statePersonDetail', user.identity.displayName, user.identity.email)
-        : t('adminUsers.statePerson');
+    case 'shared_key':
+      return user.identity ? user.identity.email : null;
     case 'invited':
       return user.invitation
         ? t(
@@ -81,12 +74,10 @@ function stateDetail(user: AdminUser, t: Translate): string {
         : t('adminUsers.stateInvited');
     case 'no_way_in':
       return t('adminUsers.stateNoWayInDetail');
-    case 'shared_key':
-      return t('adminUsers.stateSharedKeyDetail');
   }
 }
 
-/** "Accounts" section: list, create, edit, invite and delete accounts. */
+/** "Users" section: list, create, edit, invite and delete accounts. */
 export function UsersSection({
   albums,
   notify,
@@ -100,6 +91,7 @@ export function UsersSection({
   const { data: status } = useAdminStatus();
   const remove = useDeleteUser();
   const invite = useInviteUser();
+  const updateUser = useUpdateUser();
   const mailConfigured = status?.mailConfigured !== false;
 
   const [creating, setCreating] = useState(false);
@@ -184,7 +176,6 @@ export function UsersSection({
       action={
         <div className="flex items-center gap-2">
           <Button
-            variant="primary"
             onClick={() => {
               setEditing(null);
               setCreating(false);
@@ -194,6 +185,7 @@ export function UsersSection({
             {t('adminUsers.inviteMember')}
           </Button>
           <Button
+            variant="primary"
             onClick={() => {
               setEditing(null);
               setInvitingMember(false);
@@ -254,27 +246,128 @@ export function UsersSection({
             key={user.username}
             className={`${ROW_CLASS} border-b border-ink-850 px-4 py-3 last:border-b-0 xl:items-center`}
           >
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-1">
               {/* Apply `truncate` only to the identifier and `shrink-0` to the
                   labels after it: on the whole row, the badge shrank with the
                   rest and "administrator" appeared as "administ". Half a role
                   reads like another role. */}
-              <p className="flex min-w-0 items-center gap-2 text-sm font-medium text-ink-100">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-100">
                 <span className="truncate">{user.username}</span>
+                {user.displayName && user.displayName !== user.username && (
+                  <span className="truncate text-xs font-normal text-ink-400">
+                    ({user.displayName})
+                  </span>
+                )}
                 {user.admin && (
-                  <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-normal text-accent">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-accent/15 px-2 py-0.5 text-xs font-normal text-accent">
                     {t('adminUsers.administrator')}
                   </span>
                 )}
                 {user.username === me?.username && (
-                  <span className="shrink-0 text-xs font-normal text-ink-400">
+                  <span className="shrink-0 whitespace-nowrap text-xs font-normal text-ink-400">
                     {t('adminUsers.you')}
                   </span>
                 )}
-              </p>
+              </div>
               <p className="truncate text-xs text-ink-400">
                 {formatAlbumAccess(user.albums, titles, t)}
+                {user.shareTokens && user.shareTokens.length > 0
+                  ? ` · ${t('adminUsers.sharesScope', user.shareTokens.length)}`
+                  : ''}
               </p>
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <button
+                  type="button"
+                  disabled={user.username === me?.username || updateUser.isPending}
+                  onClick={() =>
+                    updateUser.mutate({
+                      username: user.username,
+                      body: {
+                        admin: !user.admin,
+                      },
+                    })
+                  }
+                  className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                    user.admin
+                      ? 'border-accent/40 bg-accent/15 text-accent'
+                      : 'border-ink-800 bg-ink-900/50 text-ink-400 hover:text-ink-200'
+                  } disabled:opacity-50`}
+                >
+                  {user.admin ? '✓ ' : ''}
+                  {t('adminUsers.roleAdmin')}
+                </button>
+                <button
+                  type="button"
+                  disabled={updateUser.isPending}
+                  onClick={() =>
+                    updateUser.mutate({
+                      username: user.username,
+                      body: { roleViewer: !(user.roleViewer ?? true) },
+                    })
+                  }
+                  className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                    (user.roleViewer ?? true)
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
+                      : 'border-ink-800 bg-ink-900/50 text-ink-400 hover:text-ink-200'
+                  }`}
+                >
+                  {(user.roleViewer ?? true) ? '✓ ' : ''}
+                  {t('adminUsers.roleVisitor')}
+                </button>
+                <button
+                  type="button"
+                  disabled={updateUser.isPending}
+                  onClick={() =>
+                    updateUser.mutate({
+                      username: user.username,
+                      body: { roleCommenter: !(user.roleCommenter ?? true) },
+                    })
+                  }
+                  className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                    (user.roleCommenter ?? true)
+                      ? 'border-sky-500/40 bg-sky-500/15 text-sky-300'
+                      : 'border-ink-800 bg-ink-900/50 text-ink-400 hover:text-ink-200'
+                  }`}
+                >
+                  {(user.roleCommenter ?? true) ? '✓ ' : ''}
+                  {t('adminUsers.roleCommenter')}
+                </button>
+                <button
+                  type="button"
+                  disabled={updateUser.isPending}
+                  onClick={() =>
+                    updateUser.mutate({
+                      username: user.username,
+                      body: { notifyPhotos: !(user.notifyPhotos ?? true) },
+                    })
+                  }
+                  className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                    (user.notifyPhotos ?? true)
+                      ? 'border-ink-700 bg-ink-800 text-ink-200'
+                      : 'border-ink-800 bg-ink-900/50 text-ink-500 hover:text-ink-300'
+                  }`}
+                >
+                  {t('adminUsers.notifyPhotosLabel')}: {(user.notifyPhotos ?? true) ? 'ON' : 'OFF'}
+                </button>
+                <button
+                  type="button"
+                  disabled={updateUser.isPending}
+                  onClick={() =>
+                    updateUser.mutate({
+                      username: user.username,
+                      body: { notifyComments: !(user.notifyComments ?? true) },
+                    })
+                  }
+                  className={`inline-flex items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs transition-colors ${
+                    (user.notifyComments ?? true)
+                      ? 'border-ink-700 bg-ink-800 text-ink-200'
+                      : 'border-ink-800 bg-ink-900/50 text-ink-500 hover:text-ink-300'
+                  }`}
+                >
+                  {t('adminUsers.notifyCommentsLabel')}:{' '}
+                  {(user.notifyComments ?? true) ? 'ON' : 'OFF'}
+                </button>
+              </div>
             </div>
 
             {/* How the account is entered, as a column of its own from `xl` and a
@@ -284,15 +377,14 @@ export function UsersSection({
             <div className="min-w-0 xl:w-72 xl:shrink-0">
               <p>
                 <span
-                  className={`inline-block rounded-full px-2 py-0.5 text-xs ${STATE_BADGE[user.state]}`}
+                  className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${STATE_BADGE[user.state]}`}
                 >
-                  {t(STATE_LABEL[user.state])}
+                  {t(credentialLabel(user))}
                 </span>
               </p>
-              <p className="mt-0.5 text-xs text-ink-400">{stateDetail(user, t)}</p>
-              {/* An invitation on an account that still has its password: the state
-                  stays "shared key" because the key still works, so the invitation
-                  in flight has nowhere else to appear. */}
+              {stateDetail(user, t) && (
+                <p className="mt-0.5 text-xs text-ink-400">{stateDetail(user, t)}</p>
+              )}
               {user.invitation && user.state === 'shared_key' && (
                 <p className="mt-0.5 text-xs text-amber-200">
                   {t(

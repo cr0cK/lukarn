@@ -257,6 +257,105 @@ export class CommentRepo {
     return { comments, nextCursor: hasMore ? String(page.at(-1)!.id) : null };
   }
 
+  /**
+   * Activity feed scoped to the albums and items covered by a share link.
+   *
+   * Single-photograph and selection shares omit origin album identifiers and titles
+   * in the returned feed entries so that D260825e privacy invariants hold.
+   */
+  listFeedForShare(query: {
+    token: string;
+    albumId: string | null;
+    mediaId: string | null;
+    cursor: number | null;
+    limit: number;
+    viewer: Viewer;
+  }): CommentsFeedPage {
+    const wholeAlbums = new Set<string>(
+      (
+        this.db
+          .prepare('SELECT album_id FROM share_link_albums WHERE token = ?')
+          .all(query.token) as Array<{ album_id: string }>
+      ).map((r) => r.album_id),
+    );
+    if (query.mediaId === null && query.albumId !== null) {
+      wholeAlbums.add(query.albumId);
+    }
+    const itemCount = (
+      this.db
+        .prepare('SELECT COUNT(*) AS count FROM share_link_items WHERE token = ?')
+        .get(query.token) as { count: number }
+    ).count;
+    const isSingleWholeAlbum = query.mediaId === null && wholeAlbums.size === 1 && itemCount === 0;
+
+    const conditions = ['c.hidden_at IS NULL'];
+    const params: (string | number)[] = [];
+
+    if (query.mediaId !== null) {
+      if (query.albumId === null) return { comments: [], nextCursor: null };
+      conditions.push('c.album_id = ? AND c.media_id = ?');
+      params.push(query.albumId, query.mediaId);
+    } else {
+      conditions.push(
+        `(
+          (? <> '' AND c.album_id = ?)
+          OR EXISTS (
+            SELECT 1 FROM share_link_albums sla
+             WHERE sla.token = ? AND sla.album_id = c.album_id
+          )
+          OR EXISTS (
+            SELECT 1 FROM share_link_items sli
+             WHERE sli.token = ? AND sli.album_id = c.album_id AND sli.media_id = c.media_id
+          )
+        )`,
+      );
+      params.push(query.albumId ?? '', query.albumId ?? '', query.token, query.token);
+    }
+
+    if (query.cursor !== null) {
+      conditions.push('c.id < ?');
+      params.push(query.cursor);
+    }
+
+    const rows = this.db
+      .prepare(
+        `SELECT c.id, c.parent_id, c.commenter_id, a.display_name, c.body, c.created_at,
+                c.hidden_at, c.album_id, c.media_id,
+                al.title AS album_title, m.name AS media_name, m.md5 AS media_md5
+           FROM comments c
+           JOIN commenters a ON a.id = c.commenter_id
+           LEFT JOIN albums al ON al.id = c.album_id
+           LEFT JOIN media m ON m.album_id = c.album_id AND m.id = c.media_id
+           ${where(conditions)}
+           ORDER BY c.id DESC
+           LIMIT ?`,
+      )
+      .all(...params, query.limit + 1) as (CommentRow & {
+      album_id: string;
+      media_id: string;
+      album_title: string | null;
+      media_name: string | null;
+      media_md5: string | null;
+    })[];
+
+    const hasMore = rows.length > query.limit;
+    const page = hasMore ? rows.slice(0, query.limit) : rows;
+
+    const comments: FeedComment[] = page.map((row) => {
+      const exposeAlbum = isSingleWholeAlbum || wholeAlbums.has(row.album_id);
+      return {
+        ...toComment(row, query.viewer),
+        albumId: exposeAlbum ? row.album_id : '',
+        albumTitle: exposeAlbum ? (row.album_title ?? row.album_id) : '',
+        mediaId: row.media_id,
+        mediaName: row.media_name,
+        mediaVersion: row.media_md5 ? row.media_md5.slice(0, 8) : null,
+      };
+    });
+
+    return { comments, nextCursor: hasMore ? String(page.at(-1)!.id) : null };
+  }
+
   /** Count displayed with media details, excluding hidden comments. */
   countFor(albumId: string, mediaId: string): number {
     const row = this.db
@@ -458,7 +557,7 @@ export class CommentRepo {
            LIMIT ?`,
       )
       .all(...params, query.limit + 1) as (CommentRow & {
-      email: string;
+      email: string | null;
       hidden_by: string | null;
       album_id: string;
       media_id: string;
@@ -478,7 +577,7 @@ export class CommentRepo {
       albumTitle: row.album_title ?? row.album_id,
       mediaId: row.media_id,
       mediaName: row.media_name,
-      authorEmail: row.email,
+      authorEmail: row.email ?? '',
       commenterId: row.commenter_id,
       account: row.account,
       hiddenAt: row.hidden_at,

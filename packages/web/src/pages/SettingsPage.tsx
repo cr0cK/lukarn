@@ -1,4 +1,9 @@
-import { DISPLAY_NAME_MAX_LENGTH, isLocale, type CommenterIdentity } from '@lukarn/shared';
+import {
+  DISPLAY_NAME_MAX_LENGTH,
+  isLocale,
+  type CommenterIdentity,
+  type SessionUser,
+} from '@lukarn/shared';
 import { type FormEvent, type ReactElement, useEffect, useState } from 'react';
 import { errorText } from '../api/client';
 import { useMe, useUpdateProfile } from '../api/hooks';
@@ -10,6 +15,7 @@ import {
   Checkbox,
   Section,
   SelectField,
+  Switch,
   TextField,
   localeOptions,
   type Notice,
@@ -26,15 +32,19 @@ import { THEMES, isTheme, readStoredTheme, setTheme, useTheme, type Theme } from
  * Shared household accounts without an individual identity do not see this section.
  */
 function ProfileSection({
+  user,
   identity,
   updateProfile,
 }: {
+  user: SessionUser;
   identity: CommenterIdentity;
   updateProfile: ReturnType<typeof useUpdateProfile>;
 }): ReactElement {
   const t = useT();
   const [displayName, setDisplayName] = useState(identity.displayName);
   const [notify, setNotify] = useState(identity.notify);
+  const [notifyPhotos, setNotifyPhotos] = useState(user.notifyPhotos ?? identity.notify);
+  const [notifyComments, setNotifyComments] = useState(user.notifyComments ?? identity.notify);
   const [touched, setTouched] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -42,11 +52,16 @@ function ProfileSection({
   useEffect(() => {
     setDisplayName(identity.displayName);
     setNotify(identity.notify);
-  }, [identity.displayName, identity.notify]);
+    setNotifyPhotos(user.notifyPhotos ?? identity.notify);
+    setNotifyComments(user.notifyComments ?? identity.notify);
+  }, [identity.displayName, identity.notify, user.notifyPhotos, user.notifyComments]);
 
   const nameError = touched ? validateDisplayName(displayName, t) : null;
   const isValid = validateDisplayName(displayName, t) === null;
-  const isDirty = isProfileDirty(displayName, notify, identity);
+  const isDirty =
+    isProfileDirty(displayName, notify, identity) ||
+    notifyPhotos !== (user.notifyPhotos ?? identity.notify) ||
+    notifyComments !== (user.notifyComments ?? identity.notify);
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -55,7 +70,7 @@ function ProfileSection({
     if (!isValid || !isDirty || updateProfile.isPending) return;
 
     updateProfile.mutate(
-      { displayName: trimmed, notify },
+      { displayName: trimmed, notify, notifyPhotos, notifyComments },
       {
         onSuccess: () => {
           setNotice({ tone: 'ok', text: t('prefs.profileSaved') });
@@ -94,7 +109,7 @@ function ProfileSection({
         <TextField
           id="prefs-email"
           label={t('prefs.email')}
-          value={identity.email}
+          value={identity.email ?? ''}
           onChange={() => {}}
           readOnly
           hint={t('prefs.emailHint')}
@@ -121,10 +136,39 @@ function ProfileSection({
           checked={notify}
           onChange={(val) => {
             setNotify(val);
+            setNotifyPhotos(val);
+            setNotifyComments(val);
             setTouched(true);
           }}
           disabled={updateProfile.isPending}
         />
+
+        <div className="space-y-2 rounded-xl border border-ink-800 bg-ink-850/40 p-3">
+          <Switch
+            id="prefs-notify-photos"
+            checked={notifyPhotos}
+            onChange={(val) => {
+              setNotifyPhotos(val);
+              setNotify(val || notifyComments);
+              setTouched(true);
+            }}
+            disabled={updateProfile.isPending}
+            label={t('prefs.notifyPhotos')}
+            hint={t('prefs.notifyPhotosHint')}
+          />
+          <Switch
+            id="prefs-notify-comments"
+            checked={notifyComments}
+            onChange={(val) => {
+              setNotifyComments(val);
+              setNotify(notifyPhotos || val);
+              setTouched(true);
+            }}
+            disabled={updateProfile.isPending}
+            label={t('prefs.notifyComments')}
+            hint={t('prefs.notifyCommentsHint')}
+          />
+        </div>
 
         <div className="pt-2">
           <Button
@@ -179,8 +223,8 @@ export default function SettingsPage(): ReactElement {
       {/* The tab bar is `fixed` and therefore outside the flow: the page reserves
           its height itself, or the last setting would end underneath it. */}
       <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 pb-[calc(5rem_+_env(safe-area-inset-bottom))] sm:px-6 md:pb-6">
-        {user?.identity && (
-          <ProfileSection identity={user.identity} updateProfile={updateProfile} />
+        {user?.identity?.email && (
+          <ProfileSection user={user} identity={user.identity} updateProfile={updateProfile} />
         )}
 
         {/* One box rather than one per setting: they are all answers to the same

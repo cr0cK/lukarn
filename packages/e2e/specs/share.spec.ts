@@ -116,14 +116,16 @@ test('a link taken back says so, rather than that the address is wrong', async (
   // "Page not found" is also what a mistyped address answers, and the reader was
   // sent this one a month ago by somebody they know (D260825b). The sentence sits
   // on the same page, and offers no password field to guess at.
-  await expect(page.getByText('This link was taken back.')).toBeVisible();
+  await expect(page.getByText('This share link has been paused.')).toBeVisible();
   await expect(page.getByRole('link', { name: /sign in/i })).toHaveCount(0);
 });
 
 test('an address nothing ever issued says exactly that', async ({ page }) => {
   await page.goto(`/s/${'z'.repeat(43)}`);
 
-  await expect(page.getByText('This link does not lead anywhere.')).toBeVisible();
+  await expect(
+    page.getByText('This share link could not be found. Check the address you were sent.'),
+  ).toBeVisible();
 });
 
 test('a revoked link restored can be reopened under the same address', async ({
@@ -133,9 +135,9 @@ test('a revoked link restored can be reopened under the same address', async ({
   const address = await issueShare(request, { label: 'To be restored' });
   await revokeShare(request, address);
 
-  // When revoked, answers 410 and says taken back
+  // When revoked, answers 410 and says paused
   await page.goto(address);
-  await expect(page.getByText('This link was taken back.')).toBeVisible();
+  await expect(page.getByText('This share link has been paused.')).toBeVisible();
 
   // Restore the link
   await restoreShare(request, address);
@@ -277,4 +279,47 @@ test('selecting photos in AlbumPage opens ShareModal and generates a multi-photo
   } finally {
     await strangerContext.close();
   }
+});
+
+test('a share link requiring identity shows the lock screen before revealing photographs', async ({
+  page,
+  request,
+}) => {
+  const address = await issueShare(request, {
+    label: 'Private preview',
+    requireIdentity: true,
+  });
+
+  await page.goto(address);
+
+  await expect(
+    page.getByRole('heading', { name: 'Identify yourself to view this share' }),
+  ).toBeVisible();
+  await expect(page.getByLabel('Display name')).toBeVisible();
+  await expect(page.getByLabel('Email address')).toBeVisible();
+  await expect(page.locator('main img')).toHaveCount(0);
+});
+
+test('a signed-in user can star a photograph and filter the album by favorites', async ({
+  page,
+}) => {
+  await openDayAlbum(page);
+
+  const favButtons = page.getByRole('button', { name: 'Add to favorites' });
+  await expect(favButtons.first()).toBeVisible();
+  await favButtons.first().click({ force: true });
+
+  await expect(page.getByRole('button', { name: 'Remove from favorites' }).first()).toBeVisible();
+
+  const filterButton = page.getByRole('button', { name: 'Show favorites only' });
+  await expect(filterButton).toBeVisible();
+  await filterButton.click();
+
+  await expect(page.locator('main img')).toHaveCount(1);
+
+  // Unstar and return to all photos
+  await page.getByRole('button', { name: 'Remove from favorites' }).first().click({ force: true });
+  await expect(page.getByText('No favorite photos in this view yet.')).toBeVisible();
+  await page.getByRole('button', { name: 'Show all photos' }).first().click();
+  await expect(page.locator('main img').first()).toBeVisible();
 });

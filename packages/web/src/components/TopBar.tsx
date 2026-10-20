@@ -60,6 +60,18 @@ interface TopBarProps {
    * last visit. Absent on pages where the feed has no meaning.
    */
   feed?: { unread: number; onOpen: () => void };
+  /**
+   * Favorites filter toggle `[★]` in the gallery top bar.
+   */
+  favorites?: { active: boolean; count: number; onToggle: () => void };
+  /**
+   * Optional notifications popover `[🔔]` in the gallery/share top bar.
+   */
+  notifications?: ReactNode;
+  /**
+   * Optional kebab menu (`[⋮]`) for album administration or mobile settings nav.
+   */
+  menu?: ReactNode;
 }
 
 /**
@@ -108,6 +120,9 @@ export function TopBar({
   actions = [],
   search,
   feed,
+  favorites,
+  notifications,
+  menu,
 }: TopBarProps): ReactElement {
   const { data: user } = useMe();
   const t = useT();
@@ -195,10 +210,47 @@ export function TopBar({
         {search && <div className="hidden min-w-0 md:block md:basis-80">{search}</div>}
 
         <div
-          className={`flex shrink-0 items-center gap-x-2 sm:gap-x-3 ${
+          className={`flex shrink-0 items-center gap-x-1 sm:gap-x-2 ${
             search ? 'md:flex-1 md:justify-end' : ''
           }`}
         >
+          {favorites && (
+            <button
+              type="button"
+              onClick={favorites.onToggle}
+              aria-pressed={favorites.active}
+              title={t(favorites.active ? 'favorites.showAll' : 'favorites.filterTooltip')}
+              aria-label={t(favorites.active ? 'favorites.showAll' : 'favorites.filterTooltip')}
+              className={`relative flex size-10 shrink-0 items-center justify-center rounded-lg transition-colors md:size-9 ${
+                favorites.active
+                  ? 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25'
+                  : 'text-ink-300 hover:bg-tint hover:text-ink-100'
+              }`}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="size-5"
+                fill={favorites.active ? 'currentColor' : 'none'}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              {favorites.count > 0 && (
+                <span
+                  aria-hidden="true"
+                  className={`absolute top-0.5 right-0.5 min-w-4 rounded-full px-1 text-center text-[0.625rem] leading-4 font-semibold tabular-nums ${
+                    favorites.active ? 'bg-amber-400 text-ink-950' : 'bg-ink-700 text-ink-200'
+                  }`}
+                >
+                  {favorites.count > 99 ? '99+' : favorites.count}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* Activity stays **inline from `md`**, never inside the View menu: its
             icon carries the unread badge, the only sign that a conversation
             changed somewhere, and a badge folded into a menu signals nothing —
@@ -236,6 +288,8 @@ export function TopBar({
               )}
             </button>
           )}
+
+          {notifications}
 
           {/* From `md`: view controls in the bar, **icons only at every width**.
             Labels used to return beyond `lg`, where "Newest first" alone took
@@ -280,6 +334,8 @@ export function TopBar({
               />
             </div>
           )}
+
+          {menu}
 
           {/* Account from `md`; below it, the tab bar carries the same menu.
             Render only once the session is known: an empty badge during a

@@ -206,7 +206,7 @@ export function InviteMemberModal({
                       />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-medium text-ink-200">{album.title}</p>
-                        <p className="text-[11px] text-ink-400">
+                        <p className="text-xs text-ink-400">
                           {t('access.albumDetail', album.id, album.itemCount)}
                         </p>
                       </div>

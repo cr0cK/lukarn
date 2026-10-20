@@ -20,9 +20,11 @@ const MAX_DISPLAY_NAME = 64;
 
 export interface StoredCommenter {
   id: number;
-  email: string;
+  email: string | null;
   displayName: string;
   notify: boolean;
+  notifyPhotos: boolean;
+  notifyComments: boolean;
   verifiedAt: string | null;
   /**
    * Language this person reads, recorded from their browser. `null` until one of
@@ -34,20 +36,25 @@ export interface StoredCommenter {
 
 interface CommenterRow {
   id: number;
-  email: string;
+  email: string | null;
   display_name: string;
-  notify: number;
+  notify_photos: number;
+  notify_comments: number;
   verified_at: string | null;
   pending_display_name: string | null;
   locale: string | null;
 }
 
 function toCommenter(row: CommenterRow): StoredCommenter {
+  const notifyPhotos = row.notify_photos === 1;
+  const notifyComments = row.notify_comments === 1;
   return {
     id: row.id,
     email: row.email,
     displayName: row.display_name,
-    notify: row.notify === 1,
+    notify: notifyPhotos || notifyComments,
+    notifyPhotos,
+    notifyComments,
     verifiedAt: row.verified_at,
     locale: isLocale(row.locale) ? row.locale : null,
   };
@@ -59,6 +66,8 @@ export function toIdentity(commenter: StoredCommenter): CommenterIdentity {
     email: commenter.email,
     displayName: commenter.displayName,
     notify: commenter.notify,
+    notifyPhotos: commenter.notifyPhotos,
+    notifyComments: commenter.notifyComments,
     locale: commenter.locale,
   };
 }
@@ -70,6 +79,65 @@ export class CommenterRepo {
     const row = this.db.prepare('SELECT * FROM commenters WHERE email = ?').get(email.trim()) as
       CommenterRow | undefined;
     return row ? toCommenter(row) : null;
+  }
+
+  /**
+   * Creates a verified commenter row for a unified user account (with or without an email).
+   * If a commenter with the same email already exists, returns that row and marks it verified.
+   */
+  createForUser(
+    displayName: string,
+    email: string | null = null,
+    locale: Locale | null = null,
+  ): StoredCommenter {
+    const trimmedName = displayName.trim().slice(0, MAX_DISPLAY_NAME) || 'User';
+    const normalizedEmail = email ? email.trim() : null;
+    const nowIso = new Date().toISOString();
+
+    if (normalizedEmail) {
+      const existing = this.byEmail(normalizedEmail);
+      if (existing) {
+        this.db
+          .prepare(
+            `UPDATE commenters
+                SET verified_at = COALESCE(verified_at, ?),
+                    display_name = COALESCE(NULLIF(?, ''), display_name),
+                    locale = COALESCE(locale, ?)
+              WHERE id = ?`,
+          )
+          .run(nowIso, trimmedName, locale, existing.id);
+        return this.byId(existing.id)!;
+      }
+    }
+
+    const result = this.db
+      .prepare(
+        `INSERT INTO commenters (email, display_name, notify_photos, notify_comments, verified_at, locale, created_at)
+         VALUES (?, ?, 1, 1, ?, ?, ?)`,
+      )
+      .run(normalizedEmail, trimmedName, nowIso, locale, nowIso);
+    return this.byId(Number(result.lastInsertRowid))!;
+  }
+
+  /** Updates a commenter's display name directly. */
+  setDisplayName(id: number, displayName: string): void {
+    const trimmed = displayName.trim().slice(0, MAX_DISPLAY_NAME);
+    if (!trimmed) return;
+    this.db.prepare('UPDATE commenters SET display_name = ? WHERE id = ?').run(trimmed, id);
+  }
+
+  /** Updates a commenter's email address. */
+  setEmail(id: number, email: string | null, verified = false): void {
+    const normalized = email ? email.trim() : null;
+    if (verified && normalized) {
+      this.db
+        .prepare(
+          'UPDATE commenters SET email = ?, verified_at = COALESCE(verified_at, ?) WHERE id = ?',
+        )
+        .run(normalized, new Date().toISOString(), id);
+    } else {
+      this.db.prepare('UPDATE commenters SET email = ? WHERE id = ?').run(normalized, id);
+    }
   }
 
   /**
@@ -167,9 +235,26 @@ export class CommenterRepo {
     return this.byId(row.id)!;
   }
 
-  /** Disables notifications without deleting the address, so resubscribing remains possible. */
+  /** Sets both photo and comment notification switches together. */
   setNotify(id: number, notify: boolean): void {
-    this.db.prepare('UPDATE commenters SET notify = ? WHERE id = ?').run(notify ? 1 : 0, id);
+    const flag = notify ? 1 : 0;
+    this.db
+      .prepare('UPDATE commenters SET notify_photos = ?, notify_comments = ? WHERE id = ?')
+      .run(flag, flag, id);
+  }
+
+  /** Sets granular photo and/or comment notification preferences. */
+  setNotifyPreferences(
+    id: number,
+    prefs: { notifyPhotos?: boolean; notifyComments?: boolean },
+  ): void {
+    const current = this.byId(id);
+    if (!current) return;
+    const notifyPhotos = prefs.notifyPhotos ?? current.notifyPhotos;
+    const notifyComments = prefs.notifyComments ?? current.notifyComments;
+    this.db
+      .prepare('UPDATE commenters SET notify_photos = ?, notify_comments = ? WHERE id = ?')
+      .run(notifyPhotos ? 1 : 0, notifyComments ? 1 : 0, id);
   }
 
   /**
@@ -184,7 +269,8 @@ export class CommenterRepo {
       .prepare(
         `SELECT c.* FROM commenters c
            JOIN comments p ON p.commenter_id = c.id
-          WHERE p.id = ? AND c.id <> ? AND c.notify = 1 AND c.verified_at IS NOT NULL`,
+          WHERE p.id = ? AND c.id <> ? AND c.notify_comments = 1
+            AND c.email IS NOT NULL AND c.verified_at IS NOT NULL`,
       )
       .get(parentCommentId, authorId) as CommenterRow | undefined;
     return row ? toCommenter(row) : null;

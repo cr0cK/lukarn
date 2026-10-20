@@ -258,4 +258,59 @@ describe('a reply to somebody who commented through a photograph link', () => {
     assert.ok(!message.text.includes('/album/corse'));
     assert.match(message.text, new RegExp(ALBUM_TITLE));
   });
+
+  it('notifies share and album subscribers of new top-level comments when notify_comments is enabled', async () => {
+    const shareToken = context.shares.create({
+      albumId: 'corse',
+      mediaId: 'img-1',
+      label: null,
+      createdBy: 'patron',
+      expiresAt: null,
+    }).token;
+
+    const shareFollower =
+      context.commenters.byEmail('follower@exemple.fr') ??
+      context.commenters.declare('follower@exemple.fr', 'Follower');
+    context.commenters.markVerified('follower@exemple.fr');
+    context.shares.recordSubscriber(shareFollower.id, shareToken);
+
+    const mutedFollower =
+      context.commenters.byEmail('muted@exemple.fr') ??
+      context.commenters.declare('muted@exemple.fr', 'Muted');
+    context.commenters.markVerified('muted@exemple.fr');
+    context.shares.recordSubscriber(mutedFollower.id, shareToken);
+    context.shares.setSubscriberPrefs(mutedFollower.id, shareToken, { notifyComments: false });
+
+    const owner =
+      context.commenters.byEmail('patron@exemple.fr') ??
+      context.commenters.declare('patron@exemple.fr', 'Patron');
+    context.commenters.markVerified('patron@exemple.fr');
+    const login = await server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'patron', password: PASSWORD },
+    });
+    const session = login.cookies.find((entry) => entry.name === 'lukarn_session')!;
+    const sessionRow = context.db
+      .prepare('SELECT id FROM sessions WHERE username = ? ORDER BY created_at DESC')
+      .get('patron') as { id: string };
+    context.sessions.attachCommenter(sessionRow.id, owner.id);
+
+    sent = [];
+    const topComment = await server.inject({
+      method: 'POST',
+      url: '/api/comments/corse/img-1',
+      headers: { cookie: `lukarn_session=${session.value}` },
+      payload: { body: 'Nouveau commentaire racine' },
+    });
+    assert.equal(topComment.statusCode, 201, topComment.body);
+
+    const followerMsg = sent.find((m) => m.to === 'follower@exemple.fr');
+    assert.ok(followerMsg, 'active share subscriber with notify_comments=1 receives email');
+    assert.match(followerMsg.text, new RegExp(`/s/${shareToken}`));
+    assert.ok(!followerMsg.text.includes(ALBUM_TITLE));
+
+    const mutedMsg = sent.find((m) => m.to === 'muted@exemple.fr');
+    assert.equal(mutedMsg, undefined, 'subscriber with notify_comments=0 is not emailed');
+  });
 });

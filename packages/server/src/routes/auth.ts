@@ -94,13 +94,24 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
    * sign as you.
    */
   const sessionUser = (user: StoredUser): SessionUser => {
-    const identity = user.commenterId === null ? null : context.commenters.byId(user.commenterId);
+    const commenterId = user.commenterId ?? context.config.ensureUserCommenter(user.username);
+    const commenter = context.commenters.byId(commenterId);
+    const hasBoundEmail =
+      commenter !== null && commenter.email !== null && commenter.verifiedAt !== null;
+    const canComment = user.admin || user.roleCommenter;
     return {
       username: user.username,
+      displayName: user.displayName || commenter?.displayName || user.username,
       admin: user.admin,
-      identity: identity ? toIdentity(identity) : null,
-      identityBound: user.commenterId !== null,
-      commentsEnabled: context.mailer.enabled,
+      roleViewer: user.admin || user.roleViewer,
+      roleCommenter: user.admin || user.roleCommenter,
+      email: commenter?.email ?? null,
+      hasPassword: user.passwordHash !== '',
+      notifyPhotos: commenter?.notifyPhotos ?? true,
+      notifyComments: commenter?.notifyComments ?? true,
+      identity: commenter && canComment ? toIdentity(commenter) : null,
+      identityBound: hasBoundEmail,
+      commentsEnabled: context.mailer.enabled || canComment,
     };
   };
 
@@ -159,17 +170,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
           session.id,
           sessionCookieOptions(context.env.publicUrl, context.sessions.ttlMs),
         )
-        .send({
-          username: user.username,
-          admin: user.admin,
-          // A fresh sign-in carries no identity: it is declared afterwards and belongs
-          // to the person, not the access key.
-          identity: null,
-          // A password sign-in is a shared key by construction: a bound account holds
-          // the reserved hash, which `argon2.verify` refuses like any wrong password.
-          identityBound: false,
-          commentsEnabled: context.mailer.enabled,
-        } satisfies SessionUser);
+        .send(sessionUser(user));
     });
 
     app.post('/logout', async (request, reply) => {
@@ -254,7 +255,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
       const identity =
         account?.commenterId == null ? null : context.commenters.byId(account.commenterId);
 
-      if (identity) {
+      if (identity && identity.email) {
         const minted = context.codes.mint(email, 'signin');
         if ('code' in minted) {
           // The recorded language, not this request's: the person signing in has made
@@ -538,22 +539,27 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
     });
 
     /**
-     * Updates the commenter display name for the authenticated member account.
+     * Updates the commenter display name and notification preferences for the authenticated account.
      */
     app.patch('/profile', { preHandler: requireAuth }, async (request, reply) => {
       const blocked = blockedReply(reply, throttle.blockedForIp(request.ip), request.t);
       if (blocked) return blocked;
       throttle.countCall(request.ip);
 
-      if (!request.user || request.user.username === null) {
+      if (!request.user || (request.user.username === null && request.commenterId === null)) {
         return reply.code(403).send({
           error: 'forbidden',
           message: request.t('error.authRequired'),
         });
       }
 
-      const user = context.config.user(request.user.username);
-      if (!user || user.commenterId === null) {
+      const user =
+        request.user.username !== null
+          ? context.config.user(request.user.username)
+          : request.commenterId !== null
+            ? context.config.userByCommenterId(request.commenterId)
+            : undefined;
+      if (request.user.username !== null && !user) {
         return reply.code(400).send({
           error: 'no_identity',
           message: request.t('error.invalidIdentity'),
@@ -564,10 +570,19 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         .object({
           displayName: z.string().trim().min(1).max(DISPLAY_NAME_MAX_LENGTH).optional(),
           notify: z.boolean().optional(),
+          notifyPhotos: z.boolean().optional(),
+          notifyComments: z.boolean().optional(),
         })
-        .refine((data) => data.displayName !== undefined || data.notify !== undefined, {
-          message: 'At least one field must be provided',
-        })
+        .refine(
+          (data) =>
+            data.displayName !== undefined ||
+            data.notify !== undefined ||
+            data.notifyPhotos !== undefined ||
+            data.notifyComments !== undefined,
+          {
+            message: 'At least one field must be provided',
+          },
+        )
         .safeParse(request.body);
       if (!parsed.success) {
         return reply.code(400).send({
@@ -576,22 +591,62 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
         });
       }
 
-      const commenterId = user.commenterId;
-      const { displayName, notify } = parsed.data;
+      const commenterId =
+        request.commenterId ??
+        user?.commenterId ??
+        (user ? context.config.ensureUserCommenter(user.username) : null)!;
+      const { displayName, notify, notifyPhotos, notifyComments } = parsed.data;
       if (displayName !== undefined) {
         context.db
           .prepare(
             'UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?',
           )
           .run(displayName, commenterId);
+        if (user) {
+          context.db
+            .prepare('UPDATE users SET display_name = ? WHERE username = ?')
+            .run(displayName, user.username);
+        }
       }
       if (notify !== undefined) {
         context.commenters.setNotify(commenterId, notify);
       }
+      if (notifyPhotos !== undefined || notifyComments !== undefined) {
+        context.commenters.setNotifyPreferences(commenterId, { notifyPhotos, notifyComments });
+      }
+      if (
+        request.share !== null &&
+        (notify !== undefined || notifyPhotos !== undefined || notifyComments !== undefined)
+      ) {
+        context.shares.recordSubscriber(commenterId, request.share.token);
+        context.shares.setSubscriberPrefs(commenterId, request.share.token, {
+          notifyPhotos: notifyPhotos ?? notify,
+          notifyComments: notifyComments ?? notify,
+        });
+      }
 
       context.config.invalidate();
-      const freshUser = context.config.user(request.user.username)!;
-      return reply.send(sessionUser(freshUser));
+      if (request.user.username !== null) {
+        const freshUser = context.config.user(request.user.username)!;
+        return reply.send(sessionUser(freshUser));
+      }
+
+      const freshCommenter = context.commenters.byId(commenterId);
+      const responseBody: SessionUser = {
+        username: null,
+        displayName: freshCommenter?.displayName ?? '',
+        admin: false,
+        roleViewer: true,
+        roleCommenter: true,
+        email: freshCommenter?.email ?? null,
+        hasPassword: Boolean(user && user.passwordHash !== ''),
+        notifyPhotos: freshCommenter?.notifyPhotos ?? true,
+        notifyComments: freshCommenter?.notifyComments ?? true,
+        identity: freshCommenter ? toIdentity(freshCommenter) : null,
+        identityBound: false,
+        commentsEnabled: context.mailer.enabled,
+      };
+      return reply.send(responseBody);
     });
 
     /* ------------------------------------------------------------------------

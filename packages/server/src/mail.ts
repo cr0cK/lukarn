@@ -161,7 +161,7 @@ export interface CommentNotification {
  */
 export interface Recipient {
   email: string;
-  reason: 'moderation' | 'reply';
+  reason: 'moderation' | 'reply' | 'comment';
   /**
    * Language this message is written in. It comes from the recipient's identity
    * for a reply, and from the instance default for the moderation address, which
@@ -209,16 +209,12 @@ export function buildCommentMail(
     ? `${env.publicUrl}/s/${encodeURIComponent(recipient.share.token)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`
     : `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?photo=${encodeURIComponent(notification.mediaId)}&panel=comments`;
   /**
-   * This link disables `commenters.notify`, and therefore **everything** the gallery
-   * sends: replies to comments as well as new-photo announcements. The wording says
-   * so explicitly — "unsubscribe from these emails" would suggest that only comment
-   * notifications are disabled, and the surprise would result in a spam report.
-   *
-   * To silence only one album, use the link in the new-photo email
-   * (`buildAlbumUpdateMail`).
+   * This link disables `commenters.notify_comments`, and therefore comment notifications
+   * the gallery sends. The moderation address has no identity and is not offered an
+   * unsubscribe link.
    */
   const unsubscribe =
-    recipient.reason === 'reply'
+    recipient.reason !== 'moderation'
       ? `${env.publicUrl}/api/comments/unsubscribe?u=${encodeURIComponent(recipient.email)}&t=${signUnsubscribeToken(recipient.email, env.sessionSecret)}`
       : null;
 
@@ -282,6 +278,11 @@ export interface AlbumUpdateNotification {
   albumTitle: string;
   /** Media added to the index since the last announcement. */
   count: number;
+  /**
+   * When the recipient reaches the album or selection through a share link (`/s/<token>`)
+   * rather than a direct account grant, links to `/s/<token>?order=desc`.
+   */
+  shareToken?: string | null;
 }
 
 /**
@@ -303,7 +304,9 @@ export function buildAlbumUpdateMail(
   // `?order=desc`: the message announces what has just arrived, so the link must
   // lead there. The parameter only applies to this visit — it takes precedence over
   // the album's default order without overwriting the browser's memory (D99).
-  const link = `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?order=desc`;
+  const link = notification.shareToken
+    ? `${env.publicUrl}/s/${encodeURIComponent(notification.shareToken)}?order=desc`
+    : `${env.publicUrl}/album/${encodeURIComponent(notification.albumId)}?order=desc`;
   const unsubscribe =
     `${env.publicUrl}/api/subscriptions/unsubscribe` +
     `?u=${encodeURIComponent(email)}&a=${encodeURIComponent(notification.albumId)}` +
@@ -317,7 +320,7 @@ export function buildAlbumUpdateMail(
     link,
     '',
     '—',
-    t('mail.albumReason'),
+    t('mail.albumReason', notification.albumTitle),
     `${t('mail.albumUnsubscribe', notification.albumTitle)} : ${unsubscribe}`,
   ].join('\n');
 
@@ -330,7 +333,7 @@ export function buildAlbumUpdateMail(
       <p style="margin: 0 0 24px;"><a href="${escapeHtml(link)}" style="color: #2563eb;">${t('mail.viewAlbum')}</a></p>
       <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 0 0 12px;">
       <p style="margin: 0; font-size: 13px; color: #888;">
-        ${t('mail.albumReason')}
+        ${escapeHtml(t('mail.albumReason', notification.albumTitle))}
         <br>
         <a href="${escapeHtml(unsubscribe)}" style="color: #888;">${escapeHtml(t('mail.albumUnsubscribe', notification.albumTitle))}</a>
       </p>

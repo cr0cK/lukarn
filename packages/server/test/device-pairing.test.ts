@@ -265,8 +265,12 @@ describe('commenter identity', () => {
     const claimed = await poll(pairing.deviceCode);
 
     // Without this rule, the living-room television would sign "Mamie" for the
-    // whole household: identity belongs to the person, the access key to the device.
-    assert.equal(claimed.json<{ user: { identity: unknown } }>().user.identity, null);
+    // whole household: session-attached email identity belongs to the person, not the paired screen.
+    const claimedIdentity = claimed.json<{
+      user: { identity: { email: string | null; displayName: string } | null };
+    }>().user.identity;
+    assert.equal(claimedIdentity?.email, null);
+    assert.equal(claimedIdentity?.displayName, 'alexis');
   });
 
   it('follows a bound account, whose identity is the account itself', async () => {

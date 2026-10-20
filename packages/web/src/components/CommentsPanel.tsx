@@ -96,23 +96,23 @@ function Composer({ scope, mediaId }: { scope: Scope; mediaId: string }): ReactE
   const { data: me } = useMe();
   const [identifying, setIdentifying] = useState(false);
 
+  // Authenticated user without the `commenter` role (and not an administrator):
+  // their session is read-only for comments.
+  if (me && me.username !== null && me.roleCommenter === false && !me.admin) {
+    return <p className="text-xs text-ink-400">{t('comments.readOnlyRole')}</p>;
+  }
+
   if (me?.identity && !identifying) {
     return (
       <>
-        <CommentForm
-          scope={scope}
-          mediaId={mediaId}
-          parentId={null}
-          placeholder={t('comments.placeholder', me.identity.displayName)}
-        />
-        <p className="mt-2 text-xs text-ink-400">
-          {t('comments.signedAs')} <span className="text-ink-200">{me.identity.displayName}</span>.
+        <p className="mb-2 text-xs text-ink-400">
+          {t('comments.commentingAs', me.identity.displayName)}
           {/* A bound account is one person, and the server refuses to change or forget
               that identity: the way out is to sign out. Offering the link anyway would
               make a 409 the way that rule is discovered. */}
           {!me.identityBound && (
             <>
-              {' '}
+              {' · '}
               <button
                 type="button"
                 onClick={() => setIdentifying(true)}
@@ -123,6 +123,12 @@ function Composer({ scope, mediaId }: { scope: Scope; mediaId: string }): ReactE
             </>
           )}
         </p>
+        <CommentForm
+          scope={scope}
+          mediaId={mediaId}
+          parentId={null}
+          placeholder={t('comments.placeholder', me.identity.displayName)}
+        />
       </>
     );
   }
@@ -161,9 +167,10 @@ function ThreadView({
 }): ReactElement {
   const t = useT();
   const { data: me } = useMe();
-  // Without a verified identity, the server would reject the reply: offering
-  // the button would lead straight to an error message.
-  const canReply = Boolean(me?.identity);
+  // Without a verified identity or commenter role, the server would reject the reply:
+  // offering the button would lead straight to an error message.
+  const canComment = me?.username === null || me?.roleCommenter !== false || Boolean(me?.admin);
+  const canReply = Boolean(me?.identity) && canComment;
   const open = replyTo === thread.root.id;
 
   return (

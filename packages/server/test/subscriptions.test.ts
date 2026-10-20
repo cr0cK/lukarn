@@ -604,4 +604,79 @@ describe('notifier coupling to the delivery service', () => {
     assert.equal(envoyes.length, 1, 'the notifier must see the replacement');
     assert.equal(envoyes[0]!.to, 'abo-tardif@exemple.fr');
   });
+
+  it('links share-link subscribers to /s/<token>?order=desc and announces items added to a composable share', async () => {
+    const invite = identiteVerifiee('abo-lien@exemple.fr', 'Invité');
+    context.db.prepare('DELETE FROM media').run();
+    context.db.prepare('DELETE FROM sync_state').run();
+    context.db.prepare('DELETE FROM album_subscriptions').run();
+    context.db.prepare('DELETE FROM commenter_shares').run();
+    context.db.prepare('DELETE FROM share_links').run();
+
+    // 1. Share-aware album update deep link
+    const albumLink = context.shares.create({
+      albumId: 'vacances',
+      mediaId: null,
+      label: 'Vacances partagées',
+      createdBy: 'famille',
+      expiresAt: null,
+    });
+    context.shares.recordSubscriber(invite, albumLink.token);
+
+    context.syncState.set('vacances', {
+      lastSyncAt: '2026-07-01T00:00:00.000Z',
+      status: 'ok',
+      error: null,
+    });
+    context.syncState.markNotified('vacances', '2026-07-01T00:00:00.000Z');
+    context.media.upsertMany([photo('vacances', 'img-partage')], '2026-07-01T00:10:00.000Z');
+
+    const envoyes: MailMessage[] = [];
+    const { passage, vider } = notifieur(envoyes);
+    assert.equal(passage.run(Date.parse('2026-07-01T02:00:00.000Z')), 1);
+    await vider();
+
+    assert.equal(envoyes.length, 1);
+    assert.equal(envoyes[0]!.to, 'abo-lien@exemple.fr');
+    assert.match(envoyes[0]!.text, new RegExp(`/s/${albumLink.token}\\?order=desc`));
+    assert.ok(!envoyes[0]!.text.includes('/album/vacances'));
+
+    // 2. Composable share item addition notification after quiet period
+    context.media.upsertMany([photo('noel', 'img-noel-1')], '2026-07-01T00:00:00.000Z');
+    const selectionLink = context.shares.create({
+      albumId: null,
+      mediaId: null,
+      items: [{ albumId: 'vacances', mediaId: 'img-partage' }],
+      label: 'Sélection famille',
+      createdBy: 'famille',
+      expiresAt: null,
+    });
+    context.shares.recordSubscriber(invite, selectionLink.token);
+
+    // Append an item to the selection share
+    context.shares.addItems(selectionLink.token, {
+      items: [{ albumId: 'noel', mediaId: 'img-noel-1' }],
+    });
+    // Backdate updated_at and added_at so the 1-hour quiet period has elapsed
+    context.db
+      .prepare('UPDATE share_links SET updated_at = ?, notified_at = ? WHERE token = ?')
+      .run('2026-07-02T00:10:00.000Z', '2026-07-02T00:00:00.000Z', selectionLink.token);
+    context.db
+      .prepare('UPDATE share_link_items SET added_at = ? WHERE token = ? AND media_id = ?')
+      .run('2026-07-02T00:10:00.000Z', selectionLink.token, 'img-noel-1');
+
+    envoyes.length = 0;
+    assert.equal(passage.run(Date.parse('2026-07-02T02:00:00.000Z')), 1);
+    await vider();
+
+    assert.equal(envoyes.length, 1);
+    assert.equal(envoyes[0]!.to, 'abo-lien@exemple.fr');
+    assert.match(envoyes[0]!.text, new RegExp(`/s/${selectionLink.token}\\?order=desc`));
+
+    // Subsequent run does not re-notify
+    envoyes.length = 0;
+    assert.equal(passage.run(Date.parse('2026-07-02T03:00:00.000Z')), 0);
+    await vider();
+    assert.equal(envoyes.length, 0);
+  });
 });

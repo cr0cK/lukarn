@@ -111,6 +111,12 @@ interface LightboxProps {
   onClose: () => void;
   /** Called near the end of the list to load the next page. */
   onNeedMore: () => void;
+  /** Set of favorited media IDs for the current user or share visitor. */
+  favoriteIds?: ReadonlySet<string>;
+  /** Callback to toggle the favorite state of a media item. */
+  onToggleFavorite?: (mediaId: string) => void;
+  /** Whether comments are enabled on this view (default `true`). */
+  allowComments?: boolean;
 }
 
 /**
@@ -138,6 +144,9 @@ export function Lightbox({
   onIndexChange,
   onClose,
   onNeedMore,
+  favoriteIds,
+  onToggleFavorite,
+  allowComments = true,
 }: LightboxProps): ReactElement | null {
   const t = useT();
   const item = items[index];
@@ -185,7 +194,7 @@ export function Lightbox({
    * arrows are how a mouse navigates, and there is no screen edge to reclaim.
    */
   const [bare, setBare] = useState(() => window.matchMedia(COARSE_POINTER_QUERY).matches);
-  const [showShare, setShowShare] = useState(false);
+  const [shareMode, setShareMode] = useState<'new' | 'existing' | null>(null);
   const phone = useMediaQuery(PHONE_QUERY);
   const coarse = useMediaQuery(COARSE_POINTER_QUERY);
 
@@ -483,8 +492,17 @@ export function Lightbox({
           break;
         case 'c':
         case 'C':
-          event.preventDefault();
-          togglePanel('comments');
+          if (allowComments) {
+            event.preventDefault();
+            togglePanel('comments');
+          }
+          break;
+        case 's':
+        case 'S':
+          if (onToggleFavorite && item) {
+            event.preventDefault();
+            onToggleFavorite(item.id);
+          }
           break;
         case 'f':
         case 'F':
@@ -528,10 +546,12 @@ export function Lightbox({
   }, [
     index,
     items.length,
+    item,
     zoomed,
     panel,
     editingCaption,
     captionHidden,
+    allowComments,
     setCaptionHidden,
     goTo,
     onClose,
@@ -539,6 +559,7 @@ export function Lightbox({
     toggleFullscreen,
     download,
     togglePanel,
+    onToggleFavorite,
   ]);
 
   if (!item) return null;
@@ -552,20 +573,12 @@ export function Lightbox({
   // counter must never show "60 / 50".
   const count = Math.max(total, items.length);
 
-  // Describe actions once and render them in two ways: aligned icons from `sm`
-  // upwards, labelled rows in the menu below. Duplicating them would eventually
-  // leave a shortcut, icon or active state inconsistent between the two.
   const isCover = item.id === coverId;
+  const isFavorited = favoriteIds?.has(item.id) ?? false;
 
-  const actions: {
-    /**
-     * Stable name, used to split this list between the phone's action row and its
-     * overflow menu. Matching on `label` would break the day somebody translates
-     * it, and silently: the menu would simply hold one entry more.
-     */
-    key: 'info' | 'zoom' | 'download' | 'fullscreen' | 'bare' | 'cover' | 'share';
+  const primaryActions: {
+    key: 'info' | 'zoom' | 'download' | 'fullscreen';
     label: string;
-    /** Absent for an action without a shortcut: see "Set as cover". */
     shortcut?: string;
     icon: ReactNode;
     active?: boolean;
@@ -580,7 +593,8 @@ export function Lightbox({
       icon: (
         <>
           <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v5M12 7.5v.5" />
+          <path d="M12 11v5" />
+          <circle cx="12" cy="8" r="1" fill="currentColor" stroke="none" />
         </>
       ),
     },
@@ -608,12 +622,29 @@ export function Lightbox({
       onSelect: download,
       icon: <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />,
     },
+    {
+      key: 'fullscreen',
+      label: t('viewer.fullscreen'),
+      shortcut: 'f',
+      onSelect: toggleFullscreen,
+      icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+    },
+  ];
+
+  const menuActions: {
+    key: 'share' | 'addToShare' | 'cover' | 'editCaption' | 'bare';
+    label: string;
+    shortcut?: string;
+    icon: ReactNode;
+    active?: boolean;
+    onSelect: () => void;
+  }[] = [
     ...(isAdmin && scope.kind === 'album'
       ? [
           {
             key: 'share' as const,
             label: t('shares.sharePhoto'),
-            onSelect: () => setShowShare(true),
+            onSelect: () => setShareMode('new'),
             icon: (
               <>
                 <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
@@ -622,44 +653,29 @@ export function Lightbox({
               </>
             ),
           },
+          {
+            key: 'addToShare' as const,
+            label: t('viewer.addToShare'),
+            onSelect: () => setShareMode('existing'),
+            icon: (
+              <>
+                <path d="M12 5v14M5 12h14" />
+              </>
+            ),
+          },
+          {
+            key: 'editCaption' as const,
+            label: t('viewer.editCaption'),
+            onSelect: () => setEditingCaption(true),
+            icon: (
+              <>
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </>
+            ),
+          },
         ]
       : []),
-    {
-      key: 'fullscreen',
-      label: t('viewer.fullscreen'),
-      shortcut: 'f',
-      onSelect: toggleFullscreen,
-      icon: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
-    },
-    {
-      key: 'bare',
-      label: t('viewer.hideChrome'),
-      shortcut: 'h',
-      onSelect: () => setBare(true),
-      // Use a crossed-out eye: it represents what disappears, not what remains.
-      icon: (
-        <>
-          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
-          <circle cx="12" cy="12" r="2.5" />
-          <path d="m4 20 16-16" />
-        </>
-      ),
-    },
-    // Reserved for administrators and never available on video: its preview
-    // belongs to Drive (D92), which may not provide one — and the cover is the
-    // only image whose absence is visible from the home page without a fallback.
-    //
-    // Unlike the other four, no keyboard shortcut: this is done once per album,
-    // not a playback command, and the `?` reference is for everyone.
-    //
-    // No shortcut for returning to automatic selection either — that is the
-    // /admin button. Reconfirming the current cover is therefore not a wasted
-    // click: it may have been selected by default, and this pins it so the next
-    // synchronised photo no longer replaces it.
-    //
-    // `scope.kind === 'album'` beside `isAdmin` because the mutation needs an album
-    // identifier and a link carries none. Both conditions are true of the same
-    // person in practice; the compiler is what makes the second one stated.
     ...(isAdmin && !isVideo && scope.kind === 'album'
       ? [
           {
@@ -676,6 +692,24 @@ export function Lightbox({
           },
         ]
       : []),
+    {
+      key: 'bare',
+      label: t('viewer.hideChrome'),
+      shortcut: 'h',
+      onSelect: () => setBare(true),
+      icon: (
+        <>
+          <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+          <circle cx="12" cy="12" r="2.5" />
+          <path d="m4 20 16-16" />
+        </>
+      ),
+    },
+  ];
+
+  const mobileOverflowActions = [
+    ...primaryActions.filter((action) => action.key !== 'info' && action.key !== 'download'),
+    ...menuActions,
   ];
 
   return (
@@ -687,31 +721,11 @@ export function Lightbox({
       aria-label={item.name}
       className="fixed inset-0 z-50 flex outline-none"
     >
-      {/* Photo column. It **shrinks** when the panel enters the flow (from
-          `md`): as an overlay, the panel covered the "Next" arrow and had to be
-          closed for every photo. `min-w-0` is essential — without it, content
-          imposes its width and the panel overflows the screen.
-
-          **`theme-dark` here and nowhere else in this file**: the stage is the
-          one surface that does not follow the reader's theme. A photograph is
-          judged against what surrounds it, and a white ground shifts every
-          exposure in it — which is why the ground carries `ink-950` while the
-          panel beside it, the sheets it opens and the menus above it stay
-          chrome and turn light with the rest of the application (D260815d).
-          The gradients and the white text in this column are painted over the
-          photo itself, and are correct for the same reason. */}
       <div className="theme-dark relative flex min-w-0 flex-1 flex-col bg-ink-950">
-        {/* The veil makes the header readable: without it, light text over an
-            overexposed sky cannot be read. It covers two lines — album and day,
-            then place — mirroring the bottom bar, and its transparent base keeps
-            the transition soft instead of placing a black band over the photo. */}
         <header
           hidden={bare}
           className="absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/85 via-black/55 to-transparent pb-8"
         >
-          {/* Attach it to the top edge like a loading bar: it remains readable
-              without cutting into the photo. Lower down, it crossed the image —
-              a coloured line through the middle of a composition. */}
           <div
             className="h-0.5 w-full bg-white/15"
             role="progressbar"
@@ -726,40 +740,13 @@ export function Lightbox({
             />
           </div>
 
-          {/* Put the numeric ratio **beneath the bar**, centred, rather than in
-              the title row. Two ways of saying the same thing used to sit at
-              opposite ends of the screen: the line showed position without the
-              total, while the number gave the count without the position.
-              Together they explain one another, and the top row returns to the
-              title the width permanently occupied by "900 / 900".
-
-              **Outside the flow**, crucially: in the flow it added fifteen pixels
-              to a header over the photo, exactly what had just been reclaimed.
-              It fits in the band already occupied by the gradient between the
-              line and first title row — a bar that costs height to say "25 of
-              900" is not worth it.
-
-              `pointer-events-none`: placed above the row, it would otherwise
-              capture a click meant for the title.
-
-              `aria-hidden`: the bar already carries `aria-valuenow` and
-              `aria-valuemax`; a screen reader would announce the same thing
-              twice a few words apart. */}
           <p
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-1 text-center text-[11px] leading-none text-ink-400 tabular-nums"
+            className="pointer-events-none absolute inset-x-0 top-1 text-center text-xs leading-none text-ink-400 tabular-nums"
           >
             {index + 1} / {count}
           </p>
 
-          {/* `items-start`: everything aligns with the **first line** of text.
-              Top offsets below place the title and icon centres on the same
-              horizontal — 6 px below `sm` (32 px button), 8 px above it (36 px).
-
-              Side margins account for the notch: in landscape on an iPhone
-              launched from the home screen, it covers the Close button exactly.
-              Apply them here rather than to the header so the gradient and
-              progress bar still reach the edge. */}
           <div className="flex items-start gap-1 py-2 pl-[calc(0.5rem_+_env(safe-area-inset-left))] pr-[calc(0.5rem_+_env(safe-area-inset-right))] sm:gap-2 sm:py-3 sm:pl-[calc(1rem_+_env(safe-area-inset-left))] sm:pr-[calc(1rem_+_env(safe-area-inset-right))]">
             <button
               type="button"
@@ -780,18 +767,6 @@ export function Lightbox({
             </button>
 
             <div className="min-w-0 flex-1 pt-1.5 sm:pt-2">
-              {/* The header **locates** the photo, while the bottom bar **tells
-                  its story**: album and day here, what somebody wrote there. The
-                  filename occupied this space in bold without telling anyone
-                  anything — `IMG_0004.jpg` says neither where nor when — and hid
-                  the album, the only information truly missing on arrival from a
-                  shared link. It remains atop the `i` panel with its technical data.
-
-                  Truncate the **album title**, never the date: on a phone, the
-                  line cannot fit both, and "Germany – Black Forest · Toda…"
-                  sacrifices precisely the information being provided. Hence
-                  `truncate` only on the album and `shrink-0` on the short,
-                  bounded date. */}
               <p className="flex min-w-0 items-baseline text-sm leading-5 font-semibold text-ink-100">
                 {albumTitle && (
                   <>
@@ -801,24 +776,12 @@ export function Lightbox({
                 )}
                 <span className="shrink-0">{dayLabel(dayKey(item.takenAt), t)}</span>
               </p>
-              {/* Place gets its own line now that the first is full. The day note
-                  moved to the bottom bar (D84): it is written by hand like the
-                  photo description, and both are read together or not at all. */}
               {dayPlace && (
                 <p className="truncate text-xs leading-4 text-ink-300" title={dayPlace}>
                   {dayPlace}
                 </p>
               )}
 
-              {/* Below `md`, what somebody **wrote** joins what situates the
-                  photo, instead of waiting at the other end of the screen under
-                  a row of buttons (D260814e). The bottom then carries the
-                  toolbar and nothing else.
-
-                  It ignores `captionHidden` here: the tap that hides the chrome
-                  already puts this away, and `l` has no key to press on a phone
-                  — someone who had collapsed the strip on a desktop would have
-                  found no way to bring it back. */}
               {phone && (
                 <MediaCaption
                   key={item.id}
@@ -837,26 +800,100 @@ export function Lightbox({
               )}
             </div>
 
-            {/* **Nothing actionable up here below `md`.** The header identifies
-                the photo and offers the way out; everything that acts on it sits
-                in the sheet's action row, at the edge the thumb is already on
-                (D260814d). From `md` the row returns: a cursor reaches the top of
-                the screen as easily as the bottom, and hover names every icon.
+            {/* Mobile video top-bar controls: on video, native playback controls
+                sit at the bottom of the element so the bottom sheet is not shown
+                at rest. Render compact action icons in the top bar instead. */}
+            {phone && isVideo && (
+              <div className="flex shrink-0 items-center gap-0.5 md:hidden">
+                {onToggleFavorite && (
+                  <IconButton
+                    label={t(isFavorited ? 'viewer.unfavorite' : 'viewer.favorite')}
+                    active={isFavorited}
+                    onClick={() => onToggleFavorite(item.id)}
+                  >
+                    <polygon
+                      points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                      fill={isFavorited ? 'currentColor' : 'none'}
+                    />
+                  </IconButton>
+                )}
+                {allowComments && (
+                  <IconButton
+                    label={commentsLabel(commentTotal, unread, t)}
+                    active={panel === 'comments'}
+                    onClick={() => togglePanel('comments')}
+                    badge={<CommentBadge total={commentTotal} unread={unread} />}
+                  >
+                    <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+                  </IconButton>
+                )}
+                <IconButton
+                  label={t('viewer.information')}
+                  active={panel === 'info'}
+                  onClick={() => togglePanel('info')}
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 11v5" />
+                  <circle cx="12" cy="8" r="1" fill="currentColor" stroke="none" />
+                </IconButton>
+                <IconButton label={t('viewer.download')} onClick={download}>
+                  <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+                </IconButton>
+                <ActionMenu
+                  label={t('viewer.actions')}
+                  triggerClassName="flex size-8 items-center justify-center rounded-full text-ink-200 transition-colors hover:bg-white/10 hover:text-white"
+                  groupes={[
+                    mobileOverflowActions.map((action) => ({
+                      label: action.label,
+                      icon: (
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="size-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
+                        >
+                          {action.icon}
+                        </svg>
+                      ),
+                      onSelect: action.onSelect,
+                    })),
+                  ]}
+                />
+              </div>
+            )}
 
-                Comments never enters the overflow menu even there: its icon
-                carries the unread badge, the only sign that a photo has a
-                conversation, and a badge inside a closed menu signals nothing. */}
             <div className="hidden shrink-0 items-center gap-0.5 md:flex md:gap-2">
-              <IconButton
-                label={commentsLabel(commentTotal, unread, t)}
-                active={panel === 'comments'}
-                onClick={() => togglePanel('comments')}
-                badge={<CommentBadge total={commentTotal} unread={unread} />}
-              >
-                <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-              </IconButton>
+              {onToggleFavorite && (
+                <IconButton
+                  label={t(
+                    'viewer.shortcut',
+                    t(isFavorited ? 'viewer.unfavorite' : 'viewer.favorite'),
+                    's',
+                  )}
+                  active={isFavorited}
+                  onClick={() => onToggleFavorite(item.id)}
+                >
+                  <polygon
+                    points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+                    fill={isFavorited ? 'currentColor' : 'none'}
+                  />
+                </IconButton>
+              )}
 
-              {actions.map((action) => (
+              {allowComments && (
+                <IconButton
+                  label={commentsLabel(commentTotal, unread, t)}
+                  active={panel === 'comments'}
+                  onClick={() => togglePanel('comments')}
+                  badge={<CommentBadge total={commentTotal} unread={unread} />}
+                >
+                  <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+                </IconButton>
+              )}
+
+              {primaryActions.map((action) => (
                 <IconButton
                   key={action.label}
                   label={
@@ -870,6 +907,31 @@ export function Lightbox({
                   {action.icon}
                 </IconButton>
               ))}
+
+              <ActionMenu
+                label={t('viewer.actions')}
+                triggerClassName="relative rounded-full p-1.5 text-ink-200 transition-colors sm:p-2 hover:bg-white/10 hover:text-white"
+                groupes={[
+                  menuActions.map((action) => ({
+                    label: action.shortcut
+                      ? t('viewer.shortcut', action.label, action.shortcut)
+                      : action.label,
+                    icon: (
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="size-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        aria-hidden="true"
+                      >
+                        {action.icon}
+                      </svg>
+                    ),
+                    onSelect: action.onSelect,
+                  })),
+                ]}
+              />
             </div>
           </div>
         </header>
@@ -1164,9 +1226,12 @@ export function Lightbox({
             <SheetActions
               panel={panel}
               onPanel={(next) => onPanelChange(next)}
+              allowComments={allowComments}
               commentTotal={commentTotal}
               unread={unread}
-              overflow={actions.filter((action) => action.key !== 'info')}
+              isFavorited={isFavorited}
+              onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(item.id) : undefined}
+              overflow={mobileOverflowActions}
               onDownload={download}
               t={t}
             />
@@ -1196,8 +1261,9 @@ export function Lightbox({
           albumTitle={albumTitle}
           mediaId={item.id}
           mediaName={item.name}
-          isOpen={showShare}
-          onClose={() => setShowShare(false)}
+          initialMode={shareMode ?? 'new'}
+          isOpen={shareMode !== null}
+          onClose={() => setShareMode(null)}
         />
       )}
     </div>
@@ -1219,25 +1285,28 @@ export function Lightbox({
 function SheetActions({
   panel,
   onPanel,
+  allowComments,
   commentTotal,
   unread,
+  isFavorited,
+  onToggleFavorite,
   overflow,
   onDownload,
   t,
 }: {
   panel: PanelTab | null;
   onPanel: (panel: PanelTab | null) => void;
+  allowComments: boolean;
   commentTotal: number;
   unread: number;
+  isFavorited?: boolean;
+  onToggleFavorite?: () => void;
   overflow: { label: string; icon: ReactNode; active?: boolean; onSelect: () => void }[];
   onDownload: () => void;
   t: Translate;
 }): ReactElement {
   return (
     <div className="flex items-center gap-1 border-b border-ink-800 px-2 pb-2">
-      {/* `flex-[2]` for two children against Download's one: without it the pair
-          shares a single unit and Download gets a slot twice their width, which
-          reads as a gap somebody forgot to close. */}
       <div role="tablist" aria-label={t('panel.sections')} className="flex flex-[2] gap-1">
         <SheetAction
           tab
@@ -1246,20 +1315,36 @@ function SheetActions({
           onSelect={() => onPanel(panel === 'info' ? null : 'info')}
         >
           <circle cx="12" cy="12" r="9" />
-          <path d="M12 11v5M12 7.5v.5" />
+          <path d="M12 11v5" />
+          <circle cx="12" cy="8" r="1" fill="currentColor" stroke="none" />
         </SheetAction>
 
-        <SheetAction
-          tab
-          selected={panel === 'comments'}
-          label={t('panel.comments')}
-          announce={commentsLabel(commentTotal, unread, t)}
-          badge={<CommentBadge total={commentTotal} unread={unread} />}
-          onSelect={() => onPanel(panel === 'comments' ? null : 'comments')}
-        >
-          <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
-        </SheetAction>
+        {allowComments && (
+          <SheetAction
+            tab
+            selected={panel === 'comments'}
+            label={t('panel.comments')}
+            announce={commentsLabel(commentTotal, unread, t)}
+            badge={<CommentBadge total={commentTotal} unread={unread} />}
+            onSelect={() => onPanel(panel === 'comments' ? null : 'comments')}
+          >
+            <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+          </SheetAction>
+        )}
       </div>
+
+      {onToggleFavorite && (
+        <SheetAction
+          label={t(isFavorited ? 'viewer.unfavorite' : 'viewer.favorite')}
+          selected={isFavorited}
+          onSelect={onToggleFavorite}
+        >
+          <polygon
+            points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
+            fill={isFavorited ? 'currentColor' : 'none'}
+          />
+        </SheetAction>
+      )}
 
       <SheetAction label={t('viewer.downloadShort')} onSelect={onDownload}>
         <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
@@ -1270,8 +1355,6 @@ function SheetActions({
         triggerClassName="flex min-h-12 min-w-12 items-center justify-center rounded-lg text-ink-300 transition-colors hover:bg-tint hover:text-ink-100"
         groupes={[
           overflow.map((action) => ({
-            // Omit the keyboard shortcut: this menu opens by touch, where "(f)"
-            // is one more syllable to read and no key to press.
             label: action.label,
             icon: (
               <svg
@@ -1319,7 +1402,7 @@ function SheetAction({
       aria-selected={tab ? selected : undefined}
       aria-label={announce}
       onClick={onSelect}
-      className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-[0.6875rem] leading-none transition-colors ${
+      className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg px-2 text-xs leading-none transition-colors ${
         selected ? 'bg-accent-soft text-ink-100' : 'text-ink-300 hover:bg-tint'
       }`}
     >
@@ -1459,7 +1542,7 @@ function CommentBadge({ total, unread }: { total: number; unread: number }): Rea
       aria-hidden="true"
       // Cap at "9+": beyond that the number overflows the icon, and knowing
       // whether twelve or seventeen messages are unread changes no action.
-      className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-center text-[0.625rem] leading-4 font-semibold text-accent-ink tabular-nums"
+      className="absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[0.625rem] leading-none font-semibold text-accent-ink tabular-nums"
     >
       {unread > 9 ? '9+' : unread}
     </span>

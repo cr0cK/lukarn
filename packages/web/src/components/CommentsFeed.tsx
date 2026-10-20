@@ -1,7 +1,7 @@
 import type { FeedComment } from '@lukarn/shared';
 import { type ReactElement, type ReactNode, useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { errorText, mediaUrl } from '../api/client';
+import { errorText, mediaUrl, shareScope } from '../api/client';
 import { useCommentsFeed } from '../api/hooks';
 import { groupByDayAndPhoto, type PhotoGroup } from '../lib/commentGroups';
 import { emojify } from '../lib/emoji';
@@ -28,9 +28,9 @@ export interface ActivityFeed {
  * answers "is there anything new anywhere?" — restricting it to the open album
  * would make it disappear when changing pages even though nothing was read.
  */
-export function useActivityFeed(): ActivityFeed {
+export function useActivityFeed(shareToken?: string | null): ActivityFeed {
   const [isOpen, setIsOpen] = useState(false);
-  const { comments, isSuccess } = useCommentsFeed(null);
+  const { comments, isSuccess } = useCommentsFeed(null, true, shareToken);
   const { seenId, markFeedSeen } = useSeenFeed();
 
   const newest = comments[0]?.id ?? 0;
@@ -72,11 +72,17 @@ export function useActivityFeed(): ActivityFeed {
 export function CommentsFeed({
   albumId,
   albumTitle,
+  shareToken,
+  onOpenPhoto,
   onClose,
 }: {
   /** Open album, `null` from the album list where the toggle has no purpose. */
   albumId: string | null;
   albumTitle: string | null;
+  /** Optional share token when viewing the activity drawer from `/s/:token`. */
+  shareToken?: string | null;
+  /** Optional callback to open a photo directly (used on share views). */
+  onOpenPhoto?: (mediaId: string) => void;
   onClose: () => void;
 }): ReactElement {
   const t = useT();
@@ -87,7 +93,7 @@ export function CommentsFeed({
   const active = scope === 'album' ? albumId : null;
 
   const { comments, isPending, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useCommentsFeed(active);
+    useCommentsFeed(active, true, shareToken);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -178,7 +184,9 @@ export function CommentsFeed({
                   photo={photo}
                   // When filtered to one album, repeating it beneath each photo
                   // duplicates what the toggle already shows atop the drawer.
-                  showAlbum={scope === 'all'}
+                  showAlbum={scope === 'all' && !shareToken}
+                  shareToken={shareToken}
+                  onOpenPhoto={onOpenPhoto}
                   onNavigate={onClose}
                 />
               ))}
@@ -239,17 +247,30 @@ function ScopeTab({
 function PhotoBlock({
   photo,
   showAlbum,
+  shareToken,
+  onOpenPhoto,
   onNavigate,
 }: {
   photo: PhotoGroup<FeedComment>;
   showAlbum: boolean;
+  shareToken?: string | null;
+  onOpenPhoto?: (mediaId: string) => void;
   onNavigate: () => void;
 }): ReactElement {
   const t = useT();
   // Take the version from the first message: every message in a group refers to
   // the same photo, and therefore the same fingerprint.
   const version = photo.comments[0]?.mediaVersion ?? null;
-  const target = `/album/${encodeURIComponent(photo.albumId)}?photo=${encodeURIComponent(photo.mediaId)}&panel=comments`;
+  const target = shareToken
+    ? `/s/${encodeURIComponent(shareToken)}?photo=${encodeURIComponent(photo.mediaId)}&panel=comments`
+    : `/album/${encodeURIComponent(photo.albumId)}?photo=${encodeURIComponent(photo.mediaId)}&panel=comments`;
+  const thumbScope = shareToken ? shareScope(shareToken) : undefined;
+  const handleSelect = (): void => {
+    if (onOpenPhoto) {
+      onOpenPhoto(photo.mediaId);
+    }
+    onNavigate();
+  };
 
   return (
     <article className="border-b border-ink-800 px-5 py-3 last:border-b-0">
@@ -259,20 +280,37 @@ function PhotoBlock({
             so the block is no longer clickable — its link would open a viewer
             that immediately closed again. */}
         {photo.mediaName ? (
-          <Link
-            to={target}
-            onClick={onNavigate}
-            className="group shrink-0"
-            aria-label={t('feed.view', photo.mediaName, photo.albumTitle)}
-          >
-            <img
-              src={mediaUrl.thumb(photo.mediaId, 320, version)}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="size-14 rounded-lg bg-ink-800 object-cover transition-opacity group-hover:opacity-80"
-            />
-          </Link>
+          onOpenPhoto ? (
+            <button
+              type="button"
+              onClick={handleSelect}
+              className="group shrink-0"
+              aria-label={t('feed.view', photo.mediaName, photo.albumTitle)}
+            >
+              <img
+                src={mediaUrl.thumb(photo.mediaId, 320, version, thumbScope)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="size-14 rounded-lg bg-ink-800 object-cover transition-opacity group-hover:opacity-80"
+              />
+            </button>
+          ) : (
+            <Link
+              to={target}
+              onClick={onNavigate}
+              className="group shrink-0"
+              aria-label={t('feed.view', photo.mediaName, photo.albumTitle)}
+            >
+              <img
+                src={mediaUrl.thumb(photo.mediaId, 320, version, thumbScope)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="size-14 rounded-lg bg-ink-800 object-cover transition-opacity group-hover:opacity-80"
+              />
+            </Link>
+          )
         ) : (
           <div className="size-14 shrink-0 rounded-lg bg-ink-800" aria-hidden="true" />
         )}
@@ -280,13 +318,23 @@ function PhotoBlock({
         <div className="min-w-0 flex-1">
           <p className="min-w-0 truncate text-xs text-ink-400">
             {photo.mediaName ? (
-              <Link
-                to={target}
-                onClick={onNavigate}
-                className="text-accent underline-offset-2 hover:underline"
-              >
-                {photo.mediaName}
-              </Link>
+              onOpenPhoto ? (
+                <button
+                  type="button"
+                  onClick={handleSelect}
+                  className="text-accent underline-offset-2 hover:underline"
+                >
+                  {photo.mediaName}
+                </button>
+              ) : (
+                <Link
+                  to={target}
+                  onClick={onNavigate}
+                  className="text-accent underline-offset-2 hover:underline"
+                >
+                  {photo.mediaName}
+                </Link>
+              )
             ) : (
               <span className="italic">{t('feed.removedPhoto')}</span>
             )}

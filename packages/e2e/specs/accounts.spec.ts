@@ -120,9 +120,9 @@ test('an account is created by an address, and the list says so until its date',
 
   await signIn(page);
   await page.goto('/admin/accounts');
-  await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
 
-  await page.getByRole('button', { name: 'New account' }).click();
+  await page.getByRole('button', { name: '+ Add user' }).click();
 
   // The credential is chosen before either field appears, so a form carrying both a
   // password and an address never exists — the request takes exactly one of them.
@@ -316,7 +316,7 @@ test('an invitation is written in the language chosen for it, and again in it wh
 
   await signIn(page);
   await page.goto('/admin/accounts');
-  await page.getByRole('button', { name: 'New account' }).click();
+  await page.getByRole('button', { name: '+ Add user' }).click();
   await page.getByRole('radio', { name: 'With an invitation sent by email' }).check();
 
   await page.getByLabel('Username', { exact: true }).fill(IN_FRENCH.username);

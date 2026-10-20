@@ -36,6 +36,7 @@ const updateSchema = createSchema.pick({ body: true });
  */
 const feedSchema = z.object({
   album: z.string().min(1).optional(),
+  shareToken: z.string().min(1).optional(),
   cursor: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(COMMENTS_FEED_PAGE_SIZE),
 });
@@ -87,32 +88,13 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         .send(unsubscribePage(context.env.publicUrl, Boolean(commenter), request.t));
     });
 
-    await app.register(async (scoped) => {
-      /**
-       * An **account**, not merely a session: every route below is keyed on an album
-       * identifier, and a share link is not asked what it covers here. What a link
-       * may reach lives under `/api/share`, whose addresses name no album (D260825e).
-       *
-       * The two routes taking a comment identifier are the exception and sit outside
-       * this scope: correcting a typo and removing what you wrote are the reader's,
-       * whatever credential opened the session, and a numeric comment identifier
-       * names no album.
-       */
-      scoped.addHook('preHandler', requireAccount);
+    await app.register(async (feedScoped) => {
+      feedScoped.addHook('preHandler', requireAuth);
 
       /**
-       * Activity feed: latest comments across all albums and photos.
-       *
-       * Declared before `/:albumId`, though order does not matter: Fastify's routing
-       * table always prioritises a literal segment over a parameter. This also protects
-       * `/unsubscribe`, and a test verifies it — an album whose Drive identifier was
-       * `feed` would remain unreachable through this route with no indication why.
-       *
-       * Isolation depends on `albumsFor()`: the list of visible albums comes from the
-       * server, never the request. `?album=` only narrows it — it does not widen it,
-       * and an invisible album returns 404 as everywhere else (D12).
+       * Activity feed: latest comments across accessible albums or shared items.
        */
-      scoped.get('/feed', async (request, reply) => {
+      feedScoped.get('/feed', async (request, reply) => {
         const parsed = feedSchema.safeParse(request.query);
         if (!parsed.success) {
           return reply
@@ -121,11 +103,47 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         }
 
         const account = request.user!;
-        const { album, cursor, limit } = parsed.data;
+        const { album, shareToken, cursor, limit } = parsed.data;
+
+        if (shareToken !== undefined || account.username === null) {
+          const link = shareToken !== undefined ? context.shares.find(shareToken) : request.share;
+          if (
+            !link ||
+            link.revokedAt !== null ||
+            (link.expiresAt !== null && Date.parse(link.expiresAt) <= Date.now())
+          ) {
+            return reply
+              .code(404)
+              .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+          }
+
+          if (!link.allowComments) {
+            return reply.send({ comments: [], nextCursor: null } satisfies CommentsFeedPage);
+          }
+
+          if (album !== undefined) {
+            const coveredAlbums = context.shares.findAlbumIds(link.token);
+            if (!coveredAlbums.includes(album)) {
+              return reply
+                .code(404)
+                .send({ error: 'not_found', message: request.t('error.albumNotFound') });
+            }
+          }
+
+          const page: CommentsFeedPage = context.comments.listFeedForShare({
+            token: link.token,
+            albumId: album ?? link.albumId,
+            mediaId: link.mediaId,
+            cursor: cursor ?? null,
+            limit,
+            viewer: { commenterId: request.commenterId, admin: account.admin },
+          });
+          return reply.send(page);
+        }
 
         if (
           album !== undefined &&
-          (!context.findAlbum(album) || !context.canSee(account.username!, album))
+          (!context.findAlbum(album) || !context.canSee(account.username, album))
         ) {
           return reply
             .code(404)
@@ -135,7 +153,7 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         const albumIds =
           album !== undefined
             ? [album]
-            : context.albumsFor(account.username!).map((visible) => visible.id);
+            : context.albumsFor(account.username).map((visible) => visible.id);
 
         const page: CommentsFeedPage = context.comments.listFeed({
           albumIds,
@@ -145,6 +163,10 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
         });
         return reply.send(page);
       });
+    });
+
+    await app.register(async (scoped) => {
+      scoped.addHook('preHandler', requireAccount);
 
       /**
        * Counts for the whole album, used by the viewer badge.
@@ -197,10 +219,13 @@ export function createCommentRoutes(context: AppContext): FastifyPluginAsync {
             .send({ error: 'not_found', message: request.t('error.albumNotFound') });
         }
 
-        // Commenting requires a verified identity. This 403 is the second deliberate
-        // exception to D12's "404, never 403": it concerns the state of the requester's
-        // own account rather than another person's resource whose existence must be
-        // hidden, so it reveals nothing.
+        if (!account.roleCommenter && !account.admin) {
+          return reply.code(403).send({
+            error: 'forbidden',
+            message: request.t('error.forbidden'),
+          });
+        }
+
         const commenterId = request.commenterId;
         if (commenterId === null) {
           return reply.code(403).send({
@@ -383,7 +408,7 @@ function mayReach(
 ): boolean {
   const link = request.share;
   if (link === null) return context.canSee(request.user!.username!, location.albumId);
-  return link.albumId === location.albumId && context.shares.covers(link, location.mediaId);
+  return context.shares.covers(link, location.mediaId, location.albumId);
 }
 
 /**
@@ -407,6 +432,7 @@ export function notifyComment(
   if (!context.mailer.enabled) return;
 
   const recipients: Recipient[] = [];
+  const seenEmails = new Set<string>();
 
   // The moderation address is an instance setting: an administrator account is an
   // access key, not a reachable person.
@@ -414,6 +440,7 @@ export function notifyComment(
   // The moderation address has no identity, hence no recorded language: the
   // instance default applies.
   if (moderation) {
+    seenEmails.add(moderation.toLowerCase());
     recipients.push({
       email: moderation,
       reason: 'moderation',
@@ -426,7 +453,8 @@ export function notifyComment(
   // Reply: the thread root's author, never the person who just wrote.
   if (input.comment.parentId !== null) {
     const author = context.commenters.recipientForReply(input.comment.parentId, input.commenterId);
-    if (author) {
+    if (author && author.email && !seenEmails.has(author.email.toLowerCase())) {
+      seenEmails.add(author.email.toLowerCase());
       recipients.push({
         email: author.email,
         reason: 'reply',
@@ -434,6 +462,24 @@ export function notifyComment(
         locale: author.locale ?? context.env.defaultLocale,
       });
     }
+  }
+
+  // Subscribers to the album or to a share link covering the commented photograph
+  // who opted into comment notifications (excluding the comment author).
+  for (const subscriber of context.subscriptions.commentSubscribers(
+    input.albumId,
+    input.mediaId,
+    input.commenterId,
+  )) {
+    const key = subscriber.email.toLowerCase();
+    if (seenEmails.has(key)) continue;
+    seenEmails.add(key);
+    recipients.push({
+      email: subscriber.email,
+      reason: 'comment',
+      share: subscriber.share,
+      locale: subscriber.locale ?? context.env.defaultLocale,
+    });
   }
 
   for (const recipient of recipients) {

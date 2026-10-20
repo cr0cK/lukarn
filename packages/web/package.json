@@ -12,6 +12,8 @@
     "test": "node --import tsx --test \"test/*.test.ts\""
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@lukarn/shared": "workspace:*",
     "@tanstack/react-query": "^5.102.8",
     "qrcode-generator": "^2.0.4",

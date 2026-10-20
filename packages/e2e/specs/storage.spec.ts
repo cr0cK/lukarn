@@ -79,7 +79,9 @@ for (const { label, album, probeNames } of BACKENDS) {
       // The **resolved** location, and only a probe can say it: a connection that is
       // not where its administrator believes is exactly what this button exists to
       // reveal, and the row cannot show it before anyone has asked.
-      await expect(page.locator('body')).toContainText('It answers', { timeout: 30_000 });
+      await expect(page.locator('body')).toContainText('Connection successful', {
+        timeout: 30_000,
+      });
       await expect(page.locator('body')).toContainText(probeNames);
     });
 
