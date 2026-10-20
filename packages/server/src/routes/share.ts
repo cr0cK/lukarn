@@ -521,17 +521,12 @@ export function createShareRoutes(context: AppContext): FastifyPluginAsync {
         }
       }
 
-      const subRow = context.db
-        .prepare(
-          'SELECT notify_photos, notify_comments FROM commenter_shares WHERE commenter_id = ? AND token = ?',
-        )
-        .get(commenterId, link.token) as
-        { notify_photos: number; notify_comments: number } | undefined;
+      const prefs = context.shares.getSubscriberPrefs(commenterId, link.token);
 
       return reply.send({
         ok: true,
-        notifyPhotos: subRow ? subRow.notify_photos === 1 : true,
-        notifyComments: subRow ? subRow.notify_comments === 1 : true,
+        notifyPhotos: prefs ? prefs.notifyPhotos : true,
+        notifyComments: prefs ? prefs.notifyComments : true,
       });
     });
 

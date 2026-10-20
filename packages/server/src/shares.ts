@@ -629,6 +629,25 @@ export class ShareLinkRepo {
   }
 
   /**
+   * Reads per-share notification preferences for a subscriber.
+   */
+  getSubscriberPrefs(
+    commenterId: number,
+    token: string,
+  ): { notifyPhotos: boolean; notifyComments: boolean } | null {
+    const row = this.db
+      .prepare(
+        'SELECT notify_photos, notify_comments FROM commenter_shares WHERE commenter_id = ? AND token = ?',
+      )
+      .get(commenterId, token) as { notify_photos: number; notify_comments: number } | undefined;
+    if (!row) return null;
+    return {
+      notifyPhotos: row.notify_photos === 1,
+      notifyComments: row.notify_comments === 1,
+    };
+  }
+
+  /**
    * Lists subscribers associated with a share link.
    */
   listSubscribers(token: string): ShareSubscriber[] {

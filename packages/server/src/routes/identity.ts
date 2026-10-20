@@ -103,18 +103,8 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
 
       const { displayName, notify, notifyPhotos, notifyComments } = parsed.data;
       if (displayName !== undefined) {
-        context.db
-          .prepare(
-            'UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?',
-          )
-          .run(displayName, commenterId);
-        const linkedUser = context.config.userByCommenterId(commenterId);
-        if (linkedUser) {
-          context.db
-            .prepare('UPDATE users SET display_name = ? WHERE username = ?')
-            .run(displayName, linkedUser.username);
-          context.config.invalidate();
-        }
+        context.commenters.setDisplayName(commenterId, displayName);
+        context.config.syncDisplayNameForCommenter(commenterId, displayName);
       }
       if (notify !== undefined) {
         context.commenters.setNotify(commenterId, notify);

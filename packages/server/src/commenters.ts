@@ -119,11 +119,13 @@ export class CommenterRepo {
     return this.byId(Number(result.lastInsertRowid))!;
   }
 
-  /** Updates a commenter's display name directly. */
+  /** Updates a commenter's display name directly and clears any pending name. */
   setDisplayName(id: number, displayName: string): void {
     const trimmed = displayName.trim().slice(0, MAX_DISPLAY_NAME);
     if (!trimmed) return;
-    this.db.prepare('UPDATE commenters SET display_name = ? WHERE id = ?').run(trimmed, id);
+    this.db
+      .prepare('UPDATE commenters SET display_name = ?, pending_display_name = NULL WHERE id = ?')
+      .run(trimmed, id);
   }
 
   /** Updates a commenter's email address. */

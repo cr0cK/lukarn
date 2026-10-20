@@ -436,6 +436,16 @@ export class ConfigRepo {
     return row ? this.user(row.username) : undefined;
   }
 
+  /** Synchronizes the display name of the user account linked to `commenterId`, if any. */
+  syncDisplayNameForCommenter(commenterId: number, displayName: string): void {
+    const linkedUser = this.userByCommenterId(commenterId);
+    if (!linkedUser) return;
+    this.db
+      .prepare('UPDATE users SET display_name = ? WHERE username = ?')
+      .run(displayName, linkedUser.username);
+    this.invalidate();
+  }
+
   /**
    * Whether the account was auto-created solely for a share-link visitor (`ensureUserForCommenter`)
    * with no password, no admin role, and no direct album permissions.
