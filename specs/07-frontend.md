@@ -2038,10 +2038,10 @@ reinvent either the classes or the `label` / `aria-describedby` link.
 **Beside Albums in the Library group**, not under People: a link opens content, and
 what it opens is chosen from the library. Nobody is granted anything (D260825).
 
-The section is organized into two **sub-tabs**:
+The section header carries a top-right **`+ New share`** button (`ShareModal`) and lists all shares as **collapsible cards** (collapsed by default):
 
-- **Existing links**: the default view, displaying link count badges, real-time search filtering, and the listing of issued links.
-- **Create a link**: dedicated creation form supporting either a whole album (optionally narrowed to a single photograph identifier) or a multi-photo selection. In photo selection mode, an interactive thumbnail gallery allows filtering by album and toggling photos across albums into an accumulated selection with checkmark indicators and count badge.
+- **Collapsed header row**: shows the share label, status badge (`Working`, `Taken back`, `Expired`), a concise summary (`N album(s) · M photo(s) · X visits · Y subscribers`), a direct `Copy` button (`stopPropagation`) for one-click link copying, and a chevron toggle button (`aria-expanded`).
+- **Expanded body**: reveals the `/s/:token` path, `Preview` link, `Edit`, `Pause`/`Reactivate`, and `Delete` actions, the editable `Included albums` pills (with `+ Add album`), the `Individual photos` grid (with `+ Add photos` opening `AddPhotosToShareModal`, which includes an album selector and a `[★]` Favorites filter toggle), and the `Allow comments` and `Require identification` `Switch` rows.
 
 The section is the one screen that shows a link's **token**, because its reader
 already holds every credential this instance has and a link nobody can copy is a link
@@ -2050,16 +2050,7 @@ rather than a configured public URL: what is copied has to be what the
 administrator's own browser reached this page on, or a link sent from a machine on
 the local network would carry an address nobody outside it can open.
 
-Each row states what the link covers, whether it still works, who issued it and when,
-and its record of use — never opened, or when last and how many openings (D260825c).
-
-**Lifecycle actions per link state:**
-
-- `live`: `[Copy address]`, `[Edit]`, `[Revoke]`, and `[Delete]`.
-- `revoked`: `[Copy address]`, `[Re-enable]`, and `[Delete]` (the useless edit action is omitted). Re-enabling opens `RestoreShareDialog`, warning if the previous expiration has passed and allowing a new expiration or permanent re-enable under the original token (D260825b).
-- `expired`: `[Copy address]`, `[Extend]`, and `[Delete]`. Extending opens `EditShareDialog` focused on setting a renewed expiration date.
-
-**Revoking vs deleting:** Revoking closes the link for whoever holds it and keeps its
+**Revoking vs deleting:** Revoking (`Pause`) closes the link for whoever holds it and keeps its
 record of use; deleting removes both (D260825b).
 
 ### Expiry selector — `components/DateTimePicker.tsx`
@@ -2068,12 +2059,12 @@ Offers quick duration presets (7 days, 30 days, No expiry, Custom date). On desk
 
 ### Contextual sharing — `components/ShareModal.tsx`
 
-Administrators can also issue and copy a link without visiting the administration tab:
+Administrators can also issue and copy a link or append to an existing share without visiting the administration tab:
 
-- **`AlbumPage`** carries "Select" and "Share album" actions in the `TopBar` when the viewer is an administrator. Entering selection mode replaces photo click navigation with checkmark toggling and reveals a floating bottom action bar with photo count, cancel action, and a "Share selection" button.
-- **`Lightbox`** carries a "Share photograph" action in its action list and sheet when an administrator views a photograph in an album.
+- **`AlbumPage`** carries uniform `36x36` SVG icon buttons (`[★]` Favorites filter, `[💬]` Recent comments feed, `[🔔]` Notifications popover), a primary `Share` button, a `Sort / Group` popover, and a `[⋮]` Admin `ActionMenu` (`Select photos`, `Edit description`, `Choose cover photo`). Entering selection mode replaces photo click navigation with checkmark toggling and reveals a floating bottom action bar with photo count, cancel action, and a "Share selection" button.
+- **`Lightbox`** carries a `[★]` Favorite button (shortcut `s`) and a `[⋮]` Admin `ActionMenu` (`Share photo`, `Add to existing share`, `Edit description`, `Set as album cover` without star icon, `Hide chrome`).
 
-`ShareModal` lets the administrator set an optional recipient label and choose an expiration duration (7 days, 30 days, or no expiry). It supports whole albums, individual photographs, and pre-selected arrays of items (`items`). Issuing the link immediately copies its full URL (`${window.location.origin}/s/${token}`) to the clipboard and presents confirmation feedback.
+`ShareModal` offers a segmented mode toggle (**Create a new link** vs **Add to an existing share**). In creation mode, the administrator sets an optional label, chooses an expiration duration (7 days, 30 days, or no expiry), and configures `Allow comments` and `Require identification` via `Switch` controls. In append mode, the administrator selects an active share and appends the album, photo, or multi-photo selection via `POST /api/admin/shares/:id/append`.
 
 ### Storage — `components/admin/storage/`
 
@@ -3143,6 +3134,42 @@ sitting on photos, where the cursor was the only clue. The rule lives in
 `@layer base` rather than as a class on every button, which would get
 forgotten on the first new component; disabled elements are excluded from
 it, their cursor needing to say nothing will happen.
+
+### Self-hosted `Geist` typography, elevated input tokens, and reusable layout primitives — `components/ui/`, `components/admin/ui.tsx`, and `components/Toast.tsx`
+
+- **Self-hosted `Geist` (`@fontsource-variable/geist` and `@fontsource-variable/geist-mono`)**:
+  `styles.css` imports self-hosted variable `.woff2` fonts for `Geist Variable`
+  (`--font-sans`) and `Geist Mono Variable` (`--font-mono`), preserving the strict
+  `font-src 'self'` CSP without external CDN requests. `body` sets
+  `-webkit-font-smoothing: antialiased` and `letter-spacing: -0.011em`, while
+  headings (`h1`, `h2`, `h3`) set `letter-spacing: -0.025em`.
+- **Typography scale**:
+  - Section and page titles (`<h2>`): `text-xl font-semibold tracking-tight` (`20px`).
+  - Card and dialog titles (`<h3>`): `text-base font-semibold tracking-tight` (`16px`).
+  - Body text, comments, form `<Label>`, `<Input>` / `<Textarea>` (`text-base md:text-sm` so mobile inputs remain `16px` and prevent iOS auto-zoom while desktop uses `14px`), `<Button>`, section subtitles, and primary table cells: `text-sm` (`14px` floor).
+  - Secondary metadata (timestamps, `<Badge>` pills, EXIF field labels, table column headers): `text-xs` (`12px` minimum).
+- **Elevated input surface tokens (`FIELD_CLASS` in `components/admin/ui.tsx`)**:
+  Form inputs (`<Input>`, `<Select>`, `<Textarea>`, `TextField`, `SelectField`) use
+  dedicated elevated surface tokens (`--color-input: #222226`,
+  `--color-input-hover: #27272c`, `--color-input-border: #3a3a42` in dark mode;
+  `#ffffff`, `#f4f4f5`, `#d4d4d8` in light mode) with `focus:border-accent`,
+  ensuring controls stand out clearly above `--color-ink-850` cards.
+- **Dynamic `--color-accent` + `shadcn/ui` v4 (`zinc`) pill button and control taxonomy (`BUTTON_VARIANTS`, `Switch`, `Badge`, `Card` in `components/admin/ui.tsx`)**:
+  - `Button`: pill geometry (`rounded-full`, `h-9 px-3.5 text-sm font-medium` for `md`, `h-8 px-3 text-sm font-medium` for `sm`, `size-9` for `icon`) with `primary` (`bg-accent text-accent-ink hover:bg-accent-dim`), `secondary` (`bg-zinc-800 text-zinc-50 hover:bg-zinc-700` in dark / `bg-zinc-100 text-zinc-900 hover:bg-zinc-200` in light), `outline` / `default` (`border-zinc-800 bg-zinc-900` in dark / `border-zinc-200 bg-white shadow-2xs` in light), `danger`, and `ghost`.
+  - `Switch`: `w-9 h-5 rounded-full` using `bg-accent` when checked and `bg-zinc-800` (dark) / `bg-zinc-200` (light) when unchecked.
+  - `Badge`: non-breaking status and role pills (`text-xs font-medium whitespace-nowrap`).
+  - `Card`: `rounded-2xl` surface containers separated internally by `1px` dividers (`divide-y`) without nested bordered boxes or colored left-border side stripes.
+- **`Toast` (`components/Toast.tsx`)**:
+  Bottom-center pill (`fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-[#24242b] border border-[#454552] px-4 py-2 text-sm shadow-xl`) with a leading vector `<svg>` status icon so notifications never overlap the Lightbox right-hand comment submit button.
+- **`Tooltip` and `IconButton` (`components/ui/Tooltip.tsx`)**:
+  Styled custom tooltip bubble (`rounded-md bg-[#24242b] border border-[#454552] px-2 py-1 text-xs text-ink-100 shadow-lg`) paired with the homogeneous `36x36` (`size-9 rounded-full`) `IconButton` and vector `<svg>` icons (`StarIcon`, `CommentIcon`, `BellIcon`, `KebabIcon`, and `InfoIcon` with an explicit `<circle cx="12" cy="8" r="1" fill="currentColor" stroke="none" />` dot).
+- **Six reusable layout primitives (`components/ui/`)**:
+  1. `AppTopBar` (`components/ui/AppTopBar.tsx`): unified responsive top bar across `/`, `/album/:id`, `/s/:token`, `/settings`, and `/admin/*` with homogeneous `36x36` vector SVG icon buttons (`[★]` Favorites, `[💬]` Recent Comments, `[🔔]` Notifications, and `[⋮]` Kebab menu).
+  2. `SettingsShell` (`components/ui/SettingsShell.tsx`): sticky `220px` left sidebar on desktop (`>= md`) with `bg-accent-soft text-accent` active state, and a scroll-contained `[⋮]` dropdown menu (`SettingsMobileMenuTrigger`) on mobile (`< md`) with backdrop dismissal, `Escape` handling, body scroll lock, and auto-close across the `md` breakpoint.
+  3. `AdminSectionHeader` (`components/ui/AdminSectionHeader.tsx`): standardized section header (`flex items-start justify-between gap-4 mb-5`) pairing an `<h2>` title (`text-xl font-semibold tracking-tight`) and `text-sm` subtitle on the left with an optional `shrink-0` primary CTA on the top-right.
+  4. `ResponsiveDataList` (`components/ui/ResponsiveDataList.tsx`): semantic `<table>` (`hidden md:table w-full`) with aligned columns and right-aligned trailing action cells on desktop (`>= md`), and stacked `ResponsiveMobileCard` items (`flex flex-col gap-3 p-4`) with non-wrapping role pills on mobile (`< md`).
+  5. `LightboxChrome` (`components/ui/LightboxChrome.tsx`) and `ResponsiveSidePanel` (`components/ui/ResponsiveSidePanel.tsx`): Lightbox top toolbar with 5 public `36x36` SVG icon buttons (`★ Favorites`, `Comments`, `Info`, `Download`, `Fullscreen`) plus `⋮` menu (remaining visible on mobile for `<video>`), paired with a `360px` desktop right column without redundant sub-header or sub-tabs and a `max-h-[75dvh]` mobile bottom sheet.
+  6. `ResponsiveDialog` (`components/ui/ResponsiveDialog.tsx`): centered `max-w-lg rounded-2xl` modal on desktop (`>= md`) and `max-h-[90dvh] rounded-t-2xl` bottom sheet with drag handle on mobile (`< md`).
 
 ## Build
 

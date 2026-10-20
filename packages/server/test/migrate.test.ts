@@ -121,13 +121,22 @@ describe('migrations', () => {
       'created_at',
       'updated_at',
       'commenter_id',
+      'display_name',
+      'role_viewer',
+      'role_commenter',
     ]);
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get('famille') as {
       password_hash: string;
       commenter_id: number | null;
+      display_name: string;
+      role_viewer: number;
+      role_commenter: number;
     };
     assert.equal(user.password_hash, 'empreinte');
-    assert.equal(user.commenter_id, null);
+    assert.notEqual(user.commenter_id, null);
+    assert.equal(user.display_name, 'famille');
+    assert.equal(user.role_viewer, 1);
+    assert.equal(user.role_commenter, 1);
 
     assert.ok(columns(db, 'comments').includes('commenter_id'));
     assert.ok(columns(db, 'commenters').includes('verified_at'));
@@ -389,6 +398,9 @@ describe('migrations', () => {
       'created_at',
       'updated_at',
       'commenter_id',
+      'display_name',
+      'role_viewer',
+      'role_commenter',
     ]);
 
     db.close();
@@ -897,6 +909,129 @@ describe('migrations', () => {
       ).n,
       0,
     );
+
+    db.close();
+  });
+
+  it('migrates version 21 to 22 with unified users, granular notifications, composable shares and favorites', () => {
+    const db = databaseAtVersion(21);
+    const date = '2026-08-01T00:00:00.000Z';
+
+    db.prepare(
+      `INSERT INTO albums (id, title, folder_id, recursive, created_at, updated_at)
+       VALUES ('corse', 'Corse', 'f1', 1, ?, ?)`,
+    ).run(date, date);
+
+    db.prepare(
+      `INSERT INTO commenters (id, email, display_name, notify, verified_at, created_at, locale)
+       VALUES (10, 'mamie@example.com', 'Mamie', 0, ?, ?, 'fr')`,
+    ).run(date, date);
+
+    db.prepare(
+      `INSERT INTO users (username, password_hash, admin, all_albums, commenter_id, created_at, updated_at)
+       VALUES ('admin', '$argon2id$admin', 1, 1, NULL, ?, ?),
+              ('mamie', '$argon2id$none', 0, 1, 10, ?, ?)`,
+    ).run(date, date, date, date);
+
+    db.prepare(
+      `INSERT INTO comments (id, album_id, media_id, commenter_id, account, body, created_at)
+       VALUES (5, 'corse', 'img-1', 10, 'mamie', 'Superbe photo', ?)`,
+    ).run(date);
+
+    db.prepare(
+      `INSERT INTO album_subscriptions (commenter_id, album_id, state, created_at)
+       VALUES (10, 'corse', 'opted_out', ?)`,
+    ).run(date);
+
+    db.prepare(
+      `INSERT INTO share_links (token, album_id, media_id, label, created_at, created_by)
+       VALUES ('tok-album', 'corse', NULL, 'Corse album', ?, 'admin'),
+              ('tok-photo', 'corse', 'img-1', 'Corse photo', ?, 'admin')`,
+    ).run(date, date);
+
+    migrate(db);
+
+    assert.deepEqual(db.pragma('foreign_key_check'), []);
+
+    // 1. Bound user preserves commenter_id = 10 and gets display_name from commenter
+    const mamieUser = db
+      .prepare(
+        'SELECT display_name, commenter_id, role_viewer, role_commenter FROM users WHERE username = ?',
+      )
+      .get('mamie') as {
+      display_name: string;
+      commenter_id: number;
+      role_viewer: number;
+      role_commenter: number;
+    };
+    assert.deepEqual(mamieUser, {
+      display_name: 'Mamie',
+      commenter_id: 10,
+      role_viewer: 1,
+      role_commenter: 1,
+    });
+
+    const mamieCommenter = db
+      .prepare(
+        'SELECT email, display_name, notify_photos, notify_comments FROM commenters WHERE id = 10',
+      )
+      .get() as {
+      email: string | null;
+      display_name: string;
+      notify_photos: number;
+      notify_comments: number;
+    };
+    assert.deepEqual(mamieCommenter, {
+      email: 'mamie@example.com',
+      display_name: 'Mamie',
+      notify_photos: 0,
+      notify_comments: 0,
+    });
+
+    // 2. Unbound password user gets an auto-created commenter row with email = NULL
+    const adminUser = db
+      .prepare('SELECT display_name, commenter_id FROM users WHERE username = ?')
+      .get('admin') as { display_name: string; commenter_id: number | null };
+    assert.equal(adminUser.display_name, 'admin');
+    assert.notEqual(adminUser.commenter_id, null);
+
+    const adminCommenter = db
+      .prepare(
+        'SELECT email, display_name, notify_photos, notify_comments FROM commenters WHERE id = ?',
+      )
+      .get(adminUser.commenter_id!) as {
+      email: string | null;
+      display_name: string;
+      notify_photos: number;
+      notify_comments: number;
+    };
+    assert.deepEqual(adminCommenter, {
+      email: null,
+      display_name: 'admin',
+      notify_photos: 1,
+      notify_comments: 1,
+    });
+
+    // 3. Existing comments and subscriptions remain intact
+    const comment = db.prepare('SELECT commenter_id, body FROM comments WHERE id = 5').get();
+    assert.deepEqual(comment, { commenter_id: 10, body: 'Superbe photo' });
+
+    const sub = db
+      .prepare(
+        'SELECT state, notify_photos, notify_comments FROM album_subscriptions WHERE commenter_id = 10',
+      )
+      .get();
+    assert.deepEqual(sub, { state: 'opted_out', notify_photos: 0, notify_comments: 0 });
+
+    // 4. Whole-album share is backfilled into share_link_albums; single-photo share is not
+    const shareAlbums = db
+      .prepare('SELECT token, album_id, position FROM share_link_albums ORDER BY token')
+      .all();
+    assert.deepEqual(shareAlbums, [{ token: 'tok-album', album_id: 'corse', position: 0 }]);
+
+    // 5. New tables commenter_shares and commenter_favorites exist
+    assert.ok(columns(db, 'commenter_shares').includes('notify_photos'));
+    assert.ok(columns(db, 'commenter_favorites').includes('media_id'));
 
     db.close();
   });

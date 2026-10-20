@@ -255,6 +255,63 @@ export class MediaRepo {
     };
   }
 
+  /**
+   * Chronologically sorted media page across one or more albums, used by composable
+   * share links that span multiple albums.
+   */
+  listItemsForAlbums(
+    albumIds: string[],
+    limit: number,
+    cursor: string | null,
+    order: SortOrder = DEFAULT_SORT_ORDER,
+  ): {
+    items: MediaItem[];
+    nextCursor: string | null;
+  } {
+    if (albumIds.length === 0) return { items: [], nextCursor: null };
+    if (albumIds.length === 1) return this.listItems(albumIds[0]!, limit, cursor, order);
+
+    const position = cursor ? decodeCursor(cursor) : null;
+    const direction = order === 'asc' ? 'ASC' : 'DESC';
+    const after = order === 'asc' ? '>' : '<';
+    const placeholders = albumIds.map(() => '?').join(', ');
+
+    const rows = position
+      ? (this.db
+          .prepare(
+            `${SELECT_ITEMS}
+             WHERE media.album_id IN (${placeholders})
+               AND (media.taken_at ${after} ?
+                    OR (media.taken_at = ? AND media.id ${after} ?))
+             ORDER BY media.taken_at ${direction}, media.id ${direction}
+             LIMIT ?`,
+          )
+          .all(
+            ...albumIds,
+            position.takenAt,
+            position.takenAt,
+            position.id,
+            limit + 1,
+          ) as MediaRow[])
+      : (this.db
+          .prepare(
+            `${SELECT_ITEMS}
+             WHERE media.album_id IN (${placeholders})
+             ORDER BY media.taken_at ${direction}, media.id ${direction}
+             LIMIT ?`,
+          )
+          .all(...albumIds, limit + 1) as MediaRow[]);
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page.at(-1);
+
+    return {
+      items: page.map((row) => toItem(row, this.posters())),
+      nextCursor: hasMore && last ? encodeCursor(last.taken_at, last.id) : null,
+    };
+  }
+
   getDetail(albumId: string, id: string): IndexedDetail | null {
     const row = this.mediaRow(albumId, id);
     return row ? toDetail(row, this.posters()) : null;
@@ -724,6 +781,7 @@ export function buildAlbum(
   },
   media: MediaRepo,
   sync: SyncStateRepo,
+  favoriteMediaIds?: string[],
 ): Album {
   const stats = media.stats(config.id, config.coverMediaId ?? null);
   const state = sync.get(config.id);
@@ -741,5 +799,6 @@ export function buildAlbum(
     lastSyncAt: state.lastSyncAt,
     syncStatus: state.status,
     syncError: state.error,
+    ...(favoriteMediaIds !== undefined ? { favoriteMediaIds } : {}),
   };
 }

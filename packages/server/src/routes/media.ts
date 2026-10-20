@@ -294,6 +294,13 @@ export function createMediaRoutes(context: AppContext): FastifyPluginAsync {
     const { mediaId } = request.params as { mediaId: string };
     const link = request.share;
 
+    if (link !== null && link.requireIdentity && request.commenterId === null) {
+      await reply
+        .code(403)
+        .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      return false;
+    }
+
     const allowed =
       link !== null
         ? context.shares.covers(link, mediaId)

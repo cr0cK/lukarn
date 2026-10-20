@@ -73,16 +73,21 @@ export interface StoredAlbum {
 /** Account as stored, including its hash — never serialise it as-is. */
 export interface StoredUser {
   username: string;
+  displayName: string;
   passwordHash: string;
   admin: boolean;
+  roleViewer: boolean;
+  roleCommenter: boolean;
   /** `*` wildcard: access to every album, including ones created later. */
   allAlbums: boolean;
   /** Explicitly assigned album IDs, excluding the wildcard. */
   albums: string[];
+  /** Shared link tokens associated via `commenter_shares`. */
+  shareTokens: string[];
   /**
-   * The person this account **is**, or `null` for the key a household shares. It is
-   * written when a code is consumed and never at creation, so a bound identity is
-   * always a verified one.
+   * The commenter record backing this account (`email = NULL` for password-only
+   * accounts, or a verified email address when bound), or `null` while an email-only
+   * invitation is still unconsumed.
    */
   commenterId: number | null;
   createdAt: string;
@@ -91,16 +96,29 @@ export interface StoredUser {
 
 export interface CreateUserInput {
   username: string;
+  displayName?: string;
   passwordHash: string;
   admin: boolean;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
   /** Album IDs, or a list containing `'*'` for the wildcard. */
   albums: string[];
+  email?: string | null;
+  shareTokens?: string[];
+  commenterId?: number | null;
 }
 
 export interface UpdateUserInput {
+  displayName?: string;
   passwordHash?: string;
   admin?: boolean;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
   albums?: string[];
+  email?: string | null;
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
+  shareTokens?: string[];
 }
 
 export interface CreateAlbumInput {
@@ -182,8 +200,11 @@ interface AlbumRow {
 
 interface UserRow {
   username: string;
+  display_name: string;
   password_hash: string;
   admin: number;
+  role_viewer: number;
+  role_commenter: number;
   all_albums: number;
   commenter_id: number | null;
   created_at: string;
@@ -198,6 +219,10 @@ interface Snapshot {
   users: Map<string, StoredUser>;
   /** Same key, with a set of IDs for constant-time `canSee`. */
   granted: Map<string, Set<string>>;
+  /** Whole albums granted via active shares in `commenter_shares`, mapped to max expiry ms. */
+  sharedAlbums: Map<string, Map<string, number>>;
+  /** Whether the user has a verified email on their linked `commenters` row. */
+  hasVerifiedEmail: Map<string, boolean>;
   settings: AppSettings;
 }
 
@@ -234,16 +259,28 @@ export function toAdminUser(
   codes: VerificationCodeRepo,
   commenters: CommenterRepo,
 ): AdminUser {
-  const bound = user.commenterId === null ? null : commenters.byId(user.commenterId);
+  const commenter = user.commenterId === null ? null : commenters.byId(user.commenterId);
+  const hasBoundEmail =
+    commenter !== null && commenter.email !== null && commenter.verifiedAt !== null;
   const pending = codes.pendingInvite(user.username);
 
   return {
     username: user.username,
+    displayName: user.displayName,
     admin: user.admin,
+    roleViewer: user.roleViewer,
+    roleCommenter: user.roleCommenter,
+    email: commenter?.email ?? null,
+    hasPassword: !hasNoPassword(user.passwordHash),
+    notifyPhotos: commenter?.notifyPhotos ?? true,
+    notifyComments: commenter?.notifyComments ?? true,
     albums: user.allAlbums ? [ALL_ALBUMS] : [...user.albums],
-    identity: bound ? { email: bound.email, displayName: bound.displayName } : null,
+    shareTokens: [...user.shareTokens],
+    identity: hasBoundEmail
+      ? { email: commenter.email!, displayName: commenter.displayName }
+      : null,
     invitation: pending ? { email: pending.target, expiresAt: pending.expiresAt } : null,
-    state: accountState(user, bound !== null, pending !== null),
+    state: accountState(user, hasBoundEmail, pending !== null),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -267,11 +304,18 @@ function accountState(user: StoredUser, bound: boolean, invited: boolean): Accou
 /** What creating an account by address needs: the account, and where to invite it. */
 export interface CreateInvitedUserInput {
   username: string;
+  displayName?: string;
   admin: boolean;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
   /** Album IDs, or a list containing `'*'` for the wildcard. */
   albums: string[];
   /** The address the invitation goes to. Nothing is written to `commenters` yet. */
   email: string;
+  /** Optional password hash if the user is given both a password and an email invitation. */
+  passwordHash?: string;
+  /** Share link tokens to pre-attach. */
+  shareTokens?: string[];
   /**
    * Language the invitation is written in, chosen by whoever invites. Omitted when
    * nobody chose one, and the instance default then applies to this message and to
@@ -373,9 +417,6 @@ export class ConfigRepo {
    * once per sign-in, while the snapshot exists for `canSee()`, which runs once per
    * thumbnail. Carrying addresses in memory would enlarge that snapshot for a path
    * that is asked a few times a day.
-   *
-   * No check on `verified_at`: `commenter_id` is written only when a code is
-   * consumed, so a bound identity is a verified one by construction.
    */
   userForEmail(email: string): StoredUser | undefined {
     const row = this.db
@@ -388,14 +429,55 @@ export class ConfigRepo {
     return row ? this.user(row.username) : undefined;
   }
 
+  userByCommenterId(commenterId: number): StoredUser | undefined {
+    const row = this.db
+      .prepare('SELECT username FROM users WHERE commenter_id = ?')
+      .get(commenterId) as { username: string } | undefined;
+    return row ? this.user(row.username) : undefined;
+  }
+
+  /** Synchronizes the display name of the user account linked to `commenterId`, if any. */
+  syncDisplayNameForCommenter(commenterId: number, displayName: string): void {
+    const linkedUser = this.userByCommenterId(commenterId);
+    if (!linkedUser) return;
+    this.db
+      .prepare('UPDATE users SET display_name = ? WHERE username = ?')
+      .run(displayName, linkedUser.username);
+    this.invalidate();
+  }
+
+  /**
+   * Whether the account was auto-created solely for a share-link visitor (`ensureUserForCommenter`)
+   * with no password, no admin role, and no direct album permissions.
+   */
+  isShareVisitorAccount(username: string): boolean {
+    const u = this.user(username);
+    if (!u || u.commenterId === null) return false;
+    if (!hasNoPassword(u.passwordHash) || u.admin || u.allAlbums || u.albums.length > 0) {
+      return false;
+    }
+    const hasShare = this.db
+      .prepare('SELECT 1 FROM commenter_shares WHERE commenter_id = ? LIMIT 1')
+      .get(u.commenterId);
+    return hasShare !== undefined;
+  }
+
   /** Albums visible to this account, in display order. */
   albumsFor(username: string): StoredAlbum[] {
     const snapshot = this.read();
-    const user = snapshot.users.get(username.toLowerCase());
+    const key = username.toLowerCase();
+    const user = snapshot.users.get(key);
     if (!user) return [];
+    if (!user.roleViewer && !user.admin) return [];
     if (user.allAlbums) return snapshot.albums;
-    const granted = snapshot.granted.get(username.toLowerCase());
-    return snapshot.albums.filter((album) => granted?.has(album.id));
+    const granted = snapshot.granted.get(key);
+    const shared = snapshot.sharedAlbums.get(key);
+    const nowMs = Date.now();
+    return snapshot.albums.filter((album) => {
+      if (granted?.has(album.id)) return true;
+      const exp = shared?.get(album.id);
+      return exp !== undefined && exp > nowMs;
+    });
   }
 
   canSee(username: string, albumId: string): boolean {
@@ -403,7 +485,10 @@ export class ConfigRepo {
     const key = username.toLowerCase();
     const user = snapshot.users.get(key);
     if (!user) return false;
-    return user.allAlbums || (snapshot.granted.get(key)?.has(albumId) ?? false);
+    if (!user.roleViewer && !user.admin) return false;
+    if (user.allAlbums || (snapshot.granted.get(key)?.has(albumId) ?? false)) return true;
+    const exp = snapshot.sharedAlbums.get(key)?.get(albumId);
+    return exp !== undefined && exp > Date.now();
   }
 
   /** Albums reading this storage connection — what makes deleting it a 409. */
@@ -435,23 +520,22 @@ export class ConfigRepo {
    * that protection, and neither ever wanted a row count.
    */
   adminCount(): number {
-    return [...this.read().users.values()].filter((user) => user.admin && usable(user)).length;
+    const snapshot = this.read();
+    return [...snapshot.users.values()].filter(
+      (user) =>
+        user.admin &&
+        usable(user, snapshot.hasVerifiedEmail.get(user.username.toLowerCase()) ?? false),
+    ).length;
   }
 
   /**
-   * Whether this account has a way in: a real password, or a completed binding.
-   *
-   * Structural, and deliberately silent about whether mail leaves the machine this
-   * morning. An instance that turns its mailer off has `pnpm reset-password` as the
-   * way back, and an account state that changed with the weather would be worse than
-   * the lockout it tried to prevent.
-   *
-   * The count above answers "how many are left"; this answers "is this one of them",
-   * which is the question asked of the account about to be demoted or deleted.
+   * Whether this account has a way in: a real password, or a completed email binding.
    */
   isUsable(username: string): boolean {
-    const user = this.user(username);
-    return user !== undefined && usable(user);
+    const snapshot = this.read();
+    const key = username.toLowerCase();
+    const user = snapshot.users.get(key);
+    return user !== undefined && usable(user, snapshot.hasVerifiedEmail.get(key) ?? false);
   }
 
   settings(): AppSettings {
@@ -460,18 +544,155 @@ export class ConfigRepo {
 
   /* -------------------------------------------------------------------- writing */
 
-  createUser(input: CreateUserInput): StoredUser {
+  /**
+   * Ensures the user account has a backing `commenters` row and returns it.
+   *
+   * Password-only accounts get a `commenters` row with `email = NULL` and
+   * `display_name = user.displayName` so they can comment and favorite photos
+   * without requiring SMTP or OTP verification.
+   */
+  ensureUserCommenter(username: string): number {
+    const stored = this.user(username);
+    if (!stored) throw new Error(`Unknown account: "${username}"`);
+
+    if (stored.commenterId !== null) {
+      const existing = this.identities.byId(stored.commenterId);
+      if (existing) return existing.id;
+    }
+
+    const commenter = this.identities.createForUser(stored.displayName || stored.username, null);
+    this.db
+      .prepare('UPDATE users SET commenter_id = ?, updated_at = ? WHERE username = ?')
+      .run(commenter.id, new Date().toISOString(), stored.username);
+    this.invalidate();
+    return commenter.id;
+  }
+
+  /**
+   * Ensures a unified `users` row (`role_viewer = 1, role_commenter = 1`) exists for
+   * a verified commenter (e.g. a share-link visitor who verified their email).
+   */
+  ensureUserForCommenter(
+    commenterId: number,
+    email: string,
+    displayName: string,
+    shareToken?: string,
+  ): StoredUser {
+    const existingRow = this.db
+      .prepare('SELECT username FROM users WHERE commenter_id = ?')
+      .get(commenterId) as { username: string } | undefined;
+
+    if (existingRow) {
+      if (shareToken) {
+        this.db
+          .prepare(
+            `INSERT INTO commenter_shares (commenter_id, token, notify_photos, notify_comments, created_at)
+             VALUES (?, ?, 1, 1, ?)
+             ON CONFLICT (commenter_id, token) DO NOTHING`,
+          )
+          .run(commenterId, shareToken, new Date().toISOString());
+        this.invalidate();
+      }
+      return this.user(existingRow.username)!;
+    }
+
     const now = new Date().toISOString();
-    const { allAlbums, ids } = splitAlbums(input.albums);
+    const baseSlug =
+      (displayName || email.split('@')[0] || 'visiteur')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 24) || 'visiteur';
+
+    let candidate = baseSlug;
+    let suffix = 2;
+    while (this.user(candidate) !== undefined) {
+      candidate = `${baseSlug}-${suffix++}`;
+    }
 
     this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO users (username, display_name, password_hash, admin, role_viewer, role_commenter, all_albums, commenter_id, created_at, updated_at)
+           VALUES (?, ?, ?, 0, 1, 1, 0, ?, ?, ?)`,
         )
-        .run(input.username, input.passwordHash, input.admin ? 1 : 0, allAlbums ? 1 : 0, now, now);
+        .run(candidate, displayName.trim() || candidate, NO_PASSWORD_HASH, commenterId, now, now);
+      if (shareToken) {
+        this.db
+          .prepare(
+            `INSERT INTO commenter_shares (commenter_id, token, notify_photos, notify_comments, created_at)
+             VALUES (?, ?, 1, 1, ?)
+             ON CONFLICT (commenter_id, token) DO NOTHING`,
+          )
+          .run(commenterId, shareToken, now);
+      }
+    })();
+
+    this.invalidate();
+    return this.user(candidate)!;
+  }
+
+  createUser(input: CreateUserInput): StoredUser {
+    const now = new Date().toISOString();
+    const { allAlbums, ids } = splitAlbums(input.albums);
+    const displayName = (input.displayName ?? '').trim() || input.username;
+    const admin = input.admin;
+    const roleViewer = admin ? true : (input.roleViewer ?? true);
+    const roleCommenter = admin ? true : (input.roleCommenter ?? true);
+
+    this.db.transaction(() => {
+      let commenterId: number | null = input.commenterId !== undefined ? input.commenterId : null;
+
+      if (commenterId === null && (input.email || !hasNoPassword(input.passwordHash))) {
+        const normalizedEmail = input.email ? input.email.trim() : null;
+        if (normalizedEmail) {
+          const existingCommenter = this.identities.byEmail(normalizedEmail);
+          if (existingCommenter) {
+            this.absorbShareVisitorIfCompeting(existingCommenter.id, input.username);
+            const boundUser = this.db
+              .prepare('SELECT username FROM users WHERE commenter_id = ?')
+              .get(existingCommenter.id) as { username: string } | undefined;
+            if (boundUser) {
+              throw new Error(`Email already bound to "${boundUser.username}"`);
+            }
+            if (existingCommenter.verifiedAt === null) {
+              this.identities.declare(normalizedEmail, displayName);
+              this.identities.markVerified(normalizedEmail);
+            }
+            commenterId = existingCommenter.id;
+          } else {
+            const created = this.identities.createForUser(displayName, normalizedEmail);
+            commenterId = created.id;
+          }
+        } else {
+          const created = this.identities.createForUser(displayName, null);
+          commenterId = created.id;
+        }
+      }
+
+      this.db
+        .prepare(
+          `INSERT INTO users (username, display_name, password_hash, admin, role_viewer, role_commenter, all_albums, commenter_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.username,
+          displayName,
+          input.passwordHash,
+          admin ? 1 : 0,
+          roleViewer ? 1 : 0,
+          roleCommenter ? 1 : 0,
+          allAlbums ? 1 : 0,
+          commenterId,
+          now,
+          now,
+        );
       this.linkAlbums(input.username, ids);
+      if (commenterId !== null && input.shareTokens && input.shareTokens.length > 0) {
+        this.syncShareTokens(commenterId, input.shareTokens, now);
+      }
     })();
 
     this.invalidate();
@@ -481,32 +702,119 @@ export class ConfigRepo {
   updateUser(username: string, patch: UpdateUserInput): StoredUser {
     const stored = this.user(username);
     if (!stored) throw new Error(`Unknown account: "${username}"`);
-    // A bound account holds no password, and the single way to give it one is
-    // `unbindUser`, which clears the binding and closes the sessions in the same
-    // transaction. Without this refusal an administrator sets a password on a bound
-    // account, signs in, and the session signs as that person — the binding they were
-    // forbidden to assert, entered through the door instead of the window. The rule
-    // sits here rather than on the route because `pnpm reset-password` writes through
-    // this repository without passing any route.
-    if (patch.passwordHash !== undefined && stored.commenterId !== null) {
-      throw new Error(
-        `"${stored.username}" is bound to a person and holds no password: ` +
-          'unbind it to give it one, which also closes its sessions.',
-      );
-    }
     const now = new Date().toISOString();
 
+    const nextAdmin = patch.admin !== undefined ? patch.admin : stored.admin;
+    const nextRoleViewer = nextAdmin
+      ? true
+      : patch.roleViewer !== undefined
+        ? patch.roleViewer
+        : stored.roleViewer;
+    const nextRoleCommenter = nextAdmin
+      ? true
+      : patch.roleCommenter !== undefined
+        ? patch.roleCommenter
+        : stored.roleCommenter;
+    const nextDisplayName =
+      patch.displayName !== undefined
+        ? patch.displayName.trim() || stored.username
+        : stored.displayName;
+
     this.db.transaction(() => {
+      let commenterId = stored.commenterId;
+
+      const needsCommenter =
+        patch.email !== undefined ||
+        patch.notifyPhotos !== undefined ||
+        patch.notifyComments !== undefined ||
+        patch.shareTokens !== undefined ||
+        patch.displayName !== undefined;
+
+      if (commenterId === null && needsCommenter) {
+        const created = this.identities.createForUser(nextDisplayName, null);
+        commenterId = created.id;
+        this.db
+          .prepare('UPDATE users SET commenter_id = ? WHERE username = ?')
+          .run(commenterId, stored.username);
+      }
+
+      if (patch.displayName !== undefined) {
+        this.db
+          .prepare('UPDATE users SET display_name = ? WHERE username = ?')
+          .run(nextDisplayName, stored.username);
+        if (commenterId !== null) {
+          this.identities.setDisplayName(commenterId, nextDisplayName);
+        }
+      }
+
+      if (patch.email !== undefined && commenterId !== null) {
+        const normalizedEmail = patch.email ? patch.email.trim() : null;
+        if (normalizedEmail !== null) {
+          const existingByEmail = this.identities.byEmail(normalizedEmail);
+          if (existingByEmail && existingByEmail.id !== commenterId) {
+            this.absorbShareVisitorIfCompeting(existingByEmail.id, stored.username);
+            const otherUser = this.db
+              .prepare('SELECT username FROM users WHERE commenter_id = ? AND username != ?')
+              .get(existingByEmail.id, stored.username) as { username: string } | undefined;
+            if (otherUser) {
+              throw new Error(`Email already bound to "${otherUser.username}"`);
+            }
+            // Adopt the existing commenter row for this email and migrate records.
+            const oldCommenterId = commenterId;
+            this.migrateCommenterRecords(oldCommenterId, existingByEmail.id);
+            commenterId = existingByEmail.id;
+            if (existingByEmail.verifiedAt === null) {
+              this.identities.markVerified(normalizedEmail);
+            }
+            this.db
+              .prepare('UPDATE users SET commenter_id = ? WHERE username = ?')
+              .run(commenterId, stored.username);
+            this.db.prepare('DELETE FROM commenters WHERE id = ?').run(oldCommenterId);
+          } else {
+            this.identities.setEmail(commenterId, normalizedEmail, true);
+          }
+        } else {
+          this.identities.setEmail(commenterId, null);
+        }
+      }
+
+      if (
+        (patch.notifyPhotos !== undefined || patch.notifyComments !== undefined) &&
+        commenterId !== null
+      ) {
+        this.identities.setNotifyPreferences(commenterId, {
+          notifyPhotos: patch.notifyPhotos,
+          notifyComments: patch.notifyComments,
+        });
+      }
+
+      if (patch.shareTokens !== undefined && commenterId !== null) {
+        this.syncShareTokens(commenterId, patch.shareTokens, now);
+      }
+
       if (patch.passwordHash !== undefined) {
         this.db
           .prepare('UPDATE users SET password_hash = ? WHERE username = ?')
           .run(patch.passwordHash, stored.username);
       }
-      if (patch.admin !== undefined) {
+
+      if (
+        patch.admin !== undefined ||
+        patch.roleViewer !== undefined ||
+        patch.roleCommenter !== undefined
+      ) {
         this.db
-          .prepare('UPDATE users SET admin = ? WHERE username = ?')
-          .run(patch.admin ? 1 : 0, stored.username);
+          .prepare(
+            'UPDATE users SET admin = ?, role_viewer = ?, role_commenter = ? WHERE username = ?',
+          )
+          .run(
+            nextAdmin ? 1 : 0,
+            nextRoleViewer ? 1 : 0,
+            nextRoleCommenter ? 1 : 0,
+            stored.username,
+          );
       }
+
       if (patch.albums !== undefined) {
         const { allAlbums, ids } = splitAlbums(patch.albums);
         this.db
@@ -516,6 +824,7 @@ export class ConfigRepo {
         this.db.prepare('DELETE FROM user_albums WHERE username = ?').run(stored.username);
         this.linkAlbums(stored.username, ids);
       }
+
       this.db
         .prepare('UPDATE users SET updated_at = ? WHERE username = ?')
         .run(now, stored.username);
@@ -535,19 +844,8 @@ export class ConfigRepo {
   /* --------------------------------------------- an account that is a person */
 
   /**
-   * Creates an account by address: the reserved hash and the invitation, together.
-   *
-   * They land in one transaction because neither is any use alone. An invitation
-   * refused after the account was written leaves a sentinel account nobody invited
-   * and nobody can enter, and only an administrator reading the account list would
-   * ever find out. No binding is written here and no existing `commenters` row is
-   * touched: a verified address proves that somebody controls an inbox, not that they
-   * accepted this account, and consuming the code is what proves the second.
-   *
-   * `createUser` is not reused: it invalidates the snapshot before returning, so
-   * composing it here would rebuild that snapshot from writes this transaction may
-   * still roll back — and `PRAGMA data_version` does not move for a write on this
-   * connection, so nothing would ever notice.
+   * Creates an account by address: the reserved hash (or supplied password) and the
+   * invitation, together.
    */
   createInvitedUser(
     input: CreateInvitedUserInput,
@@ -555,16 +853,33 @@ export class ConfigRepo {
   ): CreateInvitedUserResult {
     const now = new Date().toISOString();
     const { allAlbums, ids } = splitAlbums(input.albums);
+    const displayName = (input.displayName ?? '').trim() || input.username;
+    const admin = input.admin;
+    const roleViewer = admin ? true : (input.roleViewer ?? true);
+    const roleCommenter = admin ? true : (input.roleCommenter ?? true);
+    const passwordHash = input.passwordHash ?? NO_PASSWORD_HASH;
 
     let minted: { code: string };
     try {
       minted = this.db.transaction(() => {
+        // While an email-only invitation is pending, commenter_id remains NULL so no
+        // existing commenter row for that email is bound until the code is verified.
         this.db
           .prepare(
-            `INSERT INTO users (username, password_hash, admin, all_albums, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO users (username, display_name, password_hash, admin, role_viewer, role_commenter, all_albums, commenter_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
           )
-          .run(input.username, NO_PASSWORD_HASH, input.admin ? 1 : 0, allAlbums ? 1 : 0, now, now);
+          .run(
+            input.username,
+            displayName,
+            passwordHash,
+            admin ? 1 : 0,
+            roleViewer ? 1 : 0,
+            roleCommenter ? 1 : 0,
+            allAlbums ? 1 : 0,
+            now,
+            now,
+          );
         this.linkAlbums(input.username, ids);
 
         const result = codes.mint(input.email, 'invite', {
@@ -586,25 +901,6 @@ export class ConfigRepo {
 
   /**
    * Consumes an invitation: the account becomes this person, and stops being a key.
-   *
-   * One transaction for what is one act. It writes the binding, marks the address
-   * verified — creating the identity when the instance does not know it — gives that
-   * identity the language its invitation was written in if it has none, spends the
-   * code, replaces the password with the reserved hash, closes the account's sessions
-   * and forgets its paired screens.
-   *
-   * The last three are what a **conversion** needs, and they are unconditional
-   * because an account created by address has no password to replace, no session and
-   * no paired screen: the same statements, doing nothing. On a shared key they are
-   * the whole point. Without the closing, the other devices of a household keep a
-   * session that has just started signing under one person's name; without the
-   * password, everyone who knew the key still walks in under it; without the pairing
-   * row, `claim()` turns a television approved while the key was shared into a fresh
-   * session as the person it has just become.
-   *
-   * **The new session is opened by the caller, after this returns**, and the order
-   * is the point: the session belongs to whoever just proved the address, and a
-   * blanket close run afterwards would sign them straight back out.
    */
   consumeInvitation(input: ConsumeInvitationInput, codes: VerificationCodeRepo): StoredUser {
     const stored = this.user(input.username);
@@ -615,14 +911,8 @@ export class ConfigRepo {
       const known = this.identities.byEmail(input.email);
       let identity: StoredCommenter;
       if (known && known.verifiedAt !== null) {
-        // Adopting an identity that already signs comments is the good case: the
-        // household member who has commented keeps their comments. Its name is left
-        // exactly as they wrote it.
         identity = known;
       } else {
-        // A row nobody has verified carries a name anybody behind the shared key
-        // could have chosen, so it takes the unknown path rather than being adopted
-        // as it stands. The route asks for the name before spending the code.
         const name = input.displayName?.trim();
         if (!name) {
           throw new Error(`No verified identity for "${input.email}" and no name supplied`);
@@ -631,24 +921,32 @@ export class ConfigRepo {
         identity = this.identities.markVerified(input.email)!;
       }
 
-      // The language the invitation was written in becomes this person's, and only
-      // if they have none: a stored value came from their own browser, which
-      // D260812d makes authoritative over a choice somebody made for them.
-      //
-      // `plugins/auth.ts` records `Accept-Language` on every authenticated request,
-      // so the browser reclaims that authority as soon as the next one arrives. This
-      // covers the window before it, and the emails composed inside that window.
       if (input.locale) this.identities.seedLocale(identity.id, input.locale);
 
-      // A UNIQUE index guards `commenter_id`: an identity bound to another account
-      // between the invitation and this moment raises here, and the whole act —
-      // the binding, the code, the closing — rolls back rather than half-applying.
+      this.absorbShareVisitorIfCompeting(identity.id, stored.username);
+
+      // If this user previously had an auto-created password-only commenter row
+      // (email === null), migrate its records to `identity.id` and clean it up.
+      const prevCommenterId = stored.commenterId;
+      if (prevCommenterId !== null && prevCommenterId !== identity.id) {
+        const prev = this.identities.byId(prevCommenterId);
+        this.migrateCommenterRecords(prevCommenterId, identity.id);
+        this.db
+          .prepare('UPDATE users SET commenter_id = NULL WHERE username = ?')
+          .run(stored.username);
+        if (prev && prev.email === null) {
+          this.db.prepare('DELETE FROM commenters WHERE id = ?').run(prevCommenterId);
+        }
+      }
+
+      const nextDisplayName = identity.displayName || stored.displayName || stored.username;
       this.db
         .prepare(
-          `UPDATE users SET commenter_id = ?, password_hash = ?, updated_at = ?
+          `UPDATE users
+              SET commenter_id = ?, display_name = ?, password_hash = ?, updated_at = ?
             WHERE username = ?`,
         )
-        .run(identity.id, NO_PASSWORD_HASH, now, stored.username);
+        .run(identity.id, nextDisplayName, NO_PASSWORD_HASH, now, stored.username);
       this.closeAccess(stored.username);
       codes.consume(input.email, 'invite');
     })();
@@ -660,13 +958,6 @@ export class ConfigRepo {
   /**
    * Takes the account back from the person it was: clears the binding, sets a real
    * password, closes the sessions and forgets the paired screens.
-   *
-   * The password is required rather than optional, and this is the exception that
-   * makes the refusal in `updateUser` liveable: unbinding without one would leave an
-   * account with no identity and a hash nobody can enter, the administrator included.
-   * It is also the answer to somebody losing access to their address — the account
-   * becomes the shared key it has become in practice, and the comments it signed keep
-   * the name they were signed with.
    */
   unbindUser(username: string, passwordHash: string): StoredUser {
     const stored = this.user(username);
@@ -811,15 +1102,75 @@ export class ConfigRepo {
 
   /* ------------------------------------------------------------------- internal */
 
-  /**
-   * Everything that could still open a session on this account, in two statements.
-   *
-   * Written here rather than through `SessionStore` and `PairingStore` because it is
-   * two statements and no rule: both classes would have to be handed this connection
-   * to keep the surrounding transaction, and `PairingStore` a secret it would not
-   * use. Closing the sessions alone is not enough — an approved `device_pairings` row
-   * survives it, and `claim()` turns it into a fresh session afterwards.
-   */
+  private absorbShareVisitorIfCompeting(commenterId: number, targetUsername: string): void {
+    const other = this.db
+      .prepare(
+        `SELECT username, password_hash, admin, all_albums
+           FROM users
+          WHERE commenter_id = ? AND username != ? COLLATE NOCASE`,
+      )
+      .get(commenterId, targetUsername) as
+      { username: string; password_hash: string; admin: number; all_albums: number } | undefined;
+    if (!other) return;
+    const hasAlbums = this.db
+      .prepare('SELECT 1 FROM user_albums WHERE username = ? LIMIT 1')
+      .get(other.username);
+    const hasShares = this.db
+      .prepare('SELECT 1 FROM commenter_shares WHERE commenter_id = ? LIMIT 1')
+      .get(commenterId);
+    if (
+      hasNoPassword(other.password_hash) &&
+      other.admin === 0 &&
+      other.all_albums === 0 &&
+      hasAlbums === undefined &&
+      hasShares !== undefined
+    ) {
+      this.closeAccess(other.username);
+      this.db.prepare('DELETE FROM users WHERE username = ?').run(other.username);
+    }
+  }
+
+  private migrateCommenterRecords(fromId: number, toId: number): void {
+    if (fromId === toId) return;
+    this.db
+      .prepare('UPDATE comments SET commenter_id = ? WHERE commenter_id = ?')
+      .run(toId, fromId);
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO commenter_favorites (commenter_id, album_id, media_id, created_at)
+         SELECT ?, album_id, media_id, created_at FROM commenter_favorites WHERE commenter_id = ?`,
+      )
+      .run(toId, fromId);
+    this.db.prepare('DELETE FROM commenter_favorites WHERE commenter_id = ?').run(fromId);
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO commenter_shares (commenter_id, token, notify_photos, notify_comments, created_at)
+         SELECT ?, token, notify_photos, notify_comments, created_at FROM commenter_shares WHERE commenter_id = ?`,
+      )
+      .run(toId, fromId);
+    this.db.prepare('DELETE FROM commenter_shares WHERE commenter_id = ?').run(fromId);
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO album_subscriptions (commenter_id, album_id, state, notify_photos, notify_comments, created_at)
+         SELECT ?, album_id, state, notify_photos, notify_comments, created_at FROM album_subscriptions WHERE commenter_id = ?`,
+      )
+      .run(toId, fromId);
+    this.db.prepare('DELETE FROM album_subscriptions WHERE commenter_id = ?').run(fromId);
+  }
+
+  private syncShareTokens(commenterId: number, tokens: string[], now: string): void {
+    const unique = [...new Set(tokens)];
+    this.db.prepare('DELETE FROM commenter_shares WHERE commenter_id = ?').run(commenterId);
+    const insert = this.db.prepare(
+      `INSERT OR IGNORE INTO commenter_shares (commenter_id, token, notify_photos, notify_comments, created_at)
+       VALUES (?, ?, 1, 1, ?)`,
+    );
+    for (const token of unique) {
+      const exists = this.db.prepare('SELECT 1 FROM share_links WHERE token = ?').get(token);
+      if (exists) insert.run(commenterId, token, now);
+    }
+  }
+
   private closeAccess(username: string): void {
     this.db.prepare('DELETE FROM sessions WHERE username = ?').run(username);
     this.db.prepare('DELETE FROM device_pairings WHERE username = ?').run(username);
@@ -836,20 +1187,6 @@ export class ConfigRepo {
     this.snapshot = null;
   }
 
-  /**
-   * Returns the snapshot after ensuring that no other connection has written to the
-   * database since it was built.
-   *
-   * `PRAGMA data_version` does not move for writes from *this* connection, but changes
-   * as soon as another process commits a transaction. This allows `pnpm reset-password`,
-   * run while the server is active, to take effect immediately: without this check,
-   * the server would continue authenticating with the old hash until restart, defeating
-   * a command designed for urgently regaining control.
-   *
-   * The cost is one in-memory counter read per call, whereas rebuilding the snapshot
-   * each time would cost several queries — including on the `canSee()` path called
-   * for every thumbnail.
-   */
   private read(): Snapshot {
     const version = this.db.pragma('data_version', { simple: true }) as number;
     if (version !== this.dataVersion) {
@@ -869,14 +1206,48 @@ export class ConfigRepo {
       .all() as AlbumRow[];
     const userRows = this.db
       .prepare(
-        `SELECT username, password_hash, admin, all_albums, commenter_id, created_at, updated_at
-           FROM users ORDER BY username`,
+        `SELECT u.username, u.display_name, u.password_hash, u.admin, u.role_viewer,
+                u.role_commenter, u.all_albums, u.commenter_id, u.created_at, u.updated_at,
+                c.email AS commenter_email, c.verified_at AS commenter_verified_at
+           FROM users u
+           LEFT JOIN commenters c ON c.id = u.commenter_id
+          ORDER BY u.username`,
       )
-      .all() as UserRow[];
+      .all() as (UserRow & {
+      commenter_email: string | null;
+      commenter_verified_at: string | null;
+    })[];
     const linkRows = this.db.prepare('SELECT username, album_id FROM user_albums').all() as {
       username: string;
       album_id: string;
     }[];
+
+    const shareRows = this.db
+      .prepare(
+        `SELECT u.username, cs.token
+           FROM users u
+           JOIN commenter_shares cs ON cs.commenter_id = u.commenter_id
+           JOIN share_links s ON s.token = cs.token
+          WHERE s.revoked_at IS NULL
+          ORDER BY cs.created_at DESC`,
+      )
+      .all() as Array<{ username: string; token: string }>;
+
+    const sharedAlbumRows = this.db
+      .prepare(
+        `SELECT u.username, sla.album_id, s.expires_at
+           FROM users u
+           JOIN commenter_shares cs ON cs.commenter_id = u.commenter_id
+           JOIN share_links s ON s.token = cs.token
+           JOIN share_link_albums sla ON sla.token = s.token
+          WHERE s.revoked_at IS NULL
+            AND (s.expires_at IS NULL OR s.expires_at > ?)`,
+      )
+      .all(new Date().toISOString()) as Array<{
+      username: string;
+      album_id: string;
+      expires_at: string | null;
+    }>;
 
     const granted = new Map<string, Set<string>>();
     for (const link of linkRows) {
@@ -886,17 +1257,48 @@ export class ConfigRepo {
       granted.set(key, set);
     }
 
+    const sharedAlbums = new Map<string, Map<string, number>>();
+    for (const row of sharedAlbumRows) {
+      const key = row.username.toLowerCase();
+      const map = sharedAlbums.get(key) ?? new Map<string, number>();
+      const expMs = row.expires_at === null ? Infinity : Date.parse(row.expires_at);
+      const prev = map.get(row.album_id) ?? 0;
+      if (expMs > prev) map.set(row.album_id, expMs);
+      sharedAlbums.set(key, map);
+    }
+
+    const shareTokensByUser = new Map<string, string[]>();
+    for (const row of shareRows) {
+      const key = row.username.toLowerCase();
+      const list = shareTokensByUser.get(key) ?? [];
+      list.push(row.token);
+      shareTokensByUser.set(key, list);
+    }
+
     const albums = albumRows.map(toAlbum);
     const users = new Map<string, StoredUser>();
+    const hasVerifiedEmail = new Map<string, boolean>();
+
     for (const row of userRows) {
       const key = row.username.toLowerCase();
+      const admin = row.admin === 1;
+      hasVerifiedEmail.set(
+        key,
+        row.commenter_id !== null &&
+          row.commenter_email !== null &&
+          row.commenter_verified_at !== null,
+      );
       users.set(key, {
         username: row.username,
+        displayName: row.display_name || row.username,
         passwordHash: row.password_hash,
-        admin: row.admin === 1,
+        admin,
+        roleViewer: admin ? true : row.role_viewer === 1,
+        roleCommenter: admin ? true : row.role_commenter === 1,
         allAlbums: row.all_albums === 1,
         // Sorted like albums so the list returned by the API is stable.
         albums: albums.filter((album) => granted.get(key)?.has(album.id)).map((album) => album.id),
+        shareTokens: shareTokensByUser.get(key) ?? [],
         commenterId: row.commenter_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -908,6 +1310,8 @@ export class ConfigRepo {
       albumsById: new Map(albums.map((album) => [album.id, album])),
       users,
       granted,
+      sharedAlbums,
+      hasVerifiedEmail,
       settings: this.loadSettings(),
     };
   }
@@ -966,12 +1370,10 @@ function normalize(value: string | null | undefined): string | null {
 }
 
 /**
- * A way in: a real password, or a completed binding. An account with the reserved
- * hash and no binding holds album grants somebody set on purpose and no credential
- * that could exercise them.
+ * A way in: a real password, or a completed email binding.
  */
-function usable(user: StoredUser): boolean {
-  return !hasNoPassword(user.passwordHash) || user.commenterId !== null;
+function usable(user: StoredUser, hasVerifiedEmail: boolean): boolean {
+  return !hasNoPassword(user.passwordHash) || hasVerifiedEmail;
 }
 
 /** `['*', 'a']` means wildcard: the most permissive value wins without silent error. */

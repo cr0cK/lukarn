@@ -20,6 +20,7 @@ export const fr: Messages = {
 
   'error.authRequired': 'Authentification requise',
   'error.adminsOnly': 'Réservé aux administrateurs',
+  'error.forbidden': 'Accès refusé',
   'error.notSignedIn': 'Session absente',
   'error.credentialsRequired': 'Identifiant et mot de passe requis',
   'error.badCredentials': 'Identifiant ou mot de passe incorrect',
@@ -42,8 +43,8 @@ export const fr: Messages = {
 
   // Le registre est celui d’un message adressé : ce lien a été envoyé à quelqu’un
   // par quelqu’un, comme celui d’un email (D260825b).
-  'error.shareUnknown': 'Ce lien ne mène nulle part.',
-  'error.shareRevoked': 'Ce lien a été retiré.',
+  'error.shareUnknown': 'Ce lien de partage est introuvable.',
+  'error.shareRevoked': 'Ce lien de partage a été suspendu.',
   'error.shareExpired': 'Ce lien a expiré.',
   'error.shareGone': 'La photo de ce lien ne se trouve plus dans la galerie.',
   'error.notFound': 'Introuvable',
@@ -53,6 +54,7 @@ export const fr: Messages = {
   'error.invalidOrExpiredLink': 'Lien invalide ou expiré',
 
   'error.identityRequired': 'Indiquer et vérifier une adresse email pour pouvoir commenter.',
+  'error.commentsDisabledOnShare': 'Les commentaires sont désactivés sur ce lien de partage.',
   'error.commentLength': (max: number) => `Un commentaire doit faire entre 1 et ${max} caractères.`,
   'error.unknownParent': 'Le commentaire auquel cette réponse s’adresse n’existe plus.',
   'error.editWindowClosed': 'Le délai de correction de ce commentaire est écoulé.',
@@ -69,7 +71,7 @@ export const fr: Messages = {
   'error.displayNameRequired':
     'Indiquer le nom qui signera les commentaires, puis renvoyer le code.',
   'error.identityBound':
-    'Ce compte est une personne, et son adresse ne se change pas depuis cette session. Se déconnecter pour utiliser la galerie sous une autre.',
+    'L’adresse email de ce compte ne peut pas être modifiée depuis cette session.',
 
   'error.noIcon': 'Aucune icône de ce nom',
   'error.logoEmpty': 'Aucune image reçue.',
@@ -124,7 +126,8 @@ export const fr: Messages = {
   'mail.albumSubject': (count: number, album: string) =>
     `${count} nouvelle${count > 1 ? 's' : ''} photo${count > 1 ? 's' : ''} dans ${album}`,
   'mail.viewAlbum': 'Voir l’album',
-  'mail.albumReason': 'Vous recevez ce message parce que vous avez ouvert cet album.',
+  'mail.albumReason': (album: string) =>
+    `Vous recevez cet email car vous suivez les nouveautés de « ${album} ».`,
   'mail.albumUnsubscribe': (album: string) =>
     `Ne plus être prévenu des nouvelles photos de « ${album} »`,
 

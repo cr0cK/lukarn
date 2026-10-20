@@ -663,7 +663,7 @@ describe('PATCH /api/auth/profile', () => {
     assert.equal(patchRes.json<{ error: string }>().error, 'forbidden');
   });
 
-  it('rejects unbound account with 400 no_identity', async () => {
+  it('allows a password-only account to update its display name via profile', async () => {
     context.config.createUser({
       username: 'unbounduser',
       passwordHash: await argon2.hash('password123', { type: argon2.argon2id }),
@@ -684,7 +684,7 @@ describe('PATCH /api/auth/profile', () => {
       headers: { cookie: `lukarn_session=${userCookie.value}` },
       payload: { displayName: 'New Name' },
     });
-    assert.equal(patchRes.statusCode, 400);
-    assert.equal(patchRes.json<{ error: string }>().error, 'no_identity');
+    assert.equal(patchRes.statusCode, 200);
+    assert.equal(patchRes.json<{ displayName: string }>().displayName, 'New Name');
   });
 });

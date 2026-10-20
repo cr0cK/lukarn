@@ -72,9 +72,10 @@ where "skipped" and "passed" must not look alike.
 **Images are pinned, and two of three come from elsewhere than Docker Hub.**
 `latest` would make a green run depend on what a third party released this
 morning, and the first failure would be blamed on whichever branch was open. MinIO
-is pulled from quay.io and rclone from ghcr.io, neither of which rate-limits an
-anonymous pull — a throttled pull fails in a way that reads exactly like a broken
-test.
+is pulled from `cgr.dev` (pinned by digest after MinIO withdrew its public images
+from `quay.io` and Docker Hub) and rclone from `ghcr.io`, neither of which
+rate-limits an anonymous pull — a throttled pull fails in a way that reads
+exactly like a broken test.
 
 **Seeding goes through `storage/sigv4.ts`**, not through `mc` or an AWS SDK. It
 keeps D260816e's "no dependency at all" true of the tests as well as the code, and

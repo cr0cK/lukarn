@@ -13,6 +13,7 @@ import { createAlbumRoutes } from './routes/albums.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createAdminBrandingRoutes, createBrandingRoutes } from './routes/branding.js';
 import { createCommentRoutes } from './routes/comments.js';
+import { createFavoriteRoutes } from './routes/favorites.js';
 import { createIdentityRoutes } from './routes/identity.js';
 import { createMediaRoutes } from './routes/media.js';
 import { createSearchRoutes } from './routes/search.js';
@@ -79,6 +80,7 @@ export async function buildApp(env: Env): Promise<BuiltApp> {
       await api.register(createSearchRoutes(context), { prefix: '/search' });
       await api.register(createMediaRoutes(context), { prefix: '/media' });
       await api.register(createCommentRoutes(context), { prefix: '/comments' });
+      await api.register(createFavoriteRoutes(context), { prefix: '/favorites' });
       await api.register(createIdentityRoutes(context), { prefix: '/identity' });
       await api.register(createSubscriptionRoutes(context), { prefix: '/subscriptions' });
       // Public, like the unsubscribe pages: its caller holds a link and no session,

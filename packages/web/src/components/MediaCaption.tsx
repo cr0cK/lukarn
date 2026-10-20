@@ -88,8 +88,8 @@ export function MediaCaption({
   const editable = mayEdit && albumId !== null;
 
   // Nothing to say or write: not even a ghost button inviting discovery of an
-  // empty bar.
-  if (entries.length === 0 && !editable) return null;
+  // empty bar. Admin caption editing is initiated from the Lightbox actions menu.
+  if (entries.length === 0 && !editing) return null;
 
   if (hidden) {
     // A hidden state without an exit is a trap: once the bar is gone, nothing
@@ -131,16 +131,6 @@ export function MediaCaption({
         }
       >
         <div className="min-w-0 flex-1">
-          {editable && !description && (
-            <button
-              type="button"
-              onClick={() => onEditingChange(true)}
-              className="rounded text-sm text-ink-400 transition-colors hover:text-ink-100"
-            >
-              {t('caption.describe')}
-            </button>
-          )}
-
           {entries.length > 0 && (
             // Scroll the wrapper rather than the button: expanded, a thousand
             // characters would cover the whole photo, and the header is

@@ -12,7 +12,12 @@ import { ADMIN, ALBUMS } from './instance.js';
  */
 export async function issueShare(
   request: APIRequestContext,
-  options: { mediaId?: string; label?: string } = {},
+  options: {
+    mediaId?: string;
+    label?: string;
+    requireIdentity?: boolean;
+    allowComments?: boolean;
+  } = {},
 ): Promise<string> {
   await asAdmin(request);
 
@@ -21,6 +26,8 @@ export async function issueShare(
       albumId: ALBUMS.day.id,
       mediaId: options.mediaId ?? null,
       label: options.label ?? null,
+      requireIdentity: options.requireIdentity ?? false,
+      allowComments: options.allowComments ?? true,
     },
   });
   expect(created.status(), await created.text()).toBe(201);

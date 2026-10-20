@@ -959,6 +959,181 @@ export const MIGRATIONS: string[] = [
 
   CREATE INDEX idx_share_link_items_token ON share_link_items (token, position);
   `,
+
+  // 22 — unified users, explicit RBAC roles, per-user favorites, composable shares,
+  // and granular photo/comment notification preferences.
+  `
+  CREATE TEMPORARY TABLE temp_user_commenters AS
+    SELECT username, commenter_id FROM users WHERE commenter_id IS NOT NULL;
+  CREATE TEMPORARY TABLE temp_session_commenters AS
+    SELECT id, commenter_id FROM sessions WHERE commenter_id IS NOT NULL;
+  CREATE TEMPORARY TABLE temp_comments AS
+    SELECT * FROM comments ORDER BY id;
+  CREATE TEMPORARY TABLE temp_comments_seq AS
+    SELECT seq FROM sqlite_sequence WHERE name = 'comments';
+  CREATE TEMPORARY TABLE temp_album_subscriptions AS
+    SELECT * FROM album_subscriptions;
+
+  DELETE FROM comments;
+  DELETE FROM album_subscriptions;
+  UPDATE users SET commenter_id = NULL WHERE commenter_id IS NOT NULL;
+  UPDATE sessions SET commenter_id = NULL WHERE commenter_id IS NOT NULL;
+
+  CREATE TABLE commenters_next (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    email                TEXT UNIQUE COLLATE NOCASE,
+    display_name         TEXT NOT NULL,
+    notify_photos        INTEGER NOT NULL DEFAULT 1,
+    notify_comments      INTEGER NOT NULL DEFAULT 1,
+    verified_at          TEXT,
+    created_at           TEXT NOT NULL,
+    pending_display_name TEXT,
+    locale               TEXT
+  );
+
+  INSERT INTO commenters_next (id, email, display_name, notify_photos, notify_comments,
+                               verified_at, created_at, pending_display_name, locale)
+    SELECT id, email, display_name, notify, notify,
+           verified_at, created_at, pending_display_name, locale
+      FROM commenters ORDER BY id;
+
+  INSERT INTO sqlite_sequence (name, seq)
+    SELECT 'commenters_next', 0
+     WHERE NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'commenters_next');
+
+  UPDATE sqlite_sequence
+     SET seq = MAX(seq, COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'commenters'), 0))
+   WHERE name = 'commenters_next';
+
+  DROP TABLE commenters;
+  ALTER TABLE commenters_next RENAME TO commenters;
+
+  UPDATE users
+     SET commenter_id = (
+       SELECT commenter_id FROM temp_user_commenters WHERE temp_user_commenters.username = users.username
+     )
+   WHERE EXISTS (
+     SELECT 1 FROM temp_user_commenters WHERE temp_user_commenters.username = users.username
+   );
+
+  UPDATE sessions
+     SET commenter_id = (
+       SELECT commenter_id FROM temp_session_commenters WHERE temp_session_commenters.id = sessions.id
+     )
+   WHERE EXISTS (
+     SELECT 1 FROM temp_session_commenters WHERE temp_session_commenters.id = sessions.id
+   );
+
+  INSERT INTO comments (id, album_id, media_id, parent_id, commenter_id,
+                        account, body, created_at, hidden_at, hidden_by)
+    SELECT id, album_id, media_id, parent_id, commenter_id,
+           account, body, created_at, hidden_at, hidden_by
+      FROM temp_comments ORDER BY id;
+
+  UPDATE sqlite_sequence
+     SET seq = MAX(seq, COALESCE((SELECT seq FROM temp_comments_seq), 0))
+   WHERE name = 'comments';
+
+  INSERT INTO album_subscriptions (commenter_id, album_id, state, created_at)
+    SELECT commenter_id, album_id, state, created_at
+      FROM temp_album_subscriptions;
+
+  DROP TABLE temp_user_commenters;
+  DROP TABLE temp_session_commenters;
+  DROP TABLE temp_comments;
+  DROP TABLE temp_comments_seq;
+  DROP TABLE temp_album_subscriptions;
+
+  ALTER TABLE users ADD COLUMN display_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN role_viewer INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE users ADD COLUMN role_commenter INTEGER NOT NULL DEFAULT 1;
+
+  UPDATE users
+     SET display_name = COALESCE(
+       (SELECT c.display_name FROM commenters c WHERE c.id = users.commenter_id),
+       users.username
+     )
+   WHERE display_name = '';
+
+  CREATE TEMPORARY TABLE temp_user_commenter_map (
+    username         TEXT PRIMARY KEY COLLATE NOCASE,
+    new_commenter_id INTEGER NOT NULL
+  );
+
+  INSERT INTO temp_user_commenter_map (username, new_commenter_id)
+    SELECT username,
+           MAX(
+             COALESCE((SELECT seq FROM sqlite_sequence WHERE name = 'commenters'), 0),
+             COALESCE((SELECT MAX(id) FROM commenters), 0)
+           ) + row_number() OVER (ORDER BY username)
+      FROM users
+     WHERE commenter_id IS NULL;
+
+  INSERT INTO commenters (id, email, display_name, notify_photos, notify_comments,
+                          verified_at, created_at, pending_display_name, locale)
+    SELECT m.new_commenter_id, NULL, u.display_name, 1, 1,
+           u.created_at, u.created_at, NULL, NULL
+      FROM temp_user_commenter_map m
+      JOIN users u ON u.username = m.username;
+
+  UPDATE users
+     SET commenter_id = (
+       SELECT m.new_commenter_id
+         FROM temp_user_commenter_map m
+        WHERE m.username = users.username
+     )
+   WHERE commenter_id IS NULL;
+
+  DROP TABLE temp_user_commenter_map;
+
+  ALTER TABLE share_links ADD COLUMN allow_comments INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE share_links ADD COLUMN require_identity INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE share_links ADD COLUMN updated_at TEXT;
+  ALTER TABLE share_links ADD COLUMN notified_at TEXT;
+  ALTER TABLE share_link_items ADD COLUMN added_at TEXT;
+
+  CREATE TABLE share_link_albums (
+    token    TEXT NOT NULL REFERENCES share_links (token) ON DELETE CASCADE,
+    album_id TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (token, album_id)
+  );
+
+  CREATE INDEX idx_share_link_albums_token_pos ON share_link_albums (token, position);
+
+  INSERT INTO share_link_albums (token, album_id, position)
+    SELECT token, album_id, 0
+      FROM share_links
+     WHERE album_id IS NOT NULL AND media_id IS NULL;
+
+  CREATE TABLE commenter_shares (
+    commenter_id    INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
+    token           TEXT NOT NULL REFERENCES share_links (token) ON DELETE CASCADE,
+    notify_photos   INTEGER NOT NULL DEFAULT 1,
+    notify_comments INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT NOT NULL,
+    PRIMARY KEY (commenter_id, token)
+  );
+
+  CREATE INDEX idx_commenter_shares_token ON commenter_shares (token);
+
+  ALTER TABLE album_subscriptions ADD COLUMN notify_photos INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE album_subscriptions ADD COLUMN notify_comments INTEGER NOT NULL DEFAULT 1;
+
+  UPDATE album_subscriptions
+     SET notify_photos = CASE WHEN state = 'opted_out' THEN 0 ELSE 1 END,
+         notify_comments = CASE WHEN state = 'opted_out' THEN 0 ELSE 1 END;
+
+  CREATE TABLE commenter_favorites (
+    commenter_id INTEGER NOT NULL REFERENCES commenters (id) ON DELETE CASCADE,
+    album_id     TEXT NOT NULL REFERENCES albums (id) ON DELETE CASCADE,
+    media_id     TEXT NOT NULL,
+    created_at   TEXT NOT NULL,
+    PRIMARY KEY (commenter_id, album_id, media_id)
+  );
+
+  CREATE INDEX idx_commenter_favorites_album ON commenter_favorites (commenter_id, album_id);
+  `,
 ];
 
 export function openDb(dataDir: string): Db {

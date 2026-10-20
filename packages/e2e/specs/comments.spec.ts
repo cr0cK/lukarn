@@ -26,7 +26,7 @@ test('a comment is signed by an address the sender proves they own', async ({ pa
 
   const sheet = page.getByRole('dialog', { name: 'Information and comments' });
   await sheet.getByRole('tab', { name: /Comments/ }).click();
-  await sheet.getByRole('button', { name: 'Sign in to comment' }).click();
+  await sheet.getByRole('button', { name: /Sign in to comment|Change address/ }).click();
 
   await sheet.getByRole('textbox', { name: 'Display name' }).fill(COMMENTER.name);
   await sheet.getByRole('textbox', { name: 'Email address' }).fill(COMMENTER.email);

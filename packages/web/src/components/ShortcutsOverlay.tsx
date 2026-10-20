@@ -101,7 +101,7 @@ export function ShortcutsOverlay({ onClose }: { onClose: () => void }): ReactEle
                 {group.shortcuts.map(([trigger, description]) => (
                   <div key={description} className="flex items-baseline gap-3">
                     <dt className="w-24 shrink-0">
-                      <kbd className="rounded border border-ink-600 bg-ink-800 px-1.5 py-0.5 font-mono text-[11px] whitespace-nowrap text-ink-200">
+                      <kbd className="rounded border border-ink-600 bg-ink-800 px-1.5 py-0.5 font-mono text-xs whitespace-nowrap text-ink-200">
                         {'key' in trigger ? trigger.key : t(trigger.gesture)}
                       </kbd>
                     </dt>

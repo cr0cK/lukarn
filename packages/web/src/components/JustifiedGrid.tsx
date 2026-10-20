@@ -1,4 +1,4 @@
-import type { AlbumDay } from '@lukarn/shared';
+import type { AlbumDay, ShareItem } from '@lukarn/shared';
 import { type ReactElement, useEffect } from 'react';
 import type { Scope } from '../api/client';
 import type { GridLayout } from '../lib/useGridLayout';
@@ -32,6 +32,12 @@ interface JustifiedGridProps {
   selectionMode?: boolean;
   selectedIds?: ReadonlySet<string>;
   onToggleSelection?: (id: string) => void;
+  /** Set of favorited media IDs for the current user or share visitor. */
+  favoriteIds?: ReadonlySet<string>;
+  /** Callback to toggle the favorite state of a media item. */
+  onToggleFavorite?: (item: ShareItem) => void;
+  /** Comment counts per media ID. */
+  commentCounts?: Record<string, number>;
 }
 
 /**
@@ -56,6 +62,9 @@ export function JustifiedGrid({
   selectionMode = false,
   selectedIds,
   onToggleSelection,
+  favoriteIds,
+  onToggleFavorite,
+  commentCounts,
 }: JustifiedGridProps): ReactElement {
   const { layout, visibleFrom, visibleTo, viewportHeight, descriptionLines } = grid;
 
@@ -97,6 +106,11 @@ export function JustifiedGrid({
                     selected={cell.index === selectedIndex}
                     selectable={selectionMode}
                     checked={selectedIds?.has(cell.item.id)}
+                    favorited={favoriteIds?.has(cell.item.id)}
+                    onToggleFavorite={
+                      onToggleFavorite ? () => onToggleFavorite(cell.item) : undefined
+                    }
+                    commentCount={commentCounts?.[cell.item.id] ?? 0}
                     // Load first-screen thumbnails without waiting for the native
                     // lazy-loading IntersectionObserver.
                     eager={cell.y < viewportHeight}

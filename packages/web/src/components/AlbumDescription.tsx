@@ -21,26 +21,36 @@ import { useT } from '../lib/i18n';
 interface AlbumDescriptionProps {
   albumId: string;
   description: string | null;
-  /** Administrator: only they see the pencil and invitation to write. */
+  /** Administrator: only they see the pencil and can open the editor. */
   editable: boolean;
+  /** Optional controlled editing state (triggered from the TopBar `[⋮]` menu). */
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }
 
 export function AlbumDescription({
   albumId,
   description,
   editable,
+  editing: controlledEditing,
+  onEditingChange,
 }: AlbumDescriptionProps): ReactElement | null {
   const t = useT();
-  const [editing, setEditing] = useState(false);
+  const [internalEditing, setInternalEditing] = useState(false);
+  const editing = controlledEditing ?? internalEditing;
+  const setEditing = (next: boolean): void => {
+    setInternalEditing(next);
+    onEditingChange?.(next);
+  };
 
-  if (!description && !editable) return null;
+  if (!description && !editing) return null;
 
   return (
     // `relative`: the editor opens as an overlay, like a day's editor. Putting it
     // in the flow would shift the entire grid down — and `useGridLayout` measures
     // `offsetTop` only on resize, so a simple vertical shift would escape it.
     <div className="relative mb-5">
-      {description ? (
+      {description && (
         // No width limit: the description takes the width of the grid below it.
         // Limited to the usual typographic measure, it left two-thirds of the
         // line empty on a large screen above a grid reaching the edge — a narrow
@@ -51,14 +61,6 @@ export function AlbumDescription({
             <EditButton label={t('album.editDescription')} onClick={() => setEditing(true)} />
           )}
         </p>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setEditing(true)}
-          className="rounded-lg text-sm text-ink-500 transition-colors hover:text-ink-200"
-        >
-          {t('album.describe')}
-        </button>
       )}
 
       {editing && (

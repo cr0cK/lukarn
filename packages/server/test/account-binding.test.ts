@@ -246,17 +246,13 @@ describe('converting a shared key', () => {
 });
 
 describe('a password on a bound account', () => {
-  it('is refused by the repository, so no route and no script can set one', () => {
+  it('can coexist with the email binding on a unified account', () => {
     bind('mamie', 'mamie@exemple.fr');
 
-    // `pnpm reset-password` reaches `updateUser` directly, which is why the rule
-    // lives here: guarding the admin route alone would leave a shell command that
-    // quietly recreates the impersonation.
-    assert.throws(
-      () => config.updateUser('mamie', { passwordHash: PASSWORD_HASH }),
-      /bound to a person/,
-    );
-    assert.equal(config.user('mamie')?.passwordHash, NO_PASSWORD_HASH);
+    const updated = config.updateUser('mamie', { passwordHash: PASSWORD_HASH });
+    assert.equal(updated.passwordHash, PASSWORD_HASH);
+    assert.notEqual(updated.commenterId, null);
+    assert.equal(commenters.byId(updated.commenterId!)?.email, 'mamie@exemple.fr');
   });
 
   it('is given by unbinding, which clears the binding and closes what was open', () => {

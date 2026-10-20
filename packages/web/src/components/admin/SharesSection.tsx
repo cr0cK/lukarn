@@ -7,10 +7,13 @@ import {
 import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react';
 import { albumScope, errorText, mediaUrl } from '../../api/client';
 import {
+  useAddShareItems,
   useAdminShares,
+  useAlbum,
   useAlbumItems,
   useCreateShare,
   useDeleteShare,
+  useRemoveShareItems,
   useRestoreShare,
   useRevokeShare,
   useUpdateShare,
@@ -19,6 +22,7 @@ import { formatLocalDateTime, formatRelative } from '../../lib/format';
 import { useT, type MessageKey, type Translate } from '../../lib/i18n';
 import { DateTimePicker } from '../DateTimePicker';
 import { Spinner } from '../Spinner';
+import { ResponsiveDialog } from '../ui/ResponsiveDialog';
 import { ConfirmDialog } from './ConfirmDialog';
 import {
   Button,
@@ -27,6 +31,7 @@ import {
   ROW_CLASS,
   Section,
   SelectField,
+  Switch,
   TextField,
   type Notify,
 } from './ui';
@@ -34,18 +39,11 @@ import {
 /** What the confirmation dialog is about, since revoking and deleting differ (D260825b). */
 type Pending = { link: AdminShareLink; action: 'revoke' | 'delete' };
 
-type SharesTab = 'existing' | 'create';
-
 /**
- * "Links" section: every share link this instance has issued.
+ * "Shares" section: every share link this instance has issued.
  *
- * Organized into sub-tabs (D-01):
- * - "Existing links": Link list with status badges, search filtering, and lifecycle actions.
- * - "Create a link": Dedicated creation form for album or single photo shares.
- *
- * Shows the **token**, which no other screen does: administration's reader already
- * holds every credential this instance has, and a link nobody can copy is a link nobody
- * can send. It also shows the record of use — when each was last opened (D260825c).
+ * Organized into collapsible share cards with inline album/photo management,
+ * comment/identification switches, and lifecycle actions.
  */
 export function SharesSection({
   albums,
@@ -56,13 +54,26 @@ export function SharesSection({
 }): ReactElement {
   const t = useT();
   const links = useAdminShares();
-  const [tab, setTab] = useState<SharesTab>('existing');
+  const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [addingPhotosFor, setAddingPhotosFor] = useState<AdminShareLink | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [editing, setEditing] = useState<AdminShareLink | null>(null);
   const [restoring, setRestoring] = useState<AdminShareLink | null>(null);
   const revoke = useRevokeShare();
   const remove = useDeleteShare();
+  const updateShare = useUpdateShare();
+  const addItems = useAddShareItems();
+  const removeItems = useRemoveShareItems();
+
+  const toggleExpanded = (id: string): void => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  };
 
   const confirm = (): void => {
     if (!pending) return;
@@ -84,92 +95,98 @@ export function SharesSection({
     });
   }, [links.data, search, t]);
 
-  return (
-    <Section title={t('shares.title')} description={t('shares.intro')}>
-      {/* Sub-navigation tabs (D-01) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink-850 px-4 py-3">
-        <div className="flex gap-1 rounded-lg border border-ink-700 p-0.5">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'existing'}
-            onClick={() => setTab('existing')}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              tab === 'existing' ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-200'
-            }`}
-          >
-            <span>{t('shares.tabExisting')}</span>
-            {links.data && links.data.length > 0 && (
-              <span className="rounded-full bg-ink-800 px-1.5 py-0.5 text-[10px] text-ink-300">
-                {links.data.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'create'}
-            onClick={() => setTab('create')}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              tab === 'create' ? 'bg-ink-700 text-ink-100' : 'text-ink-400 hover:text-ink-200'
-            }`}
-          >
-            {t('shares.tabCreate')}
-          </button>
-        </div>
+  const albumsById = useMemo(() => new Map(albums.map((album) => [album.id, album])), [albums]);
 
-        {tab === 'existing' && links.data && links.data.length > 0 && (
+  return (
+    <Section
+      title={t('shares.title')}
+      description={t('shares.intro')}
+      action={
+        <Button variant="primary" onClick={() => setCreating(true)} disabled={creating}>
+          {t('shares.new')}
+        </Button>
+      }
+    >
+      {creating && (
+        <ShareForm
+          albums={albums}
+          notify={notify}
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setSearch('');
+            setCreating(false);
+          }}
+        />
+      )}
+
+      {links.data && links.data.length > 0 && (
+        <div className="flex flex-wrap items-center justify-end gap-3 border-b border-ink-850 px-4 py-3">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('shares.searchPlaceholder')}
             aria-label={t('shares.searchPlaceholder')}
-            className="min-w-0 rounded-lg border border-ink-700 bg-ink-850 px-3 py-1 text-xs text-ink-100 outline-none placeholder:text-ink-500 focus:border-accent-dim sm:w-48"
+            className="min-w-0 rounded-lg border border-ink-700 bg-ink-800 px-3 py-1.5 text-sm text-ink-100 outline-none placeholder:text-ink-500 focus:border-accent-dim sm:w-56"
           />
-        )}
-      </div>
-
-      {tab === 'create' && (
-        <ShareForm
-          albums={albums}
-          notify={notify}
-          onCreated={() => {
-            setSearch('');
-            setTab('existing');
-          }}
-        />
+        </div>
       )}
 
-      {tab === 'existing' && (
-        <>
-          {links.isPending && (
-            <div className="px-4 py-6">
-              <Spinner />
-            </div>
-          )}
-          {links.error && (
-            <div className="px-4 py-4">
-              <FormError message={errorText(links.error, t('shares.createFailed'))} />
-            </div>
-          )}
+      {links.isPending && (
+        <div className="px-4 py-6">
+          <Spinner />
+        </div>
+      )}
+      {links.error && (
+        <div className="px-4 py-4">
+          <FormError message={errorText(links.error, t('shares.createFailed'))} />
+        </div>
+      )}
 
-          {links.data?.length === 0 && (
-            <p className="px-4 py-6 text-sm text-ink-400">{t('shares.none')}</p>
-          )}
+      {links.data?.length === 0 && (
+        <p className="px-4 py-6 text-sm text-ink-400">{t('shares.none')}</p>
+      )}
 
-          {links.data && links.data.length > 0 && filteredLinks.length === 0 && (
-            <p className="px-4 py-6 text-sm text-ink-400">{t('shares.noSearchResults')}</p>
-          )}
+      {links.data && links.data.length > 0 && filteredLinks.length === 0 && (
+        <p className="px-4 py-6 text-sm text-ink-400">{t('shares.noSearchResults')}</p>
+      )}
 
-          {filteredLinks.map((link) => (
-            <div key={link.token} className={`${ROW_CLASS} border-t border-ink-850 px-4 py-4`}>
+      {filteredLinks.map((link) => {
+        const isExpanded = expandedIds.has(link.token);
+        const includedAlbumIds =
+          link.albumIds && link.albumIds.length > 0
+            ? link.albumIds
+            : link.albumId && !link.mediaId
+              ? [link.albumId]
+              : [];
+        const photoCount = link.itemCount ?? (link.mediaId ? 1 : 0);
+        const availableAlbumsToAdd = albums.filter((a) => !includedAlbumIds.includes(a.id));
+
+        return (
+          <div key={link.token} className="border-t border-ink-850">
+            <div
+              onClick={() => toggleExpanded(link.token)}
+              className={`${ROW_CLASS} cursor-pointer px-4 py-4 transition-colors hover:bg-tint/40`}
+            >
               <div className="min-w-0 flex-1">
-                <p className="flex flex-wrap items-center gap-2 text-sm text-ink-100">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-ink-100">
                   <span className="truncate">{link.label ?? describe(link, t)}</span>
                   <StateBadge state={link.state} />
+                  {link.requireIdentity && (
+                    <span className="rounded-full bg-ink-800 px-2 py-0.5 text-xs text-ink-300">
+                      {t('shares.requireIdentity')}
+                    </span>
+                  )}
                 </p>
                 <p className="mt-1 truncate text-xs text-ink-400">
+                  {t(
+                    'shares.summaryStats',
+                    includedAlbumIds.length,
+                    photoCount,
+                    link.openingCount,
+                    link.subscriberCount ?? 0,
+                  )}{' '}
+                  ·{' '}
                   {link.kind === 'selection'
                     ? t('shares.selectionItemCount', link.itemCount ?? 0)
                     : `${link.albumTitle ?? link.albumId ?? ''}${link.mediaName ? ` — ${link.mediaName}` : ''}`}
@@ -187,10 +204,9 @@ export function SharesSection({
                 </p>
               </div>
 
-              <div className={ROW_ACTIONS_CLASS}>
+              <div className={ROW_ACTIONS_CLASS} onClick={(event) => event.stopPropagation()}>
                 <CopyButton token={link.token} />
 
-                {/* State-dependent actions (D-02) */}
                 {link.state === 'live' && (
                   <>
                     <Button onClick={() => setEditing(link)}>{t('shares.edit')}</Button>
@@ -211,10 +227,172 @@ export function SharesSection({
                 <Button variant="danger" onClick={() => setPending({ link, action: 'delete' })}>
                   {t('shares.delete')}
                 </Button>
+
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(link.token)}
+                  aria-expanded={isExpanded}
+                  aria-label={t(isExpanded ? 'section.collapse' : 'section.expand')}
+                  className="rounded-lg p-1.5 text-ink-400 transition-colors hover:bg-tint hover:text-ink-100"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className={`size-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
               </div>
             </div>
-          ))}
-        </>
+
+            {isExpanded && (
+              <div className="space-y-4 border-t border-ink-800/80 bg-ink-900/40 px-4 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-ink-800 bg-surface-base px-3 py-2">
+                  <code className="truncate text-xs text-ink-300">
+                    {`${window.location.origin}/s/${link.token}`}
+                  </code>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={`/s/${link.token}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="rounded-lg border border-ink-700 px-3 py-1.5 text-sm font-medium text-ink-200 transition-colors hover:bg-tint"
+                    >
+                      {t('shares.preview')}
+                    </a>
+                    <CopyButton token={link.token} />
+                  </div>
+                </div>
+
+                {/* Included Albums */}
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-wider text-ink-400 uppercase">
+                      {t('shares.includedAlbums')} ({includedAlbumIds.length})
+                    </p>
+                    {availableAlbumsToAdd.length > 0 && (
+                      <select
+                        aria-label={t('shares.addAlbum')}
+                        value=""
+                        onChange={(e) => {
+                          const albumIdToAdd = e.target.value;
+                          if (!albumIdToAdd) return;
+                          addItems.mutate({
+                            token: link.token,
+                            body: { albumIds: [albumIdToAdd] },
+                          });
+                        }}
+                        className="rounded-lg border border-ink-700 bg-surface-elevated px-2.5 py-1 text-sm text-ink-200 outline-none focus:border-accent"
+                      >
+                        <option value="">{t('shares.addAlbum')}</option>
+                        {availableAlbumsToAdd.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.title}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  {includedAlbumIds.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {includedAlbumIds.map((id) => {
+                        const albumObj = albumsById.get(id);
+                        const title = albumObj?.title ?? link.albumTitle ?? id;
+                        return (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-ink-700 bg-surface-elevated px-2.5 py-1 text-sm text-ink-200"
+                          >
+                            <span>{title}</span>
+                            <button
+                              type="button"
+                              aria-label={t('shares.removeAlbum', title)}
+                              onClick={() =>
+                                removeItems.mutate({
+                                  token: link.token,
+                                  body: { albumIds: [id] },
+                                })
+                              }
+                              className="rounded p-0.5 text-ink-400 hover:bg-ink-700 hover:text-ink-100"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="size-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path d="M18 6 6 18M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Individual Photos */}
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold tracking-wider text-ink-400 uppercase">
+                      {t('shares.individualPhotos')} ({photoCount})
+                    </p>
+                    {albums.length > 0 && (
+                      <Button onClick={() => setAddingPhotosFor(link)}>
+                        {t('shares.addPhotos')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Permissions & Privacy Switches */}
+                <div className="divide-y divide-ink-800 rounded-xl border border-ink-800 bg-surface-base px-4 py-1">
+                  <div className="py-2">
+                    <Switch
+                      checked={link.allowComments ?? true}
+                      onChange={(next) =>
+                        updateShare.mutate({
+                          token: link.token,
+                          body: { allowComments: next },
+                        })
+                      }
+                      label={t('shares.allowComments')}
+                      hint={t('shares.allowCommentsHint')}
+                      disabled={updateShare.isPending}
+                    />
+                  </div>
+                  <div className="py-2">
+                    <Switch
+                      checked={link.requireIdentity ?? false}
+                      onChange={(next) =>
+                        updateShare.mutate({
+                          token: link.token,
+                          body: { requireIdentity: next },
+                        })
+                      }
+                      label={t('shares.requireIdentity')}
+                      hint={t('shares.requireIdentityHint')}
+                      disabled={updateShare.isPending}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {addingPhotosFor && (
+        <AddPhotosToShareModal
+          link={addingPhotosFor}
+          albums={albums}
+          onClose={() => setAddingPhotosFor(null)}
+        />
       )}
 
       {editing && (
@@ -239,6 +417,148 @@ export function SharesSection({
         </ConfirmDialog>
       )}
     </Section>
+  );
+}
+
+function AddPhotosToShareModal({
+  link,
+  albums,
+  onClose,
+}: {
+  link: AdminShareLink;
+  albums: AdminAlbum[];
+  onClose: () => void;
+}): ReactElement {
+  const t = useT();
+  const addItems = useAddShareItems();
+  const [filterAlbumId, setFilterAlbumId] = useState(albums[0]?.id ?? '');
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<CreateShareItemInput[]>([]);
+
+  const filterScope = useMemo(() => albumScope(filterAlbumId), [filterAlbumId]);
+  const albumDetail = useAlbum(filterAlbumId);
+  const favoriteIds = useMemo(
+    () => new Set(albumDetail.data?.favoriteMediaIds ?? []),
+    [albumDetail.data?.favoriteMediaIds],
+  );
+  const { items: albumPhotos, isPending: loadingPhotos } = useAlbumItems(
+    filterScope,
+    'desc',
+    Boolean(filterAlbumId),
+  );
+
+  const displayedPhotos = useMemo(
+    () => (onlyFavorites ? albumPhotos.filter((photo) => favoriteIds.has(photo.id)) : albumPhotos),
+    [albumPhotos, onlyFavorites, favoriteIds],
+  );
+
+  const selectedMediaIds = useMemo(
+    () => new Set(selectedItems.map((item) => item.mediaId)),
+    [selectedItems],
+  );
+
+  const togglePhoto = (mediaId: string): void => {
+    setSelectedItems((current) => {
+      if (current.some((item) => item.mediaId === mediaId)) {
+        return current.filter((item) => item.mediaId !== mediaId);
+      }
+      return [...current, { albumId: filterAlbumId, mediaId }];
+    });
+  };
+
+  return (
+    <ResponsiveDialog
+      open
+      onClose={onClose}
+      title={t('shares.addPhotos')}
+      footer={
+        <>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button
+            variant="primary"
+            disabled={selectedItems.length === 0 || addItems.isPending}
+            onClick={() => {
+              addItems.mutate(
+                { token: link.token, body: { items: selectedItems } },
+                { onSuccess: onClose },
+              );
+            }}
+          >
+            {t('shares.addToShare')}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <select
+            value={filterAlbumId}
+            onChange={(e) => setFilterAlbumId(e.target.value)}
+            aria-label={t('shares.filterAlbum')}
+            className="rounded-lg border border-ink-700 bg-surface-elevated px-3 py-1.5 text-sm text-ink-100 outline-none focus:border-accent"
+          >
+            {albums.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.title}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={() => setOnlyFavorites((v) => !v)}
+            aria-pressed={onlyFavorites}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors ${
+              onlyFavorites
+                ? 'border-amber-500/40 bg-amber-500/15 text-amber-400'
+                : 'border-ink-700 text-ink-300 hover:bg-tint'
+            }`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="size-4"
+              fill={onlyFavorites ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            {t('shares.filterFavoritesOnly')}
+          </button>
+        </div>
+
+        <div className="max-h-72 overflow-y-auto rounded-xl border border-ink-800 bg-ink-900/50 p-3">
+          {loadingPhotos && <Spinner />}
+          {!loadingPhotos && displayedPhotos.length === 0 && (
+            <p className="py-6 text-center text-xs text-ink-400">{t('shares.noPhotosInAlbum')}</p>
+          )}
+          {!loadingPhotos && displayedPhotos.length > 0 && (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {displayedPhotos.map((photo) => {
+                const isSelected = selectedMediaIds.has(photo.id);
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => togglePhoto(photo.id)}
+                    className={`group relative aspect-square overflow-hidden rounded-lg bg-ink-800 ${
+                      isSelected ? 'ring-2 ring-accent' : ''
+                    }`}
+                  >
+                    <img
+                      src={mediaUrl.thumb(photo.id, 320, photo.version, filterScope)}
+                      alt=""
+                      loading="lazy"
+                      className="size-full object-cover"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </ResponsiveDialog>
   );
 }
 
@@ -456,17 +776,15 @@ function EditShareDialog({
 
 type ShareMode = 'album' | 'selection';
 
-/**
- * Issuing one. Offers choosing between a whole album (optionally narrowed to a single photo)
- * or an interactive multi-photo selection across any albums.
- */
 function ShareForm({
   albums,
   notify,
+  onClose,
   onCreated,
 }: {
   albums: AdminAlbum[];
   notify: Notify;
+  onClose?: () => void;
   onCreated?: () => void;
 }): ReactElement {
   const t = useT();
@@ -476,12 +794,20 @@ function ShareForm({
   const [mediaId, setMediaId] = useState('');
   const [label, setLabel] = useState('');
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [allowComments, setAllowComments] = useState(true);
+  const [requireIdentity, setRequireIdentity] = useState(false);
 
   // Selection mode state
   const [filterAlbumId, setFilterAlbumId] = useState(albums[0]?.id ?? '');
+  const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [selectedItems, setSelectedItems] = useState<CreateShareItemInput[]>([]);
 
   const filterScope = useMemo(() => albumScope(filterAlbumId), [filterAlbumId]);
+  const albumDetail = useAlbum(filterAlbumId);
+  const favoriteIds = useMemo(
+    () => new Set(albumDetail.data?.favoriteMediaIds ?? []),
+    [albumDetail.data?.favoriteMediaIds],
+  );
   const {
     items: albumPhotos,
     isPending: loadingPhotos,
@@ -489,6 +815,11 @@ function ShareForm({
     isFetchingNextPage,
     fetchNextPage,
   } = useAlbumItems(filterScope, 'desc', mode === 'selection' && Boolean(filterAlbumId));
+
+  const displayedPhotos = useMemo(
+    () => (onlyFavorites ? albumPhotos.filter((photo) => favoriteIds.has(photo.id)) : albumPhotos),
+    [albumPhotos, onlyFavorites, favoriteIds],
+  );
 
   const selectedMediaIds = useMemo(
     () => new Set(selectedItems.map((item) => item.mediaId)),
@@ -512,12 +843,16 @@ function ShareForm({
             items: selectedItems,
             label: label.trim() || null,
             expiresAt,
+            allowComments,
+            requireIdentity,
           }
         : {
             albumId,
             mediaId: mediaId.trim() || null,
             label: label.trim() || null,
             expiresAt,
+            allowComments,
+            requireIdentity,
           };
 
     create.mutate(payload, {
@@ -537,9 +872,12 @@ function ShareForm({
   const canSubmit = mode === 'selection' ? selectedItems.length > 0 : Boolean(albumId);
 
   return (
-    <form onSubmit={submit} className="grid gap-4 px-4 py-4 sm:grid-cols-2">
+    <form
+      onSubmit={submit}
+      className="grid gap-4 border-b border-ink-850 bg-ink-900/40 px-4 py-4 sm:grid-cols-2"
+    >
       <div className="sm:col-span-2">
-        <div className="flex max-w-full flex-wrap gap-1 rounded-lg border border-ink-700 bg-ink-850 p-0.5 w-fit">
+        <div className="flex w-fit max-w-full flex-wrap gap-1 rounded-lg border border-ink-700 bg-ink-800 p-0.5">
           <button
             type="button"
             onClick={() => setMode('album')}
@@ -581,25 +919,48 @@ function ShareForm({
           />
         </>
       ) : (
-        <div className="sm:col-span-2 space-y-3">
+        <div className="space-y-3 sm:col-span-2">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="w-full min-w-0 sm:w-64">
-              <label htmlFor="share-filter-album" className="mb-1.5 block text-sm text-ink-300">
-                {t('shares.filterAlbum')}
-              </label>
-              <select
-                id="share-filter-album"
-                value={filterAlbumId}
-                onChange={(event) => setFilterAlbumId(event.target.value)}
-                disabled={create.isPending}
-                className="w-full min-w-0 truncate rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm text-ink-100 outline-none transition-colors focus:border-accent-dim disabled:opacity-60"
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="w-full min-w-0 sm:w-64">
+                <label htmlFor="share-filter-album" className="mb-1.5 block text-sm text-ink-300">
+                  {t('shares.filterAlbum')}
+                </label>
+                <select
+                  id="share-filter-album"
+                  value={filterAlbumId}
+                  onChange={(event) => setFilterAlbumId(event.target.value)}
+                  disabled={create.isPending}
+                  className="w-full min-w-0 truncate rounded-lg border border-ink-700 bg-ink-800 px-3 py-2 text-sm text-ink-100 outline-none transition-colors focus:border-accent-dim disabled:opacity-60"
+                >
+                  {albums.map((album) => (
+                    <option key={album.id} value={album.id}>
+                      {album.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOnlyFavorites((v) => !v)}
+                aria-pressed={onlyFavorites}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                  onlyFavorites
+                    ? 'border-amber-500/40 bg-amber-500/15 text-amber-400'
+                    : 'border-ink-700 bg-ink-800 text-ink-300 hover:bg-tint'
+                }`}
               >
-                {albums.map((album) => (
-                  <option key={album.id} value={album.id}>
-                    {album.title}
-                  </option>
-                ))}
-              </select>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="size-4"
+                  fill={onlyFavorites ? 'currentColor' : 'none'}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                </svg>
+                {t('shares.filterFavoritesOnly')}
+              </button>
             </div>
             <div className="flex items-center justify-between gap-2 pb-1 sm:justify-end">
               <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-medium text-accent">
@@ -625,12 +986,12 @@ function ShareForm({
                 <Spinner />
               </div>
             )}
-            {!loadingPhotos && albumPhotos.length === 0 && (
+            {!loadingPhotos && displayedPhotos.length === 0 && (
               <p className="py-8 text-center text-xs text-ink-400">{t('shares.noPhotosInAlbum')}</p>
             )}
-            {!loadingPhotos && albumPhotos.length > 0 && (
+            {!loadingPhotos && displayedPhotos.length > 0 && (
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8">
-                {albumPhotos.map((photo) => {
+                {displayedPhotos.map((photo) => {
                   const isSelected = selectedMediaIds.has(photo.id);
                   return (
                     <button
@@ -708,22 +1069,40 @@ function ShareForm({
           disabled={create.isPending}
         />
       </div>
-      <div className="sm:col-span-2">
+      <div className="divide-y divide-ink-800 rounded-xl border border-ink-800 bg-ink-900/50 px-4 py-1 sm:col-span-2">
+        <div className="py-2">
+          <Switch
+            checked={allowComments}
+            onChange={setAllowComments}
+            label={t('shares.allowComments')}
+            hint={t('shares.allowCommentsHint')}
+            disabled={create.isPending}
+          />
+        </div>
+        <div className="py-2">
+          <Switch
+            checked={requireIdentity}
+            onChange={setRequireIdentity}
+            label={t('shares.requireIdentity')}
+            hint={t('shares.requireIdentityHint')}
+            disabled={create.isPending}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 sm:col-span-2">
         <Button type="submit" variant="primary" disabled={!canSubmit || create.isPending}>
           {t('shares.create')}
         </Button>
+        {onClose && (
+          <Button onClick={onClose} disabled={create.isPending}>
+            {t('common.cancel')}
+          </Button>
+        )}
       </div>
     </form>
   );
 }
 
-/**
- * Copies the address, not the token.
- *
- * `origin` rather than a configured public URL: what is copied has to be what the
- * administrator's own browser reached this page on, or a link sent from a machine on
- * the local network would carry an address nobody outside it can open.
- */
 function CopyButton({ token }: { token: string }): ReactElement {
   const t = useT();
   const [copied, setCopied] = useState(false);
@@ -748,12 +1127,6 @@ const STATE_LABEL: Record<AdminShareLink['state'], MessageKey> = {
   expired: 'shares.stateExpired',
 };
 
-/**
- * Working, taken back, or expired.
- *
- * The two dead states share one muted treatment: what the row's reader does about
- * either is the same, and only the accompanying sentence differs.
- */
 function StateBadge({ state }: { state: AdminShareLink['state'] }): ReactElement {
   const t = useT();
   return (
@@ -767,7 +1140,6 @@ function StateBadge({ state }: { state: AdminShareLink['state'] }): ReactElement
   );
 }
 
-/** What to call a link nobody gave a label. */
 function describe(link: AdminShareLink, t: Translate): string {
   if (link.kind === 'selection') {
     return link.itemCount

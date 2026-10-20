@@ -66,52 +66,33 @@ primary key's `COLLATE NOCASE` (see [03](./03-data-model.md)). Creating "ALEXIS"
 
 ## An account bound to a person
 
-`users.commenter_id` holds the identity an account **is**. A bound account is one person: every
-device that signs in with it signs comments with that name, and there is nothing left to declare on
-arrival (D260819).
+`users.commenter_id` holds the identity an account **is**. Since migration 22, every active account
+carries a `commenters` row (`email = NULL` for password-only accounts, or a verified address for
+email-bound accounts), and `role_viewer` / `role_commenter` govern whether the account can view
+assigned albums (`ConfigRepo.canSee`) and post comments without requiring an extra email
+verification step (D260819).
 
 - **The identity comes from the account, and is reread on every request.** `plugins/auth.ts` reads
   `users.commenter_id` when it is set and `sessions.commenter_id` otherwise, so an address deleted
   elsewhere stops signing without waiting for another sign-in — the session lasts a year. The two
   columns answer different questions: the session's is what this device declared, the account's is
   who this account is.
-- **A binding is always a verified one.** The column is written when a code is consumed, and by
-  nothing else. No route under `/api/admin` points it at an identity, because an administrator able
-  to do so could aim their own account at anyone who has ever commented and sign as them. Unbinding
-  clears the column, and nothing else writes it. The rule that an unverified identity is attached to no session therefore holds here
-  without a check of its own.
-- **`SessionUser.identityBound` says which of the two the identity came from.** The front end needs
-  it in order to stop offering to change or forget an identity the server will refuse to change or
-  forget.
-
-**Two credentials, one per kind of account.** An unbound account is entered with its password,
-exactly as before. A bound account holds no password and is entered with six digits sent to the
-address it is bound to (D260819b).
-
-| The account is | Entered with                         | Recovered by                                                                                     |
-| -------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Unbound        | Its password, argon2id               | `pnpm reset-password`, or /admin                                                                 |
-| Bound          | A code sent to its address, `signin` | Unbinding it, which requires a password. `pnpm reset-password` performs that unbind and says so. |
-
-"No password" is **one reserved argon2 hash**, `NO_PASSWORD_HASH` in `crypto.ts`. `password_hash`
-is `NOT NULL` and stays that way, and a nullable column would mean rebuilding `users` to express
-with a null what a constant expresses without touching the schema. `/auth/login` compares it like
-any other hash, without branching, so an account with no password is not the one that answers
-faster. It is a constant rather than random bytes thrown away because two rules have to recognise
-it: the last-admin count, which excludes an account holding this hash with no binding so that the
-only working administrator cannot demote or delete themselves, and the account list, which shows an
-account with no way in. It is generated from CSPRNG bytes whose preimage was destroyed, since a
-sentinel that is `argon2("NO_PASSWORD")` would be a password opening every account holding it, and
-`config.ts` refuses this exact value from a bootstrap `config/albums.yaml`.
-
-**A password cannot be set on a bound account.** The refusal lives at the `ConfigRepo` boundary
-rather than on the route, because `pnpm reset-password` writes through the repository without
-passing any route, and guarding the route alone would leave a shell command that quietly recreates
-the impersonation. The single exception is `{ unbind: true, password }`, which in one transaction
-clears the binding, writes the password and closes the sessions: the administrator taking the
-account back and handing it over as the shared key it has become. Without the rule an administrator
-sets a password on a bound account, signs in, and the session signs as that person; without the
-exception, unbinding leaves an account nobody can enter, the administrator included.
+- **An email binding is always a verified one.** An email address is bound to an account only when a
+  code is consumed, and by nothing else. No route under `/api/admin` binds an unverified address directly
+  to an account. Unbinding detaches the email-backed commenter row and restores a fresh account-backed
+  `commenters` row with `email = NULL`.
+- **`SessionUser.identityBound` says whether the account carries a bound email identity.** The front end needs
+  it in order to stop offering to change or forget an email identity on the session.
+- **Passwords and email bindings can coexist on unified accounts.** An account may sign in with a password,
+  an email verification code (`signin`), or both. "No password" is **one reserved argon2 hash**,
+  `NO_PASSWORD_HASH` in `crypto.ts`. `password_hash` is `NOT NULL` and stays that way. `/auth/login`
+  compares it like any other hash, without branching, so an account with no password is not the one that
+  answers faster.
+- **Composable share controls (`require_identity`, `allow_comments`).** A share link with
+  `require_identity = 1` returns `kind: 'locked'` on `GET /api/share/:token` and refuses media/item
+  requests with `403 identity_required` until the visitor verifies an email identity (or signs in with
+  an account). Once verified, the visitor is recorded in `commenter_shares`. A share link with
+  `allow_comments = 0` refuses comment creation with `403 comments_disabled`.
 
 **What a conversion closes.** Consuming an invitation on an account that had a password closes that
 account's sessions and deletes its approved pairings, in the same transaction that writes the

@@ -36,9 +36,17 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
 
     app.get('/', async (request, reply) => {
       const username = request.user!.username!;
+      const commenterId = request.commenterId;
       const albums: Album[] = context
         .albumsFor(username)
-        .map((album) => buildAlbum(album, context.media, context.syncState));
+        .map((album) =>
+          buildAlbum(
+            album,
+            context.media,
+            context.syncState,
+            commenterId !== null ? context.favorites.listForAlbum(commenterId, album.id) : [],
+          ),
+        );
       return reply.send(albums);
     });
 
@@ -53,7 +61,11 @@ export function createAlbumRoutes(context: AppContext): FastifyPluginAsync {
           .code(404)
           .send({ error: 'not_found', message: request.t('error.albumNotFound') });
       }
-      return reply.send(buildAlbum(album, context.media, context.syncState));
+      const favoriteMediaIds =
+        request.commenterId !== null
+          ? context.favorites.listForAlbum(request.commenterId, albumId)
+          : [];
+      return reply.send(buildAlbum(album, context.media, context.syncState, favoriteMediaIds));
     });
 
     /**

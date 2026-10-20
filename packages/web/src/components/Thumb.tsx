@@ -37,6 +37,12 @@ interface ThumbProps {
   selectable?: boolean;
   /** `true` when this thumbnail is currently checked/selected. */
   checked?: boolean;
+  /** `true` when this photo is marked as a favorite by the current user/visitor. */
+  favorited?: boolean;
+  /** Toggles the favorite state of this photo without opening the viewer. */
+  onToggleFavorite?: () => void;
+  /** Number of visible comments on this photo. */
+  commentCount?: number;
   onOpen: () => void;
   /** Immediate loading for the first rows, deferred for the rest. */
   eager?: boolean;
@@ -50,6 +56,9 @@ export function Thumb({
   selected = false,
   selectable = false,
   checked = false,
+  favorited = false,
+  onToggleFavorite,
+  commentCount = 0,
   onOpen,
   eager = false,
 }: ThumbProps): ReactElement {
@@ -100,6 +109,7 @@ export function Thumb({
    * server-side. Without a preview, or after three failures, the plain tile remains.
    */
   const showImage = item.hasPreview && !failed;
+  const hasBottomOverlay = Boolean(item.description || commentCount > 0 || duration);
 
   return (
     <button
@@ -144,6 +154,44 @@ export function Thumb({
           )}
         </span>
       )}
+
+      {!selectable && onToggleFavorite && (
+        <span
+          role="button"
+          tabIndex={-1}
+          aria-label={t(favorited ? 'favorites.remove' : 'favorites.add')}
+          title={t(favorited ? 'favorites.remove' : 'favorites.add')}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleFavorite();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleFavorite();
+            }
+          }}
+          className={`absolute top-2 right-2 z-10 flex size-7 items-center justify-center rounded-full transition-all ${
+            favorited
+              ? 'bg-black/55 text-amber-400 opacity-100 hover:bg-black/75'
+              : 'bg-black/40 text-white/85 opacity-0 backdrop-blur-xs group-hover:opacity-100 focus:opacity-100 hover:bg-black/65 hover:text-white'
+          }`}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="size-4"
+            fill={favorited ? 'currentColor' : 'none'}
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        </span>
+      )}
+
       {showImage && (
         <img
           // Remounting the element restarts the request: the URL does not change,
@@ -169,7 +217,7 @@ export function Thumb({
       {isVideo && !showImage && <div className="size-full bg-ink-800" />}
 
       {failed && !isVideo && (
-        <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-ink-400">
+        <div className="flex size-full items-center justify-center px-2 text-center text-xs text-ink-400">
           {t('thumb.unavailable')}
         </div>
       )}
@@ -192,9 +240,31 @@ export function Thumb({
         </span>
       )}
 
-      {duration && (
-        <span className="pointer-events-none absolute right-1.5 bottom-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white">
-          {duration}
+      {hasBottomOverlay && (
+        <span className="pointer-events-none absolute inset-x-0 bottom-0 flex min-h-6 items-center justify-between gap-2 bg-gradient-to-t from-black/75 via-black/35 to-transparent px-2.5 pt-4 pb-1.5 text-xs text-white/95">
+          <span className="min-w-0 flex-1 truncate text-left">{item.description ?? ''}</span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {commentCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/55 px-1.5 py-0.5 text-xs leading-none font-medium tabular-nums">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="size-3"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+                </svg>
+                {commentCount}
+              </span>
+            )}
+            {duration && (
+              <span className="rounded bg-black/70 px-1.5 py-0.5 text-xs leading-none font-medium tabular-nums text-white">
+                {duration}
+              </span>
+            )}
+          </span>
         </span>
       )}
 

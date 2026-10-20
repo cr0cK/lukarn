@@ -1197,4 +1197,343 @@ describe('a link to a selection of photographs', () => {
       context.media.upsertMany([photo('corse', 'img-2')], '2026-07-01T00:00:00.000Z');
     }
   });
+
+  it('supports composable multi-album shares, item mutations, requireIdentity, allowComments, and per-user favorites', async () => {
+    const cookie = await adminCookie();
+
+    // 1. Create a share with requireIdentity = true and allowComments = false across album 'corse'
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        albumIds: ['corse'],
+        label: 'Locked share',
+        requireIdentity: true,
+        allowComments: false,
+      },
+    });
+    assert.equal(created.statusCode, 201, created.body);
+    const token = created.json().token as string;
+    assert.equal(created.json().requireIdentity, true);
+    assert.equal(created.json().allowComments, false);
+
+    // 2. Append an item from 'noel' via POST /api/admin/shares/:token/items
+    const added = await server.inject({
+      method: 'POST',
+      url: `/api/admin/shares/${token}/items`,
+      headers: { cookie },
+      payload: {
+        items: [{ albumId: 'noel', mediaId: 'img-9' }],
+      },
+    });
+    assert.equal(added.statusCode, 200, added.body);
+    assert.equal(added.json().kind, 'selection');
+    assert.equal(added.json().albumCount, 1);
+
+    // 3. Unidentified visitor sees kind: 'locked' and gets 403 identity_required on items/media
+    const lockedRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}`,
+    });
+    assert.equal(lockedRes.statusCode, 200, lockedRes.body);
+    assert.equal(lockedRes.json().kind, 'locked');
+    assert.equal(lockedRes.json().requireIdentity, true);
+    const visitorCookieObj = lockedRes.cookies.find((entry) => entry.name === 'lukarn_session')!;
+    const visitorCookie = `lukarn_session=${visitorCookieObj.value}`;
+
+    const lockedMedia = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/media/img-1/thumb?s=320`,
+      headers: { cookie: visitorCookie },
+    });
+    assert.equal(lockedMedia.statusCode, 403);
+    assert.equal(lockedMedia.json().error, 'identity_required');
+
+    // 4. Attach verified commenter to visitor session -> unlocks share and records subscriber
+    const commenter = context.commenters.declare('visiteur@exemple.fr', 'Visiteur');
+    context.commenters.markVerified('visiteur@exemple.fr');
+    const sessionRow = context.db
+      .prepare('SELECT id FROM sessions WHERE share_token = ? ORDER BY created_at DESC LIMIT 1')
+      .get(token) as { id: string };
+    context.sessions.attachCommenter(sessionRow.id, commenter.id);
+
+    const unlockedRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}`,
+      headers: { cookie: visitorCookie },
+    });
+    assert.equal(unlockedRes.statusCode, 200, unlockedRes.body);
+    assert.equal(unlockedRes.json().kind, 'selection');
+    assert.equal(unlockedRes.json().allowComments, false);
+    assert.ok(unlockedRes.json().items.some((i: { id: string }) => i.id === 'img-1'));
+    assert.ok(unlockedRes.json().items.some((i: { id: string }) => i.id === 'img-9'));
+
+    // Commenting is disabled (allowComments = false) -> 403 comments_disabled
+    const disabledComment = await server.inject({
+      method: 'POST',
+      url: `/api/share/${token}/comments/img-1`,
+      headers: { cookie: visitorCookie },
+      payload: { body: 'Should be rejected' },
+    });
+    assert.equal(disabledComment.statusCode, 403);
+    assert.equal(disabledComment.json().error, 'comments_disabled');
+
+    // 5. Remove item 'img-9' via DELETE /api/admin/shares/:token/items
+    const removed = await server.inject({
+      method: 'DELETE',
+      url: `/api/admin/shares/${token}/items`,
+      headers: { cookie },
+      payload: {
+        items: [{ albumId: 'noel', mediaId: 'img-9' }],
+      },
+    });
+    assert.equal(removed.statusCode, 200, removed.body);
+    assert.equal(context.shares.covers(context.shares.find(token)!, 'img-9'), false);
+    assert.equal(context.shares.covers(context.shares.find(token)!, 'img-1'), true);
+
+    // 6. Per-user favorites: admin favorites img-1 in 'corse'
+    const favPut = await server.inject({
+      method: 'PUT',
+      url: '/api/favorites/corse/img-1',
+      headers: { cookie },
+    });
+    assert.equal(favPut.statusCode, 200, favPut.body);
+    assert.deepEqual(favPut.json(), { ok: true });
+
+    const adminAlbum = await server.inject({
+      method: 'GET',
+      url: '/api/albums/corse',
+      headers: { cookie },
+    });
+    assert.equal(adminAlbum.statusCode, 200);
+    assert.deepEqual(adminAlbum.json().favoriteMediaIds, ['img-1']);
+
+    // Visitor has their own favorites list (initially empty)
+    assert.deepEqual(unlockedRes.json().favoriteMediaIds, []);
+
+    const favDel = await server.inject({
+      method: 'DELETE',
+      url: '/api/favorites/corse/img-1',
+      headers: { cookie },
+    });
+    assert.equal(favDel.statusCode, 200, favDel.body);
+    assert.deepEqual(favDel.json(), { ok: true });
+  });
+
+  it('serves a share-scoped activity feed and updates granular notification preferences', async () => {
+    const cookie = await adminCookie();
+
+    const created = await server.inject({
+      method: 'POST',
+      url: '/api/admin/shares',
+      headers: { cookie },
+      payload: {
+        items: [
+          { albumId: 'corse', mediaId: 'img-1' },
+          { albumId: 'noel', mediaId: 'img-9' },
+        ],
+        label: 'Feed & prefs share',
+      },
+    });
+    assert.equal(created.statusCode, 201);
+    const token = created.json().token as string;
+
+    const visitorCookie = await open(token);
+    const commenter = context.commenters.declare('lecteur-partage@exemple.fr', 'Lecteur');
+    context.commenters.markVerified('lecteur-partage@exemple.fr');
+    const sessionRow = context.db
+      .prepare('SELECT id FROM sessions WHERE share_token = ? ORDER BY created_at DESC LIMIT 1')
+      .get(token) as { id: string };
+    context.sessions.attachCommenter(sessionRow.id, commenter.id);
+
+    // Re-opening GET /api/share/:token with an identified session records the subscriber
+    const reopen = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}`,
+      headers: { cookie: visitorCookie },
+    });
+    assert.equal(reopen.statusCode, 200);
+    assert.ok(context.shares.tokensForCommenter(commenter.id).includes(token));
+
+    // Post a comment through the share link
+    const posted = await server.inject({
+      method: 'POST',
+      url: `/api/share/${token}/comments/img-1`,
+      headers: { cookie: visitorCookie },
+      payload: { body: 'Commentaire dans le flux' },
+    });
+    assert.equal(posted.statusCode, 201);
+
+    // Public share activity feed GET /api/share/:token/comments
+    const feedRes = await server.inject({
+      method: 'GET',
+      url: `/api/share/${token}/comments`,
+      headers: { cookie: visitorCookie },
+    });
+    assert.equal(feedRes.statusCode, 200, feedRes.body);
+    const feed = feedRes.json();
+    assert.equal(feed.comments.length, 1);
+    assert.equal(feed.comments[0].body, 'Commentaire dans le flux');
+    assert.equal(feed.comments[0].mediaId, 'img-1');
+    // Selection shares hide origin albumId and albumTitle (D260825e)
+    assert.equal(feed.comments[0].albumId, '');
+    assert.equal(feed.comments[0].albumTitle, '');
+
+    // Public feed via GET /api/comments/feed with share session also works
+    const globalFeedRes = await server.inject({
+      method: 'GET',
+      url: '/api/comments/feed',
+      headers: { cookie: visitorCookie },
+    });
+    assert.equal(globalFeedRes.statusCode, 200, globalFeedRes.body);
+    assert.equal(globalFeedRes.json().comments.length, 1);
+
+    // Update granular preferences via PATCH /api/share/:token/subscription
+    const subRes = await server.inject({
+      method: 'PATCH',
+      url: `/api/share/${token}/subscription`,
+      headers: { cookie: visitorCookie },
+      payload: { notifyPhotos: true, notifyComments: false },
+    });
+    assert.equal(subRes.statusCode, 200, subRes.body);
+    assert.deepEqual(subRes.json(), {
+      ok: true,
+      notifyPhotos: true,
+      notifyComments: false,
+    });
+
+    // Update display name and preferences via PATCH /api/identity
+    const idPatch = await server.inject({
+      method: 'PATCH',
+      url: '/api/identity',
+      headers: { cookie: visitorCookie },
+      payload: { displayName: 'Lecteur Renommé', notifyComments: true },
+    });
+    assert.equal(idPatch.statusCode, 200, idPatch.body);
+    assert.equal(idPatch.json().displayName, 'Lecteur Renommé');
+    assert.equal(idPatch.json().notifyComments, true);
+  });
+
+  it('enforces comment feed access controls, live share invalidation, hasPassword accuracy, and share-visitor invitation upgrade', async () => {
+    const cookie = await adminCookie();
+
+    // 1. Admin previewing a share link is never recorded as a subscriber
+    const adminCommenterId = context.config.ensureUserCommenter('patron');
+    const previewShare = context.shares.create({
+      albumId: 'corse',
+      mediaId: null,
+      label: 'Preview share',
+      createdBy: 'patron',
+      expiresAt: null,
+      allowComments: false,
+      requireIdentity: true,
+    });
+    const adminPreview = await server.inject({
+      method: 'GET',
+      url: `/api/share/${previewShare.token}`,
+      headers: { cookie },
+    });
+    assert.equal(adminPreview.statusCode, 200);
+    assert.equal(
+      context.shares.tokensForCommenter(adminCommenterId).includes(previewShare.token),
+      false,
+    );
+
+    // 2. Unidentified visitor on requireIdentity=true gets 403 identity_required on GET /api/comments/feed
+    const anonCookie = await open(previewShare.token);
+    const anonFeed = await server.inject({
+      method: 'GET',
+      url: '/api/comments/feed',
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(anonFeed.statusCode, 403);
+    assert.equal(anonFeed.json().error, 'identity_required');
+
+    // 3. Verified visitor on requireIdentity=true & allowComments=false still receives non-null identity in /api/auth/me
+    //    and empty comment lists on GET /:token/comments/:mediaId and GET /:token/comments
+    const visitor = context.commenters.declare('visiteur-strict@exemple.fr', 'Visiteur Strict');
+    context.commenters.markVerified('visiteur-strict@exemple.fr');
+    const sessionRow = context.db
+      .prepare('SELECT id FROM sessions WHERE share_token = ? ORDER BY created_at DESC LIMIT 1')
+      .get(previewShare.token) as { id: string };
+    context.sessions.attachCommenter(sessionRow.id, visitor.id);
+    const visitorUser = context.config.ensureUserForCommenter(
+      visitor.id,
+      'visiteur-strict@exemple.fr',
+      'Visiteur Strict',
+      previewShare.token,
+    );
+
+    const meShare = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(meShare.statusCode, 200);
+    assert.ok(
+      meShare.json().identity,
+      'identity must be present when requireIdentity=true and allowComments=false',
+    );
+    assert.equal(meShare.json().identity.email, 'visiteur-strict@exemple.fr');
+
+    const disabledThread = await server.inject({
+      method: 'GET',
+      url: `/api/share/${previewShare.token}/comments/img-1`,
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(disabledThread.statusCode, 200);
+    assert.deepEqual(disabledThread.json(), { threads: [], total: 0 });
+
+    const disabledShareFeed = await server.inject({
+      method: 'GET',
+      url: `/api/share/${previewShare.token}/comments`,
+      headers: { cookie: anonCookie },
+    });
+    assert.equal(disabledShareFeed.statusCode, 200);
+    assert.deepEqual(disabledShareFeed.json(), { comments: [], nextCursor: null });
+
+    // 4. Passwordless account reports hasPassword: false on /api/auth/me andConfigRepo invalidates on share revoke
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), true);
+    const visitorAccountSession = context.sessions.create(visitorUser.username, 'desktop');
+    const signedVisitorCookie = `lukarn_session=${server.signCookie(visitorAccountSession.id)}`;
+    const meAccount = await server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { cookie: signedVisitorCookie },
+    });
+    assert.equal(meAccount.statusCode, 200);
+    assert.equal(meAccount.json().hasPassword, false);
+
+    // Revoking the share immediately revokes canSee via ShareLinkRepo.onMutate -> ConfigRepo.invalidate
+    context.shares.revoke(previewShare.token);
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), false);
+    context.shares.restore(previewShare.token);
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), true);
+
+    // Expiring the share immediately revokes canSee
+    context.shares.update(previewShare.token, { expiresAt: '2020-01-01T00:00:00.000Z' });
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), false);
+    context.shares.update(previewShare.token, { expiresAt: null });
+    assert.equal(context.config.canSee(visitorUser.username, 'corse'), true);
+
+    // 5. Upgrading a share-only visitor to an invited member absorbs the transient visitor account
+    //    without 409 identity_taken and preserves their shareTokens
+    const upgradeRes = await server.inject({
+      method: 'POST',
+      url: '/api/admin/users',
+      headers: { cookie },
+      payload: {
+        username: 'visiteur-membre',
+        displayName: 'Visiteur Membre',
+        email: 'visiteur-strict@exemple.fr',
+        admin: false,
+        albums: ['noel'],
+        sendInvite: false,
+      },
+    });
+    assert.equal(upgradeRes.statusCode, 201, upgradeRes.body);
+    assert.deepEqual(upgradeRes.json().albums, ['noel']);
+    assert.ok(upgradeRes.json().shareTokens.includes(previewShare.token));
+  });
 });

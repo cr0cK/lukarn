@@ -219,6 +219,8 @@ export interface Album {
   lastSyncAt: string | null;
   syncStatus: SyncStatus;
   syncError: string | null;
+  /** Per-user favorite media IDs in this album when requested on an album detail route. */
+  favoriteMediaIds?: string[];
 }
 
 export type SyncStatus = 'never' | 'running' | 'ok' | 'error';
@@ -227,7 +229,7 @@ export type SyncStatus = 'never' | 'running' | 'ok' | 'error';
  * Current session.
  *
  * `username` is an **access key**, not a person: a household may share one username.
- * `identity` identifies someone — self-declared and verified by email.
+ * `identity` identifies someone — self-declared and verified by email, or bound to a unified user account.
  */
 export interface SessionUser {
   /**
@@ -241,7 +243,14 @@ export interface SessionUser {
    * adding one beside it.
    */
   username: string | null;
+  displayName?: string;
   admin: boolean;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
+  email?: string | null;
+  hasPassword?: boolean;
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
   /** `null` until someone identifies themselves in this session. */
   identity: CommenterIdentity | null;
   /**
@@ -263,14 +272,15 @@ export interface SessionUser {
 }
 
 /**
- * Commenter identity as seen by its holder. Present only after address verification:
- * an unverified identity is attached to no session.
+ * Commenter identity as seen by its holder.
  */
 export interface CommenterIdentity {
-  email: string;
+  email: string | null;
   displayName: string;
-  /** `false` after unsubscribing from a received email. */
+  /** `false` after unsubscribing from all notifications. */
   notify: boolean;
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
   /**
    * Language this person is written to in, as the server has it. `null` while none is
    * recorded, in which case the instance default applies (D260812d).
@@ -292,11 +302,14 @@ export interface IdentityRequest {
 export interface VerifyIdentityRequest {
   email: string;
   code: string;
+  displayName?: string;
 }
 
 export interface UpdateProfileRequest {
   displayName?: string;
   notify?: boolean;
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
 }
 
 /** Length of the emailed code. Six digits entered by hand. */
@@ -851,10 +864,19 @@ export interface AdminUserInvitation {
  */
 export interface AdminUser {
   username: string;
+  displayName?: string;
   admin: boolean;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
+  email?: string | null;
+  hasPassword?: boolean;
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
   /** List of album IDs, or `['*']`. */
   albums: string[];
-  /** The person this account is, `null` for a key a household shares. */
+  /** List of share link tokens linked to this user via `commenter_shares`. */
+  shareTokens?: string[];
+  /** The person this account is, `null` for a key without a verified email address. */
   identity: AdminUserIdentity | null;
   /**
    * The invitation waiting to be taken up, `null` when none is. An expired one reads
@@ -872,48 +894,53 @@ export interface AdminUser {
   updatedAt: string;
 }
 
-/** What both ways of creating an account have in common. */
-interface CreateUserFields {
+/**
+ * Creating a user account: supports password, email invitation, or both, along with
+ * display name, explicit RBAC roles, albums, and share tokens.
+ */
+export interface CreateUserRequest {
   username: string;
+  displayName?: string;
+  password?: string;
+  email?: string;
+  locale?: Locale;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
   admin?: boolean;
+  allAlbums?: boolean;
+  albumIds?: string[];
   albums?: string[];
+  shareTokens?: string[];
+  sendInvite?: boolean;
+  sendInviteEmail?: boolean;
 }
 
 /**
- * Creating an account takes **exactly one** of a password and an address, and the
- * union says so: a call supplying both, or neither, fails to compile rather than at
- * runtime.
- *
- * With a password the account is a shared key and nothing about it has changed. With
- * an address it is created with no password and invited; the binding is written when
- * the invitation is consumed, so that creating it asserts nothing about who the
- * recipient is.
- *
- * `locale` is the language that invitation is written in, and it belongs to the
- * address branch alone: a password reaches nobody, so there is no message to choose a
- * language for.
+ * Updating an existing user account. Omitted fields remain unchanged.
  */
-export type CreateUserRequest =
-  | (CreateUserFields & { password: string; email?: never; locale?: never })
-  | (CreateUserFields & { email: string; password?: never; locale?: Locale });
-
-/** What an account update may change whichever form it takes. */
-interface UpdateUserFields {
+export interface UpdateUserRequest {
+  displayName?: string;
+  password?: string;
+  email?: string | null;
+  unbind?: boolean;
+  roleViewer?: boolean;
+  roleCommenter?: boolean;
   admin?: boolean;
+  allAlbums?: boolean;
+  albumIds?: string[];
   albums?: string[];
+  shareTokens?: string[];
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
 }
 
 /**
- * Omitted fields = unchanged. An absent `password` retains the password.
- *
- * The second form is the single way to give a bound account a password: it clears the
- * binding, sets the password and closes the sessions in one act. An ordinary password
- * update is refused while the account is bound — otherwise an administrator sets a
- * password on it, signs in, and the session signs as that person.
+ * Updating granular notification preferences on a share link.
  */
-export type UpdateUserRequest =
-  | (UpdateUserFields & { password?: string; unbind?: false })
-  | (UpdateUserFields & { password: string; unbind: true });
+export interface UpdateShareSubscriptionRequest {
+  notifyPhotos?: boolean;
+  notifyComments?: boolean;
+}
 
 /**
  * Inviting an account that already exists, or sending its invitation again.
@@ -1283,6 +1310,12 @@ export interface ShareItemsPage {
  */
 export type ShareView =
   | {
+      kind: 'locked';
+      label: string | null;
+      requireIdentity: true;
+      allowComments: boolean;
+    }
+  | {
       kind: 'album';
       title: string;
       description: string | null;
@@ -1291,13 +1324,27 @@ export type ShareView =
       coverVersion: string | null;
       groupBy: GroupBy;
       sortOrder: SortOrder;
+      albumCount?: number;
+      allowComments?: boolean;
+      requireIdentity?: boolean;
+      favoriteMediaIds?: string[];
     }
-  | { kind: 'media'; item: ShareDetail }
+  | {
+      kind: 'media';
+      item: ShareDetail;
+      allowComments?: boolean;
+      requireIdentity?: boolean;
+      favoriteMediaIds?: string[];
+    }
   | {
       kind: 'selection';
       items: ShareItem[];
       label: string | null;
       itemCount: number;
+      albumCount?: number;
+      allowComments?: boolean;
+      requireIdentity?: boolean;
+      favoriteMediaIds?: string[];
     };
 
 /** One recorded opening, as administration lists it (D260825c). */
@@ -1320,6 +1367,10 @@ export interface AdminShareLink {
   albumId: string | null;
   /** `null` when the album has been deleted since the link was made, or for cross-album selections. */
   albumTitle: string | null;
+  /** Whole albums included in this share link via `share_link_albums`. */
+  albumIds?: string[];
+  /** Individual photos included in this share link via `share_link_items`. */
+  items?: CreateShareItemInput[];
   /** The shared photograph, `null` for an album or selection link. */
   mediaId: string | null;
   /** File name of the shared photograph, `null` for an album/selection link or a stale one. */
@@ -1334,6 +1385,12 @@ export interface AdminShareLink {
   openingCount: number;
   /** Number of items for a selection link. */
   itemCount?: number;
+  /** Number of whole albums included in this link. */
+  albumCount?: number;
+  /** Number of commenters subscribed to this link in `commenter_shares`. */
+  subscriberCount?: number;
+  allowComments?: boolean;
+  requireIdentity?: boolean;
 }
 
 export interface CreateShareItemInput {
@@ -1342,25 +1399,39 @@ export interface CreateShareItemInput {
 }
 
 /**
- * Making a link. One of `mediaId` (single photo), nothing (whole album), or
+ * Making a link. One of `mediaId` (single photo), `albumId` / `albumIds` (whole albums), or
  * `items` (curated selection of photos across albums).
  */
 export interface CreateShareRequest {
   albumId?: string | null;
+  albumIds?: string[] | null;
   mediaId?: string | null;
   items?: CreateShareItemInput[] | null;
   label?: string | null;
   /** ISO 8601 date after which the link answers 410, or `null` for no expiry. */
   expiresAt?: string | null;
+  allowComments?: boolean;
+  requireIdentity?: boolean;
 }
 
 /**
- * Updating an existing share link's label or expiration.
+ * Updating an existing share link's label, expiration, access flags, or revocation state.
  */
 export interface UpdateShareRequest {
   label?: string | null;
   /** ISO 8601 date after which the link answers 410, or `null` to clear expiry. */
   expiresAt?: string | null;
+  allowComments?: boolean;
+  requireIdentity?: boolean;
+  revoked?: boolean;
+}
+
+/**
+ * Adding or removing albums and individual photos on an existing share link.
+ */
+export interface ModifyShareItemsRequest {
+  albumIds?: string[];
+  items?: CreateShareItemInput[];
 }
 
 /**

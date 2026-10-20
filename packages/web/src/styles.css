@@ -1,4 +1,9 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
+
+@custom-variant dark (.theme-dark &);
+@custom-variant light (.theme-light &, [data-theme="light"] &);
 
 /**
  * Neutral, slightly cool palette. Deliberately low contrast between background
@@ -36,6 +41,11 @@
   --color-tint: #ffffff0d;
   --color-tint-strong: #ffffff1a;
 
+  /* Dedicated elevated input surface tokens over `--color-ink-850` cards. */
+  --color-input: #222226;
+  --color-input-hover: #27272c;
+  --color-input-border: #3a3a42;
+
   /* The instance's primary colour and the three values derived from it.
 
      These are **defaults**, not the values in force: `shell.ts` writes the
@@ -58,9 +68,8 @@
   --color-accent-soft: #eb202029;
   --color-accent-ink: #ffffff;
 
-  --font-sans:
-    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
-    'Noto Sans', sans-serif;
+  --font-sans: 'Geist Variable', 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
 }
 
 @layer base {
@@ -103,6 +112,10 @@
 
     --color-tint: #ffffff0d;
     --color-tint-strong: #ffffff1a;
+
+    --color-input: #222226;
+    --color-input-hover: #27272c;
+    --color-input-border: #3a3a42;
   }
 
   /* The same rungs, read from the other end.
@@ -141,6 +154,16 @@
 
     --color-tint: #0000000d;
     --color-tint-strong: #0000001a;
+
+    --color-input: #ffffff;
+    --color-input-hover: #f4f4f5;
+    --color-input-border: #d4d4d8;
+  }
+
+  [data-theme='light'] {
+    --color-input: #ffffff;
+    --color-input-hover: #f4f4f5;
+    --color-input-border: #d4d4d8;
   }
 
   /* The type scale is 5% larger below `md`.
@@ -186,9 +209,23 @@
     background-color: var(--color-ink-900);
     color: var(--color-ink-100);
     font-family: var(--font-sans);
+    letter-spacing: -0.011em;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overscroll-behavior-y: none;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.025em;
+  }
+
+  code,
+  kbd,
+  pre,
+  samp {
+    font-family: var(--font-mono);
   }
 
   /* Subtle scrollbar, on the ramp in force rather than on a fixed grey. */

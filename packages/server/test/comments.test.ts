@@ -316,19 +316,30 @@ describe('author identity', () => {
     assert.ok(!JSON.stringify(page).includes('@exemple.fr'));
   });
 
-  it('refuses comments until an identity is verified', async () => {
-    const anonyme = await login('famille');
-    const response = await server.inject({
+  it('allows password accounts with roleCommenter to comment immediately and refuses when roleCommenter is false', async () => {
+    const direct = await login('famille');
+    const created = await server.inject({
       method: 'POST',
       url: '/api/comments/vacances/photo-partagee',
-      headers: { cookie: anonyme },
-      payload: { body: 'Sans identité' },
+      headers: { cookie: direct },
+      payload: { body: 'Direct comment' },
     });
+    assert.equal(created.statusCode, 201, created.body);
+    assert.equal(created.json<Comment>().author.displayName, 'famille');
 
-    // 403, not 404: the refusal concerns the state of the user's own account,
-    // not somebody else's resource whose existence must be hidden.
-    assert.equal(response.statusCode, 403);
-    assert.equal(response.json<{ error: string }>().error, 'identity_required');
+    context.config.updateUser('famille', { roleCommenter: false });
+    try {
+      const response = await server.inject({
+        method: 'POST',
+        url: '/api/comments/vacances/photo-partagee',
+        headers: { cookie: direct },
+        payload: { body: 'Refused comment' },
+      });
+      assert.equal(response.statusCode, 403);
+      assert.equal(response.json<{ error: string }>().error, 'forbidden');
+    } finally {
+      context.config.updateUser('famille', { roleCommenter: true });
+    }
   });
 
   it('recovers its comments after identifying again with the same address', async () => {

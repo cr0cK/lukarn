@@ -4,6 +4,7 @@ import fp from 'fastify-plugin';
 import { toIdentity } from '../commenters.js';
 import type { StoredUser } from '../config-repo.js';
 import type { AppContext } from '../context.js';
+import { hasNoPassword } from '../crypto.js';
 import { SESSION_COOKIE, sessionCookieOptions } from '../sessions.js';
 import { shareState, type ShareLink } from '../shares.js';
 
@@ -84,26 +85,25 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       account = configured;
     }
 
-    // Identity is reread on every request rather than fixed at sign-in: an address
-    // deleted from another device must revoke commenting without waiting for another
-    // sign-in — the session lasts a year.
-    //
-    // It comes from the **account** when that account is bound, and from the session
-    // otherwise. `users.commenter_id` is written only when a code is consumed, so a
-    // bound identity is always a verified one: the rule that an unverified identity
-    // is attached to no session holds here without a check of its own.
-    //
-    // A link has no account to bind, so its session's own identity is the only one:
-    // the same rule read through `account` being null.
-    const bound = account?.commenterId ?? null;
-    const identityId = bound ?? session.commenterId;
-    const commenter = identityId === null ? null : context.commenters.byId(identityId);
-    // Identity deleted meanwhile: detach it rather than retaining an identifier that
-    // no longer identifies anything. Only the session's own can dangle — deleting an
-    // identity sets `users.commenter_id` back to NULL (ON DELETE SET NULL), so a
-    // bound account has already stopped being that person by the time it is read.
-    if (bound === null && session.commenterId !== null && !commenter) {
-      context.sessions.attachCommenter(session.id, null);
+    const accountCommenterId =
+      account !== null
+        ? (account.commenterId ?? context.config.ensureUserCommenter(account.username))
+        : null;
+    const accountCommenter =
+      accountCommenterId === null ? null : context.commenters.byId(accountCommenterId);
+    const hasBoundEmail =
+      accountCommenter !== null &&
+      accountCommenter.email !== null &&
+      accountCommenter.verifiedAt !== null;
+
+    let commenter = accountCommenter;
+    if (!hasBoundEmail && session.commenterId !== null) {
+      const sessionCommenter = context.commenters.byId(session.commenterId);
+      if (!sessionCommenter) {
+        context.sessions.attachCommenter(session.id, null);
+      } else {
+        commenter = sessionCommenter;
+      }
     }
 
     // Records the language this person reads, for the emails composed hours later
@@ -140,6 +140,11 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       );
     }
 
+    const showIdentity =
+      account !== null
+        ? account.admin || account.roleCommenter || hasBoundEmail || session.commenterId !== null
+        : commenter !== null;
+
     request.sessionId = session.id;
     request.share = share;
     request.commenterId = commenter?.id ?? null;
@@ -147,10 +152,20 @@ const authPlugin: FastifyPluginAsync<{ context: AppContext }> = async (app, { co
       // A link reports no access key, and `admin` is false: what the shape carries is
       // adjusted, never extended, so the front end branches on this response alone.
       username: account?.username ?? null,
+      displayName: account?.displayName || commenter?.displayName || account?.username || '',
       admin: account?.admin ?? false,
-      identity: commenter ? toIdentity(commenter) : null,
-      identityBound: bound !== null,
-      commentsEnabled: context.mailer.enabled,
+      roleViewer: account ? account.admin || account.roleViewer : true,
+      roleCommenter: account
+        ? account.admin || account.roleCommenter
+        : (share?.allowComments ?? false),
+      email: commenter?.email ?? null,
+      hasPassword: account ? !hasNoPassword(account.passwordHash) : false,
+      notifyPhotos: commenter?.notifyPhotos ?? true,
+      notifyComments: commenter?.notifyComments ?? true,
+      identity: commenter && showIdentity ? toIdentity(commenter) : null,
+      identityBound: hasBoundEmail,
+      commentsEnabled:
+        context.mailer.enabled || (account !== null && (account.admin || account.roleCommenter)),
     };
   });
 };

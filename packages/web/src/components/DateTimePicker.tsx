@@ -285,7 +285,7 @@ export function DateTimePicker({
               </div>
 
               {/* Day headers */}
-              <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-medium text-ink-400">
+              <div className="grid grid-cols-7 gap-1 text-center text-xs font-medium text-ink-400">
                 {dayNames.map((name, i) => (
                   <div key={i} className="py-1">
                     {name}

@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { toIdentity } from '../commenters.js';
 import type { AppContext } from '../context.js';
+import { hasNoPassword } from '../crypto.js';
 import { buildVerificationMail } from '../mail.js';
 import { requireAuth } from '../plugins/auth.js';
 
@@ -15,6 +16,22 @@ const verifySchema = z.object({
   email: z.string().trim().email().max(EMAIL_MAX_LENGTH),
   code: z.string().trim().length(VERIFICATION_CODE_LENGTH),
 });
+
+const updateIdentitySchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(64).optional(),
+    notify: z.boolean().optional(),
+    notifyPhotos: z.boolean().optional(),
+    notifyComments: z.boolean().optional(),
+  })
+  .refine(
+    (data) =>
+      data.displayName !== undefined ||
+      data.notify !== undefined ||
+      data.notifyPhotos !== undefined ||
+      data.notifyComments !== undefined,
+    { message: 'At least one field must be provided' },
+  );
 
 /**
  * Commenter identity: declaring, verifying and forgetting it.
@@ -29,25 +46,6 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
   return async (app) => {
     app.addHook('preHandler', requireAuth);
 
-    /**
-     * A bound account is refused all three: declaring an address, verifying one and
-     * forgetting the identity.
-     *
-     * The identity of such an account is not the session's to choose. Without this,
-     * somebody signed in as a person could declare another address and attach an
-     * identity the account contradicts — or, on `/forget`, silently do nothing, since
-     * `plugins/auth.ts` reads the account rather than the session. Changing the
-     * address of a bound account is out of scope for this release; here the way out
-     * is to sign out.
-     */
-    app.addHook('preHandler', async (request, reply) => {
-      if (request.user?.identityBound) {
-        await reply
-          .code(409)
-          .send({ error: 'identity_bound', message: request.t('error.identityBound') });
-      }
-    });
-
     /** Rebuilds the session as returned by `/auth/me` after a change. */
     const sessionUser = (
       // `null` when a share link opened this session: commenting through a link still
@@ -57,16 +55,97 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       admin: boolean,
       commenterId: number | null,
     ): SessionUser => {
-      const commenter = commenterId === null ? null : context.commenters.byId(commenterId);
+      const account = username ? context.config.user(username) : undefined;
+      const accountCommenter =
+        account?.commenterId != null ? context.commenters.byId(account.commenterId) : null;
+      const hasBoundEmail =
+        accountCommenter !== null &&
+        accountCommenter.email !== null &&
+        accountCommenter.verifiedAt !== null;
+      const effectiveCommenterId = commenterId ?? account?.commenterId ?? null;
+      const commenter =
+        effectiveCommenterId === null ? null : context.commenters.byId(effectiveCommenterId);
       return {
         username,
+        displayName: account?.displayName || commenter?.displayName || username || '',
         admin,
+        roleViewer: account ? account.admin || account.roleViewer : true,
+        roleCommenter: account ? account.admin || account.roleCommenter : true,
+        email: commenter?.email ?? null,
+        hasPassword: account ? !hasNoPassword(account.passwordHash) : false,
+        notifyPhotos: commenter?.notifyPhotos ?? true,
+        notifyComments: commenter?.notifyComments ?? true,
         identity: commenter ? toIdentity(commenter) : null,
-        // Always false here: the hook above refused every bound account before any of
-        // these handlers ran, so the identity this rebuilds is the session's own.
-        identityBound: false,
-        commentsEnabled: context.mailer.enabled,
+        identityBound: hasBoundEmail,
+        commentsEnabled:
+          context.mailer.enabled || Boolean(account && (account.admin || account.roleCommenter)),
       };
+    };
+
+    /**
+     * Updates the display name or notification preferences (`notify`, `notifyPhotos`,
+     * `notifyComments`) for the current session's commenter identity.
+     */
+    app.patch('/', async (request, reply) => {
+      const commenterId = request.commenterId;
+      if (commenterId === null) {
+        return reply
+          .code(403)
+          .send({ error: 'identity_required', message: request.t('error.identityRequired') });
+      }
+
+      const parsed = updateIdentitySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply
+          .code(400)
+          .send({ error: 'bad_request', message: request.t('error.invalidIdentity') });
+      }
+
+      const { displayName, notify, notifyPhotos, notifyComments } = parsed.data;
+      if (displayName !== undefined) {
+        context.commenters.setDisplayName(commenterId, displayName);
+        context.config.syncDisplayNameForCommenter(commenterId, displayName);
+      }
+      if (notify !== undefined) {
+        context.commenters.setNotify(commenterId, notify);
+      }
+      if (notifyPhotos !== undefined || notifyComments !== undefined) {
+        context.commenters.setNotifyPreferences(commenterId, { notifyPhotos, notifyComments });
+      }
+      if (
+        request.share !== null &&
+        (notify !== undefined || notifyPhotos !== undefined || notifyComments !== undefined)
+      ) {
+        context.shares.recordSubscriber(commenterId, request.share.token);
+        context.shares.setSubscriberPrefs(commenterId, request.share.token, {
+          notifyPhotos: notifyPhotos ?? notify,
+          notifyComments: notifyComments ?? notify,
+        });
+      }
+
+      return reply.send(sessionUser(request.user!.username, request.user!.admin, commenterId));
+    });
+
+    /**
+     * A bound account is refused declaring an address, verifying one and
+     * forgetting the identity.
+     *
+     * The identity of such an account is not the session's to choose. Without this,
+     * somebody signed in as a person could declare another address and attach an
+     * identity the account contradicts — or, on `/forget`, silently do nothing, since
+     * `plugins/auth.ts` reads the account rather than the session. Changing the
+     * address of a bound account is out of scope for this release; here the way out
+     * is to sign out.
+     */
+    const rejectBoundIdentity = async (
+      request: Parameters<typeof requireAuth>[0],
+      reply: Parameters<typeof requireAuth>[1],
+    ): Promise<void> => {
+      if (request.user?.identityBound) {
+        await reply
+          .code(409)
+          .send({ error: 'identity_bound', message: request.t('error.identityBound') });
+      }
     };
 
     /**
@@ -74,7 +153,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
      * address is already known or not: distinguishing the two would tell an attacker
      * which addresses have already commented on this instance.
      */
-    app.post('/request-code', async (request, reply) => {
+    app.post('/request-code', { preHandler: rejectBoundIdentity }, async (request, reply) => {
       if (!context.mailer.enabled) {
         return reply.code(503).send({
           error: 'mail_not_configured',
@@ -129,7 +208,7 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
      * Validates the code and attaches the identity to the session. This is the only
      * place linking the two: an unverified identity is attached to nothing.
      */
-    app.post('/verify', async (request, reply) => {
+    app.post('/verify', { preHandler: rejectBoundIdentity }, async (request, reply) => {
       const parsed = verifySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply
@@ -168,6 +247,22 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
       }
 
       context.sessions.attachCommenter(request.sessionId!, commenter.id);
+
+      if (request.share !== null && commenter.email !== null) {
+        context.config.ensureUserForCommenter(
+          commenter.id,
+          commenter.email,
+          commenter.displayName,
+          request.share.token,
+        );
+        context.shares.recordSubscriber(commenter.id, request.share.token);
+        if (request.share.mediaId === null) {
+          for (const albumId of context.shares.findAlbumIds(request.share.token)) {
+            context.subscriptions.subscribe(commenter.id, albumId);
+          }
+        }
+      }
+
       return reply.send(sessionUser(request.user!.username, request.user!.admin, commenter.id));
     });
 
@@ -177,9 +272,15 @@ export function createIdentityRoutes(context: AppContext): FastifyPluginAsync {
      * Identifying oneself again with the same address finds them again, together with
      * the right to delete them.
      */
-    app.post('/forget', async (request, reply) => {
+    app.post('/forget', { preHandler: rejectBoundIdentity }, async (request, reply) => {
       context.sessions.attachCommenter(request.sessionId!, null);
-      return reply.send(sessionUser(request.user!.username, request.user!.admin, null));
+      const fallbackCommenterId =
+        request.user?.username != null
+          ? (context.config.user(request.user.username)?.commenterId ?? null)
+          : null;
+      return reply.send(
+        sessionUser(request.user!.username, request.user!.admin, fallbackCommenterId),
+      );
     });
   };
 }

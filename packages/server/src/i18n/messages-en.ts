@@ -16,6 +16,7 @@ export const en = {
 
   'error.authRequired': 'Authentication required',
   'error.adminsOnly': 'Administrators only',
+  'error.forbidden': 'Forbidden',
   'error.notSignedIn': 'Not signed in',
   'error.credentialsRequired': 'Username and password required',
   'error.badCredentials': 'Incorrect username or password',
@@ -40,8 +41,8 @@ export const en = {
   // distinction (404 unknown, 410 once worked) and these carry it in words: whoever
   // reads one was sent this address by somebody they know, and cannot otherwise tell
   // a mistyped address from one that was taken back (D260825b).
-  'error.shareUnknown': 'This link does not lead anywhere.',
-  'error.shareRevoked': 'This link was taken back.',
+  'error.shareUnknown': 'This share link could not be found.',
+  'error.shareRevoked': 'This share link has been paused.',
   'error.shareExpired': 'This link has expired.',
   'error.shareGone': 'The photograph this link was made from is no longer in the gallery.',
   'error.notFound': 'Not found',
@@ -51,6 +52,7 @@ export const en = {
   'error.invalidOrExpiredLink': 'Invalid or expired link',
 
   'error.identityRequired': 'Add and verify your email address in order to comment.',
+  'error.commentsDisabledOnShare': 'Comments are disabled on this share link.',
   'error.commentLength': (max: number) => `A comment must be between 1 and ${max} characters.`,
   'error.unknownParent': 'The comment you are replying to no longer exists.',
   'error.editWindowClosed': 'The window for correcting this comment has closed.',
@@ -66,8 +68,7 @@ export const en = {
   'error.invalidEmail': 'Invalid address',
   'error.displayNameRequired':
     'Give the name your comments will be signed with, then send the code again.',
-  'error.identityBound':
-    'This account is one person, and its address is not this session\u2019s to change. Sign out to use the gallery as somebody else.',
+  'error.identityBound': 'This account\u2019s email address cannot be changed from this session.',
 
   'error.noIcon': 'No icon of that name',
   'error.logoEmpty': 'No image received.',
@@ -122,7 +123,8 @@ export const en = {
   'mail.albumSubject': (count: number, album: string) =>
     `${count} new photo${count > 1 ? 's' : ''} in ${album}`,
   'mail.viewAlbum': 'View the album',
-  'mail.albumReason': 'You are getting this because you have opened this album.',
+  'mail.albumReason': (album: string) =>
+    `You are receiving this email because you follow updates to "${album}".`,
   'mail.albumUnsubscribe': (album: string) => `Stop hearing about new photos in "${album}"`,
 
   'mail.codeSubject': (host: string) => `Verification code — ${host}`,

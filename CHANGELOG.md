@@ -13,6 +13,14 @@ in this application migrates volumes or renames files on its own.
 
 ## [Unreleased]
 
+### Unified users, roles, share options, and per-user favorites
+
+User accounts and commenter identities are unified in **Administration → Users**. Each user carries explicit **Administrator**, **Viewer**, and **Commenter** roles (`role_viewer`, `role_commenter`, `admin`), optional password and verified email credentials, granular notification preferences (`notify_photos`, `notify_comments`), and automatic commenter identity creation on account creation.
+
+Share links in **Administration → Shares** can require identity verification before viewing (`require_identity`), disable or enable comments per share (`allow_comments`), track subscriber preferences per share (`share_subscribers`), and be paused or reactivated inline.
+
+Authenticated users and identified share visitors can star photographs (`user_favorites`) and filter album and share grids to display only their favorites.
+
 ### Member profile preferences and selection share titles
 
 Members can adjust their display name and toggle email notifications for album updates and comments directly from `/settings`. The profile section appears automatically for authenticated members with a verified identity, with changes reflected immediately across comments and notifications.

@@ -111,7 +111,7 @@ export function AccountMenu({ trigger, triggerClassName }: AccountMenuProps): Re
           user
             ? [
                 ...(user.username === null ? [] : [user.username]),
-                ...(user.identity ? [user.identity.email] : []),
+                ...(user.identity?.email ? [user.identity.email] : []),
               ]
             : undefined
         }

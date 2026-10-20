@@ -72,13 +72,12 @@ read from the environment: it is a setting now (D260813c), and `mail.ts` has no
 database.
 
 **Three kinds of email leave an instance**: the address verification code,
-the notification of a new comment, and the announcement of an album's new
-photos. The latter is triggered by `main.ts`'s **hourly sweep**
+the notification of a new comment (sent to moderators, parent-comment authors, and opted-in album or share subscribers with `notify_comments = 1`), and the announcement of new photos on an album or composable share link. The latter is triggered by `main.ts`'s **hourly sweep**
 (`notifier.ts`), not by the end of a sync: with a sync every
 half hour writing in batches, adding two hundred photos would send about
-ten emails in a day. An album is only announceable once its last
-**successful** sync has been quiet for an hour; the delay between photos
-arriving and the email is therefore one to two hours.
+ten emails in a day. An album or share link is only announceable once its last
+**successful** sync or item addition (`updated_at`) has been quiet for an hour; the delay between photos
+arriving and the email is therefore one to two hours. Subscribers who reached the content through a share link (`commenter_shares`) receive `/s/<token>?order=desc` deep links rather than `/album/<albumId>` links.
 
 **The code email is the exception to the other two.** Its subject names the
 host from `PUBLIC_URL` and **never the code** ([D65](./08-decisions/D65-the-code-email-subject-names-the-instance-not-the-code.md)), and it carries

@@ -6,8 +6,8 @@ import { signIn } from '../fixtures/session.js';
 const SECTIONS = [
   { group: 'Library', name: 'Storage' },
   { group: 'Library', name: 'Albums' },
-  { group: 'Library', name: 'Links' },
-  { group: 'People', name: 'Accounts' },
+  { group: 'Library', name: 'Shares' },
+  { group: 'People', name: 'Users' },
   { group: 'People', name: 'Comments' },
   { group: 'This instance', name: 'Identity' },
   { group: 'This instance', name: 'Server' },
@@ -96,7 +96,7 @@ test.describe('Storage is a section of its own', () => {
     await expect(page.getByRole('heading', { name: 'Storage' })).toBeVisible();
     // The list, not a form: this section answers what the instance reads before
     // it offers to change it.
-    await expect(page.getByRole('button', { name: 'Add a storage' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '+ Add storage' })).toBeVisible();
     await expect(page.getByRole('button', { name: /^Delete the storage/ }).first()).toBeVisible();
   });
 
@@ -108,7 +108,7 @@ test.describe('Storage is a section of its own', () => {
 
     // Not a heading that moved out of sight but the controls themselves: an
     // unmoved section would still answer here.
-    await expect(page.getByRole('button', { name: 'Add a storage' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '+ Add storage' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Delete the storage/ })).toHaveCount(0);
   });
 });
@@ -117,7 +117,7 @@ test.describe('Storage is a section of its own', () => {
  * Issuing a share link, which is the one half `share.spec.ts` cannot cover: no page
  * in that file ever signs in, because the recipient of a link is a stranger.
  */
-test.describe('Links', () => {
+test.describe('Shares', () => {
   test.beforeEach(async ({ page }) => {
     await signIn(page);
   });
@@ -143,11 +143,11 @@ test.describe('Links', () => {
     const sections = page.getByRole('navigation', { name: 'Administration sections' });
     // Beside Albums rather than under People: a link opens content, and what it
     // opens is chosen from the library. Nobody is granted anything (D260825).
-    await sections.getByRole('link', { name: 'Links', exact: true }).click();
+    await sections.getByRole('link', { name: 'Shares', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/shares$/);
 
-    // Switch to create tab
-    await page.getByRole('tab', { name: 'Create a link' }).click();
+    // Open inline creation form
+    await page.getByRole('button', { name: '+ New share' }).click();
 
     // The row carries its value and opens onto the field, as every setting does on
     // a phone. `exact`, because the back arrow is labelled "Back to the albums" and
@@ -178,11 +178,11 @@ test.describe('Links', () => {
   test('a share link can be edited to change its label', async ({ page }) => {
     await page.goto('/admin');
     const sections = page.getByRole('navigation', { name: 'Administration sections' });
-    await sections.getByRole('link', { name: 'Links', exact: true }).click();
+    await sections.getByRole('link', { name: 'Shares', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/shares$/);
 
     // Issue a link first
-    await page.getByRole('tab', { name: 'Create a link' }).click();
+    await page.getByRole('button', { name: '+ New share' }).click();
     await page.getByRole('button', { name: /^Album/ }).click();
     await page.getByLabel('Album', { exact: true }).selectOption(ALBUMS.day.id);
     await page.getByLabel('Label').fill('Original label');
@@ -201,41 +201,41 @@ test.describe('Links', () => {
     await expect(page.getByText('Updated label')).toBeVisible();
   });
 
-  test('revoking a link removes edit and shows re-enable, which restores it', async ({ page }) => {
+  test('pausing a link removes edit and shows reactivate, which restores it', async ({ page }) => {
     await page.goto('/admin');
     const sections = page.getByRole('navigation', { name: 'Administration sections' });
-    await sections.getByRole('link', { name: 'Links', exact: true }).click();
+    await sections.getByRole('link', { name: 'Shares', exact: true }).click();
     await expect(page).toHaveURL(/\/admin\/shares$/);
 
     // Issue a link
-    await page.getByRole('tab', { name: 'Create a link' }).click();
+    await page.getByRole('button', { name: '+ New share' }).click();
     await page.getByRole('button', { name: /^Album/ }).click();
     await page.getByLabel('Album', { exact: true }).selectOption(ALBUMS.day.id);
-    await page.getByLabel('Label').fill('To revoke and restore');
+    await page.getByLabel('Label').fill('To pause and restore');
     await page.getByRole('button', { name: 'Issue the link' }).click();
 
-    const targetRow = page.locator('div.border-t', { hasText: 'To revoke and restore' });
+    const targetRow = page.locator('div.border-t', { hasText: 'To pause and restore' });
     await expect(targetRow).toBeVisible();
     await expect(targetRow.getByText('Working')).toBeVisible();
 
-    // Revoke
-    await targetRow.getByRole('button', { name: 'Revoke' }).click();
+    // Pause
+    await targetRow.getByRole('button', { name: 'Pause' }).click();
     const confirmDialog = page.getByRole('dialog');
     await expect(confirmDialog).toBeVisible();
-    await confirmDialog.getByRole('button', { name: 'Revoke' }).click();
+    await confirmDialog.getByRole('button', { name: 'Pause' }).click();
     await expect(confirmDialog).toBeHidden();
 
-    // Revoked state: says "Taken back", no "Edit" button, shows "Re-enable"
-    await expect(targetRow.getByText('Taken back')).toBeVisible();
+    // Paused state: says "Paused", no "Edit" button, shows "Reactivate"
+    await expect(targetRow.getByText('Paused')).toBeVisible();
     await expect(targetRow.getByRole('button', { name: 'Edit' })).toHaveCount(0);
-    const reEnableButton = targetRow.getByRole('button', { name: 'Re-enable' });
-    await expect(reEnableButton).toBeVisible();
+    const reactivateButton = targetRow.getByRole('button', { name: 'Reactivate' });
+    await expect(reactivateButton).toBeVisible();
 
-    // Re-enable
-    await reEnableButton.click();
+    // Reactivate
+    await reactivateButton.click();
     const restoreDialog = page.getByRole('dialog');
     await expect(restoreDialog).toBeVisible();
-    await restoreDialog.getByRole('button', { name: 'Re-enable' }).click();
+    await restoreDialog.getByRole('button', { name: 'Reactivate' }).click();
     await expect(restoreDialog).toBeHidden();
 
     // Restored back to "Working"
@@ -312,7 +312,7 @@ test.describe('Storage, on a phone', () => {
   test('a second storage can be added, and deleting an occupied one is refused', async ({
     page,
   }) => {
-    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('button', { name: '+ Add storage' }).click();
 
     // A name is the only thing asked for. The identifier used to be a field beside
     // it, warning it could never change — about a value nothing outside this screen
@@ -343,7 +343,7 @@ test.describe('Storage, on a phone', () => {
   });
 
   test('a connection is corrected in place, keeping the key already stored', async ({ page }) => {
-    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('button', { name: '+ Add storage' }).click();
     await page.getByRole('textbox', { name: 'Name' }).fill('Bucket a corriger');
     await page.getByRole('button', { name: /^Kind/ }).click();
     await page.getByLabel('Kind', { exact: true }).selectOption('s3');
@@ -384,7 +384,7 @@ test.describe('Storage, on a phone', () => {
   test('a bucket asks for what opens it, and refuses to be created half-typed', async ({
     page,
   }) => {
-    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('button', { name: '+ Add storage' }).click();
     await page.getByRole('textbox', { name: 'Name' }).fill('Photos froides');
 
     // The kind is a closed row here: a list always has a value to read, so it is
@@ -417,7 +417,7 @@ test.describe('Storage, on a phone', () => {
 
   test('an album on a path-addressed storage needs no folder of its own', async ({ page }) => {
     await page.goto('/admin/albums');
-    await page.getByRole('button', { name: 'New album' }).click();
+    await page.getByRole('button', { name: '+ Add album' }).click();
     await page.getByRole('textbox', { name: 'Title' }).fill('Tout le disque');
 
     // Drive names a folder by identifier, so there is no empty one and the field
@@ -437,7 +437,7 @@ test.describe('Storage, on a phone', () => {
   test('an album names the storage it reads once there is a choice', async ({ page }) => {
     // Its own connection: this instance is shared by every test in the file, and
     // adding one that another test already added would only prove the conflict.
-    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('button', { name: '+ Add storage' }).click();
     await page.getByRole('textbox', { name: 'Name' }).fill('Archives');
     await page.getByRole('button', { name: 'Add', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Delete the storage Archives' })).toBeVisible();
@@ -461,7 +461,7 @@ test.describe('Storage, on a phone', () => {
   test('a WebDAV storage asks for its address and password before it is created', async ({
     page,
   }) => {
-    await page.getByRole('button', { name: 'Add a storage' }).click();
+    await page.getByRole('button', { name: '+ Add storage' }).click();
     await page.getByRole('textbox', { name: 'Name' }).fill('Nextcloud maison');
 
     // The kind decides which fields exist at all: a Drive is authorised by a

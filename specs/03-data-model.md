@@ -356,17 +356,20 @@ command performs that unbind for a bound account, and says so as it does it.
 
 ### `commenters`
 
-A **person**, as opposed to the access key in `users`.
+A **person**, either identified by a verified email address or backed by a unified
+account (`users.commenter_id`) with `email = NULL`.
 
-| Column                 | Role                                            |
-| ---------------------- | ----------------------------------------------- |
-| `id`                   | PK, `AUTOINCREMENT`                             |
-| `email`                | `NOT NULL UNIQUE COLLATE NOCASE` — the identity |
-| `display_name`         | Name used to sign comments                      |
-| `notify`               | Unsubscription                                  |
-| `verified_at`          | `NULL` until the code has been entered          |
-| `pending_display_name` | Requested rename, pending the code              |
-| `locale`               | Language this person is written to in           |
+| Column                 | Role                                                          |
+| ---------------------- | ------------------------------------------------------------- |
+| `id`                   | PK, `AUTOINCREMENT`                                           |
+| `email`                | `UNIQUE COLLATE NOCASE` — nullable for password-only accounts |
+| `display_name`         | Name used to sign comments                                    |
+| `notify`               | Legacy global unsubscription flag                             |
+| `notify_photos`        | Granular opt-in for new photo notifications                   |
+| `notify_comments`      | Granular opt-in for comment thread notifications              |
+| `verified_at`          | `NULL` until the code has been entered (or account created)   |
+| `pending_display_name` | Requested rename, pending the code                            |
+| `locale`               | Language this person is written to in                         |
 
 Key choices:
 
@@ -589,20 +592,27 @@ access key is shared.
 
 ### `share_links`
 
-A link that opens an album, or one photograph, for somebody with no account
-(D260825). Written by `shares.ts` from `/api/admin/shares`, read by
-`routes/share.ts` and by the `/media` prefix `preHandler`.
+A link that opens one or more albums, a selection of photographs, or one photograph,
+for somebody with no account (D260825). Written by `shares.ts` from `/api/admin/shares`,
+read by `routes/share.ts` and by the `/media` prefix `preHandler`.
 
-| Column       | Role                                                                                           |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| `token`      | PK, 32 random bytes in base64url — the credential itself                                       |
-| `album_id`   | The album covered, or the photograph origin, or `NULL` for cross-album selection. FK on delete |
-| `media_id`   | The shared photograph, `NULL` for album or selection links. **No foreign key** — see below     |
-| `label`      | What the issuer calls it. Administration only                                                  |
-| `created_at` | When it was issued                                                                             |
-| `created_by` | The account that issued it, `COLLATE NOCASE`. **No foreign key**                               |
-| `expires_at` | ISO instant, or `NULL` for a link that never expires                                           |
-| `revoked_at` | Set rather than deleted — see below                                                            |
+| Column             | Role                                                                                           |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `token`            | PK, 32 random bytes in base64url — the credential itself                                       |
+| `album_id`         | The album covered, or the photograph origin, or `NULL` for cross-album selection. FK on delete |
+| `media_id`         | The shared photograph, `NULL` for album or selection links. **No foreign key** — see below     |
+| `label`            | What the issuer calls it. Administration only                                                  |
+| `created_at`       | When it was issued                                                                             |
+| `created_by`       | The account that issued it, `COLLATE NOCASE`. **No foreign key**                               |
+| `expires_at`       | ISO instant, or `NULL` for a link that never expires                                           |
+| `revoked_at`       | Set rather than deleted — see below                                                            |
+| `allow_comments`   | `1` when recipients may comment through the link, `0` when disabled                            |
+| `require_identity` | `1` when recipients must verify an email identity before viewing the share, `0` otherwise      |
+
+### `share_link_albums`
+
+Whole albums included in a composable share link (`token`, `album_id`, `position`,
+PK `(token, album_id)`), cascading on both `share_links` and `albums`.
 
 ### `share_link_items`
 
@@ -620,6 +630,11 @@ The ordered list of photographs belonging to a multi-photo selection share link.
 - **Index**: `CREATE INDEX idx_share_link_items_token ON share_link_items (token, position)`.
 - **Cascade**: Deleting the share link cascades and removes all its items. Deleting an album cascades and removes items that originated from that album.
 - **No foreign key on `media_id`**: An indexing incident where a file is temporarily unindexed must not silently delete rows from a curated selection share link.
+
+### `commenter_shares` and `commenter_favorites`
+
+- **`commenter_shares`** (`commenter_id`, `token`, `created_at`, PK `(commenter_id, token)`) records which verified identities have accessed a share link (`shares.ts`).
+- **`commenter_favorites`** (`commenter_id`, `album_id`, `media_id`, `created_at`, PK `(commenter_id, album_id, media_id)`) stores per-user favorite photographs (`favorites.ts`), cascading on `commenters` and `albums` with `idx_commenter_favorites_album (commenter_id, album_id)`.
 
 - **The token is random and its rights live in the row.** Never a signed value
   describing what it grants. The three tokens this application already mints — the
@@ -883,29 +898,32 @@ sessions are not invalidated —, `migrate` is idempotent, and a failure leaves
 
 Current state:
 
-| Version | Contents                                                                                |
-| ------- | --------------------------------------------------------------------------------------- |
-| 1       | Initial schema: `media`, `sync_state`, `oauth_token`, `sessions`, and their indexes.    |
-| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                   |
-| 3       | `users`, `albums`, `user_albums`, `settings`: configuration moves into the database.    |
-| 4       | `commenters`, `comments`, and their indexes; `sessions.commenter_id`.                   |
-| 5       | `album_subscriptions` and its index; `sync_state.notified_at`; `media.added_at`.        |
-| 6       | `commenters.pending_display_name`.                                                      |
-| 7       | `album_days`, `geo_places`; `albums.group_by`.                                          |
-| 8       | `albums.cover_media_id`.                                                                |
-| 9       | `media_notes`: one description per photo, scoped to the album.                          |
-| 10      | `media.has_thumbnail`: does Drive have a preview of this file?                          |
-| 11      | The four FTS5 search tables, their triggers, and their `rebuild`.                       |
-| 12      | `albums.sort_order`: the album's default reading order.                                 |
-| 13      | `device_pairings`: pair a screen without a keyboard instead of typing a password.       |
-| 14      | `media.video_codec`: which codec does a video's video track use?                        |
-| 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.            |
-| 16      | `commenters.locale`: the language this person is written to in.                         |
-| 17      | `storage_connections`, from `oauth_token`; `albums.connection_id`; `media.source_path`. |
-| 18      | `users.commenter_id`; `verification_codes`; the four code columns leave `commenters`.   |
-| 19      | `verification_codes.locale`: the language an invitation is written in.                  |
-| 20      | `share_links`, `share_openings`; `sessions` and `comments` recreated — see below.       |
-| 21      | `share_links` recreated with nullable `album_id`; `share_link_items` table.             |
+| Version | Contents                                                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | Initial schema: `media`, `sync_state`, `oauth_token`, `sessions`, and their indexes.                                                  |
+| 2       | `ALTER TABLE oauth_token ADD COLUMN revoked_at TEXT`.                                                                                 |
+| 3       | `users`, `albums`, `user_albums`, `settings`: configuration moves into the database.                                                  |
+| 4       | `commenters`, `comments`, and their indexes; `sessions.commenter_id`.                                                                 |
+| 5       | `album_subscriptions` and its index; `sync_state.notified_at`; `media.added_at`.                                                      |
+| 6       | `commenters.pending_display_name`.                                                                                                    |
+| 7       | `album_days`, `geo_places`; `albums.group_by`.                                                                                        |
+| 8       | `albums.cover_media_id`.                                                                                                              |
+| 9       | `media_notes`: one description per photo, scoped to the album.                                                                        |
+| 10      | `media.has_thumbnail`: does Drive have a preview of this file?                                                                        |
+| 11      | The four FTS5 search tables, their triggers, and their `rebuild`.                                                                     |
+| 12      | `albums.sort_order`: the album's default reading order.                                                                               |
+| 13      | `device_pairings`: pair a screen without a keyboard instead of typing a password.                                                     |
+| 14      | `media.video_codec`: which codec does a video's video track use?                                                                      |
+| 15      | `album_visits` and its index; `sessions.last_seen_at` and `sessions.device`.                                                          |
+| 16      | `commenters.locale`: the language this person is written to in.                                                                       |
+| 17      | `storage_connections`, from `oauth_token`; `albums.connection_id`; `media.source_path`.                                               |
+| 18      | `users.commenter_id`; `verification_codes`; the four code columns leave `commenters`.                                                 |
+| 19      | `verification_codes.locale`: the language an invitation is written in.                                                                |
+| 20      | `share_links`, `share_openings`; `sessions` and `comments` recreated — see below.                                                     |
+| 21      | `share_links` recreated with nullable `album_id`; `share_link_items` table.                                                           |
+| 22      | Unified users & RBAC, granular notifications, composable shares (`share_link_albums`), `commenter_shares`, and `commenter_favorites`. |
+
+**Migration 22 recreates `commenters`** to make `email` nullable for password-only accounts and adds `notify_photos` and `notify_comments`. It adds `display_name`, `role_viewer`, and `role_commenter` to `users` and automatically creates and links a `commenters` row for every existing user lacking one. On `share_links`, it adds `allow_comments`, `require_identity`, `updated_at`, and `notified_at`; on `share_link_items`, it adds `added_at`; and it creates `share_link_albums` (backfilled from existing whole-album links), `commenter_shares`, and `commenter_favorites`.
 
 **Migration 21 recreates `share_links`** to make `album_id` nullable, enabling multi-photo
 and cross-album selection links without fixing a single album on the link row (D-01).
