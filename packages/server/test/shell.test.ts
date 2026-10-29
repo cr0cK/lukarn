@@ -31,6 +31,13 @@ describe('HTML shell', () => {
     assert.doesNotMatch(rendu, /Photos/, 'no default name should remain');
   });
 
+  it('carries a single title tag in the real template', () => {
+    // Link-preview crawlers (WhatsApp) ignore comments: a `<title>` spelled out in
+    // one became the shared link's title, cut off at the real closing tag.
+    const titles = readFileSync(INDEX, 'utf8').match(/<title>/g) ?? [];
+    assert.equal(titles.length, 1);
+  });
+
   it('escapes content that would break the surrounding HTML', () => {
     // The name is set by an administrator, not a visitor — but one quote is
     // enough to escape the attribute and break the header.
