@@ -169,6 +169,12 @@ is what `deploy/deploy.sh` runs. Recreating the front end alone, before the
 application has been given the alias, leaves Caddy asking for a name that does not
 resolve yet.
 
+### Fixed
+
+- **A shared link previews with the instance name.** WhatsApp titled the preview
+  with a fragment of a source comment in the page, because that comment spelled
+  out the title tag and the crawler read it as the real one.
+
 ## [1.2.0] — 2026-08-17
 
 ### Three new storage backends alongside Google Drive

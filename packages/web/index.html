@@ -41,10 +41,12 @@
          it needs a PNG — it does not render SVG here. -->
     <link rel="apple-touch-icon" href="/api/branding/icon-apple-180.png" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <!-- The name below, like the one in `<title>`, is a default rather than a
+    <!-- The name below, like the page title, is a default rather than a
          hardcoded value: the server substitutes APP_NAME at startup
          (`shell.ts`). Written as it stands, it stays correct in development,
-         where Vite serves this file without going through the server. -->
+         where Vite serves this file without going through the server. Comments
+         here never spell out a tag: link-preview crawlers (WhatsApp) read the
+         raw text and take the first title tag they find, comment or not. -->
     <meta name="application-name" content="Photos" />
     <meta name="apple-mobile-web-app-title" content="Photos" />
     <!-- `black`, and definitely not `black-translucent`: the latter pushes
