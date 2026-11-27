@@ -312,7 +312,7 @@ export function createAuthRoutes(context: AppContext): FastifyPluginAsync {
      * an invitation.
      *
      * Unknown, mismatched, expired and exhausted get **one** refusal between them. The
-     * argument `specs/04-security-and-access.md` makes for `/identity/verify` telling
+     * argument `docs/specs/ACC.md` makes for `/identity/verify` telling
      * its four apart is that it sits behind `requireAuth`, and that argument does not
      * survive the move to a route anybody can call.
      */

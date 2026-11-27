@@ -503,7 +503,7 @@ export const SEARCH_HITS_PER_KIND = 5;
  * Comments
  *
  * One thread per media *and album*: the same Drive file indexed under two albums has
- * two distinct conversations. See `specs/04-security-and-access.md`.
+ * two distinct conversations. See `docs/specs/SOC.md`.
  * ------------------------------------------------------------------------ */
 
 /**

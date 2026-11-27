@@ -515,7 +515,7 @@ export class ConfigRepo {
    * An account created by address holds the reserved hash until its invitation is
    * consumed, so counting rows would let the only working administrator demote or
    * delete themselves while the other one is an unread email — leaving the instance
-   * administrable by nobody, the outcome `specs/04-security-and-access.md` says
+   * administrable by nobody, the outcome `docs/specs/ACC.md` says
    * requires shell access to repair. The name is unchanged because both callers are
    * that protection, and neither ever wanted a row count.
    */

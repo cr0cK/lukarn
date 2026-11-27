@@ -30,7 +30,7 @@ export const COMPOSE = `${HERE}compose.yml`;
  * Set by CI, unset everywhere else.
  *
  * Without it, a machine with no Docker daemon **skips** the container suites, for the
- * reason [D260814g](../../../specs/08-decisions/D260814g-a-release-is-gated-by-a-browser.md)
+ * reason [D260814g](../../../docs/decisions/D260814g-a-release-is-gated-by-a-browser.md)
  * keeps the browsers out of `pnpm verify`: a gate that needs a daemon is a gate people
  * work around, and a contributor without Docker still has to be able to run the rest.
  *

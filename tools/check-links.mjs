@@ -3,7 +3,7 @@
  * Checks that internal documentation links lead somewhere.
  *
  * The documentation is spread across three places that refer to one another
- * (D64): `README.md`, `deploy/README.md` and `specs/`. Nothing flags a reference
+ * (D64): `README.md`, `deploy/README.md` and `docs/`. Nothing flags a reference
  * that has become invalid — moving a section or renaming a file silently breaks
  * a link, and nobody notices until they click it. This check resolves every
  * relative link and anchor, and fails on the first one that leads nowhere.
@@ -23,7 +23,18 @@ const RACINE = fileURLToPath(new URL('..', import.meta.url));
  * Directories with no documentation to check, or which do not belong to the
  * repository.
  */
-const IGNORES = new Set(['node_modules', 'dist', '.git', '.claude', 'data', 'cache']);
+const IGNORES = new Set([
+  'node_modules',
+  'dist',
+  '.git',
+  '.claude',
+  '.agents',
+  '.sdp',
+  '.archives',
+  '.demo',
+  'data',
+  'cache',
+]);
 
 function fichiersMarkdown(repertoire, acc = []) {
   for (const entree of readdirSync(repertoire)) {

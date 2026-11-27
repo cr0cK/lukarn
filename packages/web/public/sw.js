@@ -5,7 +5,7 @@
  * served over the network: the private HTTP cache set by the server already
  * makes them fast, while an application cache would preserve them across an
  * account change on a shared phone (see D71 in
- * `specs/08-decisions.md`).
+ * `docs/decisions/`).
  *
  * Written by hand rather than generated: three rules fit in a readable file,
  * whereas a generator would add a build dependency and another layer for the
