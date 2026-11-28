@@ -30,6 +30,7 @@ packages/e2e/playwright-report/
 # Git worktrees mounted by agent tooling: branches of this repository, not content
 # to commit into it.
 .claude/worktrees/
+.sdp/
 # Per-workstation agent settings: the `.local` in the name already says they only
 # apply there, and committing them imposes one machine's permissions on everyone
 # who clones.

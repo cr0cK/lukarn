@@ -28,7 +28,7 @@ belongs to: the gallery is the point, and where the photos happen to sit is not.
 | **Run it, and see my own photos in it** | [**Get started**](#get-started): four steps, ten minutes |
 | Work on the code                        | [Run it from source](#run-it-from-source)                |
 | Put it on a server and keep it running  | [`deploy/README.md`](./deploy/README.md)                 |
-| Understand how it is built              | [`specs/README.md`](./specs/README.md)                   |
+| Understand how it is built              | [`docs/specs/README.md`](./docs/specs/README.md)         |
 | Contribute                              | [`CONTRIBUTING.md`](./CONTRIBUTING.md)                   |
 | Report a vulnerability                  | [`SECURITY.md`](./SECURITY.md)                           |
 | See what changed                        | [`CHANGELOG.md`](./CHANGELOG.md)                         |
@@ -366,7 +366,7 @@ The gallery behaves the same on all four. Two things underneath do not:
 | Put it behind a proxy that runs in docker | Publish no port at all. Join that proxy's network and let it reach the container by its alias, `lukarn:8080`, which is the name to use rather than the service name: on a network shared with another application, `app` answers from whichever container got there first. The `Caddyfile` here is written to be imported by such a front end, so lukarn's routing stays in this repository |
 
 Every variable, with what it changes:
-[`specs/06`](./specs/06-configuration-and-deployment.md).
+[`docs/specs/OPS.md`](./docs/specs/OPS.md).
 
 ## Run it from source
 
@@ -468,8 +468,8 @@ reaches the browser**: thumbnails are rendered to WebP and cached on disk with
 LRU eviction, and videos are relayed `Range` by `Range`, untouched wherever the
 browser can play them.
 
-Why it is built this way is in [`specs/`](./specs/). Start with
-[`specs/README.md`](./specs/README.md).
+Why it is built this way is in [`docs/specs/`](./docs/specs/README.md) and
+[`docs/decisions/`](./docs/decisions/README.md).
 
 ## Security
 
@@ -485,7 +485,7 @@ Why it is built this way is in [`specs/`](./specs/). Start with
   does not execute. They hold in development and behind an unconfigured front end
   as well.
 
-Details in [`specs/04`](./specs/04-security-and-access.md). Found a hole? Please
+Details in [`docs/specs/ACC.md`](./docs/specs/ACC.md). Found a hole? Please
 report it privately. [`SECURITY.md`](./SECURITY.md) says how, and what counts.
 
 ## The name

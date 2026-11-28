@@ -93,30 +93,19 @@ suite grows the same three backends as extra rows when the daemon is there.
 
 ## Documentation is part of the change
 
-**Any change to behaviour, the API, the data model, configuration, or a technical
-choice updates the matching spec in the same piece of work.** A spec updated
-"later" never is. `pnpm check:specs` compares what the code exposes (declared
-routes, environment variables, migrations, modules) against what the specs
-mention, and fails on the gap.
-
-`AGENTS.md` holds the table of which document follows which file. The short
-version:
-
-| If you touch…                                | Update…                                    |
-| -------------------------------------------- | ------------------------------------------ |
-| `packages/server/src/routes/*.ts`            | `specs/05-api.md`                          |
-| `packages/server/src/db.ts`, `repo.ts`       | `specs/03-data-model.md`                   |
-| `env.ts`, `Dockerfile`, `docker-compose.yml` | `specs/06-configuration-and-deployment.md` |
-| Anything under `packages/web/src`            | `specs/07-frontend.md`                     |
-| Access rules, sessions, crypto               | `specs/04-security-and-access.md`          |
-| A trade-off you accepted, an option you cut  | `specs/08-decisions/`: **a new file**      |
+**Product behaviour changes go through SDP specs (`docs/specs/<CODE>.md`), and
+accepted technical trade-offs live in `docs/decisions/`.** See
+[`docs/specs/README.md`](./docs/specs/README.md) for the process settings and
+the active specs. `pnpm check:specs` verifies SDP spec front matter,
+environment-variable wiring, decision identifiers and citations, backticked doc
+paths, and `README.md` alignment.
 
 A decision states the rule **in force**, so when that rule changes you rewrite the
 decision rather than adding a second one beside it. Its title is the sentence
 stating the rule, so the title changes too and the file is renamed; the identifier
 stays, because that is what the code comments cite.
 
-`pnpm check:specs` notices the rewrite and lists every paragraph of `specs/` and
+`pnpm check:specs` notices the rewrite and lists every paragraph of `docs/specs/` and
 every source file that restates that decision. Reread them, then say so with
 `Swept: D92 — <what you checked>` in the commit body. That paragraph nobody goes
 back to is the one that quietly became false.
@@ -134,14 +123,8 @@ diff: what it does for them, and why it is better. If the change is genuinely
 invisible from outside the repository, say so in the commit body with
 `Changelog: none — <reason>` and the check stands down.
 
-The check verifies that a mention **exists**, never that it is still true. It
-catches a route added without a word in `05-api.md`; it will never catch a
-paragraph that has quietly become false. That part is on you, and it is the more
-common case when you change existing behaviour rather than add to it.
-
-If a reported gap is a false positive, such as a trivial component whose role is
-described without its name appearing, add it to `MODULES_TOLERES` in
-`tools/check-specs.mjs`, with the reason. A noisy check ends up disabled.
+The checks verify structural anchors, never prose accuracy. Keeping the specs
+factually aligned when behaviour changes remains the author's responsibility.
 
 Also note the environment-variable rule: a variable read by `env.ts` must
 actually **reach the container**, passed through the `environment:` block of
@@ -152,7 +135,7 @@ looking adjustable everywhere else.
 
 ## A decision is a file
 
-Accepted trade-offs live in `specs/08-decisions/`, one file each, named
+Accepted trade-offs live in `docs/decisions/`, one file each, named
 `D<YYMMDD>-<slug>.md` and titled `# D<YYMMDD> — <sentence>`. **The identifier is
 today's date, not the next number in a sequence**, then a letter (`b`, `c`, …) if
 the day already carries one. Sequential numbering required knowing the last
@@ -172,13 +155,10 @@ working out which file to believe. Fold rather than accumulate: one question, on
 decision. What a rewrite keeps is why an alternative was rejected, which does not
 age; what it drops is what we believed at the time, which `git log` holds anyway.
 
-**A decision is written with the code it describes.** The log says how this
-application is built, so a file added before the work lands describes an instance
-nobody is running. Until then the reasoning belongs in `specs/09-plans/`, the one
-place allowed to record a decision as still to be taken, and the pull request that
-makes it true moves it out under the identifier of the day it is written. Nothing
-checks this. It is the same shape as the rule above it: the log is a record, and a
-record of the future is a plan.
+**A decision is written with the code it describes.** Forward product rules and
+delivery plans belong in SDP specs (`docs/specs/<CODE>.md`), not in the decision
+log; a decision file added before code ships carries the `**Not built yet.**`
+marker until the implementation lands.
 
 ## Commits and pull requests
 
@@ -233,7 +213,7 @@ one is the body of a release page that already exists.
   goes through `packages/web/src/lib/format.ts`.
 
 **A note on language.** The repository is entirely in English: code, comments,
-interface and `specs/`. A few code identifiers predating the rule remain in
+interface and `docs/`. A few code identifiers predating the rule remain in
 French (see `AGENTS.md`); renaming them is separate work, not to be folded into
 a prose-only change.
 
@@ -257,7 +237,7 @@ it to somebody. Both registers are correct, and only one of them suits a letter.
   touching it makes the real schema diverge from the assumed one. Append to the
   end of `MIGRATIONS` instead.
 - **Scope creep beyond a photo viewer.** See
-  `specs/01-vision-and-scope.md` for what is deliberately out.
+  `docs/specs/GAL.md` for what is deliberately out of scope.
 
 ## License
 

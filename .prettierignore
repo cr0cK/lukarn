@@ -4,6 +4,8 @@ data/
 cache/
 pnpm-lock.yaml
 .playwright-cli/
+.agents/
+.sdp/
 packages/e2e/.tmp/
 packages/e2e/test-results/
 packages/e2e/playwright-report/

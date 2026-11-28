@@ -202,7 +202,7 @@ export function Sheet({
    * press would do — and on a one-stop sheet, dragging it away to dismiss is a
    * lot of hand for a menu somebody opened by mistake. A tap therefore does the
    * obvious thing at each end: open it further, or put it back
-   * ([D260814f](../../../../specs/08-decisions/D260814f-the-sheet-s-grip-answers-a-tap-not-only-a-drag.md)).
+   * ([D260814f](../../../../docs/decisions/D260814f-the-sheet-s-grip-answers-a-tap-not-only-a-drag.md)).
    */
   const nextOnTap = stop < stops.length - 1 ? stop + 1 : stop - 1;
 

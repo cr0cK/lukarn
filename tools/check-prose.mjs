@@ -29,7 +29,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /**
  * The documents this check reads, and the em dashes each may still carry.
  *
- * `specs/` is deliberately absent: it is read by whoever takes over the code,
+ * `docs/` is deliberately absent: it is read by whoever takes over the code,
  * not by whoever discovers the project, and twenty thousand lines of it would
  * make this a rewrite rather than a check.
  */

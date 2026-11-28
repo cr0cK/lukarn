@@ -19,6 +19,8 @@ export default tseslint.config(
       '**/dist/**',
       '**/node_modules/**',
       '.claude/worktrees/**',
+      '.agents/**',
+      '.sdp/**',
       'packages/e2e/playwright-report/**',
       'packages/e2e/test-results/**',
     ],

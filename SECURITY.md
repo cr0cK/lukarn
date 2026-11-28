@@ -66,7 +66,7 @@ a vulnerability rather than a design choice:
 
 ## What the application does to protect itself
 
-Documented in [`specs/04-security-and-access.md`](./specs/04-security-and-access.md),
+Documented in [`docs/specs/ACC.md`](./docs/specs/ACC.md),
 summarised in the [README](./README.md#security). In short: argon2id password
 hashing, sessions in the database and revocable immediately, per-album
 authorisation on every media request, the Google refresh token encrypted with

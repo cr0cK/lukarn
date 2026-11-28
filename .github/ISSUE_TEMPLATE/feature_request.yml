@@ -8,7 +8,7 @@ body:
         This is a self-hosted gallery for photos and videos that already sit in a
         folder on the machine, an S3-compatible bucket, a WebDAV server or a
         Google Drive account. Its scope is kept deliberately small:
-        [`specs/01-vision-and-scope.md`](../blob/main/specs/01-vision-and-scope.md)
+        [`docs/specs/GAL.md`](../blob/main/docs/specs/GAL.md#out-of-scope)
         lists what is out of scope on purpose — worth a glance first, it may
         already answer you. Being out of scope today is not a permanent verdict,
         but the reasoning is written down.
@@ -41,5 +41,5 @@ body:
     attributes:
       label: Scope
       options:
-        - label: I have read specs/01-vision-and-scope.md and this does not appear in what is deliberately excluded
+        - label: I have read docs/specs/GAL.md (Out of scope) and this does not appear in what is deliberately excluded
           required: true

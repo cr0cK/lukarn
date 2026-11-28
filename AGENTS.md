@@ -3,31 +3,35 @@
 Self-hosted Google Drive photo viewer: pnpm monorepo (`shared`, `server`, `web`),
 one container, with Fastify serving the API and the built front end.
 
-The design is documented in [`specs/`](./specs/). Read
-[`specs/README.md`](./specs/README.md) first; it gives the reading order for each
-kind of task. By default: `specs/01-vision-and-scope.md` → `specs/02-architecture.md` →
-`specs/08-decisions/`.
+The product design follows the **Spec Delivery Process (SDP)** in [`docs/specs/`](./docs/specs/).
+Read [`docs/specs/README.md`](./docs/specs/README.md) first for project settings and the
+ordered spec index (`docs/specs/<CODE>.md`), and [`docs/decisions/README.md`](./docs/decisions/README.md)
+for architectural trade-offs.
 
 ## Documentation update rule
 
-**Every change to behaviour, the API, the data model, configuration or a
-technical choice updates the corresponding spec in the same piece of work as the
-code.** A spec deferred until "later" is never updated. A code change without a
-spec change is not complete.
+**Product contract changes follow the Spec Delivery Process (SDP) in `docs/specs/<CODE>.md`, and
+accepted architectural trade-offs live in [`docs/decisions/`](./docs/decisions/).**
 
-This rule is enforced by `pnpm check:specs`: it compares what the code exposes—declared
-routes, environment variables, migrations, and modules—with what the specs describe,
-and fails on any discrepancy. It runs in `pnpm verify`, in CI, and on `pre-push`.
-
-It also verifies that every variable read by `packages/server/src/env.ts` actually reaches the
-container—either passed through the `environment:` block in `docker-compose.yml`
-or set by the `Dockerfile`. Compose does not forward host environment variables, and
-`.env` is used only for interpolation. Any variable omitted from Compose or Dockerfile
-cannot be configured in production (D78).
+- **SDP PR boundaries**: Ordinary implementation and fix PRs (`/sdp:exec`) carry code only (against
+  the spec at its approved commit) and do not modify `docs/specs/<CODE>.md`. Product behaviour
+  changes go through a dedicated `docs:` spec PR (`/sdp:spec` → `/sdp:approve`) or an owner-led
+  live UI polish pass (`/sdp:polish`).
+- **SDP workflow**: `/sdp:spec` designs or amends a spec and its delivery plans (and clickable
+  HTML mockups under `docs/specs/mockups/<CODE>.html`), `/sdp:approve` runs gap reads, approves plans,
+  arbitrates outbox entries, and closes specs as `done`, `/sdp:exec` implements approved plans as
+  stacked PRs and fixes, and `/sdp:polish` runs live UI polish passes.
+- **Automated validation (`pnpm check:specs`)**: Verifies that every environment variable read by
+  `packages/server/src/env.ts` (plus `UV_THREADPOOL_SIZE`) is documented in `docs/specs/` and
+  wired into `docker-compose.yml` or `Dockerfile` (D78), that every spec in `docs/specs/<CODE>.md`
+  carries valid SDP front matter and appears in `docs/specs/README.md`, that decision records are
+  valid and un-duplicated, that every `(Dxx)` citation and backticked doc path resolves on disk
+  (D260809d), and that `README.md` lists every storage backend in `SUPPORTED_KINDS` and every tab
+  in `ADMIN_TABS`. It runs in `pnpm verify`, in CI, and on `pre-push`.
 
 ### Decision records
 
-- **Format**: `specs/08-decisions/D<YYMMDD>-<slug>.md`. The identifier uses the decision date
+- **Format**: `docs/decisions/D<YYMMDD>-<slug>.md`. The identifier uses the decision date
   (`D260809`), followed by a letter (`b`, `c`) if multiple decisions occur on the same date (D260809).
   Legacy ordinals D1 to D99 are preserved (D260809).
 - **Rule in force**: Each decision document reflects the current active rule in the present tense (D260822).
@@ -35,23 +39,17 @@ cannot be configured in production (D78).
 - **One question, one decision**: When newer reasoning supersedes an older rule, fold the reasoning into
   the older decision file, delete the newer file, and update all citations across the codebase.
 - **Title sweeps**: Renaming a decision or rewriting its title heading changes its stated rule. `pnpm check:specs`
-  detects title changes, lists every citing `file:line` in `specs/` and citing source files (skipped if no citations exist),
+  detects title changes, lists every citing `file:line` in `docs/specs/` and citing source files (skipped if no citations exist),
   and demands a `Swept: Dxx — <what you checked>` line in the commit body (forcing the author to audit the full citation list).
 - **Forward decisions**: Decisions decided ahead of code implementation carry the mandatory header marker:
   `**Not built yet.** Decided YYYY-MM-DD; no code implements this.` The PR implementing the feature removes this marker.
-- **Backticked spec paths**: `pnpm check:specs` verifies that every spec document cited as text between backticks
-  (`specs/05-api.md`, `specs/08-decisions/`) points to an existing file on disk (D260809d).
+- **Backticked doc paths**: `pnpm check:specs` verifies that every doc path cited as text between backticks
+  (`docs/specs/OPS.md`, `docs/decisions/README.md`) points to an existing file on disk (D260809d).
 
 ### Spec audits and validation
 
-- **Factual accuracy**: The automated checks verify that a mention exists, not that it is accurate: `pnpm check:specs`
-  catches a missing route or unmentioned module, but cannot detect a paragraph that became false. Ensuring factual
-  accuracy across specs and code remains the author's responsibility.
-- **Audit tool**: `/spec-sync` (`.claude/skills/spec-sync/`) audits `specs/01` through `specs/07` end-to-end
-  against live code, correcting only false statements and citing `file:line` anchors (D260822b). It is run manually
-  by hand (e.g. before releases) and is never invoked automatically.
-- **Plans**: Multi-PR work in progress lives in `specs/09-plans/`. The PR that completes the work deletes the plan.
-  A plan with all checkboxes ticked fails `pnpm check:specs`.
+- **Factual accuracy**: Ensuring factual accuracy across `docs/specs/`, `docs/decisions/`, and live
+  code remains the author's responsibility (D260822b).
 - **Public README alignment**: `README.md` must list every storage backend in `SUPPORTED_KINDS` and describe every
   tab in `ADMIN_TABS`.
 - **Changelog verification**: `pnpm check:changelog` verifies that `CHANGELOG.md` reflects `feat`, `fix`,
@@ -60,41 +58,6 @@ cannot be configured in production (D78).
   can never be excused.
 - **Link and prose integrity**: `pnpm check:links` validates all internal markdown links and section anchors.
   `pnpm check:prose` validates factual tone and em-dash budgets on public documents.
-- **Escape hatch (`MODULES_TOLERES`)**: If `check:specs` reports a false positive for a trivial module documented
-  by its role rather than file name, add it to `MODULES_TOLERES` in `tools/check-specs.mjs` with an explanatory comment.
-
-### Change mapping table
-
-| If you change…                                                                                                                               | Update…                                                                                                 |
-| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| A visible user-facing feature or capability                                                                                                  | `CHANGELOG.md`, and `README.md` if it is a core capability                                              |
-| `packages/server/src/routes/*.ts` (route, status code, payload)                                                                              | `specs/05-api.md`                                                                                       |
-| `packages/shared/src/index.ts`                                                                                                               | `specs/05-api.md`, and `specs/03-data-model.md` if data model changes                                   |
-| `packages/server/src/db.ts` (`MIGRATIONS`, indexes, pragmas)                                                                                 | `specs/03-data-model.md`                                                                                |
-| `packages/server/src/repo.ts` (cursors, queries)                                                                                             | `specs/03-data-model.md`                                                                                |
-| `packages/server/src/comments.ts` (threads, moderation)                                                                                      | `specs/03-data-model.md`, `specs/04-security-and-access.md`                                             |
-| `packages/server/src/commenters.ts` (identities, code verification)                                                                          | `specs/03-data-model.md`, `specs/04-security-and-access.md`                                             |
-| `packages/server/src/mail.ts` (transport, queue, composition)                                                                                | `specs/06-configuration-and-deployment.md`, and `specs/08-decisions/` if trade-off changes              |
-| `packages/server/src/env.ts`, `packages/server/src/config.ts` or `packages/server/src/bootstrap.ts`                                          | `specs/06-configuration-and-deployment.md`, and `README.md` if startup requires it                      |
-| `packages/server/src/config-repo.ts` (accounts, albums, settings)                                                                            | `specs/03-data-model.md`, `specs/04-security-and-access.md`                                             |
-| `Dockerfile`, `docker-compose.yml`, volumes                                                                                                  | `specs/06-configuration-and-deployment.md`, and `README.md`                                             |
-| `deploy/` (cloud-init, `deploy/backup.sh`, `deploy/deploy.sh`)                                                                               | `specs/06-configuration-and-deployment.md`, and `deploy/README.md`                                      |
-| `packages/server/src/plugins/auth.ts`, `packages/server/src/sessions.ts`, `packages/server/src/crypto.ts`, `packages/server/src/throttle.ts` | `specs/04-security-and-access.md`                                                                       |
-| `packages/server/src/storage/provider.ts` (the interface, an error)                                                                          | `specs/02-architecture.md` (storage interface), `specs/05-api.md`                                       |
-| `packages/server/src/storage/connections.ts`, `packages/server/src/storage/registry.ts`                                                      | `specs/03-data-model.md`, `specs/04-security-and-access.md`, `specs/05-api.md`                          |
-| `packages/server/src/storage/drive.ts`, `packages/server/src/sync/sync.ts`, `packages/server/src/sync/metadata.ts`                           | `specs/02-architecture.md` (sync flow)                                                                  |
-| `packages/server/src/media/renderer.ts`, `packages/server/src/media/cache.ts`, `packages/server/src/media/range.ts`                          | `specs/02-architecture.md`, and `specs/08-decisions/` if trade-off changes                              |
-| `packages/web/src/lib/justify.ts`, `packages/web/src/lib/useGridLayout.ts`, components                                                       | `specs/07-frontend.md`                                                                                  |
-| `packages/e2e/` (a spec in `packages/e2e/specs/`, fixture, project)                                                                          | `specs/07-frontend.md`, and `specs/08-decisions/` if trade-off changes                                  |
-| `packages/e2e/storages/` (container, backend, claim)                                                                                         | `specs/07-frontend.md`, and `specs/08-decisions/` if trade-off changes                                  |
-| `packages/server/src/shell.ts` (instance name, shell, manifest)                                                                              | `specs/05-api.md`, `specs/07-frontend.md`                                                               |
-| A message shown to a person (interface, HTTP, email, page)                                                                                   | Both `packages/web/src/lib/i18n/` or `packages/server/src/i18n/` catalogues, and `specs/07-frontend.md` |
-| `packages/server/src/plugins/locale.ts`, `packages/server/src/i18n/`, `packages/web/src/lib/i18n/`                                           | `specs/05-api.md`, `specs/07-frontend.md`                                                               |
-| `packages/web/src/styles.css` (`@theme` tokens)                                                                                              | `specs/07-frontend.md`                                                                                  |
-| Accepted trade-off, rejected alternative or architectural rule                                                                               | `specs/08-decisions/` (new file or rewrite existing in place)                                           |
-| Multi-PR work in progress                                                                                                                    | `specs/09-plans/` (deleted when merged)                                                                 |
-| Product intent or feature proposal                                                                                                           | `specs/10-prds/` (written ahead of code)                                                                |
-| Scope boundaries (features entering or leaving)                                                                                              | `specs/01-vision-and-scope.md`                                                                          |
 
 ### Documentation boundaries
 
@@ -102,7 +65,8 @@ cannot be configured in production (D78).
 | ------------------ | -------------------------- | ------------------------------------------------------------------------------------------- |
 | `README.md`        | Discovering the project    | Purpose, installation from published image, Drive setup, local development from source      |
 | `deploy/README.md` | Server operators           | Production hosting on dedicated VM, domain, certificates, firewall, backups (D64, D260815e) |
-| `specs/`           | Maintainers & contributors | Architecture, data model, security, wire formats, decisions, and rationale                  |
+| `docs/specs/`      | Maintainers & contributors | SDP product contracts (`<CODE>.md`), project settings, and delivery plans                   |
+| `docs/decisions/`  | Maintainers & contributors | Architectural trade-offs, rejected alternatives, and rationale                              |
 | `CONTRIBUTING.md`  | Patch contributors         | Contribution process, PR standards, and quality gates                                       |
 | `SECURITY.md`      | Security researchers       | Vulnerability reporting procedure and disclosure policy                                     |
 
@@ -182,7 +146,7 @@ hook, or workflow depends on it.
 ### Repository language
 
 The repository is maintained in English (D260811b). Code, identifiers, comments, test names, logs, commit messages,
-PR descriptions, and `specs/` are in English without exception.
+PR descriptions, and `docs/` are in English without exception.
 
 - **Legacy French Identifiers**: A few existing identifiers (`titre` in `SearchBox`,
   `Mesure`/`valeur`/`unite`/`visiteur` in `VisitsSection`) predate the English rule.

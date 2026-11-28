@@ -1,9 +1,10 @@
 # Runs on every push to main and every pull request.
 #
 # Documentation is part of the gate, on the same footing as types and tests:
-# `check:specs` compares what the code exposes — routes, environment variables,
-# migrations, modules — against what the specs describe. A rule you have to
-# remember to apply is a rule that eventually gets forgotten; this one fails.
+# `check:specs` validates SDP spec front matter, environment variables and their
+# container wiring, decision records, backticked doc paths, and README claims.
+# A rule you have to remember to apply is a rule that eventually gets forgotten;
+# this one fails.
 name: verify
 
 on:

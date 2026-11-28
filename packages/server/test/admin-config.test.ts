@@ -255,7 +255,7 @@ describe('last administrator', () => {
     // An account created by address holds an unusable hash and no binding until its
     // code is consumed. Counting it would let the only administrator who can sign in
     // demote or delete themselves, leaving the instance administrable by nobody —
-    // the outcome `specs/04-security-and-access.md` says requires shell access to
+    // the outcome `docs/specs/ACC.md` says requires shell access to
     // repair.
     const demoted = await patch('/api/admin/users/patron', { admin: false });
     assert.equal(demoted.statusCode, 409, demoted.body);

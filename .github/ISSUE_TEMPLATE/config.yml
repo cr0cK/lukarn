@@ -7,5 +7,5 @@ contact_links:
     url: https://github.com/cr0cK/lukarn/blob/main/deploy/README.md
     about: Installing, updating, backing up, restoring — and the common OAuth and mail failures.
   - name: Why it is built this way
-    url: https://github.com/cr0cK/lukarn/blob/main/specs/README.md
-    about: Design documents and the decision log, for anyone picking up the code.
+    url: https://github.com/cr0cK/lukarn/blob/main/docs/specs/README.md
+    about: Product specs and the decision log, for anyone picking up the code.
